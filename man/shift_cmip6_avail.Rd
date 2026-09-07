@@ -38,7 +38,9 @@ every returned member and evaluates each identity independently.}
 
 \item{grid}{Optional single CMIP6 grid label.}
 
-\item{frequency}{CMIP6 frequency. Defaults to daily data.}
+\item{frequency}{CMIP6 frequency. An unnamed scalar applies to every
+requested variable. A named character vector assigns one frequency to
+every variable, for example \code{tas = "3hrPt"} and \code{rsds = "3hr"}.}
 
 \item{table}{Optional CMIP6 table selection. \code{NULL} discovers a table for
 each variable at the requested frequency. An unnamed scalar pins every
@@ -65,10 +67,11 @@ precedence when names overlap.}
 \value{
 A data frame with one row per model/member/grid identity.
 \code{complete} is \code{TRUE} only when every requested experiment-variable pair is
-present. For complete rows, \code{table} is a list-column containing the named
-per-variable table selection accepted by \code{\link[=shift_cmip6]{shift_cmip6()}}. Incomplete rows
-use \code{NA} for variables with no available table. \code{table_id} is the compact
-display value, and \code{missing} lists absent pairs as \code{experiment:variable}.
+present. \code{frequency_spec} and \code{table} are list-columns containing named
+per-variable selections accepted by \code{\link[=shift_cmip6]{shift_cmip6()}}. Incomplete rows use
+\code{NA} for variables with no available table. \code{frequency} and \code{table_id} are
+compact display values, and \code{missing} lists absent pairs as
+\code{experiment:variable}.
 }
 \description{
 Query CMIP6 Dataset metadata and identify model/member/grid identities that

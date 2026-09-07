@@ -235,6 +235,36 @@ pipeline__frequency_choices <- function(
     allowed
 }
 
+# Resolve variable-specific source frequencies across the ordered component
+# graph so extraction planning uses the same contract as runtime validation.
+pipeline__variable_frequencies <- function(
+    spec,
+    roles = c("model_historical", "model_future")
+) {
+    if (!S7::S7_inherits(spec, WeatherPipelineSpec)) {
+        cli::cli_abort("{.arg spec} must be a WeatherPipelineSpec object.")
+    }
+    checkmate::assert_subset(roles, WEATHER_INPUT_ROLES)
+    mappings <- list()
+    for (stage in WEATHER_COMPONENT_STAGES) {
+        component <- component__get(stage, spec@components[[stage]])
+        requirements <- c(
+            component@required_inputs,
+            component@optional_inputs
+        )
+        for (role in intersect(roles, names(requirements))) {
+            mapping <- requirements[[role]]@variable_frequencies
+            if (length(mapping)) {
+                mappings[[length(mappings) + 1L]] <- mapping
+            }
+        }
+    }
+    weather__combine_variable_frequencies(
+        mappings,
+        "Pipeline components"
+    )
+}
+
 # Convert either a component-provided envelope or its raw return value into the
 # single runtime representation consumed by the next stage.
 pipeline__stage_result <- function(component, value) {

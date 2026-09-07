@@ -46,6 +46,14 @@
 
 ## New features
 
+* Added variable-specific CMIP6 frequency contracts to availability discovery,
+  persisted workflow selection, component validation, and extraction planning.
+  The hourly kernel-QDM workflow now resolves point-sampled `3hrPt` state and
+  wind fields, interval-mean `3hr` radiation, and optional daily `tasmin` and
+  `tasmax` within one model/member/grid identity. Its internal source manifest
+  records the ten model-member combinations and special treatments reported by
+  Wang et al. (2023) (#244).
+
 * Aligned the experimental `hourly_kernel_qdm()` workflow with the published
   raw-model input boundary: model roles now request `tas`, `ps`, `huss`, `uas`,
   `vas`, `rsds`, and `rsdsdiff`, then derive hourly relative humidity, scalar

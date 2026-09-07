@@ -49,8 +49,26 @@ test_that("future-weather inputs preserve four distinct semantic roles", {
         "day"
     )
     expect_identical(
+        weather__get_input(inputs, "model_future")@variable_frequencies,
+        list(tas = "day", tasmin = "day", tasmax = "day")
+    )
+    expect_identical(
         weather__get_input(inputs, "model_future")@calendars,
         "360_day"
+    )
+})
+
+test_that("future-weather inputs retain mixed frequency variables", {
+    source <- data.frame(
+        variable_id = c("tas", "rsds", "tasmin"),
+        frequency = c("3hrPt", "3hr", "day")
+    )
+    input <- weather__new_input("model_future", source)
+
+    expect_identical(input@frequencies, c("3hrPt", "3hr", "day"))
+    expect_identical(
+        input@variable_frequencies,
+        list(tas = "3hrPt", rsds = "3hr", tasmin = "day")
     )
 })
 

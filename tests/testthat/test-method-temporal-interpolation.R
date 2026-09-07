@@ -210,18 +210,18 @@ test_that("linear temporal interpolation keeps independent groups isolated", {
 })
 
 test_that("linear temporal interpolation supports mixed source frequencies", {
-    three_hourly <- temporal_test__series()
+    three_hourly <- temporal_test__series(frequency = "3hrPt")
     six_hourly <- temporal_test__series(
-        frequency = "6hr",
+        frequency = "6hrPt",
         variable = "hurs",
         offsets = seq.int(0, 43200, by = 21600),
         value_offset = 40
     )
     historical <- rbind(three_hourly, six_hourly)
     future <- rbind(
-        temporal_test__series(value_offset = 100),
+        temporal_test__series(frequency = "3hrPt", value_offset = 100),
         temporal_test__series(
-            frequency = "6hr",
+            frequency = "6hrPt",
             variable = "hurs",
             offsets = seq.int(0, 43200, by = 21600),
             value_offset = 50
@@ -241,7 +241,7 @@ test_that("linear temporal interpolation supports mixed source frequencies", {
     expect_identical(data[variable_id == "hurs", .N], 13L)
     expect_identical(
         provenance$source_frequencies,
-        c("3hr", "6hr")
+        c("3hrPt", "6hrPt")
     )
     expect_identical(
         provenance$source_step_seconds,

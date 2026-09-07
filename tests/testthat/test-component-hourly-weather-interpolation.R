@@ -29,7 +29,7 @@ weather_interp_test__tas <- function(value_offset = 0) {
         variable_id = "tas",
         value = c(290, 295, 300, 296, 292) + value_offset,
         units = "K",
-        frequency = "3hr",
+        frequency = "3hrPt",
         time = as.POSIXct("2061-01-01", tz = "UTC") + offsets,
         coordinates$coordinates,
         stringsAsFactors = FALSE

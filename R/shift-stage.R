@@ -207,7 +207,7 @@ ShiftCmip6Spec <- S7::new_class(
         scenarios = S7::new_property(S7::class_character),
         member = S7::new_property(S7::class_any, default = NULL),
         grid = S7::new_property(S7::class_any, default = NULL),
-        frequency = shift_prop_string(min.chars = 1L),
+        frequency = S7::new_property(S7::class_character),
         table = S7::new_property(S7::class_any, default = NULL),
         activity = shift_prop_string(min.chars = 1L),
         index_nodes = S7::new_property(S7::class_character),
@@ -1374,9 +1374,89 @@ shift__cmip6_table_id <- function(frequency) {
         mon = "Amon",
         day = "day",
         `3hr` = "3hr",
+        `3hrPt` = "3hr",
         `6hr` = "6hr",
+        `6hrPt` = "6hr",
         NULL
     )
+}
+
+# Validate scalar and variable-specific CMIP6 frequency specifications without
+# discarding names that are needed after a broad multi-frequency ESGF query.
+shift__cmip6_frequency_spec <- function(frequency, variables = NULL) {
+    if (is.list(frequency)) {
+        if (is.null(names(frequency)) || anyNA(names(frequency)) ||
+            any(!nzchar(names(frequency)))) {
+            cli::cli_abort(
+                "A list supplied as `frequency` must name every variable."
+            )
+        }
+        frequency <- vapply(frequency, function(value) {
+            checkmate::assert_string(value, min.chars = 1L)
+            value
+        }, character(1L))
+    }
+    checkmate::assert_character(
+        frequency,
+        any.missing = FALSE,
+        min.len = 1L
+    )
+    frequency_names <- names(frequency)
+    frequency <- as.character(frequency)
+    names(frequency) <- frequency_names
+    if (!is.null(frequency_names) && anyNA(frequency_names)) {
+        cli::cli_abort(
+            "A variable-specific `frequency` vector cannot have missing names."
+        )
+    }
+    named <- !is.null(frequency_names) && any(nzchar(frequency_names))
+    if (!isTRUE(named)) {
+        if (length(frequency) != 1L) {
+            cli::cli_abort(
+                "An unnamed `frequency` value must contain one CMIP6 frequency."
+            )
+        }
+        names(frequency) <- NULL
+        return(frequency)
+    }
+    if (any(!nzchar(frequency_names)) || anyDuplicated(frequency_names)) {
+        cli::cli_abort(
+            "A variable-specific `frequency` vector must have unique, non-empty variable names."
+        )
+    }
+    if (!is.null(variables)) {
+        variables <- unique(as.character(variables))
+        unknown <- setdiff(frequency_names, variables)
+        missing <- setdiff(variables, frequency_names)
+        if (length(unknown)) {
+            cli::cli_abort(
+                "`frequency` contains variable(s) not used by the request: {.val {unknown}}."
+            )
+        }
+        if (length(missing)) {
+            cli::cli_abort(
+                "`frequency` must specify every requested variable; missing {.val {missing}}."
+            )
+        }
+        frequency <- frequency[variables]
+    }
+    frequency
+}
+
+# Expand one scalar CMIP6 frequency or retain an explicit variable mapping so
+# downstream table selection and File coverage use the same source semantics.
+shift__cmip6_variable_frequencies <- function(variables, frequency) {
+    variables <- unique(as.character(variables))
+    checkmate::assert_character(
+        variables,
+        any.missing = FALSE,
+        min.len = 1L
+    )
+    frequency <- shift__cmip6_frequency_spec(frequency, variables)
+    if (is.null(names(frequency))) {
+        return(stats::setNames(rep(frequency[[1L]], length(variables)), variables))
+    }
+    frequency
 }
 
 # Validate the two supported table-selection forms. An unnamed scalar pins all
@@ -1422,12 +1502,18 @@ shift__cmip6_variable_tables <- function(variables, frequency, table = NULL) {
     variables <- unique(as.character(variables))
     checkmate::assert_character(variables, any.missing = FALSE, min.len = 1L)
     table <- shift__cmip6_table_spec(table)
-    default <- shift__cmip6_table_id(frequency)
-    if (is.null(default)) {
-        cli::cli_abort("Cannot infer a CMIP6 table for frequency {.val {frequency}}; set `table` explicitly.")
+    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
+    defaults <- vapply(frequencies, function(value) {
+        shift_coalesce(shift__cmip6_table_id(value), NA_character_)
+    }, character(1L))
+    unresolved <- names(defaults)[is.na(defaults)]
+    if (length(unresolved) && is.null(table)) {
+        cli::cli_abort(
+            "Cannot infer a CMIP6 table for variable(s) {.val {unresolved}}; set `table` explicitly."
+        )
     }
-    out <- stats::setNames(rep(default, length(variables)), variables)
-    if (identical(as.character(frequency)[[1L]], "mon") && "snd" %in% variables) {
+    out <- defaults
+    if ("snd" %in% variables && identical(frequencies[["snd"]], "mon")) {
         out[["snd"]] <- "LImon"
     }
     if (is.null(table)) {
@@ -1442,7 +1528,22 @@ shift__cmip6_variable_tables <- function(variables, frequency, table = NULL) {
         cli::cli_abort("`table` contains override(s) for variables not used by the recipe: {.val {unknown}}.")
     }
     out[names(table)] <- unname(table)
+    if (anyNA(out)) {
+        unresolved <- names(out)[is.na(out)]
+        cli::cli_abort(
+            "`table` must specify variable(s) whose CMIP6 table cannot be inferred: {.val {unresolved}}."
+        )
+    }
     out
+}
+
+# Interpret one direct request table as a pin, while treating a multi-table
+# query filter as discovery breadth whose variable mapping must be inferred.
+shift__cmip6_request_table_spec <- function(table_id) {
+    if (is.null(table_id) || length(table_id) != 1L) {
+        return(NULL)
+    }
+    table_id
 }
 
 # Collapse a possibly long vector into a stable console summary while retaining
@@ -1660,6 +1761,9 @@ shift_resolve_epw <- function(x) {
 #' @param project Optional provider project, for example `"CMIP6"`.
 #' @param source,experiment,variant,frequency Provider-neutral request fields.
 #'   Values must use the selected provider's controlled vocabulary.
+#'   In `shift_cmip6()`, an unnamed scalar `frequency` applies to every recipe
+#'   input, while a named character vector assigns one frequency to every
+#'   source variable so `3hrPt`, `3hr`, and `day` data can be collected together.
 #'   In `shift_reference_historical()`, `experiment` is the historical
 #'   reference experiment filter. Values are not translated; for ESGF, use
 #'   exact facet values such as `project = "CMIP6"` and `frequency = "mon"`.
@@ -2109,9 +2213,11 @@ arima_temperature <- function(
 #' @description
 #' `hourly_kernel_qdm()` creates a complete multi-year future-weather method
 #' from matching three-hourly historical and future model data plus an hourly
-#' observed reference. Model roles require raw `tas`, `ps`, `huss`, `uas`,
-#' `vas`, `rsds`, and `rsdsdiff`; the observed role requires `tas`, `ps`,
-#' `hurs`, `sfcWind`, `rsds`, and `rsdsdiff`.
+#' observed reference. CMIP6 model roles require point-sampled `3hrPt` `tas`,
+#' `ps`, `huss`, `uas`, and `vas`, together with interval-mean `3hr` `rsds`
+#' and `rsdsdiff`. Daily `tasmin` and `tasmax` are optional interpolation
+#' anchors. The observed role requires `tas`, `ps`, `hurs`, `sfcWind`, `rsds`,
+#' and `rsdsdiff`.
 #'
 #' Continuous model state variables and wind-vector components are interpolated
 #' to an hourly lattice. Relative humidity is derived from `huss`, `tas`, and
@@ -2131,7 +2237,8 @@ arima_temperature <- function(
 #'
 #' @param reference A required [historical_reference()],
 #'   [shift_reference_plan()], or extracted `ShiftClimate` stage containing
-#'   matching three-hourly historical model output.
+#'   matching variable-specific `3hrPt`, `3hr`, and optional daily historical
+#'   model output.
 #' @param observed_reference A required [shift_reference_plan()] or extracted
 #'   `ShiftClimate` stage containing hourly observed weather.
 #' @param signal_overrides Optional named list of variable-specific kernel-QDM
@@ -2230,7 +2337,7 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
     checkmate::assert_character(scenarios, any.missing = FALSE, min.len = 1L, unique = TRUE)
     checkmate::assert_character(member, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
     checkmate::assert_string(grid, min.chars = 1L, null.ok = TRUE)
-    checkmate::assert_string(frequency, min.chars = 1L)
+    frequency <- shift__cmip6_frequency_spec(frequency)
     table <- shift__cmip6_table_spec(table)
     checkmate::assert_string(activity, min.chars = 1L)
     checkmate::assert_character(index_nodes, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
@@ -2261,8 +2368,11 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
 # request consumed by the staged workflow and ESGF collector.
 shift__request_from_cmip6 <- function(climate, periods, method) {
     variables <- morpher__input_variables(method@recipe)
+    frequencies <- shift__cmip6_variable_frequencies(
+        variables, climate@frequency
+    )
     tables <- shift__cmip6_variable_tables(
-        variables, climate@frequency, climate@table
+        variables, frequencies, climate@table
     )
     request <- shift_cmip6_scenario(
         source = climate@model,
@@ -2270,7 +2380,7 @@ shift__request_from_cmip6 <- function(climate, periods, method) {
         member = climate@member,
         years = periods$year,
         variables = variables,
-        frequency = climate@frequency,
+        frequency = frequencies,
         activity = climate@activity,
         table_id = unique(unname(tables)),
         grid_label = climate@grid,
@@ -2329,8 +2439,8 @@ shift_control <- function(strict = TRUE, allow_partial = FALSE,
 #' @param years Optional years used to constrain the future request time window.
 #' @param activity CMIP6 activity ID. `shift_cmip6_scenario()` defaults to
 #'   `"ScenarioMIP"` and `shift_reference_historical()` defaults to `"CMIP"`.
-#' @param table_id One or more CMIP6 table IDs. If `NULL`, a common atmospheric
-#'   table is inferred from `frequency`.
+#' @param table_id One or more CMIP6 table IDs. If `NULL`, the native table is
+#'   inferred for each variable's `frequency`.
 #' @param grid_label Optional CMIP6 grid label.
 #' @param data_node Optional ESGF data node filter.
 #' @param index_node Optional ESGF index node.
@@ -2342,7 +2452,8 @@ shift_cmip6_scenario <- function(source, scenario, member = NULL,
     checkmate::assert_character(source, any.missing = FALSE, min.len = 1L)
     checkmate::assert_character(scenario, any.missing = FALSE, min.len = 1L)
     checkmate::assert_character(member, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
-    checkmate::assert_character(frequency, any.missing = FALSE, min.len = 1L)
+    variables <- shift__variables_value(variables)
+    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
     checkmate::assert_string(activity, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_character(table_id, any.missing = FALSE, min.len = 1L,
         unique = TRUE, null.ok = TRUE)
@@ -2353,7 +2464,11 @@ shift_cmip6_scenario <- function(source, scenario, member = NULL,
     checkmate::assert_list(options, names = "unique")
 
     time <- if (is.null(years)) NULL else shift_time_window(range(shift__years_value(years)))
-    table_id <- shift_coalesce(table_id, shift__cmip6_table_id(frequency))
+    if (is.null(table_id)) {
+        table_id <- unique(unname(shift__cmip6_variable_tables(
+            variables, frequencies
+        )))
+    }
     defaults <- shift__compact_list(list(
         activity_id = activity,
         table_id = table_id,
@@ -2368,8 +2483,8 @@ shift_cmip6_scenario <- function(source, scenario, member = NULL,
         source = source,
         experiment = scenario,
         variant = member,
-        variables = shift__variables_value(variables),
-        frequency = frequency,
+        variables = variables,
+        frequency = frequencies,
         time = time,
         filters = utils::modifyList(defaults, filters),
         options = options
@@ -2416,14 +2531,28 @@ shift__validate_method_frequency <- function(method, frequency) {
     if (is.null(required)) {
         return(invisible(TRUE))
     }
-    actual <- unique(tolower(as.character(frequency)))
-    actual <- actual[!is.na(actual) & nzchar(actual)]
-    if (!identical(actual, required)) {
-        shown <- if (length(actual)) actual else "<missing>"
+    variables <- morpher__input_variables(method@recipe)
+    actual <- tryCatch(
+        shift__cmip6_variable_frequencies(variables, frequency),
+        error = identity
+    )
+    required <- shift__cmip6_variable_frequencies(variables, required)
+    if (inherits(actual, "error") || !identical(
+        unname(actual[names(required)]),
+        unname(required)
+    )) {
+        shown <- paste(unique(as.character(frequency)), collapse = ", ")
+        if (!nzchar(shown)) {
+            shown <- "<missing>"
+        }
+        required_label <- paste(
+            paste(names(required), required, sep = "="),
+            collapse = ", "
+        )
         cli::cli_abort(c(
-            "Morphing method {.val {method@name}} requires CMIP frequency {.val {required}}.",
+            "Morphing method {.val {method@name}} requires CMIP frequencies {.val {required_label}}.",
             "x" = "The climate request uses {.val {shown}}.",
-            "i" = "Set {.code frequency = \"{required}\"} in the climate specification."
+            "i" = "Set a variable-specific {.arg frequency} vector in the climate specification."
         ))
     }
     invisible(TRUE)
@@ -4335,7 +4464,7 @@ shift_as_esg_query <- function(x) {
         experiment_id = x@meta$experiment,
         variant_label = x@meta$variant,
         variable_id = x@meta$variables,
-        frequency = x@meta$frequency
+        frequency = unique(unname(x@meta$frequency))
     )
     for (name in names(aliases)) {
         shift_query_set(query, name, aliases[[name]])
@@ -5205,7 +5334,13 @@ shift__climate_spec_value <- function(climate) {
         scenarios = climate@scenarios,
         member = climate@member,
         grid = climate@grid,
-        frequency = climate@frequency,
+        # Preserve variable names across JSON round-trips for mixed-frequency
+        # climate specifications.
+        frequency = if (!is.null(names(climate@frequency))) {
+            as.list(climate@frequency)
+        } else {
+            climate@frequency
+        },
         # JSON objects preserve variable names; named atomic vectors do not
         # when `auto_unbox = TRUE`, so overrides are persisted as a named list.
         table = if (!is.null(names(climate@table))) {
@@ -5232,6 +5367,32 @@ shift__climate_from_spec <- function(spec) {
     do.call(shift_cmip6, spec[setdiff(names(spec), "provider")])
 }
 
+# Preserve variable names on request frequency mappings because jsonlite
+# serializes named atomic vectors as arrays when automatic unboxing is enabled.
+shift__request_spec_value <- function(request) {
+    if (is.null(request)) {
+        return(NULL)
+    }
+    out <- request@meta
+    if (!is.null(names(out$frequency))) {
+        out$frequency <- as.list(out$frequency)
+    }
+    out
+}
+
+# Restore request frequencies without allowing character coercion to discard
+# names from a JSON object that represents a variable-specific mapping.
+shift__request_frequency_from_spec <- function(value) {
+    if (is.null(value)) {
+        return(NULL)
+    }
+    value <- unlist(value, use.names = TRUE)
+    value_names <- names(value)
+    value <- as.character(value)
+    names(value) <- value_names
+    value
+}
+
 # Convert a plan into a canonical, JSON-safe task specification. Deterministic
 # artifacts can be reused by spec hash while each invocation still gets a
 # unique run ID.
@@ -5249,7 +5410,11 @@ shift__plan_spec <- function(x) {
     list(
         version = 1L,
         task = "future_epw",
-        request = if (is.null(climate)) request else NULL,
+        request = if (is.null(climate)) {
+            shift__request_spec_value(meta$request)
+        } else {
+            NULL
+        },
         site = list(
             id = meta$site@id,
             lon = meta$site@lon,
@@ -5735,7 +5900,9 @@ shift__plan_from_spec <- function(spec, store = NULL) {
             experiment = if (is.null(request_spec$experiment)) NULL else as.character(request_spec$experiment),
             variant = if (is.null(request_spec$variant)) NULL else as.character(request_spec$variant),
             variables = if (is.null(request_spec$variables)) NULL else as.character(request_spec$variables),
-            frequency = if (is.null(request_spec$frequency)) NULL else as.character(request_spec$frequency),
+            frequency = shift__request_frequency_from_spec(
+                request_spec$frequency
+            ),
             time = request_spec$time,
             filters = shift_coalesce(request_spec$filters, list()),
             options = shift_coalesce(request_spec$options, list())
@@ -6757,7 +6924,9 @@ shift__catalog_years <- function(rows) {
 # columns whose one-row shape changes during jsonlite simplification.
 shift__cmip6_partition_json <- function(partitions) {
     partitions <- data.table::as.data.table(data.table::copy(partitions))
-    columns <- c("variable_id", "table_id", "grid_label", "required")
+    columns <- c(
+        "variable_id", "frequency", "table_id", "grid_label", "required"
+    )
     for (name in setdiff(columns, names(partitions))) {
         partitions[[name]] <- if (identical(name, "required")) {
             logical(nrow(partitions))
@@ -6768,7 +6937,7 @@ shift__cmip6_partition_json <- function(partitions) {
     partitions <- unique(partitions[, columns, with = FALSE])
     if (nrow(partitions)) {
         data.table::setorderv(partitions,
-            c("table_id", "grid_label", "variable_id"))
+            c("frequency", "table_id", "grid_label", "variable_id"))
     }
     # jsonlite marks its scalar result with class `json`; stripping that class
     # keeps complete and empty candidate tables type-compatible in rbindlist().
@@ -6785,13 +6954,19 @@ shift__cmip6_partitions <- function(value) {
     value <- value[!is.na(value) & nzchar(value)]
     if (!length(value)) {
         return(data.table::data.table(
-            variable_id = character(), table_id = character(),
-            grid_label = character(), required = logical()
+            variable_id = character(), frequency = character(),
+            table_id = character(), grid_label = character(),
+            required = logical()
         ))
     }
     out <- jsonlite::fromJSON(value[[1L]], simplifyDataFrame = TRUE)
     out <- data.table::as.data.table(out)
-    for (name in c("variable_id", "table_id", "grid_label")) {
+    # Older persisted selections predate per-variable frequency partitions.
+    # Their missing frequency is filled from the selection row at read time.
+    if (!"frequency" %in% names(out)) {
+        out[["frequency"]] <- rep(NA_character_, nrow(out))
+    }
+    for (name in c("variable_id", "frequency", "table_id", "grid_label")) {
         out[[name]] <- as.character(out[[name]])
     }
     out[["required"]] <- as.logical(out[["required"]])
@@ -6802,7 +6977,8 @@ shift__cmip6_partitions <- function(value) {
 # experiment. File ranges are expanded rather than inferred from min/max so a
 # gap in the middle cannot satisfy the contract.
 shift__cmip6_input_complete <- function(catalog, identity, experiment,
-                                        variable, table, grid, years) {
+                                        variable, frequency, table, grid,
+                                        years) {
     # ESGF providers may return convenience columns named `variable` and
     # `grid`. Local aliases prevent data.table from resolving those columns
     # instead of this helper's scalar arguments inside the row expression.
@@ -6810,6 +6986,7 @@ shift__cmip6_input_complete <- function(catalog, identity, experiment,
     wanted_variant_label <- identity$variant_label[[1L]]
     wanted_experiment <- experiment
     wanted_variable <- variable
+    wanted_frequency <- frequency
     wanted_table <- table
     wanted_grid <- grid
     files <- catalog[
@@ -6817,23 +6994,38 @@ shift__cmip6_input_complete <- function(catalog, identity, experiment,
             shift__catalog_match(variant_label, wanted_variant_label) &
             shift__catalog_match(experiment_id, wanted_experiment) &
             shift__catalog_match(variable_id, wanted_variable) &
+            shift__catalog_match(frequency, wanted_frequency) &
             shift__catalog_match(table_id, wanted_table) &
             shift__catalog_match(grid_label, wanted_grid)
     ]
     nrow(files) > 0L && !length(setdiff(years, shift__catalog_years(files)))
 }
 
-# Expand the per-table grid choices for one model/member. Missing tables retain
-# an explicit NA choice so the resolver can report the absent requirement
-# instead of discarding the near-match identity entirely.
-shift__cmip6_grid_combinations <- function(catalog, identity, tables,
+# Construct a stable key for one frequency/table partition. Frequency remains
+# explicit because CMIP6 can store point states and interval means in one table.
+shift__cmip6_partition_id <- function(frequency, table) {
+    paste(as.character(frequency), as.character(table), sep = "/")
+}
+
+# Expand the per-frequency/table grid choices for one model/member. Missing
+# partitions retain an explicit NA choice so near matches remain diagnosable.
+shift__cmip6_grid_combinations <- function(catalog, identity, partitions,
                                             grid = NULL) {
-    choices <- stats::setNames(vector("list", length(tables)), tables)
-    for (table_id in tables) {
-        wanted_table_id <- table_id
+    partitions <- unique(data.table::as.data.table(partitions)[, .(
+        frequency, table_id
+    )])
+    partition_ids <- shift__cmip6_partition_id(
+        partitions$frequency,
+        partitions$table_id
+    )
+    choices <- stats::setNames(vector("list", nrow(partitions)), partition_ids)
+    for (i in seq_len(nrow(partitions))) {
+        wanted_frequency <- partitions$frequency[[i]]
+        wanted_table_id <- partitions$table_id[[i]]
         values <- unique(catalog[
             shift__catalog_match(source_id, identity$source_id[[1L]]) &
                 shift__catalog_match(variant_label, identity$variant_label[[1L]]) &
+                shift__catalog_match(frequency, wanted_frequency) &
                 shift__catalog_match(table_id, wanted_table_id)
         ]$grid_label)
         values <- sort(values[!is.na(values) & nzchar(values)])
@@ -6846,7 +7038,7 @@ shift__cmip6_grid_combinations <- function(catalog, identity, tables,
         if (!length(values)) {
             values <- NA_character_
         }
-        choices[[table_id]] <- values
+        choices[[partition_ids[[i]]]] <- values
     }
     as.data.frame(do.call(expand.grid, c(
         choices,
@@ -6854,10 +7046,10 @@ shift__cmip6_grid_combinations <- function(catalog, identity, tables,
     )), check.names = FALSE, stringsAsFactors = FALSE)
 }
 
-# Compute complete model/member candidates while allowing each CMIP table to
-# use its own grid. The selected partition JSON is subsequently authoritative
-# for both download and extraction, so broad catalog queries cannot create
-# table/grid cross-products downstream.
+# Compute complete model/member candidates while allowing each frequency/table
+# partition to use its own grid. The selected partition JSON is authoritative
+# for download and extraction, so broad catalog queries cannot create invalid
+# frequency/variable or table/grid cross-products downstream.
 shift__cmip6_candidates <- function(catalog, models, experiments, variables,
                                     years, frequency, table = NULL,
                                     requirements = NULL, grid = NULL) {
@@ -6866,29 +7058,51 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
     experiments <- as.character(experiments)
     variables <- unique(as.character(variables))
     years <- sort(unique(as.integer(years)))
-    wanted_frequency <- as.character(frequency)
+    frequency_map <- shift__cmip6_variable_frequencies(variables, frequency)
     if (is.null(requirements)) {
         requirements <- stats::setNames(
             lapply(variables, function(variable) list(variable)),
             variables
         )
     }
-    table_map <- shift__cmip6_variable_tables(variables, frequency, table)
+    table_map <- shift__cmip6_variable_tables(
+        variables,
+        frequency_map,
+        table
+    )
     required_inputs <- unique(unlist(requirements, recursive = TRUE,
         use.names = FALSE))
     if (!all(required_inputs %in% names(table_map))) {
         cli::cli_abort("CMIP6 table mapping is missing one or more required recipe inputs.")
     }
-    required_tables <- unique(unname(table_map[required_inputs]))
+    variable_specs <- data.table::data.table(
+        variable_id = variables,
+        frequency = unname(frequency_map[variables]),
+        table_id = unname(table_map[variables])
+    )
+    required_specs <- unique(variable_specs[
+        variable_id %in% required_inputs,
+        .(frequency, table_id)
+    ])
     wanted_tables <- unique(unname(table_map))
     catalog <- catalog[
         source_id %in% models &
             experiment_id %in% experiments &
             variable_id %in% variables &
-            frequency %in% wanted_frequency &
+            frequency %in% unique(unname(frequency_map)) &
             table_id %in% wanted_tables
     ]
-    identities <- unique(catalog[, .(source_id, variant_label, frequency)])
+    # A broad ESGF query may return another requested frequency for the wrong
+    # variable. Enforce the declared pair before evaluating time coverage.
+    row_variables <- as.character(catalog$variable_id)
+    wanted_row_frequencies <- unname(frequency_map[row_variables])
+    wanted_row_tables <- unname(table_map[row_variables])
+    keep <- !is.na(catalog$frequency) &
+        as.character(catalog$frequency) == wanted_row_frequencies &
+        !is.na(catalog$table_id) &
+        as.character(catalog$table_id) == wanted_row_tables
+    catalog <- catalog[keep]
+    identities <- unique(catalog[, .(source_id, variant_label)])
     empty <- data.table::data.table(
         source_id = character(), variant_label = character(),
         grid_label = character(), frequency = character(),
@@ -6906,7 +7120,7 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
     for (identity_index in seq_len(nrow(identities))) {
         identity <- identities[identity_index]
         combinations <- shift__cmip6_grid_combinations(
-            catalog, identity, required_tables, grid = grid
+            catalog, identity, required_specs, grid = grid
         )
         for (combination_index in seq_len(nrow(combinations))) {
             grid_map <- stats::setNames(
@@ -6925,9 +7139,14 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
                 for (alternative in alternatives) {
                     input_ok <- vapply(experiments, function(experiment) {
                         all(vapply(alternative, function(input) {
+                            partition_id <- shift__cmip6_partition_id(
+                                frequency_map[[input]],
+                                table_map[[input]]
+                            )
                             shift__cmip6_input_complete(
                                 catalog, identity, experiment, input,
-                                table_map[[input]], grid_map[[table_map[[input]]]],
+                                frequency_map[[input]], table_map[[input]],
+                                grid_map[[partition_id]],
                                 years
                             )
                         }, logical(1L)))
@@ -6955,30 +7174,49 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
                 use.names = FALSE))
             required_partitions <- data.table::data.table(
                 variable_id = required_variables,
+                frequency = unname(frequency_map[required_variables]),
                 table_id = unname(table_map[required_variables]),
                 grid_label = unname(vapply(
-                    unname(table_map[required_variables]),
-                    function(value) grid_map[[value]], character(1L)
+                    required_variables,
+                    function(variable) {
+                        grid_map[[shift__cmip6_partition_id(
+                            frequency_map[[variable]],
+                            table_map[[variable]]
+                        )]]
+                    },
+                    character(1L)
                 )),
                 required = TRUE
             )
 
             optional_variables <- setdiff(variables, required_inputs)
             optional_partitions <- list()
-            for (table_id in unique(unname(table_map[optional_variables]))) {
-                wanted_table_id <- table_id
+            optional_specs <- unique(variable_specs[
+                variable_id %in% optional_variables,
+                .(frequency, table_id)
+            ])
+            for (optional_index in seq_len(nrow(optional_specs))) {
+                wanted_frequency <- optional_specs$frequency[[optional_index]]
+                wanted_table_id <- optional_specs$table_id[[optional_index]]
                 table_variables <- optional_variables[
-                    unname(table_map[optional_variables]) == table_id
+                    unname(frequency_map[optional_variables]) ==
+                        wanted_frequency &
+                        unname(table_map[optional_variables]) == wanted_table_id
                 ]
                 if (!length(table_variables)) {
                     next
                 }
-                if (table_id %in% names(grid_map)) {
-                    optional_grids <- grid_map[[table_id]]
+                partition_id <- shift__cmip6_partition_id(
+                    wanted_frequency,
+                    wanted_table_id
+                )
+                if (partition_id %in% names(grid_map)) {
+                    optional_grids <- grid_map[[partition_id]]
                 } else {
                     optional_grids <- unique(catalog[
                         shift__catalog_match(source_id, identity$source_id[[1L]]) &
                             shift__catalog_match(variant_label, identity$variant_label[[1L]]) &
+                            shift__catalog_match(frequency, wanted_frequency) &
                             shift__catalog_match(table_id, wanted_table_id)
                     ]$grid_label)
                     optional_grids <- sort(optional_grids[
@@ -6998,7 +7236,8 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
                             function(experiment) {
                                 shift__cmip6_input_complete(
                                     catalog, identity, experiment, variable,
-                                    table_id, optional_grid, years
+                                    wanted_frequency, wanted_table_id,
+                                    optional_grid, years
                                 )
                             }, logical(1L))),
                         logical(1L)
@@ -7012,7 +7251,11 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
                     next
                 }
                 scored <- scored[scores == max(scores)]
-                primary_grid <- if (length(grid_map)) grid_map[[1L]] else NA_character_
+                primary_grid <- if (nrow(required_partitions)) {
+                    required_partitions$grid_label[[1L]]
+                } else {
+                    NA_character_
+                }
                 preferred <- vapply(scored, function(value) {
                     if (!is.na(primary_grid) && identical(value$grid, primary_grid)) {
                         return(1L)
@@ -7024,7 +7267,8 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
                 optional_partitions[[length(optional_partitions) + 1L]] <-
                     data.table::data.table(
                         variable_id = chosen$variables,
-                        table_id = table_id,
+                        frequency = wanted_frequency,
+                        table_id = wanted_table_id,
                         grid_label = chosen$grid,
                         required = FALSE
                     )
@@ -7034,41 +7278,57 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
                 use.names = TRUE, fill = TRUE
             )
             partitions <- unique(partitions,
-                by = c("variable_id", "table_id", "grid_label"))
+                by = c(
+                    "variable_id", "frequency", "table_id", "grid_label"
+                ))
             required_grid_rows <- unique(required_partitions[, .(
-                table_id, grid_label
+                frequency, table_id, grid_label
             )])
             data.table::setorderv(required_grid_rows,
-                c("table_id", "grid_label"))
+                c("frequency", "table_id", "grid_label"))
             required_partition_key <- paste(
-                paste(required_grid_rows$table_id,
-                    required_grid_rows$grid_label, sep = "="),
+                paste(
+                    shift__cmip6_partition_id(
+                        required_grid_rows$frequency,
+                        required_grid_rows$table_id
+                    ),
+                    required_grid_rows$grid_label,
+                    sep = "="
+                ),
                 collapse = ";"
             )
-            all_grid_rows <- unique(partitions[, .(table_id, grid_label)])
-            data.table::setorderv(all_grid_rows, c("table_id", "grid_label"))
+            all_grid_rows <- unique(partitions[, .(
+                frequency, table_id, grid_label
+            )])
+            data.table::setorderv(
+                all_grid_rows,
+                c("frequency", "table_id", "grid_label")
+            )
             partition_key <- paste(
-                paste(all_grid_rows$table_id, all_grid_rows$grid_label,
-                    sep = "="),
+                paste(
+                    shift__cmip6_partition_id(
+                        all_grid_rows$frequency,
+                        all_grid_rows$table_id
+                    ),
+                    all_grid_rows$grid_label,
+                    sep = "="
+                ),
                 collapse = ";"
             )
             requirement_key <- paste(vapply(names(selected_sources),
                 function(canonical) sprintf("%s=%s", canonical,
                     paste(selected_sources[[canonical]], collapse = "+")),
                 character(1L)), collapse = ";")
-            primary_table <- shift__cmip6_table_id(frequency)
-            if (is.null(primary_table) || !primary_table %in% required_grid_rows$table_id) {
-                primary_table <- required_grid_rows$table_id[[1L]]
-            }
-            primary_grid <- required_grid_rows[
-                table_id == primary_table, grid_label
-            ][[1L]]
+            primary_grid <- required_partitions$grid_label[[1L]]
             display_tables <- sort(unique(partitions$table_id))
             rows[[length(rows) + 1L]] <- data.table::data.table(
                 source_id = identity$source_id[[1L]],
                 variant_label = identity$variant_label[[1L]],
                 grid_label = primary_grid,
-                frequency = identity$frequency[[1L]],
+                frequency = paste(
+                    unique(unname(frequency_map)),
+                    collapse = "+"
+                ),
                 table_id = paste(display_tables, collapse = "+"),
                 required_partition_key = required_partition_key,
                 requirement_key = requirement_key,
@@ -7451,7 +7711,7 @@ shift__abort_cmip6_resolution <- function(diagnostic) {
 shift__cmip6_shared_partitions <- function(future, reference) {
     future <- shift__cmip6_partitions(future)
     reference <- shift__cmip6_partitions(reference)
-    keys <- c("variable_id", "table_id", "grid_label")
+    keys <- c("variable_id", "frequency", "table_id", "grid_label")
     future_required <- future[required %in% TRUE]
     reference_required <- reference[required %in% TRUE]
     shared_optional <- merge(
@@ -7476,29 +7736,43 @@ shift__cmip6_shared_partitions <- function(future, reference) {
 }
 
 # Recompute display fields after optional partitions have been intersected.
-# Required partitions remain the selection identity; all partitions describe
-# the exact files that download and extraction are allowed to consume.
-shift__cmip6_partition_summary <- function(partitions, frequency) {
+# Required frequency/table/grid partitions remain the selection identity.
+shift__cmip6_partition_summary <- function(partitions) {
     partitions <- data.table::as.data.table(partitions)
-    grids <- unique(partitions[, .(table_id, grid_label)])
-    data.table::setorderv(grids, c("table_id", "grid_label"))
+    grids <- unique(partitions[, .(frequency, table_id, grid_label)])
+    data.table::setorderv(
+        grids,
+        c("frequency", "table_id", "grid_label")
+    )
     required_grids <- unique(partitions[required %in% TRUE,
-        .(table_id, grid_label)])
-    data.table::setorderv(required_grids, c("table_id", "grid_label"))
-    primary_table <- shift__cmip6_table_id(frequency)
-    if (is.null(primary_table) || !primary_table %in% required_grids$table_id) {
-        primary_table <- required_grids$table_id[[1L]]
-    }
+        .(frequency, table_id, grid_label)])
+    data.table::setorderv(
+        required_grids,
+        c("frequency", "table_id", "grid_label")
+    )
     list(
-        grid_label = required_grids[table_id == primary_table,
-            grid_label][[1L]],
+        grid_label = required_grids$grid_label[[1L]],
         table_id = paste(sort(unique(partitions$table_id)), collapse = "+"),
         required_partition_key = paste(
-            paste(required_grids$table_id, required_grids$grid_label,
-                sep = "="), collapse = ";"
+            paste(
+                shift__cmip6_partition_id(
+                    required_grids$frequency,
+                    required_grids$table_id
+                ),
+                required_grids$grid_label,
+                sep = "="
+            ),
+            collapse = ";"
         ),
         partition_key = paste(
-            paste(grids$table_id, grids$grid_label, sep = "="),
+            paste(
+                shift__cmip6_partition_id(
+                    grids$frequency,
+                    grids$table_id
+                ),
+                grids$grid_label,
+                sep = "="
+            ),
             collapse = ";"
         ),
         required_native_grid = all(required_grids$grid_label == "gn"),
@@ -7507,8 +7781,8 @@ shift__cmip6_partition_summary <- function(partitions, frequency) {
 }
 
 # Resolve future and, only when explicitly requested by the method, historical
-# catalogs against one shared model/member/frequency identity and a matching
-# grid for every required table.
+# catalogs against one shared model/member identity and a matching grid for
+# every required frequency/table partition.
 shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catalog = NULL) {
     meta <- plan@meta
     request <- meta$request@meta
@@ -7520,7 +7794,11 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
     member <- if (is.null(climate)) request$variant else climate@member
     grid <- if (is.null(climate)) request$filters$grid_label else climate@grid
     frequency <- if (is.null(climate)) request$frequency else climate@frequency
-    table <- if (is.null(climate)) request$filters$table_id else climate@table
+    table <- if (is.null(climate)) {
+        shift__cmip6_request_table_spec(request$filters$table_id)
+    } else {
+        climate@table
+    }
     future <- if (isTRUE(meta$control@allow_partial)) {
         shift__cmip6_partial_candidates(
             future_catalog,
@@ -7627,9 +7905,7 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
                     shift__cmip6_partition_json(shared$future)
                 future$reference_partitions_json[[i]] <-
                     shift__cmip6_partition_json(shared$reference)
-                summary <- shift__cmip6_partition_summary(
-                    shared$future, future$frequency[[i]]
-                )
+                summary <- shift__cmip6_partition_summary(shared$future)
                 for (name in names(summary)) {
                     future[[name]][[i]] <- summary[[name]]
                 }
@@ -8169,10 +8445,26 @@ shift__selection_partition_rows <- function(selection,
         if (!nrow(partitions)) {
             next
         }
+        if (anyNA(partitions$frequency) || any(!nzchar(partitions$frequency))) {
+            fallback <- as.character(selection$frequency[[i]])
+            if (length(fallback) != 1L || is.na(fallback) ||
+                !nzchar(fallback) || grepl("+", fallback, fixed = TRUE)) {
+                cli::cli_abort(
+                    "A legacy CMIP6 partition map has no unambiguous frequency."
+                )
+            }
+            missing_frequency <- is.na(partitions$frequency) |
+                !nzchar(partitions$frequency)
+            data.table::set(
+                partitions,
+                i = which(missing_frequency),
+                j = "frequency",
+                value = fallback
+            )
+        }
         partitions[, `:=`(
             source_id = selection$source_id[[i]],
-            variant_label = selection$variant_label[[i]],
-            frequency = selection$frequency[[i]]
+            variant_label = selection$variant_label[[i]]
         )]
         rows[[length(rows) + 1L]] <- partitions
     }
@@ -10033,6 +10325,27 @@ shift__format_cmip6_tables <- function(table) {
     sprintf("auto by variable \u00b7 %s", overrides)
 }
 
+# Render scalar and variable-specific frequency specifications without losing
+# the distinction between CMIP6 interval means and point samples.
+shift__format_cmip6_frequencies <- function(frequency) {
+    if (is.null(frequency) || !length(frequency)) {
+        return(NULL)
+    }
+    if (is.list(frequency) && !is.data.frame(frequency)) {
+        frequency <- unlist(frequency, use.names = TRUE)
+    }
+    frequency_names <- names(frequency)
+    frequency <- as.character(frequency)
+    names(frequency) <- frequency_names
+    if (is.null(frequency_names) || !any(nzchar(frequency_names))) {
+        return(shift__display_values(frequency, max = Inf))
+    }
+    paste(
+        sprintf("%s=%s", frequency_names, frequency),
+        collapse = " | "
+    )
+}
+
 # Render the exact table/grid partitions selected for download and extraction.
 # `grid_label` remains a compatibility summary, while `partition_key` is the
 # authoritative multi-table identity persisted by the resolver.
@@ -10359,8 +10672,10 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         control <- meta$control
         cli::cli_rule("Discovery")
         shift__print_facts(list(
-            "Frequency" = if (!is.null(climate)) climate@frequency else
-                request$frequency,
+            "Frequency" = shift__format_cmip6_frequencies(
+                if (!is.null(climate)) climate@frequency else
+                    request$frequency
+            ),
             "Table" = shift__format_cmip6_tables(
                 if (!is.null(climate)) climate@table else
                     request$filters$table_id),
@@ -10613,7 +10928,7 @@ shift__print_cmip6 <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         "Scenarios" = shift__display_values(x@scenarios),
         "Member" = shift__format_auto(x@member),
         "Grid" = shift__format_auto(x@grid),
-        "Frequency" = x@frequency,
+        "Frequency" = shift__format_cmip6_frequencies(x@frequency),
         "Table" = shift__format_cmip6_tables(x@table),
         "Activity" = x@activity,
         "Index nodes" = sprintf("%d-node failover", length(x@index_nodes)),

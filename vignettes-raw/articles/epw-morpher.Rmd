@@ -185,20 +185,23 @@ sobie_curry_harmonized <- epw_morph_recipe(
 ```
 
 The complete hourly workflow requires hourly observed `tas`, `ps`, `hurs`,
-`sfcWind`, `rsds`, and `rsdsdiff`. Historical and future model roles use the
-published raw inputs `tas`, `ps`, `huss`, `uas`, `vas`, `rsds`, and
-`rsdsdiff`. After hourly reconstruction, the input adapter derives relative
-humidity, scalar wind speed, and meteorological direction before KQDM. It
-preserves every complete future model year as a separate output member instead
-of collapsing the corrected sequence into a representative year.
+`sfcWind`, `rsds`, and `rsdsdiff`. Historical and future model roles use
+point-sampled `3hrPt` `tas`, `ps`, `huss`, `uas`, and `vas`, together with
+interval-mean `3hr` `rsds` and `rsdsdiff`. Daily `tasmin` and `tasmax` are
+optional interpolation anchors. After hourly reconstruction, the input adapter
+derives relative humidity, scalar wind speed, and meteorological direction
+before KQDM. It preserves every complete future model year as a separate
+output member instead of collapsing the corrected sequence into a
+representative year.
 
-Check the live Dataset catalogue before selecting a model. A query returning no
-complete rows is a valid result: the public catalogue may not contain the exact
-seven-variable combination for both experiments, even though the published
-workflow used model-specific additions and fallbacks documented in its
-supplementary methods.
+Check the live Dataset catalogue before selecting a model. CMIP6 stores the
+required state variables and radiation fluxes under different `frequency`
+facets even though they share the `3hr` table. A scalar `frequency = "3hr"`
+therefore excludes the point-sampled fields and creates a false incomplete
+result. Some models in the publication still require the pressure, wind, or
+radiation treatments documented in its supplementary methods.
 
-Leaving `table = NULL` searches every CMIP6 table at the requested frequency.
+Leaving `table = NULL` searches every CMIP6 table at the requested frequencies.
 The availability reduction selects one table per variable within each
 model/member/grid identity and returns that named mapping in the `table`
 list-column. Pass the mapping to `shift_cmip6()` so the download request uses
@@ -206,13 +209,26 @@ the same variable-specific selection; `table_id` is only its compact display
 value.
 
 ```r
+hourly_frequencies <- c(
+    tas = "3hrPt",
+    ps = "3hrPt",
+    huss = "3hrPt",
+    uas = "3hrPt",
+    vas = "3hrPt",
+    rsds = "3hr",
+    rsdsdiff = "3hr",
+    tasmin = "day",
+    tasmax = "day"
+)
 hourly_availability <- shift_cmip6_avail(
     variables = c(
         "tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff"
     ),
     scenarios = "ssp585",
     member = NULL,
-    frequency = "3hr",
+    frequency = hourly_frequencies[c(
+        "tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff"
+    )],
     index_node = "ORNL"
 )
 available_hourly <- subset(hourly_availability, complete)
@@ -232,7 +248,7 @@ if (nrow(available_hourly)) {
         scenarios = "ssp585",
         member = selected$variant_label,
         grid = selected$grid_label,
-        frequency = "3hr",
+        frequency = hourly_frequencies,
         table = selected$table[[1L]]
     )
 

@@ -3,6 +3,16 @@ availability_test__datasets <- function(source, experiment, variables,
                                         member = "r1i1p1f1", grid = "gn",
                                         frequency = "day", table = "day") {
     data.table::rbindlist(lapply(variables, function(variable) {
+        variable_frequency <- if (!is.null(names(frequency))) {
+            unname(frequency[[variable]])
+        } else {
+            frequency[[1L]]
+        }
+        variable_table <- if (!is.null(names(table))) {
+            unname(table[[variable]])
+        } else {
+            table[[1L]]
+        }
         data.table::data.table(
             id = sprintf(
                 "CMIP6.%s.%s.%s.%s.%s",
@@ -11,8 +21,8 @@ availability_test__datasets <- function(source, experiment, variables,
             source_id = source,
             experiment_id = experiment,
             member_id = member,
-            frequency = frequency,
-            table_id = table,
+            frequency = variable_frequency,
+            table_id = variable_table,
             variable_id = variable,
             grid_label = grid,
             latest = TRUE,
@@ -54,6 +64,45 @@ test_that("availability reduction requires every experiment-variable pair", {
         summary$table[[1L]],
         stats::setNames(rep("day", length(variables)), variables)
     )
+})
+
+test_that("availability combines point, mean, and daily CMIP6 frequencies", {
+    variables <- names(HOURLY_KQDM_MODEL_FREQUENCIES)
+    datasets <- data.table::rbindlist(lapply(
+        c("ssp245", "historical"),
+        function(experiment) {
+            availability_test__datasets(
+                "Model-A",
+                experiment,
+                variables,
+                frequency = HOURLY_KQDM_MODEL_FREQUENCIES,
+                table = c(
+                    stats::setNames(
+                        rep("3hr", 7L),
+                        EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
+                    ),
+                    tasmin = "day",
+                    tasmax = "day"
+                )
+            )
+        }
+    ))
+    summary <- availability__summarize(
+        datasets,
+        experiments = c("ssp245", "historical"),
+        variables = variables,
+        frequency = HOURLY_KQDM_MODEL_FREQUENCIES,
+        table = NULL,
+        index_node = "https://example.org/esg-search"
+    )
+
+    expect_true(summary$complete[[1L]])
+    expect_identical(summary$frequency[[1L]], "3hrPt+3hr+day")
+    expect_identical(
+        summary$frequency_spec[[1L]],
+        HOURLY_KQDM_MODEL_FREQUENCIES
+    )
+    expect_identical(summary$table_id[[1L]], "3hr+day")
 })
 
 test_that("availability discovers one table per variable", {

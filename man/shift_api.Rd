@@ -312,6 +312,9 @@ shift_ui(
 
 \item{source, experiment, variant, frequency}{Provider-neutral request fields.
 Values must use the selected provider's controlled vocabulary.
+In \code{shift_cmip6()}, an unnamed scalar \code{frequency} applies to every recipe
+input, while a named character vector assigns one frequency to every
+source variable so \verb{3hrPt}, \verb{3hr}, and \code{day} data can be collected together.
 In \code{shift_reference_historical()}, \code{experiment} is the historical
 reference experiment filter. Values are not translated; for ESGF, use
 exact facet values such as \code{project = "CMIP6"} and \code{frequency = "mon"}.}
@@ -402,8 +405,8 @@ morphing results, or EPW outputs.}
 
 \item{years}{Optional years used to constrain the future request time window.}
 
-\item{table_id}{One or more CMIP6 table IDs. If \code{NULL}, a common atmospheric
-table is inferred from \code{frequency}.}
+\item{table_id}{One or more CMIP6 table IDs. If \code{NULL}, the native table is
+inferred for each variable's \code{frequency}.}
 
 \item{grid_label}{Optional CMIP6 grid label.}
 

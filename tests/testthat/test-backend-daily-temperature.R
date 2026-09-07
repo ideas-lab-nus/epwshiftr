@@ -363,7 +363,7 @@ test_that("daily temperature shift method validates frequency and reconstructs",
             store = tempfile("daily-temperature-store-"),
             dry_run = TRUE
         ),
-        "requires CMIP frequency.*day"
+        "requires CMIP frequencies.*day"
     )
 })
 

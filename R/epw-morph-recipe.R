@@ -121,7 +121,9 @@ morpher__input_variables <- function(recipe) {
     required_inputs <- unique(unlist(requirements, recursive = TRUE, use.names = FALSE))
     if (inherits(recipe, "epw_morph_recipe") &&
         identical(recipe$backend, "hourly_kernel_qdm")) {
-        return(required_inputs)
+        # Daily extrema are optional interpolation anchors and therefore do
+        # not belong to the backend's required-variable alternatives.
+        return(unique(c(required_inputs, HOURLY_WEATHER_EXTREMA_VARIABLES)))
     }
     optional <- epw_morph_variables(recipe, include_optional = TRUE)
     if (inherits(recipe, "epw_morph_recipe") &&
@@ -400,15 +402,18 @@ morpher__recipe_time_padding_seconds <- function(recipe) {
     }
     preprocess <- recipe$components$preprocess
     frequency <- morpher__recipe_required_frequency(recipe)
+    source_frequencies <- intersect(
+        unique(unname(frequency)),
+        names(TEMPORAL_SOURCE_STEPS)
+    )
     if (!preprocess %in% c(
         "hourly_weather_interpolation",
         "hourly_kernel_qdm_input_preparation"
     ) ||
-        is.null(frequency) ||
-        !frequency %in% names(TEMPORAL_SOURCE_STEPS)) {
+        !length(source_frequencies)) {
         return(0)
     }
-    as.numeric(TEMPORAL_SOURCE_STEPS[[frequency]])
+    max(as.numeric(TEMPORAL_SOURCE_STEPS[source_frequencies]))
 }
 
 morpher__recipe_methods <- function(methods = NULL, backend = epw_morph_backend("belcher")) {
@@ -489,19 +494,27 @@ morpher__recipe_accepts_observed_reference <- function(recipe) {
     morpher__recipe_accepts_role(recipe, "observed_reference")
 }
 
-# Return the component-declared CMIP frequency without duplicating that
-# constraint on the backend or staged workflow.
+# Return the component-declared scalar or variable-specific CMIP frequency
+# contract without duplicating it on the backend or staged workflow.
 morpher__recipe_required_frequency <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
     recipe_spec <- morpher__recipe_spec(recipe)
     if (!is.null(recipe_spec)) {
+        variable_frequencies <- recipe__variable_frequencies(recipe_spec)
+        if (length(variable_frequencies)) {
+            return(variable_frequencies)
+        }
         choices <- recipe__frequency_choices(recipe_spec)
     } else {
         spec <- pipeline__from_records(recipe$components)
         if (is.null(spec)) {
             return(NULL)
+        }
+        variable_frequencies <- pipeline__variable_frequencies(spec)
+        if (length(variable_frequencies)) {
+            return(variable_frequencies)
         }
         choices <- pipeline__frequency_choices(spec)
     }
@@ -513,37 +526,67 @@ morpher__recipe_required_frequency <- function(recipe) {
     choices
 }
 
-# Build a structural diagnostic when extracted or summarized climate data do not
-# match a backend's declared CMIP frequency.
+# Build a structural diagnostic when extracted or summarized climate data do
+# not match a backend's scalar or variable-specific CMIP frequency contract.
 morpher__frequency_diagnostic <- function(
-    recipe, frequency, stage, plan_id = NA_character_,
+    recipe, frequency, variable_id = NULL, stage, plan_id = NA_character_,
     summary_id = NA_character_
 ) {
     required <- morpher__recipe_required_frequency(recipe)
     if (is.null(required)) {
         return(morpher__empty_diagnostics())
     }
-    actual <- unique(tolower(as.character(frequency)))
-    actual <- actual[!is.na(actual) & nzchar(actual)]
-    if (identical(actual, required)) {
+    frequency <- as.character(frequency)
+    if (!is.null(names(required))) {
+        variable_id <- as.character(variable_id)
+        if (length(variable_id) != length(frequency)) {
+            actual <- list()
+        } else {
+            keep <- !is.na(variable_id) & nzchar(variable_id) &
+                !is.na(frequency) & nzchar(frequency)
+            actual <- split(frequency[keep], variable_id[keep])
+            actual <- lapply(actual, unique)
+        }
+        checked <- intersect(names(required), names(actual))
+        # Additional materialized variables are validated by their owning
+        # components; this diagnostic checks only the recipe-declared mapping.
+        matches <- length(checked) > 0L &&
+            all(vapply(checked, function(variable) {
+                identical(actual[[variable]], unname(required[[variable]]))
+            }, logical(1L)))
+    } else {
+        actual <- unique(tolower(frequency))
+        actual <- actual[!is.na(actual) & nzchar(actual)]
+        matches <- identical(actual, required)
+    }
+    if (isTRUE(matches)) {
         return(morpher__empty_diagnostics())
     }
-    shown <- if (length(actual)) paste(actual, collapse = ", ") else "<missing>"
+    shown <- if (length(frequency)) {
+        paste(unique(frequency), collapse = ", ")
+    } else {
+        "<missing>"
+    }
+    required_label <- if (is.null(names(required))) {
+        paste(required, collapse = ", ")
+    } else {
+        paste(paste(names(required), required, sep = "="), collapse = ", ")
+    }
     morpher__diagnostic(
         stage = stage,
         severity = "error",
         code = "unsupported_climate_frequency",
         message = sprintf(
-            "Backend %s requires CMIP frequency %s; found %s.",
+            "Backend %s requires CMIP frequencies %s; found %s.",
             recipe$backend,
-            required,
+            required_label,
             shown
         ),
         plan_id = plan_id,
         summary_id = summary_id,
-        action = sprintf(
-            "Extract climate data with frequency %s before morphing.",
-            required
+        action = paste(
+            "Extract climate data with the recipe's variable-specific",
+            "frequency contract before morphing."
         )
     )
 }

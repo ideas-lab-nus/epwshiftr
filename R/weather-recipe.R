@@ -513,14 +513,20 @@ recipe__default_specs <- function() {
         model_historical = component__input_requirement(
             "model_historical",
             representations = "series",
-            frequencies = "3hr",
+            frequencies = unique(unname(HOURLY_KQDM_MODEL_FREQUENCIES)),
+            variable_frequencies = as.list(
+                HOURLY_KQDM_MODEL_FREQUENCIES
+            ),
             calendars = CF_TIME_CALENDARS,
             variable_sets = EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
         ),
         model_future = component__input_requirement(
             "model_future",
             representations = "series",
-            frequencies = "3hr",
+            frequencies = unique(unname(HOURLY_KQDM_MODEL_FREQUENCIES)),
+            variable_frequencies = as.list(
+                HOURLY_KQDM_MODEL_FREQUENCIES
+            ),
             calendars = CF_TIME_CALENDARS,
             variable_sets = EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
         )
@@ -877,8 +883,8 @@ recipe__default_specs <- function() {
                     "https://doi.org/10.1175/JCLI-D-14-00754.1"
                 ),
                 implementation_note = paste(
-                    "Three-hourly model variables are reconstructed to an",
-                    "hourly lattice before kernel-density QDM. Numerical KDE",
+                    "CMIP6 3hrPt states and 3hr radiation means are",
+                    "reconstructed to an hourly lattice before kernel-density QDM. Numerical KDE",
                     "and tail defaults not stated by the publication remain",
                     "explicit experimental settings."
                 )
@@ -1088,6 +1094,7 @@ recipe__requirement_record <- function(requirement) {
         role = requirement@role,
         representations = requirement@representations,
         frequencies = requirement@frequencies,
+        variable_frequencies = requirement@variable_frequencies,
         calendars = requirement@calendars,
         variable_sets = requirement@variable_sets
     )
@@ -1205,6 +1212,29 @@ recipe__frequency_choices <- function(
         )
     }
     allowed
+}
+
+# Resolve the per-variable frequency contract shared by historical and future
+# model roles while keeping scalar recipe frequencies backward compatible.
+recipe__variable_frequencies <- function(
+    spec,
+    roles = c("model_historical", "model_future")
+) {
+    if (!S7::S7_inherits(spec, WeatherRecipeSpec)) {
+        cli::cli_abort(
+            "{.arg spec} must be a WeatherRecipeSpec object."
+        )
+    }
+    checkmate::assert_subset(roles, WEATHER_INPUT_ROLES)
+    requirements <- c(spec@required_inputs, spec@optional_inputs)
+    mappings <- lapply(
+        intersect(roles, names(requirements)),
+        function(role) requirements[[role]]@variable_frequencies
+    )
+    weather__combine_variable_frequencies(
+        mappings,
+        sprintf("Recipe %s", spec@name)
+    )
 }
 
 # Return all role-level input failures before a registered recipe starts its

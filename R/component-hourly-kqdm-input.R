@@ -22,6 +22,20 @@ HOURLY_KQDM_MODEL_VARIABLES <- c(
     "rsdsdiff"
 )
 
+# CMIP6 stores instantaneous state and wind fields under `3hrPt`, averaged
+# radiation fluxes under `3hr`, and optional temperature extrema under `day`.
+HOURLY_KQDM_MODEL_FREQUENCIES <- c(
+    tas = "3hrPt",
+    ps = "3hrPt",
+    huss = "3hrPt",
+    uas = "3hrPt",
+    vas = "3hrPt",
+    rsds = "3hr",
+    rsdsdiff = "3hr",
+    tasmin = "day",
+    tasmax = "day"
+)
+
 HOURLY_KQDM_CANONICAL_UNITS <- c(
     tas = "K",
     ps = "Pa",
@@ -292,14 +306,24 @@ hourly_kqdm_input__component <- function() {
             model_historical = component__input_requirement(
                 "model_historical",
                 representations = "series",
-                frequencies = "3hr",
+                frequencies = unique(unname(
+                    HOURLY_KQDM_MODEL_FREQUENCIES
+                )),
+                variable_frequencies = as.list(
+                    HOURLY_KQDM_MODEL_FREQUENCIES
+                ),
                 calendars = CF_TIME_CALENDARS,
                 variable_sets = HOURLY_KQDM_MODEL_VARIABLES
             ),
             model_future = component__input_requirement(
                 "model_future",
                 representations = "series",
-                frequencies = "3hr",
+                frequencies = unique(unname(
+                    HOURLY_KQDM_MODEL_FREQUENCIES
+                )),
+                variable_frequencies = as.list(
+                    HOURLY_KQDM_MODEL_FREQUENCIES
+                ),
                 calendars = CF_TIME_CALENDARS,
                 variable_sets = HOURLY_KQDM_MODEL_VARIABLES
             )
@@ -313,6 +337,7 @@ hourly_kqdm_input__component <- function() {
             algorithm = "raw_model_to_hourly_kqdm_signals",
             references = HOURLY_WEATHER_REFERENCES,
             raw_model_variables = HOURLY_KQDM_MODEL_VARIABLES,
+            variable_frequencies = HOURLY_KQDM_MODEL_FREQUENCIES,
             signal_variables = HOURLY_KQDM_SIGNAL_VARIABLES,
             target_frequency = "hour"
         )

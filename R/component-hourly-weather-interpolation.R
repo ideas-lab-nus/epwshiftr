@@ -123,7 +123,7 @@ weather_interp__model_source <- function(input, role) {
         }
     }
     if (length(extrema) &&
-        !identical(frequency_by_variable[["tas"]], "3hr")) {
+        !all(frequency_by_variable[["tas"]] %in% c("3hr", "3hrPt"))) {
         cli::cli_abort(
             "Role {.val {role}} requires three-hourly `tas` when daily extrema anchors are supplied."
         )
@@ -354,7 +354,9 @@ weather_interp__anchors <- function(
     modes,
     role
 ) {
-    if (!identical(unique(as.character(group[["frequency"]])), "3hr") ||
+    source_frequency <- unique(as.character(group[["frequency"]]))
+    if (length(source_frequency) != 1L ||
+        !source_frequency %in% c("3hr", "3hrPt") ||
         !identical(unique(as.character(group[["variable_id"]])), "tas")) {
         return(NULL)
     }
