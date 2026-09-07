@@ -293,13 +293,14 @@ epwphys__policy <- function(name) {
     )
 }
 
-# Resolve every built-in complete recipe to its physical behavior while leaving
-# unregistered custom backends responsible for their own physical contract.
+# Resolve a registered recipe through its explicit execution-policy mapping
+# while leaving unregistered custom backends responsible for their own physical
+# contract.
 epwphys__recipe_policy <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
-    spec <- recipe$recipe_spec
+    spec <- morpher__recipe_spec(recipe)
     if (is.null(spec)) {
         if (recipe$backend %in% c("belcher", "belcher_absolute")) {
             return(epwphys__policy(if (
@@ -312,36 +313,10 @@ epwphys__recipe_policy <- function(recipe) {
         }
         return(NULL)
     }
-    name <- switch(
-        spec,
-        belcher_monthly = "legacy_independent_fields",
-        epwshiftr_monthly = "monthly_harmonized",
-        epwshiftr_daily_power = "preserve_specific_humidity",
-        epwshiftr_daily_btws = "preserve_specific_humidity",
-        eames_monthly_temperature = "preserve_specific_humidity",
-        hourly_kernel_qdm = "absolute_model_fields",
-        ek_daily_factors = if (identical(recipe$policy, "harmonized")) {
-            "preserve_specific_humidity"
-        } else {
-            "preserve_humidity_fields"
-        },
-        monthly_percentile_temperature = if (
-            identical(recipe$policy, "harmonized")
-        ) {
-            "preserve_specific_humidity"
-        } else {
-            "preserve_humidity_fields"
-        },
-        sobie_curry_daily = if (identical(recipe$policy, "harmonized")) {
-            "specific_humidity_delta"
-        } else {
-            "independent_thermodynamic_fields"
-        },
-        NULL
-    )
-    if (is.null(name)) {
+    name <- unname(spec@physical_policies[[recipe$policy]])
+    if (is.null(name) || !length(name)) {
         cli::cli_abort(
-            "Registered recipe {.val {spec}} has no EPW physical policy."
+            "Registered recipe {.val {spec@name}} has no EPW physical policy for execution policy {.val {recipe$policy}}."
         )
     }
     epwphys__policy(name)

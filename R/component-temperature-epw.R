@@ -133,13 +133,19 @@ temperature__hourly_result <- function(data, options, projector) {
         sort = FALSE
     )
     data.table::setorderv(hourly, ".daily_row")
-    list(
+    result <- list(
         baseline = baseline,
         targets = targets,
         projected = projected,
         factors = factors,
         hourly = hourly
     )
+    # Comparison adapters may retain raw method factors or change functions as
+    # inspectable result parts without changing the common hourly contract.
+    if (!is.null(data$method_parts)) {
+        result$method_parts <- data$method_parts
+    }
+    result
 }
 
 # Close humidity through the shared physical policy while preserving the
@@ -270,13 +276,17 @@ temperature__physics_apply <- function(
         )
     }
 
-    list(
+    result <- list(
         epw = baseline$epw,
         weather = weather,
         projected = data$projected,
         factors = factors,
         diagnostics = morpher__bind_diagnostics(diagnostics)
     )
+    if (!is.null(data$method_parts)) {
+        result$method_parts <- data$method_parts
+    }
+    result
 }
 
 # Assemble the shared physics-closed payload into the existing backend result
@@ -288,14 +298,18 @@ temperature__output_write <- function(
     options,
     stages
 ) {
+    parts <- list(
+        temperature = data$projected,
+        daily_targets = data$factors
+    )
+    if (!is.null(data$method_parts)) {
+        parts <- c(parts, data$method_parts)
+    }
     epw_morph_result(
         context,
         epw = data$epw,
         data = data$weather,
-        parts = list(
-            temperature = data$projected,
-            daily_targets = data$factors
-        ),
+        parts = parts,
         diagnostics = data$diagnostics,
         factors = data$factors
     )
@@ -348,6 +362,9 @@ temperature__component_specs <- function() {
             scopes = "multivariate",
             operations = list(
                 write = temperature__output_write
+            ),
+            metadata = list(
+                target_calendar = "epw_365_day"
             )
         )
     )

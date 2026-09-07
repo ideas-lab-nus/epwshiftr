@@ -28,25 +28,16 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
     expect_named(
         recipes,
         c(
-            "name", "version", "label", "backend", "implementation",
-            "default_policy", "policies", "calendar_policy", "output_type",
+            "name", "version", "label", "method", "protocol", "backend",
+            "implementation", "default_policy", "policies",
+            "physical_policies", "calendar_policy", "output_type",
             "stochastic", "status", "source", "required_inputs",
             "optional_inputs", "components", "diagnostics", "provenance"
         )
     )
     expect_setequal(
         recipes$name,
-        c(
-            "belcher_monthly",
-            "epwshiftr_monthly",
-            "epwshiftr_daily_power",
-            "epwshiftr_daily_btws",
-            "eames_monthly_temperature",
-            "ek_daily_factors",
-            "monthly_percentile_temperature",
-            "hourly_kernel_qdm",
-            "sobie_curry_daily"
-        )
+        WEATHER_RECIPE_DEFAULTS
     )
     expect_true(all(lengths(recipes$components) == 7L))
     expect_true(all(
@@ -62,8 +53,14 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
     daily <- epw_morph_recipe_spec("epwshiftr_daily_power")
     expect_true(S7::S7_inherits(daily, WeatherRecipeSpec))
     expect_identical(daily@backend, "daily_temperature")
+    expect_identical(daily@method, "daily_temperature_delta")
+    expect_identical(daily@protocol, "daily_temperature_comparison")
     expect_identical(daily@implementation, "pipeline")
     expect_identical(daily@default_policy, "harmonized")
+    expect_identical(
+        daily@physical_policies,
+        c(harmonized = "preserve_specific_humidity")
+    )
     expect_identical(
         daily@components,
         pipeline__records(
@@ -115,6 +112,7 @@ test_that("recipe registry rejects duplicate and incompatible definitions", {
     incompatible <- recipe__spec(
         name = "incompatible_daily",
         label = "Incompatible daily test",
+        method = "daily_temperature_delta",
         backend = "daily_temperature",
         implementation = "pipeline",
         source = list(
@@ -125,11 +123,66 @@ test_that("recipe registry rejects duplicate and incompatible definitions", {
         calendar_policy = daily@calendar_policy,
         components = incompatible_components,
         policy_profiles = c(harmonized = "default"),
+        physical_policies = c(
+            harmonized = "preserve_specific_humidity"
+        ),
         default_policy = "harmonized"
     )
     expect_error(
         recipe__register(incompatible, registry = registry),
         "do not match"
+    )
+
+    btws <- epw_morph_recipe_spec("epwshiftr_daily_btws")
+    misdeclared_protocol <- recipe__spec(
+        name = "misdeclared_btws_comparison",
+        label = "Misdeclared BTWS comparison",
+        method = btws@method,
+        protocol = "daily_temperature_comparison",
+        backend = btws@backend,
+        implementation = btws@implementation,
+        source = btws@source,
+        required_inputs = btws@required_inputs,
+        optional_inputs = btws@optional_inputs,
+        calendar_policy = btws@calendar_policy,
+        components = btws@components,
+        policy_profiles = btws@policy_profiles,
+        physical_policies = btws@physical_policies,
+        default_policy = btws@default_policy,
+        output_type = btws@output_type
+    )
+    expect_error(
+        recipe__register(misdeclared_protocol, registry = registry),
+        "does not conform"
+    )
+
+    required_inputs <- daily@required_inputs[
+        names(daily@required_inputs) != "model_historical"
+    ]
+    optional_inputs <- c(
+        daily@optional_inputs,
+        daily@required_inputs["model_historical"]
+    )
+    optional_protocol_role <- recipe__spec(
+        name = "optional_protocol_role",
+        label = "Optional protocol role",
+        method = daily@method,
+        protocol = daily@protocol,
+        backend = daily@backend,
+        implementation = daily@implementation,
+        source = daily@source,
+        required_inputs = required_inputs,
+        optional_inputs = optional_inputs,
+        calendar_policy = daily@calendar_policy,
+        components = daily@components,
+        policy_profiles = daily@policy_profiles,
+        physical_policies = daily@physical_policies,
+        default_policy = daily@default_policy,
+        output_type = daily@output_type
+    )
+    expect_error(
+        recipe__register(optional_protocol_role, registry = registry),
+        "Protocol-required input role"
     )
 })
 

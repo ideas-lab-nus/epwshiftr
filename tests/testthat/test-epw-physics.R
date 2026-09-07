@@ -40,24 +40,21 @@ test_that("all registered complete recipes resolve a physical policy", {
         logical(1L),
         class = EpwPhysicalPolicy
     )))
-    expected <- c(
-        belcher_monthly = "legacy_independent_fields",
-        eames_monthly_temperature = "preserve_specific_humidity",
-        ek_daily_factors = "preserve_humidity_fields",
-        epwshiftr_daily_btws = "preserve_specific_humidity",
-        epwshiftr_daily_power = "preserve_specific_humidity",
-        epwshiftr_monthly = "monthly_harmonized",
-        hourly_kernel_qdm = "absolute_model_fields",
-        monthly_percentile_temperature = "preserve_humidity_fields",
-        sobie_curry_daily = "independent_thermodynamic_fields"
-    )
+    expected <- stats::setNames(vapply(
+        seq_len(nrow(recipes)),
+        function(index) {
+            spec <- epw_morph_recipe_spec(recipes$name[[index]])
+            unname(spec@physical_policies[[spec@default_policy]])
+        },
+        character(1L)
+    ), recipes$name)
     expect_identical(
         stats::setNames(vapply(
             resolved,
             function(policy) policy@name,
             character(1L)
         ), recipes$name),
-        expected[recipes$name]
+        expected
     )
     expect_identical(
         epwphys__recipe_policy(
