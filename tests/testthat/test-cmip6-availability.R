@@ -1,6 +1,7 @@
 # Build variable-specific Dataset rows for deterministic availability tests.
 availability_test__datasets <- function(source, experiment, variables,
-                                        member = "r1i1p1f1", grid = "gn") {
+                                        member = "r1i1p1f1", grid = "gn",
+                                        frequency = "day", table = "day") {
     data.table::rbindlist(lapply(variables, function(variable) {
         data.table::data.table(
             id = sprintf(
@@ -10,8 +11,8 @@ availability_test__datasets <- function(source, experiment, variables,
             source_id = source,
             experiment_id = experiment,
             member_id = member,
-            frequency = "day",
-            table_id = "day",
+            frequency = frequency,
+            table_id = table,
             variable_id = variable,
             grid_label = grid,
             latest = TRUE,
@@ -49,6 +50,79 @@ test_that("availability reduction requires every experiment-variable pair", {
     expect_equal(summary$complete_experiments, c(3L, 2L))
     expect_equal(summary$available_pairs, c(9L, 8L))
     expect_equal(summary$missing[[2L]], "ssp585:pr")
+    expect_identical(
+        summary$table[[1L]],
+        stats::setNames(rep("day", length(variables)), variables)
+    )
+})
+
+test_that("availability discovers one table per variable", {
+    experiments <- c("ssp585", "historical")
+    datasets <- data.table::rbindlist(list(
+        availability_test__datasets(
+            "Model-A", experiments[[1L]], "tas",
+            frequency = "3hr", table = "3hr"
+        ),
+        availability_test__datasets(
+            "Model-A", experiments[[2L]], "tas",
+            frequency = "3hr", table = "3hr"
+        ),
+        availability_test__datasets(
+            "Model-A", experiments[[1L]], "uas",
+            frequency = "3hr", table = "E3hr"
+        ),
+        availability_test__datasets(
+            "Model-A", experiments[[2L]], "uas",
+            frequency = "3hr", table = "E3hr"
+        )
+    ))
+    summary <- availability__summarize(
+        datasets,
+        experiments = experiments,
+        variables = c("tas", "uas"),
+        frequency = "3hr",
+        table = NULL,
+        index_node = "https://example.org/esg-search"
+    )
+
+    expect_true(summary$complete[[1L]])
+    expect_identical(summary$table_id[[1L]], "3hr+E3hr")
+    expect_identical(
+        summary$table[[1L]],
+        c(tas = "3hr", uas = "E3hr")
+    )
+    climate <- shift_cmip6(
+        model = summary$source_id[[1L]],
+        scenarios = "ssp585",
+        frequency = "3hr",
+        table = summary$table[[1L]]
+    )
+    expect_identical(climate@table, summary$table[[1L]])
+})
+
+test_that("availability does not combine one variable across tables", {
+    datasets <- data.table::rbindlist(list(
+        availability_test__datasets(
+            "Model-A", "historical", "tas",
+            frequency = "3hr", table = "3hr"
+        ),
+        availability_test__datasets(
+            "Model-A", "ssp585", "tas",
+            frequency = "3hr", table = "E3hr"
+        )
+    ))
+    summary <- availability__summarize(
+        datasets,
+        experiments = c("ssp585", "historical"),
+        variables = "tas",
+        frequency = "3hr",
+        table = NULL,
+        index_node = "https://example.org/esg-search"
+    )
+
+    expect_false(summary$complete[[1L]])
+    expect_identical(summary$table[[1L]], c(tas = "3hr"))
+    expect_identical(summary$missing[[1L]], "ssp585:tas")
 })
 
 test_that("availability identities do not combine members or grids", {
@@ -107,6 +181,7 @@ test_that("shift_cmip6_avail builds an unconstrained Dataset query", {
         source = NULL,
         frequency = "day",
         index_node = "https://example.org/esg-search",
+        filters = list(table_id = "Amon"),
         store = "availability-store",
         ui = "availability-ui"
     )
@@ -114,16 +189,84 @@ test_that("shift_cmip6_avail builds an unconstrained Dataset query", {
 
     expect_true(result$complete[[1L]])
     expect_null(request@meta$source)
+    expect_null(request@meta$variant)
     expect_equal(request@meta$experiment, c("ssp245", "historical"))
     expect_equal(request@meta$variables, c("tas", "pr"))
     expect_equal(request@meta$frequency, "day")
-    expect_equal(request@meta$filters$table_id, "day")
+    expect_null(request@meta$filters$table_id)
     expect_equal(
         request@meta$filters$activity_id,
         c("ScenarioMIP", "CMIP")
     )
     expect_identical(calls$store, "availability-store")
     expect_identical(calls$ui, "availability-ui")
+})
+
+test_that("availability discovers every member without a preferred label", {
+    calls <- new.env(parent = emptyenv())
+    datasets <- data.table::rbindlist(list(
+        availability_test__datasets(
+            "Model-A", "ssp585", "tas", member = "r1i1p1f1"
+        ),
+        availability_test__datasets(
+            "Model-A", "ssp585", c("tas", "pr"), member = "r2i1p1f1"
+        )
+    ))
+    local_mocked_bindings(
+        availability__collect = function(request, store, ui) {
+            calls$request <- request
+            datasets
+        },
+        .package = "epwshiftr"
+    )
+
+    result <- shift_cmip6_avail(
+        variables = c("tas", "pr"),
+        scenarios = "ssp585",
+        include_historical = FALSE,
+        index_node = "https://example.org/esg-search"
+    )
+
+    expect_null(calls$request@meta$variant)
+    expect_identical(result$variant_label, c("r2i1p1f1", "r1i1p1f1"))
+    expect_identical(result$complete, c(TRUE, FALSE))
+})
+
+test_that("availability accepts named table overrides", {
+    calls <- new.env(parent = emptyenv())
+    datasets <- data.table::rbindlist(list(
+        availability_test__datasets(
+            "Model-A", "ssp585", "tas",
+            frequency = "3hr", table = "3hr"
+        ),
+        availability_test__datasets(
+            "Model-A", "ssp585", "uas",
+            frequency = "3hr", table = "E3hr"
+        )
+    ))
+    local_mocked_bindings(
+        availability__collect = function(request, store, ui) {
+            calls$request <- request
+            datasets
+        },
+        .package = "epwshiftr"
+    )
+
+    result <- shift_cmip6_avail(
+        variables = c("tas", "uas"),
+        scenarios = "ssp585",
+        include_historical = FALSE,
+        frequency = "3hr",
+        table = c(uas = "E3hr"),
+        index_node = "https://example.org/esg-search"
+    )
+
+    expect_true(result$complete[[1L]])
+    expect_setequal(
+        calls$request@meta$filters$table_id,
+        c("3hr", "E3hr")
+    )
+    expect_identical(result$table[[1L]], c(tas = "3hr", uas = "E3hr"))
 })
 
 test_that("shift_cmip6_avail supports the named ORNL Bridge endpoint", {
@@ -184,18 +327,32 @@ test_that("availability can omit historical and returns a typed empty table", {
     expect_s3_class(result, "data.frame")
     expect_equal(nrow(result), 0L)
     expect_named(result, names(availability__empty()))
+    expect_type(result$table, "list")
     expect_equal(calls$request@meta$experiment, "ssp585")
     expect_equal(calls$request@meta$filters$activity_id, "ScenarioMIP")
 })
 
-test_that("availability requires an explicit table for unknown frequencies", {
-    expect_error(
-        shift_cmip6_avail(
-            variables = "tas",
-            scenarios = "ssp585",
-            frequency = "fx",
-            index_node = "https://example.org/esg-search"
-        ),
-        "set `table` explicitly"
+test_that("availability can discover tables for frequencies without defaults", {
+    calls <- new.env(parent = emptyenv())
+    local_mocked_bindings(
+        availability__collect = function(request, store, ui) {
+            calls$request <- request
+            availability_test__datasets(
+                "Model-A", "ssp585", "orog",
+                frequency = "fx", table = "fx"
+            )
+        },
+        .package = "epwshiftr"
     )
+    result <- shift_cmip6_avail(
+        variables = "orog",
+        scenarios = "ssp585",
+        include_historical = FALSE,
+        frequency = "fx",
+        index_node = "https://example.org/esg-search"
+    )
+
+    expect_true(result$complete[[1L]])
+    expect_null(calls$request@meta$filters$table_id)
+    expect_identical(result$table[[1L]], c(orog = "fx"))
 })
