@@ -104,7 +104,7 @@ applies the required AND reduction locally.</p>
 <span>  scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp245"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
 <span>  include_historical <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  source <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  member <span class="op">=</span> <span class="st">"r1i1p1f1"</span>,</span>
+<span>  member <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  grid <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  frequency <span class="op">=</span> <span class="st">"day"</span>,</span>
 <span>  table <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -141,8 +141,8 @@ unconstrained and discovers all matching models.</p></dd>
 
 
 <dt id="arg-member">member<a class="anchor" aria-label="anchor" href="#arg-member"></a></dt>
-<dd><p>Optional CMIP6 variant labels. The default limits discovery to
-the first realization; use <code>NULL</code> to inspect every returned member.</p></dd>
+<dd><p>Optional CMIP6 variant labels. <code>NULL</code>, the default, discovers
+every returned member and evaluates each identity independently.</p></dd>
 
 
 <dt id="arg-grid">grid<a class="anchor" aria-label="anchor" href="#arg-grid"></a></dt>
@@ -154,8 +154,10 @@ the first realization; use <code>NULL</code> to inspect every returned member.</
 
 
 <dt id="arg-table">table<a class="anchor" aria-label="anchor" href="#arg-table"></a></dt>
-<dd><p>Optional single CMIP6 table ID. <code>NULL</code> infers the usual table
-from <code>frequency</code>, for example <code>"day"</code> for daily data.</p></dd>
+<dd><p>Optional CMIP6 table selection. <code>NULL</code> discovers a table for
+each variable at the requested frequency. An unnamed scalar pins every
+variable to one table. A named character vector or list overrides the
+named variables and leaves the remainder on their frequency defaults.</p></dd>
 
 
 <dt id="arg-activity">activity<a class="anchor" aria-label="anchor" href="#arg-activity"></a></dt>
@@ -191,9 +193,12 @@ precedence when names overlap.</p></dd>
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>A data frame with one row per model/member/grid/table identity.
+    <p>A data frame with one row per model/member/grid identity.
 <code>complete</code> is <code>TRUE</code> only when every requested experiment-variable pair is
-present. <code>missing</code> lists absent pairs as <code>experiment:variable</code>.</p>
+present. For complete rows, <code>table</code> is a list-column containing the named
+per-variable table selection accepted by <code><a href="shift_api.html">shift_cmip6()</a></code>. Incomplete rows
+use <code>NA</code> for variables with no available table. <code>table_id</code> is the compact
+display value, and <code>missing</code> lists absent pairs as <code>experiment:variable</code>.</p>
     </div>
     <div id="details">
     <h2>Details</h2>

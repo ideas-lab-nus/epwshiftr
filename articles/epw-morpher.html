@@ -379,6 +379,13 @@ returning no complete rows is a valid result: the public catalogue may
 not contain the exact seven-variable combination for both experiments,
 even though the published workflow used model-specific additions and
 fallbacks documented in its supplementary methods.</p>
+<p>Leaving <code>table = NULL</code> searches every CMIP6 table at the
+requested frequency. The availability reduction selects one table per
+variable within each model/member/grid identity and returns that named
+mapping in the <code>table</code> list-column. Pass the mapping to
+<code><a href="../reference/shift_api.html">shift_cmip6()</a></code> so the download request uses the same
+variable-specific selection; <code>table_id</code> is only its compact
+display value.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">hourly_availability</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_cmip6_avail.html">shift_cmip6_avail</a></span><span class="op">(</span></span>
 <span>    variables <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
@@ -387,7 +394,6 @@ fallbacks documented in its supplementary methods.</p>
 <span>    scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
 <span>    member <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>    frequency <span class="op">=</span> <span class="st">"3hr"</span>,</span>
-<span>    table <span class="op">=</span> <span class="st">"3hr"</span>,</span>
 <span>    index_node <span class="op">=</span> <span class="st">"ORNL"</span></span>
 <span><span class="op">)</span></span>
 <span><span class="va">available_hourly</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">hourly_availability</span>, <span class="va">complete</span><span class="op">)</span></span>
@@ -408,7 +414,7 @@ fallbacks documented in its supplementary methods.</p>
 <span>        member <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">variant_label</span>,</span>
 <span>        grid <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">grid_label</span>,</span>
 <span>        frequency <span class="op">=</span> <span class="st">"3hr"</span>,</span>
-<span>        table <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">table_id</span></span>
+<span>        table <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">table</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
 <span>    <span class="op">)</span></span>
 <span></span>
 <span>    <span class="va">hourly_plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
