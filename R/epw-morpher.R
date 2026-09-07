@@ -1879,6 +1879,7 @@ EpwMorpher <- R6::R6Class(
                     } else {
                         character()
                     },
+                    variable_id = coverage$variable_id,
                     stage = "extraction",
                     plan_id = paste(plan_id, collapse = ", ")
                 )
@@ -2024,6 +2025,7 @@ EpwMorpher <- R6::R6Class(
                     } else {
                         character()
                     },
+                    variable_id = climate$variable_id,
                     stage = "climate_summary",
                     summary_id = summary_id
                 )

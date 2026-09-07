@@ -31,6 +31,10 @@ WeatherInput <- S7::new_class(
         representation = S7::new_property(S7::class_character),
         variables = S7::new_property(S7::class_character, default = character()),
         frequencies = S7::new_property(S7::class_character, default = character()),
+        variable_frequencies = S7::new_property(
+            S7::class_list,
+            default = list()
+        ),
         calendars = S7::new_property(S7::class_character, default = character()),
         provenance = S7::new_property(S7::class_list, default = list()),
         metadata = S7::new_property(S7::class_list, default = list())
@@ -65,6 +69,24 @@ WeatherInput <- S7::new_class(
                     "`%s` must contain unique, non-missing, non-empty values.",
                     property
                 ))
+            }
+        }
+        if (length(self@variable_frequencies)) {
+            mapping <- self@variable_frequencies
+            if (is.null(names(mapping)) || any(!nzchar(names(mapping))) ||
+                anyDuplicated(names(mapping))) {
+                return(
+                    "`variable_frequencies` must be uniquely named by variable ID."
+                )
+            }
+            valid <- vapply(mapping, function(value) {
+                is.character(value) && length(value) && !anyNA(value) &&
+                    all(nzchar(value)) && !anyDuplicated(value)
+            }, logical(1L))
+            if (!all(valid)) {
+                return(
+                    "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
+                )
             }
         }
         NULL
@@ -139,6 +161,70 @@ weather__source_values <- function(source, columns) {
     values[!is.na(values) & nzchar(values)]
 }
 
+# Normalize a named variable-to-frequency mapping while allowing requirement
+# entries to declare more than one supported frequency for a variable.
+weather__variable_frequencies <- function(value, name) {
+    if (is.null(value) || !length(value)) {
+        return(list())
+    }
+    if (is.character(value)) {
+        value_names <- names(value)
+        if (is.null(value_names) || any(!nzchar(value_names))) {
+            cli::cli_abort("{.arg {name}} must be named by variable ID.")
+        }
+        value <- as.list(value)
+    }
+    checkmate::assert_list(value, names = "unique")
+    if (is.null(names(value)) || any(!nzchar(names(value)))) {
+        cli::cli_abort("{.arg {name}} must be named by variable ID.")
+    }
+    lapply(value, function(frequencies) {
+        weather__descriptor_values(frequencies, name)
+    })
+}
+
+# Intersect repeated variable-frequency declarations from roles or components
+# and require one resolvable source frequency for every declared variable.
+weather__combine_variable_frequencies <- function(mappings, context) {
+    mappings <- Filter(length, mappings)
+    if (!length(mappings)) {
+        return(NULL)
+    }
+    variables <- unique(unlist(lapply(mappings, names), use.names = FALSE))
+    resolved <- stats::setNames(rep(NA_character_, length(variables)), variables)
+    for (variable in variables) {
+        choices <- lapply(mappings, function(mapping) mapping[[variable]])
+        choices <- Filter(length, choices)
+        allowed <- Reduce(intersect, choices)
+        if (length(allowed) != 1L) {
+            cli::cli_abort(
+                "{context} does not resolve one source frequency for variable {.val {variable}}."
+            )
+        }
+        resolved[[variable]] <- allowed[[1L]]
+    }
+    resolved
+}
+
+# Derive the frequency values carried by each materialized variable so input
+# validation can distinguish `3hrPt` state fields from `3hr` mean fluxes.
+weather__source_variable_frequencies <- function(source) {
+    if (!is.data.frame(source) ||
+        !all(c("variable_id", "frequency") %in% names(source))) {
+        return(list())
+    }
+    variables <- as.character(source[["variable_id"]])
+    frequencies <- as.character(source[["frequency"]])
+    keep <- !is.na(variables) & nzchar(variables) &
+        !is.na(frequencies) & nzchar(frequencies)
+    variables <- variables[keep]
+    frequencies <- frequencies[keep]
+    ordered_variables <- unique(variables)
+    stats::setNames(lapply(ordered_variables, function(variable) {
+        unique(frequencies[variables == variable])
+    }), ordered_variables)
+}
+
 # Infer only the physical representation of common in-package sources. Unknown
 # objects remain explicit external inputs instead of being inspected by class
 # name heuristics that optional packages could accidentally satisfy.
@@ -158,7 +244,8 @@ weather__representation <- function(source) {
 # object unchanged and deriving only metadata that are already materialized.
 weather__new_input <- function(
     role, source, representation = NULL,
-    variables = NULL, frequencies = NULL, calendars = NULL,
+    variables = NULL, frequencies = NULL, variable_frequencies = NULL,
+    calendars = NULL,
     provenance = list(), metadata = list()
 ) {
     checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
@@ -178,6 +265,9 @@ weather__new_input <- function(
     if (is.null(frequencies)) {
         frequencies <- weather__source_values(source, "frequency")
     }
+    if (is.null(variable_frequencies)) {
+        variable_frequencies <- weather__source_variable_frequencies(source)
+    }
     if (is.null(calendars)) {
         calendars <- weather__source_values(
             source,
@@ -195,6 +285,10 @@ weather__new_input <- function(
         frequencies = weather__descriptor_values(
             frequencies,
             "frequencies"
+        ),
+        variable_frequencies = weather__variable_frequencies(
+            variable_frequencies,
+            "variable_frequencies"
         ),
         calendars = weather__descriptor_values(calendars, "calendars"),
         provenance = provenance,

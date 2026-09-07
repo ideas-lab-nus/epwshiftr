@@ -37,7 +37,7 @@ availability__normalize_datasets <- function(datasets, experiments, variables,
                                              frequency, tables = NULL) {
     checkmate::assert_data_frame(datasets)
     catalog <- data.table::as.data.table(data.table::copy(datasets))
-    wanted_frequency <- frequency[[1L]]
+    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
 
     catalog[["source_id"]] <- availability__character_column(
         catalog, "source_id")
@@ -66,6 +66,7 @@ availability__normalize_datasets <- function(datasets, experiments, variables,
             !is.na(catalog[[name]]) & nzchar(catalog[[name]])
         })
     )
+    wanted_frequency <- unname(frequencies[catalog$variable_id])
     catalog <- catalog[
         complete_identity &
             experiment_id %in% experiments &
@@ -91,13 +92,16 @@ availability__select_tables <- function(catalog, variables, frequency,
         return(tables)
     }
 
+    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
     selected <- stats::setNames(rep(NA_character_, length(variables)), variables)
-    preferred_table <- shift__cmip6_table_id(frequency)
     for (target_variable in variables) {
         data <- catalog[variable_id == target_variable]
         if (!nrow(data)) {
             next
         }
+        preferred_table <- shift__cmip6_table_id(
+            frequencies[[target_variable]]
+        )
         scores <- unique(data[, .(experiment_id, table_id)])[
             , .(coverage = data.table::uniqueN(experiment_id)), by = table_id
         ]
@@ -126,6 +130,7 @@ availability__empty <- function() {
         variant_label = character(),
         grid_label = character(),
         frequency = character(),
+        frequency_spec = I(vector("list", 0L)),
         table_id = character(),
         table = I(vector("list", 0L)),
         complete = logical(),
@@ -142,6 +147,7 @@ availability__empty <- function() {
 # Reduce variable-specific Dataset records to one row per stable CMIP6 identity.
 availability__summarize <- function(datasets, experiments, variables,
                                     frequency, table, index_node) {
+    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
     table <- shift__cmip6_table_spec(table)
     tables <- if (is.null(table)) {
         NULL
@@ -152,7 +158,7 @@ availability__summarize <- function(datasets, experiments, variables,
         datasets,
         experiments = experiments,
         variables = variables,
-        frequency = frequency,
+        frequency = frequencies,
         tables = tables
     )
     if (!nrow(catalog)) {
@@ -160,7 +166,7 @@ availability__summarize <- function(datasets, experiments, variables,
     }
 
     identity_fields <- c(
-        "source_id", "variant_label", "grid_label", "frequency"
+        "source_id", "variant_label", "grid_label"
     )
     identities <- unique(catalog[, identity_fields, with = FALSE])
     required <- data.table::CJ(
@@ -175,8 +181,7 @@ availability__summarize <- function(datasets, experiments, variables,
         identity_catalog <- catalog[
             source_id == identity$source_id[[1L]] &
                 variant_label == identity$variant_label[[1L]] &
-                grid_label == identity$grid_label[[1L]] &
-                frequency == identity$frequency[[1L]]
+                grid_label == identity$grid_label[[1L]]
         ]
         selected_tables <- availability__select_tables(
             identity_catalog,
@@ -206,7 +211,8 @@ availability__summarize <- function(datasets, experiments, variables,
             source_id = identity$source_id[[1L]],
             variant_label = identity$variant_label[[1L]],
             grid_label = identity$grid_label[[1L]],
-            frequency = identity$frequency[[1L]],
+            frequency = paste(unique(unname(frequencies)), collapse = "+"),
+            frequency_spec = list(frequencies),
             table_id = paste(display_tables, collapse = "+"),
             table = list(selected_tables),
             complete = all(coverage$present),
@@ -285,7 +291,9 @@ availability__index_node <- function(index_node) {
 #' @param member Optional CMIP6 variant labels. `NULL`, the default, discovers
 #'   every returned member and evaluates each identity independently.
 #' @param grid Optional single CMIP6 grid label.
-#' @param frequency CMIP6 frequency. Defaults to daily data.
+#' @param frequency CMIP6 frequency. An unnamed scalar applies to every
+#'   requested variable. A named character vector assigns one frequency to
+#'   every variable, for example `tas = "3hrPt"` and `rsds = "3hr"`.
 #' @param table Optional CMIP6 table selection. `NULL` discovers a table for
 #'   each variable at the requested frequency. An unnamed scalar pins every
 #'   variable to one table. A named character vector or list overrides the
@@ -303,10 +311,11 @@ availability__index_node <- function(index_node) {
 #'
 #' @return A data frame with one row per model/member/grid identity.
 #'   `complete` is `TRUE` only when every requested experiment-variable pair is
-#'   present. For complete rows, `table` is a list-column containing the named
-#'   per-variable table selection accepted by [shift_cmip6()]. Incomplete rows
-#'   use `NA` for variables with no available table. `table_id` is the compact
-#'   display value, and `missing` lists absent pairs as `experiment:variable`.
+#'   present. `frequency_spec` and `table` are list-columns containing named
+#'   per-variable selections accepted by [shift_cmip6()]. Incomplete rows use
+#'   `NA` for variables with no available table. `frequency` and `table_id` are
+#'   compact display values, and `missing` lists absent pairs as
+#'   `experiment:variable`.
 #'
 #' @details
 #' This function reports Dataset metadata availability. It does not download
@@ -353,7 +362,7 @@ shift_cmip6_avail <- function(
         member, any.missing = FALSE, min.len = 1L, unique = TRUE,
         null.ok = TRUE)
     checkmate::assert_string(grid, min.chars = 1L, null.ok = TRUE)
-    checkmate::assert_string(frequency, min.chars = 1L)
+    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
     table <- shift__cmip6_table_spec(table)
     checkmate::assert_string(activity, min.chars = 1L)
     checkmate::assert_string(historical_activity, min.chars = 1L)
@@ -364,7 +373,7 @@ shift_cmip6_avail <- function(
     tables <- if (is.null(table)) {
         NULL
     } else {
-        shift__cmip6_variable_tables(variables, frequency, table)
+        shift__cmip6_variable_tables(variables, frequencies, table)
     }
     index_node <- availability__index_node(index_node)
     experiments <- unique(c(
@@ -397,7 +406,7 @@ shift_cmip6_avail <- function(
         experiment = experiments,
         variant = member,
         variables = variables,
-        frequency = frequency,
+        frequency = unique(unname(frequencies)),
         filters = query_filters,
         options = list(index_node = index_node)
     )
@@ -406,7 +415,7 @@ shift_cmip6_avail <- function(
         datasets,
         experiments = experiments,
         variables = variables,
-        frequency = frequency,
+        frequency = frequencies,
         table = table,
         index_node = index_node
     )

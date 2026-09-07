@@ -14,6 +14,81 @@ EPW_MORPH_HOURLY_KQDM_VARIABLES <- c(
 # canonical signal variables exposed by the backend rules.
 EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES <- HOURLY_KQDM_MODEL_VARIABLES
 
+# Record the ten model-member identities and archive substitutions reported in
+# Supplementary Table 4 and Supplementary Method 3 of Wang et al. (2023).
+hourly_kqdm__source_manifest <- function() {
+    data.table::data.table(
+        source_id = c(
+            "ACCESS-CM2",
+            "BCC-CSM2-MR",
+            "CanESM5",
+            "CMCC-CM2-SR5",
+            "CMCC-ESM2",
+            "FGOALS-g3",
+            "GISS-E2-1-G",
+            "IITM-ESM",
+            "KACE-1-0-G",
+            "MRI-ESM2-0"
+        ),
+        variant_label = c(
+            "r1i1p1f1",
+            "r1i1p1f1",
+            "r1i1p2f1",
+            "r1i1p1f1",
+            "r1i1p1f1",
+            "r3i1p1f1",
+            "r1i1p1f2",
+            "r1i1p1f1",
+            "r1i1p1f1",
+            "r1i1p1f1"
+        ),
+        nominal_resolution_km = c(
+            250L, 100L, 500L, 100L, 100L,
+            250L, 250L, 250L, 250L, 100L
+        ),
+        published_frequencies = c(
+            "3hr,day",
+            "3hr,day",
+            "3hr,6hr,day",
+            "3hr",
+            "3hr,day",
+            "3hr,6hr,day",
+            "3hr,day",
+            "3hr,6hr,day",
+            "3hr,day",
+            "3hr,day"
+        ),
+        special_treatment = c(
+            NA_character_,
+            NA_character_,
+            paste(
+                "Use 6-hourly ps for ssp245, ssp370, and ssp585",
+                "when 3-hourly ps is unavailable"
+            ),
+            NA_character_,
+            NA_character_,
+            paste(
+                "Use 6-hourly sfcWind plus lowest-model-level ua and va",
+                "to reconstruct wind direction"
+            ),
+            paste(
+                "Correct rsdsdiff after download using the 3-hourly",
+                "cosine of the solar zenith angle"
+            ),
+            paste(
+                "Use psl at the highest available temporal resolution",
+                "and convert it to station surface pressure"
+            ),
+            NA_character_,
+            NA_character_
+        ),
+        reference = rep.int(
+            "https://doi.org/10.1038/s41467-023-41458-5",
+            10L
+        )
+    )
+}
+
 EPW_MORPH_HOURLY_KQDM_METHODS <- c(
     tdb = "kernel_quantile_delta_mapping",
     pressure = "kernel_quantile_delta_mapping",

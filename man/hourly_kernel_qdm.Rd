@@ -13,7 +13,8 @@ hourly_kernel_qdm(
 \arguments{
 \item{reference}{A required \code{\link[=historical_reference]{historical_reference()}},
 \code{\link[=shift_reference_plan]{shift_reference_plan()}}, or extracted \code{ShiftClimate} stage containing
-matching three-hourly historical model output.}
+matching variable-specific \verb{3hrPt}, \verb{3hr}, and optional daily historical
+model output.}
 
 \item{observed_reference}{A required \code{\link[=shift_reference_plan]{shift_reference_plan()}} or extracted
 \code{ShiftClimate} stage containing hourly observed weather.}
@@ -27,9 +28,11 @@ A complete \code{ShiftMorphMethod} for \code{\link[=shift_future_epw]{shift_futu
 \description{
 \code{hourly_kernel_qdm()} creates a complete multi-year future-weather method
 from matching three-hourly historical and future model data plus an hourly
-observed reference. Model roles require raw \code{tas}, \code{ps}, \code{huss}, \code{uas},
-\code{vas}, \code{rsds}, and \code{rsdsdiff}; the observed role requires \code{tas}, \code{ps},
-\code{hurs}, \code{sfcWind}, \code{rsds}, and \code{rsdsdiff}.
+observed reference. CMIP6 model roles require point-sampled \verb{3hrPt} \code{tas},
+\code{ps}, \code{huss}, \code{uas}, and \code{vas}, together with interval-mean \verb{3hr} \code{rsds}
+and \code{rsdsdiff}. Daily \code{tasmin} and \code{tasmax} are optional interpolation
+anchors. The observed role requires \code{tas}, \code{ps}, \code{hurs}, \code{sfcWind}, \code{rsds},
+and \code{rsdsdiff}.
 
 Continuous model state variables and wind-vector components are interpolated
 to an hourly lattice. Relative humidity is derived from \code{huss}, \code{tas}, and

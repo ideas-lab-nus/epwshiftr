@@ -258,6 +258,46 @@ test_that("component input validation distinguishes required and optional roles"
     expect_length(errors, 1L)
 })
 
+test_that("component input requirements validate frequency by variable", {
+    requirement <- component__input_requirement(
+        "model_future",
+        representations = "series",
+        frequencies = c("3hrPt", "3hr"),
+        variable_frequencies = list(tas = "3hrPt", rsds = "3hr"),
+        variable_sets = c("tas", "rsds")
+    )
+    component <- component__spec(
+        name = "mixed_frequency_input",
+        stage = "preprocess",
+        required_inputs = list(model_future = requirement),
+        input_kinds = "role_inputs",
+        output_kinds = "hourly_role_inputs",
+        operations = list(apply = identity)
+    )
+    valid <- weather__new_inputs(model_future = weather__new_input(
+        "model_future",
+        data.frame(
+            variable_id = c("tas", "rsds"),
+            frequency = c("3hrPt", "3hr")
+        )
+    ))
+    invalid <- weather__new_inputs(model_future = weather__new_input(
+        "model_future",
+        data.frame(
+            variable_id = c("tas", "rsds"),
+            frequency = c("3hr", "3hrPt")
+        )
+    ))
+
+    expect_identical(component__input_errors(component, valid), character())
+    errors <- component__input_errors(component, invalid)
+    expect_true(any(grepl(
+        "variable `tas` frequencies `3hr`",
+        errors,
+        fixed = TRUE
+    )))
+})
+
 test_that("component specs reject missing or stage-inappropriate operations", {
     expect_error(
         component__spec(

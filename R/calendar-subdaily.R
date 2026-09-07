@@ -4,7 +4,9 @@
 # components. Named seconds keep validation independent of timestamp parsing.
 TEMPORAL_SOURCE_STEPS <- c(
     `3hr` = 10800,
-    `6hr` = 21600
+    `3hrPt` = 10800,
+    `6hr` = 21600,
+    `6hrPt` = 21600
 )
 
 # Known identity fields prevent unrelated sites, models, members, periods, or

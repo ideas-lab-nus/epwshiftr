@@ -137,6 +137,7 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
     faithful <- epw_morph_recipe("belcher_monthly")
     enhanced <- epw_morph_recipe("epwshiftr_monthly")
     daily <- epw_morph_recipe("epwshiftr_daily_power")
+    hourly <- epw_morph_recipe("hourly_kernel_qdm")
 
     expect_identical(faithful$backend, "belcher")
     expect_identical(faithful$profile, "legacy")
@@ -170,6 +171,10 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
     expect_identical(
         morpher__recipe_required_frequency(daily),
         "day"
+    )
+    expect_identical(
+        morpher__recipe_required_frequency(hourly),
+        HOURLY_KQDM_MODEL_FREQUENCIES
     )
 
     expect_error(

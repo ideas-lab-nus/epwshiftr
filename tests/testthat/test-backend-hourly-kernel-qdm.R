@@ -121,8 +121,8 @@ hourly_kqdm_test__role <- function(
 }
 
 # Reduce the hourly fixture to bounded three-hourly model samples. Point-state
-# variables include one following boundary sample needed for the final two
-# hourly values; radiation variables retain complete contiguous time bounds.
+# variables use the CMIP6 `3hrPt` facet and include one following boundary
+# sample; radiation variables use the interval-mean `3hr` facet.
 hourly_kqdm_test__model_role <- function(
     years,
     role = c("historical", "future"),
@@ -148,7 +148,7 @@ hourly_kqdm_test__model_role <- function(
                 source$cf_second_of_day %% 10800 == 0) |
                 boundary,
         ]
-        source$frequency <- "3hr"
+        source$frequency <- "3hrPt"
         source$table_id <- "3hr"
         native_second <- temporal__native_seconds(source, calendar)
         source$time <- as.POSIXct("2000-01-01", tz = "UTC") +
@@ -218,8 +218,7 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         "ssp585",
         member = "r1i1p1f1",
         grid = "gr",
-        frequency = "3hr",
-        table = "3hr"
+        frequency = HOURLY_KQDM_MODEL_FREQUENCIES
     )
     plan <- shift_future_epw(
         epw = get_cache_epw(),
@@ -244,14 +243,23 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     )
     expect_identical(
         morpher__input_variables(recipe),
-        c("tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff")
+        c(
+            "tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff",
+            "tasmin", "tasmax"
+        )
     )
     expect_true(plan@meta$method@requires_reference)
     expect_true(plan@meta$method@requires_observed_reference)
-    expect_identical(plan@meta$climate@frequency, "3hr")
+    expect_identical(
+        plan@meta$climate@frequency,
+        HOURLY_KQDM_MODEL_FREQUENCIES
+    )
     expect_identical(
         plan@meta$request@meta$variables,
-        EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
+        c(
+            EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES,
+            HOURLY_WEATHER_EXTREMA_VARIABLES
+        )
     )
     expect_identical(
         plan@meta$request@meta$time,
@@ -274,7 +282,10 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     )
     expect_identical(
         historical_request@meta$variables,
-        EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
+        c(
+            EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES,
+            HOURLY_WEATHER_EXTREMA_VARIABLES
+        )
     )
     expect_identical(
         historical_request@meta$options$file_time,
@@ -304,7 +315,7 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
             store = tempfile("hourly-kqdm-invalid-store-"),
             dry_run = TRUE
         ),
-        "requires CMIP frequency"
+        "requires CMIP frequencies"
     )
     expect_error(
         shift_future_epw(
@@ -318,6 +329,54 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         ),
         "requires at least two weather years"
     )
+})
+
+test_that("hourly kernel QDM retains the publication source manifest", {
+    manifest <- hourly_kqdm__source_manifest()
+
+    expect_identical(nrow(manifest), 10L)
+    expect_identical(
+        manifest[, paste(source_id, variant_label, sep = "/")],
+        c(
+            "ACCESS-CM2/r1i1p1f1",
+            "BCC-CSM2-MR/r1i1p1f1",
+            "CanESM5/r1i1p2f1",
+            "CMCC-CM2-SR5/r1i1p1f1",
+            "CMCC-ESM2/r1i1p1f1",
+            "FGOALS-g3/r3i1p1f1",
+            "GISS-E2-1-G/r1i1p1f2",
+            "IITM-ESM/r1i1p1f1",
+            "KACE-1-0-G/r1i1p1f1",
+            "MRI-ESM2-0/r1i1p1f1"
+        )
+    )
+    expect_match(
+        manifest[source_id == "GISS-E2-1-G", special_treatment],
+        "rsdsdiff"
+    )
+    expect_match(
+        manifest[source_id == "IITM-ESM", special_treatment],
+        "psl"
+    )
+})
+
+test_that("hourly frequency diagnostics validate only declared model variables", {
+    recipe <- epw_morph_recipe("hourly_kernel_qdm")
+    diagnostic <- morpher__frequency_diagnostic(
+        recipe,
+        frequency = c("3hrPt", "3hr", "hour"),
+        variable_id = c("tas", "rsds", "observed_tas"),
+        stage = "climate_summary"
+    )
+    invalid <- morpher__frequency_diagnostic(
+        recipe,
+        frequency = c("3hrPt", "3hrPt"),
+        variable_id = c("tas", "rsds"),
+        stage = "climate_summary"
+    )
+
+    expect_identical(nrow(diagnostic), 0L)
+    expect_identical(invalid$code[[1L]], "unsupported_climate_frequency")
 })
 
 test_that("hourly kernel QDM produces two physically closed EPW years", {

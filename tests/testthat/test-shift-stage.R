@@ -406,6 +406,10 @@ test_that("Shift scientific labels preserve profiles, table policy, and partitio
         shift__format_cmip6_tables(c(snd = "LImon")),
         "auto by variable · snd=LImon"
     )
+    expect_identical(
+        shift__format_cmip6_frequencies(c(tas = "3hrPt", rsds = "3hr")),
+        "tas=3hrPt | rsds=3hr"
+    )
     selection <- data.table::data.table(
         source_id = "BCC-CSM2-MR",
         partition_key = "Amon=gn;LImon=gr"
@@ -427,6 +431,43 @@ test_that("Shift scientific labels preserve profiles, table policy, and partitio
         shift__climate_from_spec(decoded)@table,
         c(snd = "LImon")
     )
+
+    hourly_climate <- shift_cmip6(
+        "BCC-CSM2-MR",
+        "ssp585",
+        frequency = c(tas = "3hrPt", rsds = "3hr")
+    )
+    hourly_encoded <- shift__spec_json(list(
+        climate = shift__climate_spec_value(hourly_climate)
+    ))
+    hourly_decoded <- jsonlite::fromJSON(
+        hourly_encoded,
+        simplifyVector = TRUE
+    )$climate
+    expect_identical(
+        shift__climate_from_spec(hourly_decoded)@frequency,
+        c(tas = "3hrPt", rsds = "3hr")
+    )
+
+    request <- shift_cmip6_scenario(
+        source = "BCC-CSM2-MR",
+        scenario = "ssp585",
+        variables = c("tas", "rsds"),
+        frequency = c(tas = "3hrPt", rsds = "3hr")
+    )
+    request_encoded <- shift__spec_json(
+        shift__request_spec_value(request)
+    )
+    request_decoded <- jsonlite::fromJSON(
+        request_encoded,
+        simplifyVector = TRUE
+    )
+    expect_identical(
+        shift__request_frequency_from_spec(request_decoded$frequency),
+        c(tas = "3hrPt", rsds = "3hr")
+    )
+    expect_null(shift__cmip6_request_table_spec(c("3hr", "day")))
+    expect_identical(shift__cmip6_request_table_spec("3hr"), "3hr")
 })
 
 test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows", {
@@ -678,10 +719,93 @@ test_that("resolver inputs are not masked by provider convenience columns", {
         identity,
         experiment = "ssp245",
         variable = "tas",
+        frequency = "day",
         table = "day",
         grid = "gn",
         years = 2041L
     ))
+})
+
+test_that("resolver enforces variable-specific CMIP6 frequencies", {
+    recipe <- epw_morph_recipe("hourly_kernel_qdm")
+    variables <- morpher__input_variables(recipe)
+    frequencies <- morpher__recipe_required_frequency(recipe)
+    tables <- shift__cmip6_variable_tables(variables, frequencies)
+    catalog <- data.table::rbindlist(lapply(
+        c("ssp245", "historical"),
+        function(experiment) {
+            data.table::rbindlist(lapply(variables, function(variable) {
+                docs <- shift_test_file_docs(
+                    sprintf(
+                        "%s_%s_Model-A_%s_r1i1p1f1_gn_19900101-20651231.nc",
+                        variable,
+                        tables[[variable]],
+                        experiment
+                    ),
+                    variable_id = variable,
+                    datetime_start = "1990-01-01T00:00:00Z",
+                    datetime_end = "2065-12-31T23:59:59Z"
+                )
+                docs$source_id <- "Model-A"
+                docs$experiment_id <- experiment
+                docs$variant_label <- "r1i1p1f1"
+                docs$frequency <- frequencies[[variable]]
+                docs$table_id <- tables[[variable]]
+                docs$grid_label <- "gn"
+                docs
+            }), use.names = TRUE, fill = TRUE)
+        }
+    ), use.names = TRUE, fill = TRUE)
+
+    candidates <- shift__cmip6_candidates(
+        catalog,
+        models = "Model-A",
+        experiments = c("ssp245", "historical"),
+        variables = variables,
+        years = 2000:2001,
+        frequency = frequencies,
+        requirements = morpher__variable_requirements(recipe)
+    )
+    partitions <- shift__cmip6_partitions(candidates$partitions_json[[1L]])
+
+    expect_true(candidates$complete[[1L]])
+    expect_identical(candidates$frequency[[1L]], "3hrPt+3hr+day")
+    expect_identical(
+        stats::setNames(partitions$frequency, partitions$variable_id)[variables],
+        frequencies
+    )
+    expect_false(any(partitions[
+        variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES,
+        required
+    ]))
+
+    core_candidates <- shift__cmip6_candidates(
+        catalog[!variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES],
+        models = "Model-A",
+        experiments = c("ssp245", "historical"),
+        variables = variables,
+        years = 2000:2001,
+        frequency = frequencies,
+        requirements = morpher__variable_requirements(recipe)
+    )
+    core_partitions <- shift__cmip6_partitions(
+        core_candidates$partitions_json[[1L]]
+    )
+    expect_true(core_candidates$complete[[1L]])
+    expect_false(any(
+        core_partitions$variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
+    ))
+
+    scalar_candidates <- shift__cmip6_candidates(
+        catalog,
+        models = "Model-A",
+        experiments = c("ssp245", "historical"),
+        variables = variables,
+        years = 2000:2001,
+        frequency = "3hr",
+        requirements = morpher__variable_requirements(recipe)
+    )
+    expect_false(scalar_candidates$complete[[1L]])
 })
 
 test_that("resolver satisfies canonical hurs only from direct data or huss plus tas and ps", {

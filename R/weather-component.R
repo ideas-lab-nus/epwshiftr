@@ -67,6 +67,10 @@ WeatherInputRequirement <- S7::new_class(
             S7::class_character,
             default = character()
         ),
+        variable_frequencies = S7::new_property(
+            S7::class_list,
+            default = list()
+        ),
         calendars = S7::new_property(
             S7::class_character,
             default = character()
@@ -95,6 +99,24 @@ WeatherInputRequirement <- S7::new_class(
         if (length(self@representations) &&
             !all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)) {
             return("`representations` contains an unknown input representation.")
+        }
+        if (length(self@variable_frequencies)) {
+            mapping <- self@variable_frequencies
+            if (is.null(names(mapping)) || any(!nzchar(names(mapping))) ||
+                anyDuplicated(names(mapping))) {
+                return(
+                    "`variable_frequencies` must be uniquely named by variable ID."
+                )
+            }
+            valid <- vapply(mapping, function(value) {
+                is.character(value) && length(value) && !anyNA(value) &&
+                    all(nzchar(value)) && !anyDuplicated(value)
+            }, logical(1L))
+            if (!all(valid)) {
+                return(
+                    "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
+                )
+            }
         }
         for (variable_set in self@variable_sets) {
             if (!is.character(variable_set) ||
@@ -143,6 +165,7 @@ component__input_requirement <- function(
     role,
     representations = character(),
     frequencies = character(),
+    variable_frequencies = list(),
     calendars = character(),
     variable_sets = list()
 ) {
@@ -163,6 +186,10 @@ component__input_requirement <- function(
         frequencies = weather__descriptor_values(
             frequencies,
             "frequencies"
+        ),
+        variable_frequencies = weather__variable_frequencies(
+            variable_frequencies,
+            "variable_frequencies"
         ),
         calendars = weather__descriptor_values(calendars, "calendars"),
         variable_sets = component__variable_sets(variable_sets)
@@ -559,6 +586,33 @@ component__requirement_errors <- function(requirement, input) {
                     paste(required, collapse = ", ")
                 )
             )
+        }
+    }
+    if (length(requirement@variable_frequencies)) {
+        for (variable in intersect(
+            names(requirement@variable_frequencies),
+            input@variables
+        )) {
+            required <- requirement@variable_frequencies[[variable]]
+            available <- input@variable_frequencies[[variable]]
+            if (is.null(available) || !length(available) ||
+                !all(available %in% required)) {
+                shown <- if (length(available)) {
+                    paste(available, collapse = ", ")
+                } else {
+                    "<missing>"
+                }
+                errors <- c(
+                    errors,
+                    sprintf(
+                        "role `%s` variable `%s` frequencies `%s` do not satisfy `%s`",
+                        requirement@role,
+                        variable,
+                        shown,
+                        paste(required, collapse = ", ")
+                    )
+                )
+            }
         }
     }
     if (length(requirement@variable_sets)) {
