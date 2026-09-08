@@ -2001,7 +2001,7 @@ belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
 #'
 #' `reconstruction = "power"` uses epwshiftr's monotone power projection.
 #' `"btws"` instead selects the bounded temperature weighted stretch published
-#' by Eames et al. (2024). The latter remains a composite comparison: only its
+#' by Eames et al. (2024). The latter remains a composite method: only its
 #' hourly reconstruction comes from Eames, while the daily CMIP6 signal,
 #' calendar mapping, humidity closure, and output policy remain epwshiftr
 #' components.

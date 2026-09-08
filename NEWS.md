@@ -46,28 +46,24 @@
 
 ## New features
 
-* Separated future-weather algorithms, shared comparison conditions, optional
-  publication configurations, and executable recipes into distinct method,
-  protocol, study-preset, and recipe contracts. Eight daily bias-adjustment
-  methods now share one temperature-to-EPW path so their controlled recipes
-  differ only at the signal stage. Eames, Ek, Arima, and Sobie-Curry signals
-  also have explicit temperature-comparison recipes that retain their own
-  statistical and calendar calculations while sharing the same POWER hourly
-  reconstruction, specific-humidity closure, 365-day EPW output, source
-  identity, and model periods. Publication-oriented recipes remain available
-  separately, and recipe registration now rejects a claimed protocol when the
-  required input roles, actual hourly reconstruction, or target calendar
-  differ. The enhanced monthly recipe retains its optional historical-input
-  production behavior without claiming the stricter comparison protocol
-  (#246).
+* Kept future-weather generation contracts independent of user evaluation
+  designs. Package-owned comparison protocols, publication study presets, and
+  duplicate `_comparison` recipes were removed; every method now has one
+  canonical complete recipe. Recipe metadata continues to expose input roles,
+  source and target calendars, components, physical policies, diagnostics, and
+  provenance so users can apply consistent external evaluation designs (#248).
+
+* Added a method catalog independent of executable recipes and connected eight
+  daily bias-adjustment methods to one reusable temperature-to-EPW adapter.
+  Complete recipes identify their method, input roles, components, physical
+  policies, output type, diagnostics, and provenance without embedding a
+  paper's selected climate models or study periods (#246).
 
 * Added variable-specific CMIP6 frequency contracts to availability discovery,
   persisted workflow selection, component validation, and extraction planning.
   The hourly kernel-QDM workflow now resolves point-sampled `3hrPt` state and
   wind fields, interval-mean `3hr` radiation, and optional daily `tasmin` and
-  `tasmax` within one model/member/grid identity. Its internal source manifest
-  records the ten model-member combinations and special treatments reported by
-  Wang et al. (2023) (#244).
+  `tasmax` within one model/member/grid identity (#244).
 
 * Aligned the experimental `hourly_kernel_qdm()` workflow with the published
   raw-model input boundary: model roles now request `tas`, `ps`, `huss`, `uas`,
@@ -303,7 +299,7 @@
   included (#153).
 
 * Added `reconstruction = "btws"` to `daily_temperature()` and registered the
-  `epwshiftr_daily_btws` comparison recipe. It combines the existing
+  `epwshiftr_daily_btws` recipe. It combines the existing
   calendar-neutral daily CMIP6
   mean/minimum/maximum signal with the hourly bounded temperature weighted
   stretch from Eames et al. (2024), while reusing the baseline sequence,
@@ -323,7 +319,7 @@
   targets are retained as diagnostics. The existing `paper_faithful` output
   remains the default (#149).
 
-* Added the registered `sobie_curry_daily()` paper-faithful comparison method.
+* Added the registered `sobie_curry_daily()` paper-faithful method.
   Its seven-stage pipeline derives daily thermodynamic factors from matching
   historical and future `tas`, `tasmin`, `tasmax`, `huss`, and `ps`, smooths
   the factors with the published circular 21-day window, preserves the

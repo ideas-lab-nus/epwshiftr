@@ -1,9 +1,9 @@
 #' @include component-temperature-epw.R signal-adjustment.R
 NULL
 
-# The eight daily bias-adjustment kernels share one temperature comparison
-# boundary. Each backend selects only its signal component; every surrounding
-# calendar, reconstruction, physical, and output stage remains identical.
+# The eight daily bias-adjustment kernels share one temperature-to-EPW
+# adapter. Each backend selects its signal component while the surrounding
+# calendar, reconstruction, physical, and output stages remain reusable.
 DAILY_ADJUSTMENT_METHOD_COMPONENTS <- c(
     linear_scaling = "linear_scaling_daily",
     delta_change = "delta_change_daily",
@@ -22,7 +22,7 @@ DAILY_ADJUSTMENT_BACKENDS <- stats::setNames(
     names(DAILY_ADJUSTMENT_METHOD_COMPONENTS)
 )
 
-# All daily temperature comparisons require the same three climate roles and
+# All daily adjustment methods require the same three climate roles and
 # preserve humidity through the shared physical layer.
 EPW_MORPH_DAILY_ADJUSTMENT_RULES <- data.table::data.table(
     step = c("tdb", "rh", "tdew"),
@@ -43,17 +43,17 @@ EPW_MORPH_DAILY_ADJUSTMENT_RULES <- data.table::data.table(
     )
 )
 
-# Protocol-owned adapter options are deliberately limited to representative-
-# year climatology and hourly projection controls. Method settings remain in
-# variable-specific signal_overrides.
+# Adapter options are limited to representative-year climatology and hourly
+# projection controls. Method settings remain in variable-specific
+# signal_overrides.
 DAILY_ADJUSTMENT_OPTIONS <- list(
     climatology_window_days = 31L,
     tolerance = 1e-8,
     signal_overrides = list()
 )
 
-# Validate daily comparison options without accepting a publication data
-# source, study period, physical policy, or output override.
+# Validate daily adjustment adapter options without accepting source selection,
+# study periods, physical policy, or output overrides.
 daily_adjustment__options <- function(options = NULL) {
     if (is.null(options)) {
         return(DAILY_ADJUSTMENT_OPTIONS)
@@ -132,12 +132,12 @@ daily_adjustment__temperature_targets <- function(
 ) {
     if (!S7::S7_inherits(adjusted, DailyAdjustedSeries)) {
         cli::cli_abort(
-            "Daily temperature comparison requires a DailyAdjustedSeries object."
+            "Daily temperature generation requires a DailyAdjustedSeries object."
         )
     }
     if (!identical(unique(adjusted@data[["variable_id"]]), "tas")) {
         cli::cli_abort(
-            "Daily temperature comparison currently supports only {.val tas}."
+            "Daily temperature generation currently supports only {.val tas}."
         )
     }
     climatology <- daily__climatology(
@@ -250,7 +250,7 @@ daily_adjustment__physics_apply <- function(
 }
 
 # Assemble a standard representative-year result and expose the original
-# adjusted daily values and common comparison protocol in result parts.
+# adjusted daily values with their method-owned metadata.
 daily_adjustment__output_write <- function(
     data,
     inputs,
@@ -258,7 +258,6 @@ daily_adjustment__output_write <- function(
     options,
     stages
 ) {
-    protocol <- protocol__get("daily_bias_adjustment_comparison")
     result <- temperature__output_write(
         data,
         inputs,
@@ -271,13 +270,7 @@ daily_adjustment__output_write <- function(
         output_role = data$adjusted@output_role,
         transformation = data$adjusted@transformation,
         settings = data$adjusted@settings,
-        provenance = data$adjusted@provenance,
-        protocol = protocol@name,
-        protocol_version = protocol@version,
-        random_seed = protocol@random_seed,
-        replicates = protocol@replicates,
-        diagnostics = protocol@diagnostics,
-        metrics = protocol@metrics
+        provenance = data$adjusted@provenance
     )
     result
 }
@@ -334,7 +327,7 @@ daily_adjustment__component_specs <- function() {
             ),
             metadata = list(
                 source_contract = "daily_adjusted_series",
-                comparison_variable = "tas",
+                variable_id = "tas",
                 output_contract = "daily_temperature_sequence"
             )
         ),
@@ -388,7 +381,7 @@ daily_adjustment__register_components <- function() {
     invisible(NULL)
 }
 
-# Compose one complete comparison pipeline by changing only the signal
+# Compose one complete weather-generation pipeline by changing only the signal
 # component selected from the eight supported daily methods.
 daily_adjustment__pipeline <- function(method) {
     checkmate::assert_choice(
@@ -409,14 +402,14 @@ daily_adjustment__pipeline <- function(method) {
     ))
 }
 
-# Construct the eight thin backends that bind a method component to one common
-# comparison protocol without duplicating adapter logic.
+# Construct the eight thin backends that bind a method component to the shared
+# temperature-to-EPW adapter without duplicating its logic.
 daily_adjustment__backend_specs <- function() {
     specs <- lapply(names(DAILY_ADJUSTMENT_METHOD_COMPONENTS), function(method) {
         component <- DAILY_ADJUSTMENT_METHOD_COMPONENTS[[method]]
         EpwMorphBackend$new(
             name = DAILY_ADJUSTMENT_BACKENDS[[method]],
-            label = sprintf("Daily %s temperature comparison", method),
+            label = sprintf("Daily %s temperature EPW", method),
             methods = c(tdb = component),
             method_choices = component,
             rules = data.table::copy(EPW_MORPH_DAILY_ADJUSTMENT_RULES),

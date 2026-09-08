@@ -253,7 +253,7 @@ daily__register_temperature_components <- function() {
 
 # Return a seven-stage daily temperature pipeline with an explicitly selected
 # hourly reconstruction component. The climate signal and all other stages stay
-# identical so comparisons isolate the hourly projection algorithm.
+# identical so either projection can reuse the same surrounding workflow.
 daily__temperature_pipeline <- function(
     reconstruction = c("power", "btws")
 ) {

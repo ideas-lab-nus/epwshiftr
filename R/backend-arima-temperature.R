@@ -433,8 +433,8 @@ arima__hourly_reconstruct <- function(data, inputs, context, options) {
     )
 }
 
-# Apply either the temperature-only published comparison or the package's
-# shared specific-humidity closure without changing the Arima climate signal.
+# Apply either paper-faithful humidity preservation or the package's shared
+# specific-humidity closure without changing the Arima climate signal.
 arima__physics_apply <- function(data, inputs, context, options) {
     policy <- context$recipe$policy
     checkmate::assert_choice(
@@ -505,7 +505,7 @@ arima__physics_apply <- function(data, inputs, context, options) {
                     severity = "warning",
                     code = "arima_temperature_only_state_not_closed",
                     message = sprintf(
-                        "The Arima temperature-only comparison left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
+                        "The Arima paper-faithful mode left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
                         invalid
                     ),
                     epw_field = paste(
@@ -514,7 +514,7 @@ arima__physics_apply <- function(data, inputs, context, options) {
                         sep = ""
                     ),
                     action = paste(
-                        "Treat this as temperature-only paper comparison",
+                        "Treat this as paper-faithful temperature-only",
                         "output or select the harmonized policy."
                     )
                 )
@@ -587,7 +587,7 @@ arima__output_write <- function(data, inputs, context, options, stages) {
 }
 
 # Define seven method-neutral stages so the monthly percentile-change signal
-# and inherited hourly sequence can be replaced independently in comparisons.
+# and inherited hourly sequence remain independently inspectable and reusable.
 arima__component_specs <- function() {
     complete_inputs <- arima__temperature_inputs()
     template <- complete_inputs$weather_template

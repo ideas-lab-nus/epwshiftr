@@ -9,7 +9,7 @@ NULL
 EPW_MORPH_EK_DAILY_TEMPERATURE_METHODS <- c(tdb = "daily_mean_dtr")
 
 # Dry-bulb temperature uses paired daily extrema. Humidity fields are either
-# preserved as in the temperature-only comparison or closed by policy later.
+# preserved in paper-faithful mode or closed by the harmonized policy later.
 EPW_MORPH_EK_DAILY_TEMPERATURE_RULES <- data.table::data.table(
     step = c("tdb", "rh", "tdew"),
     epw_field = c(
@@ -365,8 +365,8 @@ ek__signal_apply_group <- function(inputs, settings, key) {
     )
 }
 
-# Retain the baseline EPW day order so the Ek comparison changes only the
-# climate signal and published within-day transformation.
+# Retain the baseline EPW day order while applying the Ek climate signal and
+# published within-day transformation.
 ek__sequence_generate <- function(data, inputs, context, options) {
     signal__single_value(data, "Ek")
 }
@@ -535,7 +535,7 @@ ek__hourly_reconstruct <- function(data, inputs, context, options) {
     )
 }
 
-# Select the temperature-only paper comparison or shared humidity closure
+# Select paper-faithful humidity preservation or shared humidity closure
 # without changing the preceding Ek signal and hourly transformation.
 ek__physics_apply <- function(data, inputs, context, options) {
     baseline <- data$baseline
@@ -616,7 +616,7 @@ ek__physics_apply <- function(data, inputs, context, options) {
                     severity = "warning",
                     code = "ek_temperature_only_state_not_closed",
                     message = sprintf(
-                        "The Ek temperature-only comparison left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
+                        "The Ek paper-faithful mode left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
                         invalid
                     ),
                     epw_field = paste(
@@ -625,7 +625,7 @@ ek__physics_apply <- function(data, inputs, context, options) {
                         sep = ""
                     ),
                     action = paste(
-                        "Treat this as temperature-only paper comparison",
+                        "Treat this as paper-faithful temperature-only",
                         "output or select the harmonized policy."
                     )
                 )
@@ -694,7 +694,7 @@ ek__output_write <- function(data, inputs, context, options, stages) {
 }
 
 # Define the seven Ek stages so its signal and hourly equation remain
-# independently inspectable and replaceable in controlled comparisons.
+# independently inspectable and reusable.
 ek__component_specs <- function() {
     complete_inputs <- ek__daily_temperature_inputs()
     template <- complete_inputs$weather_template

@@ -85,26 +85,6 @@ arima_test__context <- function(
     )
 }
 
-test_that("Arima factors support the common temperature comparison boundary", {
-    result <- morpher__run_context(arima_test__context(
-        temperature_shift = 1.5,
-        policy = "harmonized",
-        recipe_name = "arima_temperature_comparison"
-    ))
-    pipeline <- result$parts$component_pipeline
-
-    expect_identical(nrow(result$data), 8760L)
-    expect_identical(nrow(result$factors), 365L)
-    expect_lt(max(abs(result$factors[["mean_closure_error"]])), 1e-7)
-    expect_true(all(c(
-        "arima_change_functions", "arima_factors"
-    ) %in% names(result$parts)))
-    expect_identical(
-        pipeline[stage == "hourly", component],
-        "constrained_daily_temperature"
-    )
-})
-
 test_that("Arima recipe registers all four required input roles", {
     expect_true("arima_temperature" %in% epw_morph_backends())
     expect_true(

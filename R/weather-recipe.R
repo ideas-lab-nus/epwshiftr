@@ -1,8 +1,8 @@
-#' @include weather-pipeline.R weather-protocol.R
+#' @include weather-pipeline.R
 NULL
 
-# Complete-recipe policies distinguish reproduction of a published method from
-# comparisons that share epwshiftr's physical closure and output controls.
+# Complete-recipe policies distinguish a published method's field treatment
+# from epwshiftr's harmonized physical closure and output controls.
 WEATHER_RECIPE_POLICIES <- c("paper_faithful", "harmonized")
 
 # Output types keep representative weather years distinct from continuous
@@ -17,13 +17,8 @@ WEATHER_RECIPE_OUTPUT_TYPES <- c(
 # methods can be checked against the executable seven-stage registry.
 WEATHER_RECIPE_IMPLEMENTATIONS <- c("backend", "pipeline")
 
-# Comparison status is metadata, not a claim that every registered recipe is
-# recommended for production use.
-WEATHER_RECIPE_STATUSES <- c(
-    "production",
-    "comparison",
-    "experimental"
-)
+# Recipe status records implementation maturity independently of method type.
+WEATHER_RECIPE_STATUSES <- c("production", "experimental")
 
 # Built-in keys allow idempotent registration to return without rebuilding
 # component and input specifications on every recipe construction.
@@ -33,13 +28,9 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "epwshiftr_daily_power",
     "epwshiftr_daily_btws",
     "eames_monthly_temperature",
-    "eames_monthly_temperature_comparison",
     "ek_daily_factors",
-    "ek_daily_temperature_comparison",
     "monthly_percentile_temperature",
-    "arima_temperature_comparison",
     "sobie_curry_daily",
-    "sobie_curry_temperature_comparison",
     "hourly_kernel_qdm",
     "linear_scaling_daily_temperature",
     "delta_change_daily_temperature",
@@ -64,10 +55,6 @@ WeatherRecipeSpec <- S7::new_class(
         version = S7::new_property(S7::class_integer),
         label = S7::new_property(S7::class_character),
         method = S7::new_property(S7::class_character),
-        protocol = S7::new_property(
-            S7::class_character,
-            default = character()
-        ),
         backend = S7::new_property(S7::class_character),
         implementation = S7::new_property(S7::class_character),
         source = S7::new_property(S7::class_list),
@@ -80,6 +67,10 @@ WeatherRecipeSpec <- S7::new_class(
             default = list()
         ),
         calendar_policy = S7::new_property(S7::class_character),
+        target_calendar = S7::new_property(
+            S7::class_character,
+            default = character()
+        ),
         components = S7::new_property(S7::class_list),
         policy_profiles = S7::new_property(S7::class_character),
         physical_policies = S7::new_property(S7::class_character),
@@ -126,10 +117,15 @@ WeatherRecipeSpec <- S7::new_class(
             !self@implementation %in% WEATHER_RECIPE_IMPLEMENTATIONS) {
             return("`implementation` must be `backend` or `pipeline`.")
         }
-        if (length(self@protocol) > 1L ||
-            anyNA(self@protocol) ||
-            any(!nzchar(self@protocol))) {
-            return("`protocol` must be empty or one non-empty protocol identifier.")
+        if (length(self@target_calendar) > 1L ||
+            anyNA(self@target_calendar) ||
+            any(!grepl(
+                "^[a-z][a-z0-9_]*$",
+                self@target_calendar
+            ))) {
+            return(
+                "`target_calendar` must be empty or one lower snake_case identifier."
+            )
         }
         if (!identical(names(self@components), WEATHER_COMPONENT_STAGES)) {
             return(
@@ -187,7 +183,7 @@ WeatherRecipeSpec <- S7::new_class(
             return("`stochastic` must be one non-missing logical value.")
         }
         if (!self@status %in% WEATHER_RECIPE_STATUSES) {
-            return("`status` contains an unknown comparison status.")
+            return("`status` contains an unknown recipe status.")
         }
         if (is.null(names(self@source)) ||
             any(!nzchar(names(self@source))) ||
@@ -263,13 +259,13 @@ recipe__spec <- function(
     name,
     label,
     method,
-    protocol = character(),
     backend,
     implementation,
     source,
     required_inputs,
     optional_inputs = list(),
     calendar_policy,
+    target_calendar = character(),
     components,
     policy_profiles,
     physical_policies,
@@ -285,13 +281,6 @@ recipe__spec <- function(
     checkmate::assert_count(version, positive = TRUE)
     checkmate::assert_string(label, min.chars = 1L)
     checkmate::assert_string(method, pattern = "^[a-z][a-z0-9_]*$")
-    checkmate::assert_character(protocol, max.len = 1L, any.missing = FALSE)
-    if (length(protocol)) {
-        checkmate::assert_string(
-            protocol,
-            pattern = "^[a-z][a-z0-9_]*$"
-        )
-    }
     checkmate::assert_string(backend, pattern = "^[a-z][a-z0-9_]*$")
     checkmate::assert_choice(
         implementation,
@@ -340,6 +329,17 @@ recipe__spec <- function(
         calendar_policy,
         pattern = "^[a-z][a-z0-9_]*$"
     )
+    checkmate::assert_character(
+        target_calendar,
+        max.len = 1L,
+        any.missing = FALSE
+    )
+    if (length(target_calendar)) {
+        checkmate::assert_string(
+            target_calendar,
+            pattern = "^[a-z][a-z0-9_]*$"
+        )
+    }
     if (is.character(components) && !is.null(names(components))) {
         components <- as.list(components)
     }
@@ -407,13 +407,13 @@ recipe__spec <- function(
         version = as.integer(version),
         label = label,
         method = method,
-        protocol = protocol,
         backend = backend,
         implementation = implementation,
         source = source,
         required_inputs = required_inputs,
         optional_inputs = optional_inputs,
         calendar_policy = calendar_policy,
+        target_calendar = target_calendar,
         components = components,
         policy_profiles = policy_profiles,
         physical_policies = physical_policies,
@@ -490,8 +490,8 @@ recipe__monthly_inputs <- function(enhanced = FALSE) {
     )
 }
 
-# Declare the common temperature-only comparison inputs once so all eight
-# daily adjustment recipes receive identical semantic roles and boundaries.
+# Declare the shared temperature input contract once so all eight daily
+# adjustment recipes receive the same semantic roles and frequencies.
 recipe__daily_adjustment_inputs <- function() {
     c(
         list(
@@ -510,10 +510,9 @@ recipe__daily_adjustment_inputs <- function() {
     )
 }
 
-# Build complete temperature recipes from independent method and protocol
-# records. Only the signal component and backend identifier vary by method.
+# Build complete temperature recipes from method records. Only the signal
+# component and backend identifier vary; the reusable EPW adapter stays fixed.
 recipe__daily_adjustment_specs <- function() {
-    protocol <- protocol__get("daily_bias_adjustment_comparison")
     inputs <- recipe__daily_adjustment_inputs()
     specs <- lapply(names(DAILY_ADJUSTMENT_METHOD_COMPONENTS), function(key) {
         method_name <- DAILY_ADJUSTMENT_METHOD_COMPONENTS[[key]]
@@ -523,7 +522,6 @@ recipe__daily_adjustment_specs <- function() {
             name = paste0(method_name, "_temperature"),
             label = paste(method@label, "temperature EPW"),
             method = method@name,
-            protocol = protocol@name,
             backend = DAILY_ADJUSTMENT_BACKENDS[[key]],
             implementation = "pipeline",
             source = list(
@@ -536,109 +534,27 @@ recipe__daily_adjustment_specs <- function() {
             components = pipeline__records(pipeline),
             policy_profiles = c(harmonized = "default"),
             physical_policies = c(
-                harmonized = protocol@physical_policy
+                harmonized = "preserve_specific_humidity"
             ),
             default_policy = "harmonized",
-            output_type = protocol@output_type,
+            output_type = "representative_year",
             stochastic = "tas" %in% method@stochastic_variables,
-            diagnostics = protocol@diagnostics,
+            diagnostics = c(
+                "daily_target_closure",
+                "humidity_closure",
+                "physical_bounds"
+            ),
             provenance = c(
                 "weather_method",
-                "comparison_protocol",
                 "input_periods",
                 "calendar_mapping",
                 "signal_settings",
                 "physical_policy"
             ),
-            status = if (identical(method@evidence, "experimental")) {
-                "experimental"
-            } else {
-                "comparison"
-            }
+            status = "experimental"
         )
     })
     names(specs) <- vapply(specs, function(spec) spec@name, character(1L))
-    specs
-}
-
-# Build comparison recipes from existing method definitions while replacing
-# only the downstream hourly reconstruction, physical closure, and EPW output
-# boundary. Publication recipes and their policies remain independently usable.
-recipe__temperature_comparison_specs <- function(publication_specs) {
-    checkmate::assert_list(publication_specs, names = "unique")
-    protocol <- protocol__get("daily_temperature_comparison")
-    mappings <- list(
-        eames_monthly_temperature_comparison = list(
-            source = "eames_monthly_temperature",
-            backend = TEMPERATURE_COMPARISON_BACKENDS[["eames"]],
-            label = "Eames temperature signal comparison"
-        ),
-        ek_daily_temperature_comparison = list(
-            source = "ek_daily_factors",
-            backend = TEMPERATURE_COMPARISON_BACKENDS[["ek"]],
-            label = "Ek temperature signal comparison"
-        ),
-        arima_temperature_comparison = list(
-            source = "monthly_percentile_temperature",
-            backend = TEMPERATURE_COMPARISON_BACKENDS[["arima"]],
-            label = "Arima temperature signal comparison"
-        ),
-        sobie_curry_temperature_comparison = list(
-            source = "sobie_curry_daily",
-            backend = TEMPERATURE_COMPARISON_BACKENDS[["sobie_curry"]],
-            label = "Sobie-Curry temperature signal comparison"
-        )
-    )
-    specs <- lapply(names(mappings), function(name) {
-        mapping <- mappings[[name]]
-        source <- publication_specs[[mapping$source]]
-        if (!S7::S7_inherits(source, WeatherRecipeSpec)) {
-            cli::cli_abort(
-                "Temperature comparison source recipe {.val {mapping$source}} is unavailable."
-            )
-        }
-        method <- method__get(source@method)
-        pipeline <- epw_morph_backend(mapping$backend)$component_pipeline()
-        source_metadata <- source@source
-        source_metadata$comparison_note <- paste(
-            "The method-owned signal is retained and passed through the",
-            "daily_temperature_comparison reconstruction, physical, and",
-            "output boundary. Publication-specific downstream choices are",
-            "available through the source recipe."
-        )
-        recipe__spec(
-            name = name,
-            label = mapping$label,
-            method = source@method,
-            protocol = protocol@name,
-            backend = mapping$backend,
-            implementation = "pipeline",
-            source = source_metadata,
-            required_inputs = source@required_inputs,
-            optional_inputs = source@optional_inputs,
-            calendar_policy = source@calendar_policy,
-            components = pipeline__records(pipeline),
-            policy_profiles = c(harmonized = "default"),
-            physical_policies = c(
-                harmonized = protocol@physical_policy
-            ),
-            default_policy = "harmonized",
-            output_type = protocol@output_type,
-            stochastic = method@stochastic,
-            diagnostics = unique(c(
-                source@diagnostics,
-                protocol@diagnostics
-            )),
-            provenance = unique(c(
-                source@provenance,
-                "comparison_protocol",
-                "method_signal",
-                "common_hourly_reconstruction"
-            )),
-            status = "comparison"
-        )
-    })
-    names(specs) <- names(mappings)
     specs
 }
 
@@ -765,6 +681,7 @@ recipe__default_specs <- function() {
             ),
             required_inputs = faithful_inputs,
             calendar_policy = "monthly_gregorian",
+            target_calendar = "epw_365_day",
             components = recipe__monthly_components(),
             policy_profiles = c(paper_faithful = "legacy"),
             physical_policies = c(
@@ -781,7 +698,7 @@ recipe__default_specs <- function() {
                 "input_periods",
                 "component_names"
             ),
-            status = "comparison"
+            status = "production"
         ),
         epwshiftr_monthly = recipe__spec(
             name = "epwshiftr_monthly",
@@ -802,6 +719,7 @@ recipe__default_specs <- function() {
             ],
             optional_inputs = enhanced_inputs["model_historical"],
             calendar_policy = "monthly_gregorian",
+            target_calendar = "epw_365_day",
             components = recipe__monthly_components(enhanced = TRUE),
             policy_profiles = c(harmonized = "enhanced"),
             physical_policies = c(
@@ -827,7 +745,6 @@ recipe__default_specs <- function() {
             name = "epwshiftr_daily_power",
             label = "Daily power-constrained temperature projection",
             method = "daily_temperature_delta",
-            protocol = "daily_temperature_comparison",
             backend = "daily_temperature",
             implementation = "pipeline",
             source = list(
@@ -920,7 +837,7 @@ recipe__default_specs <- function() {
                 "equation_interpretation",
                 "physical_policies"
             ),
-            status = "comparison"
+            status = "experimental"
         ),
         eames_monthly_temperature = recipe__spec(
             name = "eames_monthly_temperature",
@@ -953,7 +870,7 @@ recipe__default_specs <- function() {
                     "it does not apply daily-varying change factors."
                 ),
                 implementation_note = paste(
-                    "This temperature-only comparison reuses epwshiftr's",
+                    "This temperature-only workflow reuses epwshiftr's",
                     "specific-humidity closure and EPW output policy.",
                     "The paper's non-temperature transformations are not",
                     "implemented by this recipe."
@@ -984,7 +901,7 @@ recipe__default_specs <- function() {
                 "adaptation_boundary",
                 "physical_policies"
             ),
-            status = "comparison"
+            status = "experimental"
         ),
         ek_daily_factors = recipe__spec(
             name = "ek_daily_factors",
@@ -1024,6 +941,7 @@ recipe__default_specs <- function() {
             ),
             required_inputs = ek_inputs,
             calendar_policy = "cf_yearly_linear_to_epw_365",
+            target_calendar = "epw_365_day",
             components = pipeline__records(ek_pipeline),
             policy_profiles = c(
                 paper_faithful = "default",
@@ -1050,7 +968,7 @@ recipe__default_specs <- function() {
                 "unsupported_variables",
                 "physical_policy"
             ),
-            status = "comparison"
+            status = "experimental"
         ),
         monthly_percentile_temperature = recipe__spec(
             name = "monthly_percentile_temperature",
@@ -1087,6 +1005,7 @@ recipe__default_specs <- function() {
             ),
             required_inputs = arima_inputs,
             calendar_policy = "native_calendar_month_distributions",
+            target_calendar = "epw_365_day",
             components = pipeline__records(arima_pipeline),
             policy_profiles = c(
                 paper_faithful = "default",
@@ -1112,13 +1031,12 @@ recipe__default_specs <- function() {
                 "smoothing",
                 "physical_policy"
             ),
-            status = "comparison"
+            status = "experimental"
         ),
         hourly_kernel_qdm = recipe__spec(
             name = "hourly_kernel_qdm",
             label = "Hourly kernel QDM multi-year future weather",
             method = "kernel_quantile_delta_mapping_hourly",
-            protocol = "hourly_direct_model_comparison",
             backend = "hourly_kernel_qdm",
             implementation = "pipeline",
             source = list(
@@ -1189,6 +1107,7 @@ recipe__default_specs <- function() {
             ),
             required_inputs = sobie_inputs,
             calendar_policy = "cf_annual_phase_365",
+            target_calendar = "epw_365_day",
             components = pipeline__records(sobie_pipeline),
             policy_profiles = c(
                 paper_faithful = "default",
@@ -1215,15 +1134,11 @@ recipe__default_specs <- function() {
                 "equation_interpretation",
                 "physical_policy"
             ),
-            status = "comparison",
+            status = "experimental",
             version = 2L
         )
     )
-    c(
-        builtins,
-        recipe__temperature_comparison_specs(builtins),
-        recipe__daily_adjustment_specs()
-    )
+    c(builtins, recipe__daily_adjustment_specs())
 }
 
 # Resolve the algorithm actually used at the hourly stage. Adapter components
@@ -1244,10 +1159,13 @@ recipe__hourly_reconstruction <- function(spec) {
     reconstruction
 }
 
-# Resolve the output calendar declared by a componentized recipe. Monolithic
-# backends retain their established output contract until their stages are
-# executable registry components.
+# Resolve the output calendar declared by a recipe. Backend recipes state this
+# contract directly, while componentized recipes inherit it from their output
+# component unless an explicit recipe-level contract takes precedence.
 recipe__target_calendar <- function(spec) {
+    if (length(spec@target_calendar)) {
+        return(spec@target_calendar)
+    }
     if (!identical(spec@implementation, "pipeline")) {
         return(character())
     }
@@ -1263,49 +1181,6 @@ recipe__target_calendar <- function(spec) {
     target_calendar
 }
 
-# Enforce every protocol-owned execution boundary without constraining the
-# method's internal calendar aggregation or its additional input variables.
-recipe__assert_protocol_conformance <- function(spec, method) {
-    if (!length(spec@protocol)) {
-        return(invisible(NULL))
-    }
-    protocol <- protocol__get(spec@protocol)
-    compatibility <- protocol__method_compatibility(method, protocol)
-    if (!isTRUE(compatibility$compatible)) {
-        cli::cli_abort(
-            "Recipe {.val {spec@name}} links an incompatible method and protocol: {compatibility$reason}."
-        )
-    }
-    required_roles <- c(
-        "weather_template",
-        protocol@periods$shared_roles
-    )
-    missing_roles <- setdiff(required_roles, names(spec@required_inputs))
-    if (length(missing_roles)) {
-        cli::cli_abort(c(
-            "Recipe {.val {spec@name}} does not conform to its declared comparison protocol.",
-            "x" = "Protocol-required input role(s) are not required by the recipe: {.val {missing_roles}}."
-        ))
-    }
-    actual_reconstruction <- recipe__hourly_reconstruction(spec)
-    reconstruction_mismatch <- length(protocol@hourly_reconstruction) &&
-        !identical(
-            actual_reconstruction,
-            protocol@hourly_reconstruction
-        )
-    actual_target_calendar <- recipe__target_calendar(spec)
-    target_calendar_mismatch <- identical(spec@implementation, "pipeline") &&
-        !identical(actual_target_calendar, protocol@target_calendar)
-    if (!identical(spec@output_type, protocol@output_type) ||
-        any(spec@physical_policies != protocol@physical_policy) ||
-        reconstruction_mismatch || target_calendar_mismatch) {
-        cli::cli_abort(
-            "Recipe {.val {spec@name}} does not conform to its declared comparison protocol."
-        )
-    }
-    invisible(NULL)
-}
-
 # Verify that a catalog entry resolves to an available backend and, for a
 # pipeline method, to the same executable component sequence as that backend.
 recipe__validate_registration <- function(spec) {
@@ -1314,7 +1189,7 @@ recipe__validate_registration <- function(spec) {
             "{.arg spec} must be a WeatherRecipeSpec object."
         )
     }
-    method <- method__get(spec@method)
+    method__get(spec@method)
     backend <- epw_morph_backend(spec@backend)
     profiles <- unname(spec@policy_profiles)
     if (spec@backend %in% c("belcher", "belcher_absolute")) {
@@ -1349,7 +1224,6 @@ recipe__validate_registration <- function(spec) {
             )
         }
     }
-    recipe__assert_protocol_conformance(spec, method)
     invisible(spec)
 }
 
@@ -1445,8 +1319,7 @@ recipe__requirement_record <- function(requirement) {
 }
 
 # Return inspectable catalog metadata without exposing backend runners or
-# component functions. Method and protocol columns make it explicit whether a
-# runnable composition conforms to a shared comparison boundary.
+# component functions.
 recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
     checkmate::assert_environment(registry)
     if (identical(registry, WEATHER_RECIPE_REGISTRY)) {
@@ -1459,13 +1332,13 @@ recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
             version = integer(),
             label = character(),
             method = character(),
-            protocol = character(),
             backend = character(),
             implementation = character(),
             default_policy = character(),
             policies = list(),
             physical_policies = list(),
             calendar_policy = character(),
+            target_calendar = character(),
             output_type = character(),
             stochastic = logical(),
             status = character(),
@@ -1479,18 +1352,23 @@ recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
     }
     data.table::rbindlist(lapply(names, function(name) {
         spec <- get(name, envir = registry, inherits = FALSE)
+        target_calendar <- recipe__target_calendar(spec)
         data.table::data.table(
             name = spec@name,
             version = spec@version,
             label = spec@label,
             method = spec@method,
-            protocol = if (length(spec@protocol)) spec@protocol else NA_character_,
             backend = spec@backend,
             implementation = spec@implementation,
             default_policy = spec@default_policy,
             policies = list(names(spec@policy_profiles)),
             physical_policies = list(spec@physical_policies),
             calendar_policy = spec@calendar_policy,
+            target_calendar = if (length(target_calendar)) {
+                target_calendar
+            } else {
+                NA_character_
+            },
             output_type = spec@output_type,
             stochastic = spec@stochastic,
             status = spec@status,
@@ -1620,15 +1498,15 @@ recipe__validate_inputs <- function(spec, inputs) {
 #'
 #' `epw_morph_recipes()` lists complete built-in executable compositions rather
 #' than low-level statistical backends or method definitions. The returned
-#' metadata identifies the independent method, an optional shared comparison
-#' protocol, source, inputs, components, execution and physical policies,
-#' output, diagnostics, and provenance without executing the recipe.
+#' metadata identifies the independent method, source, inputs, components,
+#' execution and physical policies, output calendar, diagnostics, and
+#' provenance without executing the recipe.
 #'
 #' @return A data table with one row per registered complete recipe. Structured
 #'   metadata is retained in list columns.
 #'
 #' @seealso [epw_morph_recipe_spec()], [epw_morph_recipe()],
-#'   [epw_morph_methods()], [epw_morph_protocols()], [epw_morph_backends()]
+#'   [epw_morph_methods()], [epw_morph_backends()]
 #' @export
 epw_morph_recipes <- function() {
     recipe__list()

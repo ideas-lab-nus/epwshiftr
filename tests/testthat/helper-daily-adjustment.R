@@ -31,8 +31,8 @@ daily_adjustment_test__climate <- function(
             } else {
                 "ScenarioMIP"
             },
-            institution_id = "Comparison Institute",
-            source_id = "Comparison-GCM",
+            institution_id = "Test Institute",
+            source_id = "Test-GCM",
             experiment_id = experiment,
             variant_label = "r1i1p1f1",
             grid_label = "gn",
@@ -54,7 +54,7 @@ daily_adjustment_test__climate <- function(
 }
 
 # Construct one complete context whose model identity, periods, observations,
-# and EPW template can be reused unchanged across all eight comparison recipes.
+# and EPW template can be reused across all eight adjustment methods.
 daily_adjustment_test__context <- function(recipe) {
     observed <- daily_adjustment_test__climate(
         1981:1982,

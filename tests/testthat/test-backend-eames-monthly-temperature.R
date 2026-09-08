@@ -89,32 +89,6 @@ eames_monthly_test__context <- function(
     )
 }
 
-test_that("Eames signal supports the common temperature comparison boundary", {
-    context <- eames_monthly_test__context(
-        recipe_name = "eames_monthly_temperature_comparison"
-    )
-    result <- morpher__run_context(context)
-    pipeline <- result$parts$component_pipeline
-
-    expect_identical(nrow(result$data), 8760L)
-    expect_identical(nrow(result$factors), 365L)
-    expect_lt(max(abs(result$factors[["mean_closure_error"]])), 1e-7)
-    expect_lt(max(abs(result$factors[["minimum_closure_error"]])), 1e-7)
-    expect_lt(max(abs(result$factors[["maximum_closure_error"]])), 1e-7)
-    expect_identical(
-        pipeline[stage == "hourly", component],
-        "constrained_daily_temperature"
-    )
-    expect_identical(
-        pipeline[stage == "physics", component],
-        "specific_humidity_closure"
-    )
-    expect_length(protocol__validate_shared_inputs(
-        "daily_temperature_comparison",
-        list(eames = context$inputs)
-    ), 1L)
-})
-
 test_that("Eames daily sources produce 12 month-constant target sets", {
     mean_shift <- seq(0.5, 1.6, by = 0.1)
     minimum_shift <- seq(0.3, 1.4, by = 0.1)

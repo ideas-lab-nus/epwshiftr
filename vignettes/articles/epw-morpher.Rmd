@@ -120,56 +120,44 @@ legacy_recipe <- epw_morph_recipe("belcher", profile = "legacy")
 
 ## Complete Recipe Catalog
 
-Methods, comparison protocols, publication presets, and executable recipes are
-separate records:
+Methods and executable recipes are separate records:
 
 | Record | What it owns | What it does not own | Inspection API |
 |:-------|:-------------|:---------------------|:---------------|
 | Method | Equations, required variables and temporal frequency, algorithm parameters, output backbone, and stochastic behavior | Model choice, study years, EPW template, calendar mapping, physical closure, and evaluation metrics | `epw_morph_methods()` |
-| Protocol | Conditions that must remain equal in a comparison: source/member/grid identity, shared role periods, EPW template, source-calendar semantics, target calendar, hourly reconstruction where controlled, physical policy, output type, seeds, replicates, diagnostics, and metrics | A paper's GCM inventory, one statistical algorithm, or a method's intrinsic monthly/annual-phase aggregation | `epw_morph_protocols()` |
-| Study preset | Optional paper-specific data products, model/member selections, periods, and source substitutions | Default method or comparison behavior | `epw_morph_study_presets()` |
-| Recipe | A runnable composition of one method with calendar, sequence, hourly, physics, and output components | An assertion that the paper's complete experiment has been reproduced | `epw_morph_recipes()` |
+| Recipe | A runnable composition of one method with explicit input roles, calendar handling, sequence, hourly reconstruction, physical policy, output calendar, diagnostics, and provenance | A paper's selected GCMs and periods, or a user evaluation design | `epw_morph_recipes()` |
 
-This separation lets a publication configuration be retained for validation
-without forcing it into a method comparison. A fair comparison selects methods
-compatible with one protocol and supplies the same protocol-owned inputs and
-settings to every run. Method-specific additional inputs remain possible: for
-example, Arima requires an observed reference while the other daily-temperature
-signals do not. Selecting a study preset is optional and is appropriate only
-when the purpose is to examine the publication configuration itself.
+Source selections, periods, scenarios, and evaluation metrics remain caller
+owned. This keeps a published algorithm available without turning one paper's
+experiment into the package default. Users can evaluate methods under a common
+design by supplying the same eligible source data, periods, and EPW template to
+their selected recipes. Method-specific inputs still remain explicit: for
+example, Arima requires an observed reference while several other
+daily-temperature methods do not.
 
 ```r
 epw_morph_methods()
-epw_morph_protocols()
-subset(
-    epw_morph_compatibility(),
-    protocol == "daily_bias_adjustment_comparison" & compatible
-)
-epw_morph_study_presets()
 ```
 
 The complete recipe catalog then describes named runnable compositions assembled
 from backends and the seven component stages. Its `method` column identifies the
-algorithm. A non-missing `protocol` identifies a composition that conforms to
-that shared comparison contract; a missing value means the existing runnable
-composition retains method-specific downstream choices and must not be
-presented as a controlled comparison without an explicit adapter. A method's
-intrinsic calendar statistic remains method-owned even in a controlled recipe:
-Eames still calculates monthly mean/extrema changes and Arima still calculates
-month-wise empirical distributions. Inspecting the catalog does not run a
-recipe or serialize any function:
+algorithm, while the input, calendar, component, physical-policy, target-calendar,
+diagnostic, and provenance fields make the execution boundary inspectable. A
+method's intrinsic calendar statistic remains method-owned: Eames calculates
+monthly mean/extrema changes and Arima calculates month-wise empirical
+distributions. Inspecting the catalog does not run a recipe or serialize any
+function:
 
 ```r
 epw_morph_recipes()
+epw_morph_recipe_spec("belcher_monthly")
+epw_morph_recipe_spec("epwshiftr_monthly")
 epw_morph_recipe_spec("epwshiftr_daily_power")
 epw_morph_recipe_spec("epwshiftr_daily_btws")
 epw_morph_recipe_spec("eames_monthly_temperature")
-epw_morph_recipe_spec("eames_monthly_temperature_comparison")
 epw_morph_recipe_spec("ek_daily_factors")
-epw_morph_recipe_spec("ek_daily_temperature_comparison")
 epw_morph_recipe_spec("monthly_percentile_temperature")
-epw_morph_recipe_spec("arima_temperature_comparison")
-epw_morph_recipe_spec("sobie_curry_temperature_comparison")
+epw_morph_recipe_spec("sobie_curry_daily")
 epw_morph_recipe_spec("hourly_kernel_qdm")
 ```
 
@@ -177,8 +165,8 @@ The initial catalog distinguishes the following complete recipes:
 
 | Recipe | Policy | Implementation | Purpose |
 |:-------|:-------|:---------------|:--------|
-| `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly comparison with matching historical and future model data |
-| `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced monthly workflow with shared epwshiftr physical and output policies |
+| `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly workflow preserving the published field treatment |
+| `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced production workflow, including its optional historical-input fallback |
 | `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
 | `epwshiftr_daily_btws` | `harmonized` | Seven-stage pipeline | Existing daily CMIP6 temperature signal combined with the BTWS hourly projection |
 | `eames_monthly_temperature` | `harmonized` | Seven-stage pipeline | Eames monthly mean/average-daily-extrema changes and BTWS, with monthly statistics derived from daily CMIP6 inputs |
@@ -186,39 +174,27 @@ The initial catalog distinguishes the following complete recipes:
 | `monthly_percentile_temperature` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Arima month-wise model CDF change functions selected by each TMY day's percentile in a multi-year observed CDF |
 | `hourly_kernel_qdm` | `harmonized` | Seven-stage pipeline | Three-hourly model variables reconstructed to hourly KDE-QDM distributions and retained as a physically closed multi-year EPW sequence |
 | `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
-| `eames_monthly_temperature_comparison` | `harmonized` | Seven-stage pipeline | Eames monthly mean/extrema signal followed by the common POWER and physical boundary |
-| `ek_daily_temperature_comparison` | `harmonized` | Seven-stage pipeline | Ek mean/DTR signal converted to common EPW-day targets before the common POWER and physical boundary |
-| `arima_temperature_comparison` | `harmonized` | Seven-stage pipeline | Arima month-wise percentile signal followed by the common POWER and physical boundary |
-| `sobie_curry_temperature_comparison` | `harmonized` | Seven-stage pipeline | Temperature portion of the Sobie-Curry signal followed by the common POWER and physical boundary; other factors remain diagnostic |
 
-The two monthly recipes remain complete method-specific workflows. The
-enhanced recipe continues to accept a missing historical model period for its
-established production fallback, so neither monthly recipe claims the stricter
-monthly comparison protocol yet. A controlled monthly adapter must require the
-same historical and future model periods before making that claim.
-
-Eight daily bias-adjustment methods also share one complete temperature-to-EPW
-boundary: Linear Scaling, Delta Change, Quantile Mapping, Quantile Delta
-Mapping, Scaled Distribution Mapping, CDF-t, Equidistant CDF Matching, and
-ISIMIP3BASD. Their recipes use the same daily `tas` inputs, 365-day calendar
-mapping, hourly temperature reconstruction, specific-humidity closure, EPW
-output, diagnostics, and evaluation protocol; only the signal component changes.
-This is the directly comparable path, while the method catalog retains each
+Eight daily bias-adjustment methods use one reusable temperature-to-EPW adapter:
+Linear Scaling, Delta Change, Quantile Mapping, Quantile Delta Mapping, Scaled
+Distribution Mapping, CDF-t, Equidistant CDF Matching, and ISIMIP3BASD. Their
+recipes use the same daily `tas` role contract, 365-day calendar mapping, hourly
+temperature reconstruction, specific-humidity closure, EPW output, and
+diagnostics; only the signal component changes. The method catalog retains each
 algorithm's own settings and stochastic-variable declaration.
 
 The `paper_faithful` policy on older recipes controls their documented field
 treatment only. It does not choose a paper's model, member, scenario, or years.
-Those conditions belong to a separate study preset and are never applied
-implicitly.
+Those conditions are supplied by the user and are never applied implicitly.
 
 Create a configured recipe by its stable catalog name. The selected policy,
 catalog version, backend profile, and component names are persisted with the
 workflow:
 
 ```r
-monthly_comparison <- epw_morph_recipe(
-    "belcher_monthly",
-    policy = "paper_faithful"
+enhanced_monthly <- epw_morph_recipe(
+    "epwshiftr_monthly",
+    policy = "harmonized"
 )
 daily_power <- epw_morph_recipe(
     "epwshiftr_daily_power",
@@ -226,10 +202,6 @@ daily_power <- epw_morph_recipe(
 )
 daily_btws_variant <- epw_morph_recipe(
     "epwshiftr_daily_btws",
-    policy = "harmonized"
-)
-eames_comparison <- epw_morph_recipe(
-    "eames_monthly_temperature_comparison",
     policy = "harmonized"
 )
 eames_monthly_temperature <- epw_morph_recipe(
@@ -272,8 +244,8 @@ Check the live Dataset catalogue before selecting a model. CMIP6 stores the
 required state variables and radiation fluxes under different `frequency`
 facets even though they share the `3hr` table. A scalar `frequency = "3hr"`
 therefore excludes the point-sampled fields and creates a false incomplete
-result. Some models in the publication still require the pressure, wind, or
-radiation treatments documented in its supplementary methods.
+result. Source-specific substitutions reported by a paper are data-preparation
+choices and are not applied automatically by the statistical method.
 
 Leaving `table = NULL` searches every CMIP6 table at the requested frequencies.
 The availability reduction selects one table per variable within each
@@ -358,10 +330,7 @@ daily target signal, baseline EPW sequence, specific-humidity closure, and
 output stages, while replacing only the hourly stage with equations (7)--(16)
 from Eames et al. (2024). The complete recipe is therefore intentionally
 labelled as a combination rather than a reproduction of the paper's monthly
-UKCP18 workflow. Because its hourly reconstruction differs, it does not claim
-the `daily_temperature_comparison` protocol; it can instead be used when the
-research question intentionally compares hourly reconstruction algorithms. The
-paper directs implementations to reduce `m` for a
+UKCP18 workflow. The paper directs implementations to reduce `m` for a
 positive stretch or `n` for a negative stretch when the default `m = n = 1`
 would leave `[0, 1]`, but does not publish solver code. epwshiftr uses
 deterministic bisection to retain the largest admissible exponent and records

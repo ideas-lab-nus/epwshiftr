@@ -439,7 +439,7 @@ sobie__signal_factors <- function(
             raw_humidity_ratio$status,
             windows
         ),
-        # Harmonized comparisons use the same additive HUSS state-change
+        # Harmonized execution uses the same additive HUSS state-change
         # convention as epwshiftr's shared humidity closure.
         specific_humidity_delta = sobie__smooth_factor(
             raw_specific_humidity_delta,
@@ -928,7 +928,7 @@ sobie__physics_apply <- function(data, inputs, context, options) {
                     sep = ""
                 ),
                 action = paste(
-                    "Treat this result as paper-faithful comparison output;",
+                    "Treat this result as paper-faithful output;",
                     "a harmonized closure policy is not applied."
                 )
             )
@@ -975,7 +975,7 @@ sobie__physics_apply <- function(data, inputs, context, options) {
 }
 
 # Assemble a complete backend result while retaining factor rows, actual
-# settings, and the source-formula interpretation for later comparison.
+# settings, and the source-formula interpretation for user inspection.
 sobie__output_write <- function(
     data,
     inputs,

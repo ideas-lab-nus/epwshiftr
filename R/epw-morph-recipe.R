@@ -251,22 +251,13 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         "daily_temperature",
         "daily_temperature_btws"
     )
-    is_eames_temperature <- backend %in% c(
-        "eames_monthly_temperature",
-        TEMPERATURE_COMPARISON_BACKENDS[["eames"]]
+    is_eames_temperature <- identical(
+        backend,
+        "eames_monthly_temperature"
     )
-    is_ek_temperature <- backend %in% c(
-        "ek_daily_temperature",
-        TEMPERATURE_COMPARISON_BACKENDS[["ek"]]
-    )
-    is_arima_temperature <- backend %in% c(
-        "arima_temperature",
-        TEMPERATURE_COMPARISON_BACKENDS[["arima"]]
-    )
-    is_sobie_curry <- backend %in% c(
-        "sobie_curry_daily",
-        TEMPERATURE_COMPARISON_BACKENDS[["sobie_curry"]]
-    )
+    is_ek_temperature <- identical(backend, "ek_daily_temperature")
+    is_arima_temperature <- identical(backend, "arima_temperature")
+    is_sobie_curry <- identical(backend, "sobie_curry_daily")
     is_hourly_kernel_qdm <- identical(backend, "hourly_kernel_qdm")
     is_daily_adjustment <- backend %in% unname(DAILY_ADJUSTMENT_BACKENDS)
     if (is_belcher) {

@@ -331,35 +331,6 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     )
 })
 
-test_that("Wang study preset retains the publication source manifest", {
-    manifest <- study__wang_source_manifest()
-
-    expect_identical(nrow(manifest), 10L)
-    expect_identical(
-        manifest[, paste(source_id, variant_label, sep = "/")],
-        c(
-            "ACCESS-CM2/r1i1p1f1",
-            "BCC-CSM2-MR/r1i1p1f1",
-            "CanESM5/r1i1p2f1",
-            "CMCC-CM2-SR5/r1i1p1f1",
-            "CMCC-ESM2/r1i1p1f1",
-            "FGOALS-g3/r3i1p1f1",
-            "GISS-E2-1-G/r1i1p1f2",
-            "IITM-ESM/r1i1p1f1",
-            "KACE-1-0-G/r1i1p1f1",
-            "MRI-ESM2-0/r1i1p1f1"
-        )
-    )
-    expect_match(
-        manifest[source_id == "GISS-E2-1-G", special_treatment],
-        "rsdsdiff"
-    )
-    expect_match(
-        manifest[source_id == "IITM-ESM", special_treatment],
-        "psl"
-    )
-})
-
 test_that("hourly frequency diagnostics validate only declared model variables", {
     recipe <- epw_morph_recipe("hourly_kernel_qdm")
     diagnostic <- morpher__frequency_diagnostic(

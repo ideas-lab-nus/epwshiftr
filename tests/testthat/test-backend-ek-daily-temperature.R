@@ -103,27 +103,6 @@ ek_test__context <- function(
     )
 }
 
-test_that("Ek factors support the common temperature comparison boundary", {
-    result <- morpher__run_context(ek_test__context(
-        temperature_shift = 1.5,
-        dtr_ratio = 1.1,
-        policy = "harmonized",
-        recipe_name = "ek_daily_temperature_comparison"
-    ))
-    pipeline <- result$parts$component_pipeline
-
-    expect_identical(nrow(result$data), 8760L)
-    expect_identical(nrow(result$factors), 365L)
-    expect_lt(max(abs(result$factors[["mean_closure_error"]])), 1e-7)
-    expect_lt(max(abs(result$factors[["minimum_closure_error"]])), 1e-7)
-    expect_lt(max(abs(result$factors[["maximum_closure_error"]])), 1e-7)
-    expect_true("ek_factors" %in% names(result$parts))
-    expect_identical(
-        pipeline[stage == "hourly", component],
-        "constrained_daily_temperature"
-    )
-})
-
 test_that("Ek recipe registers its temperature-focused daily contract", {
     expect_true("ek_daily_temperature" %in% epw_morph_backends())
     expect_true("ek_daily_factors" %in% epw_morph_recipes()[["name"]])

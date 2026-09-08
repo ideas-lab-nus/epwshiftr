@@ -1,4 +1,4 @@
-#' @include adapter-daily-adjusted-epw.R adapter-temperature-comparison.R backend-hourly-kernel-qdm.R weather-pipeline.R
+#' @include adapter-daily-adjusted-epw.R backend-hourly-kernel-qdm.R weather-pipeline.R
 NULL
 
 # EPW morphing backend registry {{{
@@ -411,8 +411,7 @@ morpher__default_backend_specs <- function() {
     )
     c(
         builtins,
-        daily_adjustment__backend_specs(),
-        tempcompare__backend_specs()
+        daily_adjustment__backend_specs()
     )
 }
 

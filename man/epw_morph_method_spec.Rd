@@ -16,5 +16,5 @@ A \code{WeatherMethodSpec} object.
 Get a registered future-weather method specification
 }
 \seealso{
-\code{\link[=epw_morph_methods]{epw_morph_methods()}}, \code{\link[=epw_morph_protocol_spec]{epw_morph_protocol_spec()}}
+\code{\link[=epw_morph_methods]{epw_morph_methods()}}, \code{\link[=epw_morph_recipe_spec]{epw_morph_recipe_spec()}}
 }
