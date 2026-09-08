@@ -121,27 +121,6 @@ sobie_test__context <- function(
     )
 }
 
-test_that("Sobie-Curry factors support the common temperature boundary", {
-    result <- morpher__run_context(sobie_test__context(
-        temperature_shift = 1.5,
-        dtr_shift = 0.5,
-        policy = "harmonized",
-        recipe_name = "sobie_curry_temperature_comparison"
-    ))
-    pipeline <- result$parts$component_pipeline
-
-    expect_identical(nrow(result$data), 8760L)
-    expect_identical(nrow(result$factors), 365L)
-    expect_lt(max(abs(result$factors[["mean_closure_error"]])), 1e-7)
-    expect_lt(max(abs(result$factors[["minimum_closure_error"]])), 1e-7)
-    expect_lt(max(abs(result$factors[["maximum_closure_error"]])), 1e-7)
-    expect_true("sobie_curry_factors" %in% names(result$parts))
-    expect_identical(
-        pipeline[stage == "hourly", component],
-        "constrained_daily_temperature"
-    )
-})
-
 test_that("Sobie-Curry recipe registers its published daily contract", {
     expect_true("sobie_curry_daily" %in% epw_morph_backends())
     expect_true("sobie_curry_daily" %in% epw_morph_recipes()[["name"]])

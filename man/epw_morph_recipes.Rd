@@ -13,11 +13,11 @@ metadata is retained in list columns.
 \description{
 \code{epw_morph_recipes()} lists complete built-in executable compositions rather
 than low-level statistical backends or method definitions. The returned
-metadata identifies the independent method, an optional shared comparison
-protocol, source, inputs, components, execution and physical policies,
-output, diagnostics, and provenance without executing the recipe.
+metadata identifies the independent method, source, inputs, components,
+execution and physical policies, output calendar, diagnostics, and
+provenance without executing the recipe.
 }
 \seealso{
 \code{\link[=epw_morph_recipe_spec]{epw_morph_recipe_spec()}}, \code{\link[=epw_morph_recipe]{epw_morph_recipe()}},
-\code{\link[=epw_morph_methods]{epw_morph_methods()}}, \code{\link[=epw_morph_protocols]{epw_morph_protocols()}}, \code{\link[=epw_morph_backends]{epw_morph_backends()}}
+\code{\link[=epw_morph_methods]{epw_morph_methods()}}, \code{\link[=epw_morph_backends]{epw_morph_backends()}}
 }

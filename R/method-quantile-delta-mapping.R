@@ -13,7 +13,7 @@ QDM_PR_DRY_THRESHOLD <- 0.05 / 86400
 
 # The publication directly supports precipitation and the additive
 # interval-variable form exemplified by temperature. Other variable defaults
-# are retained as explicit package experiments for controlled comparisons.
+# remain explicitly experimental package extensions.
 QDM_PUBLISHED_VARIABLES <- c("pr", "tas")
 QDM_EXPERIMENTAL_VARIABLES <- c(
     "hurs",

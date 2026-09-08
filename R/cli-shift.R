@@ -682,17 +682,13 @@ cli_shift__recipe_options <- function(options, backend) {
         options$transition_hours <- transition_hours
     }
     if (backend %in% c(
-        "daily_temperature", "daily_temperature_btws", "sobie_curry_daily",
-        TEMPERATURE_COMPARISON_BACKENDS[["sobie_curry"]]
+        "daily_temperature", "daily_temperature_btws", "sobie_curry_daily"
     ) &&
         "window_days" %in% names(options)) {
         window_days <- suppressWarnings(as.integer(options$window_days[[1L]]))
         if (is.na(window_days)) {
             epwshiftr_cli_usage_abort(
-                if (backend %in% c(
-                    "sobie_curry_daily",
-                    TEMPERATURE_COMPARISON_BACKENDS[["sobie_curry"]]
-                )) {
+                if (identical(backend, "sobie_curry_daily")) {
                     "Sobie-Curry option window_days must be an odd integer."
                 } else {
                     "Daily temperature option window_days must be an odd integer."
@@ -704,18 +700,13 @@ cli_shift__recipe_options <- function(options, backend) {
     if (backend %in% c(
         "daily_temperature", "daily_temperature_btws",
         "eames_monthly_temperature", "ek_daily_temperature",
-        "sobie_curry_daily", unname(TEMPERATURE_COMPARISON_BACKENDS[
-            c("eames", "ek", "sobie_curry")
-        ])
+        "sobie_curry_daily"
     ) &&
         "tolerance" %in% names(options)) {
         tolerance <- suppressWarnings(as.numeric(options$tolerance[[1L]]))
         if (is.na(tolerance) || !is.finite(tolerance) || tolerance < 0) {
             epwshiftr_cli_usage_abort(
-                if (backend %in% c(
-                    "sobie_curry_daily",
-                    TEMPERATURE_COMPARISON_BACKENDS[["sobie_curry"]]
-                )) {
+                if (identical(backend, "sobie_curry_daily")) {
                     "Sobie-Curry option tolerance must be a non-negative number."
                 } else {
                     "Daily temperature option tolerance must be a non-negative number."

@@ -1,9 +1,8 @@
 #' @include weather-signal.R
 NULL
 
-# Method domains are comparison strata. They prevent a frequency or output
-# representation difference from being mistaken for a statistical-method
-# difference in a benchmark.
+# Method domains group algorithms by the temporal scale and weather-generation
+# role of their climate signal.
 WEATHER_METHOD_DOMAINS <- c(
     "monthly_morphing",
     "daily_temperature",
@@ -90,7 +89,7 @@ WeatherMethodSpec <- S7::new_class(
         if (length(self@domain) != 1L ||
             is.na(self@domain) ||
             !self@domain %in% WEATHER_METHOD_DOMAINS) {
-            return("`domain` must identify one weather-method comparison stratum.")
+            return("`domain` must identify one weather-method family.")
         }
         if (length(self@implementation) != 1L ||
             is.na(self@implementation) ||
@@ -160,7 +159,7 @@ WeatherMethodSpec <- S7::new_class(
 )
 
 # Construct a normalized method record without accepting any data-source,
-# period, calendar, physical-policy, or output-protocol setting.
+# period, calendar, physical-policy, or output-workflow setting.
 method__spec <- function(
     name,
     label,
@@ -338,8 +337,8 @@ method__register_components <- function() {
     invisible(NULL)
 }
 
-# Build the method catalog independently of recipe defaults. Publication study
-# conditions are deliberately absent and live in StudyPreset records instead.
+# Build the method catalog independently of complete recipe defaults. Source
+# selections and study periods remain caller-owned inputs.
 method__default_specs <- function() {
     method__register_components()
     list(
@@ -630,12 +629,11 @@ method__list <- function(registry = WEATHER_METHOD_REGISTRY) {
 #'
 #' `epw_morph_methods()` lists method-owned algorithm contracts independently
 #' of data sources, study periods, calendars, physical policies, and output
-#' protocols.
+#' workflows.
 #'
 #' @return A data table with one row per registered method.
 #'
-#' @seealso [epw_morph_protocols()], [epw_morph_compatibility()],
-#'   [epw_morph_recipes()]
+#' @seealso [epw_morph_recipes()], [epw_morph_recipe_spec()]
 #' @export
 epw_morph_methods <- function() {
     method__list()
@@ -647,7 +645,7 @@ epw_morph_methods <- function() {
 #'
 #' @return A `WeatherMethodSpec` object.
 #'
-#' @seealso [epw_morph_methods()], [epw_morph_protocol_spec()]
+#' @seealso [epw_morph_methods()], [epw_morph_recipe_spec()]
 #' @export
 epw_morph_method_spec <- function(name) {
     method__get(name)

@@ -12,9 +12,8 @@ A data table with one row per registered method.
 \description{
 \code{epw_morph_methods()} lists method-owned algorithm contracts independently
 of data sources, study periods, calendars, physical policies, and output
-protocols.
+workflows.
 }
 \seealso{
-\code{\link[=epw_morph_protocols]{epw_morph_protocols()}}, \code{\link[=epw_morph_compatibility]{epw_morph_compatibility()}},
-\code{\link[=epw_morph_recipes]{epw_morph_recipes()}}
+\code{\link[=epw_morph_recipes]{epw_morph_recipes()}}, \code{\link[=epw_morph_recipe_spec]{epw_morph_recipe_spec()}}
 }
