@@ -56,7 +56,7 @@ sobie__backend_options <- function(options = NULL) {
 sobie__variable_rows <- function(data, variable_id) {
     target_variable <- variable_id
     rows <- data.table::as.data.table(data.table::copy(data))[
-        get("variable_id") == target_variable
+        variable_id == target_variable
     ]
     if (!nrow(rows)) {
         cli::cli_abort(

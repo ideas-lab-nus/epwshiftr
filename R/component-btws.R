@@ -34,6 +34,9 @@ btws__hourly_component <- function() {
         scopes = "multivariate",
         operations = list(
             reconstruct = btws__hourly_reconstruct
+        ),
+        metadata = list(
+            reconstruction = "bounded_temperature_weighted_stretch"
         )
     )
 }

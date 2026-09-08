@@ -53,7 +53,8 @@ arima_test__climate <- function(
 # Build a complete four-role context around the packaged EPW fixture.
 arima_test__context <- function(
     temperature_shift = 0,
-    policy = "paper_faithful"
+    policy = "paper_faithful",
+    recipe_name = "monthly_percentile_temperature"
 ) {
     historical <- arima_test__climate(
         2001:2003,
@@ -78,11 +79,31 @@ arima_test__context <- function(
         reference_climate = historical,
         observed_reference = observed,
         recipe = epw_morph_recipe(
-            "monthly_percentile_temperature",
+            recipe_name,
             policy = policy
         )
     )
 }
+
+test_that("Arima factors support the common temperature comparison boundary", {
+    result <- morpher__run_context(arima_test__context(
+        temperature_shift = 1.5,
+        policy = "harmonized",
+        recipe_name = "arima_temperature_comparison"
+    ))
+    pipeline <- result$parts$component_pipeline
+
+    expect_identical(nrow(result$data), 8760L)
+    expect_identical(nrow(result$factors), 365L)
+    expect_lt(max(abs(result$factors[["mean_closure_error"]])), 1e-7)
+    expect_true(all(c(
+        "arima_change_functions", "arima_factors"
+    ) %in% names(result$parts)))
+    expect_identical(
+        pipeline[stage == "hourly", component],
+        "constrained_daily_temperature"
+    )
+})
 
 test_that("Arima recipe registers all four required input roles", {
     expect_true("arima_temperature" %in% epw_morph_backends())

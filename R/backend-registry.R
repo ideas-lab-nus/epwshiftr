@@ -1,4 +1,4 @@
-#' @include backend-hourly-kernel-qdm.R weather-pipeline.R
+#' @include adapter-daily-adjusted-epw.R adapter-temperature-comparison.R backend-hourly-kernel-qdm.R weather-pipeline.R
 NULL
 
 # EPW morphing backend registry {{{
@@ -327,7 +327,7 @@ EpwMorphBackend <- R6::R6Class(
 )
 
 morpher__default_backend_specs <- function() {
-    list(
+    builtins <- list(
         belcher = EpwMorphBackend$new(
             name = "belcher",
             label = "Belcher statistical downscaling with optional external reference",
@@ -408,6 +408,11 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = hourly_kqdm__pipeline()
         )
+    )
+    c(
+        builtins,
+        daily_adjustment__backend_specs(),
+        tempcompare__backend_specs()
     )
 }
 

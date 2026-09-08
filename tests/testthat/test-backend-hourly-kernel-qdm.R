@@ -331,8 +331,8 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     )
 })
 
-test_that("hourly kernel QDM retains the publication source manifest", {
-    manifest <- hourly_kqdm__source_manifest()
+test_that("Wang study preset retains the publication source manifest", {
+    manifest <- study__wang_source_manifest()
 
     expect_identical(nrow(manifest), 10L)
     expect_identical(

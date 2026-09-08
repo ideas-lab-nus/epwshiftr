@@ -43,6 +43,7 @@ eames_monthly_test__climate <- function(
                 source_id = "EC-Earth3",
                 experiment_id = experiment,
                 variant_label = "r1i1p1f1",
+                grid_label = "gn",
                 frequency = frequency,
                 table_id = "day",
                 variable_id = variable_id,
@@ -64,7 +65,8 @@ eames_monthly_test__climate <- function(
 eames_monthly_test__context <- function(
     mean_shift = seq(0.5, 1.6, by = 0.1),
     minimum_shift = seq(0.3, 1.4, by = 0.1),
-    maximum_shift = seq(0.7, 1.8, by = 0.1)
+    maximum_shift = seq(0.7, 1.8, by = 0.1),
+    recipe_name = "eames_monthly_temperature"
 ) {
     historical <- eames_monthly_test__climate(
         2001:2002,
@@ -83,9 +85,35 @@ eames_monthly_test__context <- function(
         epw = epw_file_read(get_cache_epw()),
         climate = future,
         reference_climate = historical,
-        recipe = epw_morph_recipe("eames_monthly_temperature")
+        recipe = epw_morph_recipe(recipe_name, policy = "harmonized")
     )
 }
+
+test_that("Eames signal supports the common temperature comparison boundary", {
+    context <- eames_monthly_test__context(
+        recipe_name = "eames_monthly_temperature_comparison"
+    )
+    result <- morpher__run_context(context)
+    pipeline <- result$parts$component_pipeline
+
+    expect_identical(nrow(result$data), 8760L)
+    expect_identical(nrow(result$factors), 365L)
+    expect_lt(max(abs(result$factors[["mean_closure_error"]])), 1e-7)
+    expect_lt(max(abs(result$factors[["minimum_closure_error"]])), 1e-7)
+    expect_lt(max(abs(result$factors[["maximum_closure_error"]])), 1e-7)
+    expect_identical(
+        pipeline[stage == "hourly", component],
+        "constrained_daily_temperature"
+    )
+    expect_identical(
+        pipeline[stage == "physics", component],
+        "specific_humidity_closure"
+    )
+    expect_length(protocol__validate_shared_inputs(
+        "daily_temperature_comparison",
+        list(eames = context$inputs)
+    ), 1L)
+})
 
 test_that("Eames daily sources produce 12 month-constant target sets", {
     mean_shift <- seq(0.5, 1.6, by = 0.1)

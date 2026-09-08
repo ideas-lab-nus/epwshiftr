@@ -905,6 +905,7 @@ sequence__epw_output_component <- function() {
         operations = list(write = sequence__epw_output_write),
         metadata = list(
             output_type = "multi_year",
+            target_calendar = "epw_365_day",
             member_policy = "one_member_per_complete_model_year",
             file_writer = "EpwMorpher",
             output_contract = "weather_sequence_result"

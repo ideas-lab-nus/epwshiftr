@@ -236,6 +236,9 @@ daily__temperature_component_specs <- function() {
             scopes = "multivariate",
             operations = list(
                 reconstruct = daily__temperature_hourly_reconstruct
+            ),
+            metadata = list(
+                reconstruction = "constrained_daily_temperature"
             )
         )
     )

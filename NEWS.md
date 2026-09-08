@@ -46,6 +46,21 @@
 
 ## New features
 
+* Separated future-weather algorithms, shared comparison conditions, optional
+  publication configurations, and executable recipes into distinct method,
+  protocol, study-preset, and recipe contracts. Eight daily bias-adjustment
+  methods now share one temperature-to-EPW path so their controlled recipes
+  differ only at the signal stage. Eames, Ek, Arima, and Sobie-Curry signals
+  also have explicit temperature-comparison recipes that retain their own
+  statistical and calendar calculations while sharing the same POWER hourly
+  reconstruction, specific-humidity closure, 365-day EPW output, source
+  identity, and model periods. Publication-oriented recipes remain available
+  separately, and recipe registration now rejects a claimed protocol when the
+  required input roles, actual hourly reconstruction, or target calendar
+  differ. The enhanced monthly recipe retains its optional historical-input
+  production behavior without claiming the stricter comparison protocol
+  (#246).
+
 * Added variable-specific CMIP6 frequency contracts to availability discovery,
   persisted workflow selection, component validation, and extraction planning.
   The hourly kernel-QDM workflow now resolves point-sampled `3hrPt` state and
