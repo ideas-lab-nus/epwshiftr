@@ -240,7 +240,7 @@ morpher__belcher_profile_methods <- function(backend, profile) {
 #'
 #' EnergyPlus Weather File Data Dictionary:
 #' <https://bigladdersoftware.com/epx/docs/22-2/auxiliary-programs/energyplus-weather-file-epw-data-dictionary.html>
-#' @export
+#' @noRd
 belcher_options <- function(
     transition_hours = 72L,
     humidity_source = "auto",

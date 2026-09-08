@@ -5,8 +5,8 @@
 * Renamed reusable future-weather registry keys, intermediate kinds, BTWS
   diagnostics, and method choices by the algorithms they implement rather than
   by a reference paper or software package. The Arima et al. complete workflow
-  remains available through `arima_temperature()`, while its recipe key is now
-  `monthly_percentile_temperature` (#165).
+  remains available through `daily_transform("arima")`, while its internal
+  recipe key is now `monthly_percentile_temperature` (#165).
 
 * Standalone `shift_*()` stages now carry their persisted `run_id` and
   `step_id` into the next stage automatically. The public API does not expose a
@@ -16,15 +16,16 @@
   Logical `progress` arguments on `shift_datasets()` and `shift_collect()` were
   removed in favour of `ui = shift_ui(progress = ...)` (#126).
 
-* Replaced the decomposed high-level future-EPW arguments with the
-  task-oriented `shift_future_epw(epw, climate, periods, method, dir, control,
-  store, dry_run)` interface. Future model, scenarios, member, grid, frequency,
-  and discovery constraints now form one complete `ShiftCmip6Spec` created by
-  `shift_cmip6()`. Morphing methods are explicit `ShiftMorphMethod` objects.
-  `belcher(reference = historical_reference(...))` is the recommended path
-  when matching historical CMIP6 data are available. `belcher()` remains a
-  fallback that uses the baseline EPW climatology; `NULL` never infers a
-  historical request.
+* Replaced public method and recipe construction with reusable
+  `WeatherTransformSpec` objects from `monthly_transform()`,
+  `daily_transform()`, or `hourly_transform()`. The task-oriented
+  `shift_future_epw(epw, climate, periods, transform, dir, reference,
+  observed_reference, control, ui, store, dry_run, background)` interface now
+  keeps historical model and observed-reference inputs at execution scope.
+  `weather_transforms()` exposes each selectable method's temporal, input,
+  reconstruction, evidence, and output contract. Version 1 workflow plans are
+  rejected explicitly, and the former method constructors and low-level public
+  recipe discovery API have been removed (#250).
 * Removed the `eplusr`, `psychrolib`, and `units` runtime dependencies. EPW files
   are parsed and written directly, while objects inheriting from `Epw` remain
   accepted through a dependency-free conversion to the internal `EpwFile`.
@@ -65,8 +66,9 @@
   wind fields, interval-mean `3hr` radiation, and optional daily `tasmin` and
   `tasmax` within one model/member/grid identity (#244).
 
-* Aligned the experimental `hourly_kernel_qdm()` workflow with the published
-  raw-model input boundary: model roles now request `tas`, `ps`, `huss`, `uas`,
+* Aligned the experimental `hourly_transform("kernel_qdm")` workflow with the
+  published raw-model input boundary: model roles now request `tas`, `ps`,
+  `huss`, `uas`,
   `vas`, `rsds`, and `rsdsdiff`, then derive hourly relative humidity, scalar
   wind speed, and meteorological direction before kernel QDM. Model direction
   follows the corrected future speed through calendar mapping and EPW physical
@@ -74,7 +76,8 @@
   Empty ESGF Dataset searches with `maxScore: null` now return a valid empty
   availability result (#240).
 
-* Added the experimental `hourly_kernel_qdm()` complete workflow for matching
+* Added the experimental `hourly_transform("kernel_qdm")` complete workflow
+  for matching
   hourly observed `tas`, `ps`, `hurs`, `sfcWind`, `rsds`, and `rsdsdiff` with
   three-hourly historical/future model `tas`, `ps`, `huss`, `uas`, `vas`,
   `rsds`, and `rsdsdiff`. The seven-stage recipe reconstructs hourly model
@@ -268,7 +271,7 @@
   CF-calendar coordinates, resolved settings, correction provenance, bounds,
   and explicit diagnostics (#161).
 
-* Added `arima_temperature()` and registered the temperature-focused
+* Added `daily_transform("arima")` and registered the temperature-focused
   `monthly_percentile_temperature` recipe. The workflow carries baseline EPW,
   historical daily model `tas`, future daily model `tas`, and multi-year
   observed daily `tas` as four distinct input roles. It builds month-wise
@@ -279,7 +282,7 @@
   explicitly; `paper_faithful` preserves baseline humidity fields, while
   `harmonized` applies specific-humidity closure (#157).
 
-* Added `ek_daily_temperature()` and registered the temperature-focused
+* Added `daily_transform("ek")` and registered the temperature-focused
   `ek_daily_factors` recipe. Matching daily CMIP6 `tasmin` and `tasmax` years
   are mapped from their native calendars to the 365-day EPW phase grid before
   daily mean and DTR change factors are calculated and applied through the Ek
@@ -289,7 +292,7 @@
   humidity fields, while `harmonized` applies specific-humidity closure
   (#155).
 
-* Added the temperature-only `eames_temperature()` method and registered
+* Added the temperature-only `monthly_transform("eames")` method and registered
   `eames_monthly_temperature` recipe. Matching daily CMIP6 `tas`, `tasmin`, and
   `tasmax` are aggregated into the monthly mean, average daily minimum, and
   average daily maximum changes used by Eames et al. (2024), then applied
@@ -298,10 +301,10 @@
   UKCP18 factors and states that non-temperature transformations are not
   included (#153).
 
-* Added `reconstruction = "btws"` to `daily_temperature()` and registered the
-  `epwshiftr_daily_btws` recipe. It combines the existing
-  calendar-neutral daily CMIP6
-  mean/minimum/maximum signal with the hourly bounded temperature weighted
+* Added `daily_transform("epwshiftr", reconstruction = "btws")` and registered
+  the internal `epwshiftr_daily_btws` recipe. It combines the existing
+  calendar-neutral daily CMIP6 mean/minimum/maximum signal with the hourly
+  bounded temperature weighted
   stretch from Eames et al. (2024), while reusing the baseline sequence,
   specific-humidity closure, and EPW output components. The implementation
   applies equations (7)--(16), records `S`, `m`, `n`, closure errors and
@@ -310,7 +313,7 @@
   provenance identifies the complete recipe as a combination rather than the
   paper's monthly UKCP18 workflow (#151).
 
-* Added a `harmonized` policy to `sobie_curry_daily()`. It retains the
+* Added an internal harmonized Sobie-Curry implementation. It retains the
   Sobie-Curry calendar-neutral factors, circular 21-day smoothing, baseline
   sequence, and hourly temperature transformation while applying the smoothed
   daily `huss` change through a shared specific-humidity closure. The target is
@@ -319,7 +322,7 @@
   targets are retained as diagnostics. The existing `paper_faithful` output
   remains the default (#149).
 
-* Added the registered `sobie_curry_daily()` paper-faithful method.
+* Added the registered `daily_transform("sobie_curry")` paper-faithful method.
   Its seven-stage pipeline derives daily thermodynamic factors from matching
   historical and future `tas`, `tasmin`, `tasmax`, `huss`, and `ps`, smooths
   the factors with the published circular 21-day window, preserves the
@@ -330,13 +333,14 @@
   fallbacks, closure errors, and physical diagnostics are retained with the
   result (#147).
 
-* Added a versioned registry of complete future-weather recipes. The catalog
-  records each method's input roles, calendar policy, seven component stages,
+* Added an internal versioned registry of complete future-weather recipes. The
+  catalog records each method's input roles, calendar policy, seven component
+  stages,
   execution policy, output type, diagnostics, and provenance without
-  serializing executable functions. `epw_morph_recipes()` and
-  `epw_morph_recipe_spec()` expose the metadata, registered methods validate
+  serializing executable functions. The public `weather_transforms()` catalog
+  presents the corresponding method contracts, registered methods validate
   their inputs before execution, and CLI/workflow round trips retain the
-  selected definition and policy (#145).
+  selected definition and policy (#145, #250).
 
 * Added explicit future-weather input roles and reusable `preprocess`,
   `calendar`, `signal`, `sequence`, `hourly`, `physics`, and `output`
@@ -345,8 +349,9 @@
   provenance, and diagnostics while existing `EpwMorphBackend` runners remain
   compatible (#143).
 
-* Added the built-in `daily_temperature()` method for complete future-EPW
-  workflows using daily future and historical CMIP6 temperature data. Its
+* Added the built-in `daily_transform("epwshiftr")` method for complete
+  future-EPW workflows using daily future and historical CMIP6 temperature
+  data. Its
   seven-stage component pipeline estimates circular daily `tas` changes,
   preserves the baseline EPW sequence, constrains each hourly profile to daily
   mean/minimum/maximum targets when paired `tasmin` and `tasmax` are available,
@@ -373,14 +378,15 @@
   node names including the ORNL/LLNL Bridge, and reports incomplete identities
   without downloading NetCDF payloads (#127, #133).
 
-* Belcher morphing now defaults to the `"enhanced"` profile. It uses guarded
+* Enhanced monthly morphing, now selected with
+  `monthly_transform("epwshiftr")`, uses guarded
   combined temperature morphing with cyclic month-boundary smoothing, a
   case-wide specific-humidity state path when complete `huss + tas + ps` data
   are available, integrated EPW solar geometry, RBL diffuse radiation, Perez
   illuminance, optional `snd` scaling, and recalculated ground-temperature and
-  typical/extreme-period headers. Use `profile = "legacy"` for compatible
-  pre-enhancement numerical results and EPW headers, and configure policies with
-  `belcher_options()` (#126).
+  typical/extreme-period headers. The original Belcher formulation remains
+  available through `monthly_transform("belcher")`; method-specific options
+  are supplied to the transform constructor (#126, #250).
 
 * `shift_cmip6(table = NULL)` now resolves exact variable/table/grid
   partitions. Atmospheric inputs remain in `Amon`, `snd` is discovered in

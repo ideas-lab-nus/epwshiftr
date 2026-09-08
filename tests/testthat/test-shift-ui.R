@@ -332,14 +332,10 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
             climate = list(model = "BCC-CSM2-MR", scenarios = "ssp585",
                 member = NULL, grid = NULL, table = NULL),
             periods = list(`2060s` = 2055:2065),
-            method = list(
-                name = "belcher",
-                recipe = list(
-                    backend = "belcher", profile = "enhanced",
-                    options = unclass(belcher_options())
-                ),
-                reference_mode = "baseline_epw"
+            transform = transform__spec_value(
+                monthly_transform("epwshiftr")
             ),
+            reference = NULL,
             control = list(download = "auto")
         )),
         started_at = now,
@@ -387,7 +383,7 @@ test_that("persisted watch tables rebuild the shared state and resolver result",
     expect_match(plain[[1L]], "Future EPW", fixed = TRUE)
     expect_match(plain[[2L]], "BCC-CSM2-MR", fixed = TRUE)
     expect_match(paste(plain, collapse = " "),
-        "belcher \\[enhanced\\]", perl = TRUE)
+        "epwshiftr / no reference", fixed = TRUE)
     expect_true(any(grepl("tables auto by variable", plain,
         fixed = TRUE)))
     expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
@@ -800,7 +796,10 @@ test_that("watch reconstruction retains the structured terminal diagnosis", {
         spec_json = shift__spec_json(list(
             climate = list(model = "BCC-CSM2-MR", scenarios = "ssp585"),
             periods = list(`2060s` = 2055:2065),
-            method = list(name = "belcher", reference_mode = "baseline_epw")
+            transform = transform__spec_value(
+                monthly_transform("epwshiftr")
+            ),
+            reference = NULL
         )),
         started_at = now,
         completed_at = now + 12,
@@ -865,7 +864,7 @@ test_that("startup plan summaries include output and selection without a full du
             table = c(snd = "LImon")
         ),
         periods = list(`2060s` = 2055:2065),
-        method = belcher(),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-ui-output-"),
         store = tempfile("shift-ui-store-"),
         dry_run = TRUE
@@ -876,7 +875,7 @@ test_that("startup plan summaries include output and selection without a full du
     expect_match(lines[[1L]], "Future EPW.*run-test.*STARTING")
     expect_match(lines[[2L]], "BCC-CSM2-MR.*ssp126.*2060s")
     expect_match(lines[[3L]],
-        "belcher \\[enhanced\\].*baseline EPW.*2 expected")
+        "Enhanced epwshiftr monthly morphing.*no reference.*2 expected")
     expect_match(paste(lines, collapse = " "),
         "Selection.*member r1i1p1f1.*grid gn.*tables auto by variable.*snd=LImon")
     expect_true(any(grepl("Output", lines, fixed = TRUE)))
@@ -890,7 +889,7 @@ test_that("startup plan summaries include output and selection without a full du
     expect_match(detail_text, "design_conditions=drop")
 })
 
-test_that("persisted plan context marks pre-profile Belcher tasks as legacy", {
+test_that("persisted plan context reports the public transform tuple", {
     row <- data.table::data.table(
         spec_json = shift__spec_json(list(
             task = "future_epw",
@@ -900,15 +899,16 @@ test_that("persisted plan context marks pre-profile Belcher tasks as legacy", {
                 table = list(snd = "LImon")
             ),
             periods = list(`2060s` = 2055:2065),
-            method = list(
-                name = "belcher", reference_mode = "baseline_epw"
-            )
+            transform = transform__spec_value(
+                monthly_transform("epwshiftr")
+            ),
+            reference = NULL
         )),
         output_dir = tempfile("future-epw-")
     )
     context <- shift__ui_plan_context_from_row(row, cases_total = 1L)
 
-    expect_true("belcher [legacy] / baseline EPW" %in% context$items)
+    expect_true("epwshiftr / no reference" %in% context$items)
     expect_match(context$selection,
         "member r1i1p1f1.*grid gn.*auto by variable.*snd=LImon")
 })
@@ -920,7 +920,7 @@ test_that("dynamic startup is a replaceable first frame rather than a transcript
         epw = get_cache_epw(),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
         periods = list(`2060s` = 2055:2065),
-        method = belcher(),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-ui-output-"),
         store = tempfile("shift-ui-store-"),
         dry_run = TRUE
@@ -959,7 +959,7 @@ test_that("dynamic startup is a replaceable first frame rather than a transcript
     expect_length(milestone_output, 0L)
     expect_match(plain[[1L]], "run 04b318bd", fixed = TRUE)
     expect_match(paste(plain, collapse = " "),
-        "BCC-CSM2-MR.*ssp126.*belcher")
+        "BCC-CSM2-MR.*ssp126.*Enhanced epwshiftr monthly morphing")
     expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
     expect_true(any(grepl("Resolve", plain, fixed = TRUE)))
     expect_equal(closed, 1L)
@@ -1097,7 +1097,7 @@ test_that("shift_watch() renders the shared status view instead of one long stri
             member = "r1i1p1f1", grid = "gn"
         ),
         periods = list(`2060s` = 2055:2065),
-        method = belcher(),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-watch-view-output-"),
         store = store,
         dry_run = TRUE
@@ -1204,7 +1204,7 @@ test_that("dynamic watch animates cached state between store polls", {
         epw = get_cache_epw(),
         climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
         periods = list(`2060s` = 2060L),
-        method = belcher(),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-watch-animation-output-"),
         store = tempfile("shift-watch-animation-store-"),
         dry_run = TRUE

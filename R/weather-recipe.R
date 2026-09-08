@@ -1494,34 +1494,14 @@ recipe__validate_inputs <- function(spec, inputs) {
     invisible(inputs)
 }
 
-#' Inspect registered future-weather recipes
-#'
-#' `epw_morph_recipes()` lists complete built-in executable compositions rather
-#' than low-level statistical backends or method definitions. The returned
-#' metadata identifies the independent method, source, inputs, components,
-#' execution and physical policies, output calendar, diagnostics, and
-#' provenance without executing the recipe.
-#'
-#' @return A data table with one row per registered complete recipe. Structured
-#'   metadata is retained in list columns.
-#'
-#' @seealso [epw_morph_recipe_spec()], [epw_morph_recipe()],
-#'   [epw_morph_methods()], [epw_morph_backends()]
-#' @export
+# Return internal executable recipe records for registry validation.
+#' @noRd
 epw_morph_recipes <- function() {
     recipe__list()
 }
 
-#' Get a registered future-weather recipe specification
-#'
-#' @param name Stable complete-recipe name returned by
-#'   [epw_morph_recipes()].
-#'
-#' @return A `WeatherRecipeSpec` object containing only inspectable,
-#'   serializable method metadata.
-#'
-#' @seealso [epw_morph_recipes()], [epw_morph_recipe()]
-#' @export
+# Return one internal complete-recipe contract by its registered key.
+#' @noRd
 epw_morph_recipe_spec <- function(name) {
     recipe__get(name)
 }

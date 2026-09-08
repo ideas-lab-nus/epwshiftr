@@ -208,8 +208,8 @@ test_that("Eames recipe exposes the adapted monthly temperature boundary", {
         "day"
     )
     expect_error(
-        eames_temperature(),
-        "requires an explicit reference"
+        transform__validate_execution_inputs(monthly_transform("eames")),
+        "requires.*reference"
     )
 })
 
@@ -324,10 +324,9 @@ test_that("Eames monthly temperature validates daily extrema inputs", {
     )
 })
 
-test_that("Eames public method survives dry-run plan reconstruction", {
-    method <- eames_temperature(
-        historical_reference(years = 1995:2014)
-    )
+test_that("Eames public transform survives dry-run plan reconstruction", {
+    transform <- monthly_transform("eames")
+    reference <- historical_reference(years = 1995:2014)
     climate <- shift_cmip6(
         "EC-Earth3",
         "ssp585",
@@ -338,7 +337,8 @@ test_that("Eames public method survives dry-run plan reconstruction", {
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2061L),
-        method = method,
+        transform = transform,
+        reference = reference,
         dir = tempfile("eames-monthly-output-"),
         store = tempfile("eames-monthly-store-"),
         dry_run = TRUE
@@ -346,15 +346,15 @@ test_that("Eames public method survives dry-run plan reconstruction", {
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_identical(
-        plan@meta$method@recipe$backend,
+        plan@meta$recipe$backend,
         "eames_monthly_temperature"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$recipe_spec,
+        rebuilt@meta$recipe$recipe_spec,
         "eames_monthly_temperature"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$components$signal,
+        rebuilt@meta$recipe$components$signal,
         "monthly_mean_extrema_changes"
     )
     expect_silent(shift__validate_background_plan(plan))

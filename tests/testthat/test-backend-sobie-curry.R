@@ -153,7 +153,10 @@ test_that("Sobie-Curry recipe registers its published daily contract", {
         morpher__recipe_required_frequency(recipe),
         "day"
     )
-    expect_error(sobie_curry_daily(), "requires an explicit reference")
+    expect_error(
+        transform__validate_execution_inputs(daily_transform("sobie_curry")),
+        "requires.*reference"
+    )
     expect_error(
         epw_morph_recipe(
             "sobie_curry_daily",

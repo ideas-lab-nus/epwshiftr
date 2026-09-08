@@ -9,15 +9,9 @@ EPW_MORPH_VARIABLE_LEVELS <- list(
     extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", "snd")
 )
 
-#' EPW morphing variable sets
-#'
-#' @param level Variable set level, an [EpwMorphBackend] object, or an
-#'        [epw_morph_recipe()] object.
-#' @param include_optional Whether to include optional source variables used by
-#'   enhanced methods.
-#'
-#' @return A character vector of CMIP variable IDs.
-#' @export
+# Resolve canonical and optional source variables for internal recipe and
+# backend execution contracts.
+#' @noRd
 epw_morph_variables <- function(level = c("recommended", "minimal", "extended"),
                                 include_optional = FALSE) {
     checkmate::assert_flag(include_optional)
@@ -155,30 +149,8 @@ morpher__requirement_match <- function(available, alternatives) {
     character()
 }
 
-#' EPW morphing recipe
-#'
-#' @param name Recipe name. Defaults to `"belcher"`.
-#' @param backend Backend name. Ad hoc recipes default to `name`; registered
-#'   recipes use the backend declared by their specification.
-#' @param methods Optional named character vector overriding morphing methods for
-#'        backend steps.
-#' @param profile Built-in Belcher compatibility profile. `NULL` selects
-#'   `"enhanced"`; old serialized recipes are reconstructed explicitly as
-#'   `"legacy"`.
-#' @param options Optional named backend option list. Belcher options are
-#'   usually created by [belcher_options()].
-#' @param policy Optional registered complete-recipe execution policy,
-#'   `"paper_faithful"` or `"harmonized"`. Registered recipes select their
-#'   declared default when `NULL`; ad hoc backend recipes do not accept it.
-#' @param version Optional persisted registered-recipe definition version.
-#'   Normally leave this `NULL`; resumed workflows use it to reject an
-#'   incompatible catalog definition.
-#' @param spec Optional registered complete-recipe identifier. This allows a
-#'   stable catalog definition to be retained when `name` is a user-facing
-#'   alias such as `"daily_temperature"`.
-#'
-#' @return A recipe list.
-#' @export
+# Construct the internal executable recipe selected by a public transform.
+#' @noRd
 epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
                              profile = NULL, options = NULL, policy = NULL,
                              version = NULL, spec = NULL) {

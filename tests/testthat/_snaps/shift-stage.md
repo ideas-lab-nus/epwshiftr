@@ -1,7 +1,7 @@
 # Shift configuration printers use compact semantic receipts
 
     Code
-      shift_test_print_objects(list(climate, control, ui, reference, method, site),
+      shift_test_print_objects(list(climate, control, ui, reference, transform, site),
       width = 72L)
     Message
       == CMIP6 Climate =======================================================
@@ -34,17 +34,25 @@
       * Experiment: historical
       * Activity: CMIP
       * Match: source_id, variant_label, frequency, table_id, grid_label
-      == Morph Method ========================================================
-      * Name: belcher
-      * Backend: belcher
-      * Profile: enhanced
-      * Reference: baseline EPW
-      * Requires reference: FALSE
-      * Accepts reference: TRUE
-      * Observed reference: none
-      * Requires observed reference: FALSE
-      * Accepts observed reference: FALSE
-      * Variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
+      == Weather Transform ===========================================================
+      * Method: Enhanced epwshiftr monthly morphing
+      * Transformation scale: monthly
+      * Required source frequency: model_future: mon; model_historical: mon
+      * Statistical grouping: calendar_month
+      * Hourly reconstruction: enhanced_field_equations
+      * Output frequency: hour
+      * Output type: representative_year
+      * Required inputs: weather_template, model_future
+      * Required variables: model_future: tas + huss + ps + psl + rlds + rsds +
+        sfcWind + clt + pr or tas + hurs + psl + rlds + rsds + sfcWind + clt + pr
+      * Optional inputs: model_historical
+      * Optional variables: model_historical: tas + huss + ps + psl + rlds + rsds +
+        sfcWind + clt + pr or tas + hurs + psl + rlds + rsds + sfcWind + clt + pr
+      * Stochastic variables: none
+      * Evidence: package_method
+      * References: https://doi.org/10.1191/0143624405bt112oa,
+        https://github.com/ideas-lab-nus/epwshiftr/pull/126
+      * Status: production
       == EPW Site ============================================================
       * ID: SIN
       * Label: Singapore
@@ -53,7 +61,7 @@
 ---
 
     Code
-      shift_test_print_objects(list(climate, control, ui, reference, method, site),
+      shift_test_print_objects(list(climate, control, ui, reference, transform, site),
       width = 100L, n = 3L, verbose = TRUE)
     Message
       == CMIP6 Climate ===================================================================================
@@ -97,48 +105,25 @@
       * Match: source_id, variant_label, frequency, table_id, grid_label
       -- Workflow options --------------------------------------------------------------------------------
       * Extract: fallback=auto
-      == Morph Method ====================================================================================
-      * Name: belcher
-      * Backend: belcher
-      * Profile: enhanced
-      * Reference: baseline EPW
-      * Requires reference: FALSE
-      * Accepts reference: TRUE
-      * Observed reference: none
-      * Requires observed reference: FALSE
-      * Accepts observed reference: FALSE
-      * Variables: tas, hurs, psl, rlds, rsds, sfcWind, clt, ... (8 total)
-      -- Options -----------------------------------------------------------------------------------------
-      +-------------------------+-------------+
-      | Option                  | Value       |
-      +-------------------------+-------------+
-      | transition_hours        | 72          |
-      | humidity_source         | auto        |
-      | diffuse_model           | rbl_2010    |
-      | illuminance_model       | perez_1990  |
-      | snow_depth              | auto        |
-      | ground_temperatures     | recalculate |
-      | typical_extreme_periods | recalculate |
-      | design_conditions       | drop        |
-      +-------------------------+-------------+
-      -- Method overrides --------------------------------------------------------------------------------
-      +-------+--------+
-      | Field | Method |
-      +-------+--------+
-      | tdb   | auto   |
-      | rh    | shift  |
-      | p     | shift  |
-      +-------+--------+
-      i 3 more rows; increase `n` to show every method override.
-      -- Rules -------------------------------------------------------------------------------------------
-      +------+----------------------+-------------+--------+----------+
-      | Step | Epw Field            | Variable Id | Method | Required |
-      +------+----------------------+-------------+--------+----------+
-      | tdb  | dry_bulb_temperature | tas         | auto   | yes      |
-      | rh   | relative_humidity    | hurs        | shift  | yes      |
-      | p    | atmospheric_pressure | psl         | shift  | yes      |
-      +------+----------------------+-------------+--------+----------+
-      i 11 more rows; increase `n` to show every backend rule.
+      == Weather Transform ===========================================================
+      * Method: Enhanced epwshiftr monthly morphing
+      * Transformation scale: monthly
+      * Required source frequency: model_future: mon; model_historical: mon
+      * Statistical grouping: calendar_month
+      * Hourly reconstruction: enhanced_field_equations
+      * Output frequency: hour
+      * Output type: representative_year
+      * Required inputs: weather_template, model_future
+      * Required variables: model_future: tas + huss + ps + psl + rlds + rsds +
+        sfcWind + clt + pr or tas + hurs + psl + rlds + rsds + sfcWind + clt + pr
+      * Optional inputs: model_historical
+      * Optional variables: model_historical: tas + huss + ps + psl + rlds + rsds +
+        sfcWind + clt + pr or tas + hurs + psl + rlds + rsds + sfcWind + clt + pr
+      * Stochastic variables: none
+      * Evidence: package_method
+      * References: https://doi.org/10.1191/0143624405bt112oa,
+        https://github.com/ideas-lab-nus/epwshiftr/pull/126
+      * Status: production
       == EPW Site ========================================================================================
       * ID: SIN
       * Label: Singapore
@@ -156,7 +141,7 @@
       * Status: planned
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
-      * Method: belcher [enhanced]
+      * Transform: Belcher monthly morphing
       * Reference: historical · reference 1995–2014
       * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
@@ -207,7 +192,7 @@
         columns.
       == Morphed EPW =================================================================
       * Status: partial
-      * Method: belcher [enhanced]
+      * Transform: Belcher monthly morphing
       * Reference: historical · reference 1995–2014
       * Cases: 4
       * Results: 4
@@ -249,7 +234,7 @@
       * Status: planned
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
-      * Method: belcher [enhanced]
+      * Transform: Belcher monthly morphing
       * Reference: historical · reference 1995–2014
       * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
@@ -315,7 +300,7 @@
       * Status: partial
       == Morphed EPW =====================================================================================
       * Status: partial
-      * Method: belcher [enhanced]
+      * Transform: Belcher monthly morphing
       * Reference: historical · reference 1995–2014
       * Cases: 4
       * Results: 4
@@ -357,7 +342,7 @@
     Message
       ╭─ Future EPW  COMPLETED  5s  run 12345678 ───────────────────────────╮
       │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065)          │
-      │          belcher [legacy] / historical 1995–2014 · 2 EPWs           │
+      │          belcher / historical 1995–2014 · 2 EPWs                    │
       ├─ Workflow ──────────────────────────────────────────────────────────┤
       │ Flow     [6/6] ✔ EPW · final stage                                  │
       │ Now      ✔ Workflow completed                                       │
@@ -381,8 +366,8 @@
       print(run, width = 100L, verbose = TRUE)
     Message
       ╭─ Future EPW  COMPLETED  5s  run 12345678 ───────────────────────────────────────────────────────╮
-      │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065)                                      │
-      │          belcher [legacy] / historical 1995–2014 · 2 EPWs                                       │
+      │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065) · belcher / historical 1995–2014     │
+      │          2 EPWs                                                                                 │
       ├─ Workflow ──────────────────────────────────────────────────────────────────────────────────────┤
       │ Flow     ✔ Resolve  ›  ✔ Future  ›  ✔ Reference  ›  ✔ Coverage  ›  ✔ Morph  ›  ✔ EPW            │
       │ Now      ✔ Workflow completed                                                                   │

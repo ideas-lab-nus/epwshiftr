@@ -8,7 +8,7 @@ epw_morpher(
   store,
   epw,
   site_id = NULL,
-  recipe = epw_morph_recipe("belcher"),
+  transform = monthly_transform("belcher"),
   label = NULL
 )
 }
@@ -20,7 +20,8 @@ inheriting from \code{"Epw"}.}
 
 \item{site_id}{Optional site identifier.}
 
-\item{recipe}{EPW morphing recipe.}
+\item{transform}{A reusable weather transformation created by
+\code{\link[=monthly_transform]{monthly_transform()}}, \code{\link[=daily_transform]{daily_transform()}}, or \code{\link[=hourly_transform]{hourly_transform()}}.}
 
 \item{label}{Optional source label.}
 }

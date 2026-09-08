@@ -84,15 +84,14 @@ location used by the R API.
 
 Use `shift run --config` when you want one command to execute the main workflow:
 request, collect, optional download, extract, morph, and write EPW files. The
-configuration file is JSON and is validated before work starts. Morphing
-methods own their structural inputs. A matching historical reference is the
-recommended Belcher configuration. Omit `method.reference` only when no
-suitable reference data exist; that fallback uses the baseline EPW without
-creating an implicit historical query.
+configuration file is JSON and is validated before work starts. The transform
+selects the scientific calculation; run-specific model and observed references
+are separate top-level inputs. The Belcher transform requires a matching
+historical model reference.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "epw": "baseline/SIN.epw",
   "climate": {
     "provider": "cmip6",
@@ -106,24 +105,14 @@ creating an implicit historical query.
   "periods": {
     "2060s": "2055:2065"
   },
-  "method": {
-    "name": "belcher",
-    "profile": "enhanced",
-    "options": {
-      "transition_hours": 72,
-      "humidity_source": "auto",
-      "diffuse_model": "rbl_2010",
-      "illuminance_model": "perez_1990",
-      "snow_depth": "auto",
-      "ground_temperatures": "recalculate",
-      "typical_extreme_periods": "recalculate",
-      "design_conditions": "drop"
-    },
-    "reference": {
-      "mode": "historical",
-      "periods": {
-        "reference": "1995:2014"
-      }
+  "transform": {
+    "scale": "monthly",
+    "method": "belcher"
+  },
+  "reference": {
+    "mode": "historical",
+    "periods": {
+      "reference": "1995:2014"
     }
   },
   "dir": "outputs/future-epw",
@@ -137,12 +126,11 @@ creating an implicit historical query.
 }
 ```
 
-`climate.table = null` enables recipe-aware table selection: atmospheric
-variables normally use `Amon`, while `snd` uses `LImon`. A scalar forces every
-variable into one table; a JSON object such as `{"snd": "LImon"}` overrides
-only the named variable. The method profile and resolved options are persisted
-with the run. Older task records that lack these fields resume as `legacy`
-rather than silently adopting enhanced defaults.
+`climate.table = null` enables transform-aware table selection. A scalar forces
+every variable into one table; a JSON object such as
+`{"snd": "LImon"}` overrides only the named variable. The resolved transform
+and its scientific options are persisted with the run. Version 1 workflow
+records are rejected rather than silently reinterpreted under the new API.
 
 Preview the parsed request and site without writing store state:
 
@@ -215,22 +203,22 @@ epwshiftr --store ~/cmip6-store extract coverage --plan <plan_id>
 epwshiftr --store ~/cmip6-store extract artifacts --plan <plan_id>
 ```
 
-Use `morph` commands to inspect available recipes/backends, run morphing from
+Use `morph` commands to inspect available transforms, run a transform from
 extracted `plan_id` values, and write EPW outputs later from the stored
 `morph_id`.
 
 ```sh
-epwshiftr --store ~/cmip6-store morph variables --recipe belcher
-epwshiftr --store ~/cmip6-store morph backends
+epwshiftr --store ~/cmip6-store morph transforms
+epwshiftr --store ~/cmip6-store morph variables \
+  --scale monthly \
+  --method belcher
 
 epwshiftr --store ~/cmip6-store morph run \
   --plan <plan_id> \
   --epw baseline/SIN.epw \
   --period 2060s=2055:2064 \
-  --recipe belcher \
-  --profile enhanced \
-  --option transition_hours=72 \
-  --option snow_depth=auto \
+  --scale monthly \
+  --method belcher \
   --reference historical \
   --reference-period reference=1995 \
   --strict true
@@ -242,9 +230,9 @@ epwshiftr --store ~/cmip6-store morph status --morph <morph_id>
 epwshiftr --store ~/cmip6-store morph outputs --morph <morph_id>
 ```
 
-Repeat `--option KEY=VALUE` for each override. Omitted values come from the
-selected profile; `--profile legacy` restores the pre-enhancement calculation
-and EPW-header policies.
+Repeat `--option KEY=VALUE` for each scientific setting supported by the
+selected transform. Use `--reconstruction` only when `morph transforms` lists
+more than one reconstruction for that scale and method.
 
 # Search Without Saving
 

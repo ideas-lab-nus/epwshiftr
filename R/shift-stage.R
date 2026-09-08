@@ -1,4 +1,4 @@
-#' @include query.R store.R epw-morpher.R utils.R
+#' @include query.R store.R epw-morpher.R utils.R weather-transform.R
 NULL
 
 # shift diagnostics -----------------------------------------------------------
@@ -176,25 +176,6 @@ ShiftSite <- S7::new_class(
         label = shift_prop_string(null.ok = TRUE, min.chars = 1L, default = NULL),
         epw = S7::new_property(S7::class_any, default = NULL),
         metadata = S7::new_property(S7::class_list, default = list())
-    )
-)
-
-# ShiftMorphMethod binds a low-level morphing recipe to its explicit workflow
-# inputs without making the EpwMorpher engine depend on ESGF reference specs.
-ShiftMorphMethod <- S7::new_class(
-    "ShiftMorphMethod",
-    properties = list(
-        name = shift_prop_string(min.chars = 1L),
-        recipe = S7::new_property(S7::class_any),
-        reference = S7::new_property(S7::class_any, default = NULL),
-        observed_reference = S7::new_property(
-            S7::class_any,
-            default = NULL
-        ),
-        requires_reference = S7::new_property(S7::class_logical),
-        requires_observed_reference = S7::new_property(
-            S7::class_logical
-        )
     )
 )
 
@@ -1888,434 +1869,6 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 }
 
 #' @rdname shift_api
-#' @param recipe A low-level [epw_morph_recipe()] object.
-#' @param reference An explicit `ShiftReferenceSpec`, extracted `ShiftClimate`
-#'   stage, or `NULL` containing historical model output. Optional-reference
-#'   methods such as [belcher()] use the baseline EPW climatology when `NULL`.
-#' @param observed_reference An explicit plan-backed `ShiftReferenceSpec`,
-#'   extracted `ShiftClimate` stage, or `NULL` containing multi-year observed
-#'   daily weather. It is never substituted for `reference`.
-#' @export
-shift_morph_method <- function(
-    recipe,
-    reference = NULL,
-    observed_reference = NULL
-) {
-    if (!inherits(recipe, "epw_morph_recipe")) {
-        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
-    }
-    for (name in c("reference", "observed_reference")) {
-        value <- get(name, inherits = FALSE)
-        if (!is.null(value) &&
-            !S7::S7_inherits(value, ShiftReferenceSpec) &&
-            !S7::S7_inherits(value, ShiftClimate)) {
-            cli::cli_abort(
-                "{.arg {name}} must be a {.cls ShiftReferenceSpec}, a {.cls ShiftClimate} stage, or `NULL`."
-            )
-        }
-    }
-    if (S7::S7_inherits(observed_reference, ShiftReferenceSpec) &&
-        !identical(observed_reference@mode, "plan")) {
-        cli::cli_abort(
-            paste(
-                "{.arg observed_reference} must use a plan-backed reference;",
-                "automatic historical CMIP resolution produces model output,",
-                "not observations."
-            )
-        )
-    }
-
-    requires_reference <- isTRUE(morpher__recipe_requires_reference(recipe))
-    accepts_reference <- isTRUE(morpher__recipe_accepts_reference(recipe))
-    requires_observed <- isTRUE(
-        morpher__recipe_requires_observed_reference(recipe)
-    )
-    accepts_observed <- isTRUE(
-        morpher__recipe_accepts_observed_reference(recipe)
-    )
-    if (requires_reference && is.null(reference)) {
-        cli::cli_abort(c(
-            "The selected morphing method requires an explicit reference containing historical model output.",
-            "i" = "Supply `reference` as a reference spec or extracted climate when constructing the method."
-        ))
-    }
-    if (!accepts_reference && !is.null(reference)) {
-        cli::cli_abort("The selected morphing method does not accept reference climate data.")
-    }
-    if (requires_observed && is.null(observed_reference)) {
-        cli::cli_abort(c(
-            "The selected morphing method requires an explicit observed reference.",
-            "i" = "Supply `observed_reference` as a plan-backed reference spec or extracted climate when constructing the method."
-        ))
-    }
-    if (!accepts_observed && !is.null(observed_reference)) {
-        cli::cli_abort(
-            "The selected morphing method does not accept observed reference data."
-        )
-    }
-
-    ShiftMorphMethod(
-        name = recipe$name,
-        recipe = recipe,
-        reference = reference,
-        observed_reference = observed_reference,
-        requires_reference = requires_reference,
-        requires_observed_reference = requires_observed
-    )
-}
-
-#' @rdname shift_api
-#' @param methods Optional named Belcher step method overrides.
-#' @param profile Belcher compatibility profile, `"enhanced"` by default.
-#' @param options For [belcher()], an optional named list created by
-#'   [belcher_options()]. For [shift_request()], provider-specific request
-#'   options; ESGF recognizes `index_node` and `time_filter_method`.
-#' @export
-belcher <- function(reference = NULL, methods = NULL, profile = "enhanced",
-                    options = NULL) {
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "belcher",
-            methods = methods,
-            profile = profile,
-            options = options
-        ),
-        reference = reference
-    )
-}
-
-#' Daily temperature projection method
-#'
-#' @description
-#' `daily_temperature()` creates a future-EPW method from matching future and
-#' historical daily CMIP temperature data. It requires `frequency = "day"`.
-#' The configured workflow retains the selected registered recipe identity and
-#' `"harmonized"` execution policy while preserving the public method name.
-#'
-#' Daily `tas` changes are estimated with a circular climatology on a common
-#' 365-day phase grid. When paired `tasmin` and `tasmax` are available for both
-#' periods, each baseline 24-hour profile is constrained to the requested daily
-#' mean, minimum, and maximum while retaining its hourly ordering. Otherwise,
-#' the daily mean change is applied additively and the baseline daily range is
-#' inherited.
-#'
-#' `reconstruction = "power"` uses epwshiftr's monotone power projection.
-#' `"btws"` instead selects the bounded temperature weighted stretch published
-#' by Eames et al. (2024). The latter remains a composite method: only its
-#' hourly reconstruction comes from Eames, while the daily CMIP6 signal,
-#' calendar mapping, humidity closure, and output policy remain epwshiftr
-#' components.
-#'
-#' EPW fields outside dry-bulb temperature and its coupled humidity state remain
-#' unchanged. After dry-bulb temperature is projected, baseline specific
-#' humidity is retained and relative humidity and dew point are recomputed;
-#' moisture is clipped only when necessary to avoid supersaturation.
-#'
-#' @param reference A required [historical_reference()],
-#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
-#' @param window_days Odd circular climatology-window width in days.
-#' @param reconstruction Hourly temperature reconstruction component:
-#'   `"power"` uses the default constrained power projection; `"btws"` uses
-#'   bounded temperature weighted stretch and requires paired daily
-#'   `tasmin` and `tasmax`.
-#'
-#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
-#'
-#' @references
-#' Eames, M. E., Ramallo-González, A. P., and Wood, M. J. (2024).
-#' A revised morphing algorithm for creating future weather for building
-#' performance evaluation.
-#' \doi{10.1177/01436244231218861}
-#'
-#' @seealso [shift_cmip6()], [shift_future_epw()]
-#' @export
-daily_temperature <- function(
-    reference = NULL,
-    window_days = 31L,
-    reconstruction = c("power", "btws")
-) {
-    reconstruction <- match.arg(reconstruction)
-    spec <- switch(
-        reconstruction,
-        power = "epwshiftr_daily_power",
-        btws = "epwshiftr_daily_btws"
-    )
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "daily_temperature",
-            options = list(window_days = window_days),
-            policy = "harmonized",
-            spec = spec
-        ),
-        reference = reference
-    )
-}
-
-#' Eames monthly temperature method
-#'
-#' @description
-#' `eames_temperature()` creates a temperature-only future-EPW method using the
-#' monthly temperature signal and bounded temperature weighted stretch (BTWS)
-#' described by Eames et al. (2024). Matching historical and future daily
-#' `tas`, `tasmin`, and `tasmax` inputs are required.
-#'
-#' The daily CMIP6 inputs are aggregated into 12 calendar-month values for mean
-#' temperature, average daily minimum temperature, and average daily maximum
-#' temperature. One future-minus-historical set is applied to every baseline
-#' day in that EPW month before BTWS reconstructs the hourly profile. The method
-#' therefore does not use daily-varying change factors.
-#'
-#' The published method used monthly UKCP18 factors. This implementation adapts
-#' its temperature calculation to monthly statistics derived from daily CMIP6
-#' data. It retains epwshiftr's specific-humidity closure and EPW output policy,
-#' and does not implement the paper's non-temperature transformations.
-#'
-#' @param reference A required [historical_reference()],
-#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
-#'
-#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
-#'
-#' @references
-#' Eames, M. E., Ramallo-González, A. P., and Wood, M. J. (2024).
-#' A revised morphing algorithm for creating future weather for building
-#' performance evaluation.
-#' \doi{10.1177/01436244231218861}
-#'
-#' @seealso [daily_temperature()], [shift_cmip6()], [shift_future_epw()]
-#' @export
-eames_temperature <- function(reference = NULL) {
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "eames_monthly_temperature",
-            policy = "harmonized"
-        ),
-        reference = reference
-    )
-}
-
-#' Ek daily temperature method
-#'
-#' @description
-#' `ek_daily_temperature()` creates the temperature-focused daily change-factor
-#' workflow described by Ek et al. (2018). Matching historical and future daily
-#' `tasmin` and `tasmax` inputs are required.
-#'
-#' The method constructs one climate baseline for each day of the annual cycle,
-#' derives daily mean temperature and DTR from the paired extrema, and applies
-#' the Ek combined shift-and-stretch equation to every baseline EPW hour. It
-#' does not apply an undocumented smoothing window and it preserves the
-#' baseline day order and within-day timing.
-#'
-#' The paper does not fully reconcile its generic stretch-factor equation,
-#' combined temperature equation, and variance description. This implementation
-#' uses relative DTR change as the anomaly multiplier because that interpretation
-#' gives zero-change identity and the stated daily mean and variance behavior.
-#' The selected equation and calendar adaptation are retained in result
-#' provenance.
-#'
-#' The `"paper_faithful"` policy changes dry-bulb temperature while preserving
-#' the baseline humidity fields. The `"harmonized"` policy instead preserves
-#' feasible baseline specific humidity and recomputes relative humidity and dew
-#' point against the projected temperature.
-#'
-#' @param reference A required [historical_reference()],
-#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
-#' @param policy Physical execution policy: `"paper_faithful"` preserves the
-#'   baseline humidity fields; `"harmonized"` applies shared specific-humidity
-#'   closure.
-#'
-#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
-#'
-#' @references
-#' Ek, M., Murdock, T. Q., Sobie, S. R., Cavka, B., Coughlin, B., and
-#' Wells, R. (2018). Future weather files to support climate resilient
-#' building design in Vancouver.
-#' \url{https://hdl.handle.net/1828/21874}
-#'
-#' @seealso [daily_temperature()], [sobie_curry_daily()], [shift_cmip6()],
-#'   [shift_future_epw()]
-#' @export
-ek_daily_temperature <- function(
-    reference = NULL,
-    policy = c("paper_faithful", "harmonized")
-) {
-    policy <- match.arg(policy)
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "ek_daily_factors",
-            policy = policy
-        ),
-        reference = reference
-    )
-}
-
-#' Arima month-wise quantile-mapping temperature method
-#'
-#' @description
-#' `arima_temperature()` creates the temperature-focused future-weather method
-#' described by Arima et al. (2024). It requires a baseline EPW, matching
-#' historical and future daily model `tas`, and multi-year observed daily `tas`
-#' for the target location.
-#'
-#' For each calendar month, the method calculates historical and future model
-#' inverse CDFs and subtracts values at common percentiles. The resulting
-#' change function is smoothed with the published endpoint-aware nine-point
-#' moving mean repeated three times. Each baseline EPW daily mean is located in
-#' the observed monthly empirical CDF, and the corresponding additive factor is
-#' applied to all 24 hours of that baseline day.
-#'
-#' The publications do not specify empirical plotting positions, quantile
-#' interpolation, or endpoint evaluation. This implementation records its
-#' deterministic midpoint probability grid, type-7 quantiles, linear factor
-#' interpolation, and endpoint clamping in result provenance.
-#'
-#' The `"paper_faithful"` policy changes dry-bulb temperature while preserving
-#' baseline humidity fields. The `"harmonized"` policy instead retains feasible
-#' baseline specific humidity and recomputes relative humidity and dew point.
-#'
-#' @param reference A required [historical_reference()],
-#'   [shift_reference_plan()], or extracted `ShiftClimate` stage containing
-#'   historical daily model output.
-#' @param observed_reference A required [shift_reference_plan()] or extracted
-#'   `ShiftClimate` stage containing multi-year observed daily weather.
-#' @param policy Physical execution policy: `"paper_faithful"` preserves
-#'   baseline humidity fields; `"harmonized"` applies shared specific-humidity
-#'   closure.
-#'
-#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
-#'
-#' @references
-#' Arima, Y., Ozaki, A., Kuma, Y., Iseda, H., and Abe, G. (2024).
-#' Development of Future Weather Data Using the Quantile Mapping Technique and
-#' its Application in Japan. \doi{10.69357/asim2024.1178}
-#'
-#' @seealso [ek_daily_temperature()], [sobie_curry_daily()], [shift_cmip6()],
-#'   [shift_future_epw()]
-#' @export
-arima_temperature <- function(
-    reference = NULL,
-    observed_reference = NULL,
-    policy = c("paper_faithful", "harmonized")
-) {
-    policy <- match.arg(policy)
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "monthly_percentile_temperature",
-            policy = policy
-        ),
-        reference = reference,
-        observed_reference = observed_reference
-    )
-}
-
-#' Hourly kernel QDM future-weather method
-#'
-#' @description
-#' `hourly_kernel_qdm()` creates a complete multi-year future-weather method
-#' from matching three-hourly historical and future model data plus an hourly
-#' observed reference. CMIP6 model roles require point-sampled `3hrPt` `tas`,
-#' `ps`, `huss`, `uas`, and `vas`, together with interval-mean `3hr` `rsds`
-#' and `rsdsdiff`. Daily `tasmin` and `tasmax` are optional interpolation
-#' anchors. The observed role requires `tas`, `ps`, `hurs`, `sfcWind`, `rsds`,
-#' and `rsdsdiff`.
-#'
-#' Continuous model state variables and wind-vector components are interpolated
-#' to an hourly lattice. Relative humidity is derived from `huss`, `tas`, and
-#' `ps`; scalar speed and meteorological direction are derived from `uas` and
-#' `vas`. Shortwave variables are allocated with solar geometry before the
-#' centered three-month kernel-density Quantile Delta Mapping calculation.
-#' Every corrected future-model year is then mapped to the 365-day EPW calendar
-#' and passed through the common `absolute_model_fields` physical policy, with
-#' the future model's wind direction retained alongside the corrected speed.
-#'
-#' The method returns one addressable output member per complete future-model
-#' year. Numerical kernel, bandwidth, grid, tail, and zero-denominator settings
-#' not reported by the source publication remain explicit experimental defaults.
-#' The high-level workflow expands historical and future extraction windows by
-#' one source timestep so bounded interpolation can retain every requested year.
-#' Pre-extracted `ShiftClimate` inputs must retain equivalent edge support.
-#'
-#' @param reference A required [historical_reference()],
-#'   [shift_reference_plan()], or extracted `ShiftClimate` stage containing
-#'   matching variable-specific `3hrPt`, `3hr`, and optional daily historical
-#'   model output.
-#' @param observed_reference A required [shift_reference_plan()] or extracted
-#'   `ShiftClimate` stage containing hourly observed weather.
-#' @param signal_overrides Optional named list of variable-specific kernel-QDM
-#'   settings passed to the signal component.
-#'
-#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
-#'
-#' @references
-#' Wang, Z. et al. (2023). Climate data for building simulations in
-#' EnergyPlus. \doi{10.1038/s41467-023-41458-5}
-#'
-#' @seealso [shift_cmip6()], [shift_future_epw()], [epw_morph_recipes()]
-#' @export
-hourly_kernel_qdm <- function(
-    reference = NULL,
-    observed_reference = NULL,
-    signal_overrides = list()
-) {
-    options <- hourly_kqdm__options(list(
-        signal_overrides = signal_overrides
-    ))
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "hourly_kernel_qdm",
-            options = options,
-            policy = "harmonized"
-        ),
-        reference = reference,
-        observed_reference = observed_reference
-    )
-}
-
-#' Sobie-Curry daily morphing method
-#'
-#' @description
-#' `sobie_curry_daily()` creates the daily method described by Sobie and Curry
-#' (2025). It requires matching historical and future daily `tas`, `tasmin`,
-#' `tasmax`, `huss`, and `ps` inputs.
-#'
-#' The method estimates calendar-neutral change factors with the published
-#' 21-day circular window, preserves the baseline CWEC/EPW sequence, and
-#' transforms dry-bulb temperature and surface pressure. The default
-#' `"paper_faithful"` policy independently transforms dew point and relative
-#' humidity as published. The `"harmonized"` policy instead applies the
-#' smoothed daily specific-humidity change and derives a physically closed
-#' humidity state from projected temperature and pressure. Other hourly EPW
-#' fields remain unchanged.
-#'
-#' @param reference A required [historical_reference()],
-#'   [shift_reference_plan()], or extracted `ShiftClimate` stage.
-#' @param window_days Odd circular climatology-window width in days. The
-#'   published setting is `21`.
-#' @param policy Physical execution policy: `"paper_faithful"` reproduces the
-#'   published independent thermodynamic transformations; `"harmonized"` uses
-#'   epwshiftr's specific-humidity closure.
-#'
-#' @return A complete `ShiftMorphMethod` for [shift_future_epw()].
-#'
-#' @seealso [daily_temperature()], [shift_cmip6()], [shift_future_epw()]
-#' @export
-sobie_curry_daily <- function(
-    reference = NULL,
-    window_days = 21L,
-    policy = c("paper_faithful", "harmonized")
-) {
-    policy <- match.arg(policy)
-    shift_morph_method(
-        epw_morph_recipe(
-            name = "sobie_curry_daily",
-            options = list(window_days = window_days),
-            policy = policy
-        ),
-        reference = reference
-    )
-}
-
-#' @rdname shift_api
 #' @param model CMIP6 source/model IDs.
 #' @param scenarios CMIP6 future scenario experiment IDs.
 #' @param member Optional CMIP6 variant labels. `NULL` asks the task workflow to
@@ -2366,8 +1919,9 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
 
 # Translate one complete CMIP6 climate specification into the lower-level
 # request consumed by the staged workflow and ESGF collector.
-shift__request_from_cmip6 <- function(climate, periods, method) {
-    variables <- morpher__input_variables(method@recipe)
+shift__request_from_cmip6 <- function(climate, periods, transform) {
+    recipe <- transform__recipe(transform)
+    variables <- morpher__input_variables(recipe)
     frequencies <- shift__cmip6_variable_frequencies(
         variables, climate@frequency
     )
@@ -2394,7 +1948,7 @@ shift__request_from_cmip6 <- function(climate, periods, method) {
     request_meta <- request@meta
     request_meta$time <- shift__method_time_window(
         periods,
-        method@recipe
+        recipe
     )
     request@meta <- request_meta
     request
@@ -2521,17 +2075,18 @@ historical_reference <- function(years = 1995:2014, period = "reference", ...) {
     shift_reference_historical(shift__periods_from_years(years, period = period, arg = "years"), ...)
 }
 
-# Validate a method-specific frequency contract before a task writes store state
+# Validate a transform-specific frequency contract before a task writes store state
 # or attempts remote CMIP6 discovery.
-shift__validate_method_frequency <- function(method, frequency) {
-    if (!S7::S7_inherits(method, ShiftMorphMethod)) {
-        cli::cli_abort("`method` must be a complete {.cls ShiftMorphMethod}.")
+shift__validate_transform_frequency <- function(transform, frequency) {
+    if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
+        cli::cli_abort("`transform` must be a {.cls WeatherTransformSpec}.")
     }
-    required <- morpher__recipe_required_frequency(method@recipe)
+    recipe <- transform__recipe(transform)
+    required <- morpher__recipe_required_frequency(recipe)
     if (is.null(required)) {
         return(invisible(TRUE))
     }
-    variables <- morpher__input_variables(method@recipe)
+    variables <- morpher__input_variables(recipe)
     actual <- tryCatch(
         shift__cmip6_variable_frequencies(variables, frequency),
         error = identity
@@ -2550,7 +2105,7 @@ shift__validate_method_frequency <- function(method, frequency) {
             collapse = ", "
         )
         cli::cli_abort(c(
-            "Morphing method {.val {method@name}} requires CMIP frequencies {.val {required_label}}.",
+            "Weather transformation {.val {transform@method}} requires CMIP frequencies {.val {required_label}}.",
             "x" = "The climate request uses {.val {shown}}.",
             "i" = "Set a variable-specific {.arg frequency} vector in the climate specification."
         ))
@@ -2560,11 +2115,12 @@ shift__validate_method_frequency <- function(method, frequency) {
 
 # Reject a single-year case before store or network work when the selected
 # recipe promises an explicitly addressable multi-year result.
-shift__validate_method_periods <- function(method, periods) {
-    if (!S7::S7_inherits(method, ShiftMorphMethod)) {
-        cli::cli_abort("`method` must be a complete {.cls ShiftMorphMethod}.")
+shift__validate_transform_periods <- function(transform, periods) {
+    if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
+        cli::cli_abort("`transform` must be a {.cls WeatherTransformSpec}.")
     }
-    specification <- morpher__recipe_spec(method@recipe)
+    recipe <- transform__recipe(transform)
+    specification <- morpher__recipe_spec(recipe)
     if (is.null(specification) ||
         !identical(specification@output_type, "multi_year")) {
         return(invisible(TRUE))
@@ -2573,7 +2129,7 @@ shift__validate_method_periods <- function(method, periods) {
     incomplete <- names(counts)[counts < 2L]
     if (length(incomplete)) {
         cli::cli_abort(c(
-            "Morphing method {.val {method@name}} requires at least two weather years in every period.",
+            "Weather transformation {.val {transform@method}} requires at least two weather years in every period.",
             "x" = "Period(s) with fewer than two years: {.val {incomplete}}."
         ))
     }
@@ -2584,9 +2140,10 @@ shift__validate_method_periods <- function(method, periods) {
 #' @param request A [shift_request()] object, commonly from
 #'   `shift_cmip6_scenario()`.
 #' @param morph Named morph-stage options. Stage option lists are validated and
-#'   cannot override task-level controls or the method recipe/reference.
+#'   cannot override task-level controls or the transform/reference inputs.
 #' @export
-shift_plan <- function(request, site, periods, store, method,
+shift_plan <- function(request, site, periods, store, transform,
+                       reference = NULL, observed_reference = NULL,
                        control = shift_control(), collect = list(),
                        download = list(), extract = list(), morph = list(),
                        epw = list()) {
@@ -2596,15 +2153,17 @@ shift_plan <- function(request, site, periods, store, method,
     if (!S7::S7_inherits(site, ShiftSite)) {
         cli::cli_abort("`site` must be a {.cls ShiftSite}.")
     }
-    if (!S7::S7_inherits(method, ShiftMorphMethod)) {
-        cli::cli_abort("`method` must be a complete {.cls ShiftMorphMethod}, for example {.code belcher()}.")
-    }
+    transform__validate_execution_inputs(
+        transform,
+        reference,
+        observed_reference
+    )
     if (!S7::S7_inherits(control, ShiftControl)) {
         cli::cli_abort("`control` must be created by {.fn shift_control}.")
     }
-    shift__validate_method_frequency(method, request@meta$frequency)
+    shift__validate_transform_frequency(transform, request@meta$frequency)
     periods <- shift__periods_from_input(periods)
-    shift__validate_method_periods(method, periods)
+    shift__validate_transform_periods(transform, periods)
     store_path <- shift__store_path_value(store, create = FALSE)
     if (shift_is_epw_object(site@epw)) {
         # Object-backed inputs may originate from unsaved external state or a
@@ -2634,7 +2193,10 @@ shift_plan <- function(request, site, periods, store, method,
             request = request,
             site = site,
             periods = periods,
-            method = method,
+            transform = transform,
+            recipe = transform__recipe(transform),
+            reference = reference,
+            observed_reference = observed_reference,
             control = control,
             collect = collect,
             download = download,
@@ -2648,24 +2210,31 @@ shift_plan <- function(request, site, periods, store, method,
 
 #' @rdname shift_api
 #' @param climate A complete future-climate specification from [shift_cmip6()].
-#' @param method A complete [shift_morph_method()] object. Methods that require
-#'   reference climate data must contain it when they are constructed.
+#' @param transform A reusable specification from [monthly_transform()],
+#'   [daily_transform()], or [hourly_transform()].
+#' @param reference Historical model climate required by the selected
+#'   transformation.
+#' @param observed_reference Observed climate required by bias-adjustment
+#'   transformations.
 #' @param dir User-facing directory that receives only exported EPW files.
 #' @param control Workflow controls from [shift_control()].
 #' @param dry_run If `TRUE`, return the planned workflow without running it.
 #' @param ui Runtime presentation options from [shift_ui()]. These options are
 #'   excluded from persisted scientific intent and `spec_hash`.
 #' @export
-shift_future_epw <- function(epw, climate, periods, method, dir,
+shift_future_epw <- function(epw, climate, periods, transform, dir,
+                             reference = NULL, observed_reference = NULL,
                              control = shift_control(), ui = shift_ui(),
                              store = NULL, dry_run = FALSE,
                              background = FALSE) {
     checkmate::assert_string(dir, min.chars = 1L)
     checkmate::assert_flag(dry_run)
     checkmate::assert_flag(background)
-    if (!S7::S7_inherits(method, ShiftMorphMethod)) {
-        cli::cli_abort("`method` must be a complete {.cls ShiftMorphMethod}; method names such as {.val belcher} are not accepted.")
-    }
+    transform__validate_execution_inputs(
+        transform,
+        reference,
+        observed_reference
+    )
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
         cli::cli_abort("`climate` must be a complete {.cls ShiftCmip6Spec} created by {.fn shift_cmip6}.")
     }
@@ -2686,7 +2255,7 @@ shift_future_epw <- function(epw, climate, periods, method, dir,
     # preserving the public directory contract, this prevents export cleanup
     # and store lifecycle operations from ever sharing a directory tree.
     shift__validate_delivery_store_paths(output_dir, store)
-    request <- shift__request_from_cmip6(climate, periods, method)
+    request <- shift__request_from_cmip6(climate, periods, transform)
     site <- shift_site(epw = epw)
 
     plan <- shift_plan(
@@ -2694,7 +2263,9 @@ shift_future_epw <- function(epw, climate, periods, method, dir,
         site = site,
         periods = periods,
         store = store,
-        method = method,
+        transform = transform,
+        reference = reference,
+        observed_reference = observed_reference,
         control = control,
         epw = list(
             dir = "outputs/future-epw",
@@ -2851,8 +2422,7 @@ shift_download <- S7::new_generic(
 #' @rdname shift_api
 #' @param site A `shift_site()` object.
 #' @param periods A period table, usually from [epw_morph_periods()].
-#' @param method In task-level planning, a complete [shift_morph_method()]
-#'   object. In [shift_extract()], the grid extraction method.
+#' @param method Grid extraction method used by [shift_extract()].
 #' @param fallback Extraction fallback policy.
 #' @export
 shift_extract <- S7::new_generic(
@@ -2888,15 +2458,11 @@ shift_extract <- S7::new_generic(
 #' @rdname shift_api
 #' @param baseline Optional baseline EPW path or
 #'   `shift_site()` object containing `epw`.
-#' @param recipe Morphing recipe, usually from [epw_morph_recipe()].
-#' @param reference Optional `ShiftReferenceSpec` or `ShiftClimate` stage for
-#'   change-factor morphing.
-#' @param reference_plan_id,reference_periods Optional store plan IDs and period
-#'   table for reference climate data.
+#' @param reference Optional `ShiftReferenceSpec` or `ShiftClimate` stage
+#'   containing historical model climate when required by `transform`.
 #' @param observed_reference Optional plan-backed `ShiftReferenceSpec` or
-#'   `ShiftClimate` stage containing multi-year observed daily weather.
-#' @param observed_plan_id,observed_periods Optional store plan IDs and period
-#'   table for observed daily weather.
+#'   `ShiftClimate` stage containing observed weather when required by
+#'   `transform`.
 #' @param complete_only Whether [shift_morph()] should morph only complete
 #'   extraction plans when a climate stage also contains failed or incomplete
 #'   plans.
@@ -2905,52 +2471,39 @@ shift_extract <- S7::new_generic(
 shift_morph <- S7::new_generic(
     "shift_morph",
     "x",
-    function(x, baseline = NULL, recipe = epw_morph_recipe("belcher"),
-             reference = NULL, reference_plan_id = NULL, reference_periods = NULL,
-             observed_reference = NULL, observed_plan_id = NULL,
-             observed_periods = NULL,
+    function(x, baseline = NULL, transform,
+             reference = NULL, observed_reference = NULL,
              strict = TRUE, complete_only = TRUE,
              by = c("source_id", "experiment_id", "variant_label", "period"),
              overwrite = FALSE, resume = TRUE, ui = NULL) {
         reporter <- shift__current_reporter()
         if (is.null(reporter)) {
+            transform__validate_execution_inputs(
+                transform,
+                reference,
+                observed_reference
+            )
             baseline_path <- if (shift_is_epw_path(baseline)) baseline else NULL
-            backend <- tryCatch(recipe$backend, error = function(e) NULL)
             reconstructible <- is.null(baseline) || !is.null(baseline_path)
-            if (!is.null(backend) && !backend %in% names(morpher__default_backend_specs())) {
-                reconstructible <- FALSE
-            }
             return(shift__task_execute(
                 "morph", x, ui = ui,
                 spec = list(baseline = baseline_path,
-                    recipe = shift__recipe_ref(recipe),
+                    transform = transform__spec_value(transform),
                     reference = shift__reference_spec_value(reference),
-                    reference_plan_id = reference_plan_id,
-                    reference_periods = if (is.null(reference_periods)) NULL else
-                        split(as.integer(reference_periods$year), reference_periods$period),
                     observed_reference = shift__reference_spec_value(
                         observed_reference
                     ),
-                    observed_plan_id = observed_plan_id,
-                    observed_periods = if (is.null(observed_periods)) NULL else
-                        split(
-                            as.integer(observed_periods$year),
-                            observed_periods$period
-                        ),
                     strict = strict, complete_only = complete_only, by = by,
                     overwrite = overwrite, resume = resume),
                 resumable = reconstructible,
                 nonresumable_reason = if (reconstructible) NULL else
-                    "The baseline or morph backend exists only in this R session.",
+                    "The baseline exists only in this R session.",
                 code = function(reporter, task_store) {
                     shift__with_reporter(reporter,
-                        shift_morph(x, baseline = baseline, recipe = recipe,
+                        shift_morph(x, baseline = baseline,
+                            transform = transform,
                             reference = reference,
-                            reference_plan_id = reference_plan_id,
-                            reference_periods = reference_periods,
                             observed_reference = observed_reference,
-                            observed_plan_id = observed_plan_id,
-                            observed_periods = observed_periods,
                             strict = strict, complete_only = complete_only,
                             by = by, overwrite = overwrite,
                             resume = resume))
@@ -3356,19 +2909,11 @@ shift__resume_generic_task <- function(run, step, ui, background = FALSE) {
             args = list(input,
                 baseline = if (is.null(spec$baseline)) NULL else
                     as.character(spec$baseline),
-                recipe = shift__recipe_from_ref(spec$recipe),
+                transform = transform__from_spec(spec$transform),
                 reference = shift__reference_from_spec(spec$reference),
-                reference_plan_id = if (is.null(spec$reference_plan_id)) NULL else
-                    as.character(spec$reference_plan_id),
-                reference_periods = if (is.null(spec$reference_periods)) NULL else
-                    shift__periods_from_input(spec$reference_periods),
                 observed_reference = shift__reference_from_spec(
                     spec$observed_reference
                 ),
-                observed_plan_id = if (is.null(spec$observed_plan_id)) NULL else
-                    as.character(spec$observed_plan_id),
-                observed_periods = if (is.null(spec$observed_periods)) NULL else
-                    shift__periods_from_input(spec$observed_periods),
                 strict = isTRUE(spec$strict),
                 complete_only = isTRUE(spec$complete_only),
                 by = as.character(spec$by),
@@ -5399,7 +4944,7 @@ shift__request_frequency_from_spec <- function(value) {
 shift__plan_spec <- function(x) {
     meta <- x@meta
     request <- meta$request@meta
-    method <- meta$method
+    transform <- meta$transform
     control <- meta$control
     climate <- meta$climate
     epw_path <- if (is.character(meta$site@epw) && length(meta$site@epw) == 1L) {
@@ -5408,7 +4953,7 @@ shift__plan_spec <- function(x) {
         shift_coalesce(meta$epw_identity$path, NULL)
     }
     list(
-        version = 1L,
+        version = 2L,
         task = "future_epw",
         request = if (is.null(climate)) {
             shift__request_spec_value(meta$request)
@@ -5425,33 +4970,10 @@ shift__plan_spec <- function(x) {
             identity = meta$epw_identity
         ),
         periods = split(as.integer(meta$periods$year), meta$periods$period),
-        method = list(
-            name = method@name,
-            recipe = list(
-                name = method@recipe$name,
-                backend = method@recipe$backend,
-                profile = method@recipe$profile,
-                recipe_spec = method@recipe$recipe_spec,
-                recipe_version = method@recipe$recipe_version,
-                policy = method@recipe$policy,
-                options = unclass(method@recipe$options),
-                methods = as.list(method@recipe$methods),
-                rules_identity = store__hash(morpher__json(method@recipe))
-            ),
-            requires_reference = method@requires_reference,
-            requires_observed_reference =
-                method@requires_observed_reference,
-            reference_mode = if (is.null(method@reference)) {
-                if (isTRUE(morpher__recipe_accepts_reference(method@recipe))) "baseline_epw" else "none"
-            } else if (S7::S7_inherits(method@reference, ShiftReferenceSpec)) {
-                method@reference@mode
-            } else {
-                "plan"
-            },
-            reference = shift__reference_spec_value(method@reference),
-            observed_reference = shift__reference_spec_value(
-                method@observed_reference
-            )
+        transform = transform__spec_value(transform),
+        reference = shift__reference_spec_value(meta$reference),
+        observed_reference = shift__reference_spec_value(
+            meta$observed_reference
         ),
         climate = shift__climate_spec_value(climate),
         control = list(
@@ -5519,51 +5041,6 @@ shift__site_from_ref <- function(ref) {
     )
 }
 
-# Persist the recipe identity needed to reconstruct package-provided morphing
-# backends while keeping executable backend closures out of the manifest.
-shift__recipe_ref <- function(recipe) {
-    if (is.null(recipe)) return(NULL)
-    list(
-        name = recipe$name,
-        backend = recipe$backend,
-        profile = recipe$profile,
-        recipe_spec = recipe$recipe_spec,
-        recipe_version = recipe$recipe_version,
-        policy = recipe$policy,
-        options = unclass(recipe$options),
-        methods = as.list(recipe$methods)
-    )
-}
-
-# Rebuild a package recipe from stable fields. Recipes persisted before profile
-# support are deliberately interpreted as legacy rather than silently upgraded.
-shift__recipe_from_ref <- function(ref) {
-    if (is.null(ref)) return(NULL)
-    methods <- unlist(ref$methods, use.names = TRUE)
-    if (!length(methods)) methods <- NULL
-    backend <- as.character(ref$backend)
-    is_belcher <- backend %in% c("belcher", "belcher_absolute")
-    profile <- if (is.null(ref$profile)) {
-        if (is_belcher) "legacy" else "default"
-    } else {
-        as.character(ref$profile)
-    }
-    epw_morph_recipe(
-        name = as.character(ref$name),
-        backend = backend,
-        methods = methods,
-        profile = profile,
-        options = shift_coalesce(ref$options, NULL),
-        policy = shift_coalesce(ref$policy, NULL),
-        version = if (is.null(ref$recipe_version)) {
-            NULL
-        } else {
-            as.integer(ref$recipe_version)
-        },
-        spec = shift_coalesce(ref$recipe_spec, NULL)
-    )
-}
-
 # Reduce a stage to stable store IDs plus the minimum scientific metadata
 # required to continue the normal collect-to-export chain in another session.
 shift__stage_ref <- function(x) {
@@ -5615,11 +5092,23 @@ shift__stage_ref <- function(x) {
             } else {
                 NULL
             },
-            recipe = shift__recipe_ref(x@meta$recipe),
+            transform = transform__spec_value(x@meta$transform),
+            reference = shift__reference_spec_value(shift_coalesce(
+                x@meta$reference_spec,
+                x@meta$reference
+            )),
+            observed_reference = shift__reference_spec_value(shift_coalesce(
+                x@meta$observed_reference_spec,
+                x@meta$observed_reference
+            )),
             reference_plan_id = x@meta$reference_plan_id,
             reference_periods = if (is.null(x@meta$reference_periods)) NULL else
                 split(as.integer(x@meta$reference_periods$year),
-                    x@meta$reference_periods$period)
+                    x@meta$reference_periods$period),
+            observed_plan_id = x@meta$observed_plan_id,
+            observed_periods = if (is.null(x@meta$observed_periods)) NULL else
+                split(as.integer(x@meta$observed_periods$year),
+                    x@meta$observed_periods$period)
         )
     } else if (S7::S7_inherits(x, ShiftOutputs)) {
         outputs <- data.table::as.data.table(shift_coalesce(
@@ -5711,6 +5200,7 @@ shift__stage_from_ref <- function(ref) {
     }
     if (identical(stage, "morphed")) {
         climate <- shift__stage_from_ref(meta$climate)
+        transform <- transform__from_spec(meta$transform)
         baseline <- if (is.null(meta$baseline)) {
             shift_target(climate)
         } else if (identical(as.character(meta$baseline$type), "site")) {
@@ -5723,11 +5213,20 @@ shift__stage_from_ref <- function(ref) {
             meta = list(
                 climate = climate,
                 baseline = baseline,
-                recipe = shift__recipe_from_ref(meta$recipe),
+                transform = transform,
+                recipe = transform__recipe(transform),
+                reference = shift__reference_from_spec(meta$reference),
+                observed_reference = shift__reference_from_spec(
+                    meta$observed_reference
+                ),
                 reference_plan_id = unlist(meta$reference_plan_id,
                     use.names = FALSE),
                 reference_periods = if (is.null(meta$reference_periods)) NULL else
-                    shift__periods_from_input(meta$reference_periods)
+                    shift__periods_from_input(meta$reference_periods),
+                observed_plan_id = unlist(meta$observed_plan_id,
+                    use.names = FALSE),
+                observed_periods = if (is.null(meta$observed_periods)) NULL else
+                    shift__periods_from_input(meta$observed_periods)
             )))
     }
     if (identical(stage, "outputs")) {
@@ -5866,6 +5365,13 @@ shift__reconcile_background_download <- function(store, run_id) {
 # Reconstruct a persisted plan for cross-session resume. A baseline EPW object
 # without a path cannot be recovered and therefore fails with a targeted error.
 shift__plan_from_spec <- function(spec, store = NULL) {
+    version <- as.integer(shift_coalesce(spec$version, 1L))
+    if (!identical(version, 2L)) {
+        cli::cli_abort(c(
+            "Persisted future-weather plan uses unsupported schema version {.val {version}}.",
+            "i" = "Create a new plan with the weather transform API."
+        ))
+    }
     site_spec <- spec$site
     if (is.null(site_spec$epw) || !nzchar(as.character(site_spec$epw))) {
         cli::cli_abort("This run cannot be resumed across sessions because its baseline EPW was not persisted as a file path.")
@@ -5878,16 +5384,10 @@ shift__plan_from_spec <- function(spec, store = NULL) {
         epw = as.character(site_spec$epw),
         metadata = shift_coalesce(site_spec$metadata, list())
     )
-    recipe_spec <- spec$method$recipe
-    recipe <- shift__recipe_from_ref(recipe_spec)
-    reference <- shift__reference_from_spec(spec$method$reference)
+    transform <- transform__from_spec(spec$transform)
+    reference <- shift__reference_from_spec(spec$reference)
     observed_reference <- shift__reference_from_spec(
-        spec$method$observed_reference
-    )
-    method <- shift_morph_method(
-        recipe,
-        reference = reference,
-        observed_reference = observed_reference
+        spec$observed_reference
     )
     control <- do.call(shift_control, spec$control)
     climate <- shift__climate_from_spec(spec$climate)
@@ -5913,7 +5413,7 @@ shift__plan_from_spec <- function(spec, store = NULL) {
         request <- shift__request_from_cmip6(
             climate,
             shift__periods_from_input(spec$periods),
-            method
+            transform
         )
     }
     stage <- shift_coalesce(spec$stages, list())
@@ -5922,7 +5422,9 @@ shift__plan_from_spec <- function(spec, store = NULL) {
         site = site,
         periods = spec$periods,
         store = shift_coalesce(store, spec$store),
-        method = method,
+        transform = transform,
+        reference = reference,
+        observed_reference = observed_reference,
         control = control,
         collect = shift_coalesce(stage$collect, list()),
         download = shift_coalesce(stage$download, list()),
@@ -6136,18 +5638,10 @@ shift__job_check_cancel <- function(store, run_id, job_id, stage) {
     invisible(FALSE)
 }
 
-# Background workers can only reconstruct package-provided backends and
-# JSON-safe plans; validate that boundary before a run or job is registered.
+# Background workers require a JSON-safe public transform and plan; validate
+# both by reconstructing the exact persisted specification before registration.
 shift__validate_background_plan <- function(plan) {
     spec <- shift__plan_spec(plan)
-    backend <- as.character(spec$method$recipe$backend)
-    supported <- names(morpher__default_backend_specs())
-    if (!backend %in% supported) {
-        cli::cli_abort(c(
-            "Background execution cannot reconstruct backend {.val {backend}} in a new R process.",
-            "i" = "Run with {.code background = FALSE} or package the backend registration."
-        ))
-    }
     tryCatch(
         shift__plan_from_spec(spec, store = plan@store_path),
         error = function(e) {
@@ -7789,8 +7283,8 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
     climate <- meta$climate
     models <- if (is.null(climate)) as.character(request$source) else climate@model
     scenarios <- if (is.null(climate)) as.character(request$experiment) else climate@scenarios
-    requirements <- morpher__variable_requirements(meta$method@recipe)
-    variables <- morpher__input_variables(meta$method@recipe)
+    requirements <- morpher__variable_requirements(meta$recipe)
+    variables <- morpher__input_variables(meta$recipe)
     member <- if (is.null(climate)) request$variant else climate@member
     grid <- if (is.null(climate)) request$filters$grid_label else climate@grid
     frequency <- if (is.null(climate)) request$frequency else climate@frequency
@@ -7825,7 +7319,7 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
         )
     }
 
-    reference <- meta$method@reference
+    reference <- meta$reference
     if (S7::S7_inherits(reference, ShiftReferenceSpec) && identical(reference@mode, "historical")) {
         # Monthly CMIP datasets usually end at a representative timestamp such
         # as December 16, not at the last second of the calendar year. An empty
@@ -7957,7 +7451,7 @@ shift__request_at_node <- function(request, node) {
 # manual plan and ShiftClimate references never reach this function.
 shift__historical_request <- function(plan, node) {
     meta <- plan@meta
-    reference <- meta$method@reference
+    reference <- meta$reference
     if (!S7::S7_inherits(reference, ShiftReferenceSpec) || !identical(reference@mode, "historical")) {
         return(NULL)
     }
@@ -7965,7 +7459,7 @@ shift__historical_request <- function(plan, node) {
     climate <- meta$climate
     member <- if (is.null(climate)) request$variant else climate@member
     grid <- if (is.null(climate)) request$filters$grid_label else climate@grid
-    variables <- morpher__input_variables(meta$method@recipe)
+    variables <- morpher__input_variables(meta$recipe)
     frequency <- if (is.null(climate)) request$frequency else climate@frequency
     tables <- if (is.null(climate)) {
         as.character(request$filters$table_id)
@@ -8005,7 +7499,7 @@ shift__historical_request <- function(plan, node) {
             time_filter_method = "auto",
             file_time = shift__method_time_window(
                 reference@periods,
-                meta$method@recipe
+                meta$recipe
             )
         ))
     )
@@ -8656,14 +8150,9 @@ shift__plan_explain <- function(x) {
     meta <- x@meta
     request <- meta$request@meta
     epw <- meta$epw
-    method <- meta$method
-    reference <- method@reference
-    reference_detail <- if (is.null(reference) &&
-        isTRUE(morpher__recipe_accepts_reference(method@recipe))) {
-        "baseline EPW"
-    } else {
-        "none"
-    }
+    transform <- meta$transform
+    reference <- meta$reference
+    reference_detail <- "none"
     if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
         reference_periods <- paste(
             sprintf(
@@ -8684,7 +8173,7 @@ shift__plan_explain <- function(x) {
         reference_detail <- "supplied ShiftClimate"
     }
     observed_detail <- shift__format_reference(
-        method@observed_reference
+        meta$observed_reference
     )
     climate <- meta$climate
     member <- if (!is.null(climate)) climate@member else request$variant
@@ -8694,7 +8183,7 @@ shift__plan_explain <- function(x) {
     data.table::data.table(
         step = c(
             "request",
-            "method",
+            "transform",
             "reference",
             "observed_reference",
             "cases",
@@ -8711,7 +8200,7 @@ shift__plan_explain <- function(x) {
                 shift_coalesce(shift__display_values(request$source), "<any source>"),
                 shift_coalesce(shift__display_values(request$experiment), "<any experiment>")
             ),
-            method@name,
+            transform@label,
             reference_detail,
             observed_detail,
             sprintf("%d expected EPW output(s)", nrow(meta$expected_cases)),
@@ -9219,8 +8708,8 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         reporter <- shift__reporter(shift_ui("none"), store = store,
             run_id = run_id, job_id = job_id)
     }
-    reference_expected <- S7::S7_inherits(meta$method@reference, ShiftReferenceSpec) &&
-        identical(meta$method@reference@mode, "historical")
+    reference_expected <- S7::S7_inherits(meta$reference, ShiftReferenceSpec) &&
+        identical(meta$reference@mode, "historical")
     stage_total <- 5L + as.integer(identical(control@download, "always")) +
         as.integer(reference_expected)
     stage_index <- 0L
@@ -9297,7 +8786,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
             if (!is.null(reference_stage)) {
                 reference_stage <- shift__files_for_partitions(
                     reference_stage, selection,
-                    experiments = meta$method@reference@experiment,
+                    experiments = meta$reference@experiment,
                     role = "reference"
                 )
             }
@@ -9344,7 +8833,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
             role = "future",
             time = shift__method_time_window(
                 meta$periods,
-                meta$method@recipe
+                meta$recipe
             ),
             method = control@extraction_method,
             fallback = fallback,
@@ -9355,7 +8844,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         )
         climate <- shift__derive_hurs_climate(
             climate,
-            meta$method@recipe,
+            meta$recipe,
             overwrite = overwrite,
             resume = resume,
             reporter = reporter
@@ -9372,7 +8861,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         ))
 
         reference_climate <- NULL
-        method_reference <- meta$method@reference
+        method_reference <- meta$reference
         if (!is.null(reference_stage)) {
             current_stage <- next_stage("extract_reference", "Extracting historical reference climate data.")
             reference_spec <- method_reference
@@ -9385,7 +8874,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
                 role = "reference",
                 time = shift__method_time_window(
                     reference_spec@periods,
-                    meta$method@recipe
+                    meta$recipe
                 ),
                 method = control@extraction_method,
                 fallback = fallback,
@@ -9396,7 +8885,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
             )
             reference_climate <- shift__derive_hurs_climate(
                 reference_climate,
-                meta$method@recipe,
+                meta$recipe,
                 overwrite = overwrite,
                 resume = resume,
                 reporter = reporter
@@ -9430,7 +8919,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
             # derivation contract as automatically extracted historical data.
             method_reference <- shift__derive_hurs_climate(
                 method_reference,
-                meta$method@recipe,
+                meta$recipe,
                 overwrite = overwrite,
                 resume = resume,
                 reporter = reporter
@@ -9441,9 +8930,9 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
             cases,
             future_coverage = shift_coverage(climate),
             reference_coverage = reference_coverage,
-            required_variables = epw_morph_variables(meta$method@recipe),
+            required_variables = epw_morph_variables(meta$recipe),
             requires_reference = !is.null(method_reference),
-            requirements = morpher__variable_requirements(meta$method@recipe)
+            requirements = morpher__variable_requirements(meta$recipe)
         )
         shift__run_cases_write(store, run_id, cases)
         ready <- cases[status == "ready"]
@@ -9494,10 +8983,10 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
         morph_args <- utils::modifyList(
             list(
                 baseline = meta$site,
-                recipe = meta$method@recipe,
+                transform = meta$transform,
                 reference = method_reference,
                 observed_reference =
-                    meta$method@observed_reference,
+                    meta$observed_reference,
                 strict = control@strict,
                 complete_only = TRUE,
                 by = c("source_id", "experiment_id", "variant_label", "period"),
@@ -9760,74 +9249,25 @@ shift__export_outputs <- function(x, dir, separate = TRUE, overwrite = FALSE,
     x
 }
 
-S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = epw_morph_recipe("belcher"),
-                                                  reference = NULL, reference_plan_id = NULL,
-                                                  reference_periods = NULL,
+S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, transform,
+                                                  reference = NULL,
                                                   observed_reference = NULL,
-                                                  observed_plan_id = NULL,
-                                                  observed_periods = NULL,
                                                   strict = TRUE, complete_only = TRUE,
                                                   by = c("source_id", "experiment_id", "variant_label", "period"),
                                                   overwrite = FALSE, resume = TRUE,
                                                   ui = NULL) {
     reporter <- shift__current_reporter()
-    checkmate::assert_character(reference_plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
-    if (!is.null(reference_periods)) {
-        checkmate::assert_data_frame(reference_periods)
-        checkmate::assert_names(names(reference_periods), must.include = c("period", "year"))
-    }
-    checkmate::assert_character(
-        observed_plan_id,
-        any.missing = FALSE,
-        min.len = 1L,
-        unique = TRUE,
-        null.ok = TRUE
+    transform__validate_execution_inputs(
+        transform,
+        reference,
+        observed_reference
     )
-    if (!is.null(observed_periods)) {
-        checkmate::assert_data_frame(observed_periods)
-        checkmate::assert_names(
-            names(observed_periods),
-            must.include = c("period", "year")
-        )
-    }
+    recipe <- transform__recipe(transform)
     checkmate::assert_flag(strict)
     checkmate::assert_flag(complete_only)
     checkmate::assert_character(by, any.missing = FALSE, min.len = 1L, unique = TRUE)
     checkmate::assert_flag(overwrite)
     checkmate::assert_flag(resume)
-    if (isTRUE(morpher__recipe_requires_reference(recipe)) &&
-        is.null(reference) &&
-        !shift_reference_has_legacy_args(reference_plan_id, reference_periods)) {
-        cli::cli_abort(c(
-            "The selected morphing recipe requires an explicit reference.",
-            "i" = "Supply a {.cls ShiftReferenceSpec}, {.cls ShiftClimate}, or matching reference plan inputs."
-        ))
-    }
-    if ((!is.null(reference) || shift_reference_has_legacy_args(reference_plan_id, reference_periods)) &&
-        !isTRUE(morpher__recipe_accepts_reference(recipe))) {
-        cli::cli_abort("The selected morphing recipe does not accept reference climate data.")
-    }
-    if (isTRUE(morpher__recipe_requires_observed_reference(recipe)) &&
-        is.null(observed_reference) &&
-        !shift_reference_has_legacy_args(
-            observed_plan_id,
-            observed_periods
-        )) {
-        cli::cli_abort(c(
-            "The selected morphing recipe requires an explicit observed reference.",
-            "i" = "Supply a plan-backed {.cls ShiftReferenceSpec}, {.cls ShiftClimate}, or matching observed plan inputs."
-        ))
-    }
-    if ((!is.null(observed_reference) ||
-        shift_reference_has_legacy_args(
-            observed_plan_id,
-            observed_periods
-        )) &&
-        !isTRUE(morpher__recipe_accepts_observed_reference(recipe))) {
-        cli::cli_abort(
-            "The selected morphing recipe does not accept observed reference data."
-        )
-    }
 
     store <- shift_store(x)
     ids <- shift_ids(x)
@@ -9840,8 +9280,6 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
         recipe = recipe,
         site = site,
         reference = reference,
-        reference_plan_id = reference_plan_id,
-        reference_periods = reference_periods,
         overwrite = overwrite,
         resume = resume,
         reporter = reporter
@@ -9851,8 +9289,6 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
         recipe = recipe,
         site = site,
         observed_reference = observed_reference,
-        observed_plan_id = observed_plan_id,
-        observed_periods = observed_periods,
         overwrite = overwrite,
         resume = resume,
         reporter = reporter
@@ -9876,7 +9312,13 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
         complete_only = complete_only,
         stage = "observed reference"
     )
-    morpher <- epw_morpher(store, epw, site_id = site@id, recipe = recipe, label = site@label)
+    morpher <- epw_morpher(
+        store,
+        epw,
+        site_id = site@id,
+        transform = transform,
+        label = site@label
+    )
     workflow <- morpher$workflow(
         plan_id = plan_selection$plan_id,
         periods = periods,
@@ -9926,6 +9368,7 @@ S7::method(shift_morph, ShiftClimate) <- function(x, baseline = NULL, recipe = e
             complete_only = complete_only,
             reference_periods = reference_resolved$periods,
             observed_periods = observed_resolved$periods,
+            transform = transform,
             recipe = recipe,
             workflow = workflow,
             preflight = workflow$preflight,
@@ -9954,7 +9397,13 @@ S7::method(shift_epw, ShiftMorphed) <- function(x, dir = NULL, separate = TRUE,
     ids <- shift_ids(x)
     site <- shift_target(x)
     epw <- shift_resolve_epw(shift_coalesce(x@meta$baseline, site))
-    morpher <- epw_morpher(store, epw, site_id = site@id, recipe = x@meta$recipe, label = site@label)
+    morpher <- epw_morpher(
+        store,
+        epw,
+        site_id = site@id,
+        transform = x@meta$transform,
+        label = site@label
+    )
     outputs <- morpher$write_epw(
         morph_id = ids$morph_id,
         dir = dir,
@@ -10633,7 +10082,7 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     meta <- x@meta
     climate <- meta$climate
     request <- meta$request@meta
-    method <- meta$method
+    transform <- meta$transform
     model <- if (!is.null(climate)) climate@model else request$source
     scenarios <- if (!is.null(climate)) climate@scenarios else request$experiment
     member <- if (!is.null(climate)) climate@member else request$variant
@@ -10650,11 +10099,13 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     shift__print_stage_intro(x, "Future EPW Plan", list(
         "Climate" = paste(climate_parts, collapse = " \u00b7 "),
         "Periods" = shift__format_periods(meta$periods),
-        "Method" = shift__format_morph_method(method@name, method@recipe),
-        "Reference" = shift__format_reference(method@reference,
-            method@recipe),
+        "Transform" = transform@label,
+        "Reference" = shift__format_reference(
+            meta$reference,
+            meta$recipe
+        ),
         "Observed reference" = shift__format_reference(
-            method@observed_reference
+            meta$observed_reference
         ),
         "Selection" = sprintf("member %s \u00b7 grid %s \u00b7 tables %s",
             shift__format_auto(member), shift__format_auto(grid),
@@ -10822,22 +10273,31 @@ shift__morph_print_rows <- function(x) {
     persisted
 }
 
-# Render morphing method/reference identity and a bounded result/case preview
+# Render weather-transform/reference identity and a bounded result/case preview
 # without printing hourly morphed weather data.
 shift__print_morphed <- function(x, n = 10L, width = NULL,
                                  verbose = FALSE) {
     shift__print_use_width(width)
     recipe <- x@meta$recipe
+    transform <- x@meta$transform
     read <- shift__morph_print_rows(x)
     rows <- read$data
     case_count <- if ("case_id" %in% names(rows))
         data.table::uniqueN(rows$case_id) else nrow(rows)
     reference <- shift_coalesce(x@meta$reference_spec, x@meta$reference)
+    transform_label <- if (S7::S7_inherits(transform, WeatherTransformSpec)) {
+        transform@label
+    } else {
+        # Older persisted stages may not contain the public transform record.
+        shift__format_morph_method(
+            shift_coalesce(recipe$name, recipe$backend),
+            recipe,
+            missing_belcher_profile = "legacy"
+        )
+    }
 
     shift__print_stage_intro(x, "Morphed EPW", list(
-        "Method" = shift__format_morph_method(
-            shift_coalesce(recipe$name, recipe$backend), recipe,
-            missing_belcher_profile = "legacy"),
+        "Transform" = transform_label,
         "Reference" = shift__format_reference(reference, recipe),
         "Cases" = case_count,
         "Results" = nrow(rows)
@@ -10995,58 +10455,6 @@ shift__print_reference <- function(x, width = NULL, verbose = FALSE) {
     invisible(x)
 }
 
-# Render the method/reference contract and expose bounded rule identity only in
-# verbose mode; backend closures and environments are never printed.
-shift__print_morph_method <- function(x, n = 10L, width = NULL,
-                                      verbose = FALSE) {
-    shift__print_use_width(width)
-    recipe <- x@recipe
-    shift__print_header("Morph Method")
-    shift__print_facts(list(
-        "Name" = x@name,
-        "Backend" = recipe$backend,
-        "Profile" = recipe$profile,
-        "Reference" = shift__format_reference(x@reference, recipe),
-        "Requires reference" = x@requires_reference,
-        "Accepts reference" = morpher__recipe_accepts_reference(recipe),
-        "Observed reference" = shift__format_reference(
-            x@observed_reference
-        ),
-        "Requires observed reference" =
-            x@requires_observed_reference,
-        "Accepts observed reference" =
-            morpher__recipe_accepts_observed_reference(recipe),
-        "Variables" = shift__display_values(epw_morph_variables(recipe))
-    ))
-    if (isTRUE(verbose)) {
-        option_rows <- data.table::data.table(
-            option = names(recipe$options),
-            value = vapply(unclass(recipe$options), function(value) {
-                shift_coalesce(shift__display_values(value, max = Inf),
-                    "<empty>")
-            }, character(1L))
-        )
-        # Options are the durable scientific contract, so verbose output shows
-        # every value even when `n` bounds the longer method and rule previews.
-        shift__print_table(option_rows, "Options", c("option", "value"),
-            n = Inf, empty = "No profile options.")
-        methods <- recipe$methods
-        method_rows <- data.table::data.table(
-            field = names(methods), method = unname(methods)
-        )
-        shift__print_table(method_rows, "Method overrides",
-            c("field", "method"), n = n,
-            empty = "No method overrides.",
-            more_hint = "increase `n` to show every method override.")
-        rules <- data.table::as.data.table(recipe$rules)
-        shift__print_table(rules, "Rules",
-            c("step", "epw_field", "variable_id", "method", "required"),
-            n = n, empty = "No backend rules.",
-            more_hint = "increase `n` to show every backend rule.")
-    }
-    invisible(x)
-}
-
 # Bound a dashboard table after it has been rendered so ShiftRun can honour the
 # same `n` contract without duplicating the watch renderer's table semantics.
 shift__print_view_rows <- function(lines, n, width, label) {
@@ -11194,14 +10602,6 @@ S7::method(print, ShiftControl) <- function(x, ...) {
 S7::method(print, ShiftReferenceSpec) <- function(x, ...) {
     opts <- shift__print_options(list(...))
     shift__print_reference(x, width = opts$width, verbose = opts$verbose)
-}
-
-# ShiftMorphMethod prints the algorithm/reference contract and only expands
-# method rules in verbose mode.
-S7::method(print, ShiftMorphMethod) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_morph_method(x, n = opts$n, width = opts$width,
-        verbose = opts$verbose)
 }
 
 # Extension ShiftStage classes without a dedicated print method still receive

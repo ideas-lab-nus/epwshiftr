@@ -7,29 +7,36 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     on.exit(unlink(nc), add = TRUE)
     setup <- cli_shift_test_store_with_extract(nc)
 
-    variables <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "variables", "--recipe", "minimal"))
+    variables <- epwshiftr_cli(c(
+        "--quiet", "--store", setup$dir, "morph", "variables",
+        "--scale", "daily", "--method", "epwshiftr"
+    ))
     expect_equal(variables$status, 0L)
     expect_true("tas" %in% variables$result$variable_id)
 
-    backends <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "backends"))
-    expect_equal(backends$status, 0L)
-    expect_true("belcher" %in% backends$result$backend)
-    expect_true("belcher_absolute" %in% backends$result$backend)
+    transforms <- epwshiftr_cli(c(
+        "--quiet", "--store", setup$dir, "morph", "transforms"
+    ))
+    expect_equal(transforms$status, 0L)
+    expect_true("belcher" %in% transforms$result$method)
+    expect_true("epwshiftr" %in% transforms$result$method)
 
     run <- epwshiftr_cli(c(
         "--quiet", "--store", setup$dir,
         "morph", "run",
         "--plan", paste(setup$plan_id, collapse = ","),
         "--epw", get_cache_epw(),
-        "--recipe", "belcher_absolute",
-        "--profile", "legacy",
-        "--method", "tdb=shift",
-        "--option", "transition_hours=0",
+        "--scale", "daily",
+        "--method", "epwshiftr",
+        "--option", "window_days=31",
         "--period", "2060s=2060",
+        "--reference", "plan",
+        "--reference-plan", paste(setup$plan_id, collapse = ","),
+        "--reference-period", "reference=2060",
         "--strict", "false",
         "--overwrite"
     ))
-    expect_equal(run$status, 0L)
+    expect_equal(run$status, 0L, info = run$error)
     expect_length(run$result$morph_id, 1L)
     expect_length(run$result$run_id, 1L)
     expect_length(run$result$step_id, 1L)
@@ -44,9 +51,11 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     persisted_recipe <- epwshiftr_cli_recipe_from_json(
         persisted$recipe_json[[1L]]
     )
-    expect_identical(persisted_recipe$profile, "legacy")
-    expect_identical(persisted_recipe$options$transition_hours, 0L)
-    expect_identical(unname(persisted_recipe$methods[["tdb"]]), "shift")
+    expect_identical(
+        persisted_recipe$recipe_spec,
+        "epwshiftr_daily_power"
+    )
+    expect_identical(persisted_recipe$options$window_days, 31L)
     suppressWarnings(store$query(sprintf(
         "UPDATE epw_morph_plan SET status = 'failed', last_error = 'forced failure' WHERE morph_id = %s",
         shift_sql_string(run$result$morph_id)
@@ -102,8 +111,12 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
             "morph", "run",
             "--plan", paste(setup$plan_id, collapse = ","),
             "--epw", get_cache_epw(),
-            "--recipe", "belcher_absolute",
+            "--scale", "daily",
+            "--method", "epwshiftr",
             "--period", "2060s=2060",
+            "--reference", "plan",
+            "--reference-plan", paste(setup$plan_id, collapse = ","),
+            "--reference-period", "reference=2060",
             "--strict", "false"
         )),
         type = "message"

@@ -625,28 +625,14 @@ method__list <- function(registry = WEATHER_METHOD_REGISTRY) {
     }), use.names = TRUE, fill = TRUE)
 }
 
-#' Inspect registered future-weather methods
-#'
-#' `epw_morph_methods()` lists method-owned algorithm contracts independently
-#' of data sources, study periods, calendars, physical policies, and output
-#' workflows.
-#'
-#' @return A data table with one row per registered method.
-#'
-#' @seealso [epw_morph_recipes()], [epw_morph_recipe_spec()]
-#' @export
+# Return internal method records used to validate the transform registry.
+#' @noRd
 epw_morph_methods <- function() {
     method__list()
 }
 
-#' Get a registered future-weather method specification
-#'
-#' @param name Stable method name returned by [epw_morph_methods()].
-#'
-#' @return A `WeatherMethodSpec` object.
-#'
-#' @seealso [epw_morph_methods()], [epw_morph_recipe_spec()]
-#' @export
+# Return one internal scientific method contract by its registered key.
+#' @noRd
 epw_morph_method_spec <- function(name) {
     method__get(name)
 }

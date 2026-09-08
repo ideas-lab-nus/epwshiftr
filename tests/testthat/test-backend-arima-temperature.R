@@ -115,8 +115,8 @@ test_that("Arima recipe registers all four required input roles", {
         "day"
     )
     expect_error(
-        arima_temperature(),
-        "requires an explicit reference"
+        transform__validate_execution_inputs(daily_transform("arima")),
+        "requires.*reference"
     )
 })
 
@@ -264,11 +264,7 @@ test_that("Arima public method persists both reference roles", {
         "observed-plan",
         periods = epw_morph_periods(observed = 1995:2014)
     )
-    method <- arima_temperature(
-        reference = historical,
-        observed_reference = observed,
-        policy = "harmonized"
-    )
+    transform <- daily_transform("arima")
     climate <- shift_cmip6(
         "EC-Earth3",
         "ssp585",
@@ -279,7 +275,9 @@ test_that("Arima public method persists both reference roles", {
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2061L),
-        method = method,
+        transform = transform,
+        reference = historical,
+        observed_reference = observed,
         dir = tempfile("arima-output-"),
         store = tempfile("arima-store-"),
         dry_run = TRUE
@@ -288,11 +286,11 @@ test_that("Arima public method persists both reference roles", {
     explanation <- shift__plan_explain(plan)
 
     expect_identical(
-        rebuilt@meta$method@recipe$recipe_spec,
+        rebuilt@meta$recipe$recipe_spec,
         "monthly_percentile_temperature"
     )
     expect_identical(
-        rebuilt@meta$method@observed_reference@plan_id,
+        rebuilt@meta$observed_reference@plan_id,
         "observed-plan"
     )
     expect_true("observed_reference" %in% explanation$step)
@@ -373,7 +371,7 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
         store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = epw_morph_recipe("monthly_percentile_temperature")
+        transform = daily_transform("arima")
     )
     workflow <- morpher$workflow(
         plan_id = plans$future,

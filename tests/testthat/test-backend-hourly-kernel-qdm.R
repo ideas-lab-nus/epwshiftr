@@ -208,10 +208,12 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         "observed-hourly-plan",
         epw_morph_periods(observed = 1995:2014)
     )
-    method <- hourly_kernel_qdm(
-        reference = reference,
-        observed_reference = observed,
-        signal_overrides = hourly_kqdm_test__overrides()
+    transform <- do.call(
+        hourly_transform,
+        c(
+            list(method = "kernel_qdm"),
+            hourly_kqdm_test__overrides()
+        )
     )
     climate <- shift_cmip6(
         "EC-Earth3",
@@ -224,12 +226,14 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2061:2062),
-        method = method,
+        transform = transform,
+        reference = reference,
+        observed_reference = observed,
         dir = tempfile("hourly-kqdm-output-"),
         store = tempfile("hourly-kqdm-store-"),
         dry_run = TRUE
     )
-    recipe <- plan@meta$method@recipe
+    recipe <- plan@meta$recipe
     spec <- shift__plan_spec(plan)
     rebuilt <- shift__plan_from_spec(spec)
 
@@ -248,8 +252,8 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
             "tasmin", "tasmax"
         )
     )
-    expect_true(plan@meta$method@requires_reference)
-    expect_true(plan@meta$method@requires_observed_reference)
+    expect_true(transform__requires_input(transform, "model_historical"))
+    expect_true(transform__requires_input(transform, "observed_reference"))
     expect_identical(
         plan@meta$climate@frequency,
         HOURLY_KQDM_MODEL_FREQUENCIES
@@ -269,11 +273,11 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         )
     )
     expect_identical(
-        rebuilt@meta$method@observed_reference@plan_id,
+        rebuilt@meta$observed_reference@plan_id,
         "observed-hourly-plan"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$options$signal_overrides$tas$grid_points,
+        rebuilt@meta$recipe$options$signal_overrides$tas$grid_points,
         128L
     )
     historical_request <- shift__historical_request(
@@ -295,10 +299,16 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         )
     )
 
-    expect_error(hourly_kernel_qdm(), "requires an explicit reference")
     expect_error(
-        hourly_kernel_qdm(reference = reference),
-        "requires an explicit observed reference"
+        transform__validate_execution_inputs(hourly_transform("kernel_qdm")),
+        "requires.*reference"
+    )
+    expect_error(
+        transform__validate_execution_inputs(
+            hourly_transform("kernel_qdm"),
+            reference = reference
+        ),
+        "requires.*observed_reference"
     )
     expect_error(
         shift_future_epw(
@@ -310,7 +320,9 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
                 table = "day"
             ),
             periods = list(`2060s` = 2061:2062),
-            method = method,
+            transform = transform,
+            reference = reference,
+            observed_reference = observed,
             dir = tempfile("hourly-kqdm-invalid-output-"),
             store = tempfile("hourly-kqdm-invalid-store-"),
             dry_run = TRUE
@@ -322,7 +334,9 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
             epw = get_cache_epw(),
             climate = climate,
             periods = list(`2060s` = 2061L),
-            method = method,
+            transform = transform,
+            reference = reference,
+            observed_reference = observed,
             dir = tempfile("hourly-kqdm-one-year-output-"),
             store = tempfile("hourly-kqdm-one-year-store-"),
             dry_run = TRUE

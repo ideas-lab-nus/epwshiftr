@@ -5,8 +5,6 @@
 \alias{shift_api}
 \alias{shift_request}
 \alias{shift_site}
-\alias{shift_morph_method}
-\alias{belcher}
 \alias{shift_cmip6}
 \alias{shift_control}
 \alias{shift_cmip6_scenario}
@@ -73,10 +71,6 @@ shift_site(
   metadata = list()
 )
 
-shift_morph_method(recipe, reference = NULL, observed_reference = NULL)
-
-belcher(reference = NULL, methods = NULL, profile = "enhanced", options = NULL)
-
 shift_cmip6(
   model,
   scenarios,
@@ -125,7 +119,9 @@ shift_plan(
   site,
   periods,
   store,
-  method,
+  transform,
+  reference = NULL,
+  observed_reference = NULL,
   control = shift_control(),
   collect = list(),
   download = list(),
@@ -138,8 +134,10 @@ shift_future_epw(
   epw,
   climate,
   periods,
-  method,
+  transform,
   dir,
+  reference = NULL,
+  observed_reference = NULL,
   control = shift_control(),
   ui = shift_ui(),
   store = NULL,
@@ -198,13 +196,9 @@ shift_extract(
 shift_morph(
   x,
   baseline = NULL,
-  recipe = epw_morph_recipe("belcher"),
+  transform,
   reference = NULL,
-  reference_plan_id = NULL,
-  reference_periods = NULL,
   observed_reference = NULL,
-  observed_plan_id = NULL,
-  observed_periods = NULL,
   strict = TRUE,
   complete_only = TRUE,
   by = c("source_id", "experiment_id", "variant_label", "period"),
@@ -330,9 +324,8 @@ date-time values accepted by the provider/store.}
 \item{filters}{Provider-specific query filters in \code{\link[=shift_request]{shift_request()}}, or
 extraction filters in \code{\link[=shift_extract]{shift_extract()}}.}
 
-\item{options}{For \code{\link[=belcher]{belcher()}}, an optional named list created by
-\code{\link[=belcher_options]{belcher_options()}}. For \code{\link[=shift_request]{shift_request()}}, provider-specific request
-options; ESGF recognizes \code{index_node} and \code{time_filter_method}.}
+\item{options}{Provider-specific request options. For ESGF, \code{index_node} and
+\code{time_filter_method} are recognized.}
 
 \item{...}{Additional provider-specific filters or workflow options.}
 
@@ -349,18 +342,6 @@ inheriting from \code{"Epw"} in site and task APIs; in \code{\link[=shift_plan]{
 EPW export option list.}
 
 \item{metadata}{Optional site metadata.}
-
-\item{recipe}{Morphing recipe, usually from \code{\link[=epw_morph_recipe]{epw_morph_recipe()}}.}
-
-\item{reference}{Optional \code{ShiftReferenceSpec} or \code{ShiftClimate} stage for
-change-factor morphing.}
-
-\item{observed_reference}{Optional plan-backed \code{ShiftReferenceSpec} or
-\code{ShiftClimate} stage containing multi-year observed daily weather.}
-
-\item{methods}{Optional named Belcher step method overrides.}
-
-\item{profile}{Belcher compatibility profile, \code{"enhanced"} by default.}
 
 \item{model}{CMIP6 source/model IDs.}
 
@@ -427,8 +408,15 @@ climate data.}
 
 \item{store}{An \link{EsgStore}, store path, or \code{NULL}.}
 
-\item{method}{In task-level planning, a complete \code{\link[=shift_morph_method]{shift_morph_method()}}
-object. In \code{\link[=shift_extract]{shift_extract()}}, the grid extraction method.}
+\item{transform}{A reusable specification from \code{\link[=monthly_transform]{monthly_transform()}},
+\code{\link[=daily_transform]{daily_transform()}}, or \code{\link[=hourly_transform]{hourly_transform()}}.}
+
+\item{reference}{Optional \code{ShiftReferenceSpec} or \code{ShiftClimate} stage
+containing historical model climate when required by \code{transform}.}
+
+\item{observed_reference}{Optional plan-backed \code{ShiftReferenceSpec} or
+\code{ShiftClimate} stage containing observed weather when required by
+\code{transform}.}
 
 \item{control}{Workflow controls from \code{\link[=shift_control]{shift_control()}}.}
 
@@ -442,7 +430,7 @@ use \code{variables}, \code{time}, \code{filters}, \code{method}, and \code{fall
 stage.}
 
 \item{morph}{Named morph-stage options. Stage option lists are validated and
-cannot override task-level controls or the method recipe/reference.}
+cannot override task-level controls or the transform/reference inputs.}
 
 \item{climate}{A complete future-climate specification from \code{\link[=shift_cmip6]{shift_cmip6()}}.}
 
@@ -478,16 +466,12 @@ can use OPeNDAP first and only download as a fallback when requested.}
 
 \item{session_label}{Optional download session label.}
 
+\item{method}{Grid extraction method used by \code{\link[=shift_extract]{shift_extract()}}.}
+
 \item{fallback}{Extraction fallback policy.}
 
 \item{baseline}{Optional baseline EPW path or
 \code{shift_site()} object containing \code{epw}.}
-
-\item{reference_plan_id, reference_periods}{Optional store plan IDs and period
-table for reference climate data.}
-
-\item{observed_plan_id, observed_periods}{Optional store plan IDs and period
-table for observed daily weather.}
 
 \item{complete_only}{Whether \code{\link[=shift_morph]{shift_morph()}} should morph only complete
 extraction plans when a climate stage also contains failed or incomplete

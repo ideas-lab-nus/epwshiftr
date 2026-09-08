@@ -105,6 +105,7 @@ Collate:
     'weather-recipe.R'
     'epw-morph-recipe.R'
     'utils.R'
+    'weather-transform.R'
     'store.R'
     'epw-morpher.R'
     'epw-output.R'

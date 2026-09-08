@@ -232,7 +232,8 @@ plans.
 
 
 ``` r
-variables <- epw_morph_variables("recommended")
+transform <- monthly_transform("belcher")
+variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 
 query <- esg_query("https://esgf-data.dkrz.de")$
     activity_id("ScenarioMIP")$

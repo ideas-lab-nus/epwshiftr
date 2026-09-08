@@ -75,7 +75,8 @@ data, the CEDA data node, and the current recommended morphing variables.
 
 ```{r build-query}
 index_node <- "https://esgf-data.dkrz.de"
-variables <- epw_morph_variables("recommended")
+transform <- monthly_transform("belcher")
+variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 dataset_fields <- c(
     "id", "source_id", "experiment_id", "variant_label",
     "frequency", "table_id", "variable_id", "data_node",

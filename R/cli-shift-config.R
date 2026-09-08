@@ -72,7 +72,7 @@ epwshiftr_cli_shift_config_validate <- function(store, args) {
 
 epwshiftr_cli_shift_example_config <- function() {
     list(
-        version = 1L,
+        version = 2L,
         epw = system.file(
             "extdata/examples/SGP_Singapore.486980_IWEC.epw",
             package = "epwshiftr",
@@ -88,17 +88,13 @@ epwshiftr_cli_shift_example_config <- function() {
             table = NULL
         ),
         periods = list(`2060s` = "2055:2065"),
-        # Prefer a matching historical climate reference. Users may omit this
-        # block only when no suitable reference data are available; omission
-        # never triggers an implicit historical request.
-        method = list(
-            name = "belcher",
-            profile = "enhanced",
-            options = unclass(belcher_options()),
-            reference = list(
-                mode = "historical",
-                periods = list(reference = "1995:2014")
-            )
+        transform = list(
+            scale = "monthly",
+            method = "belcher"
+        ),
+        reference = list(
+            mode = "historical",
+            periods = list(reference = "1995:2014")
         ),
         dir = "future-epw",
         control = list(

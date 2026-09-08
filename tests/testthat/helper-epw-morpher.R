@@ -30,8 +30,10 @@ epw_morpher_test_file_docs <- function(
     path,
     opendap_url,
     download_url,
-    variable_id = "tas"
+    variable_id = "tas",
+    frequency = "day"
 ) {
+    checkmate::assert_choice(frequency, c("day", "mon"))
     docs <- data.frame(
         id = sprintf("%s|dataset-1", path),
         dataset_id = "dataset-1",
@@ -50,8 +52,8 @@ epw_morpher_test_file_docs <- function(
         source_id = "EC-Earth3",
         experiment_id = "ssp585",
         variant_label = "r1i1p1f1",
-        frequency = "day",
-        table_id = "day",
+        frequency = frequency,
+        table_id = if (identical(frequency, "mon")) "Amon" else "day",
         variable_id = variable_id,
         grid_label = "gr",
         check.names = FALSE

@@ -81,7 +81,7 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
     )
     expect_equal(store$extract(plan_id = plan$plan_id)$status, "done")
 
-    morpher <- epw_morpher(
+    morpher <- morpher__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -129,7 +129,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
 
     external_epw <- test_external_epw(get_cache_epw())
     original_external_path <- external_epw$path()
-    morpher <- epw_morpher(
+    morpher <- morpher__from_recipe(
         store = store,
         epw = external_epw,
         site_id = "SIN",
@@ -240,7 +240,12 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     nc <- stats::setNames(
         vapply(variables, function(variable_id) {
             path <- tempfile(fileext = ".nc")
-            write_local_cmip6_netcdf_fixture(path, 2060L, variable_id = variable_id)
+            write_local_cmip6_netcdf_fixture(
+                path,
+                2060L,
+                variable_id = variable_id,
+                frequency = "mon"
+            )
             path
         }, character(1L)),
         variables
@@ -256,7 +261,8 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
             path = basename(nc[[variable_id]]),
             opendap_url = nc[[variable_id]],
             download_url = nc[[variable_id]],
-            variable_id = variable_id
+            variable_id = variable_id,
+            frequency = "mon"
         )
     }), fill = TRUE)
     query_id <- store$add_files(epw_morpher_test_result(as.data.frame(docs)))
@@ -274,7 +280,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_equal(nrow(processed), length(variables))
     expect_true(all(processed$status == "done"))
 
-    morpher <- epw_morpher(
+    morpher <- morpher__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -361,7 +367,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     resumed_results <- morpher$run(strict$morph_id, overwrite = FALSE, resume = TRUE)
     expect_equal(resumed_results$result_id, results$result_id)
 
-    override_morpher <- epw_morpher(
+    override_morpher <- morpher__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -387,7 +393,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = epw_morph_recipe("belcher"),
+        transform = monthly_transform("epwshiftr"),
         label = "singapore-change"
     )
     change_baseline <- change_morpher$summarise_baseline()
@@ -467,7 +473,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     )
     workflow_processed <- workflow_store$extract(plan_id = workflow_plan$plan_id)
     expect_true(all(workflow_processed$status == "done"))
-    workflow_morpher <- epw_morpher(
+    workflow_morpher <- morpher__from_recipe(
         store = workflow_store,
         epw = get_cache_epw(),
         site_id = "SIN",

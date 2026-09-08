@@ -341,7 +341,7 @@ test_that("Shift configuration printers use compact semantic receipts", {
     control <- shift_control()
     ui <- shift_ui()
     reference <- historical_reference(1995:2014)
-    method <- belcher()
+    transform <- monthly_transform("epwshiftr")
     site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
 
     climate_text <- capture.output(print(climate, width = 72L),
@@ -362,18 +362,18 @@ test_that("Shift configuration printers use compact semantic receipts", {
         fixed = TRUE)))
     expect_false(any(grepl("1996, 1997", reference_text, fixed = TRUE)))
 
-    method_text <- capture.output(print(method, width = 72L),
+    transform_text <- capture.output(print(transform, width = 72L),
         type = "message")
-    expect_true(any(grepl("Reference: baseline EPW", method_text,
+    expect_true(any(grepl("Transformation scale: monthly", transform_text,
         fixed = TRUE)))
-    expect_true(any(grepl("Profile: enhanced", method_text, fixed = TRUE)))
-    expect_false(any(grepl("── Rules", method_text)))
-    method_verbose <- capture.output(print(method, width = 72L,
-        verbose = TRUE, n = 3L), type = "message")
-    expect_true(any(grepl("Rules", method_verbose, fixed = TRUE)))
-    expect_true(any(grepl("Options", method_verbose, fixed = TRUE)))
-    expect_true(any(grepl("snow_depth", method_verbose, fixed = TRUE)))
-    expect_true(any(grepl("11 more rows", method_verbose, fixed = TRUE)))
+    expect_true(any(grepl(
+        "Required source frequency: model_future: mon",
+        transform_text,
+        fixed = TRUE
+    )))
+    expect_true(any(grepl("Hourly reconstruction", transform_text,
+        fixed = TRUE)))
+    expect_false(any(grepl("Profile|Policy|Backend", transform_text)))
 
     visible <- NULL
     capture.output(visible <- withVisible(print(control, width = 72L)),
@@ -382,24 +382,13 @@ test_that("Shift configuration printers use compact semantic receipts", {
     expect_identical(visible$value, control)
 
     expect_snapshot(shift_test_print_objects(
-        list(climate, control, ui, reference, method, site), width = 72L))
+        list(climate, control, ui, reference, transform, site), width = 72L))
     expect_snapshot(shift_test_print_objects(
-        list(climate, control, ui, reference, method, site),
+        list(climate, control, ui, reference, transform, site),
         width = 100L, n = 3L, verbose = TRUE))
 })
 
-test_that("Shift scientific labels preserve profiles, table policy, and partitions", {
-    expect_identical(
-        shift__format_morph_method("belcher", belcher()@recipe),
-        "belcher [enhanced]"
-    )
-    expect_identical(
-        shift__format_morph_method(
-            "belcher", list(backend = "belcher"),
-            missing_belcher_profile = "legacy"
-        ),
-        "belcher [legacy]"
-    )
+test_that("Shift scientific labels preserve table policy and partitions", {
     expect_identical(shift__format_cmip6_tables(NULL), "auto by variable")
     expect_identical(shift__format_cmip6_tables("Amon"), "Amon (forced)")
     expect_identical(
@@ -471,12 +460,13 @@ test_that("Shift scientific labels preserve profiles, table policy, and partitio
 })
 
 test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows", {
+    transform <- monthly_transform("belcher")
     req <- shift_cmip6_scenario(
         source = "BCC-CSM2-MR",
         scenario = c("ssp126", "ssp585"),
         member = "r1i1p1f1",
         years = 2055:2065,
-        variables = "belcher",
+        variables = morpher__input_variables(transform__recipe(transform)),
         frequency = "mon",
         grid_label = "gn",
         data_node = "esgf.ceda.ac.uk",
@@ -496,13 +486,14 @@ test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows
         site = site,
         periods = list(`2060s` = "2055:2065"),
         store = tempfile("shift-store-"),
-        method = belcher(reference = historical_reference("1995:2014")),
+        transform = transform,
+        reference = historical_reference("1995:2014"),
         epw = list(export_dir = tempfile("future-epw-"))
     )
     explain <- shift_explain(plan)
 
     expect_equal(shift_status(plan), "planned")
-    expect_true(all(c("request", "method", "reference", "output") %in% explain$step))
+    expect_true(all(c("request", "transform", "reference", "output") %in% explain$step))
     expect_match(explain$detail[explain$step == "request"], "BCC-CSM2-MR")
 })
 
@@ -540,7 +531,8 @@ test_that("historical workflow queries preserve years without exact datetime bou
             index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2055:2065),
-        method = belcher(reference = historical_reference(reference_years)),
+        transform = monthly_transform("belcher"),
+        reference = historical_reference(reference_years),
         dir = tempfile("historical-query-output-"),
         store = tempfile("historical-query-store-"),
         dry_run = TRUE
@@ -549,12 +541,12 @@ test_that("historical workflow queries preserve years without exact datetime bou
     query <- shift_as_esg_query(request)
 
     expect_null(request@meta$time)
-    expect_equal(plan@meta$method@reference@periods$year, reference_years)
+    expect_equal(plan@meta$reference@periods$year, reference_years)
     expect_false(grepl("datetime_start|datetime_stop", query$url()))
 
     # Real monthly CMIP6 Dataset metadata uses representative mid-month
     # timestamps. A December 16 endpoint still covers the calendar year 2014.
-    variables <- epw_morph_variables(plan@meta$method@recipe)
+    variables <- epw_morph_variables(plan@meta$recipe)
     reference_catalog <- data.table::rbindlist(lapply(variables, function(variable) {
         docs <- shift_test_file_docs(
             sprintf("historical_%s.nc", variable),
@@ -932,27 +924,29 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     expect_equal(shift_ids(reused)$plan_id, shift_ids(derived)$plan_id)
 })
 
-test_that("morph methods bind optional or explicit references at construction", {
+test_that("weather transforms remain reusable and validate execution references", {
     historical <- historical_reference(1995:2014)
     manual <- shift_reference_plan("plan-reference", epw_morph_periods(reference = 1995L))
 
-    expect_true(S7::S7_inherits(belcher(), ShiftMorphMethod))
-    expect_null(belcher()@reference)
-    expect_false(belcher()@requires_reference)
-    expect_true(S7::S7_inherits(belcher(reference = NULL), ShiftMorphMethod))
-    expect_true(S7::S7_inherits(belcher(reference = historical), ShiftMorphMethod))
-    expect_true(S7::S7_inherits(belcher(reference = manual), ShiftMorphMethod))
-    expect_true(S7::S7_inherits(shift_morph_method(epw_morph_recipe("belcher")), ShiftMorphMethod))
+    transform <- monthly_transform("belcher")
+    expect_true(S7::S7_inherits(transform, WeatherTransformSpec))
+    expect_false("reference" %in% S7::props(transform))
+    expect_true(transform__validate_execution_inputs(transform, historical))
+    expect_true(transform__validate_execution_inputs(transform, manual))
     expect_error(
-        shift_morph_method(
-            suppressWarnings(epw_morph_recipe("belcher_absolute")),
-            reference = historical
-        ),
-        "does not accept reference"
+        transform__validate_execution_inputs(transform),
+        "requires.*reference"
     )
     expect_error(
-        shift_morph_method(epw_morph_recipe("belcher"), reference = 1995:2014),
+        transform__validate_execution_inputs(transform, 1995:2014),
         "ShiftReferenceSpec"
+    )
+    expect_error(
+        transform__validate_execution_inputs(
+            monthly_transform("epwshiftr"),
+            observed_reference = manual
+        ),
+        "does not use.*observed_reference"
     )
 })
 
@@ -1184,24 +1178,28 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         files,
         site = site,
         periods = epw_morph_periods(`2060s` = 2060L),
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
     )
     climate_resumed <- shift_extract(
         files,
         site = site,
         periods = epw_morph_periods(`2060s` = 2060L),
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
     )
     dl <- shift_download(files, run = FALSE, probe = FALSE)
     climate_after_download <- shift_extract(
         dl,
         site = site,
         periods = epw_morph_periods(`2060s` = 2060L),
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
     )
-    morph_recipe <- suppressWarnings(epw_morph_recipe("belcher_absolute", methods = c(tdb = "shift")))
-    expect_equal(epw_morph_variables(morph_recipe), epw_morph_variables("recommended"))
-    morphed <- shift_morph(climate, recipe = morph_recipe, strict = FALSE)
+    transform <- daily_transform("epwshiftr")
+    morphed <- shift_morph(
+        climate,
+        transform = transform,
+        reference = climate,
+        strict = FALSE
+    )
     epws <- shift_epw(morphed, dir = "shift-epw")
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
@@ -1389,17 +1387,17 @@ test_that("standalone shift APIs carry run context without session arguments", {
     expect_true(all(c("store", "ui") %in% names(formals(shift_datasets))))
 })
 
-test_that("shift_future_epw() requires a complete method and returns a task plan", {
-    method <- shift_morph_method(suppressWarnings(epw_morph_recipe("belcher_absolute")))
+test_that("shift_future_epw() requires a transform and returns a task plan", {
+    transform <- monthly_transform("epwshiftr")
     climate <- shift_cmip6(
         model = "EC-Earth3", scenarios = "ssp585",
-        member = "r1i1p1f1", grid = "gr", frequency = "day", table = "day"
+        member = "r1i1p1f1", grid = "gr", frequency = "mon", table = "Amon"
     )
     plan <- shift_future_epw(
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2060L),
-        method = method,
+        transform = transform,
         dir = tempfile("future-epw-"),
         control = shift_control(strict = FALSE),
         store = tempfile("shift-store-"),
@@ -1417,6 +1415,12 @@ test_that("shift_future_epw() requires a complete method and returns a task plan
     expect_equal(spec$climate$model, "EC-Earth3")
     expect_equal(spec$climate$scenarios, "ssp585")
     expect_true(S7::S7_inherits(shift__plan_from_spec(spec)@meta$climate, ShiftCmip6Spec))
+    legacy_spec <- spec
+    legacy_spec$version <- 1L
+    expect_error(
+        shift__plan_from_spec(legacy_spec),
+        "unsupported schema version"
+    )
 
     external_store <- tempfile("shift-external-epw-store-")
     external <- test_external_epw(get_cache_epw())
@@ -1425,7 +1429,7 @@ test_that("shift_future_epw() requires a complete method and returns a task plan
         epw = external,
         climate = climate,
         periods = list(`2060s` = 2060L),
-        method = method,
+        transform = transform,
         dir = tempfile("future-epw-"),
         control = shift_control(strict = FALSE),
         store = external_store,
@@ -1440,15 +1444,15 @@ test_that("shift_future_epw() requires a complete method and returns a task plan
     expect_error(
         shift_future_epw(
             epw = get_cache_epw(), climate = shift_cmip6("EC-Earth3", "ssp585"),
-            periods = list(`2060s` = 2060L), method = "belcher",
+            periods = list(`2060s` = 2060L), transform = "belcher",
             dir = tempfile("future-epw-"), dry_run = TRUE
         ),
-        "ShiftMorphMethod"
+        "WeatherTransformSpec"
     )
     expect_error(
         shift_future_epw(
             epw = get_cache_epw(), model = "EC-Earth3", scenarios = "ssp585",
-            periods = list(`2060s` = 2060L), method = method,
+            periods = list(`2060s` = 2060L), transform = transform,
             dir = tempfile("future-epw-"), dry_run = TRUE
         ),
         "unused arguments"
@@ -1472,12 +1476,13 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
     withr::local_options(cli.num_colors = 1L)
     site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
     periods <- epw_morph_periods(`2060s` = 2055:2065)
-    method <- belcher(reference = historical_reference(1995:2014))
+    transform <- monthly_transform("belcher")
     plan <- shift_future_epw(
         epw = get_cache_epw(),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
         periods = periods,
-        method = method,
+        transform = transform,
+        reference = historical_reference(1995:2014),
         dir = file.path(tempdir(), "shift-print-output"),
         store = file.path(tempdir(), "shift-print-store"),
         dry_run = TRUE
@@ -1528,8 +1533,9 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
     morphed <- shift_stage_new(
         ShiftMorphed, "morphed",
         meta = list(
-            recipe = method@recipe,
-            reference_spec = method@reference,
+            transform = transform,
+            recipe = transform__recipe(transform),
+            reference_spec = historical_reference(1995:2014),
             results = morph_rows
         )
     )
@@ -1582,7 +1588,8 @@ test_that("ShiftRun print refreshes state and reuses the static dashboard", {
         epw = get_cache_epw(),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
         periods = list(`2060s` = 2055:2065),
-        method = belcher(reference = historical_reference(1995:2014)),
+        transform = monthly_transform("belcher"),
+        reference = historical_reference(1995:2014),
         dir = tempfile("shift-print-run-output-"),
         store = store_path,
         dry_run = TRUE
@@ -1622,10 +1629,17 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
             grid = NULL
         ),
         periods = list(`2060s` = 2055:2065),
-        method = list(
-            name = "belcher",
-            reference_mode = "historical",
-            reference = list(periods = list(reference = 1995:2014))
+        transform = list(
+            scale = "monthly",
+            method = "belcher",
+            recipe = "belcher_monthly",
+            recipe_version = 1L,
+            reconstruction = "belcher_field_equations",
+            options = list()
+        ),
+        reference = list(
+            mode = "historical",
+            periods = list(reference = 1995:2014)
         ),
         control = list(download = "auto")
     )
@@ -1688,15 +1702,15 @@ test_that("shift_ui() validates presentation options without changing scientific
 
     store <- tempfile("shift-ui-store-")
     output <- tempfile("shift-ui-output-")
-    method <- shift_morph_method(suppressWarnings(epw_morph_recipe("belcher_absolute")))
+    transform <- monthly_transform("epwshiftr")
     climate <- shift_cmip6(
         model = "EC-Earth3", scenarios = "ssp585",
-        member = "r1i1p1f1", grid = "gr", frequency = "day", table = "day"
+        member = "r1i1p1f1", grid = "gr", frequency = "mon", table = "Amon"
     )
     make_plan <- function(ui) {
         shift_future_epw(
             epw = get_cache_epw(), climate = climate,
-            periods = list(`2060s` = 2060L), method = method,
+            periods = list(`2060s` = 2060L), transform = transform,
             dir = output, store = store, dry_run = TRUE, ui = ui
         )
     }
@@ -1801,10 +1815,10 @@ test_that("foreground interrupts persist one meaningful cancelled state", {
         epw = get_cache_epw(),
         climate = shift_cmip6(
             "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr",
-            frequency = "day", table = "day"
+            frequency = "mon", table = "Amon"
         ),
         periods = list(`2060s` = 2060L),
-        method = shift_morph_method(suppressWarnings(epw_morph_recipe("belcher_absolute"))),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-interrupt-output-"),
         store = store_path,
         dry_run = TRUE
@@ -1846,11 +1860,10 @@ test_that("background live sidecars carry transient reporter state without event
         epw = get_cache_epw(),
         climate = shift_cmip6(
             "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr",
-            frequency = "day", table = "day"
+            frequency = "mon", table = "Amon"
         ),
         periods = list(`2060s` = 2060L),
-        method = shift_morph_method(suppressWarnings(
-            epw_morph_recipe("belcher_absolute"))),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-live-ui-output-"),
         store = store_path,
         dry_run = TRUE
@@ -1896,7 +1909,7 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
             member = "r1i1p1f1", grid = "gn"
         ),
         periods = list(`2060s` = 2060L),
-        method = belcher(),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-rejected-node-output-"),
         store = store_path,
         dry_run = TRUE
@@ -1929,10 +1942,10 @@ test_that("background runs register live jobs before launching workers", {
         epw = get_cache_epw(),
         climate = shift_cmip6(
             "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr",
-            frequency = "day", table = "day"
+            frequency = "mon", table = "Amon"
         ),
         periods = list(`2060s` = 2060L),
-        method = shift_morph_method(suppressWarnings(epw_morph_recipe("belcher_absolute"))),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-background-output-"),
         store = store_path,
         dry_run = TRUE
@@ -1972,10 +1985,10 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
         epw = get_cache_epw(),
         climate = shift_cmip6(
             "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr",
-            frequency = "day", table = "day"
+            frequency = "mon", table = "Amon"
         ),
         periods = list(`2060s` = 2060L),
-        method = shift_morph_method(suppressWarnings(epw_morph_recipe("belcher_absolute"))),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-live-lock-output-"), store = store_path, dry_run = TRUE
     )
     withr::local_options(list(epwshiftr.shift.launcher = function(...) invisible(0L)))
@@ -2086,6 +2099,8 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 docs$source_id <- "BCC-CSM2-MR"
                 docs$experiment_id <- experiment_id
                 docs$grid_label <- "gn"
+                docs$frequency <- "mon"
+                docs$table_id <- "Amon"
                 docs$dataset_id <- sprintf("dataset-%s-%s", experiment_id, variable_id)
                 docs$master_id <- sprintf("master-%s-%s", experiment_id, variable_id)
                 docs$instance_id <- sprintf("instance-%s-%s.v1", experiment_id, variable_id)
@@ -2127,6 +2142,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 dataset <- shift_test_dataset_docs(if (length(variables_requested)) variables_requested[[1L]] else "tas")
                 dataset$source_id <- "BCC-CSM2-MR"
                 dataset$experiment_id <- if (length(experiments)) experiments[[1L]] else "ssp585"
+                dataset$frequency <- "mon"
                 dataset
             } else {
                 calls$file_calls <- calls$file_calls + 1L
@@ -2165,10 +2181,10 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
         epw = get_cache_epw(),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR", scenarios = c("ssp126", "ssp585"),
-            frequency = "day", table = "day", index_nodes = "https://example.org"
+            frequency = "mon", table = "Amon", index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2060L),
-        method = belcher(),
+        transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-run-baseline-reference-output-"),
         control = shift_control(strict = TRUE, overwrite = TRUE),
         store = tempfile("shift-run-baseline-reference-store-")
@@ -2181,10 +2197,11 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
         epw = get_cache_epw(),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR", scenarios = c("ssp126", "ssp585"),
-            frequency = "day", table = "day", index_nodes = "https://example.org"
+            frequency = "mon", table = "Amon", index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2060L),
-        method = belcher(reference = historical_reference(1995L)),
+        transform = monthly_transform("belcher"),
+        reference = historical_reference(1995L),
         dir = output_dir,
         control = shift_control(strict = TRUE, overwrite = TRUE),
         store = store_path
@@ -2215,10 +2232,11 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             epw = get_cache_epw(),
             climate = shift_cmip6(
                 model = "BCC-CSM2-MR", scenarios = c("ssp126", "ssp585"),
-                frequency = "day", table = "day", index_nodes = "https://example.org"
+                frequency = "mon", table = "Amon", index_nodes = "https://example.org"
             ),
             periods = list(`2060s` = 2060L),
-            method = belcher(reference = historical_reference(1995L)),
+            transform = monthly_transform("belcher"),
+            reference = historical_reference(1995L),
             dir = tempfile("shift-default-missing-output-"),
             store = missing_store,
             ui = shift_ui("none")
@@ -2244,10 +2262,11 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
         epw = get_cache_epw(),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR", scenarios = c("ssp126", "ssp585"),
-            frequency = "day", table = "day", index_nodes = "https://example.org"
+            frequency = "mon", table = "Amon", index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2060L),
-        method = belcher(reference = historical_reference(1995L)),
+        transform = monthly_transform("belcher"),
+        reference = historical_reference(1995L),
         dir = tempfile("shift-partial-output-"),
         control = shift_control(strict = TRUE, allow_partial = TRUE, overwrite = TRUE),
         store = tempfile("shift-partial-store-")
@@ -2276,10 +2295,11 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             epw = get_cache_epw(),
             climate = shift_cmip6(
                 model = "BCC-CSM2-MR", scenarios = c("ssp126", "ssp585"),
-                frequency = "day", table = "day", index_nodes = "https://example.org"
+                frequency = "mon", table = "Amon", index_nodes = "https://example.org"
             ),
             periods = list(`2060s` = 2060L),
-            method = belcher(reference = historical_reference(1995L)),
+            transform = monthly_transform("belcher"),
+            reference = historical_reference(1995L),
             dir = tempfile("shift-resume-output-"),
             control = shift_control(strict = TRUE, overwrite = TRUE),
             store = resume_store
@@ -2403,8 +2423,8 @@ test_that("resolution evidence tolerates omitted aggregate counters", {
 })
 
 test_that("CMIP6 resolver preserves explicit member/grid choices and rejects ties", {
-    variables <- epw_morph_variables("recommended")
-    method <- shift_morph_method(suppressWarnings(epw_morph_recipe("belcher_absolute")))
+    transform <- monthly_transform("epwshiftr")
+    variables <- epw_morph_variables(transform__recipe(transform))
 
     # Create two otherwise equivalent non-native grids so automatic preference
     # rules cannot choose one without user input.
@@ -2412,6 +2432,8 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
         data.table::rbindlist(lapply(variables, function(variable_id) {
             docs <- shift_test_file_docs(sprintf("%s_%s.nc", variable_id, grid), variable_id = variable_id)
             docs$grid_label <- grid
+            docs$frequency <- "mon"
+            docs$table_id <- "Amon"
             docs$id <- sprintf("%s-%s", variable_id, grid)
             docs$dataset_id <- sprintf("dataset-%s-%s", variable_id, grid)
             docs
@@ -2420,8 +2442,8 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
 
     plan <- shift_future_epw(
         epw = get_cache_epw(),
-        climate = shift_cmip6("EC-Earth3", "ssp585", frequency = "day", table = "day"),
-        periods = list(`2060s` = 2060L), method = method,
+        climate = shift_cmip6("EC-Earth3", "ssp585", frequency = "mon", table = "Amon"),
+        periods = list(`2060s` = 2060L), transform = transform,
         dir = tempfile("resolver-output-"),
         store = tempfile("resolver-store-"), dry_run = TRUE
     )
@@ -2434,9 +2456,9 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
         epw = get_cache_epw(),
         climate = shift_cmip6(
             "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr1",
-            frequency = "day", table = "day"
+            frequency = "mon", table = "Amon"
         ),
-        periods = list(`2060s` = 2060L), method = method,
+        periods = list(`2060s` = 2060L), transform = transform,
         dir = tempfile("resolver-explicit-output-"),
         store = tempfile("resolver-explicit-store-"), dry_run = TRUE
     )
@@ -2446,9 +2468,9 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
         epw = get_cache_epw(),
         climate = shift_cmip6(
             "EC-Earth3", "ssp585", member = "r2i1p1f1", grid = "gr1",
-            frequency = "day", table = "day"
+            frequency = "mon", table = "Amon"
         ),
-        periods = list(`2060s` = 2060L), method = method,
+        periods = list(`2060s` = 2060L), transform = transform,
         dir = tempfile("resolver-member-output-"),
         store = tempfile("resolver-member-store-"), dry_run = TRUE
     )
@@ -2492,7 +2514,7 @@ test_that("shift_morph() uses complete extraction plans by default", {
         shift_extract(
             site = site,
             periods = epw_morph_periods(`2060s` = 2060L),
-            time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+            time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
             fallback = "error"
         )
 
@@ -2500,9 +2522,12 @@ test_that("shift_morph() uses complete extraction plans by default", {
     expect_true(any(coverage$complete))
     expect_true(any(!coverage$complete))
 
-    morph_recipe <- suppressWarnings(epw_morph_recipe("belcher_absolute", methods = c(tdb = "shift")))
-    morphed <- shift_morph(climate, recipe = morph_recipe, strict = FALSE)
-    blocked <- shift_morph(climate, recipe = morph_recipe, strict = FALSE, complete_only = FALSE, overwrite = TRUE)
+    transform <- daily_transform("epwshiftr")
+    morphed <- shift_morph(climate, transform = transform,
+        reference = climate, strict = FALSE)
+    blocked <- shift_morph(climate, transform = transform,
+        reference = climate, strict = FALSE,
+        complete_only = FALSE, overwrite = TRUE)
 
     expect_equal(shift_ids(morphed)$plan_id, coverage$plan_id[coverage$complete])
     expect_true(any(shift_diagnostics(morphed)$code %in% "ignored_incomplete_extraction"))
@@ -2529,15 +2554,18 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     on.exit(unlink(c(future_nc, reference_nc)), add = TRUE)
 
     future_docs <- data.table::rbindlist(lapply(variables, function(variable_id) {
-        shift_test_file_docs(
+        docs <- shift_test_file_docs(
             basename(future_nc[[variable_id]]),
             opendap_url = future_nc[[variable_id]],
             download_url = future_nc[[variable_id]],
             variable_id = variable_id
         )
+        docs$frequency <- "mon"
+        docs$table_id <- "Amon"
+        docs
     }), fill = TRUE)
     reference_docs <- data.table::rbindlist(lapply(variables, function(variable_id) {
-        shift_test_file_docs(
+        docs <- shift_test_file_docs(
             basename(reference_nc[[variable_id]]),
             opendap_url = reference_nc[[variable_id]],
             download_url = reference_nc[[variable_id]],
@@ -2545,6 +2573,9 @@ test_that("shift_morph() resolves automatic and manual historical references", {
             datetime_start = "1995-01-01T00:00:00Z",
             datetime_end = "1995-12-31T23:59:59Z"
         )
+        docs$frequency <- "mon"
+        docs$table_id <- "Amon"
+        docs
     }), fill = TRUE)
     future_docs[, `:=`(
         dataset_id = paste0("future-", variable_id),
@@ -2570,7 +2601,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         project = "CMIP6",
         experiment = "ssp585",
         variables = variables,
-        frequency = "day"
+        frequency = "mon"
     )
     site <- shift_site("SIN", lon = 103.98, lat = 1.37, label = "singapore", epw = get_cache_epw())
     store_path <- tempfile("shift-store-")
@@ -2581,24 +2612,32 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         shift_collect(store = store_path, label = "future") |>
         shift_extract(site = site, periods = future_periods, variables = variables)
 
-    recipe <- epw_morph_recipe("belcher")
+    transform <- monthly_transform("belcher")
+    recipe <- transform__recipe(transform)
     collect_count_before_baseline <- length(calls$collect_times)
     baseline_reference <- shift_morph(
-        climate, recipe = recipe, strict = TRUE, overwrite = TRUE
+        climate,
+        transform = monthly_transform("epwshiftr"),
+        strict = TRUE,
+        overwrite = TRUE
     )
     expect_true(S7::S7_inherits(baseline_reference, ShiftMorphed))
     expect_null(baseline_reference@meta$reference)
     expect_equal(length(calls$collect_times), collect_count_before_baseline)
-    morpher <- EpwMorpher$new(epw = get_cache_epw(), store = shift_store(climate), recipe = recipe)
+    morpher <- morpher__from_recipe(
+        epw = get_cache_epw(),
+        store = shift_store(climate),
+        recipe = recipe
+    )
     missing_reference <- morpher$preflight(
         plan_id = shift_ids(climate)$plan_id,
         periods = future_periods,
         strict = FALSE
     )
-    expect_false(any(missing_reference$code == "missing_reference_climate"))
+    expect_true(any(missing_reference$code == "missing_reference_climate"))
     auto <- shift_morph(
         climate,
-        recipe = recipe,
+        transform = transform,
         reference = shift_reference_historical(reference_periods),
         strict = TRUE,
         overwrite = TRUE
@@ -2613,13 +2652,13 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     plan_reference <- shift_reference_plan(reference_ids$plan_id, reference_periods)
     manual <- shift_morph(
         climate,
-        recipe = recipe,
+        transform = transform,
         reference = reference_climate,
         strict = TRUE
     )
     manual_plan <- shift_morph(
         climate,
-        recipe = recipe,
+        transform = transform,
         reference = plan_reference,
         strict = TRUE
     )
@@ -2637,12 +2676,10 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     expect_error(
         shift_morph(
             climate,
-            recipe = recipe,
-            reference = reference_climate,
-            reference_plan_id = reference_ids$plan_id,
-            reference_periods = reference_periods
+            transform = monthly_transform("epwshiftr"),
+            observed_reference = reference_climate
         ),
-        "either `reference` or `reference_plan_id`"
+        "does not use.*observed_reference"
     )
     expect_true(sum(calls$values %in% "File") >= 2L)
 })

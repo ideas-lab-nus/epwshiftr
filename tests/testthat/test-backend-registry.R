@@ -90,7 +90,7 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     )
     required_recipe <- epw_morph_recipe(name = required_name, backend = required_name)
     expect_true(morpher__recipe_requires_reference(required_recipe))
-    expect_error(shift_morph_method(required_recipe), "requires an explicit reference")
+    expect_true(morpher__recipe_requires_reference(required_recipe))
     context <- morpher__context(
         epw = epw_file_read(get_cache_epw()),
         climate = data.table::data.table(

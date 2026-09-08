@@ -158,13 +158,16 @@ show_rows(
 goes to ESGF.
 
 ```{r dict-check}
+transform <- monthly_transform("belcher")
+variables <- transform@required_inputs$model_future@variable_sets[[1L]]
+
 request_check <- dict$check(
     activity_id = "ScenarioMIP",
     experiment_id = "ssp585",
     source_id = "MPI-ESM1-2-LR",
     variant_label = "r1i1p1f1",
     table_id = "Amon",
-    variable_id = epw_morph_variables("recommended")
+    variable_id = variables
 )
 
 show_rows(request_check, 20L)

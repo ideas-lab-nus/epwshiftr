@@ -4,8 +4,8 @@
 \alias{EpwMorphBackend}
 \title{EPW morphing backend}
 \description{
-\code{EpwMorphBackend} defines a statistical downscaling backend that can be
-selected by \code{\link[=epw_morph_recipe]{epw_morph_recipe()}} and executed by \link{EpwMorpher}.
+\code{EpwMorphBackend} defines a low-level execution backend used by registered
+weather transformations and executed by \link{EpwMorpher}.
 }
 \section{Public fields}{
 \if{html}{\out{<div class="r6-fields">}}

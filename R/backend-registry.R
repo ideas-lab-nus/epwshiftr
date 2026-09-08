@@ -149,8 +149,8 @@ morpher__normalize_backend_rules <- function(name, rules, method_defaults = NULL
 #' EPW morphing backend
 #'
 #' @description
-#' `EpwMorphBackend` defines a statistical downscaling backend that can be
-#' selected by [epw_morph_recipe()] and executed by [EpwMorpher].
+#' `EpwMorphBackend` defines a low-level execution backend used by registered
+#' weather transformations and executed by [EpwMorpher].
 #'
 #' @export
 EpwMorphBackend <- R6::R6Class(
@@ -425,7 +425,10 @@ morpher__warn_backend <- function(name) {
     assign(name, TRUE, envir = EPW_MORPH_BACKEND_WARNINGS)
     cli::cli_warn(c(
         "!" = "Backend {.val belcher_absolute} uses the legacy absolute-target Belcher implementation.",
-        "i" = "Use {.code belcher(reference = historical_reference(...))} when matching historical data are available; omit the reference only as a fallback."
+        "i" = paste(
+            "Use {.code monthly_transform(\"belcher\")} with a matching",
+            "historical reference for the current public workflow."
+        )
     ))
     invisible(NULL)
 }

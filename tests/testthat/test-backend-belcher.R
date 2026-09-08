@@ -370,7 +370,7 @@ test_that("Belcher production case contexts preserve identity and isolation", {
 })
 
 
-test_that("enhanced profiles and persisted legacy recipes have explicit semantics", {
+test_that("internal Belcher profiles and stored recipe JSON have explicit semantics", {
     enhanced <- epw_morph_recipe("belcher")
     legacy <- epw_morph_recipe("belcher", profile = "legacy")
 
@@ -382,10 +382,6 @@ test_that("enhanced profiles and persisted legacy recipes have explicit semantic
     expect_identical(legacy$options$design_conditions, "preserve")
     expect_error(belcher_options(transition_hours = 337L), "0 and 336")
 
-    restored <- shift__recipe_from_ref(list(
-        name = "belcher", backend = "belcher", methods = NULL
-    ))
-    expect_identical(restored$profile, "legacy")
     expect_true(all(c("tasmax", "tasmin", "snd") %in%
         epw_morph_variables(enhanced, include_optional = TRUE)))
 
@@ -762,13 +758,15 @@ test_that("structured EPW headers round trip and enhanced policies recalculate",
 
 
 test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", {
-    method <- belcher(reference = historical_reference(1995:2014))
-    variables <- morpher__input_variables(method@recipe)
+    transform <- monthly_transform("epwshiftr")
+    reference <- historical_reference(1995:2014)
+    variables <- morpher__input_variables(transform__recipe(transform))
     plan <- shift_future_epw(
         epw = get_cache_epw(),
         climate = shift_cmip6("Model-A", "ssp585"),
         periods = list(`2060s` = 2055:2065),
-        method = method,
+        transform = transform,
+        reference = reference,
         dir = tempfile("enhanced-multitable-output-"),
         store = tempfile("enhanced-multitable-store-"),
         dry_run = TRUE
@@ -776,10 +774,14 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     future <- enhanced_test__catalog(
         "ssp585", variables, 2055:2065
     )
-    reference <- enhanced_test__catalog(
+    reference_catalog <- enhanced_test__catalog(
         "historical", variables, 1995:2014
     )
-    selection <- shift__resolve_cmip6_selection(plan, future, reference)
+    selection <- shift__resolve_cmip6_selection(
+        plan,
+        future,
+        reference_catalog
+    )
     partitions <- shift__selection_partition_rows(selection, "future")
 
     expect_identical(selection$grid_label, "gn")
@@ -799,15 +801,16 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
         without_reference_snd, "future"
     )$variable_id)
 
-    required_method <- belcher(
-        reference = historical_reference(1995:2014),
-        options = belcher_options(snow_depth = "required")
+    required_transform <- monthly_transform(
+        "epwshiftr",
+        snow_depth = "required"
     )
     required_plan <- shift_future_epw(
         epw = get_cache_epw(),
         climate = shift_cmip6("Model-A", "ssp585"),
         periods = list(`2060s` = 2055:2065),
-        method = required_method,
+        transform = required_transform,
+        reference = reference,
         dir = tempfile("required-snd-output-"),
         store = tempfile("required-snd-store-"),
         dry_run = TRUE

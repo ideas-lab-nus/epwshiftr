@@ -103,7 +103,7 @@ test_that("shift_future_epw rejects an overlapping delivery and store tree", {
             epw = get_cache_epw(),
             climate = shift_cmip6("BCC-CSM2-MR", "ssp126"),
             periods = list(`2060s` = 2060L),
-            method = belcher(),
+            transform = monthly_transform("epwshiftr"),
             dir = dir,
             store = store,
             dry_run = TRUE

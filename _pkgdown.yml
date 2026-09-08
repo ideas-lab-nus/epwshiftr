@@ -75,36 +75,33 @@ reference:
       - Downloader
       - store_reset
 
-  - title: EPW morphing and backends
-    desc: Configure store-native EPW morphing, recipes, and statistical downscaling backends.
+  - title: Future-weather transformations
+    desc: Discover, configure, and execute built-in future-weather methods.
     contents:
+      - weather_transforms
+      - monthly_transform
+      - daily_transform
+      - hourly_transform
+      - shift_future_epw
+      - shift_plan
       - EpwMorpher
-      - EpwMorphBackend
       - epw_morpher
       - epw_morph_periods
-      - epw_morph_recipe
-      - epw_morph_recipes
-      - epw_morph_recipe_spec
-      - epw_morph_methods
-      - epw_morph_method_spec
-      - belcher_options
-      - epw_morph_variables
+      - epw_morph_result
+
+  - title: Backend extension
+    desc: Inspect and register low-level execution backends for package extensions.
+    contents:
+      - EpwMorphBackend
       - epw_morph_backends
       - epw_morph_backend
       - epw_morph_register_backend
-      - epw_morph_result
 
   - title: Store-native shift workflow
     desc: Run the high-level staged workflow from request collection to future EPW output.
     contents:
       - shift_request
       - shift_cmip6_avail
-      - daily_temperature
-      - eames_temperature
-      - ek_daily_temperature
-      - arima_temperature
-      - hourly_kernel_qdm
-      - sobie_curry_daily
       - shift_site
       - shift_collect
       - shift_download

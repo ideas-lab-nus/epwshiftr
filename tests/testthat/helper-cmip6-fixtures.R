@@ -107,7 +107,8 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
 
 write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
                                               calendar = "proleptic_gregorian",
-                                              n_years = 1L) {
+                                              n_years = 1L,
+                                              frequency = "day") {
     spec <- local_cmip6_variable_spec(variable_id)
     lat <- c(1.0, 2.0, 41.0)
     lon <- c(103.5, 104.0, 104.5, 254.0)
@@ -115,12 +116,25 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
     calendar <- cf_time_check_calendar(calendar)
     n_years <- as.integer(n_years)
     stopifnot(length(n_years) == 1L, !is.na(n_years), n_years >= 1L)
+    stopifnot(length(frequency) == 1L, frequency %in% c("day", "mon"))
     fixture_years <- as.integer(year) + seq_len(n_years) - 1L
-    # Generate the exact source-calendar length so multi-year fixtures expose
-    # calendar boundaries that surrogate POSIXct dates cannot represent.
-    n_days <- sum(cf_time__year_days(fixture_years, calendar))
-    time <- seq_len(n_days) - 0.5
-    time_bnds <- rbind(time - 0.5, time + 0.5)
+    if (identical(frequency, "day")) {
+        # Generate the exact source-calendar length so multi-year fixtures expose
+        # calendar boundaries that surrogate POSIXct dates cannot represent.
+        n_days <- sum(cf_time__year_days(fixture_years, calendar))
+        time <- seq_len(n_days) - 0.5
+        time_bnds <- rbind(time - 0.5, time + 0.5)
+    } else {
+        # Place one monthly value at the midpoint of its native CF-calendar
+        # bounds. This keeps monthly method tests honest about source frequency.
+        years <- rep(fixture_years, each = 12L)
+        months <- rep(seq_len(12L), times = n_years)
+        month_days <- cf_time_month_days(years, months, calendar)
+        month_end <- cumsum(month_days)
+        month_start <- c(0, head(month_end, -1L))
+        time <- month_start + month_days / 2
+        time_bnds <- rbind(month_start, month_end)
+    }
     lat_step <- min(diff(sort(lat)))
     lon_step <- min(diff(sort(lon)))
     lat_bnds <- rbind(lat - lat_step / 2, lat + lat_step / 2)
@@ -150,8 +164,9 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "source_id", "NC_CHAR", "EC-Earth3")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "experiment_id", "NC_CHAR", "ssp585")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "variant_label", "NC_CHAR", "r1i1p1f1")
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "table_id", "NC_CHAR", "day")
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "frequency", "NC_CHAR", "day")
+    table_id <- if (identical(frequency, "mon")) "Amon" else "day"
+    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "table_id", "NC_CHAR", table_id)
+    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "frequency", "NC_CHAR", frequency)
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "grid_label", "NC_CHAR", "gr")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "nominal_resolution", "NC_CHAR", "100 km")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "variable_id", "NC_CHAR", variable_id)

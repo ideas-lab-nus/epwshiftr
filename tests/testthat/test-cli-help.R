@@ -47,9 +47,9 @@ test_that("epwshiftr_cli_help() resolves root, group, and command topics", {
         "--quiet", "--store", missing_dir, "help", "morph", "run"
     ))
     expect_equal(morph_run_help$status, 0L)
-    expect_match(morph_run_help$result[[1L]], "--profile enhanced|legacy",
+    expect_match(morph_run_help$result[[1L]], "--scale monthly|daily|hourly",
         fixed = TRUE)
-    expect_match(morph_run_help$result[[1L]], "--method STEP=METHOD",
+    expect_match(morph_run_help$result[[1L]], "--method NAME",
         fixed = TRUE)
 
     help_topic <- epwshiftr_cli(c("--quiet", "--store", missing_dir, "help", "storage", "validate"))

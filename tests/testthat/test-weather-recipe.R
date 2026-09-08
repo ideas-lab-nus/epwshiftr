@@ -279,20 +279,17 @@ test_that("recipe input roles validate before backend execution", {
     )
 })
 
-test_that("registered recipe identity survives JSON and workflow references", {
-    recipe <- epw_morph_recipe(
-        "epwshiftr_daily_power",
-        policy = "harmonized",
-        options = list(window_days = 21L)
-    )
+test_that("registered recipe identity survives JSON and transform persistence", {
+    transform <- daily_transform("epwshiftr", window_days = 21L)
+    recipe <- transform__recipe(transform)
     json_roundtrip <- epwshiftr_cli_recipe_from_json(
         morpher__json(recipe)
     )
-    reference_roundtrip <- shift__recipe_from_ref(
-        shift__recipe_ref(recipe)
+    transform_roundtrip <- transform__recipe(
+        transform__from_spec(transform__spec_value(transform))
     )
 
-    for (rebuilt in list(json_roundtrip, reference_roundtrip)) {
+    for (rebuilt in list(json_roundtrip, transform_roundtrip)) {
         expect_identical(
             rebuilt$recipe_spec,
             "epwshiftr_daily_power"
@@ -304,20 +301,15 @@ test_that("registered recipe identity survives JSON and workflow references", {
         expect_identical(rebuilt$components, recipe$components)
     }
 
-    cli_recipe <- epwshiftr_cli_recipe(
-        "epwshiftr_monthly",
-        policy = "harmonized"
-    )
+    cli_recipe <- transform__recipe(monthly_transform("epwshiftr"))
     expect_identical(cli_recipe$recipe_spec, "epwshiftr_monthly")
     expect_identical(cli_recipe$profile, "enhanced")
 
-    aliased <- daily_temperature(
-        historical_reference(years = 1995:2014)
-    )@recipe
+    aliased <- transform__recipe(daily_transform("epwshiftr"))
     aliased_roundtrip <- epwshiftr_cli_recipe_from_json(
         morpher__json(aliased)
     )
-    expect_identical(aliased_roundtrip$name, "daily_temperature")
+    expect_identical(aliased_roundtrip$name, "epwshiftr_daily_power")
     expect_identical(
         aliased_roundtrip$recipe_spec,
         "epwshiftr_daily_power"

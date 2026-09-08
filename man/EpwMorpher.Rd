@@ -40,7 +40,7 @@ Create an EPW morpher.
   store,
   epw,
   site_id = NULL,
-  recipe = epw_morph_recipe("belcher"),
+  transform = monthly_transform("belcher"),
   label = NULL
 )}\if{html}{\out{</div>}}
 }
@@ -55,7 +55,8 @@ object inheriting from \code{"Epw"}.}
 
 \item{\code{site_id}}{Optional site identifier.}
 
-\item{\code{recipe}}{EPW morphing recipe.}
+\item{\code{transform}}{A reusable weather transformation created by a
+scale-specific transform constructor.}
 
 \item{\code{label}}{Optional source label.}
 }
@@ -66,7 +67,7 @@ object inheriting from \code{"Epw"}.}
 \if{html}{\out{<a id="method-EpwMorpher-required_variables"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-required_variables}{}}}
 \subsection{Method \code{required_variables()}}{
-Return recipe-required CMIP variable IDs.
+Return transform-required CMIP variable IDs.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$required_variables()}\if{html}{\out{</div>}}
 }

@@ -209,10 +209,10 @@ options(
 
 # Recommended Task API
 
-The recommended user call gives Belcher an explicit matching historical CMIP6
-reference. When no suitable reference data exist, `belcher()` can instead use
-the baseline EPW climatology; `reference = NULL` never creates a historical
-CMIP6 request implicitly.
+The recommended user call selects Belcher as a reusable monthly transformation
+and gives the run an explicit matching historical CMIP6 reference. A transform
+contains calculation settings only; the site, model, periods, reference, and
+output directory remain execution inputs.
 
 ```{r task-api, eval = FALSE}
 epw <- system.file(
@@ -228,9 +228,8 @@ run <- shift_future_epw(
         scenarios = c("ssp126", "ssp585")
     ),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(
-        reference = historical_reference(1995:2014)
-    ),
+    transform = monthly_transform("belcher"),
+    reference = historical_reference(1995:2014),
     dir = file.path(workflow_root, "future-epw")
 )
 
@@ -239,25 +238,22 @@ shift_outputs(run)
 shift_missing(run)
 ```
 
-The default `belcher()` profile is enhanced. With `shift_cmip6(table = NULL)`,
-the resolver selects exact table/grid partitions per variable: atmospheric
-inputs normally come from `Amon`, while optional `snd` comes from `LImon` only
-when both future and historical cases provide it. Use
-`belcher(profile = "legacy")` only when reproducing the earlier algorithm and
-headers is required.
+Use `weather_transforms()` to inspect the available methods, their source
+frequencies, required input roles, and hourly reconstruction. Belcher is one
+canonical published method. The enhanced package method is selected separately
+with `monthly_transform("epwshiftr")`; neither method exposes backend profiles
+or physical-policy switches.
 
-Profile options are part of the scientific task specification rather than UI
-preferences. Configure them on the method and keep `table = NULL` unless a
-dataset requires an explicit override:
+Scientific options belong to the transform rather than the UI. Configure them
+on the package method and keep `table = NULL` unless a dataset requires an
+explicit override:
 
 ```{r enhanced-method-options, eval = FALSE}
-method <- belcher(
-    reference = historical_reference(1995:2014),
-    options = belcher_options(
-        transition_hours = 72L,
-        humidity_source = "auto",
-        snow_depth = "auto"
-    )
+transform <- monthly_transform(
+    "epwshiftr",
+    transition_hours = 72L,
+    humidity_source = "auto",
+    snow_depth = "auto"
 )
 
 # Named values override individual variables; unnamed scalars force every
@@ -268,8 +264,8 @@ climate <- shift_cmip6(
 )
 ```
 
-See [Inspect EPW Morphing](epw-morpher.html) for the complete option matrix and
-the enhanced/legacy defaults.
+See [Inspect EPW Morphing](epw-morpher.html) for the complete transform and
+execution contracts.
 
 Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
 `shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
@@ -289,27 +285,27 @@ climate <- shift_cmip6(
     model = "BCC-CSM2-MR",
     scenarios = c("ssp126", "ssp585")
 )
-method <- belcher(reference = historical_reference(1995:2014))
+transform <- monthly_transform("belcher")
 plan <- shift_future_epw(
     epw = epw,
     climate = climate,
     periods = list(`2060s` = 2055:2065),
-    method = method,
+    transform = transform,
+    reference = historical_reference(1995:2014),
     dir = file.path(workflow_root, "future-epw"),
     dry_run = TRUE
 )
 
 print(climate)
-print(method)
-print(method, verbose = TRUE)
+print(transform)
 print(plan, n = 3L, width = 80L)
 ```
 
 Data previews show at most 10 rows by default. Use `n = Inf` for every row,
 set `width` when rendering into a constrained console or report, and use
-`verbose = TRUE` for store paths, stable IDs, filters, nodes, method overrides,
-resolved profile options, and additional diagnostics. Normal receipts identify
-the active method profile and whether CMIP tables are automatic or forced.
+`verbose = TRUE` for store paths, stable IDs, filters, nodes, transform options,
+and additional diagnostics. Normal receipts identify the selected transform
+and whether CMIP tables are automatic or forced.
 After resolution, progress and watch views report exact partitions such as
 `Amon=gn · LImon=gr` instead of collapsing them to one representative grid.
 These controls affect presentation only and do not change the workflow
@@ -339,7 +335,8 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(reference = historical_reference(1995:2014)),
+    transform = monthly_transform("belcher"),
+    reference = historical_reference(1995:2014),
     dir = file.path(workflow_root, "future-epw"),
     ui = shift_ui(progress = "log", detail = "detail", heartbeat = 10)
 )
@@ -355,7 +352,8 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(reference = historical_reference(1995:2014)),
+    transform = monthly_transform("belcher"),
+    reference = historical_reference(1995:2014),
     dir = file.path(workflow_root, "future-epw"),
     background = TRUE
 )
@@ -414,33 +412,15 @@ epw_site
 This article keeps using the explicit `site` object so the site ID is short and
 predictable, while the EPW file itself is passed later as the morphing baseline.
 
-`epw_morph_variables()` returns the CMIP variable IDs needed by the selected
-morphing recipe. The result is a plain character vector because the same
-variable IDs are used at several workflow stages: first as the ESGF
-`variable_id` filter in `shift_request()`, then as the extraction variable list
-in `shift_extract()`, and finally as the coverage check used by
-`shift_morph()`.
-
-The helper provides three named variable sets:
-
-- `"minimal"`: air temperature and relative humidity, useful for relaxed
-  demonstrations.
-- `"recommended"`: the current strict Belcher recipe set, including
-  precipitation.
-- `"extended"`: the recommended set plus related max/min variables and snow
-  depth.
-
-This staged walkthrough explicitly uses the Belcher recipe. It is a
-change-factor backend, so
-the morphing step needs both a future climate extraction and a reference climate
-extraction.
+The selected transform exposes its semantic input contract. This staged
+walkthrough reads the required future-model variable set from that contract so
+the same IDs are used in the ESGF request, extraction, coverage check, and
+`shift_morph()` call. Belcher requires matching historical and future model
+inputs.
 
 ```{r variables}
-shift_recipe <- epw_morph_recipe("belcher")
-variables <- epw_morph_variables(shift_recipe)
-optional_variables <- epw_morph_variables(
-    shift_recipe, include_optional = TRUE
-)
+transform <- monthly_transform("belcher")
+variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 variables
 ```
 
@@ -825,30 +805,20 @@ coverage are blocking errors instead of warnings.
 
 `shift_morph()` wraps the lower-level `EpwMorpher` planning and execution API.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
-factor diagnostics, case grouping, or custom backend registration.
+factor diagnostics, case grouping, or transform input contracts.
 
-When available, matching historical CMIP6 data should be supplied so Belcher
-computes future-versus-historical change factors. Pass either an extracted
-historical `ShiftClimate` stage or an explicit reference spec such as
-`historical_reference(1995:2014)`. If no suitable reference data exist,
-`reference = NULL` falls back to monthly statistics from the baseline EPW.
-
-The same `shift_recipe` used to choose request variables can be passed into
-`shift_morph()`. Adjust the recipe when you want to change Belcher methods or
-select another registered backend:
+Matching historical CMIP6 data are required so Belcher can compute
+future-versus-historical change factors. Pass either an extracted historical
+`ShiftClimate` stage or an explicit reference spec such as
+`historical_reference(1995:2014)`. The same transform can be reused across
+sites, models, scenarios, and periods.
 
 ```r
-shift_recipe <- epw_morph_recipe(
-    "belcher",
-    methods = c(tdb = "shift", rh = "shift"),
-    options = belcher_options(snow_depth = "off")
-)
-
 shift_morph(
     extracted,
     reference = reference,
     baseline = epw,
-    recipe = shift_recipe,
+    transform = transform,
     strict = TRUE
 )
 ```
@@ -858,7 +828,7 @@ morphed <- shift_morph(
     extracted,
     reference = reference,
     baseline = epw,
-    recipe = shift_recipe,
+    transform = transform,
     strict = TRUE
 )
 

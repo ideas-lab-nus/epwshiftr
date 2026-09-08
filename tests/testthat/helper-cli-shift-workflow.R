@@ -2,7 +2,8 @@ cli_shift_test_response <- function(docs) {
     esgf_test__response(docs)
 }
 
-cli_shift_test_dataset_docs <- function(variable_id = "tas") {
+cli_shift_test_dataset_docs <- function(variable_id = "tas",
+                                        frequency = "day") {
     data.frame(
         id = "dataset-1",
         instance_id = "dataset-1.v20260101",
@@ -12,7 +13,7 @@ cli_shift_test_dataset_docs <- function(variable_id = "tas") {
         source_id = "EC-Earth3",
         experiment_id = "ssp585",
         variable_id = variable_id[[1L]],
-        frequency = "day",
+        frequency = frequency[[1L]],
         variant_label = "r1i1p1f1",
         data_node = "example.org",
         check.names = FALSE
@@ -20,7 +21,11 @@ cli_shift_test_dataset_docs <- function(variable_id = "tas") {
 }
 
 # Build resolver-complete File documents for CLI workflow tests.
-cli_shift_test_file_docs <- function(path, opendap_url = path, download_url = path, variable_id = "tas",
+cli_shift_test_file_docs <- function(path, opendap_url = path,
+                                     download_url = path,
+                                     variable_id = "tas",
+                                     frequency = "day",
+                                     table_id = "day",
                                      datetime_start = "2060-01-01T00:00:00Z",
                                      datetime_end = "2060-12-31T23:59:59Z") {
     docs <- data.frame(
@@ -46,8 +51,8 @@ cli_shift_test_file_docs <- function(path, opendap_url = path, download_url = pa
         source_id = "EC-Earth3",
         experiment_id = "ssp585",
         variant_label = "r1i1p1f1",
-        frequency = "day",
-        table_id = "day",
+        frequency = frequency,
+        table_id = table_id,
         variable_id = variable_id,
         grid_label = "gr",
         check.names = FALSE
@@ -82,7 +87,10 @@ cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = empt
                                   limit = TRUE, constraints = TRUE, dict_check = FALSE) {
             type <- query_param__value(params$type())
             docs <- if (identical(type, "Dataset")) {
-                cli_shift_test_dataset_docs(unique(file_docs$variable_id))
+                cli_shift_test_dataset_docs(
+                    unique(file_docs$variable_id),
+                    unique(file_docs$frequency)
+                )
             } else {
                 file_docs
             }
@@ -103,7 +111,7 @@ cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = empt
 
 cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
     config <- list(
-        version = 1L,
+        version = 2L,
         epw = epw,
         climate = list(
             provider = "cmip6",
@@ -111,15 +119,16 @@ cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
             scenarios = "ssp585",
             member = "r1i1p1f1",
             grid = "gr",
-            frequency = "day",
-            table = "day",
+            frequency = "mon",
+            table = "Amon",
             index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2060L),
-        method = list(
-            name = "belcher_absolute",
-            methods = list(tdb = "shift")
+        transform = list(
+            scale = "monthly",
+            method = "epwshiftr"
         ),
+        reference = NULL,
         dir = tempfile("cli-shift-export-"),
         control = list(
             strict = FALSE,
@@ -130,7 +139,13 @@ cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
             output_layout = "flat"
         )
     )
-    jsonlite::write_json(config, path, auto_unbox = TRUE, pretty = TRUE)
+    jsonlite::write_json(
+        config,
+        path,
+        auto_unbox = TRUE,
+        pretty = TRUE,
+        null = "null"
+    )
     invisible(path)
 }
 
@@ -152,7 +167,7 @@ cli_shift_test_store_with_extract <- function(nc) {
         "--site-id", "SIN",
         "--lon", "103.98",
         "--lat", "1.37",
-        "--time", "2060-01-02T00:00:00Z,2060-01-03T23:59:59Z",
+        "--time", "2060-01-01T00:00:00Z,2060-12-31T23:59:59Z",
         "--variable", "tas"
     ))
     run <- epwshiftr_cli(c(

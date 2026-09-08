@@ -2,7 +2,7 @@ epwshiftr_cli_morph <- function(store, command, args, json = FALSE, jsonl = FALS
     switch(
         command,
         variables = epwshiftr_cli_morph_variables(args),
-        backends = epwshiftr_cli_morph_backends(args),
+        transforms = cli_morph__transforms(args),
         run = epwshiftr_cli_morph_run(store, args, json = json,
             jsonl = jsonl, quiet = quiet),
         epw = epwshiftr_cli_morph_epw(store, args, json = json,
@@ -17,32 +17,89 @@ epwshiftr_cli_morph <- function(store, command, args, json = FALSE, jsonl = FALS
 
 
 epwshiftr_cli_morph_variables <- function(args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--recipe"))
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = c("--scale", "--method", "--reconstruction")
+    )
     epwshiftr_cli_assert_no_positionals(parsed)
-    recipe <- epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "recommended")
-    variables <- if (recipe %in% c("recommended", "minimal", "extended")) {
-        epw_morph_variables(recipe)
-    } else {
-        epw_morph_variables(epwshiftr_cli_recipe(recipe))
-    }
+    transform <- cli_morph__transform(parsed)
+    variables <- epw_morph_variables(transform__recipe(transform))
     data.table::data.table(variable_id = variables)
 }
 
 
-epwshiftr_cli_morph_backends <- function(args) {
+# Return the public transform catalog through the standalone morph command
+# without exposing backend or internal recipe identifiers.
+cli_morph__transforms <- function(args) {
     parsed <- epwshiftr_cli_parse_command(args)
     epwshiftr_cli_assert_no_positionals(parsed)
-    names <- epw_morph_backends()
-    data.table::rbindlist(lapply(names, function(name) {
-        backend <- suppressWarnings(epw_morph_backend(name))
-        data.table::data.table(
-            backend = backend$name,
-            label = backend$label,
-            requires_reference = backend$requires_reference,
-            required_variables = paste(backend$required_variables(), collapse = ","),
-            methods = paste(names(backend$methods()), collapse = ",")
-        )
-    }), use.names = TRUE, fill = TRUE)
+    columns <- c(
+        "scale",
+        "method",
+        "label",
+        "reconstruction",
+        "statistical_grouping",
+        "output_type",
+        "status"
+    )
+    # Explicit character-column selection keeps the CLI projection visible to
+    # R CMD check without changing the public catalog's data.table type.
+    weather_transforms()[, columns, with = FALSE]
+}
+
+
+# Coerce scalar CLI option values before the public constructor validates the
+# selected scientific method's option schema.
+cli_morph__option_value <- function(value) {
+    if (length(value) != 1L) {
+        return(value)
+    }
+    lowered <- tolower(value)
+    if (lowered %in% c("true", "false")) {
+        return(identical(lowered, "true"))
+    }
+    numeric_value <- suppressWarnings(as.numeric(value))
+    if (!is.na(numeric_value) && is.finite(numeric_value)) {
+        if (grepl("^[+-]?[0-9]+$", value)) {
+            return(as.integer(numeric_value))
+        }
+        return(numeric_value)
+    }
+    value
+}
+
+
+# Build a public transform from standalone morph command flags so CLI and R
+# callers share the same registry, validation, and canonical defaults.
+cli_morph__transform <- function(parsed) {
+    scale <- epwshiftr_cli_choice(
+        parsed$options[["--scale"]],
+        WEATHER_TRANSFORM_SCALES,
+        "--scale",
+        default = "monthly"
+    )
+    method <- epwshiftr_cli_config_string(
+        parsed$options[["--method"]],
+        default = "belcher"
+    )
+    reconstruction <- epwshiftr_cli_config_string(
+        parsed$options[["--reconstruction"]],
+        default = NULL
+    )
+    options <- epwshiftr_cli_key_value_list(
+        parsed$options[["--option"]],
+        "--option"
+    )
+    options <- lapply(options, cli_morph__option_value)
+    constructor <- get(
+        paste0(scale, "_transform"),
+        mode = "function",
+        inherits = TRUE
+    )
+    do.call(
+        constructor,
+        c(list(method = method, reconstruction = reconstruction), options)
+    )
 }
 
 
@@ -52,8 +109,15 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
         args,
         flags = c("--overwrite", "--no-resume", "--no-progress",
             "--reduced-motion", "--verbose", "--debug"),
-        options = c("--plan", "--reference", "--reference-plan", "--epw", "--recipe", "--profile", "--policy", "--strict", "--by"),
-        multi_options = c("--period", "--reference-period", "--reference-filter", "--reference-option", "--method", "--option")
+        options = c(
+            "--plan", "--reference", "--reference-plan", "--epw",
+            "--scale", "--method", "--reconstruction", "--strict", "--by",
+            "--observed-plan"
+        ),
+        multi_options = c(
+            "--period", "--reference-period", "--reference-filter",
+            "--reference-option", "--observed-period", "--option"
+        )
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     periods <- epwshiftr_cli_periods_from_cli(parsed$options[["--period"]])
@@ -77,16 +141,7 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
     strict <- epwshiftr_cli_bool(parsed$options[["--strict"]], "--strict", default = TRUE)
     plan_id <- epwshiftr_cli_required_ids(parsed, "--plan")
     epw <- epwshiftr_cli_required_option(parsed, "--epw")
-    recipe <- epwshiftr_cli_recipe(
-        epwshiftr_cli_config_string(parsed$options[["--recipe"]], default = "belcher"),
-        methods = epwshiftr_cli_key_value_list(parsed$options[["--method"]], "--method"),
-        profile = epwshiftr_cli_config_string(parsed$options[["--profile"]], default = NULL),
-        options = epwshiftr_cli_key_value_list(parsed$options[["--option"]], "--option"),
-        policy = epwshiftr_cli_config_string(
-            parsed$options[["--policy"]],
-            default = NULL
-        )
-    )
+    transform <- cli_morph__transform(parsed)
     by <- epwshiftr_cli_config_character(
         parsed$options[["--by"]],
         default = c("source_id", "experiment_id", "variant_label", "period")
@@ -110,12 +165,32 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
     if (identical(reference_mode, "plan")) {
         reference <- shift_reference_plan(reference_plan_id, reference_periods)
     }
+    observed_reference <- NULL
+    observed_plan_id <- epwshiftr_cli_ids(
+        parsed$options[["--observed-plan"]],
+        "--observed-plan",
+        required = FALSE
+    )
+    if (length(observed_plan_id)) {
+        observed_periods <- epwshiftr_cli_periods_from_cli(
+            parsed$options[["--observed-period"]]
+        )
+        observed_reference <- shift_reference_plan(
+            observed_plan_id,
+            observed_periods
+        )
+    } else if (length(parsed$options[["--observed-period"]])) {
+        epwshiftr_cli_usage_abort(
+            "--observed-period requires --observed-plan."
+        )
+    }
     climate <- epwshiftr_cli_climate_stage_from_plan(store, plan_id, periods, epw)
     morphed <- shift_morph(
         climate,
         baseline = epw,
-        recipe = recipe,
+        transform = transform,
         reference = reference,
+        observed_reference = observed_reference,
         by = by,
         strict = strict,
         overwrite = isTRUE(parsed$flags[["--overwrite"]]),
@@ -191,9 +266,9 @@ epwshiftr_cli_morph_retry <- function(store, args, json = FALSE,
         morphed <- shift_morph(
             previous@meta$climate,
             baseline = previous@meta$baseline,
-            recipe = previous@meta$recipe,
-            reference_plan_id = previous@meta$reference_plan_id,
-            reference_periods = previous@meta$reference_periods,
+            transform = previous@meta$transform,
+            reference = previous@meta$reference,
+            observed_reference = previous@meta$observed_reference,
             by = previous@meta$by,
             strict = previous@meta$strict,
             overwrite = isTRUE(parsed$flags[["--overwrite"]]),
