@@ -15,6 +15,16 @@ local_cmip6_variable_spec <- function(variable_id) {
             long_name = "Near-Surface Air Temperature",
             units = "K"
         ),
+        tasmax = list(
+            standard_name = "air_temperature",
+            long_name = "Daily Maximum Near-Surface Air Temperature",
+            units = "K"
+        ),
+        tasmin = list(
+            standard_name = "air_temperature",
+            long_name = "Daily Minimum Near-Surface Air Temperature",
+            units = "K"
+        ),
         hurs = list(
             standard_name = "relative_humidity",
             long_name = "Near-Surface Relative Humidity",
@@ -83,6 +93,8 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
             values[j, i, ] <- switch(
                 variable_id,
                 tas = 299 + 5 * sin(phase) + spatial,
+                tasmax = 304 + 6 * sin(phase) + spatial,
+                tasmin = 294 + 4 * sin(phase) + spatial,
                 hurs = pmin(95, pmax(40, 72 + 10 * cos(phase) + spatial)),
                 huss = pmax(0.001, 0.016 + 0.003 * cos(phase) + spatial * 1e-5),
                 ps = 100800 + 220 * sin(phase / 2) + 10 * spatial,

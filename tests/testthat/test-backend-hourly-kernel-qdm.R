@@ -206,7 +206,8 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     reference <- historical_reference(1995:2014)
     observed <- shift_reference_plan(
         "observed-hourly-plan",
-        epw_morph_periods(observed = 1995:2014)
+        epw_morph_periods(observed = 1995:2014),
+        role = "observed_reference"
     )
     transform <- do.call(
         hourly_transform,

@@ -19,11 +19,22 @@ epwshiftr_cli_morph <- function(store, command, args, json = FALSE, jsonl = FALS
 epwshiftr_cli_morph_variables <- function(args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        options = c("--scale", "--method", "--reconstruction")
+        options = c("--scale", "--method", "--reconstruction"),
+        multi_options = "--option"
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     transform <- cli_morph__transform(parsed)
-    variables <- epw_morph_variables(transform__recipe(transform))
+    requirements <- morpher__variable_requirements(
+        transform__recipe(transform)
+    )
+    # List the actual source variables participating in the required
+    # alternatives, rather than canonical variables such as HURS when an
+    # option selects the HUSS + TAS + PS derivation path.
+    variables <- unique(unlist(
+        requirements,
+        recursive = TRUE,
+        use.names = FALSE
+    ))
     data.table::data.table(variable_id = variables)
 }
 
@@ -38,6 +49,7 @@ cli_morph__transforms <- function(args) {
         "method",
         "label",
         "reconstruction",
+        "reconstruction_label",
         "statistical_grouping",
         "output_type",
         "status"
@@ -54,6 +66,15 @@ cli_morph__option_value <- function(value) {
     if (length(value) != 1L) {
         return(value)
     }
+    if (grepl("^[[:space:]]*[\\[{]", value)) {
+        parsed <- tryCatch(
+            jsonlite::fromJSON(value, simplifyVector = TRUE),
+            error = function(error) NULL
+        )
+        if (!is.null(parsed)) {
+            return(parsed)
+        }
+    }
     lowered <- tolower(value)
     if (lowered %in% c("true", "false")) {
         return(identical(lowered, "true"))
@@ -66,6 +87,46 @@ cli_morph__option_value <- function(value) {
         return(numeric_value)
     }
     value
+}
+
+# Expand VARIABLE.SETTING CLI keys into the variable-specific lists accepted
+# by multivariable transform constructors while retaining flat daily settings.
+cli_morph__transform_options <- function(options) {
+    checkmate::assert_list(options, names = "unique")
+    if (!length(options)) {
+        return(options)
+    }
+    resolved <- list()
+    for (key in names(options)) {
+        pieces <- strsplit(key, ".", fixed = TRUE)[[1L]]
+        if (length(pieces) == 1L) {
+            if (key %in% names(resolved)) {
+                epwshiftr_cli_usage_abort(sprintf(
+                    "Duplicate transform option: %s.",
+                    key
+                ))
+            }
+            resolved[[key]] <- options[[key]]
+            next
+        }
+        if (length(pieces) != 2L || any(!nzchar(pieces))) {
+            epwshiftr_cli_usage_abort(sprintf(
+                "Transform option keys may contain at most one variable separator: %s.",
+                key
+            ))
+        }
+        variable <- pieces[[1L]]
+        setting <- pieces[[2L]]
+        if (!is.null(resolved[[variable]]) &&
+            !is.list(resolved[[variable]])) {
+            epwshiftr_cli_usage_abort(sprintf(
+                "Transform option %s mixes scalar and variable-specific values.",
+                variable
+            ))
+        }
+        resolved[[variable]][[setting]] <- options[[key]]
+    }
+    resolved
 }
 
 
@@ -91,6 +152,7 @@ cli_morph__transform <- function(parsed) {
         "--option"
     )
     options <- lapply(options, cli_morph__option_value)
+    options <- cli_morph__transform_options(options)
     constructor <- get(
         paste0(scale, "_transform"),
         mode = "function",
@@ -177,7 +239,8 @@ epwshiftr_cli_morph_run <- function(store, args, json = FALSE,
         )
         observed_reference <- shift_reference_plan(
             observed_plan_id,
-            observed_periods
+            observed_periods,
+            role = "observed_reference"
         )
     } else if (length(parsed$options[["--observed-period"]])) {
         epwshiftr_cli_usage_abort(

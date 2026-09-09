@@ -96,18 +96,13 @@
           "check": {"kind": "list"},
           "keys": {
             "type": "named",
-            "must.include": ["mode", "periods"],
-            "subset.of": ["mode", "periods", "plan_id", "experiment", "activity", "match", "filters", "options"]
+            "must.include": ["mode", "periods", "plan_id"],
+            "subset.of": ["mode", "periods", "plan_id"]
           },
           "fields": {
-            "mode": {"check": {"kind": "choice", "choices": ["historical", "plan"]}},
+            "mode": {"check": {"kind": "choice", "choices": ["plan"]}},
             "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-            "plan_id": {"check": {"kind": "character", "any.missing": false}},
-            "experiment": {"check": {"kind": "string"}},
-            "activity": {"check": {"kind": "string"}},
-            "match": {"check": {"kind": "character", "any.missing": false}},
-            "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-            "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+            "plan_id": {"check": {"kind": "character", "any.missing": false}}
           }
         }
       ]

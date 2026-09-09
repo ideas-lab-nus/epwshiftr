@@ -97,7 +97,7 @@ test_that("BTWS component and composite recipe expose strict contracts", {
         recipe$components$hourly,
         "btws_temperature_projection"
     )
-    expect_identical(spec@source$type, "combined_prior_methods")
+    expect_identical(spec@source$type, "package_method")
     expect_match(spec@source$citation, "combined")
     expect_match(spec@source$equation_note, "bisection")
     expect_match(spec@source$signal_note, "monthly UKCP18")

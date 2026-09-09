@@ -514,12 +514,25 @@ test_that("shift reference specs validate manual and automatic reference inputs"
     expect_true(S7::S7_inherits(historical, ShiftReferenceSpec))
     expect_true(S7::S7_inherits(manual, ShiftReferenceSpec))
     expect_equal(historical@mode, "historical")
+    expect_equal(historical@role, "model_historical")
     expect_equal(historical@experiment, "historical")
     expect_equal(historical@activity, "CMIP")
     expect_equal(manual@mode, "plan")
+    expect_equal(manual@role, "model_historical")
     expect_equal(manual@plan_id, "plan-reference")
     expect_error(shift_reference_historical(NULL), "data.frame")
     expect_error(shift_reference_plan(character(), periods), "length >= 1")
+})
+
+test_that("target-year vectors expand to independently named periods", {
+    periods <- shift__periods_from_input(c(2050, 2080))
+
+    expect_identical(periods$period, c("2050", "2080"))
+    expect_identical(periods$year, c(2050L, 2080L))
+    expect_error(
+        shift__periods_from_input(c(2050, 2050)),
+        "duplicated"
+    )
 })
 
 test_that("historical workflow queries preserve years without exact datetime bounds", {
@@ -1459,6 +1472,54 @@ test_that("shift_future_epw() requires a transform and returns a task plan", {
     )
 })
 
+test_that("weather transforms remain reusable across execution contexts", {
+    transform <- monthly_transform("epwshiftr")
+    first <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6(
+            model = "EC-Earth3",
+            scenarios = "ssp126",
+            member = "r1i1p1f1",
+            grid = "gr",
+            frequency = "mon",
+            table = "Amon"
+        ),
+        periods = 2050,
+        transform = transform,
+        dir = tempfile("first-future-epw-"),
+        control = shift_control(strict = FALSE),
+        store = tempfile("first-shift-store-"),
+        dry_run = TRUE
+    )
+    second <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6(
+            model = "BCC-CSM2-MR",
+            scenarios = c("ssp126", "ssp585"),
+            member = "r1i1p1f1",
+            grid = "gn",
+            frequency = "mon",
+            table = "Amon"
+        ),
+        periods = c(2050, 2080),
+        transform = transform,
+        dir = tempfile("second-future-epw-"),
+        control = shift_control(strict = FALSE),
+        store = tempfile("second-shift-store-"),
+        dry_run = TRUE
+    )
+
+    # Planning must bind run-specific models, scenarios, and periods to each
+    # plan without mutating the reusable scientific transform specification.
+    expect_identical(first@meta$transform, transform)
+    expect_identical(second@meta$transform, transform)
+    expect_identical(transform@method, "epwshiftr")
+    expect_identical(first@meta$periods$period, "2050")
+    expect_setequal(second@meta$periods$period, c("2050", "2080"))
+    expect_equal(nrow(shift_cases(first)), 1L)
+    expect_equal(nrow(shift_cases(second)), 4L)
+})
+
 test_that("Shift display paths compact Windows temp roots lexically", {
     root <- "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\Rtmp123"
     path <- paste0(
@@ -2066,8 +2127,9 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
 
     # Exercise the production fallback for both future scenarios and the
     # explicit historical reference instead of supplying direct hurs.
+    belcher_recipe <- transform__recipe(monthly_transform("belcher"))
     variables <- unique(c(
-        setdiff(epw_morph_variables("recommended"), "hurs"),
+        setdiff(epw_morph_variables(belcher_recipe), "hurs"),
         "huss", "ps"
     ))
     future_nc <- stats::setNames(vapply(variables, function(variable_id) {
@@ -2540,7 +2602,9 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
-    variables <- epw_morph_variables("recommended")
+    variables <- epw_morph_variables(
+        transform__recipe(monthly_transform("belcher"))
+    )
     future_nc <- stats::setNames(vapply(variables, function(variable_id) {
         path <- tempfile(fileext = ".nc")
         write_local_cmip6_netcdf_fixture(path, 2060L, variable_id = variable_id)

@@ -150,10 +150,15 @@ ShiftPlan <- S7::new_class("ShiftPlan", parent = ShiftStage)
 # ShiftRun is a lightweight handle to a persisted end-to-end workflow run.
 ShiftRun <- S7::new_class("ShiftRun", parent = ShiftStage)
 
+# Reference roles distinguish historical model output from observations before
+# either source is attached to a reusable transformation.
+SHIFT_REFERENCE_ROLES <- c("model_historical", "observed_reference")
+
 ShiftReferenceSpec <- S7::new_class(
     "ShiftReferenceSpec",
     properties = list(
         mode = shift_prop_string(min.chars = 1L),
+        role = shift_prop_string(min.chars = 1L),
         plan_id = S7::new_property(S7::class_any, default = NULL),
         periods = S7::new_property(S7::class_any, default = NULL),
         experiment = shift_prop_string(null.ok = TRUE, min.chars = 1L, default = NULL),
@@ -163,7 +168,24 @@ ShiftReferenceSpec <- S7::new_class(
         options = S7::new_property(S7::class_list, default = list()),
         collect = S7::new_property(S7::class_list, default = list()),
         extract = S7::new_property(S7::class_list, default = list())
-    )
+    ),
+    validator = function(self) {
+        if (!self@mode %in% c("historical", "plan")) {
+            return("`mode` must be `historical` or `plan`.")
+        }
+        if (!self@role %in% SHIFT_REFERENCE_ROLES) {
+            return(
+                "`role` must be `model_historical` or `observed_reference`."
+            )
+        }
+        if (identical(self@mode, "historical") &&
+            !identical(self@role, "model_historical")) {
+            return(
+                "Automatic historical resolution can only provide model_historical input."
+            )
+        }
+        NULL
+    }
 )
 
 ShiftSite <- S7::new_class(
@@ -1177,15 +1199,30 @@ shift__years_value <- function(value, arg = "years") {
     cli::cli_abort("`{arg}` must be numeric years or character year ranges.")
 }
 
-# Normalize period inputs so users can pass either epw_morph_periods() output or
-# a named list such as list(`2060s` = 2055:2065).
+# Normalize period inputs so individual target years, explicit period tables,
+# and named multi-year windows all reach the same canonical two-column form.
 shift__periods_from_input <- function(periods, arg = "periods") {
     if (is.data.frame(periods)) {
         checkmate::assert_names(names(periods), must.include = c("period", "year"))
         return(data.table::as.data.table(periods))
     }
+    if (is.numeric(periods) && !inherits(periods, c("Date", "POSIXt"))) {
+        years <- shift__years_value(periods, arg)
+        checkmate::assert_integerish(
+            years,
+            lower = 1900,
+            any.missing = FALSE,
+            min.len = 1L,
+            unique = TRUE
+        )
+        values <- as.list(as.integer(years))
+        names(values) <- as.character(years)
+        return(do.call(epw_morph_periods, values))
+    }
     if (!is.list(periods) || is.null(names(periods)) || any(!nzchar(names(periods)))) {
-        cli::cli_abort("`{arg}` must be a period table or a named list of years.")
+        cli::cli_abort(
+            "`{arg}` must be target years, a period table, or a named list of years."
+        )
     }
     values <- lapply(seq_along(periods), function(i) {
         shift__years_value(periods[[i]], sprintf("%s$%s", arg, names(periods)[[i]]))
@@ -1742,7 +1779,7 @@ shift_resolve_epw <- function(x) {
 #' @param project Optional provider project, for example `"CMIP6"`.
 #' @param source,experiment,variant,frequency Provider-neutral request fields.
 #'   Values must use the selected provider's controlled vocabulary.
-#'   In `shift_cmip6()`, an unnamed scalar `frequency` applies to every recipe
+#'   In `shift_cmip6()`, an unnamed scalar `frequency` applies to every transform
 #'   input, while a named character vector assigns one frequency to every
 #'   source variable so `3hrPt`, `3hr`, and `day` data can be collected together.
 #'   In `shift_reference_historical()`, `experiment` is the historical
@@ -1875,7 +1912,7 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 #'   choose one complete member.
 #' @param grid Optional single CMIP6 grid label.
 #' @param table Optional CMIP6 table selection. `NULL` automatically maps each
-#'   recipe input to its native table (including `snd` to `LImon`); an unnamed
+#'   transform input to its native table (including `snd` to `LImon`); an unnamed
 #'   scalar pins every variable to one table; a named character vector
 #'   overrides individual variables.
 #' @param activity CMIP6 activity ID.
@@ -2048,13 +2085,21 @@ shift_cmip6_scenario <- function(source, scenario, member = NULL,
 #' @rdname shift_api
 #' @param plan_id Store extraction plan IDs for manually selected reference
 #'   climate data.
+#' @param role Semantic role of the plan-backed climate. Use
+#'   `"observed_reference"` only for an observational extraction plan.
 #' @export
-shift_reference_plan <- function(plan_id, periods) {
+shift_reference_plan <- function(
+    plan_id,
+    periods,
+    role = c("model_historical", "observed_reference")
+) {
     checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE)
     periods <- shift_reference_periods(periods)
+    role <- match.arg(role)
 
     ShiftReferenceSpec(
         mode = "plan",
+        role = role,
         plan_id = plan_id,
         periods = periods,
         experiment = NULL,
@@ -2311,6 +2356,7 @@ shift_reference_historical <- function(periods, experiment = "historical", activ
 
     ShiftReferenceSpec(
         mode = "historical",
+        role = "model_historical",
         plan_id = NULL,
         periods = periods,
         experiment = experiment,
@@ -2422,6 +2468,8 @@ shift_download <- S7::new_generic(
 #' @rdname shift_api
 #' @param site A `shift_site()` object.
 #' @param periods A period table, usually from [epw_morph_periods()].
+#'   [shift_future_epw()] and [shift_plan()] also accept a numeric vector of
+#'   target years; each year becomes an independently named output period.
 #' @param method Grid extraction method used by [shift_extract()].
 #' @param fallback Extraction fallback policy.
 #' @export
@@ -2489,9 +2537,13 @@ shift_morph <- S7::new_generic(
                 "morph", x, ui = ui,
                 spec = list(baseline = baseline_path,
                     transform = transform__spec_value(transform),
-                    reference = shift__reference_spec_value(reference),
+                    reference = shift__reference_spec_value(
+                        reference,
+                        role = "model_historical"
+                    ),
                     observed_reference = shift__reference_spec_value(
-                        observed_reference
+                        observed_reference,
+                        role = "observed_reference"
                     ),
                     strict = strict, complete_only = complete_only, by = by,
                     overwrite = overwrite, resume = resume),
@@ -4812,15 +4864,18 @@ shift_morph_complete_plan_selection <- function(store, plan_id, complete_only = 
     )
 }
 
-# Serialize an explicit workflow reference without introducing an implicit
-# historical mode during persistence or reconstruction.
-shift__reference_spec_value <- function(reference) {
+# Serialize an explicit workflow reference with the role assigned by its
+# execution argument. ShiftClimate stages do not otherwise carry enough
+# provenance to distinguish model output from observations.
+shift__reference_spec_value <- function(reference, role) {
     if (is.null(reference)) {
         return(NULL)
     }
+    checkmate::assert_choice(role, SHIFT_REFERENCE_ROLES)
     if (S7::S7_inherits(reference, ShiftClimate)) {
         return(list(
             mode = "plan",
+            role = role,
             plan_id = shift_ids(reference)$plan_id,
             periods = split(as.integer(reference@meta$periods$year), reference@meta$periods$period)
         ))
@@ -4828,8 +4883,14 @@ shift__reference_spec_value <- function(reference) {
     if (!S7::S7_inherits(reference, ShiftReferenceSpec)) {
         cli::cli_abort("Cannot persist an unsupported shift reference object.")
     }
+    if (!identical(reference@role, role)) {
+        cli::cli_abort(
+            "Cannot persist reference role {.val {reference@role}} as {.val {role}}."
+        )
+    }
     list(
         mode = reference@mode,
+        role = reference@role,
         plan_id = reference@plan_id,
         periods = split(as.integer(reference@periods$year), reference@periods$period),
         experiment = reference@experiment,
@@ -4848,11 +4909,28 @@ shift__reference_from_spec <- function(spec) {
     if (is.null(spec)) {
         return(NULL)
     }
-    periods <- shift__periods_from_input(spec$periods, arg = "method$reference$periods")
+    periods <- shift__periods_from_input(spec$periods, arg = "reference$periods")
+    if (is.null(spec$role)) {
+        cli::cli_abort(
+            "Persisted reference is missing its semantic input role."
+        )
+    }
     if (identical(spec$mode, "plan")) {
-        return(shift_reference_plan(as.character(spec$plan_id), periods))
+        return(shift_reference_plan(
+            as.character(spec$plan_id),
+            periods,
+            role = as.character(spec$role)
+        ))
     }
     if (identical(spec$mode, "historical")) {
+        if (!identical(
+            as.character(spec$role),
+            "model_historical"
+        )) {
+            cli::cli_abort(
+                "Persisted automatic historical reference has an invalid semantic role."
+            )
+        }
         return(shift_reference_historical(
             periods = periods,
             experiment = as.character(spec$experiment),
@@ -4971,9 +5049,13 @@ shift__plan_spec <- function(x) {
         ),
         periods = split(as.integer(meta$periods$year), meta$periods$period),
         transform = transform__spec_value(transform),
-        reference = shift__reference_spec_value(meta$reference),
+        reference = shift__reference_spec_value(
+            meta$reference,
+            role = "model_historical"
+        ),
         observed_reference = shift__reference_spec_value(
-            meta$observed_reference
+            meta$observed_reference,
+            role = "observed_reference"
         ),
         climate = shift__climate_spec_value(climate),
         control = list(
@@ -5093,14 +5175,20 @@ shift__stage_ref <- function(x) {
                 NULL
             },
             transform = transform__spec_value(x@meta$transform),
-            reference = shift__reference_spec_value(shift_coalesce(
-                x@meta$reference_spec,
-                x@meta$reference
-            )),
-            observed_reference = shift__reference_spec_value(shift_coalesce(
-                x@meta$observed_reference_spec,
-                x@meta$observed_reference
-            )),
+            reference = shift__reference_spec_value(
+                shift_coalesce(
+                    x@meta$reference_spec,
+                    x@meta$reference
+                ),
+                role = "model_historical"
+            ),
+            observed_reference = shift__reference_spec_value(
+                shift_coalesce(
+                    x@meta$observed_reference_spec,
+                    x@meta$observed_reference
+                ),
+                role = "observed_reference"
+            ),
             reference_plan_id = x@meta$reference_plan_id,
             reference_periods = if (is.null(x@meta$reference_periods)) NULL else
                 split(as.integer(x@meta$reference_periods$year),
@@ -6567,7 +6655,7 @@ shift__cmip6_candidates <- function(catalog, models, experiments, variables,
     required_inputs <- unique(unlist(requirements, recursive = TRUE,
         use.names = FALSE))
     if (!all(required_inputs %in% names(table_map))) {
-        cli::cli_abort("CMIP6 table mapping is missing one or more required recipe inputs.")
+        cli::cli_abort("CMIP6 table mapping is missing one or more required transform inputs.")
     }
     variable_specs <- data.table::data.table(
         variable_id = variables,
@@ -8164,7 +8252,8 @@ shift__plan_explain <- function(x) {
             collapse = ", "
         )
         reference_detail <- sprintf(
-            "%s; periods: %s%s",
+            "%s %s; periods: %s%s",
+            reference@role,
             reference@mode,
             reference_periods,
             if (length(reference@match)) sprintf("; match: %s", paste(reference@match, collapse = ", ")) else ""
@@ -9716,7 +9805,7 @@ shift__format_reference <- function(reference, recipe = NULL) {
     }
     if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
         periods <- shift__format_periods(reference@periods)
-        parts <- c(reference@mode, periods)
+        parts <- c(reference@role, reference@mode, periods)
         parts <- parts[!is.na(parts) & nzchar(parts)]
         return(paste(parts, collapse = " \u00b7 "))
     }
@@ -10433,6 +10522,7 @@ shift__print_reference <- function(x, width = NULL, verbose = FALSE) {
     shift__print_header("Climate Reference")
     shift__print_facts(list(
         "Mode" = x@mode,
+        "Role" = x@role,
         "Periods" = shift__format_periods(x@periods),
         "Plan IDs" = shift__display_values(x@plan_id),
         "Experiment" = x@experiment,

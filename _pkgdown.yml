@@ -31,7 +31,7 @@ navbar:
         href: articles/esg-store.html
       - text: "Run Persistent Downloads"
         href: articles/downloader.html
-      - text: "Inspect EPW Morphing"
+      - text: "Inspect Future-Weather Transformations"
         href: articles/epw-morpher.html
       - text: "Manage ESGF Stores from the Command Line"
         href: articles/cli-esgf-store.html
@@ -87,7 +87,6 @@ reference:
       - EpwMorpher
       - epw_morpher
       - epw_morph_periods
-      - epw_morph_result
 
   - title: Backend extension
     desc: Inspect and register low-level execution backends for package extensions.
@@ -96,6 +95,7 @@ reference:
       - epw_morph_backends
       - epw_morph_backend
       - epw_morph_register_backend
+      - epw_morph_result
 
   - title: Store-native shift workflow
     desc: Run the high-level staged workflow from request collection to future EPW output.

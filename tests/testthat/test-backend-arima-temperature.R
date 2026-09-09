@@ -262,7 +262,8 @@ test_that("Arima public method persists both reference roles", {
     historical <- historical_reference(years = 1995:2014)
     observed <- shift_reference_plan(
         "observed-plan",
-        periods = epw_morph_periods(observed = 1995:2014)
+        periods = epw_morph_periods(observed = 1995:2014),
+        role = "observed_reference"
     )
     transform <- daily_transform("arima")
     climate <- shift_cmip6(

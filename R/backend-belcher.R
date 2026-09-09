@@ -24,15 +24,19 @@ EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS <- c(
 EPW_MORPH_BELCHER_METHOD_CHOICES <- c("shift", "stretch", "combined")
 
 # Profiles make the numerical compatibility boundary explicit. The legacy
-# defaults reproduce the historical calculation path, while enhanced enables
-# the guarded temperature method and the standards-based post-process.
+# profile retains Belcher's independent field handling while using the
+# publication's combined mean-and-diurnal-range temperature transformation;
+# enhanced adds guarded fallbacks and the standards-based post-process.
 EPW_MORPH_BELCHER_PROFILES <- c("enhanced", "legacy")
 EPW_MORPH_BELCHER_PROFILE_METHODS <- list(
     enhanced = utils::modifyList(
         as.list(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS),
         list(tdb = "auto")
     ),
-    legacy = as.list(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS)
+    legacy = utils::modifyList(
+        as.list(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS),
+        list(tdb = "combined")
+    )
 )
 EPW_MORPH_BELCHER_ABSOLUTE_PROFILE_METHODS <- list(
     enhanced = utils::modifyList(
@@ -77,6 +81,9 @@ EPW_MORPH_BELCHER_OPTION_CHOICES <- list(
     design_conditions = c("drop", "preserve")
 )
 
+# This table is the single source for Belcher field requirements and method
+# choices. Snow depth remains optional; recipe options decide whether it is
+# queried, required, or disabled.
 EPW_MORPH_BELCHER_RULES <- data.table::data.table(
     step = c(
         "tdb",
@@ -87,6 +94,7 @@ EPW_MORPH_BELCHER_RULES <- data.table::data.table(
         "wind",
         "total_cover",
         "precip",
+        "snow_depth",
         "tdew",
         "diff_rad",
         "norm_rad",
@@ -102,17 +110,18 @@ EPW_MORPH_BELCHER_RULES <- data.table::data.table(
         "wind_speed",
         "total_sky_cover",
         "liquid_precip_depth",
+        "snow_depth",
         "dew_point_temperature",
         "diffuse_horizontal_radiation",
         "direct_normal_radiation",
         "opaque_sky_cover",
         "liquid_precip_rate"
     ),
-    variable_id = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_),
-    optional_variable_id = c("tasmax,tasmin", "hursmax,hursmin", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_),
-    method = c(EPW_MORPH_BELCHER_METHOD_DEFAULTS, "sky_cover", "precipitation", "derived", "derived", "derived", "derived", "derived"),
-    required = c(rep(TRUE, 8L), rep(FALSE, 5L)),
-    derived = c(rep(FALSE, 8L), rep(TRUE, 5L))
+    variable_id = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", "snd", rep(NA_character_, 5L)),
+    optional_variable_id = c("tasmax,tasmin", "hursmax,hursmin", rep(NA_character_, 12L)),
+    method = c(EPW_MORPH_BELCHER_METHOD_DEFAULTS, "sky_cover", "precipitation", "ratio", rep("derived", 5L)),
+    required = c(rep(TRUE, 8L), rep(FALSE, 6L)),
+    derived = c(rep(FALSE, 9L), rep(TRUE, 5L))
 )
 
 # Temperature alone accepts the automatic combined-to-shift fallback. Other
@@ -126,23 +135,6 @@ EPW_MORPH_BELCHER_RULES[, method_choices := lapply(step, function(step_name) {
         method[step == step_name]
     }
 })]
-
-# Snow depth is an optional state variable rather than a required atmospheric
-# input. Recipe options decide whether it is queried, required, or disabled.
-EPW_MORPH_BELCHER_RULES <- data.table::rbindlist(list(
-    EPW_MORPH_BELCHER_RULES[seq_len(8L)],
-    data.table::data.table(
-        step = "snow_depth",
-        epw_field = "snow_depth",
-        variable_id = "snd",
-        optional_variable_id = NA_character_,
-        method = "ratio",
-        required = FALSE,
-        derived = FALSE,
-        method_choices = list("ratio")
-    ),
-    EPW_MORPH_BELCHER_RULES[-seq_len(8L)]
-), use.names = TRUE, fill = TRUE)
 
 # Validate one complete Belcher option list before it enters a recipe. Keeping
 # this check at construction time prevents workers from interpreting malformed
@@ -300,8 +292,8 @@ morpher__belcher_epw_monthly <- function(data_epw, var, keep_units = TRUE) {
 }
 
 # Compute the EPW diurnal range from daily extrema, not from the single most
-# extreme hours in a month. This is the denominator used by enhanced combined
-# temperature morphing and is intentionally independent of CMIP sampling.
+# extreme hours in a month. This is the denominator used by every combined
+# temperature transform and is intentionally independent of CMIP sampling.
 morpher__belcher_epw_monthly_dtr <- function(data_epw, var) {
     values <- morpher__drop_units(data_epw[[var]])
     daily <- data.table::data.table(
@@ -1173,7 +1165,7 @@ BELCHER_PROJECTED_EXTREME_IDENTITY_COLUMNS <- c(
 )
 
 BELCHER_REFERENCE_EXTREME_IDENTITY_COLUMNS <- c(
-    "activity_drs", "institution_id", "source_id", "member_id", "month"
+    "institution_id", "source_id", "member_id", "month"
 )
 
 # Aggregate and attach one monthly-extreme field using an explicitly supplied
@@ -1371,8 +1363,11 @@ morpher__belcher_from_monthly_enhanced <- function(
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
 
+# Select the stable identity shared by future and historical rows. Activity,
+# experiment, interval, table, grid, and coordinates may legitimately differ
+# across periods or variables and therefore cannot identify a climate case.
 morpher__belcher_reference_join_cols <- function(target, reference) {
-    cols <- c("institution_id", "source_id", "member_id", "table_id", "month")
+    cols <- c("institution_id", "source_id", "member_id", "month")
     cols <- intersect(cols, intersect(names(target), names(reference)))
     if (!"month" %in% cols && "month" %in% names(target) && "month" %in% names(reference)) {
         cols <- c(cols, "month")
@@ -1430,7 +1425,14 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
         return(data.table::data.table())
     }
 
-    monthly <- morpher__belcher_epw_monthly(data_epw, var)
+    # Belcher equation (4) uses the difference between the average daily
+    # maximum and average daily minimum, rather than the two most extreme
+    # individual hours in the month.
+    monthly <- if (identical(type, "combined")) {
+        morpher__belcher_epw_monthly_dtr(data_epw, var)
+    } else {
+        morpher__belcher_epw_monthly(data_epw, var)
+    }
     u <- morpher__default_epw_units(var)
     data_mean <- morpher__belcher_align_units(data.table::copy(data_mean), u)
     reference_mean <- morpher__belcher_align_units(data.table::copy(reference_mean), u)
@@ -1444,15 +1446,29 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
         data_min <- morpher__belcher_align_units(data.table::copy(data_min), u)
         reference_max <- morpher__belcher_align_units(data.table::copy(reference_max), u)
         reference_min <- morpher__belcher_align_units(data.table::copy(reference_min), u)
-        join_cols <- intersect(c(
-            "activity_drs", "institution_id", "source_id", "experiment_id",
-            "member_id", "table_id", "lat", "lon", "units", "month",
-            "interval"
-        ), names(data_mean))
-        data_mean[data_max, on = join_cols, value_max := i.value]
-        data_mean[data_min, on = join_cols, value_min := i.value]
-        data_mean <- morpher__belcher_attach_reference(data_mean, reference_max, "reference_max")
-        data_mean <- morpher__belcher_attach_reference(data_mean, reference_min, "reference_min")
+        # Extrema are separate CMIP variables and may legitimately be selected
+        # from different tables or grids than tas. Align by scientific case and
+        # month instead of treating storage partition metadata as identity.
+        data_mean <- morpher__attach_extreme_value(
+            data_mean,
+            data_max,
+            "value_max"
+        )
+        data_mean <- morpher__attach_extreme_value(
+            data_mean,
+            data_min,
+            "value_min"
+        )
+        data_mean <- morpher__attach_reference_extreme(
+            data_mean,
+            reference_max,
+            "reference_max"
+        )
+        data_mean <- morpher__attach_reference_extreme(
+            data_mean,
+            reference_min,
+            "reference_min"
+        )
 
         missing_extreme <- data_mean[
             is.na(value_max) | is.na(value_min) | is.na(reference_max) | is.na(reference_min)
@@ -1475,11 +1491,18 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
         }
     }
 
-    data_mean[monthly, on = "month", `:=`(
-        epw_mean = i.val_mean,
-        epw_max = i.val_max,
-        epw_min = i.val_min
-    )]
+    if (identical(type, "combined")) {
+        data_mean[monthly, on = "month", `:=`(
+            epw_mean = i.val_mean,
+            epw_dtr = i.val_dtr
+        )]
+    } else {
+        data_mean[monthly, on = "month", `:=`(
+            epw_mean = i.val_mean,
+            epw_max = i.val_max,
+            epw_min = i.val_min
+        )]
+    }
     data_mean[, delta := value - reference_value]
 
     data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
@@ -1487,7 +1510,8 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
     ]
 
     if (identical(type, "combined") && all(c("value_min", "value_max", "reference_min", "reference_max") %in% names(data))) {
-        data[, alpha := ((value_max - reference_max) - (value_min - reference_min)) / (epw_max - epw_min)]
+        data[, alpha := ((value_max - reference_max) -
+            (value_min - reference_min)) / epw_dtr]
         if (nrow(case_fallback)) {
             data[case_fallback, on = names(case_fallback), alpha := 0.0]
         }

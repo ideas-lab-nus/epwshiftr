@@ -370,7 +370,7 @@ test_that("Belcher production case contexts preserve identity and isolation", {
 })
 
 
-test_that("internal Belcher profiles and stored recipe JSON have explicit semantics", {
+test_that("internal Belcher profiles and current recipe JSON have explicit semantics", {
     enhanced <- epw_morph_recipe("belcher")
     legacy <- epw_morph_recipe("belcher", profile = "legacy")
 
@@ -378,6 +378,7 @@ test_that("internal Belcher profiles and stored recipe JSON have explicit semant
     expect_identical(enhanced$methods[["tdb"]], "auto")
     expect_identical(enhanced$options$transition_hours, 72L)
     expect_identical(legacy$profile, "legacy")
+    expect_identical(legacy$methods[["tdb"]], "combined")
     expect_identical(legacy$options$transition_hours, 0L)
     expect_identical(legacy$options$design_conditions, "preserve")
     expect_error(belcher_options(transition_hours = 337L), "0 and 336")
@@ -385,19 +386,19 @@ test_that("internal Belcher profiles and stored recipe JSON have explicit semant
     expect_true(all(c("tasmax", "tasmin", "snd") %in%
         epw_morph_variables(enhanced, include_optional = TRUE)))
 
-    named_json <- morpher__json(epw_morph_recipe(
-        "belcher", methods = c(tdb = "shift")
-    ))
-    named_recipe <- epwshiftr_cli_recipe_from_json(named_json)
-    expect_identical(unname(named_recipe$methods[["tdb"]]), "shift")
+    canonical <- transform__recipe(monthly_transform("belcher"))
+    named_recipe <- cli_shift__recipe_from_json(morpher__json(canonical))
+    expect_identical(named_recipe$recipe_spec, "belcher_monthly")
+    expect_identical(named_recipe$methods[["tdb"]], "combined")
 
     old_array_json <- jsonlite::toJSON(list(
         name = "belcher", backend = "belcher",
         methods = unname(legacy$methods)
     ), auto_unbox = TRUE, null = "null")
-    old_array_recipe <- epwshiftr_cli_recipe_from_json(old_array_json)
-    expect_identical(old_array_recipe$profile, "legacy")
-    expect_identical(old_array_recipe$methods, legacy$methods)
+    expect_error(
+        cli_shift__recipe_from_json(old_array_json),
+        "unsupported recipe schema"
+    )
 })
 
 
@@ -1149,4 +1150,83 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         "keeping the month dry"
     )
     expect_equal(sum(relaxed_dry$liquid_precip_depth), 0)
+})
+
+test_that("Belcher combined temperature uses average daily EPW range", {
+    data_epw <- data.table::data.table(
+        datetime = as.POSIXct(c(
+            "2001-01-01 01:00:00", "2001-01-01 02:00:00",
+            "2001-01-02 01:00:00", "2001-01-02 02:00:00"
+        ), tz = "UTC"),
+        year = 2001L,
+        month = 1L,
+        day = rep(1:2, each = 2L),
+        hour = rep.int(1:2, 2L),
+        minute = 60L,
+        dry_bulb_temperature = c(10, 20, 0, 30)
+    )
+    climate <- function(value, variable_id) {
+        data.table::data.table(
+            activity_drs = "ScenarioMIP",
+            institution_id = "inst",
+            source_id = "model",
+            experiment_id = "ssp585",
+            member_id = "r1i1p1f1",
+            table_id = "Amon",
+            lon = 0,
+            lat = 0,
+            units = "K",
+            variable_id = variable_id,
+            value = value,
+            month = 1L,
+            interval = "future"
+        )
+    }
+    future_mean <- climate(302, "tas")
+    reference_mean <- climate(300, "tas")
+    future_max <- climate(310, "tasmax")
+    reference_max <- climate(306, "tasmax")
+    future_min <- climate(290, "tasmin")
+    reference_min <- climate(290, "tasmin")
+    reference_mean[, `:=`(
+        activity_drs = "CMIP",
+        experiment_id = "historical",
+        interval = "reference"
+    )]
+    reference_max[, `:=`(
+        activity_drs = "CMIP",
+        experiment_id = "historical",
+        interval = "reference"
+    )]
+    reference_min[, `:=`(
+        activity_drs = "CMIP",
+        experiment_id = "historical",
+        interval = "reference"
+    )]
+    future_max[, table_id := "AmonExtrema"]
+    future_min[, table_id := "AmonExtrema"]
+    reference_max[, table_id := "AmonReferenceExtrema"]
+    reference_min[, table_id := "AmonReferenceExtrema"]
+
+    morphed <- morpher__belcher_from_monthly_change(
+        "dry_bulb_temperature",
+        data_epw,
+        future_mean,
+        reference_mean,
+        future_max,
+        future_min,
+        reference_max,
+        reference_min,
+        type = "combined"
+    )
+
+    # The two daily ranges are 10 and 30 degrees, so equation (4) uses their
+    # 20-degree average and produces alpha = (4 - 0) / 20 = 0.2.
+    expect_equal(morphed$alpha, rep.int(0.2, 4L))
+    expect_identical(unique(morphed$table_id), "Amon")
+    expect_equal(
+        morphed$dry_bulb_temperature,
+        c(11, 23, -1, 35),
+        tolerance = 1e-12
+    )
 })

@@ -316,6 +316,17 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
 
     methods <- morpher__recipe_methods(methods, backend_spec)
     rules <- backend_spec$rules_with_methods(methods)
+    if (is_belcher && identical(methods[["tdb"]], "combined")) {
+        # The published Belcher temperature equation requires all three
+        # monthly change factors. Promote the extrema from opportunistic
+        # inputs to the executable recipe contract when combined morphing is
+        # selected, so discovery and coverage checks cannot silently fall
+        # back to a mean-only shift.
+        rules[step == "tdb", `:=`(
+            required_variables = list(c("tas", "tasmax", "tasmin")),
+            optional_variables = list(character())
+        )]
+    }
     pipeline <- backend_spec$component_pipeline()
     if (is_belcher && identical(options$snow_depth, "required")) {
         rules[step == "snow_depth", required := TRUE]

@@ -107,6 +107,24 @@ test_that("shift run validates the task-oriented JSON config", {
         "--quiet", "--store", store, "shift", "run", "--config", historical, "--dry-run"
     ))$status, 0L)
 
+    observed_historical <- tempfile(fileext = ".json")
+    payload$observed_reference <- list(
+        mode = "historical",
+        periods = list(reference = "1995:2014")
+    )
+    jsonlite::write_json(
+        payload,
+        observed_historical,
+        auto_unbox = TRUE
+    )
+    invalid <- epwshiftr_cli(c(
+        "--quiet", "--store", store, "shift", "config", "validate",
+        "--config", observed_historical
+    ))
+    expect_equal(invalid$status, 2L)
+    expect_match(invalid$error, "observed_reference")
+    payload$observed_reference <- NULL
+
     manual <- tempfile(fileext = ".json")
     payload$reference <- list(
         mode = "plan",

@@ -257,7 +257,7 @@ scalar table forced across all variables.
 
 # Morphing Diagnostics
 
-Strict morphing blocks on missing recipe variables, missing baseline EPW fields,
+Strict morphing blocks on missing transform variables, missing baseline EPW fields,
 or incomplete monthly summaries.
 
 ```r

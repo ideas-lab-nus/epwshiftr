@@ -33,6 +33,7 @@ catalog[, .(
     method,
     label,
     reconstruction,
+    reconstruction_label,
     statistical_grouping,
     output_frequency,
     status
@@ -133,6 +134,13 @@ References are execution inputs and never become part of a reusable transform.
 
 The published Belcher transform requires matching historical model data:
 
+Its CMIP6 temperature contract includes monthly `tas`, `tasmax`, and `tasmin`.
+The mean change comes from `tas`; the published combined transformation uses
+the future-minus-historical change in average daily range from `tasmax` and
+`tasmin`, divided by the EPW's monthly average daily range. The remaining input
+contract and its humidity alternatives are visible in
+`monthly_transform("belcher")@required_inputs`.
+
 ```r
 run <- shift_future_epw(
     epw = system.file(
@@ -175,13 +183,24 @@ plan containing observations; an automatically resolved CMIP6 historical run
 cannot silently substitute for observations.
 
 ```r
+reference_periods <- epw_morph_periods(reference = 1995:2014)
+historical <- shift_reference_plan(
+    historical_plan_id,
+    reference_periods
+)
+observed <- shift_reference_plan(
+    observed_plan_id,
+    reference_periods,
+    role = "observed_reference"
+)
+
 run <- shift_future_epw(
     epw = epw,
     climate = future_cmip6,
-    periods = list(`2050s` = 2045:2055),
+    periods = c(2050, 2080),
     transform = daily_transform("isimip3basd"),
-    reference = historical_cmip6,
-    observed_reference = observations,
+    reference = historical,
+    observed_reference = observed,
     dir = "future-epw"
 )
 ```

@@ -110,7 +110,11 @@ shift_cmip6_scenario(
   options = list()
 )
 
-shift_reference_plan(plan_id, periods)
+shift_reference_plan(
+  plan_id,
+  periods,
+  role = c("model_historical", "observed_reference")
+)
 
 historical_reference(years = 1995:2014, period = "reference", ...)
 
@@ -306,7 +310,7 @@ shift_ui(
 
 \item{source, experiment, variant, frequency}{Provider-neutral request fields.
 Values must use the selected provider's controlled vocabulary.
-In \code{shift_cmip6()}, an unnamed scalar \code{frequency} applies to every recipe
+In \code{shift_cmip6()}, an unnamed scalar \code{frequency} applies to every transform
 input, while a named character vector assigns one frequency to every
 source variable so \verb{3hrPt}, \verb{3hr}, and \code{day} data can be collected together.
 In \code{shift_reference_historical()}, \code{experiment} is the historical
@@ -352,7 +356,7 @@ EPW export option list.}
 \item{grid}{Optional single CMIP6 grid label.}
 
 \item{table}{Optional CMIP6 table selection. \code{NULL} automatically maps each
-recipe input to its native table (including \code{snd} to \code{LImon}); an unnamed
+transform input to its native table (including \code{snd} to \code{LImon}); an unnamed
 scalar pins every variable to one table; a named character vector
 overrides individual variables.}
 
@@ -396,7 +400,12 @@ inferred for each variable's \code{frequency}.}
 \item{plan_id}{Store extraction plan IDs for manually selected reference
 climate data.}
 
-\item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+\item{periods}{A period table, usually from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.
+\code{\link[=shift_future_epw]{shift_future_epw()}} and \code{\link[=shift_plan]{shift_plan()}} also accept a numeric vector of
+target years; each year becomes an independently named output period.}
+
+\item{role}{Semantic role of the plan-backed climate. Use
+\code{"observed_reference"} only for an observational extraction plan.}
 
 \item{period}{Reference period name used when constructing periods from
 \code{years}.}

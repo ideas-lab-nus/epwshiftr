@@ -702,17 +702,11 @@ bias__subdaily_adjusted_series <- function(
 # Resolve the monthly mean-change settings shared by Linear Scaling and Delta
 # Change while keeping method names in user-facing diagnostics.
 bias__mean_change_settings <- function(settings, method) {
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]])) {
-        cli::cli_abort(
-            "{method} requires settings for exactly one variable."
-        )
-    }
-    resolved <- settings[[1L]]
-    if (!is.list(resolved)) {
-        cli::cli_abort("{method} settings must be a named list.")
-    }
+    expected <- c(
+        "grouping", "statistic", "transformation", "bounds",
+        "zero_tolerance"
+    )
+    resolved <- signal__resolve_settings(settings, expected, method)
     if (!identical(resolved$grouping, "calendar_month")) {
         cli::cli_abort(
             "{method} currently supports only `calendar_month` grouping."

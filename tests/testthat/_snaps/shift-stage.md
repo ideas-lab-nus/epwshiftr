@@ -30,6 +30,7 @@
       * Heartbeat: 10 s
       == Climate Reference ===================================================
       * Mode: historical
+      * Role: model_historical
       * Periods: reference 1995–2014
       * Experiment: historical
       * Activity: CMIP
@@ -37,9 +38,10 @@
       == Weather Transform ===========================================================
       * Method: Enhanced epwshiftr monthly morphing
       * Transformation scale: monthly
-      * Required source frequency: model_future: mon; model_historical: mon
+      * Required source frequency: model_future: mon
+      * Optional source frequency: model_historical: mon
       * Statistical grouping: calendar_month
-      * Hourly reconstruction: enhanced_field_equations
+      * Hourly reconstruction: Enhanced monthly field equations
       * Output frequency: hour
       * Output type: representative_year
       * Required inputs: weather_template, model_future
@@ -48,6 +50,10 @@
       * Optional inputs: model_historical
       * Optional variables: model_historical: tas + huss + ps + psl + rlds + rsds +
         sfcWind + clt + pr or tas + hurs + psl + rlds + rsds + sfcWind + clt + pr
+      * Optional source variables: model_historical: tasmax + tasmin + snd;
+        model_future: tasmax + tasmin + snd
+      * Optional variable frequency: model_historical: tasmax=mon, tasmin=mon,
+        snd=mon; model_future: tasmax=mon, tasmin=mon, snd=mon
       * Stochastic variables: none
       * Evidence: package_method
       * References: https://doi.org/10.1191/0143624405bt112oa,
@@ -99,6 +105,7 @@
       * Heartbeat: 10 s
       == Climate Reference ===============================================================================
       * Mode: historical
+      * Role: model_historical
       * Periods: reference 1995–2014
       * Experiment: historical
       * Activity: CMIP
@@ -108,9 +115,10 @@
       == Weather Transform ===========================================================
       * Method: Enhanced epwshiftr monthly morphing
       * Transformation scale: monthly
-      * Required source frequency: model_future: mon; model_historical: mon
+      * Required source frequency: model_future: mon
+      * Optional source frequency: model_historical: mon
       * Statistical grouping: calendar_month
-      * Hourly reconstruction: enhanced_field_equations
+      * Hourly reconstruction: Enhanced monthly field equations
       * Output frequency: hour
       * Output type: representative_year
       * Required inputs: weather_template, model_future
@@ -119,6 +127,10 @@
       * Optional inputs: model_historical
       * Optional variables: model_historical: tas + huss + ps + psl + rlds + rsds +
         sfcWind + clt + pr or tas + hurs + psl + rlds + rsds + sfcWind + clt + pr
+      * Optional source variables: model_historical: tasmax + tasmin + snd;
+        model_future: tasmax + tasmin + snd
+      * Optional variable frequency: model_historical: tasmax=mon, tasmin=mon,
+        snd=mon; model_future: tasmax=mon, tasmin=mon, snd=mon
       * Stochastic variables: none
       * Evidence: package_method
       * References: https://doi.org/10.1191/0143624405bt112oa,
@@ -142,7 +154,7 @@
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
       * Transform: Belcher monthly morphing
-      * Reference: historical · reference 1995–2014
+      * Reference: model_historical · historical · reference 1995–2014
       * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
       * Expected outputs: 2
@@ -193,7 +205,7 @@
       == Morphed EPW =================================================================
       * Status: partial
       * Transform: Belcher monthly morphing
-      * Reference: historical · reference 1995–2014
+      * Reference: model_historical · historical · reference 1995–2014
       * Cases: 4
       * Results: 4
       -- Morph results ---------------------------------------------------------------
@@ -235,7 +247,7 @@
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
       * Transform: Belcher monthly morphing
-      * Reference: historical · reference 1995–2014
+      * Reference: model_historical · historical · reference 1995–2014
       * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
       * Expected outputs: 2
@@ -301,7 +313,7 @@
       == Morphed EPW =====================================================================================
       * Status: partial
       * Transform: Belcher monthly morphing
-      * Reference: historical · reference 1995–2014
+      * Reference: model_historical · historical · reference 1995–2014
       * Cases: 4
       * Results: 4
       -- Morph results -----------------------------------------------------------------------------------

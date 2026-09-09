@@ -370,8 +370,8 @@ inputs.
 transform <- monthly_transform("belcher")
 variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 variables
-#> [1] "tas"     "hurs"    "psl"     "rlds"    "rsds"    "sfcWind" "clt"
-#> [8] "pr"
+#>  [1] "tas"     "tasmax"  "tasmin"  "hurs"    "psl"     "rlds"    "rsds"
+#>  [8] "sfcWind" "clt"     "pr"
 ```
 
 `shift_request()` describes the remote climate data you want. The future request
@@ -419,7 +419,7 @@ request
 #> • activity_id = ScenarioMIP
 #> • experiment_id = ssp585
 #> • source_id = MPI-ESM1-2-LR
-#> • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr
+#> • variable_id = tas, tasmax, tasmin, hurs, psl, rlds, rsds, sfcWind, clt, pr
 #> • frequency = mon
 #> • variant_label = r1i1p1f1
 #> • data_node = esgf.ceda.ac.uk
@@ -457,7 +457,7 @@ reference_request
 #> • activity_id = CMIP
 #> • experiment_id = historical
 #> • source_id = MPI-ESM1-2-LR
-#> • variable_id = tas, hurs, psl, rlds, rsds, sfcWind, clt, pr
+#> • variable_id = tas, tasmax, tasmin, hurs, psl, rlds, rsds, sfcWind, clt, pr
 #> • frequency = mon
 #> • variant_label = r1i1p1f1
 #> • data_node = esgf.ceda.ac.uk

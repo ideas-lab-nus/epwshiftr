@@ -101,6 +101,12 @@ contains only reusable calculation settings; sites, GCMs, scenarios,
 periods, references, and output paths belong to each call of
 `shift_future_epw()`.
 
+The canonical Belcher transform implements the published combined
+temperature equation, so its monthly CMIP6 contract requires `tas`,
+`tasmax`, and `tasmin` for both future and historical model periods.
+Inspect the transform or catalog before querying to see all weather
+variables and humidity alternatives.
+
 The representative terminal recording below is generated from
 deterministic workflow states, so README builds do not depend on live
 ESGF services. A real run uses the same dashboard; the selected node,

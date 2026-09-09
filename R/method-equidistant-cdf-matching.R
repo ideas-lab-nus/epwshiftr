@@ -808,7 +808,10 @@ edcdf__component <- function() {
         stochastic = FALSE,
         profiles = edcdf__profiles(),
         apply_group = edcdf__apply_group,
-        operations = list(validate_result = edcdf__validate_result),
+        operations = list(
+            validate_options = edcdf__settings,
+            validate_result = edcdf__validate_result
+        ),
         metadata = list(
             method_family = "parametric_quantile_mapping",
             published_frequency = "mon",

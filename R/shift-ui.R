@@ -320,7 +320,7 @@ shift__ui_reference <- function(reference) {
         } else {
             shift__ui_periods(periods_table)
         }
-        return(sprintf("%s %s", reference@mode, periods))
+        return(sprintf("%s %s %s", reference@role, reference@mode, periods))
     }
     if (S7::S7_inherits(reference, ShiftClimate)) {
         return("supplied climate reference")

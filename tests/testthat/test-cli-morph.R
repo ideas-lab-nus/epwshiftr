@@ -1,3 +1,29 @@
+test_that("morph CLI expands variable settings and JSON vector values", {
+    options <- cli_morph__transform_options(list(
+        tas.grid_points = cli_morph__option_value("128"),
+        tas.bounds = cli_morph__option_value("[-40,60]")
+    ))
+
+    expect_identical(options$tas$grid_points, 128L)
+    expect_equal(options$tas$bounds, c(-40, 60))
+    transform <- do.call(
+        hourly_transform,
+        c(list(method = "kernel_qdm"), options)
+    )
+    expect_identical(
+        transform@options$signal_overrides$tas$grid_points,
+        128L
+    )
+
+    variables <- epwshiftr_cli_morph_variables(c(
+        "--scale", "monthly",
+        "--method", "epwshiftr",
+        "--option", "humidity_source=huss"
+    ))
+    expect_true(all(c("huss", "ps") %in% variables$variable_id))
+    expect_false("hurs" %in% variables$variable_id)
+})
+
 test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outputs", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
@@ -20,6 +46,11 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     expect_equal(transforms$status, 0L)
     expect_true("belcher" %in% transforms$result$method)
     expect_true("epwshiftr" %in% transforms$result$method)
+    expect_true("reconstruction_label" %in% names(transforms$result))
+    expect_identical(
+        transforms$result[method == "belcher", reconstruction_label],
+        "Belcher field equations"
+    )
 
     run <- epwshiftr_cli(c(
         "--quiet", "--store", setup$dir,
@@ -48,7 +79,7 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
 
     store <- EsgStore$new(setup$dir)
     persisted <- shift_morph_plan(store, run$result$morph_id)
-    persisted_recipe <- epwshiftr_cli_recipe_from_json(
+    persisted_recipe <- cli_shift__recipe_from_json(
         persisted$recipe_json[[1L]]
     )
     expect_identical(

@@ -373,7 +373,16 @@ cli_shift__config_reference <- function(reference, field) {
     }
 
     reference <- epwshiftr_cli_config_section(list(reference = reference), "reference")
-    mode <- epwshiftr_cli_config_choice(reference$mode, c("historical", "plan"), default = NULL)
+    modes <- if (identical(field, "observed_reference")) {
+        "plan"
+    } else {
+        c("historical", "plan")
+    }
+    mode <- epwshiftr_cli_config_choice(
+        reference$mode,
+        modes,
+        default = NULL
+    )
     if (is.null(mode)) {
         epwshiftr_cli_usage_abort(sprintf("%s.mode is required.", field))
     }
@@ -391,7 +400,12 @@ cli_shift__config_reference <- function(reference, field) {
                 field
             ))
         }
-        return(shift_reference_plan(plan_id, periods))
+        role <- if (identical(field, "observed_reference")) {
+            "observed_reference"
+        } else {
+            "model_historical"
+        }
+        return(shift_reference_plan(plan_id, periods, role = role))
     }
 
     shift_reference_historical(
@@ -846,7 +860,7 @@ epwshiftr_cli_morpher_from_morph_id <- function(store, morph_id) {
         cli::cli_abort("Could not resolve the baseline EPW path for morph ID {.val {morph_id}}.")
     }
     epw <- store_abs_path(row$path[[1L]], root = store$path)
-    recipe <- epwshiftr_cli_recipe_from_json(row$recipe_json[[1L]])
+    recipe <- cli_shift__recipe_from_json(row$recipe_json[[1L]])
     epw_morpher(
         store,
         epw,
@@ -944,7 +958,7 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
         simplifyVector = TRUE)), error = function(e) {
         c("source_id", "experiment_id", "variant_label", "period")
     })
-    recipe <- epwshiftr_cli_recipe_from_json(row$recipe_json[[1L]])
+    recipe <- cli_shift__recipe_from_json(row$recipe_json[[1L]])
     transform <- transform__from_recipe_object(recipe)
     reference <- if (is.null(reference_plan_id)) {
         NULL
@@ -954,7 +968,11 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
     observed_reference <- if (is.null(observed_plan_id)) {
         NULL
     } else {
-        shift_reference_plan(observed_plan_id, observed_periods)
+        shift_reference_plan(
+            observed_plan_id,
+            observed_periods,
+            role = "observed_reference"
+        )
     }
     shift_stage_new(ShiftMorphed, "morphed", store_path = store$path,
         ids = list(plan_id = plan_id, summary_id = row$summary_id[[1L]],
@@ -973,62 +991,46 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
 }
 
 
-epwshiftr_cli_recipe_from_json <- function(json) {
-    parsed <- tryCatch(jsonlite::fromJSON(json, simplifyVector = TRUE), error = function(e) NULL)
-    if (is.null(parsed) || is.null(parsed$name)) {
-        return(epw_morph_recipe("belcher"))
-    }
-    backend <- if (is.null(parsed$backend)) parsed$name else parsed$backend
-    is_belcher <- backend %in% c("belcher", "belcher_absolute")
-    # Records written before profiles existed remain on the historical
-    # numerical path instead of adopting enhanced defaults during recovery.
-    profile <- if (is.null(parsed$profile)) {
-        if (is_belcher) "legacy" else "default"
-    } else {
-        parsed$profile
-    }
-    methods <- parsed$methods
-    if (is.list(methods) && !is.data.frame(methods)) {
-        methods <- unlist(methods, use.names = TRUE)
-    }
-    # Pre-profile recipe JSON encoded the full named vector as an unnamed
-    # array. Recover those positions from the backend method contract; newer
-    # records use a named JSON object and do not enter this compatibility path.
-    if (!is.null(methods) && (is.null(names(methods)) || any(!nzchar(names(methods))))) {
-        backend_spec <- suppressWarnings(epw_morph_backend(backend))
-        defaults <- if (is_belcher) {
-            morpher__belcher_profile_methods(backend_spec, profile)
-        } else {
-            backend_spec$methods()
-        }
-        if (length(methods) == length(defaults)) {
-            names(methods) <- names(defaults)
-        } else {
-            methods <- NULL
-        }
-    }
-    epw_morph_recipe(
-        parsed$name,
-        backend = backend,
-        methods = methods,
-        profile = profile,
-        options = cli_shift__recipe_options(parsed$options, backend),
-        policy = if (is.null(parsed$policy)) {
-            NULL
-        } else {
-            as.character(parsed$policy)
-        },
-        version = if (is.null(parsed$recipe_version)) {
-            NULL
-        } else {
-            as.integer(parsed$recipe_version)
-        },
-        spec = if (is.null(parsed$recipe_spec)) {
-            NULL
-        } else {
-            as.character(parsed$recipe_spec)
-        }
+# Restore only the canonical recipe identity written by the current transform
+# API. Older profile/method-array payloads are intentionally not inferred.
+cli_shift__recipe_from_json <- function(json) {
+    parsed <- tryCatch(
+        jsonlite::fromJSON(json, simplifyVector = TRUE),
+        error = function(error) NULL
     )
+    required <- c(
+        "name",
+        "recipe_spec",
+        "recipe_version",
+        "policy",
+        "options"
+    )
+    if (is.null(parsed) || !is.list(parsed) ||
+        length(setdiff(required, names(parsed)))) {
+        cli::cli_abort(c(
+            "Persisted morph plan uses an unsupported recipe schema.",
+            "i" = "Create a new plan with the weather transform API."
+        ))
+    }
+
+    recipe_name <- as.character(parsed$recipe_spec)
+    if (!identical(as.character(parsed$name), recipe_name)) {
+        cli::cli_abort(
+            "Persisted morph plan does not identify one canonical recipe."
+        )
+    }
+    recipe <- epw_morph_recipe(
+        recipe_name,
+        version = as.integer(parsed$recipe_version),
+        options = shift_coalesce(parsed$options, list())
+    )
+    if (!identical(as.character(parsed$policy), recipe$policy)) {
+        cli::cli_abort(c(
+            "Persisted morph plan uses a non-canonical physical policy.",
+            "i" = "Create a new plan with the current weather transform registry."
+        ))
+    }
+    recipe
 }
 
 

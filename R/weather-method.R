@@ -350,13 +350,20 @@ method__default_specs <- function() {
             implementation_key = "belcher",
             frequencies = "mon",
             input_roles = c("model_historical", "model_future"),
-            variable_sets = c(
-                "tas", "psl", "rlds", "rsds", "sfcWind", "clt", "pr",
-                "hurs"
+            variable_sets = list(
+                c(
+                    "tas", "tasmax", "tasmin", "psl", "rlds", "rsds",
+                    "sfcWind", "clt", "pr", "hurs"
+                ),
+                c(
+                    "tas", "tasmax", "tasmin", "psl", "rlds", "rsds",
+                    "sfcWind", "clt", "pr", "huss", "ps"
+                )
             ),
             output_role = "weather_template",
             parameters = EPW_MORPH_BELCHER_PROFILE_METHODS$legacy,
-            references = "https://doi.org/10.1191/0143624405bt112oa"
+            references = "https://doi.org/10.1191/0143624405bt112oa",
+            version = 2L
         ),
         epwshiftr_monthly = method__spec(
             name = "epwshiftr_monthly",
@@ -393,7 +400,12 @@ method__default_specs <- function() {
             input_roles = c("model_historical", "model_future"),
             variable_sets = "tas",
             output_variables = "tas",
-            output_role = "weather_template"
+            output_role = "weather_template",
+            evidence = "package_method",
+            references = c(
+                "https://doi.org/10.1016/j.dib.2025.111667",
+                "https://github.com/ideas-lab-nus/epwshiftr/pull/141"
+            )
         ),
         eames_monthly_temperature = method__from_signal_component(
             name = "eames_monthly_temperature",

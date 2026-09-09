@@ -278,7 +278,7 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr morph <command> [options]",
             "",
             "Commands:",
-            "  epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME]",
+            "  epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
             "  epwshiftr morph transforms",
             "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]... [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--observed-plan PLAN_ID[,PLAN_ID...]] [--observed-period PERIOD=YEARS[,YEARS]...] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
@@ -287,9 +287,9 @@ epwshiftr_cli_help_registry <- function() {
             "  epwshiftr morph outputs [--morph MORPH_ID]"
         ),
         "morph variables" = c(
-            "Usage: epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME]",
+            "Usage: epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
             "",
-            "List CMIP variables required by a weather transformation."
+            "List CMIP source variables participating in a weather transformation's required alternatives."
         ),
         "morph transforms" = c(
             "Usage: epwshiftr morph transforms",
@@ -301,6 +301,7 @@ epwshiftr_cli_help_registry <- function() {
             "",
             "Run a selected weather transformation through hourly Parquet outputs without writing EPW files.",
             "The default is --scale monthly --method belcher; repeated --option key=value values configure declared scientific settings.",
+            "For multivariable methods, use --option variable.setting=value; JSON arrays can supply vector settings.",
             "Use --reference historical to resolve matching CMIP historical data from the plan's collected File metadata."
         ),
         "morph epw" = c(

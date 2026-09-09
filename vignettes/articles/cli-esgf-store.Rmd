@@ -234,6 +234,22 @@ Repeat `--option KEY=VALUE` for each scientific setting supported by the
 selected transform. Use `--reconstruction` only when `morph transforms` lists
 more than one reconstruction for that scale and method.
 
+Variable-specific settings use `VARIABLE.SETTING=VALUE`; JSON arrays preserve
+vector settings:
+
+```sh
+epwshiftr --store ~/cmip6-store morph run \
+  --plan <plan_id> \
+  --reference-plan <historical_plan_id> \
+  --observed-plan <observed_plan_id> \
+  --epw baseline/SIN.epw \
+  --period 2080=2080 \
+  --scale hourly \
+  --method kernel_qdm \
+  --option tas.grid_points=128 \
+  --option 'tas.bounds=[-40,60]'
+```
+
 # Search Without Saving
 
 `query search` builds an `EsgQuery` from `key=value` constraints. The command
@@ -542,6 +558,7 @@ The command groups intentionally mirror the package boundaries:
 - `download`: preflight, run, resume, retry, verify, and inspect downloads;
 - `shift`: config-driven request, collect, extract, morph, and EPW workflow runs;
 - `extract`: store-ID extraction planning, execution, coverage, and artifacts;
-- `morph`: morphing variables, backends, runs, EPW writing, status, and outputs;
+- `morph`: transformation variables, method catalog, runs, EPW writing, status,
+  and outputs;
 - `storage`: layout, report, validate, repair, and cleanup local files;
 - `esgf`: compact ESGF query and download health reports.

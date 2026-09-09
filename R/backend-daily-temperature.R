@@ -218,10 +218,10 @@ daily__temperature_component_specs <- function() {
             scopes = "multivariate",
             profiles = list(signal__variable_profile(
                 "tas",
-                evidence = "published",
-                references = paste(
-                    "Belcher, Hacker, and Powell (2005),",
-                    "Constructing design weather data for future climates"
+                evidence = "experimental",
+                references = c(
+                    "https://doi.org/10.1016/j.dib.2025.111667",
+                    "https://github.com/ideas-lab-nus/epwshiftr/pull/141"
                 )
             )),
             apply_group = daily__temperature_signal_apply_group

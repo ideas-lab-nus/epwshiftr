@@ -453,13 +453,17 @@ recipe__monthly_components <- function(enhanced = FALSE) {
     )
 }
 
-# Declare the monthly Belcher climate inputs once so the paper-faithful and
-# enhanced catalog entries differ only where their reference policy requires.
+# Declare the monthly Belcher climate inputs once. The publication-defined
+# recipe requires temperature mean and average-daily-extrema changes, while
+# the enhanced package method may fall back when extrema are unavailable.
 recipe__monthly_inputs <- function(enhanced = FALSE) {
     checkmate::assert_flag(enhanced)
     common <- c(
         "tas", "psl", "rlds", "rsds", "sfcWind", "clt", "pr"
     )
+    if (!enhanced) {
+        common <- c("tas", "tasmax", "tasmin", setdiff(common, "tas"))
+    }
     variables <- if (enhanced) {
         list(
             c(common, "hurs"),
@@ -517,7 +521,20 @@ recipe__daily_adjustment_specs <- function() {
     specs <- lapply(names(DAILY_ADJUSTMENT_METHOD_COMPONENTS), function(key) {
         method_name <- DAILY_ADJUSTMENT_METHOD_COMPONENTS[[key]]
         method <- method__get(method_name)
+        signal <- component__get("signal", method@implementation_key)
+        profile <- signal@metadata$signal_profiles$tas
         pipeline <- daily_adjustment__pipeline(key)
+        # The published signal kernel is combined with epwshiftr's common
+        # daily-to-hourly EPW adapter, so the complete transform is an adapted
+        # publication even when the signal itself is published unchanged.
+        transform_evidence <- if (identical(
+            profile$evidence,
+            "experimental"
+        )) {
+            "experimental"
+        } else {
+            "adapted_publication"
+        }
         recipe__spec(
             name = paste0(method_name, "_temperature"),
             label = paste(method@label, "temperature EPW"),
@@ -525,9 +542,10 @@ recipe__daily_adjustment_specs <- function() {
             backend = DAILY_ADJUSTMENT_BACKENDS[[key]],
             implementation = "pipeline",
             source = list(
-                type = method@evidence,
+                type = transform_evidence,
                 citation = method@label,
-                references = method@references
+                signal_evidence = profile$evidence,
+                references = profile$references
             ),
             required_inputs = inputs,
             calendar_policy = "cf_annual_phase_365",
@@ -672,12 +690,19 @@ recipe__default_specs <- function() {
             backend = "belcher",
             implementation = "backend",
             source = list(
-                type = "publication",
+                type = "published",
                 citation = paste(
                     "Belcher, Hacker, and Powell (2005),",
                     "Constructing design weather data for future climates"
                 ),
-                references = "https://doi.org/10.1191/0143624405bt112oa"
+                references = "https://doi.org/10.1191/0143624405bt112oa",
+                equation_note = paste(
+                    "Dry-bulb temperature uses the published combined",
+                    "transformation: monthly mean change plus the change",
+                    "in average daily temperature range derived from tasmax",
+                    "and tasmin. The EPW denominator is its monthly average",
+                    "daily maximum minus average daily minimum."
+                )
             ),
             required_inputs = faithful_inputs,
             calendar_policy = "monthly_gregorian",
@@ -698,7 +723,8 @@ recipe__default_specs <- function() {
                 "input_periods",
                 "component_names"
             ),
-            status = "production"
+            status = "production",
+            version = 2L
         ),
         epwshiftr_monthly = recipe__spec(
             name = "epwshiftr_monthly",
@@ -748,7 +774,7 @@ recipe__default_specs <- function() {
             backend = "daily_temperature",
             implementation = "pipeline",
             source = list(
-                type = "combined_prior_methods",
+                type = "package_method",
                 citation = paste(
                     "Sobie-Curry-style daily climatological signals with",
                     "a monotone bounded power transfer"
@@ -790,7 +816,7 @@ recipe__default_specs <- function() {
             backend = "daily_temperature_btws",
             implementation = "pipeline",
             source = list(
-                type = "combined_prior_methods",
+                type = "package_method",
                 citation = paste(
                     "epwshiftr daily CMIP6 temperature targets combined with",
                     "the hourly bounded temperature weighted stretch from",
@@ -977,7 +1003,7 @@ recipe__default_specs <- function() {
             backend = "arima_temperature",
             implementation = "pipeline",
             source = list(
-                type = "publication",
+                type = "published",
                 citation = paste(
                     "Arima et al. (2024), Development of Future Weather",
                     "Data Using the Quantile Mapping Technique and its",
@@ -1092,7 +1118,7 @@ recipe__default_specs <- function() {
             backend = "sobie_curry_daily",
             implementation = "pipeline",
             source = list(
-                type = "publication",
+                type = "published",
                 citation = paste(
                     "Sobie and Curry (2025), Dataset of future-shifted",
                     "weather files for Canada using climate projections",

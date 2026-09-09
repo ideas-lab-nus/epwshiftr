@@ -26,6 +26,13 @@
   reconstruction, evidence, and output contract. Version 1 workflow plans are
   rejected explicitly, and the former method constructors and low-level public
   recipe discovery API have been removed (#250).
+* Corrected the canonical Belcher temperature implementation to use its
+  published combined mean-and-diurnal-range transformation. Version 2 now
+  requires monthly `tas`, `tasmax`, and `tasmin` for both historical and future
+  model periods, computes the EPW denominator from the monthly average of daily
+  temperature ranges, and aligns variable-specific CMIP6 tables by scientific
+  model/member/month identity. Existing outputs that previously used the
+  mean-only temperature shift will change.
 * Removed the `eplusr`, `psychrolib`, and `units` runtime dependencies. EPW files
   are parsed and written directly, while objects inheriting from `Epw` remain
   accepted through a dependency-free conversion to the internal `EpwFile`.
@@ -59,6 +66,9 @@
   Complete recipes identify their method, input roles, components, physical
   policies, output type, diagnostics, and provenance without embedding a
   paper's selected climate models or study periods (#246).
+  Complete temperature-to-EPW compositions are classified as adapted
+  publications when their signal kernel is published; the experimental daily
+  EDCDFm adaptation retains its experimental evidence label.
 
 * Added variable-specific CMIP6 frequency contracts to availability discovery,
   persisted workflow selection, component validation, and extraction planning.
@@ -87,9 +97,9 @@
   member per source-model year (#238).
 
 * Added a shared EPW physical policy layer used by all built-in complete weather
-  methods. Method adapters submit `EpwPhysicalRequest` objects and retain their
-  paper-faithful or harmonized definitions through explicit
-  `EpwPhysicalPolicy` values. The registered `epw_hourly_physical_closure`
+  methods. Method adapters submit `EpwPhysicalRequest` objects and each public
+  transform resolves one canonical internal `EpwPhysicalPolicy`. The registered
+  `epw_hourly_physical_closure`
   component uses the `absolute_model_fields` policy for mapped direct-model
   years, including humidity and wind alternatives, unit conversion, field
   bounds, shortwave closure, inherited template fields, and typed diagnostics
@@ -279,8 +289,9 @@
   endpoint-aware nine-point smoothing three times, locates each baseline daily
   mean in the observed monthly CDF, and adds the selected factor to all 24
   hours. Empirical-CDF conventions and endpoint clamping are recorded
-  explicitly; `paper_faithful` preserves baseline humidity fields, while
-  `harmonized` applies specific-humidity closure (#157).
+  explicitly. Its canonical public transform preserves the baseline humidity
+  fields and reports thermodynamic inconsistencies without modifying them
+  (#157).
 
 * Added `daily_transform("ek")` and registered the temperature-focused
   `ek_daily_factors` recipe. Matching daily CMIP6 `tasmin` and `tasmax` years
@@ -288,9 +299,9 @@
   daily mean and DTR change factors are calculated and applied through the Ek
   combined shift-and-stretch equation. The result records the selected
   relative-DTR interpretation, zero-historical-DTR fallback, calendar mapping,
-  and source ambiguities. The `paper_faithful` policy preserves baseline
-  humidity fields, while `harmonized` applies specific-humidity closure
-  (#155).
+  and source ambiguities. Its canonical public transform preserves baseline
+  humidity fields and reports thermodynamic inconsistencies without modifying
+  them (#155).
 
 * Added the temperature-only `monthly_transform("eames")` method and registered
   `eames_monthly_temperature` recipe. Matching daily CMIP6 `tas`, `tasmin`, and
@@ -313,16 +324,18 @@
   provenance identifies the complete recipe as a combination rather than the
   paper's monthly UKCP18 workflow (#151).
 
-* Added an internal harmonized Sobie-Curry implementation. It retains the
+* Added the shared specific-humidity closure used internally to test and
+  diagnose the Sobie-Curry thermodynamic transformation. It retains the
   Sobie-Curry calendar-neutral factors, circular 21-day smoothing, baseline
   sequence, and hourly temperature transformation while applying the smoothed
   daily `huss` change through a shared specific-humidity closure. The target is
   bounded at zero and saturation before relative humidity and dew point are
   derived from projected temperature and pressure; closure states and clipped
-  targets are retained as diagnostics. The existing `paper_faithful` output
-  remains the default (#149).
+  targets are retained as diagnostics. The public Sobie-Curry transform keeps
+  the independently transformed thermodynamic fields defined by the source
+  method (#149).
 
-* Added the registered `daily_transform("sobie_curry")` paper-faithful method.
+* Added the registered `daily_transform("sobie_curry")` method.
   Its seven-stage pipeline derives daily thermodynamic factors from matching
   historical and future `tas`, `tasmin`, `tasmax`, `huss`, and `ps`, smooths
   the factors with the published circular 21-day window, preserves the
