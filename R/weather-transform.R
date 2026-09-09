@@ -266,6 +266,7 @@ transform__records <- function() {
         original_morphing_field_equations = "Original morphing field equations",
         enhanced_field_equations = "Enhanced monthly field equations",
         btws = "BTWS",
+        bws_btws_weather = "BWS and BTWS",
         power = "POWER",
         ek_hourly_transform = "Ek hourly temperature transform",
         daily_additive_application = "Daily additive temperature application",
@@ -294,11 +295,11 @@ transform__records <- function() {
         ),
         list(
             scale = "monthly",
-            method = "btws",
-            recipe = "btws_monthly_temperature",
-            method_definition = "btws_monthly_temperature",
-            reconstructions = "btws",
-            default_reconstruction = "btws",
+            method = "bws_btws",
+            recipe = "bws_btws_monthly",
+            method_definition = "bws_btws_monthly",
+            reconstructions = "bws_btws_weather",
+            default_reconstruction = "bws_btws_weather",
             statistical_grouping = "calendar_month"
         ),
         list(

@@ -223,10 +223,7 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
         "daily_temperature",
         "daily_temperature_btws"
     )
-    is_btws_monthly_temperature <- identical(
-        backend,
-        "btws_monthly_temperature"
-    )
+    is_bws_btws <- identical(backend, "bws_btws_monthly")
     is_ek_temperature <- identical(backend, "ek_daily_temperature")
     is_quantile_mapping_morphing <- identical(backend, "quantile_mapping_morphing")
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
@@ -254,14 +251,14 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
         }
         profile <- "default"
         options <- daily__temperature_backend_options(options)
-    } else if (is_btws_monthly_temperature) {
+    } else if (is_bws_btws) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
-                "BTWS monthly temperature recipes only support {.val default} profile metadata."
+                "BWS+BTWS monthly recipes only support {.val default} profile metadata."
             )
         }
         profile <- "default"
-        options <- btws__monthly_options(options)
+        options <- bws_btws__options(options)
     } else if (is_ek_temperature) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(

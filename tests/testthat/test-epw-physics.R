@@ -11,6 +11,8 @@ epwphys_test__weather <- function(rows = 2L) {
         global_horizontal_radiation = rep(0, rows),
         direct_normal_radiation = rep(0, rows),
         diffuse_horizontal_radiation = rep(0, rows),
+        total_sky_cover = rep(c(0L, 8L), length.out = rows),
+        opaque_sky_cover = rep(c(0L, 4L), length.out = rows),
         horizontal_infrared_radiation_intensity_from_sky = rep(300, rows)
     )
 }
@@ -86,6 +88,54 @@ test_that("all registered complete recipes resolve a physical policy", {
     expect_identical(
         epwphys__policy("absolute_model_fields")@name,
         "absolute_model_fields"
+    )
+    expect_identical(
+        epwphys__policy("bws_btws_weather")@name,
+        "bws_btws_weather"
+    )
+})
+
+test_that("BWS/BTWS physical policy closes all method candidates together", {
+    template <- epwphys_test__weather()
+    result <- epwphys__apply(
+        EpwPhysicalRequest(
+            template = template,
+            fields = list(
+                dry_bulb_temperature = c(5, 25),
+                total_sky_cover = c(12, 7),
+                opaque_sky_cover = c(11, 9)
+            ),
+            shortwave = list(
+                global_horizontal = c(100, 800),
+                diffuse_horizontal = c(50, 900)
+            ),
+            geometry = epwphys_test__geometry()
+        ),
+        epwphys__policy("bws_btws_weather")
+    )
+
+    expect_identical(result@weather$total_sky_cover, c(10L, 7L))
+    expect_identical(result@weather$opaque_sky_cover, c(10L, 7L))
+    expect_identical(result@corrections$total_sky_cover_clipped, 1L)
+    expect_identical(result@corrections$opaque_sky_cover_clipped, 2L)
+    expect_equal(
+        result@weather$global_horizontal_radiation,
+        result@weather$diffuse_horizontal_radiation +
+            result@weather$direct_normal_radiation * c(0, 0.5),
+        tolerance = 1e-12
+    )
+    expect_identical(result@corrections$radiation_night_values_zeroed, 1L)
+    expect_named(result@state$humidity)
+})
+
+test_that("opaque sky cover preserves baseline proportions", {
+    expect_identical(
+        epwphys__opaque_sky_cover(
+            total = c(6L, 4L),
+            baseline_total = c(8L, 0L),
+            baseline_opaque = c(4L, 0L)
+        ),
+        c(3L, 2L)
     )
 })
 

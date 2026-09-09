@@ -148,7 +148,7 @@ test_that("transform type enforces complete role contracts", {
 
 test_that("scale-specific constructors resolve fixed and selectable reconstruction", {
     original_morphing <- monthly_transform("original_morphing")
-    monthly_btws <- monthly_transform("btws")
+    bws_btws <- monthly_transform("bws_btws")
     power <- daily_transform("epwshiftr")
     daily_btws <- daily_transform("epwshiftr", reconstruction = "btws")
     hourly <- hourly_transform("kernel_qdm")
@@ -157,8 +157,13 @@ test_that("scale-specific constructors resolve fixed and selectable reconstructi
     expect_identical(original_morphing@recipe_version, 2L)
     expect_true(all(c("tas", "tasmax", "tasmin") %in%
         original_morphing@required_inputs$model_future@variable_sets[[1L]]))
-    expect_identical(monthly_btws@scale, "monthly")
-    expect_identical(monthly_btws@source_frequencies$model_future, "day")
+    expect_identical(bws_btws@scale, "monthly")
+    expect_identical(bws_btws@source_frequencies$model_future, "mon")
+    expect_identical(bws_btws@reconstruction, "bws_btws_weather")
+    expect_equal(
+        bws_btws@required_inputs$model_future@variable_sets[[1L]],
+        c("tas", "tasmin", "tasmax", "rsds", "clt")
+    )
     expect_identical(power@reconstruction, "power")
     expect_identical(daily_btws@reconstruction, "btws")
     expect_identical(hourly@output_type, "multi_year")

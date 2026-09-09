@@ -34,4 +34,23 @@ solar__cos_zenith <- function(latitude, declination, hour_angle) {
         cos(latitude) * cos(declination) * cos(hour_angle)
 }
 
+# Preserve the baseline diffuse fraction after a method changes GHI. Zero-GHI
+# hours remain fully diffuse so no beam component is synthesized from darkness.
+radiation__preserved_diffuse <- function(data_epw, ghi) {
+    baseline_ghi <- pmax(
+        0,
+        as.numeric(data_epw[["global_horizontal_radiation"]])
+    )
+    baseline_dhi <- pmax(
+        0,
+        as.numeric(data_epw[["diffuse_horizontal_radiation"]])
+    )
+    fraction <- ifelse(
+        baseline_ghi > .Machine$double.eps,
+        pmin(1, baseline_dhi / baseline_ghi),
+        1
+    )
+    pmin(ghi, pmax(0, as.numeric(ghi) * fraction))
+}
+
 # }}}

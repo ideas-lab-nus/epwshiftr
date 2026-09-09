@@ -27,7 +27,7 @@ WEATHER_RECIPE_DEFAULTS <- c(
     "epwshiftr_monthly",
     "epwshiftr_daily_power",
     "epwshiftr_daily_btws",
-    "btws_monthly_temperature",
+    "bws_btws_monthly",
     "ek_daily_factors",
     "quantile_mapping_morphing_daily",
     "sobie_curry_daily",
@@ -583,7 +583,7 @@ recipe__default_specs <- function() {
     enhanced_inputs <- recipe__monthly_inputs(enhanced = TRUE)
     daily_pipeline <- daily__temperature_pipeline()
     daily_btws_pipeline <- daily__temperature_pipeline("btws")
-    monthly_btws_pipeline <- btws__monthly_pipeline()
+    bws_btws_pipeline <- bws_btws__pipeline()
     ek_pipeline <- ek__pipeline()
     quantile_mapping_pipeline <- quantile_mapping_morphing__pipeline()
     sobie_pipeline <- sobie__pipeline()
@@ -623,7 +623,7 @@ recipe__default_specs <- function() {
             variable_sets = c("tas", "tasmin", "tasmax")
         )
     )
-    monthly_btws_inputs <- btws__monthly_inputs()
+    bws_btws_inputs <- bws_btws__inputs()
     ek_inputs <- ek__daily_temperature_inputs()
     quantile_mapping_inputs <- quantile_mapping_morphing__temperature_inputs()
     sobie_inputs <- list(
@@ -865,57 +865,62 @@ recipe__default_specs <- function() {
             ),
             status = "experimental"
         ),
-        btws_monthly_temperature = recipe__spec(
-            name = "btws_monthly_temperature",
-            label = "BTWS monthly temperature morphing",
-            method = "btws_monthly_temperature",
-            backend = "btws_monthly_temperature",
+        bws_btws_monthly = recipe__spec(
+            name = "bws_btws_monthly",
+            label = "BWS and BTWS monthly weather morphing",
+            method = "bws_btws_monthly",
+            backend = "bws_btws_monthly",
             implementation = "pipeline",
             source = list(
                 type = "adapted_publication",
                 citation = paste(
-                    "Eames et al. (2024) monthly temperature changes and",
-                    "bounded temperature weighted stretch, with the monthly",
-                    "statistics derived from daily CMIP6 inputs"
+                    "Eames et al. (2024) bounded weather stretch for cloud",
+                    "cover and global solar radiation plus bounded",
+                    "temperature weighted stretch using monthly UKCP18",
+                    "change factors"
                 ),
                 references = c(
                     "https://doi.org/10.1177/01436244231218861",
                     "https://github.com/ideas-lab-nus/epwshiftr/issues/152"
                 ),
                 equation_note = paste(
-                    "The published monthly mean, average daily minimum, and",
-                    "average daily maximum changes feed equations (7)-(16).",
+                    "The published BWS equations (7)-(8) transform cloud",
+                    "cover and global solar radiation; equations (9)-(16)",
+                    "transform daily temperature mean and extrema.",
                     "Where the paper does not publish solver code, epwshiftr",
                     "uses deterministic bisection to retain the largest",
                     "admissible m or n in [0, 1]."
                 ),
                 signal_note = paste(
                     "The paper obtains monthly factors from UKCP18.",
-                    "epwshiftr instead aggregates matching daily CMIP6 tas,",
-                    "tasmin, and tasmax to the same three monthly statistics;",
+                    "epwshiftr derives matching change factors from monthly",
+                    "CMIP6 tas, tasmin, tasmax, rsds, and clt;",
                     "it does not apply daily-varying change factors."
                 ),
                 implementation_note = paste(
-                    "This temperature-only workflow reuses epwshiftr's",
-                    "specific-humidity closure and EPW output policy.",
-                    "The paper's non-temperature transformations are not",
-                    "implemented by this recipe."
+                    "The BWS kernel retains zero and upper-bound states.",
+                    "For EPW cloud cover, the paper's normalized bounded",
+                    "equation is applied on the equivalent 0-10 tenths scale.",
+                    "The unified physical layer closes humidity, diffuse and",
+                    "direct radiation after all method candidates are formed."
                 )
             ),
-            required_inputs = monthly_btws_inputs,
+            required_inputs = bws_btws_inputs,
             calendar_policy = "cf_calendar_month_to_epw_365",
-            components = pipeline__records(monthly_btws_pipeline),
+            components = pipeline__records(bws_btws_pipeline),
             policy_profiles = c(harmonized = "default"),
             physical_policies = c(
-                harmonized = "preserve_specific_humidity"
+                harmonized = "bws_btws_weather"
             ),
             default_policy = "harmonized",
             diagnostics = c(
-                "monthly_temperature_changes",
+                "monthly_temperature_radiation_cloud_changes",
                 "daily_extrema_closure",
                 "btws_scale_and_exponents",
+                "bws_scale_and_exponents",
                 "mean_shift_fallback",
                 "humidity_closure",
+                "shortwave_closure",
                 "day_boundary_jump"
             ),
             provenance = c(
