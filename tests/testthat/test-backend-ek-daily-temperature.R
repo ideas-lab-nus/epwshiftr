@@ -139,8 +139,8 @@ test_that("Ek recipe registers its temperature-focused daily contract", {
         "day"
     )
     expect_error(
-        ek_daily_temperature(),
-        "requires an explicit reference"
+        transform__validate_execution_inputs(daily_transform("ek")),
+        "requires.*reference"
     )
     expect_error(
         epw_morph_recipe(
@@ -404,11 +404,9 @@ test_that("Ek validates extrema, year, frequency, and daily completeness", {
     )
 })
 
-test_that("Ek public method survives dry-run plan reconstruction", {
-    method <- ek_daily_temperature(
-        historical_reference(years = 1995:2014),
-        policy = "harmonized"
-    )
+test_that("Ek public transform survives dry-run plan reconstruction", {
+    transform <- daily_transform("ek")
+    reference <- historical_reference(years = 1995:2014)
     climate <- shift_cmip6(
         "EC-Earth3",
         "ssp585",
@@ -419,7 +417,8 @@ test_that("Ek public method survives dry-run plan reconstruction", {
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2061L),
-        method = method,
+        transform = transform,
+        reference = reference,
         dir = tempfile("ek-daily-output-"),
         store = tempfile("ek-daily-store-"),
         dry_run = TRUE
@@ -427,20 +426,20 @@ test_that("Ek public method survives dry-run plan reconstruction", {
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_identical(
-        plan@meta$method@recipe$backend,
+        plan@meta$recipe$backend,
         "ek_daily_temperature"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$recipe_spec,
+        rebuilt@meta$recipe$recipe_spec,
         "ek_daily_factors"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$components$signal,
+        rebuilt@meta$recipe$components$signal,
         "daily_mean_dtr_change_factors"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$policy,
-        "harmonized"
+        rebuilt@meta$recipe$policy,
+        transform__recipe(transform)$policy
     )
     expect_silent(shift__validate_background_plan(plan))
 })

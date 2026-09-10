@@ -1,5 +1,5 @@
-# Build deterministic daily tas rows for model and observed Arima inputs.
-arima_test__climate <- function(
+# Build deterministic daily tas rows for quantile-mapping morphing inputs.
+quantile_mapping_morphing_test__climate <- function(
     years,
     period,
     experiment,
@@ -51,23 +51,23 @@ arima_test__climate <- function(
 }
 
 # Build a complete four-role context around the packaged EPW fixture.
-arima_test__context <- function(
+quantile_mapping_morphing_test__context <- function(
     temperature_shift = 0,
     policy = "paper_faithful",
-    recipe_name = "monthly_percentile_temperature"
+    recipe_name = "quantile_mapping_morphing_daily"
 ) {
-    historical <- arima_test__climate(
+    historical <- quantile_mapping_morphing_test__climate(
         2001:2003,
         period = "reference",
         experiment = "historical"
     )
-    future <- arima_test__climate(
+    future <- quantile_mapping_morphing_test__climate(
         2061:2063,
         period = "2060s",
         experiment = "ssp585",
         temperature_shift = temperature_shift
     )
-    observed <- arima_test__climate(
+    observed <- quantile_mapping_morphing_test__climate(
         2001:2003,
         period = "observed",
         experiment = "observed",
@@ -85,13 +85,13 @@ arima_test__context <- function(
     )
 }
 
-test_that("Arima recipe registers all four required input roles", {
-    expect_true("arima_temperature" %in% epw_morph_backends())
+test_that("Quantile-mapping morphing recipe registers all four required input roles", {
+    expect_true("quantile_mapping_morphing" %in% epw_morph_backends())
     expect_true(
-        "monthly_percentile_temperature" %in% epw_morph_recipes()[["name"]]
+        "quantile_mapping_morphing_daily" %in% epw_morph_recipes()[["name"]]
     )
-    recipe <- epw_morph_recipe("monthly_percentile_temperature")
-    spec <- epw_morph_recipe_spec("monthly_percentile_temperature")
+    recipe <- epw_morph_recipe("quantile_mapping_morphing_daily")
+    spec <- epw_morph_recipe_spec("quantile_mapping_morphing_daily")
 
     expect_identical(recipe$policy, "paper_faithful")
     expect_identical(
@@ -115,40 +115,40 @@ test_that("Arima recipe registers all four required input roles", {
         "day"
     )
     expect_error(
-        arima_temperature(),
-        "requires an explicit reference"
+        transform__validate_execution_inputs(daily_transform("qm_morphing")),
+        "requires.*reference"
     )
 })
 
-test_that("Arima smoother uses fixed nine-rank endpoint means", {
+test_that("Quantile-mapping morphing smoother uses fixed nine-rank endpoint means", {
     expected_one_pass <- c(
         rep(5, 5),
         6:12,
         rep(13, 5)
     )
     expect_equal(
-        arima__smooth_pass(1:17),
+        quantile_mapping_morphing__smooth_pass(1:17),
         expected_one_pass
     )
     expect_equal(
-        arima__smooth_change(rep(2.5, 17)),
+        quantile_mapping_morphing__smooth_change(rep(2.5, 17)),
         rep(2.5, 17)
     )
     expect_error(
-        arima__smooth_change(1:8),
+        quantile_mapping_morphing__smooth_change(1:8),
         "no longer than"
     )
 })
 
-test_that("Arima monthly inputs do not require an annual-phase mapping", {
-    source <- arima_test__climate(
+test_that("Quantile-mapping morphing monthly inputs do not require an annual-phase mapping", {
+    source <- quantile_mapping_morphing_test__climate(
         2001L,
         period = "observed",
         experiment = "observed",
         source_id = "Observed"
     )
     source[, annual_phase := NULL]
-    normalized <- arima__temperature_series(
+    normalized <- quantile_mapping_morphing__temperature_series(
         source,
         "observed reference weather"
     )
@@ -158,8 +158,8 @@ test_that("Arima monthly inputs do not require an annual-phase mapping", {
     expect_true(all(is.finite(normalized$value)))
 })
 
-test_that("Arima zero climate change is an hourly identity", {
-    context <- arima_test__context()
+test_that("Quantile-mapping morphing zero climate change is an hourly identity", {
+    context <- quantile_mapping_morphing_test__context()
     baseline <- context$epw$clone()
     suppressMessages(baseline$drop_unit())
     baseline_weather <- data.table::as.data.table(baseline$data())
@@ -185,12 +185,12 @@ test_that("Arima zero climate change is an hourly identity", {
     )
     expect_identical(
         result$parts$settings$quantile_type,
-        EPW_MORPH_ARIMA_QUANTILE_TYPE
+        EPW_MORPH_QUANTILE_MAPPING_QUANTILE_TYPE
     )
 })
 
-test_that("Arima applies the selected daily factor to every hour", {
-    context <- arima_test__context(temperature_shift = 2.25)
+test_that("Quantile-mapping morphing applies the selected daily factor to every hour", {
+    context <- quantile_mapping_morphing_test__context(temperature_shift = 2.25)
     result <- morpher__run_context(context)
     baseline <- context$epw$clone()
     suppressMessages(baseline$drop_unit())
@@ -212,7 +212,7 @@ test_that("Arima applies the selected daily factor to every hour", {
     ))
 })
 
-test_that("Arima factors vary with observed monthly percentile", {
+test_that("Quantile-mapping morphing factors vary with observed monthly percentile", {
     historical <- data.table::data.table(
         month = rep(seq_len(12L), each = 20L),
         value = rep(seq_len(20L), 12L)
@@ -220,13 +220,13 @@ test_that("Arima factors vary with observed monthly percentile", {
     future <- data.table::copy(historical)
     future[, value := value + value / 10]
     observed <- data.table::copy(historical)
-    functions <- arima__change_functions(historical, future)
+    functions <- quantile_mapping_morphing__change_functions(historical, future)
     baseline <- data.table::data.table(
         target_day = 1:24,
         month = rep(seq_len(12L), each = 2L),
         baseline_daily_mean = rep(c(2, 19), 12L)
     )
-    factors <- arima__daily_factors(
+    factors <- quantile_mapping_morphing__daily_factors(
         baseline,
         observed,
         functions
@@ -239,9 +239,9 @@ test_that("Arima factors vary with observed monthly percentile", {
     expect_true(all(functions$smoothed_delta >= 0))
 })
 
-test_that("Arima harmonized policy closes the humidity state", {
+test_that("Quantile-mapping morphing harmonized policy closes the humidity state", {
     result <- morpher__run_context(
-        arima_test__context(
+        quantile_mapping_morphing_test__context(
             temperature_shift = -12,
             policy = "harmonized"
         )
@@ -254,21 +254,18 @@ test_that("Arima harmonized policy closes the humidity state", {
             result$data$dry_bulb_temperature + 1e-8
     ))
     expect_true(
-        "arima_humidity_closure_status" %in% names(result$data)
+        "quantile_mapping_morphing_humidity_closure_status" %in% names(result$data)
     )
 })
 
-test_that("Arima public method persists both reference roles", {
+test_that("Quantile-mapping morphing public method persists both reference roles", {
     historical <- historical_reference(years = 1995:2014)
     observed <- shift_reference_plan(
         "observed-plan",
-        periods = epw_morph_periods(observed = 1995:2014)
+        periods = epw_morph_periods(observed = 1995:2014),
+        role = "observed_reference"
     )
-    method <- arima_temperature(
-        reference = historical,
-        observed_reference = observed,
-        policy = "harmonized"
-    )
+    transform <- daily_transform("qm_morphing")
     climate <- shift_cmip6(
         "EC-Earth3",
         "ssp585",
@@ -279,20 +276,22 @@ test_that("Arima public method persists both reference roles", {
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2061L),
-        method = method,
-        dir = tempfile("arima-output-"),
-        store = tempfile("arima-store-"),
+        transform = transform,
+        reference = historical,
+        observed_reference = observed,
+        dir = tempfile("qm_morphing-output-"),
+        store = tempfile("qm_morphing-store-"),
         dry_run = TRUE
     )
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
     explanation <- shift__plan_explain(plan)
 
     expect_identical(
-        rebuilt@meta$method@recipe$recipe_spec,
-        "monthly_percentile_temperature"
+        rebuilt@meta$recipe$recipe_spec,
+        "quantile_mapping_morphing_daily"
     )
     expect_identical(
-        rebuilt@meta$method@observed_reference@plan_id,
+        rebuilt@meta$observed_reference@plan_id,
         "observed-plan"
     )
     expect_true("observed_reference" %in% explanation$step)
@@ -310,7 +309,7 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
     )
     paths <- stats::setNames(
         vapply(names(years), function(role) {
-            path <- tempfile(sprintf("arima-%s-", role), fileext = ".nc")
+            path <- tempfile(sprintf("qm_morphing-%s-", role), fileext = ".nc")
             write_local_cmip6_netcdf_fixture(
                 path,
                 years[[role]],
@@ -322,7 +321,7 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
     )
     on.exit(unlink(paths), add = TRUE)
 
-    store <- EsgStore$new(tempfile("arima-workflow-"))
+    store <- EsgStore$new(tempfile("qm_morphing-workflow-"))
     on.exit(store$close(), add = TRUE)
     plans <- lapply(names(years), function(role) {
         year <- years[[role]]
@@ -373,7 +372,7 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
         store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = epw_morph_recipe("monthly_percentile_temperature")
+        transform = daily_transform("qm_morphing")
     )
     workflow <- morpher$workflow(
         plan_id = plans$future,
@@ -406,9 +405,9 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
     expect_identical(nrow(observed_mapping), 1L)
     expect_true(nzchar(observed_mapping$observed_summary_id))
     expect_identical(nrow(weather), 8760L)
-    expect_true("arima_temperature_delta" %in% names(weather))
+    expect_true("quantile_mapping_morphing_delta" %in% names(weather))
     expect_equal(
-        weather$arima_temperature_delta,
+        weather$quantile_mapping_morphing_delta,
         rep(0, 8760L),
         tolerance = 1e-7
     )

@@ -636,7 +636,10 @@ kqdm__component <- function() {
         stochastic = FALSE,
         profiles = kqdm__profiles(),
         apply_group = kqdm__apply_group,
-        operations = list(validate_result = kqdm__validate_result),
+        operations = list(
+            validate_options = kqdm__settings,
+            validate_result = kqdm__validate_result
+        ),
         metadata = list(
             method_family = "bias_adjustment",
             output_contract = "subdaily_adjusted_series",

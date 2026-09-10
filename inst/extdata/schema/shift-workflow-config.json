@@ -2,8 +2,8 @@
   "check": {"kind": "list"},
   "keys": {
     "type": "named",
-    "must.include": ["version", "epw", "climate", "periods", "method", "dir"],
-    "subset.of": ["version", "epw", "climate", "periods", "method", "dir", "control"]
+    "must.include": ["version", "epw", "climate", "periods", "transform", "reference", "dir"],
+    "subset.of": ["version", "epw", "climate", "periods", "transform", "reference", "observed_reference", "dir", "control"]
   },
   "fields": {
     "version": {"check": {"kind": "count", "positive": true}},
@@ -21,7 +21,27 @@
         "scenarios": {"check": {"kind": "character", "any.missing": false}},
         "member": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
         "grid": {"check": {"kind": "string", "null.ok": true}},
-        "frequency": {"check": {"kind": "string"}},
+        "frequency": {
+          "any": [
+            {"check": {"kind": "string"}},
+            {
+              "check": {"kind": "list"},
+              "keys": {"type": "named"},
+              "rest": {"check": {"kind": "string"}}
+            }
+          ]
+        },
+        "table": {
+          "any": [
+            {"check": {"kind": "null"}},
+            {"check": {"kind": "string"}},
+            {
+              "check": {"kind": "list"},
+              "keys": {"type": "named"},
+              "rest": {"check": {"kind": "string"}}
+            }
+          ]
+        },
         "activity": {"check": {"kind": "string"}},
         "index_nodes": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
         "data_node": {"check": {"kind": "string", "null.ok": true}},
@@ -32,20 +52,25 @@
       "check": {"kind": "list"},
       "keys": {"type": "named"}
     },
-    "method": {
+    "transform": {
       "check": {"kind": "list"},
       "keys": {
         "type": "named",
-        "must.include": ["name"],
-        "subset.of": ["name", "profile", "options", "methods", "reference"]
+        "must.include": ["scale", "method"],
+        "subset.of": ["scale", "method", "reconstruction", "options"]
       },
       "fields": {
-        "name": {"check": {"kind": "string"}},
-        "profile": {"check": {"kind": "choice", "choices": ["enhanced", "legacy"]}},
-        "options": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-        "methods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
-        "reference": {
-          "check": {"kind": "list", "null.ok": true},
+        "scale": {"check": {"kind": "choice", "choices": ["monthly", "daily", "hourly"]}},
+        "method": {"check": {"kind": "string"}},
+        "reconstruction": {"check": {"kind": "string"}},
+        "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+      }
+    },
+    "reference": {
+      "any": [
+        {"check": {"kind": "null"}},
+        {
+          "check": {"kind": "list"},
           "keys": {
             "type": "named",
             "must.include": ["mode", "periods"],
@@ -62,7 +87,25 @@
             "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
           }
         }
-      }
+      ]
+    },
+    "observed_reference": {
+      "any": [
+        {"check": {"kind": "null"}},
+        {
+          "check": {"kind": "list"},
+          "keys": {
+            "type": "named",
+            "must.include": ["mode", "periods", "plan_id"],
+            "subset.of": ["mode", "periods", "plan_id"]
+          },
+          "fields": {
+            "mode": {"check": {"kind": "choice", "choices": ["plan"]}},
+            "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
+            "plan_id": {"check": {"kind": "character", "any.missing": false}}
+          }
+        }
+      ]
     },
     "dir": {"check": {"kind": "string"}},
     "control": {

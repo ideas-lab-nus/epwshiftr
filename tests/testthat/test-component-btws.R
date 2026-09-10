@@ -97,7 +97,7 @@ test_that("BTWS component and composite recipe expose strict contracts", {
         recipe$components$hourly,
         "btws_temperature_projection"
     )
-    expect_identical(spec@source$type, "combined_prior_methods")
+    expect_identical(spec@source$type, "package_method")
     expect_match(spec@source$citation, "combined")
     expect_match(spec@source$equation_note, "bisection")
     expect_match(spec@source$signal_note, "monthly UKCP18")
@@ -106,8 +106,10 @@ test_that("BTWS component and composite recipe expose strict contracts", {
         "day"
     )
     expect_error(
-        daily_temperature(reconstruction = "btws"),
-        "requires an explicit reference"
+        transform__validate_execution_inputs(
+            daily_transform("epwshiftr", reconstruction = "btws")
+        ),
+        "requires.*reference"
     )
 })
 
@@ -163,11 +165,12 @@ test_that("daily CMIP6 and BTWS composition closes a future EPW year", {
 })
 
 test_that("daily temperature selects BTWS and survives plan reconstruction", {
-    method <- daily_temperature(
-        historical_reference(years = 1995:2014),
-        window_days = 15L,
-        reconstruction = "btws"
+    transform <- daily_transform(
+        "epwshiftr",
+        reconstruction = "btws",
+        window_days = 15L
     )
+    reference <- historical_reference(years = 1995:2014)
     climate <- shift_cmip6(
         "EC-Earth3",
         "ssp585",
@@ -178,7 +181,8 @@ test_that("daily temperature selects BTWS and survives plan reconstruction", {
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2061L),
-        method = method,
+        transform = transform,
+        reference = reference,
         dir = tempfile("daily-btws-output-"),
         store = tempfile("daily-btws-store-"),
         dry_run = TRUE
@@ -186,47 +190,48 @@ test_that("daily temperature selects BTWS and survives plan reconstruction", {
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_identical(
-        plan@meta$method@recipe$backend,
+        plan@meta$recipe$backend,
         "daily_temperature_btws"
     )
     expect_identical(
-        plan@meta$method@recipe$recipe_spec,
+        plan@meta$recipe$recipe_spec,
         "epwshiftr_daily_btws"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$options$window_days,
+        rebuilt@meta$recipe$options$window_days,
         15L
     )
     expect_identical(
-        rebuilt@meta$method@recipe$components$hourly,
+        rebuilt@meta$recipe$components$hourly,
         "btws_temperature_projection"
     )
     expect_silent(shift__validate_background_plan(plan))
 })
 
 test_that("daily temperature reconstruction selects one hourly component", {
-    reference <- historical_reference(years = 1995:2014)
-    power <- daily_temperature(reference, reconstruction = "power")
-    btws <- daily_temperature(reference, reconstruction = "btws")
+    power <- daily_transform("epwshiftr", reconstruction = "power")
+    btws <- daily_transform("epwshiftr", reconstruction = "btws")
+    power_recipe <- transform__recipe(power)
+    btws_recipe <- transform__recipe(btws)
 
     expect_identical(
-        power@recipe$recipe_spec,
+        power_recipe$recipe_spec,
         "epwshiftr_daily_power"
     )
     expect_identical(
-        power@recipe$components$hourly,
+        power_recipe$components$hourly,
         "constrained_daily_temperature"
     )
     expect_identical(
-        btws@recipe$recipe_spec,
+        btws_recipe$recipe_spec,
         "epwshiftr_daily_btws"
     )
     expect_identical(
-        btws@recipe$components$hourly,
+        btws_recipe$components$hourly,
         "btws_temperature_projection"
     )
     expect_error(
-        daily_temperature(reference, reconstruction = "unknown"),
-        "should be one of"
+        daily_transform("epwshiftr", reconstruction = "unknown"),
+        "power.*btws"
     )
 })

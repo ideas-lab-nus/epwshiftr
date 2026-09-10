@@ -1,11 +1,12 @@
-# Belcher runner behavior is fixed across modes and profiles
+# Original morphing runner behavior is fixed across modes and profiles
 
     Code
-      cat(belcher_test__snapshot_json(lapply(results, belcher_test__result_behavior)))
+      cat(original_morphing_test__snapshot_json(lapply(results,
+        original_morphing_test__result_behavior)))
     Output
       {
         "absolute_legacy": {
-          "backend": "belcher_absolute",
+          "backend": "original_morphing_absolute",
           "profile": "legacy",
           "policy": "legacy_independent_fields",
           "data": {
@@ -102,7 +103,7 @@
           }
         },
         "absolute_enhanced": {
-          "backend": "belcher_absolute",
+          "backend": "original_morphing_absolute",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
@@ -199,24 +200,24 @@
           }
         },
         "change_legacy": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "legacy",
           "policy": "legacy_independent_fields",
           "data": {
             "dimensions": "8760x40",
             "schema": "datetime:POSIXct/POSIXt[tz=UTC],year:integer,month:integer,day:integer,hour:integer,minute:integer,data_source:character,dry_bulb_temperature:numeric,dew_point_temperature:numeric,relative_humidity:numeric,atmospheric_pressure:numeric,extraterrestrial_horizontal_radiation:numeric,extraterrestrial_direct_normal_radiation:numeric,horizontal_infrared_radiation_intensity_from_sky:numeric,global_horizontal_radiation:numeric,direct_normal_radiation:numeric,diffuse_horizontal_radiation:numeric,global_horizontal_illuminance:numeric,direct_normal_illuminance:numeric,diffuse_horizontal_illuminance:numeric,zenith_luminance:numeric,wind_direction:numeric,wind_speed:numeric,total_sky_cover:integer,opaque_sky_cover:integer,visibility:numeric,ceiling_height:numeric,present_weather_observation:integer,present_weather_codes:character,precipitable_water:numeric,aerosol_optical_depth:numeric,snow_depth:numeric,days_since_last_snow:integer,albedo:numeric,liquid_precip_depth:numeric,liquid_precip_rate:numeric,source_id:character,experiment_id:character,member_id:character,interval:factor[levels=future]",
-            "digest": "d812d436692c4a5af1d722597e2b255fb8b10a82fb95818dbd305e60ae300e22"
+            "digest": "f0828e660a6e50ce02f7e23a376772c3bbb99f8aa7fe78297575944190953f4c"
           },
           "parts": {
             "tdb": {
               "dimensions": "8760x18",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dry_bulb_temperature:numeric,delta:numeric,alpha:numeric",
-              "digest": "42b1ea524340d4921bd992c53c1cc1cdf9eb9cd3229ac16dc18ec5526875a850"
+              "digest": "d396b75437dd9772c4a78c1d3e4418d9d8c8993ed585889023c5b0d3b76c13dd"
             },
             "tdew": {
               "dimensions": "8760x18",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dew_point_temperature:numeric,delta:numeric,alpha:numeric",
-              "digest": "ec03df18767d0cf26dc0211aceb427c0565f7e07470bbfdb4dfb7d47c9fd1865"
+              "digest": "ee3ef536cb3a44a0cee3034bcae662c006b32b5f59ae29ce7593e4fb4e2c63f2"
             },
             "rh": {
               "dimensions": "8760x18",
@@ -296,24 +297,24 @@
           }
         },
         "change_enhanced": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
             "dimensions": "8760x40",
             "schema": "datetime:POSIXct/POSIXt[tz=UTC],year:integer,month:integer,day:integer,hour:integer,minute:integer,data_source:character,dry_bulb_temperature:numeric,dew_point_temperature:numeric,relative_humidity:numeric,atmospheric_pressure:numeric,extraterrestrial_horizontal_radiation:numeric,extraterrestrial_direct_normal_radiation:numeric,horizontal_infrared_radiation_intensity_from_sky:numeric,global_horizontal_radiation:numeric,direct_normal_radiation:numeric,diffuse_horizontal_radiation:numeric,global_horizontal_illuminance:numeric,direct_normal_illuminance:numeric,diffuse_horizontal_illuminance:numeric,zenith_luminance:numeric,wind_direction:numeric,wind_speed:numeric,total_sky_cover:integer,opaque_sky_cover:integer,visibility:numeric,ceiling_height:numeric,present_weather_observation:integer,present_weather_codes:character,precipitable_water:numeric,aerosol_optical_depth:numeric,snow_depth:numeric,days_since_last_snow:integer,albedo:numeric,liquid_precip_depth:numeric,liquid_precip_rate:numeric,source_id:character,experiment_id:character,member_id:character,interval:factor[levels=future]",
-            "digest": "cc0543fdc9fb13f4af8dfcdb801f8d3d68128b1c6474d62055b605032303c0d8"
+            "digest": "c82108818fa18b3ac52d01fbd5429e12a69287f7727e73af30411c519a185223"
           },
           "parts": {
             "tdb": {
               "dimensions": "8760x20",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dry_bulb_temperature:numeric,delta:numeric,alpha:numeric,method_applied:character,factor_status:character",
-              "digest": "c901f3912f3c18a0ab4cc8363412458300426f983b02628b65a814016924ad8b"
+              "digest": "1bb3c6f79cd0f4da84b0761b77bcd39bfc1d790a685b9fb6d6014ca00cdf2e62"
             },
             "tdew": {
               "dimensions": "8760x19",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dew_point_temperature:numeric,delta:numeric,alpha:numeric,factor_status:character",
-              "digest": "919abb7059ff0d7e86c4417783026f0658a1e49cfd9a11eb7a879868bce0ba76"
+              "digest": "c9205714edfa6a3d1a849f5b23f9f16c780239002c423b45a9dbe63b32c68e2e"
             },
             "rh": {
               "dimensions": "8760x19",
@@ -353,7 +354,7 @@
             "illuminance": {
               "dimensions": "8760x21",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,delta:numeric,alpha:numeric,global_horizontal_illuminance:numeric,direct_normal_illuminance:numeric,diffuse_horizontal_illuminance:numeric,zenith_luminance:numeric",
-              "digest": "13b04eaea68310c7f8689ac528bb36ca98b0c620788ba64a468de4734d1d73fb"
+              "digest": "51668b67e188fe22720dd67783c5bd98f087992209c17ff236a2f931c50cf4f6"
             },
             "wind": {
               "dimensions": "8760x20",
@@ -384,16 +385,16 @@
           "factors": {
             "dimensions": "108x10",
             "schema": "source_id:character,experiment_id:character,member_id:character,interval:factor[levels=future],month:numeric,factor_status:character,method_applied:character,delta:numeric,alpha:numeric,step:character",
-            "digest": "38aca90379f8efe2b96fec0fa2f5d5d83e90fa70d18a65f3f4d4a405749bd4bc"
+            "digest": "7993f259d595708c9cf585e077470bc50c12cbd05ef7ac7b8f4681991a1bffdf"
           },
           "diagnostics": {
-            "dimensions": "36x14",
+            "dimensions": "24x14",
             "schema": "stage:character,severity:character,code:character,message:character,plan_id:character,summary_id:character,baseline_id:character,morph_id:character,case_id:character,variable_id:character,epw_field:character,period:character,month:integer,action:character",
-            "digest": "bbe017b95d9188807403a53195d8b826b5174dd7c4d73f2c28a45c0528dbeeee"
+            "digest": "0a6c8287753200be7e48cc802db1afc4503dd58aa469c482c08dcbfb0432a08c"
           }
         },
         "baseline_fallback": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
@@ -490,31 +491,32 @@
           }
         }
       }
-# Belcher production case contexts preserve identity and isolation
+# Original morphing production case contexts preserve identity and isolation
 
     Code
-      cat(belcher_test__snapshot_json(lapply(results, belcher_test__result_behavior)))
+      cat(original_morphing_test__snapshot_json(lapply(results,
+        original_morphing_test__result_behavior)))
     Output
       {
         "model_a": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
             "dimensions": "8760x40",
             "schema": "datetime:POSIXct/POSIXt[tz=UTC],year:integer,month:integer,day:integer,hour:integer,minute:integer,data_source:character,dry_bulb_temperature:numeric,dew_point_temperature:numeric,relative_humidity:numeric,atmospheric_pressure:numeric,extraterrestrial_horizontal_radiation:numeric,extraterrestrial_direct_normal_radiation:numeric,horizontal_infrared_radiation_intensity_from_sky:numeric,global_horizontal_radiation:numeric,direct_normal_radiation:numeric,diffuse_horizontal_radiation:numeric,global_horizontal_illuminance:numeric,direct_normal_illuminance:numeric,diffuse_horizontal_illuminance:numeric,zenith_luminance:numeric,wind_direction:numeric,wind_speed:numeric,total_sky_cover:integer,opaque_sky_cover:integer,visibility:numeric,ceiling_height:numeric,present_weather_observation:integer,present_weather_codes:character,precipitable_water:numeric,aerosol_optical_depth:numeric,snow_depth:numeric,days_since_last_snow:integer,albedo:numeric,liquid_precip_depth:numeric,liquid_precip_rate:numeric,source_id:character,experiment_id:character,member_id:character,interval:factor[levels=future]",
-            "digest": "cc0543fdc9fb13f4af8dfcdb801f8d3d68128b1c6474d62055b605032303c0d8"
+            "digest": "c82108818fa18b3ac52d01fbd5429e12a69287f7727e73af30411c519a185223"
           },
           "parts": {
             "tdb": {
               "dimensions": "8760x20",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dry_bulb_temperature:numeric,delta:numeric,alpha:numeric,method_applied:character,factor_status:character",
-              "digest": "c901f3912f3c18a0ab4cc8363412458300426f983b02628b65a814016924ad8b"
+              "digest": "1bb3c6f79cd0f4da84b0761b77bcd39bfc1d790a685b9fb6d6014ca00cdf2e62"
             },
             "tdew": {
               "dimensions": "8760x19",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dew_point_temperature:numeric,delta:numeric,alpha:numeric,factor_status:character",
-              "digest": "919abb7059ff0d7e86c4417783026f0658a1e49cfd9a11eb7a879868bce0ba76"
+              "digest": "c9205714edfa6a3d1a849f5b23f9f16c780239002c423b45a9dbe63b32c68e2e"
             },
             "rh": {
               "dimensions": "8760x19",
@@ -554,7 +556,7 @@
             "illuminance": {
               "dimensions": "8760x21",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,delta:numeric,alpha:numeric,global_horizontal_illuminance:numeric,direct_normal_illuminance:numeric,diffuse_horizontal_illuminance:numeric,zenith_luminance:numeric",
-              "digest": "13b04eaea68310c7f8689ac528bb36ca98b0c620788ba64a468de4734d1d73fb"
+              "digest": "51668b67e188fe22720dd67783c5bd98f087992209c17ff236a2f931c50cf4f6"
             },
             "wind": {
               "dimensions": "8760x20",
@@ -585,33 +587,33 @@
           "factors": {
             "dimensions": "108x10",
             "schema": "source_id:character,experiment_id:character,member_id:character,interval:factor[levels=future],month:numeric,factor_status:character,method_applied:character,delta:numeric,alpha:numeric,step:character",
-            "digest": "38aca90379f8efe2b96fec0fa2f5d5d83e90fa70d18a65f3f4d4a405749bd4bc"
+            "digest": "7993f259d595708c9cf585e077470bc50c12cbd05ef7ac7b8f4681991a1bffdf"
           },
           "diagnostics": {
-            "dimensions": "36x14",
+            "dimensions": "24x14",
             "schema": "stage:character,severity:character,code:character,message:character,plan_id:character,summary_id:character,baseline_id:character,morph_id:character,case_id:character,variable_id:character,epw_field:character,period:character,month:integer,action:character",
-            "digest": "bbe017b95d9188807403a53195d8b826b5174dd7c4d73f2c28a45c0528dbeeee"
+            "digest": "0a6c8287753200be7e48cc802db1afc4503dd58aa469c482c08dcbfb0432a08c"
           }
         },
         "model_b": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
             "dimensions": "8760x40",
             "schema": "datetime:POSIXct/POSIXt[tz=UTC],year:integer,month:integer,day:integer,hour:integer,minute:integer,data_source:character,dry_bulb_temperature:numeric,dew_point_temperature:numeric,relative_humidity:numeric,atmospheric_pressure:numeric,extraterrestrial_horizontal_radiation:numeric,extraterrestrial_direct_normal_radiation:numeric,horizontal_infrared_radiation_intensity_from_sky:numeric,global_horizontal_radiation:numeric,direct_normal_radiation:numeric,diffuse_horizontal_radiation:numeric,global_horizontal_illuminance:numeric,direct_normal_illuminance:numeric,diffuse_horizontal_illuminance:numeric,zenith_luminance:numeric,wind_direction:numeric,wind_speed:numeric,total_sky_cover:integer,opaque_sky_cover:integer,visibility:numeric,ceiling_height:numeric,present_weather_observation:integer,present_weather_codes:character,precipitable_water:numeric,aerosol_optical_depth:numeric,snow_depth:numeric,days_since_last_snow:integer,albedo:numeric,liquid_precip_depth:numeric,liquid_precip_rate:numeric,source_id:character,experiment_id:character,member_id:character,interval:factor[levels=future]",
-            "digest": "3bf55a26aca3b7e3c98ba590ad4c2e63af753a61509f2e830f073c54292f75b5"
+            "digest": "cf008b69db0ee7224b6384976f51ccb5e8146971fe49ef7faf6cf7dcde152ef1"
           },
           "parts": {
             "tdb": {
               "dimensions": "8760x20",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dry_bulb_temperature:numeric,delta:numeric,alpha:numeric,method_applied:character,factor_status:character",
-              "digest": "3b68bdc66751d2e1fc9b8b8345e34d0bb88b6d35bf40f2a9f95b312a1846f9b4"
+              "digest": "72a21c8c5943a868e9336a99ba4dc4d8db09a4ade5b9c5afdf4cb75006529b91"
             },
             "tdew": {
               "dimensions": "8760x19",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,dew_point_temperature:numeric,delta:numeric,alpha:numeric,factor_status:character",
-              "digest": "cb0474646d07bce2fee0d7b9d5d0d94dbfa7d41b12e412c6ba441d5a7ae200ff"
+              "digest": "8ed5bfd7861dd84affe7a1e6cd3d9befd2580193b67e3e8ca819807db23b6250"
             },
             "rh": {
               "dimensions": "8760x19",
@@ -651,7 +653,7 @@
             "illuminance": {
               "dimensions": "8760x21",
               "schema": "activity_drs:character,institution_id:character,source_id:character,experiment_id:character,member_id:character,table_id:character,lon:numeric,lat:numeric,interval:factor[levels=future],datetime:numeric,year:numeric,month:numeric,day:numeric,hour:numeric,minute:numeric,delta:numeric,alpha:numeric,global_horizontal_illuminance:numeric,direct_normal_illuminance:numeric,diffuse_horizontal_illuminance:numeric,zenith_luminance:numeric",
-              "digest": "feceb60b05c5e23f289a3ba5993f2ffaff2d7deb1870c2adb61bef19c0ee53aa"
+              "digest": "ca9534503304ee548ced780f2ef63a29084fd1a5936ddf94294f62410365e282"
             },
             "wind": {
               "dimensions": "8760x20",
@@ -682,12 +684,12 @@
           "factors": {
             "dimensions": "108x10",
             "schema": "source_id:character,experiment_id:character,member_id:character,interval:factor[levels=future],month:numeric,factor_status:character,method_applied:character,delta:numeric,alpha:numeric,step:character",
-            "digest": "34df2b7a03f09d1337995dcc07e04a0b3e4bd9b1c1e0e7f3aa435a35c0845c57"
+            "digest": "46b5cb0c6b4ae791aaaa3af474fbf04ed9f6f318fb646fdcc6ae0f71a2f0ac90"
           },
           "diagnostics": {
-            "dimensions": "36x14",
+            "dimensions": "24x14",
             "schema": "stage:character,severity:character,code:character,message:character,plan_id:character,summary_id:character,baseline_id:character,morph_id:character,case_id:character,variable_id:character,epw_field:character,period:character,month:integer,action:character",
-            "digest": "bbe017b95d9188807403a53195d8b826b5174dd7c4d73f2c28a45c0528dbeeee"
+            "digest": "0a6c8287753200be7e48cc802db1afc4503dd58aa469c482c08dcbfb0432a08c"
           }
         }
       }

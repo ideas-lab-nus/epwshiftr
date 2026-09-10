@@ -537,7 +537,10 @@ qm__component <- function() {
         stochastic = TRUE,
         profiles = qm__profiles(),
         apply_group = qm__apply_group,
-        operations = list(validate_result = qm__validate_result),
+        operations = list(
+            validate_options = qm__settings,
+            validate_result = qm__validate_result
+        ),
         metadata = list(
             method_family = "bias_adjustment",
             output_contract = "daily_adjusted_series",

@@ -18,6 +18,12 @@ bias__validate_linear_scaling_result <- function(value, inputs, key) {
         "Linear Scaling"
     )
 }
+
+# Validate and normalize Linear Scaling settings through the same method
+# contract used immediately before the numerical kernel.
+bias__linear_scaling_settings <- function(settings) {
+    bias__mean_change_settings(settings, "Linear Scaling")
+}
 # Define the published monthly-mean defaults separately for temperature and
 # precipitation while retaining their evidence and source in signal profiles.
 bias__linear_scaling_profiles <- function() {
@@ -147,6 +153,7 @@ bias__linear_scaling_component <- function() {
         profiles = bias__linear_scaling_profiles(),
         apply_group = bias__linear_scaling_apply_group,
         operations = list(
+            validate_options = bias__linear_scaling_settings,
             validate_result = bias__validate_linear_scaling_result
         ),
         metadata = list(

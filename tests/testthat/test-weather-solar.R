@@ -12,12 +12,12 @@ test_that("shared solar kernels preserve vector and matrix geometry", {
     expect_true(all(is.finite(equation_of_time)))
 })
 
-test_that("Belcher declination delegates without changing its day convention", {
+test_that("Original morphing declination delegates without changing its day convention", {
     day <- c(1, 32, 183, 365)
 
     expect_equal(
-        morpher__belcher_declination(day),
-        solar__spencer_declination(morpher__belcher_day_angle(day)),
+        original_morphing__declination(day),
+        solar__spencer_declination(original_morphing__day_angle(day)),
         tolerance = 0
     )
 })

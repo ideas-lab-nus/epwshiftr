@@ -59,7 +59,7 @@ test_that("all registered complete recipes resolve a physical policy", {
     expect_identical(
         epwphys__recipe_policy(
             epw_morph_recipe(
-                "monthly_percentile_temperature",
+                "quantile_mapping_morphing_daily",
                 policy = "paper_faithful"
             )
         )@name,
@@ -68,7 +68,7 @@ test_that("all registered complete recipes resolve a physical policy", {
     expect_identical(
         epwphys__recipe_policy(
             epw_morph_recipe(
-                "monthly_percentile_temperature",
+                "quantile_mapping_morphing_daily",
                 policy = "harmonized"
             )
         )@name,

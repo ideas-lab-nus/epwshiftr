@@ -1,1188 +1,254 @@
 ---
-title: "Inspect EPW Morphing"
+title: "Inspect Future-Weather Transformations"
 author: "Hongyuan Jia"
 output:
     rmarkdown::html_vignette:
         df_print: "paged"
         toc: true
 vignette: >
-    %\VignetteIndexEntry{Inspect EPW Morphing}
+    %\VignetteIndexEntry{Inspect Future-Weather Transformations}
     %\VignetteEngine{knitr::rmarkdown}
     %\VignetteEncoding{UTF-8}
 description: >
-    Use EpwMorpher to inspect climate summaries, baseline summaries,
-    morphing plans, diagnostics, morphed weather, and written EPW files.
+    Discover weather transformations, inspect their input contracts, and use
+    EpwMorpher for store-native climate summaries and EPW generation.
 ---
 
-`shift_future_epw()` is the recommended user-facing interface in
-[Create Future EPW Files](future-epw-workflow.html). Use `shift_plan()` and
-`shift_explain()` when you want to inspect the stages before running them.
-`shift_morph()` and `shift_epw()` remain the lower-level wrappers around
-`EpwMorpher`, the store-native morphing engine.
+`shift_future_epw()` is the recommended interface for generating future EPW
+files. A weather transform selects the scientific calculation, while each run
+supplies the EPW template, climate data, study periods, references, and output
+directory. Keeping those responsibilities separate lets the same transform be
+reused for different sites, GCMs, scenarios, and periods.
 
-Use `EpwMorpher` directly when you need to inspect monthly summaries, preview
-factor calculations, diagnose missing variables, choose morphing case grouping,
-change the statistical downscaling backend, or rerun only the morph/write part
-of a workflow.
+# Discover Methods
 
-# Inputs
-
-`EpwMorpher` consumes completed extraction outputs in an `EsgStore` and a
-baseline EPW file. The examples below assume the store already has a future
-extraction plan named `region` and a historical reference extraction plan named
-`reference_region`.
+`weather_transforms()` is the public method catalog. Each row is one selectable
+combination of transformation scale, scientific method, and hourly
+reconstruction.
 
 ```r
-store <- EsgStore$new("~/cmip6-singapore-store", create = FALSE)
-
-epw <- system.file(
-    "extdata", "examples", "SGP_Singapore.486980_IWEC.epw",
-    package = "epwshiftr",
-    mustWork = TRUE
-)
-
-morpher <- epw_morpher(
-    store = store,
-    epw = epw,
-    site_id = "SIN",
-    recipe = epw_morph_recipe("belcher"),
-    label = "Singapore baseline"
-)
+catalog <- weather_transforms()
+catalog[, .(
+    scale,
+    method,
+    label,
+    reconstruction,
+    reconstruction_label,
+    statistical_grouping,
+    output_frequency,
+    status
+)]
 ```
 
-The helper functions used by the high-level workflow are available directly:
+The catalog and constructors use the same registry. This prevents the
+documentation from advertising a combination that the executor cannot resolve.
+The input-contract columns are list columns because different semantic roles
+can require different variables and source frequencies.
 
 ```r
-epw_morph_variables("minimal")
-epw_morph_variables("recommended")
-epw_morph_variables("extended")
-
-periods <- epw_morph_periods(`2060s` = 2060L)
-reference_spec <- historical_reference(1995:2014)
-
-request <- shift_cmip6_scenario(
-    source = "BCC-CSM2-MR",
-    scenario = c("ssp126", "ssp585"),
-    years = 2055:2065,
-    variables = "belcher",
-    frequency = "mon"
-)
+catalog[scale == "daily" & method == "qdm", .(
+    required_inputs,
+    source_frequencies,
+    evidence,
+    references
+)]
 ```
 
-`"recommended"` is the strict Belcher recipe set used by the main workflow.
-`"minimal"` is useful for relaxed demonstrations, and `"extended"` adds related
-variables for future recipes.
+# Construct a Transform
 
-When you already have a recipe or backend object, ask that object for its
-variables instead of choosing a named set manually:
+Use the constructor that names the scale on which the climate signal is
+calculated or applied:
 
 ```r
-belcher_recipe <- epw_morph_recipe("belcher")
-epw_morph_variables(belcher_recipe)
-epw_morph_variables(belcher_recipe, include_optional = TRUE)
-epw_morph_variables(epw_morph_backend("belcher"))
-```
-
-The enhanced Belcher profile is the default. Required variables block strict
-execution when absent; optional `tasmax`, `tasmin`, and `snd` inputs improve the
-result when matching future/reference data exist but do not otherwise block it.
-The high-level `shift_cmip6(table = NULL)` workflow maps atmospheric variables
-to `Amon` and `snd` to `LImon` automatically.
-
-# Recipes and Backends
-
-A recipe selects a backend and carries backend-specific profile, options, and
-method overrides. The
-default recipe is `"belcher"`, which applies the Belcher-style statistical
-downscaling steps used by the high-level workflow.
-
-```r
-enhanced_recipe <- epw_morph_recipe(
-    "belcher",
-    options = belcher_options(
-        transition_hours = 72L,
-        snow_depth = "auto",
-        design_conditions = "drop"
-    )
+original_morphing <- monthly_transform("original_morphing")
+btws <- monthly_transform("btws")
+daily_power <- daily_transform(
+    "epwshiftr",
+    reconstruction = "power"
 )
-
-# Reproduce the numerical and header behavior from before enhanced profiles.
-legacy_recipe <- epw_morph_recipe("belcher", profile = "legacy")
-```
-
-## Complete Recipe Catalog
-
-Methods and executable recipes are separate records:
-
-| Record | What it owns | What it does not own | Inspection API |
-|:-------|:-------------|:---------------------|:---------------|
-| Method | Equations, required variables and temporal frequency, algorithm parameters, output backbone, and stochastic behavior | Model choice, study years, EPW template, calendar mapping, physical closure, and evaluation metrics | `epw_morph_methods()` |
-| Recipe | A runnable composition of one method with explicit input roles, calendar handling, sequence, hourly reconstruction, physical policy, output calendar, diagnostics, and provenance | A paper's selected GCMs and periods, or a user evaluation design | `epw_morph_recipes()` |
-
-Source selections, periods, scenarios, and evaluation metrics remain caller
-owned. This keeps a published algorithm available without turning one paper's
-experiment into the package default. Users can evaluate methods under a common
-design by supplying the same eligible source data, periods, and EPW template to
-their selected recipes. Method-specific inputs still remain explicit: for
-example, Arima requires an observed reference while several other
-daily-temperature methods do not.
-
-```r
-epw_morph_methods()
-```
-
-The complete recipe catalog then describes named runnable compositions assembled
-from backends and the seven component stages. Its `method` column identifies the
-algorithm, while the input, calendar, component, physical-policy, target-calendar,
-diagnostic, and provenance fields make the execution boundary inspectable. A
-method's intrinsic calendar statistic remains method-owned: Eames calculates
-monthly mean/extrema changes and Arima calculates month-wise empirical
-distributions. Inspecting the catalog does not run a recipe or serialize any
-function:
-
-```r
-epw_morph_recipes()
-epw_morph_recipe_spec("belcher_monthly")
-epw_morph_recipe_spec("epwshiftr_monthly")
-epw_morph_recipe_spec("epwshiftr_daily_power")
-epw_morph_recipe_spec("epwshiftr_daily_btws")
-epw_morph_recipe_spec("eames_monthly_temperature")
-epw_morph_recipe_spec("ek_daily_factors")
-epw_morph_recipe_spec("monthly_percentile_temperature")
-epw_morph_recipe_spec("sobie_curry_daily")
-epw_morph_recipe_spec("hourly_kernel_qdm")
-```
-
-The initial catalog distinguishes the following complete recipes:
-
-| Recipe | Policy | Implementation | Purpose |
-|:-------|:-------|:---------------|:--------|
-| `belcher_monthly` | `paper_faithful` | Existing backend adapter | Belcher monthly workflow preserving the published field treatment |
-| `epwshiftr_monthly` | `harmonized` | Existing backend adapter | Enhanced production workflow, including its optional historical-input fallback |
-| `epwshiftr_daily_power` | `harmonized` | Seven-stage pipeline | Calendar-neutral daily temperature signal and constrained power projection |
-| `epwshiftr_daily_btws` | `harmonized` | Seven-stage pipeline | Existing daily CMIP6 temperature signal combined with the BTWS hourly projection |
-| `eames_monthly_temperature` | `harmonized` | Seven-stage pipeline | Eames monthly mean/average-daily-extrema changes and BTWS, with monthly statistics derived from daily CMIP6 inputs |
-| `ek_daily_factors` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Ek day-of-year mean/DTR factors and combined hourly temperature transform without an added smoothing window |
-| `monthly_percentile_temperature` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Arima month-wise model CDF change functions selected by each TMY day's percentile in a multi-year observed CDF |
-| `hourly_kernel_qdm` | `harmonized` | Seven-stage pipeline | Three-hourly model variables reconstructed to hourly KDE-QDM distributions and retained as a physically closed multi-year EPW sequence |
-| `sobie_curry_daily` | `paper_faithful`, `harmonized` | Seven-stage pipeline | Published daily mean/DTR transformations with independent or shared humidity closure |
-
-Eight daily bias-adjustment methods use one reusable temperature-to-EPW adapter:
-Linear Scaling, Delta Change, Quantile Mapping, Quantile Delta Mapping, Scaled
-Distribution Mapping, CDF-t, Equidistant CDF Matching, and ISIMIP3BASD. Their
-recipes use the same daily `tas` role contract, 365-day calendar mapping, hourly
-temperature reconstruction, specific-humidity closure, EPW output, and
-diagnostics; only the signal component changes. The method catalog retains each
-algorithm's own settings and stochastic-variable declaration.
-
-The `paper_faithful` policy on older recipes controls their documented field
-treatment only. It does not choose a paper's model, member, scenario, or years.
-Those conditions are supplied by the user and are never applied implicitly.
-
-Create a configured recipe by its stable catalog name. The selected policy,
-catalog version, backend profile, and component names are persisted with the
-workflow:
-
-```r
-enhanced_monthly <- epw_morph_recipe(
-    "epwshiftr_monthly",
-    policy = "harmonized"
-)
-daily_power <- epw_morph_recipe(
-    "epwshiftr_daily_power",
-    policy = "harmonized"
-)
-daily_btws_variant <- epw_morph_recipe(
-    "epwshiftr_daily_btws",
-    policy = "harmonized"
-)
-eames_monthly_temperature <- epw_morph_recipe(
-    "eames_monthly_temperature",
-    policy = "harmonized"
-)
-ek_daily <- epw_morph_recipe(
-    "ek_daily_factors",
-    policy = "paper_faithful"
-)
-monthly_percentile_temperature <- epw_morph_recipe(
-    "monthly_percentile_temperature",
-    policy = "paper_faithful"
-)
-hourly_kernel_qdm <- epw_morph_recipe(
-    "hourly_kernel_qdm",
-    policy = "harmonized"
-)
-sobie_curry <- epw_morph_recipe(
-    "sobie_curry_daily",
-    policy = "paper_faithful"
-)
-sobie_curry_harmonized <- epw_morph_recipe(
-    "sobie_curry_daily",
-    policy = "harmonized"
-)
-```
-
-The complete hourly workflow requires hourly observed `tas`, `ps`, `hurs`,
-`sfcWind`, `rsds`, and `rsdsdiff`. Historical and future model roles use
-point-sampled `3hrPt` `tas`, `ps`, `huss`, `uas`, and `vas`, together with
-interval-mean `3hr` `rsds` and `rsdsdiff`. Daily `tasmin` and `tasmax` are
-optional interpolation anchors. After hourly reconstruction, the input adapter
-derives relative humidity, scalar wind speed, and meteorological direction
-before KQDM. It preserves every complete future model year as a separate
-output member instead of collapsing the corrected sequence into a
-representative year.
-
-Check the live Dataset catalogue before selecting a model. CMIP6 stores the
-required state variables and radiation fluxes under different `frequency`
-facets even though they share the `3hr` table. A scalar `frequency = "3hr"`
-therefore excludes the point-sampled fields and creates a false incomplete
-result. Source-specific substitutions reported by a paper are data-preparation
-choices and are not applied automatically by the statistical method.
-
-Leaving `table = NULL` searches every CMIP6 table at the requested frequencies.
-The availability reduction selects one table per variable within each
-model/member/grid identity and returns that named mapping in the `table`
-list-column. Pass the mapping to `shift_cmip6()` so the download request uses
-the same variable-specific selection; `table_id` is only its compact display
-value.
-
-```r
-hourly_frequencies <- c(
-    tas = "3hrPt",
-    ps = "3hrPt",
-    huss = "3hrPt",
-    uas = "3hrPt",
-    vas = "3hrPt",
-    rsds = "3hr",
-    rsdsdiff = "3hr",
-    tasmin = "day",
-    tasmax = "day"
-)
-hourly_availability <- shift_cmip6_avail(
-    variables = c(
-        "tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff"
-    ),
-    scenarios = "ssp585",
-    member = NULL,
-    frequency = hourly_frequencies[c(
-        "tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff"
-    )],
-    index_node = "ORNL"
-)
-available_hourly <- subset(hourly_availability, complete)
-
-hourly_method <- hourly_kernel_qdm(
-    reference = historical_reference(1995:2014),
-    observed_reference = shift_reference_plan(
-        plan_id = observed_hourly_plan_ids,
-        periods = epw_morph_periods(observed = 1995:2014)
-    )
-)
-
-if (nrow(available_hourly)) {
-    selected <- available_hourly[1, ]
-    hourly_climate <- shift_cmip6(
-        model = selected$source_id,
-        scenarios = "ssp585",
-        member = selected$variant_label,
-        grid = selected$grid_label,
-        frequency = hourly_frequencies,
-        table = selected$table[[1L]]
-    )
-
-    hourly_plan <- shift_future_epw(
-        epw = epw,
-        climate = hourly_climate,
-        periods = list(`2060s` = 2061:2070),
-        method = hourly_method,
-        dir = "future-epw",
-        dry_run = TRUE
-    )
-}
-```
-
-The planner expands historical and future extraction windows by one source
-timestep. This supplies the edge samples needed by bounded linear
-interpolation; only complete native-calendar years shared by every reconstructed
-variable continue into KDE-QDM. The requested period remains the case and
-coverage contract, and the retained/discarded boundary-year status is recorded
-in preprocessing diagnostics.
-
-Catalog input roles are validated before backend execution. The two monthly
-entries remain explicitly labelled backend adapters because their established
-runner has not yet been decomposed into executable components; the daily
-entries are checked against their registered seven-stage pipelines. Ad hoc
-recipes such as
-`epw_morph_recipe("belcher")` remain supported and preserve their previous
-defaults.
-
-The BTWS composition requires daily `tas`, `tasmin`, and `tasmax` from matching
-historical and future model periods. It reuses epwshiftr's calendar-neutral
-daily target signal, baseline EPW sequence, specific-humidity closure, and
-output stages, while replacing only the hourly stage with equations (7)--(16)
-from Eames et al. (2024). The complete recipe is therefore intentionally
-labelled as a combination rather than a reproduction of the paper's monthly
-UKCP18 workflow. The paper directs implementations to reduce `m` for a
-positive stretch or `n` for a negative stretch when the default `m = n = 1`
-would leave `[0, 1]`, but does not publish solver code. epwshiftr uses
-deterministic bisection to retain the largest admissible exponent and records
-`S`, `m`, `n`, closure errors, and every mean-shift fallback reason.
-
-At the high-level workflow, select the same daily temperature method and change
-only its hourly reconstruction component:
-
-```r
-btws_method <- daily_temperature(
-    historical_reference(years = 1995:2014),
+daily_btws <- daily_transform(
+    "epwshiftr",
     reconstruction = "btws"
 )
+qdm <- daily_transform("qdm")
+hourly_kqdm <- hourly_transform("kernel_qdm")
 ```
 
-Eames et al. did not drive BTWS with daily CMIP6 series. Their paper applies
-monthly UKCP18 change factors for mean temperature and the monthly averages of
-daily minimum and maximum temperature to an hourly baseline month, with BTWS
-executed day by day. `eames_monthly_temperature` implements that temporal
-structure for temperature: it aggregates matching daily CMIP6 `tas`, `tasmin`,
-and `tasmax` into the same three monthly statistics and maps one factor set to
-every EPW day in the corresponding month:
+Only methods with more than one permitted hourly reconstruction accept the
+`reconstruction` argument. Method-specific values are supplied through `...`;
+unknown names and invalid values fail before climate data are accessed.
 
 ```r
-eames_method <- eames_temperature(
-    historical_reference(years = 1995:2014)
+configured <- daily_transform(
+    "qdm",
+    seasonal_window_days = 31L,
+    min_samples = 30L
 )
 ```
 
-The CMIP6 aggregation is a source adaptation because the paper used UKCP18.
-The recipe is also explicitly temperature-only: it reuses epwshiftr's
-specific-humidity closure and does not implement the paper's radiation, cloud,
-pressure, or other non-temperature transformations. The
-`epwshiftr_daily_btws` recipe remains available to compare hourly
-reconstruction algorithms under the same daily-varying CMIP6 signal.
-
-Ek et al. (2018) instead form a climate baseline for each day of the annual
-cycle and apply daily Belcher-style change factors to the inherited hourly
-weather sequence. The temperature recipe derives mean temperature and DTR from
-matching `tasmin` and `tasmax`, applies no additional smoothing window, and
-uses the combined shift-and-stretch equation:
-
-\[
-x_h' = x_h + \Delta\bar{x}_d +
-       \alpha_{\mathrm{DTR},d}(x_h - \bar{x}_{0,d})
-\]
-
-Here `alpha_DTR` is implemented as the relative modeled DTR change. This is the
-interpretation that makes zero climate change an identity and satisfies the
-paper's stated daily mean and variance behavior; the original publication's
-generic factor equations and variance wording are not fully self-consistent,
-so the interpretation is retained explicitly in recipe provenance.
+Printing a transform distinguishes five temporal concepts that are easy to
+confuse:
 
 ```r
-ek_method <- ek_daily_temperature(
-    historical_reference(years = 1995:2014),
-    policy = "paper_faithful"
-)
+print(btws)
 ```
 
-The initial recipe is temperature-only. Its `paper_faithful` policy preserves
-the baseline humidity fields so the Ek temperature transformation can be
-compared directly; `policy = "harmonized"` applies the shared
-specific-humidity closure. Wind, cloud, radiation, and other transformations
-are not included where the source publication is contradictory or
-underspecified.
+| Concept | Meaning |
+|:--------|:--------|
+| Transformation scale | Lattice on which the climate signal is estimated or applied |
+| Source frequency | Native frequency required from each climate input |
+| Statistical grouping | Samples combined to estimate a factor or distribution |
+| Hourly reconstruction | Rule that transfers the result to the EPW hourly profile |
+| Output frequency | Frequency of the delivered weather sequence |
 
-Arima et al. (2024) use four distinct inputs: the baseline TMY, historical and
-future daily model values, and multi-year observed daily weather for the target
-location. For temperature, historical and future inverse CDFs are constructed
-within each month and subtracted at common percentiles:
+For example, the monthly BTWS transform calculates change statistics from
+daily `tas`, `tasmin`, and `tasmax`, then applies BTWS to reconstruct hourly dry
+bulb temperature. Its monthly transform scale therefore does not imply monthly
+source data.
 
-\[
-\Delta T_m(p) = F^{-1}_{f,m}(p) - F^{-1}_{c,m}(p)
-\]
+# Inspect Input Roles
 
-The change function is smoothed with an endpoint-aware nine-point moving mean
-repeated three times. The baseline TMY daily mean is then located in the
-observed monthly empirical CDF, and the selected additive change is applied to
-all 24 hours of that day. Model calendars therefore contribute samples to
-monthly distributions; this method does not map model dates directly onto the
-365 EPW days.
+`WeatherTransformSpec` records required and optional semantic roles. The role
+contract includes representations, variable alternatives, source frequencies,
+and calendars.
 
 ```r
-arima_method <- arima_temperature(
-    reference = historical_reference(years = 1995:2014),
-    observed_reference = shift_reference_plan(
-        plan_id = observed_plan_ids,
-        periods = epw_morph_periods(observed = 1995:2014)
-    ),
-    policy = "paper_faithful"
-)
+original_morphing@required_inputs
+btws@source_frequencies
 ```
 
-The publications do not specify empirical plotting positions, quantile
-interpolation, or endpoint evaluation. The implementation therefore records
-its midpoint probability grid, type-7 quantiles, linear factor interpolation,
-and endpoint clamping in every result. The initial recipe covers additive
-dry-bulb temperature for one model case; multi-model averaging and the
-published non-temperature transformations remain separate extensions.
-
-The Sobie-Curry recipe requires daily `tas`, `tasmin`, `tasmax`, `huss`, and
-surface pressure `ps` from matching historical and future model periods. It
-uses a circular 21-day window on the shared 365-day annual-phase grid, preserves
-the baseline CWEC/EPW sequence, and adjusts dry-bulb temperature and
-atmospheric pressure. Paper-faithful mode independently adjusts dew point and
-relative humidity. Harmonized mode applies the smoothed future-minus-historical
-daily `huss` change to baseline EPW specific humidity, clips the target only at
-zero or saturation, and derives relative humidity and dew point from projected
-temperature and pressure. Other EPW fields are unchanged. The paper-faithful
-dew-point standard-deviation factor is implemented as
-`sigma_future / sigma_historical - 1`: this preserves the paper's stated
-past-future difference and makes zero climate change an identity transform.
-The printed ratio without `- 1`, when added to the original anomaly as shown
-in the paper, would double hourly anomalies under zero change.
-
-The profiles resolve to a complete, persisted option contract:
-
-| Option | Enhanced default | Legacy default | Meaning and allowed values |
-| --- | --- | --- | --- |
-| `transition_hours` | `72` | `0` | Total cyclic smoothing window centered on each month boundary; integer `0`--`336`. Precipitation is never smoothed. |
-| `humidity_source` | `"auto"` | `"hurs"` | Whole-case humidity source: `"auto"`, `"huss"`, or `"hurs"`. |
-| `diffuse_model` | `"rbl_2010"` | `"preserve_fraction"` | Recalculate diffuse radiation with Ridley--Boland--Lauret 2010 or retain the baseline diffuse fraction. |
-| `illuminance_model` | `"perez_1990"` | `"preserve"` | Recalculate illuminance/luminance with Pérez 1990 or preserve the prior relation. |
-| `snow_depth` | `"auto"` | `"off"` | Use `snd` when both future and reference cases contain it, require it, or do not query it: `"auto"`, `"required"`, `"off"`. |
-| `ground_temperatures` | `"recalculate"` | `"preserve"` | Recalculate the EPW ground-temperature header with Kusuda--Achenbach or retain it. |
-| `typical_extreme_periods` | `"recalculate"` | `"preserve"` | Recalculate six hemisphere-aware periods or retain the baseline header. |
-| `design_conditions` | `"drop"` | `"preserve"` | Write `DESIGN CONDITIONS,0` or retain the baseline design conditions. |
-
-`belcher_options()` creates a complete option list using enhanced defaults.
-For a legacy profile, pass a partial named list when only selected legacy
-defaults should change, for example
-`belcher(profile = "legacy", options = list(snow_depth = "auto"))`.
-Use `print(belcher(), verbose = TRUE)` to inspect all resolved values that will
-be stored with a task.
-
-Enhanced `tdb = "auto"` uses combined morphing month by month when complete
-`tasmax` and `tasmin` are available and falls back to shift with a diagnostic
-otherwise. `humidity_source = "auto"` selects one source for the whole case:
-complete `huss + tas + ps` is preferred for the default shift humidity method,
-while an explicit non-shift RH override keeps the HURS path. Radiation and EPW
-header policies are likewise persisted in the recipe so resumed jobs cannot
-change behavior when package defaults evolve.
-
-## Enhanced Calculation Stages
-
-Temperature `"combined"` uses the mean daily range of the baseline EPW,
-
-\[
-R_{epw}=\operatorname{mean}_d(T_{max,d})-
-        \operatorname{mean}_d(T_{min,d}),
-\]
-
-rather than the difference between one absolute monthly maximum and minimum.
-The hourly transformation remains
-
-\[
-T'=T+\Delta\bar{T}+\alpha(T-\bar{T}_{epw}),
-\]
-
-where `alpha` is the future-minus-reference DTR change divided by
-\(R_{epw}\). A month with missing extrema, a non-finite factor, or
-\(R_{epw}\leq0.1\ ^\circ\mathrm{C}\) uses shift for that month and records the
-fallback in factors/diagnostics.
-
-The default 72-hour cyclic transition is centered on every month boundary,
-including December--January. A constrained smoothstep system retains the
-original monthly mean of each factor. Combined temperature also corrects the
-baseline-temperature/time-varying-alpha covariance; precipitation is excluded
-from smoothing so monthly totals and the baseline wet-hour mask remain intact.
-
-For state-based humidity, the baseline EPW dry bulb, RH, and station pressure
-are converted to hourly specific humidity. The monthly future-minus-reference
-`huss` change is applied before RH and dew point are recovered using morphed
-temperature and pressure. Saturation clipping enforces `0 <= RH <= 100` and
-`Tdew <= Tdb`. The `"auto"` source decision is made once for a complete case,
-so future and reference data never mix HUSS and HURS paths.
-
-The enhanced short-wave chain integrates solar geometry at one-minute steps
-over each EPW interval to recalculate extraterrestrial horizontal and direct
-normal irradiation (N10/N11). RBL 2010 partitions morphed GHI into DHI and DNI;
-the result is bounded, non-negative, and closed against the effective solar
-projection. Pérez 1990 then recalculates N16--N19 illuminance/luminance, with
-night values and EPW sentinels handled explicitly.
-
-When enabled, `snd` is converted from CMIP metres to EPW centimetres and scales
-the existing EPW snow-depth sequence by the future/reference monthly ratio.
-Zero reference snow or a baseline without snow does not synthesize new snow
-events. Final writing derives header updates from the persisted hourly Parquet
-artifact: ground temperatures use Kusuda--Achenbach, typical/extreme periods
-use complete rolling seven-day windows and hemisphere-aware seasons, and design
-conditions follow the selected drop/preserve policy.
-
-```r
-epw_morph_backends()
-
-belcher <- epw_morph_backend("belcher")
-belcher$label
-belcher$required_variables()
-belcher$methods()
-belcher$rules()
-```
-
-The backend rules are the contract between planning and execution. Each rule
-declares a backend step, the EPW weather field it produces or checks, required
-and optional CMIP variables, method choices, and whether the step is derived
-from other backend outputs. `preview_plan()`, `summarise_baseline()`, and
-`epw_morph_variables()` read these rules; they do not keep a separate
-hard-coded list of Belcher fields.
-
-Use method overrides when the algorithm is still Belcher but you want a
-different transformation for selected primary variables:
-
-```r
-belcher_shift_recipe <- epw_morph_recipe(
-    "belcher",
-    methods = c(
-        tdb = "shift",
-        rh = "shift"
-    )
-)
-
-morpher <- epw_morpher(
-    store = store,
-    epw = epw,
-    site_id = "SIN",
-    recipe = belcher_shift_recipe,
-    label = "Singapore baseline"
-)
-```
-
-The override names must be backend step names. For the built-in Belcher backend,
-the primary overrideable steps are `tdb`, `rh`, `p`, `hor_ir`, `glob_rad`, and
-`wind`; allowed values are `"shift"`, `"stretch"`, and `"combined"`, with
-`"auto"` additionally available for `tdb`.
-Precipitation is handled by a dedicated conservative step that preserves the
-baseline wet-hour timing. Derived steps such as dew point, direct normal
-radiation, and precipitation rate are declared in the rules but are not
-independent method overrides.
-
-## Adding a Backend
-
-Register a new backend when the variable requirements, output fields, or
-execution algorithm change. A backend is an `EpwMorphBackend` R6 object with a
-rule table and a runner function. The built-in `"belcher"` backend is just the
-first registration; it is not a special execution path.
-
-The runner receives one canonical context:
-
-- `context$inputs`: role-addressable future-weather inputs. Its
-  `weather_template`, `observed_reference`, `model_historical`, and
-  `model_future` properties remain distinct even when one role is absent;
-- `context$epw`: the package's internal baseline EPW representation;
-- `context$climate`: store-native climate rows with `variable_id`, `time`,
-  `period`, `year`, `lon`, `lat`, `dist`, `units`, `value`, and case metadata;
-- `context$reference_climate`: optional matching historical model rows;
-- `context$observed_reference`: optional observations or reanalysis rows;
-- `context$recipe`: the selected recipe, including method overrides and rules;
-- `context$by`, `context$case`, `context$strict`, and `context$warning`.
-
-`context$epw`, `context$climate`, and `context$reference_climate` remain
-available for existing backends. New components should select inputs by their
-role through `context$inputs` instead of interpreting a generic reference.
-
-Future-weather methods can be assembled from seven ordered component stages.
-Each component declares its required and optional input roles, supported
-representations, frequencies, calendars, variable alternatives, input and
-output kinds, dimensional scope, and whether it is stochastic. Compatibility
-is checked from stage order and the intermediate kinds exchanged between
-components.
-
-| Component | Used for | Main function | Problem addressed |
-|:----------|:---------|:--------------|:------------------|
-| `preprocess` | Preparing every source before climate calculations | Normalize variables, units, missing values, spatial selections, and source metadata into method-ready inputs | Raw EPW, observations, reanalysis, and climate-model data otherwise have incompatible schemas and units |
-| `calendar` | Placing sources on a shared annual and temporal coordinate | Preserve each source calendar, calculate annual phase, form circular windows, and align 360-, 365-, and 366-day inputs | Direct date matching either loses days or assigns different seasonal positions to nominally similar dates |
-| `signal` | Estimating or transferring the future climate signal | Apply delta, scaling, quantile-based, weather-typing, or other statistical transformations to aligned groups | Different methods require different reference inputs and assumptions but need one validated, comparable execution contract |
-| `sequence` | Constructing the order of future days or weather states | Preserve, resample, rearrange, or generate daily sequences, including stochastic and analogue methods | A climatology or corrected distribution does not define event order, persistence, spells, or compound extremes |
-| `hourly` | Converting daily targets or selected days into hourly weather | Reconstruct 24-hour profiles from an EPW template, an hourly library, or a method-specific disaggregation model | Daily CMIP data cannot be written directly as an hourly EPW and naive interpolation damages diurnal shape and extrema |
-| `physics` | Closing related weather variables after transformation | Enforce temperature statistics, humidity closure, radiation balance, bounds, and cross-variable consistency | Independently transformed variables can violate thermodynamic, radiative, or EPW constraints |
-| `output` | Producing the final weather artifact and its record | Assemble fields and headers, write EPW or intermediate artifacts, and retain method settings, provenance, and diagnostics | Numerically valid series are not yet a standards-compliant, reproducible, and auditable future weather file |
-
-These components run inside the existing high-level workflow rather than
-replacing it. `shift_request()`, collection, download, and extraction obtain and
-persist the source data. `shift_morph()` builds the four role-addressable inputs,
-compiles the component names stored in the selected recipe, and executes the
-scientific stages through the backend. `shift_epw()` remains the durable final
-file writer. The built-in `daily_temperature()` and `sobie_curry_daily()`
-methods use all seven stages, including explicit
-`sequence` components that preserve the baseline EPW day order. The
-`ek_daily_temperature()` method uses the same seven-stage execution boundary.
-`arima_temperature()` also uses all seven stages, but its `calendar` component
-forms native-calendar monthly distributions and its `signal` component
-requires both historical model output and a separate observed reference.
-
-Preprocessing implementations can also be registered independently of a
-complete recipe. The current standalone preprocessing contract is:
-
-| Registry name | Accepted source inputs | Behavior | Output contract |
-|:--------------|:-----------------------|:---------|:----------------|
-| `linear_temporal_interpolation` | Materialized `model_historical` and `model_future` series at a regular three- or six-hour timestep, using any supported CF calendar and containing `tas`, `huss`, `hurs`, `ps`, `psl`, `sfcWind`, `uas`, or `vas` | Interpolate each independent variable/model/member/grid/site group onto an exact midnight-anchored hourly native-calendar lattice, retain original source values at matching hours, and never extrapolate beyond source support | One `WeatherStageResult` of kind `hourly_role_inputs`, containing rebuilt hourly `WeatherInputs`, left/right source timestamps and rows, interpolation weights, group diagnostics, and source provenance |
-| `solar_radiation_interpolation` | Materialized `model_historical` and `model_future` series containing interval-mean `rsds` or `rsdsdiff` at a regular three- or six-hour timestep, with explicit CF time bounds, UTC coordinates, site longitude and latitude, and any supported CF calendar | Partition each source interval into one-hour intervals and scale its mean flux by each target interval's positive solar projection relative to the source-interval mean projection | One `WeatherStageResult` of kind `hourly_role_inputs`, containing rebuilt non-negative hourly `WeatherInputs`, target interval bounds, source rows and bounds, solar projections and weights, conservation diagnostics, and source provenance |
-| `hourly_weather_interpolation` | Hourly `observed_reference` series plus materialized historical and future model series containing any supported point-state and shortwave variables; paired daily `tasmin` and `tasmax` may accompany three-hourly `tas` | Dispatch point-state variables to bounded linear interpolation and interval-mean shortwave variables to solar-projection allocation, optionally insert daily temperature extrema at hours informed by observed site/month extrema, and merge the variable families without changing their time-coordinate semantics | One multivariate `WeatherStageResult` of kind `hourly_role_inputs`; daily extrema are auxiliary anchors rather than output variables, and all source rows, fallbacks, diagnostics, and family-specific provenance are retained |
-
-The component accepts only variables with explicit continuous point-state
-semantics. Radiation, fluxes, accumulations, and derived variables are
-rejected instead of being assigned the same interpolation equation. Radiation
-downscaling that accounts for the hourly solar-elevation cycle therefore
-requires a separate preprocessing implementation. A complete workflow must
-also provide sufficient source samples around the requested output boundaries,
-because `linear_temporal_interpolation` deliberately performs no
-extrapolation.
-
-`solar_radiation_interpolation` follows the interval allocation described by
-[Vuichard and Papale (2015)](https://doi.org/10.5194/essd-7-157-2015) and later
-used for CMIP6 weather generation by
-[Wang et al. (2023)](https://doi.org/10.1038/s41467-023-41458-5). The source
-value must represent the mean flux over its declared CF time bounds. Positive
-cosine of solar zenith is integrated at one-minute midpoints for the source and
-hourly target intervals; target values are normalized so their interval mean
-equals the source value. The cited implementations use three-hourly inputs;
-support for regular six-hourly intervals applies the same allocation equation
-as an explicit package extension. Native CF annual phase maps 360-day, no-leap,
-all-leap, and Gregorian calendars onto the common astronomical cycle without
-assigning them surrogate Gregorian dates. Positive radiation in an interval
-with zero solar projection is reported as an error because the published ratio
-is then undefined.
-
-`hourly_weather_interpolation` provides the single preprocessing stage needed
-when a method uses point-state and interval-mean radiation variables together.
-It composes the two algorithms above instead of applying one interpolation
-equation to every variable. Following the supplementary method of
-[Wang et al. (2023)](https://doi.org/10.1038/s41467-023-41458-5), paired daily
-`tasmin` and `tasmax` values can be inserted between three-hourly temperature
-samples so daily extremes missing from the coarser series remain represented.
-The paper states that the insertion hour can shift by one hour using knowledge
-from historical observations, but does not specify the selection algorithm.
-This implementation therefore chooses between the two interior hourly
-positions using the observed site-and-month modal extreme hour. If the two
-unconstrained highest or lowest samples are not adjacent, it uses the adjacent
-pair with the most extreme mean; if an observed mode is unavailable, it uses
-the earliest interior hour. These implementation choices and every inserted
-anchor are recorded in diagnostics. Without paired extrema, `tas` retains the
-ordinary bounded linear result. `tasmin` and `tasmax` are consumed as auxiliary
-inputs and are not passed to the hourly signal stage as independent variables.
-
-Calendar implementations can also be registered independently of a complete
-recipe. The current standalone hourly calendar contract is:
-
-| Registry name | Accepted stage input | Behavior | Output contract |
-|:--------------|:---------------------|:---------|:----------------|
-| `hourly_calendar_grouping` | One `WeatherInputs` stage value of kind `hourly_role_inputs`, containing hourly `observed_reference`, `model_historical`, and `model_future` series | Validate identical variable sets and units, matching historical/future model identities, complete native-calendar years, unique hourly coordinates, and one 24-position lattice; then form one univariate group per variable, future-model case, and site while preserving each role's CF calendar | One `WeatherStageResult` of kind `calendar_indexed_hourly_series`, containing `SignalGroup` objects plus role-level coverage diagnostics and calendar/grouping provenance |
-
-`hourly_calendar_grouping` performs no row-wise date matching. An observed
-Gregorian year, a historical 360-day model year, and a future no-leap model
-year therefore remain separate distributions inside the same signal group.
-Every role must nevertheless cover each included native-calendar year fully.
-Missing hours, incomplete days or years, duplicate calendar coordinates,
-different role variable sets or units, and mismatched historical/future model
-identities stop before a statistical signal kernel executes. This boundary
-allows `kernel_quantile_delta_mapping_hourly` and other distribution-based
-hourly signals to consume validated groups without interpreting calendars
-inside their numerical kernels.
-
-Sequence implementations can also be registered independently of a complete
-recipe. The current standalone sequence contract is:
-
-| Registry name | Accepted signal result | Behavior | Output contract |
-|:--------------|:-----------------------|:---------|:----------------|
-| `direct_model_realization` | Complete `DailyAdjustedSeries` or `SubdailyAdjustedSeries` groups satisfying the common `AdjustedWeatherSeries` contract and retaining the `model_future` backbone | Preserve native CF chronology, partition complete source years, and perform no timestep selection or resampling | One `DirectModelSequence` containing deterministic year members, group keys, corrected values, frequency, timestep, signal provenance, source years, and calendars |
-
-`AdjustedWeatherSeries` is the frequency-aware signal-result boundary.
-`DailyAdjustedSeries` remains its strict daily specialization, while
-`SubdailyAdjustedSeries` requires an explicit regular timestep and exact
-`cf_second_of_day` values in addition to the calendar-native date and annual
-phase. `direct_model_realization` requires every group to use the same
-frequency and timestep and to cover each source year completely. It does not
-interpolate, resample, or construct EPW fields. Workflows that interpolate
-climate-model inputs before bias adjustment must perform that transformation
-in an earlier component and retain its provenance.
-
-Hourly implementations can also be registered independently of a complete
-recipe. The current direct-model calendar bridge is:
-
-| Registry name | Accepted sequence input | Behavior | Output contract |
-|:--------------|:------------------------|:---------|:----------------|
-| `direct_model_epw_calendar_mapping` | One hourly `DirectModelSequence` with a 3600-second timestep plus a 365-day `weather_template` | Preserve the 24 source time-of-day positions; retain exact values for aligned 365-day years; map point variables across seasonal day position with circular interpolation; conservatively remap interval-mean radiation across seasonal day position | One `MappedHourlyClimateSequence` of kind `epw_hourly_climate_sequence`, containing 8760-row variable groups for each source-model year plus source calendar, group identity, mapping diagnostics, and signal provenance |
-
-The mapping is performed independently at each of the 24 source daily
-positions. A 360- or 366-day year therefore changes seasonal day placement
-without allowing midnight, noon, or another source sampling position to drift
-across the day. Continuous point variables use their native annual phase at a
-fixed time of day. `rsds`, `rsdsdiff`, and `rlds` are treated as interval means;
-their piecewise-constant values are integrated over normalized source and
-target day intervals so the annual mean at every daily position is conserved.
-The component records the source second of day and the actual mapping selected
-for every output row. It deliberately leaves climate-unit conversion,
-thermodynamic and radiative closure, unchanged EPW field policy, and final
-`WeatherSequenceResult` construction to the following `physics` and `output`
-stages.
-
-The complete hourly recipe closes those final two stages explicitly.
-`epw_hourly_physical_closure` applies `absolute_model_fields` independently to
-each mapped year, and `direct_model_epw_result` converts the closed members into
-the existing `WeatherSequenceResult` contract. `EpwMorpher` then persists and
-writes every member through the same output implementation used by other
-sequence backends; neither component parses or writes EPW files itself.
-
-Every built-in complete weather method enters the same internal EPW physical
-boundary. An `EpwPhysicalRequest` carries the EPW template and only the target
-fields produced by the method. An `EpwPhysicalPolicy` declares which fields are
-retained, independently transformed, derived, bounded, or jointly closed. The
-common executor returns an `EpwPhysicalResult` containing the complete weather
-table, derived states, correction counts, and the policy actually applied.
-These are internal types; `EpwFile` remains the package's only EPW parser and
-writer.
-
-Method-specific physics components are thin adapters around that executor.
-The policy preserves the scientific definition selected by the recipe:
-
-| Weather method | Physical policy | Physical interpretation |
-|:---------------|:----------------|:------------------------|
-| Belcher monthly | `legacy_independent_fields` | Retain the original independent humidity, radiation, wind, and EPW field treatment |
-| Enhanced monthly epwshiftr | `monthly_harmonized` | Use the selected HURS/HUSS path and the enhanced radiation closure |
-| Daily power, daily BTWS, and Eames/BTWS | `preserve_specific_humidity` | Preserve baseline specific humidity after reconstructing temperature, with saturation closure |
-| Ek and Arima paper-faithful | `preserve_humidity_fields` | Preserve baseline RH and dew point and report any inconsistency without correcting it |
-| Ek and Arima harmonized | `preserve_specific_humidity` | Close baseline specific humidity against projected temperature |
-| Sobie-Curry paper-faithful | `independent_thermodynamic_fields` | Retain the independently transformed temperature, pressure, RH, and dew point |
-| Sobie-Curry harmonized | `specific_humidity_delta` | Close the method-defined baseline-HUSS-plus-delta target |
-| Direct-model hourly sequence | `absolute_model_fields` | Interpret corrected absolute temperature, pressure, humidity, wind, and radiation fields |
-
-Daily marginal signal methods such as Delta Change, QM, QDM, SDM, CDF-t,
-EDCDFm, ISIMIP3BASD, and KDE-QDM enter `absolute_model_fields` after their
-adjusted sequences have been reconstructed and mapped to EPW hours. Their
-statistical kernels do not duplicate physical closure.
-
-Physics implementations can also be registered independently of a complete
-recipe. The direct-model hourly adapter is:
-
-| Registry name | Accepted hourly input | Behavior | Output contract |
-|:--------------|:----------------------|:---------|:----------------|
-| `epw_hourly_physical_closure` | One `MappedHourlyClimateSequence` plus a 365-day `weather_template`; every future year must contain `tas`, `ps`, `rsds`, and `rsdsdiff`, exactly one of `hurs` or `huss`, exactly one of `sfcWind` or paired `uas` and `vas`, and may contain `rlds` | Convert climate variables into one `EpwPhysicalRequest` and apply `absolute_model_fields`; derive vector wind speed and direction, use direction supplied with scalar speed, or inherit template direction when scalar inputs contain no direction, while preserving unrelated template fields | One typed `EpwHourlyWeatherSequence` of kind `epw_hourly_weather_sequence`, containing one 8760-row EPW-shaped member per future year, constructed/inherited field provenance, input-path choices, bound counts, radiation corrections, and closure errors |
-
-`epw_hourly_physical_closure` operates after climate calendar mapping, so its
-rows already have an unambiguous position on the fixed EPW lattice. A leap
-future year retains its source-year label while solar geometry is evaluated on
-a non-leap surrogate year; March through December therefore cannot shift by
-one day. The component uses the package-wide unit aliases and conversions;
-hourly `W/m^2` interval means are numerically equal to the one-hour `Wh/m^2`
-EPW values. At night GHI, DHI, and DNI are zero. During daylight the shared
-radiation kernel bounds DHI by GHI, limits DNI to extraterrestrial direct
-normal energy, and reallocates excess beam energy to DHI so closure remains
-exact. If `rlds` is absent, the template's horizontal infrared field is
-retained. The component stops on ambiguous humidity or wind paths, unsupported
-variables, or undeclared units instead of silently choosing an interpretation.
-
-Bias-adjustment implementations belong to the `signal` stage. Their common
-`apply` operation validates the role-addressable inputs, resolves
-variable-specific settings, and executes aligned groups. Each method supplies
-only an `apply_group` kernel receiving the group's input payloads, resolved
-settings, and key. Published defaults retain their references, experimental
-defaults are labelled and warned about, and user overrides do not change that
-provenance. The execution result records the settings actually used after
-overrides. Calendar mapping and group alignment happen before the kernel, so a
-method cannot silently impose a Gregorian, no-leap, or fixed 366-day
-interpretation. Group failures either abort or return an explicit diagnostic
-with a `NULL` result; they are never silently converted to missing numeric
-values.
-
-Nine package-native standalone signals currently use this contract:
-
-| Registry name | Correction | Output backbone | Variable-profile evidence |
-|:--------------|:-----------|:----------------|:--------------------------|
-| `linear_scaling_daily` | Monthly observed-minus-model mean bias, additive for temperature and multiplicative for precipitation | `model_future` | Published defaults for `tas`, `tasmin`, `tasmax`, and `pr` |
-| `delta_change_daily` | Monthly historical-to-future mean change, additive for temperature and multiplicative for precipitation | `observed_reference` | Published defaults for `tas`, `tasmin`, `tasmax`, and `pr` |
-| `quantile_mapping_daily` | \(F^{-1}_{obs}(F_{hist}(x_{future}))\) in calendar-neutral circular daily windows | `model_future` | Published method-variable profiles for `tas` and `pr`; implementation-selected defaults for `hurs`, `psl`, `rlds`, `sfcWind`, `tasmin`, and `tasmax` remain experimental |
-| `quantile_delta_mapping_daily` | Transfer \(x_{future} - F^{-1}_{hist}(p)\) or \(x_{future} / F^{-1}_{hist}(p)\) onto \(F^{-1}_{obs}(p)\), where \(p = F_{future,t}(x_{future})\) | `model_future` | Published absolute-change temperature and relative-change precipitation profiles; implementation-selected defaults for other supported variables remain experimental |
-| `kernel_quantile_delta_mapping_hourly` | Fit KDE CDFs in centered three-month calendar windows, then transfer additive or multiplicative modeled quantile changes | `model_future` | Published hourly KDE-QDM window and transformation families; unreported kernel, bandwidth, grid, tail, and zero-denominator defaults remain experimental and explicit |
-| `equidistant_cdf_matching_daily` | Apply \(x_{future} + F^{-1}_{obs}(p) - F^{-1}_{hist}(p)\), where \(p = F_{future}(x_{future})\), using the Li et al. parametric distributions | `model_future` | Li et al. published monthly profiles for `tas` and `pr`; native calendar-month daily pooling is an experimental epwshiftr adaptation |
-| `scaled_distribution_mapping_daily` | Parametric distribution and recurrence-interval scaling, absolute for temperature and relative for precipitation | `model_future` | Published profiles for `tas` and `pr`; applying the Normal branch to `tasmin` and `tasmax` remains experimental |
-| `cdf_transform_daily` | Construct \(F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))\), then quantile match the future-model sequence to that target CDF | `model_future` | Published daily profiles for `pr`, `tas`, `tasmin`, `tasmax`, `rsds`, and `sfcWind` |
-| `isimip3basd_daily` | Generate pseudo-future observations by transferring modeled quantile changes, then map the future-model distribution onto the pseudo-future target | `model_future` | Published ISIMIP3BASD 3.0.x profiles for eight direct variables and the three `prsnratio`, `tasrange`, and `tasskew` reconstruction components |
-
-`quantile_mapping_daily` uses linear empirical-CDF interpolation with
-average-rank ties, type-7 inverse quantiles, and endpoint clamping. Its default
-31-day window is selected by canonical annual phase, so 360-, 365-, and
-366-day source calendars are not paired by nominal date. Precipitation uses a
-mixed dry-day/positive-amount hurdle distribution rather than the continuous
-mapping unchanged. Dry-day randomization is controlled by a recorded seed and
-a fixed method-local generator, leaving R's global random-number state
-untouched. Bounds, sample coverage, tail use, clipping, dry-day frequencies,
-and the resolved stochastic settings are retained in result provenance.
-
-`quantile_delta_mapping_daily` differs from ordinary Quantile Mapping by
-estimating each projected value's probability from a time-dependent future
-distribution. Its default calendar-neutral 91-day seasonal window represents
-the published three-month pool, while a symmetric 31-year future window makes
-the publication's 30-year moving-period calculation executable on whole model
-years. Temperature transfers absolute changes in quantiles and precipitation
-transfers relative changes. Precipitation values at or below the published
-0.05 mm/day trace threshold are replaced by deterministic positive uniforms
-before adjustment and censored back to zero afterward. Window sample counts,
-transferred changes, clipping, censoring, and effective seeds are retained in
-provenance.
-
-`kernel_quantile_delta_mapping_hourly` implements the hourly variant described
-by [Wang et al. (2023)](https://doi.org/10.1038/s41467-023-41458-5) after
-temporal downscaling. For every future calendar month, the preceding, current,
-and following months are pooled independently from `observed_reference`,
-`model_historical`, and `model_future`; December and January wrap without
-coercing 360-, 365-, or 366-day inputs to Gregorian dates. The future KDE gives
-\(p\), and observed and historical KDE quantiles at \(p\) receive the additive
-or multiplicative QDM equation. The future rows, exact time-of-day positions,
-and native CF chronology remain the output backbone.
-
-The publication specifies KDE CDFs, a three-month moving window, additive
-temperature and pressure changes, and multiplicative wind, humidity, and
-radiation changes. It and its supplementary information do not specify the KDE
-kernel, bandwidth, numerical CDF grid, finite-grid tail behavior, minimum sample
-count, bounds, or treatment of a zero multiplicative denominator. The component
-therefore labels every current profile experimental. Its default Gaussian
-kernel, `nrd0` bandwidth, grid, endpoint clamp, bounds, and zero handling are
-ordinary package settings rather than claims about the authors' unpublished
-code. Supported `stats::density()` kernels and bandwidth selectors, an erroring
-tail policy, and strict zero-denominator handling can be selected through the
-same validated overrides. The resolved values, per-month sample counts and
-bandwidths, mapped probability and change ranges, tail use, zero handling, and
-clipping remain in result provenance.
-
-`equidistant_cdf_matching_daily` implements the additive equation published by
-Li et al. (2010):
-\(x'_{future} = x_{future} + F^{-1}_{obs}(p) -
-F^{-1}_{hist}(p)\), where \(p = F_{future}(x_{future})\). Cannon et al.
-(2015) showed that this equation is mathematically equivalent to the absolute
-form of Quantile Delta Mapping. The component remains separate because it
-preserves the Li distribution model: temperature uses four-parameter Beta
-distributions whose observed range is extended by half a sample standard
-deviation, while precipitation uses a point mass at zero plus a zero-location
-Gamma distribution for wet values. The original method was applied to monthly
-fields, not daily series. epwshiftr therefore marks its native CF-calendar
-month pooling of daily values as an experimental frequency adaptation rather
-than a published daily default. Negative adjusted precipitation values are
-clipped to zero. Fitted parameters, monthly sample coverage, probability
-clamping, dry counts, clipping, and this frequency provenance remain
-inspectable in the result.
-
-`scaled_distribution_mapping_daily` instead fits the parametric distributions
-and recurrence-interval changes from Switanek et al. (2017) within each
-calendar month. Temperature is linearly detrended, fitted with Normal
-distributions, adjusted through two-tailed recurrence intervals, and restored
-with the projected trend and observed-minus-historical model mean bias.
-Precipitation values below 0.1 mm/day are dry; positive amounts use
-zero-location Gamma maximum-likelihood fits, multiplicative quantile scaling,
-one-tailed recurrence intervals, and the published expected wet-day equation.
-The projected period is divided into disjoint 10-year output blocks fitted on
-surrounding 30-year windows where data exist. Edge truncation, distribution
-parameters, sample coverage, corrected wet counts, and the method's inability
-to turn additional dry projected days into wet days are explicit in result
-provenance. Native 360-, 365-, and 366-day calendars contribute samples to
-their own calendar months without Gregorian date coercion.
-
-`cdf_transform_daily` differs from both ordinary Quantile Mapping and QDM by
-first estimating a complete future observed-reference CDF from the historical
-observed/model relation and the future-model CDF. The implementation aligns
-the historical and future model samples by the same
-observed-minus-historical-model mean shift used in the method authors' R
-package. It then evaluates the chained empirical CDF on an explicit grid,
-extends unsupported tails through the published constant-correction rule, and
-uses the left endpoint of CDF plateaus as the generalized inverse. Following
-the Famien et al. (2018) daily Africa application, each native calendar month
-is fitted in a 17-year future window and writes only its central 9-year block.
-Those numbers are application defaults rather than requirements of the
-original CDF-t transformation. Famien et al. do not specify how to supply the
-four-year flanks at the start and end of a requested series, so epwshiftr
-truncates unavailable flanks and records this package-selected edge policy
-explicitly. For precipitation, Singularity Stochastic Removal replaces
-sub-threshold values with deterministic uniforms below \(10^{-8}\) kg m-2 s-1
-before CDF-t and returns adjusted sub-threshold values to zero afterward. The
-generator and effective role-specific seeds are recorded without changing R's
-global random state.
-
-`isimip3basd_daily` implements the daily marginal bias-adjustment stage from
-Lange (2019) with the official ISIMIP3BASD 3.0.x variable configuration. It
-first transfers the modeled historical-to-future change at common quantiles
-onto historical observations to form a pseudo-future target, then maps the
-future-model sequence to that target. Variable profiles select additive,
-multiplicative/mixed, or bounded change transfer; Normal, Gamma, Weibull, or
-empirical distribution mapping; physical threshold frequencies; optional
-annual-mean detrending; snow-ratio missing-value imputation; and the
-short-wave upper-bound climatology. Short-wave `rsds` bounds apply to its
-dimensionless upper-bound fraction; the final result is rescaled to the
-future physical radiation magnitude. The registered direct variables are
-`hurs`, `pr`, `ps`, `psl`, `rlds`, `rsds`, `sfcWind`, and `tas`.
-`prsnratio`, `tasrange`, and `tasskew` are adjusted as published intermediate
-components; reconstructing `prsn`, `tasmin`, and `tasmax` from them remains a
-separate physics-stage operation rather than three independent marginal
-adjustments.
-
-The original software requires a proleptic Gregorian time coordinate.
-epwshiftr instead assigns each native 360-, 365-, or 366-day observation to a
-calendar-neutral annual phase and applies the published 31-day circular
-window on a common 365-day target grid. This calendar adaptation, every
-effective seed, parameter fit or empirical fallback, transferred bound
-frequency, detrending decision, short-wave upper-bound cycle, and clipping
-count are retained in result provenance. The component implements marginal
-bias adjustment only; the ISIMIP MBCnSD spatial downscaling workflow is a
-separate stage and is not implied by selecting this signal.
-
-The runner returns `epw_morph_result()` with complete hourly EPW weather data.
-`EpwMorpher$run()` writes that data as Parquet and adds the case metadata
-columns needed by `write_epw()`. Built-in sequence-generating recipes use an
-internal year-addressable result instead. Each member records its output type,
-sequence identifier, weather year, calendar, optional stochastic seed, and
-source provenance; public custom backends that return one
-`epw_morph_result()` retain their existing representative-year behavior.
-
-Rule tables must include `step`, `epw_field`, `method`, and `required`. They can
-use either the compact scalar columns `variable_id` and `optional_variable_id`
-or list columns `required_variables` and `optional_variables`. Use a
-`method_choices` list column when one step supports a narrower set of method
-values than the backend as a whole.
-
-This minimal backend copies the baseline EPW and offsets dry-bulb temperature.
-It is deliberately simple: a real backend would read `context$climate`, validate
-its required variables, and calculate weather fields from those rows.
-
-```r
-offset_rules <- data.table::data.table(
-    step = "dry",
-    epw_field = "dry_bulb_temperature",
-    variable_id = "tas",
-    optional_variable_id = NA_character_,
-    method = "plus_one",
-    required = TRUE,
-    derived = FALSE,
-    method_choices = list(c("plus_one", "plus_two"))
-)
-
-offset_runner <- function(context, backend) {
-    epw <- context$epw$clone()
-    suppressMessages(epw$drop_unit())
-
-    weather <- data.table::as.data.table(epw$data())
-    amount <- switch(
-        context$recipe$methods[["dry"]],
-        plus_two = 2,
-        plus_one = 1
-    )
-    weather[, dry_bulb_temperature := dry_bulb_temperature + amount]
-
-    epw_morph_result(context, epw = epw, data = weather)
-}
-
-offset_backend <- EpwMorphBackend$new(
-    name = "constant_offset",
-    label = "Constant dry-bulb offset",
-    methods = c(dry = "plus_one"),
-    method_choices = c("plus_one", "plus_two"),
-    rules = offset_rules,
-    runner = offset_runner
-)
-
-epw_morph_register_backend("constant_offset", offset_backend)
-
-offset_recipe <- epw_morph_recipe(
-    "constant_offset",
-    backend = "constant_offset",
-    methods = c(dry = "plus_two")
-)
-
-epw_morph_variables(offset_recipe)
-```
-
-Use the recipe exactly like the built-in one:
-
-```r
-morpher <- epw_morpher(
-    store = store,
-    epw = epw,
-    site_id = "SIN",
-    recipe = offset_recipe,
-    label = "Singapore baseline"
-)
-```
-
-Prefer registering a new backend name over overwriting `"belcher"`. Use
-`overwrite = TRUE` only for interactive experiments where replacing an existing
-registration is intentional.
-
-# Preflight Before Writing
-
-Preflight checks extraction coverage and baseline readiness without modifying
-store state.
-
-```r
-diagnostics <- morpher$preflight(
-    plan_id = region$plan_id,
-    periods = periods,
-    reference_plan_id = reference_region$plan_id,
-    reference_periods = reference_periods,
-    strict = TRUE
-)
-
-diagnostics
-```
-
-Blocking diagnostics should be fixed before planning. Common causes are missing
-required variables, incomplete monthly coverage, missing baseline EPW fields, or
-using periods that are not covered by the extracted climate data.
-
-# Summarise Climate and Baseline
-
-Morphing uses monthly summary statistics. The climate summary comes from store
-extraction outputs; the baseline summary comes from the EPW file.
-
-```r
-climate <- morpher$summarise_climate(
-    plan_id = region$plan_id,
-    periods = periods,
-    strict = TRUE,
-    overwrite = FALSE
-)
-
-reference_climate <- morpher$summarise_climate(
-    plan_id = reference_region$plan_id,
-    periods = reference_periods,
-    strict = TRUE,
-    overwrite = FALSE
-)
-
-baseline <- morpher$summarise_baseline(overwrite = FALSE)
-
-unique(climate$summary_id)
-unique(reference_climate$summary_id)
-unique(baseline$baseline_id)
-```
-
-The summary IDs are stable for the selected extraction plans, periods, baseline,
-and recipe. Reusing them lets you preview or rerun later stages without
-re-extracting climate data.
-
-# Preview and Create a Morphing Plan
-
-`preview_plan()` calculates plan rows, factor rows, and diagnostics without
-writing them. `plan()` persists the selected plan and factor rows.
-
-```r
-preview <- morpher$preview_plan(
-    summary_id = unique(climate$summary_id),
-    reference_summary_id = unique(reference_climate$summary_id),
-    baseline_id = unique(baseline$baseline_id),
-    by = c("source_id", "experiment_id", "variant_label", "period"),
-    strict = TRUE
-)
-
-preview$plan
-preview$factors
-preview$diagnostics
-
-plan <- morpher$plan(
-    summary_id = unique(climate$summary_id),
-    reference_summary_id = unique(reference_climate$summary_id),
-    baseline_id = unique(baseline$baseline_id),
-    by = c("source_id", "experiment_id", "variant_label", "period"),
-    strict = TRUE
-)
-```
-
-The `by` columns define morphing cases. The default creates one case per model,
-experiment, member, and period. Add or remove grouping columns only when those
-columns exist in the climate summary and reflect the cases you intend to write.
-
-# Diagnose and Run
-
-Run diagnostics before executing strict plans.
-
-```r
-morph_id <- plan$morph_id[[1L]]
-
-morpher$diagnose(morph_id)
-morpher$check(morph_id)
-
-results <- morpher$run(
-    morph_id,
-    overwrite = FALSE,
-    resume = TRUE
-)
-```
-
-`run()` writes hourly morphed weather as Parquet artifacts under the store. A
-representative-year result produces one artifact per climate case. A future
-sequence produces one independently resumable artifact per sequence member and
-weather year; `output_type`, `sequence_id`, `weather_year`, `calendar`, and
-`stochastic_seed` identify those rows in the result manifest. It does not write
-EPW text files yet.
-
-# Write EPW Files
-
-Write EnergyPlus Weather files after morphing succeeds.
-
-```r
-outputs <- morpher$write_epw(
-    morph_id,
-    dir = "outputs/future-epw",
-    separate = TRUE,
-    overwrite = FALSE,
-    resume = TRUE
-)
-
-morpher$status(morph_id)
-morpher$outputs(morph_id)
-```
-
-The high-level `shift_epw()` function wraps this step and returns a
-`ShiftOutputs` stage. Use `shift_outputs()` and `shift_data()` when you do not
-need lower-level manifest IDs. Sequence results are written as one EPW per
-weather year, with the sequence identifier and year included in the path and
-filename; multiple years are never flattened into a single EPW text file.
-
-For the enhanced profile, final EPW writing uses the persisted hourly Parquet
-artifact to recalculate ground temperatures and six hemisphere-aware
-typical/extreme periods. Stale design conditions are written as
-`DESIGN CONDITIONS,0`; set the corresponding `belcher_options()` policies to
-`"preserve"` when the original headers must remain untouched.
-
-# One-Call Workflow
-
-For most scripts, use the task-oriented API and supply matching historical
-CMIP6 data when they are available. epwshiftr resolves the store stages, EPW
-writing, and final export path:
+The main roles are:
+
+| Role | Supplied by |
+|:-----|:------------|
+| `weather_template` | `epw` |
+| `model_future` | `climate` |
+| `model_historical` | `reference` |
+| `observed_reference` | `observed_reference` |
+
+`shift_future_epw()` checks these roles before collecting or calculating data.
+Supplying an irrelevant reference is an error, as is omitting a required one.
+References are execution inputs and never become part of a reusable transform.
+
+# Run a Complete Workflow
+
+The original morphing method published by Belcher et al. requires matching
+historical model data:
+
+Its CMIP6 temperature contract includes monthly `tas`, `tasmax`, and `tasmin`.
+The mean change comes from `tas`; the published combined transformation uses
+the future-minus-historical change in average daily range from `tasmax` and
+`tasmin`, divided by the EPW's monthly average daily range. The remaining input
+contract and its humidity alternatives are visible in
+`monthly_transform("original_morphing")@required_inputs`.
 
 ```r
 run <- shift_future_epw(
-    epw = epw,
+    epw = system.file(
+        "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+        package = "epwshiftr"
+    ),
     climate = shift_cmip6(
         model = "BCC-CSM2-MR",
         scenarios = c("ssp126", "ssp585")
     ),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(
-        reference = historical_reference(1995:2014)
-    ),
-    dir = "~/Downloads/epwshiftr-test"
+    transform = monthly_transform("original_morphing"),
+    reference = historical_reference(1995:2014),
+    dir = "future-epw"
 )
 
 shift_status(run)
 shift_outputs(run)
-shift_missing(run)
+shift_diagnostics(run)
 ```
 
-If no suitable historical reference data exist, `belcher()` is the fallback:
-it uses the EPW climatology directly and does not infer a historical request.
-
-When you already have lower-level extraction plan IDs and need direct control of
-the morphing engine, use `workflow()`.
+The package's enhanced monthly method accepts a matching historical model
+reference when one is available and can also use the EPW climatology without
+one:
 
 ```r
+run <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
+    periods = list(`2080s` = 2075:2085),
+    transform = monthly_transform("epwshiftr"),
+    reference = NULL,
+    dir = "future-epw"
+)
+```
+
+Daily bias-adjustment methods such as QDM and ISIMIP3BASD require both
+historical model and observed reference data. The observed role must point to a
+plan containing observations; an automatically resolved CMIP6 historical run
+cannot silently substitute for observations.
+
+```r
+reference_periods <- epw_morph_periods(reference = 1995:2014)
+historical <- shift_reference_plan(
+    historical_plan_id,
+    reference_periods
+)
+observed <- shift_reference_plan(
+    observed_plan_id,
+    reference_periods,
+    role = "observed_reference"
+)
+
+run <- shift_future_epw(
+    epw = epw,
+    climate = future_cmip6,
+    periods = c(2050, 2080),
+    transform = daily_transform("isimip3basd"),
+    reference = historical,
+    observed_reference = observed,
+    dir = "future-epw"
+)
+```
+
+Use `dry_run = TRUE` to inspect the plan without accessing ESGF:
+
+```r
+plan <- shift_future_epw(
+    epw = epw,
+    climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
+    periods = list(`2060s` = 2055:2065),
+    transform = monthly_transform("original_morphing"),
+    reference = historical_reference(1995:2014),
+    dir = "future-epw",
+    dry_run = TRUE
+)
+
+shift_explain(plan)
+run <- shift_run(plan)
+```
+
+# Use EpwMorpher Directly
+
+`EpwMorpher` is the store-native calculation engine used by `shift_morph()`.
+Use it directly when extraction plans already exist and you need separate
+climate summaries, baseline summaries, preflight diagnostics, factor previews,
+or control over morph/write reruns.
+
+```r
+store <- EsgStore$new("~/cmip6-singapore-store", create = FALSE)
+
+morpher <- epw_morpher(
+    store = store,
+    epw = epw,
+    site_id = "SIN",
+    transform = monthly_transform("original_morphing"),
+    label = "Singapore baseline"
+)
+
+morpher$required_variables()
+periods <- epw_morph_periods(`2060s` = 2055:2065)
+reference_periods <- epw_morph_periods(reference = 1995:2014)
+
 result <- morpher$workflow(
-    plan_id = region$plan_id,
+    plan_id = future_plan_id,
     periods = periods,
-    reference_plan_id = reference_region$plan_id,
+    reference_plan_id = historical_plan_id,
     reference_periods = reference_periods,
     by = c("source_id", "experiment_id", "variant_label", "period"),
     strict = TRUE,
@@ -1194,33 +260,47 @@ result <- morpher$workflow(
 names(result)
 ```
 
-For most users, the equivalent high-level path is still clearer:
+The morpher stores climate summaries, baseline summaries, plans, intermediate
+hourly weather, diagnostics, and EPW outputs in `EsgStore`. Existing results are
+addressed by stable IDs, so a failed or interrupted execution can resume without
+repeating completed calculations.
+
+# Internal Execution Stages
+
+Complete methods execute through seven ordered component responsibilities. The
+stages are internal; ordinary users select a complete transform instead of
+assembling them manually.
+
+| Stage | Responsibility | Problem solved |
+|:------|:---------------|:---------------|
+| `preprocess` | Normalize variables, units, and representations | Gives later calculations a consistent input contract |
+| `calendar` | Map source calendars and annual phase | Prevents implicit Gregorian, no-leap, or 360-day assumptions |
+| `signal` | Estimate or apply the climate-change adjustment | Owns the scientific transformation method |
+| `sequence` | Preserve or construct daily and multi-year ordering | Keeps temporal dependence and realization identity explicit |
+| `hourly` | Reconstruct hourly EPW candidates | Separates daily or monthly signals from hourly profile rules |
+| `physics` | Apply the method's canonical physical treatment | Centralizes humidity, radiation, wind, pressure, and field bounds |
+| `output` | Produce representative-year or multi-year weather results | Standardizes metadata and handoff to EPW writing |
+
+Every built-in complete transform selects one physical treatment internally.
+Users do not choose backend profiles or physical-policy switches. This keeps
+each public method definition stable while allowing the common physical layer
+to be reused by all implementations.
+
+# Diagnostics and Provenance
+
+`shift_diagnostics()` reports input coverage, calendar mapping, fallback use,
+physical closure, and output status with the case identity that produced each
+message. `shift_explain()` reports the selected public transform and its
+execution inputs; backend, component, and internal recipe keys are not required
+to configure a normal run.
 
 ```r
-plan <- shift_future_epw(
-    epw = epw,
-    climate = shift_cmip6(
-        model = "BCC-CSM2-MR",
-        scenarios = c("ssp126", "ssp585")
-    ),
-    periods = list(`2060s` = 2055:2065),
-    method = belcher(
-        reference = historical_reference(1995:2014)
-    ),
-    dir = "~/Downloads/epwshiftr-test",
-    store = "~/cmip6-singapore-store",
-    dry_run = TRUE
-)
-
 shift_explain(plan)
-run <- shift_run(plan)
+shift_diagnostics(run)
+shift_data(run, n = 24L)
 ```
 
-# Relationship to Other Layers
-
-- [ESG stores](esg-store.html) owns extraction results and artifacts consumed by
-  `EpwMorpher`.
-- [ESGF troubleshooting](esgf-troubleshooting.html) explains incomplete
-  coverage and missing variable diagnostics.
-- [Create Future EPW Files](future-epw-workflow.html) shows the recommended
-  high-level path.
+For incomplete ESGF data or extraction failures, see
+[Troubleshoot ESGF Workflows](esgf-troubleshooting.html). For the complete
+task-oriented workflow, see
+[Create Future EPW Files](future-epw-workflow.html).

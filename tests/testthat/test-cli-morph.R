@@ -1,3 +1,29 @@
+test_that("morph CLI expands variable settings and JSON vector values", {
+    options <- cli_morph__transform_options(list(
+        tas.grid_points = cli_morph__option_value("128"),
+        tas.bounds = cli_morph__option_value("[-40,60]")
+    ))
+
+    expect_identical(options$tas$grid_points, 128L)
+    expect_equal(options$tas$bounds, c(-40, 60))
+    transform <- do.call(
+        hourly_transform,
+        c(list(method = "kernel_qdm"), options)
+    )
+    expect_identical(
+        transform@options$signal_overrides$tas$grid_points,
+        128L
+    )
+
+    variables <- epwshiftr_cli_morph_variables(c(
+        "--scale", "monthly",
+        "--method", "epwshiftr",
+        "--option", "humidity_source=huss"
+    ))
+    expect_true(all(c("huss", "ps") %in% variables$variable_id))
+    expect_false("hurs" %in% variables$variable_id)
+})
+
 test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outputs", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
@@ -7,29 +33,41 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     on.exit(unlink(nc), add = TRUE)
     setup <- cli_shift_test_store_with_extract(nc)
 
-    variables <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "variables", "--recipe", "minimal"))
+    variables <- epwshiftr_cli(c(
+        "--quiet", "--store", setup$dir, "morph", "variables",
+        "--scale", "daily", "--method", "epwshiftr"
+    ))
     expect_equal(variables$status, 0L)
     expect_true("tas" %in% variables$result$variable_id)
 
-    backends <- epwshiftr_cli(c("--quiet", "--store", setup$dir, "morph", "backends"))
-    expect_equal(backends$status, 0L)
-    expect_true("belcher" %in% backends$result$backend)
-    expect_true("belcher_absolute" %in% backends$result$backend)
+    transforms <- epwshiftr_cli(c(
+        "--quiet", "--store", setup$dir, "morph", "transforms"
+    ))
+    expect_equal(transforms$status, 0L)
+    expect_true("original_morphing" %in% transforms$result$method)
+    expect_true("epwshiftr" %in% transforms$result$method)
+    expect_true("reconstruction_label" %in% names(transforms$result))
+    expect_identical(
+        transforms$result[method == "original_morphing", reconstruction_label],
+        "Original morphing field equations"
+    )
 
     run <- epwshiftr_cli(c(
         "--quiet", "--store", setup$dir,
         "morph", "run",
         "--plan", paste(setup$plan_id, collapse = ","),
         "--epw", get_cache_epw(),
-        "--recipe", "belcher_absolute",
-        "--profile", "legacy",
-        "--method", "tdb=shift",
-        "--option", "transition_hours=0",
+        "--scale", "daily",
+        "--method", "epwshiftr",
+        "--option", "window_days=31",
         "--period", "2060s=2060",
+        "--reference", "plan",
+        "--reference-plan", paste(setup$plan_id, collapse = ","),
+        "--reference-period", "reference=2060",
         "--strict", "false",
         "--overwrite"
     ))
-    expect_equal(run$status, 0L)
+    expect_equal(run$status, 0L, info = run$error)
     expect_length(run$result$morph_id, 1L)
     expect_length(run$result$run_id, 1L)
     expect_length(run$result$step_id, 1L)
@@ -41,12 +79,14 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
 
     store <- EsgStore$new(setup$dir)
     persisted <- shift_morph_plan(store, run$result$morph_id)
-    persisted_recipe <- epwshiftr_cli_recipe_from_json(
+    persisted_recipe <- cli_shift__recipe_from_json(
         persisted$recipe_json[[1L]]
     )
-    expect_identical(persisted_recipe$profile, "legacy")
-    expect_identical(persisted_recipe$options$transition_hours, 0L)
-    expect_identical(unname(persisted_recipe$methods[["tdb"]]), "shift")
+    expect_identical(
+        persisted_recipe$recipe_spec,
+        "epwshiftr_daily_power"
+    )
+    expect_identical(persisted_recipe$options$window_days, 31L)
     suppressWarnings(store$query(sprintf(
         "UPDATE epw_morph_plan SET status = 'failed', last_error = 'forced failure' WHERE morph_id = %s",
         shift_sql_string(run$result$morph_id)
@@ -102,8 +142,12 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
             "morph", "run",
             "--plan", paste(setup$plan_id, collapse = ","),
             "--epw", get_cache_epw(),
-            "--recipe", "belcher_absolute",
+            "--scale", "daily",
+            "--method", "epwshiftr",
             "--period", "2060s=2060",
+            "--reference", "plan",
+            "--reference-plan", paste(setup$plan_id, collapse = ","),
+            "--reference-period", "reference=2060",
             "--strict", "false"
         )),
         type = "message"

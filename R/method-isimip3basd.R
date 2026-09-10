@@ -1860,7 +1860,10 @@ isimip__component <- function() {
         stochastic = TRUE,
         profiles = isimip__profiles(),
         apply_group = isimip__apply_group,
-        operations = list(validate_result = isimip__validate_result),
+        operations = list(
+            validate_options = isimip__settings,
+            validate_result = isimip__validate_result
+        ),
         metadata = list(
             method_family = "trend_preserving_bias_adjustment",
             method_version = "3.0.x",

@@ -278,30 +278,30 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr morph <command> [options]",
             "",
             "Commands:",
-            "  epwshiftr morph variables [--recipe belcher|recommended|minimal|extended]",
-            "  epwshiftr morph backends",
-            "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe NAME] [--profile enhanced|legacy] [--policy paper_faithful|harmonized] [--method STEP=METHOD]... [--option KEY=VALUE]... [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
+            "  epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
+            "  epwshiftr morph transforms",
+            "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]... [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--observed-plan PLAN_ID[,PLAN_ID...]] [--observed-period PERIOD=YEARS[,YEARS]...] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph status [--morph MORPH_ID]",
             "  epwshiftr morph outputs [--morph MORPH_ID]"
         ),
         "morph variables" = c(
-            "Usage: epwshiftr morph variables [--recipe belcher|recommended|minimal|extended]",
+            "Usage: epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
             "",
-            "List CMIP variables required by a morphing recipe or variable set."
+            "List CMIP source variables participating in a weather transformation's required alternatives."
         ),
-        "morph backends" = c(
-            "Usage: epwshiftr morph backends",
+        "morph transforms" = c(
+            "Usage: epwshiftr morph transforms",
             "",
-            "List registered EPW morphing backends."
+            "List built-in weather transformations."
         ),
         "morph run" = c(
-            "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--recipe NAME] [--profile enhanced|legacy] [--policy paper_faithful|harmonized] [--method STEP=METHOD]... [--option KEY=VALUE]... [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
+            "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]... [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--observed-plan PLAN_ID[,PLAN_ID...]] [--observed-period PERIOD=YEARS[,YEARS]...] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "",
-            "Run morphing through hourly Parquet outputs without writing EPW files.",
-            "Belcher defaults to --profile enhanced; use repeated --method and --option key=value overrides for persisted recipe settings.",
-            "Registered complete recipes accept --policy paper_faithful or --policy harmonized when declared by their catalog entry.",
+            "Run a selected weather transformation through hourly Parquet outputs without writing EPW files.",
+            "The default is --scale monthly --method original_morphing; repeated --option key=value values configure declared scientific settings.",
+            "For multivariable methods, use --option variable.setting=value; JSON arrays can supply vector settings.",
             "Use --reference historical to resolve matching CMIP historical data from the plan's collected File metadata."
         ),
         "morph epw" = c(

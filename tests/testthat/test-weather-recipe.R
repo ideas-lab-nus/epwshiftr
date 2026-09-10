@@ -136,16 +136,19 @@ test_that("recipe registry rejects duplicate and incompatible definitions", {
 })
 
 test_that("registered recipe policies resolve backend profiles explicitly", {
-    faithful <- epw_morph_recipe("belcher_monthly")
+    faithful <- epw_morph_recipe("original_morphing_monthly")
     enhanced <- epw_morph_recipe("epwshiftr_monthly")
     daily <- epw_morph_recipe("epwshiftr_daily_power")
     hourly <- epw_morph_recipe("hourly_kernel_qdm")
 
-    expect_identical(faithful$backend, "belcher")
+    expect_identical(faithful$backend, "original_morphing")
     expect_identical(faithful$profile, "legacy")
     expect_identical(faithful$policy, "paper_faithful")
-    expect_identical(faithful$recipe_spec, "belcher_monthly")
-    expect_identical(faithful$recipe_version, 1L)
+    expect_identical(faithful$recipe_spec, "original_morphing_monthly")
+    expect_identical(faithful$recipe_version, 2L)
+    expect_identical(faithful$methods[["tdb"]], "combined")
+    expect_true(all(c("tas", "tasmax", "tasmin") %in%
+        epw_morph_variables(faithful)))
     expect_true(morpher__recipe_requires_reference(faithful))
     expect_true(morpher__recipe_accepts_reference(faithful))
     expect_identical(
@@ -153,7 +156,7 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
         "mon"
     )
 
-    expect_identical(enhanced$backend, "belcher")
+    expect_identical(enhanced$backend, "original_morphing")
     expect_identical(enhanced$profile, "enhanced")
     expect_identical(enhanced$policy, "harmonized")
     expect_false(morpher__recipe_requires_reference(enhanced))
@@ -181,7 +184,7 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
 
     expect_error(
         epw_morph_recipe(
-            "belcher_monthly",
+            "original_morphing_monthly",
             policy = "harmonized"
         ),
         "Must be element"
@@ -196,7 +199,7 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
     expect_error(
         epw_morph_recipe(
             "epwshiftr_daily_power",
-            backend = "belcher"
+            backend = "original_morphing"
         ),
         "uses backend"
     )
@@ -208,7 +211,7 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
         "persisted version"
     )
 
-    ad_hoc <- epw_morph_recipe("belcher")
+    ad_hoc <- epw_morph_recipe("original_morphing")
     expect_null(ad_hoc$recipe_spec)
     expect_null(ad_hoc$recipe_version)
     expect_null(ad_hoc$policy)
@@ -217,7 +220,8 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
 
 test_that("recipe input roles validate before backend execution", {
     monthly_variables <- c(
-        "tas", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", "hurs"
+        "tas", "tasmax", "tasmin", "psl", "rlds", "rsds", "sfcWind",
+        "clt", "pr", "hurs"
     )
     future <- recipe_test__climate_input(
         "model_future",
@@ -230,17 +234,17 @@ test_that("recipe input roles validate before backend execution", {
         monthly_variables
     )
     template <- recipe_test__weather_template()
-    faithful <- epw_morph_recipe_spec("belcher_monthly")
+    faithful <- epw_morph_recipe_spec("original_morphing_monthly")
     enhanced <- epw_morph_recipe_spec("epwshiftr_monthly")
 
     without_historical <- weather__new_inputs(
         weather_template = template,
         model_future = future
     )
-    expect_match(
-        recipe__input_errors(faithful, without_historical),
-        "required role `model_historical` is missing"
-    )
+    expect_true(any(grepl(
+        "required role `model_historical` is missing",
+        recipe__input_errors(faithful, without_historical)
+    )))
     expect_identical(
         recipe__input_errors(enhanced, without_historical),
         character()
@@ -268,7 +272,7 @@ test_that("recipe input roles validate before backend execution", {
 
     context <- structure(
         list(
-            recipe = epw_morph_recipe("belcher_monthly"),
+            recipe = epw_morph_recipe("original_morphing_monthly"),
             inputs = without_historical
         ),
         class = "morpher__context"
@@ -279,20 +283,17 @@ test_that("recipe input roles validate before backend execution", {
     )
 })
 
-test_that("registered recipe identity survives JSON and workflow references", {
-    recipe <- epw_morph_recipe(
-        "epwshiftr_daily_power",
-        policy = "harmonized",
-        options = list(window_days = 21L)
-    )
-    json_roundtrip <- epwshiftr_cli_recipe_from_json(
+test_that("registered recipe identity survives JSON and transform persistence", {
+    transform <- daily_transform("epwshiftr", window_days = 21L)
+    recipe <- transform__recipe(transform)
+    json_roundtrip <- cli_shift__recipe_from_json(
         morpher__json(recipe)
     )
-    reference_roundtrip <- shift__recipe_from_ref(
-        shift__recipe_ref(recipe)
+    transform_roundtrip <- transform__recipe(
+        transform__from_spec(transform__spec_value(transform))
     )
 
-    for (rebuilt in list(json_roundtrip, reference_roundtrip)) {
+    for (rebuilt in list(json_roundtrip, transform_roundtrip)) {
         expect_identical(
             rebuilt$recipe_spec,
             "epwshiftr_daily_power"
@@ -304,20 +305,15 @@ test_that("registered recipe identity survives JSON and workflow references", {
         expect_identical(rebuilt$components, recipe$components)
     }
 
-    cli_recipe <- epwshiftr_cli_recipe(
-        "epwshiftr_monthly",
-        policy = "harmonized"
-    )
+    cli_recipe <- transform__recipe(monthly_transform("epwshiftr"))
     expect_identical(cli_recipe$recipe_spec, "epwshiftr_monthly")
     expect_identical(cli_recipe$profile, "enhanced")
 
-    aliased <- daily_temperature(
-        historical_reference(years = 1995:2014)
-    )@recipe
-    aliased_roundtrip <- epwshiftr_cli_recipe_from_json(
+    aliased <- transform__recipe(daily_transform("epwshiftr"))
+    aliased_roundtrip <- cli_shift__recipe_from_json(
         morpher__json(aliased)
     )
-    expect_identical(aliased_roundtrip$name, "daily_temperature")
+    expect_identical(aliased_roundtrip$name, "epwshiftr_daily_power")
     expect_identical(
         aliased_roundtrip$recipe_spec,
         "epwshiftr_daily_power"

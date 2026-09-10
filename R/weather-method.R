@@ -18,12 +18,12 @@ WEATHER_METHOD_IMPLEMENTATIONS <- c("backend", "signal_component")
 # presets. BTWS and POWER are hourly reconstruction choices, so the shared
 # daily temperature signal appears only once in this catalog.
 WEATHER_METHOD_DEFAULTS <- c(
-    "belcher_monthly",
+    "original_morphing_monthly",
     "epwshiftr_monthly",
     "daily_temperature_delta",
-    "eames_monthly_temperature",
+    "btws_monthly_temperature",
     "ek_daily_factors",
-    "monthly_percentile_temperature",
+    "quantile_mapping_morphing_daily",
     "sobie_curry_daily",
     "kernel_quantile_delta_mapping_hourly",
     "linear_scaling_daily",
@@ -329,9 +329,9 @@ method__register_components <- function() {
     edcdf__register_component()
     isimip__register_component()
     daily__register_temperature_components()
-    eames__register_monthly_temperature_components()
+    btws__register_monthly_components()
     ek__register_components()
-    arima__register_components()
+    quantile_mapping_morphing__register_components()
     sobie__register_components()
     hourly_kqdm__register_components()
     invisible(NULL)
@@ -342,28 +342,35 @@ method__register_components <- function() {
 method__default_specs <- function() {
     method__register_components()
     list(
-        belcher_monthly = method__spec(
-            name = "belcher_monthly",
-            label = "Belcher monthly morphing",
+        original_morphing_monthly = method__spec(
+            name = "original_morphing_monthly",
+            label = "Original monthly morphing",
             domain = "monthly_morphing",
             implementation = "backend",
-            implementation_key = "belcher",
+            implementation_key = "original_morphing",
             frequencies = "mon",
             input_roles = c("model_historical", "model_future"),
-            variable_sets = c(
-                "tas", "psl", "rlds", "rsds", "sfcWind", "clt", "pr",
-                "hurs"
+            variable_sets = list(
+                c(
+                    "tas", "tasmax", "tasmin", "psl", "rlds", "rsds",
+                    "sfcWind", "clt", "pr", "hurs"
+                ),
+                c(
+                    "tas", "tasmax", "tasmin", "psl", "rlds", "rsds",
+                    "sfcWind", "clt", "pr", "huss", "ps"
+                )
             ),
             output_role = "weather_template",
-            parameters = EPW_MORPH_BELCHER_PROFILE_METHODS$legacy,
-            references = "https://doi.org/10.1191/0143624405bt112oa"
+            parameters = EPW_MORPH_ORIGINAL_PROFILE_METHODS$legacy,
+            references = "https://doi.org/10.1191/0143624405bt112oa",
+            version = 2L
         ),
         epwshiftr_monthly = method__spec(
             name = "epwshiftr_monthly",
             label = "epwshiftr monthly morphing",
             domain = "monthly_morphing",
             implementation = "backend",
-            implementation_key = "belcher",
+            implementation_key = "original_morphing",
             frequencies = "mon",
             input_roles = c("model_historical", "model_future"),
             variable_sets = list(
@@ -377,7 +384,7 @@ method__default_specs <- function() {
                 )
             ),
             output_role = "weather_template",
-            parameters = EPW_MORPH_BELCHER_PROFILE_METHODS$enhanced,
+            parameters = EPW_MORPH_ORIGINAL_PROFILE_METHODS$enhanced,
             evidence = "package_method",
             references = c(
                 "https://doi.org/10.1191/0143624405bt112oa",
@@ -393,11 +400,16 @@ method__default_specs <- function() {
             input_roles = c("model_historical", "model_future"),
             variable_sets = "tas",
             output_variables = "tas",
-            output_role = "weather_template"
+            output_role = "weather_template",
+            evidence = "package_method",
+            references = c(
+                "https://doi.org/10.1016/j.dib.2025.111667",
+                "https://github.com/ideas-lab-nus/epwshiftr/pull/141"
+            )
         ),
-        eames_monthly_temperature = method__from_signal_component(
-            name = "eames_monthly_temperature",
-            label = "Eames monthly temperature changes",
+        btws_monthly_temperature = method__from_signal_component(
+            name = "btws_monthly_temperature",
+            label = "BTWS monthly temperature changes",
             domain = "daily_temperature",
             component = "monthly_mean_extrema_changes",
             frequencies = "day",
@@ -419,9 +431,9 @@ method__default_specs <- function() {
             output_role = "weather_template",
             evidence = "reconstructed_publication"
         ),
-        monthly_percentile_temperature = method__from_signal_component(
-            name = "monthly_percentile_temperature",
-            label = "Monthly percentile temperature change",
+        quantile_mapping_morphing_daily = method__from_signal_component(
+            name = "quantile_mapping_morphing_daily",
+            label = "Quantile-mapping morphing for daily temperature",
             domain = "daily_temperature",
             component = "percentile_temperature_change_function",
             frequencies = "day",
@@ -625,28 +637,14 @@ method__list <- function(registry = WEATHER_METHOD_REGISTRY) {
     }), use.names = TRUE, fill = TRUE)
 }
 
-#' Inspect registered future-weather methods
-#'
-#' `epw_morph_methods()` lists method-owned algorithm contracts independently
-#' of data sources, study periods, calendars, physical policies, and output
-#' workflows.
-#'
-#' @return A data table with one row per registered method.
-#'
-#' @seealso [epw_morph_recipes()], [epw_morph_recipe_spec()]
-#' @export
+# Return internal method records used to validate the transform registry.
+#' @noRd
 epw_morph_methods <- function() {
     method__list()
 }
 
-#' Get a registered future-weather method specification
-#'
-#' @param name Stable method name returned by [epw_morph_methods()].
-#'
-#' @return A `WeatherMethodSpec` object.
-#'
-#' @seealso [epw_morph_methods()], [epw_morph_recipe_spec()]
-#' @export
+# Return one internal scientific method contract by its registered key.
+#' @noRd
 epw_morph_method_spec <- function(name) {
     method__get(name)
 }

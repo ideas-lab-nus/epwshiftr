@@ -1585,7 +1585,7 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
     private <- ds$.__enclos_env__$private
 
     task <- private$start_async_operation(
-        operation = "cancel-race probe",
+        operation = "cancel-race task",
         handler = function(urls, nc_handles) {
             Sys.sleep(5)
             TRUE
@@ -1593,7 +1593,10 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
         timeout = 10
     )
 
-    expect_true(isTRUE(mirai::stop_mirai(task$mirai_obj)))
+    # stop_mirai() is best-effort and may report FALSE when the dispatcher has
+    # already delivered cancellation. The observable contract is the resolved
+    # cancellation state checked below, not this timing-sensitive return value.
+    mirai::stop_mirai(task$mirai_obj)
     while (mirai::unresolved(task$mirai_obj)) {
         Sys.sleep(0.01)
     }

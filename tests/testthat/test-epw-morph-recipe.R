@@ -2,7 +2,7 @@ test_that("epw_morph_recipe() accepts morph.R statistical downscaling method ove
     recipe <- epw_morph_recipe(methods = c(tdb = "shift", rh = "shift"))
 
     expect_s3_class(recipe, "epw_morph_recipe")
-    expect_equal(recipe$backend, "belcher")
+    expect_equal(recipe$backend, "original_morphing")
     expect_equal(recipe$methods[c("tdb", "rh")], c(tdb = "shift", rh = "shift"))
     expect_equal(
         recipe$rules[epw_field == "dry_bulb_temperature", method],

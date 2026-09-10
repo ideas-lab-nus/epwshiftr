@@ -30,7 +30,7 @@ test_that("future-weather sequence contracts validate year-addressable members",
             units = "K",
             value = 300
         ),
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute"))
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute"))
     )
     result <- sequence__result(
         context,
@@ -179,7 +179,7 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     )
     epw_morph_register_backend(backend_name, backend, overwrite = TRUE)
 
-    morpher <- epw_morpher(
+    morpher <- morpher__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",

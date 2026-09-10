@@ -1,6 +1,6 @@
 # Build deterministic daily CMIP6 rows whose future changes vary by calendar
 # month, allowing the monthly signal to be distinguished from daily smoothing.
-eames_monthly_test__climate <- function(
+btws_monthly_test__climate <- function(
     years,
     period,
     experiment,
@@ -61,19 +61,19 @@ eames_monthly_test__climate <- function(
     }))
 }
 
-# Assemble one direct context for the registered temperature-only Eames recipe.
-eames_monthly_test__context <- function(
+# Assemble one direct context for the registered monthly BTWS recipe.
+btws_monthly_test__context <- function(
     mean_shift = seq(0.5, 1.6, by = 0.1),
     minimum_shift = seq(0.3, 1.4, by = 0.1),
     maximum_shift = seq(0.7, 1.8, by = 0.1),
-    recipe_name = "eames_monthly_temperature"
+    recipe_name = "btws_monthly_temperature"
 ) {
-    historical <- eames_monthly_test__climate(
+    historical <- btws_monthly_test__climate(
         2001:2002,
         period = "reference",
         experiment = "historical"
     )
-    future <- eames_monthly_test__climate(
+    future <- btws_monthly_test__climate(
         2061:2062,
         period = "2060s",
         experiment = "ssp585",
@@ -89,16 +89,16 @@ eames_monthly_test__context <- function(
     )
 }
 
-test_that("Eames daily sources produce 12 month-constant target sets", {
+test_that("BTWS daily sources produce 12 month-constant target sets", {
     mean_shift <- seq(0.5, 1.6, by = 0.1)
     minimum_shift <- seq(0.3, 1.4, by = 0.1)
     maximum_shift <- seq(0.7, 1.8, by = 0.1)
-    historical <- eames_monthly_test__climate(
+    historical <- btws_monthly_test__climate(
         2001:2002,
         period = "reference",
         experiment = "historical"
     )
-    future <- eames_monthly_test__climate(
+    future <- btws_monthly_test__climate(
         2061:2062,
         period = "2060s",
         experiment = "ssp585",
@@ -107,7 +107,7 @@ test_that("Eames daily sources produce 12 month-constant target sets", {
         maximum_shift = maximum_shift
     )
 
-    targets <- eames__monthly_temperature_targets(future, historical)
+    targets <- btws__monthly_targets(future, historical)
 
     expect_identical(nrow(targets), 365L)
     expect_identical(sort(unique(targets$month)), seq_len(12L))
@@ -137,8 +137,8 @@ test_that("Eames daily sources produce 12 month-constant target sets", {
     ))
 })
 
-test_that("Eames monthly aggregation follows CF dates and removes leap day", {
-    source <- eames_monthly_test__climate(
+test_that("BTWS monthly aggregation follows CF dates and removes leap day", {
+    source <- btws_monthly_test__climate(
         2001,
         period = "reference",
         experiment = "historical"
@@ -147,7 +147,7 @@ test_that("Eames monthly aggregation follows CF dates and removes leap day", {
         cf_month = as.integer(format(time, "%m")),
         cf_day = as.integer(format(time, "%d"))
     )]
-    baseline <- eames__monthly_temperature_climatology(
+    baseline <- btws__monthly_climatology(
         source,
         "historical climate"
     )
@@ -162,7 +162,7 @@ test_that("Eames monthly aggregation follows CF dates and removes leap day", {
         list(source, leap_rows),
         use.names = TRUE
     )
-    mapped <- eames__monthly_temperature_climatology(
+    mapped <- btws__monthly_climatology(
         with_leap_day,
         "historical climate"
     )
@@ -171,15 +171,15 @@ test_that("Eames monthly aggregation follows CF dates and removes leap day", {
     expect_equal(mapped$n, baseline$n, tolerance = 0)
 })
 
-test_that("Eames recipe exposes the adapted monthly temperature boundary", {
-    expect_true("eames_monthly_temperature" %in% epw_morph_backends())
+test_that("BTWS recipe exposes the adapted monthly temperature boundary", {
+    expect_true("btws_monthly_temperature" %in% epw_morph_backends())
     expect_true(
-        "eames_monthly_temperature" %in% epw_morph_recipes()[["name"]]
+        "btws_monthly_temperature" %in% epw_morph_recipes()[["name"]]
     )
 
-    backend <- epw_morph_backend("eames_monthly_temperature")
-    recipe <- epw_morph_recipe("eames_monthly_temperature")
-    spec <- epw_morph_recipe_spec("eames_monthly_temperature")
+    backend <- epw_morph_backend("btws_monthly_temperature")
+    recipe <- epw_morph_recipe("btws_monthly_temperature")
+    spec <- epw_morph_recipe_spec("btws_monthly_temperature")
 
     expect_true(backend$requires_reference)
     expect_equal(
@@ -208,16 +208,16 @@ test_that("Eames recipe exposes the adapted monthly temperature boundary", {
         "day"
     )
     expect_error(
-        eames_temperature(),
-        "requires an explicit reference"
+        transform__validate_execution_inputs(monthly_transform("btws")),
+        "requires.*reference"
     )
 })
 
-test_that("Eames monthly temperature closes a complete future EPW year", {
+test_that("BTWS monthly temperature closes a complete future EPW year", {
     mean_shift <- seq(0.5, 1.6, by = 0.1)
     minimum_shift <- seq(0.3, 1.4, by = 0.1)
     maximum_shift <- seq(0.7, 1.8, by = 0.1)
-    context <- eames_monthly_test__context(
+    context <- btws_monthly_test__context(
         mean_shift,
         minimum_shift,
         maximum_shift
@@ -270,8 +270,8 @@ test_that("Eames monthly temperature closes a complete future EPW year", {
     )
 })
 
-test_that("Eames monthly temperature records infeasible-day fallback", {
-    context <- eames_monthly_test__context(
+test_that("BTWS monthly temperature records infeasible-day fallback", {
+    context <- btws_monthly_test__context(
         mean_shift = rep(20, 12L),
         minimum_shift = rep(0, 12L),
         maximum_shift = rep(0, 12L)
@@ -287,14 +287,14 @@ test_that("Eames monthly temperature records infeasible-day fallback", {
     )
 })
 
-test_that("Eames monthly temperature validates daily extrema inputs", {
-    missing_extrema <- eames_monthly_test__climate(
+test_that("BTWS monthly temperature validates daily extrema inputs", {
+    missing_extrema <- btws_monthly_test__climate(
         2001,
         period = "reference",
         experiment = "historical",
         include_extrema = FALSE
     )
-    wrong_frequency <- eames_monthly_test__climate(
+    wrong_frequency <- btws_monthly_test__climate(
         2001,
         period = "reference",
         experiment = "historical",
@@ -302,7 +302,7 @@ test_that("Eames monthly temperature validates daily extrema inputs", {
     )
 
     expect_error(
-        eames__monthly_temperature_climatology(
+        btws__monthly_climatology(
             missing_extrema,
             "historical climate"
         ),
@@ -317,17 +317,16 @@ test_that("Eames monthly temperature validates daily extrema inputs", {
     )
     expect_error(
         epw_morph_recipe(
-            "eames_monthly_temperature",
+            "btws_monthly_temperature",
             options = list(window_days = 31L)
         ),
-        "Unknown Eames monthly temperature option"
+        "Unknown BTWS monthly temperature option"
     )
 })
 
-test_that("Eames public method survives dry-run plan reconstruction", {
-    method <- eames_temperature(
-        historical_reference(years = 1995:2014)
-    )
+test_that("BTWS public transform survives dry-run plan reconstruction", {
+    transform <- monthly_transform("btws")
+    reference <- historical_reference(years = 1995:2014)
     climate <- shift_cmip6(
         "EC-Earth3",
         "ssp585",
@@ -338,23 +337,24 @@ test_that("Eames public method survives dry-run plan reconstruction", {
         epw = get_cache_epw(),
         climate = climate,
         periods = list(`2060s` = 2061L),
-        method = method,
-        dir = tempfile("eames-monthly-output-"),
-        store = tempfile("eames-monthly-store-"),
+        transform = transform,
+        reference = reference,
+        dir = tempfile("btws-monthly-output-"),
+        store = tempfile("btws-monthly-store-"),
         dry_run = TRUE
     )
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_identical(
-        plan@meta$method@recipe$backend,
-        "eames_monthly_temperature"
+        plan@meta$recipe$backend,
+        "btws_monthly_temperature"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$recipe_spec,
-        "eames_monthly_temperature"
+        rebuilt@meta$recipe$recipe_spec,
+        "btws_monthly_temperature"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$components$signal,
+        rebuilt@meta$recipe$components$signal,
         "monthly_mean_extrema_changes"
     )
     expect_silent(shift__validate_background_plan(plan))

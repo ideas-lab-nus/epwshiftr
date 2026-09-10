@@ -465,7 +465,7 @@ test_that("direct-model output retains every physically closed weather year", {
             units = "K",
             value = 300
         ),
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute"))
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute"))
     )
     result <- sequence__epw_output_write(
         closed,

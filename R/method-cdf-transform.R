@@ -776,7 +776,10 @@ cdft__component <- function() {
         stochastic = TRUE,
         profiles = cdft__profiles(),
         apply_group = cdft__apply_group,
-        operations = list(validate_result = cdft__validate_result),
+        operations = list(
+            validate_options = cdft__settings,
+            validate_result = cdft__validate_result
+        ),
         metadata = list(
             method_family = "future_target_distribution_mapping",
             output_contract = "daily_adjusted_series",

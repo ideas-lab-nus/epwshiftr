@@ -1013,7 +1013,10 @@ sdm__component <- function() {
         stochastic = FALSE,
         profiles = sdm__profiles(),
         apply_group = sdm__apply_group,
-        operations = list(validate_result = sdm__validate_result),
+        operations = list(
+            validate_options = sdm__settings,
+            validate_result = sdm__validate_result
+        ),
         metadata = list(
             method_family = "parametric_distribution_mapping",
             reference_implementation = "wegener-center/pyCAT",

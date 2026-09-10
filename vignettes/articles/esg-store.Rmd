@@ -74,9 +74,9 @@ store_path <- file.path(workflow_root, "store")
 store <- EsgStore$new(store_path)
 
 store$path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store"
 store$manifest
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store/manifest.duckdb"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store/manifest.duckdb"
 list.files(store$path, all.files = TRUE, no.. = TRUE)
 #>  [1] "dicts"               "downloads"           "extracts"
 #>  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"
@@ -112,36 +112,37 @@ store$query("
     WHERE table_schema = 'main'
     ORDER BY table_name
 ")
-#>                 table_name
-#>                     <char>
-#>  1:               artifact
-#>  2:   epw_baseline_summary
-#>  3:    epw_climate_summary
-#>  4:       epw_morph_factor
-#>  5:         epw_morph_plan
-#>  6:       epw_morph_result
-#>  7:             epw_output
-#>  8:             epw_source
-#>  9:               esg_file
-#> 10:              esg_query
-#> 11:   esg_query_dependency
-#> 12:         esg_query_file
-#> 13:          esg_query_tag
-#> 14:       esg_query_update
-#> 15:  esg_query_update_file
-#> 16: extraction_grid_source
-#> 17:        extraction_plan
-#> 18:      extraction_result
-#> 19:           file_catalog
-#> 20:              query_run
-#> 21:              shift_run
-#> 22:         shift_run_case
-#> 23:        shift_run_event
-#> 24:          shift_run_job
-#> 25:         shift_run_step
-#> 26:             store_meta
-#>                 table_name
-#>                     <char>
+#>                       table_name
+#>                           <char>
+#>  1:                     artifact
+#>  2:         epw_baseline_summary
+#>  3:          epw_climate_summary
+#>  4:             epw_morph_factor
+#>  5: epw_morph_observed_reference
+#>  6:               epw_morph_plan
+#>  7:             epw_morph_result
+#>  8:                   epw_output
+#>  9:                   epw_source
+#> 10:                     esg_file
+#> 11:                    esg_query
+#> 12:         esg_query_dependency
+#> 13:               esg_query_file
+#> 14:                esg_query_tag
+#> 15:             esg_query_update
+#> 16:        esg_query_update_file
+#> 17:       extraction_grid_source
+#> 18:              extraction_plan
+#> 19:            extraction_result
+#> 20:                 file_catalog
+#> 21:                    query_run
+#> 22:                    shift_run
+#> 23:               shift_run_case
+#> 24:              shift_run_event
+#> 25:                shift_run_job
+#> 26:               shift_run_step
+#> 27:                   store_meta
+#>                       table_name
+#>                           <char>
 ```
 
 The core table families are:
@@ -232,7 +233,8 @@ plans.
 
 
 ``` r
-variables <- epw_morph_variables("recommended")
+transform <- monthly_transform("original_morphing")
+variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 
 query <- esg_query("https://esgf-data.dkrz.de")$
     activity_id("ScenarioMIP")$
@@ -254,44 +256,44 @@ query_id <- store$add_query(
 store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
 #>                                                              tag_id
 #>                                                              <char>
-#> 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3
-#> 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71
-#> 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b
+#> 1: a300621091de45bdde1b1adf4157cd6cc841504df9c2fac4d586147b0e935e77
+#> 2: 395569e31cd452c818511f89a6d2c88b73bc144a5211703be3730554ae009cc6
+#> 3: 9cbdedcf4d9d8357785f24bc81f844bff9afee19892aa09470269b9d45e95295
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
-#> 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
-#> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
+#> 2: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
+#> 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-07-25 17:08:31
-#> 2: future-weather 2026-07-25 17:08:31
-#> 3:      singapore 2026-07-25 17:08:31
+#> 1:          cmip6 2026-09-10 09:36:50
+#> 2: future-weather 2026-09-10 09:36:50
+#> 3:      singapore 2026-09-10 09:36:50
 select_cols(store$queries(), c(
     "query_id", "label", "index_node", "tracked", "created_at"
 ))
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>                    label                index_node tracked          created_at
 #>                   <char>                    <char>  <lgcl>              <POSc>
-#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-25 17:08:31
+#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-09-10 09:36:50
 store$query_tags(query_id)
 #>                                                              tag_id
 #>                                                              <char>
-#> 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3
-#> 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71
-#> 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b
+#> 1: a300621091de45bdde1b1adf4157cd6cc841504df9c2fac4d586147b0e935e77
+#> 2: 395569e31cd452c818511f89a6d2c88b73bc144a5211703be3730554ae009cc6
+#> 3: 9cbdedcf4d9d8357785f24bc81f844bff9afee19892aa09470269b9d45e95295
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
-#> 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
-#> 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
+#> 2: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
+#> 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-07-25 17:08:31
-#> 2: future-weather 2026-07-25 17:08:31
-#> 3:      singapore 2026-07-25 17:08:31
+#> 1:          cmip6 2026-09-10 09:36:50
+#> 2: future-weather 2026-09-10 09:36:50
+#> 3:      singapore 2026-09-10 09:36:50
 ```
 
 The query snapshot is written under `queries/`, while the query identity and
@@ -300,7 +302,7 @@ tracking state are recorded in the manifest.
 
 ``` r
 list.files(file.path(store$path, "queries"), recursive = TRUE)
-#> [1] "query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json"
+#> [1] "query-5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91.json"
 
 store$query("
     SELECT query_id, label, tracked, query_file
@@ -308,13 +310,13 @@ store$query("
 ")
 #>                                                            query_id
 #>                                                              <char>
-#> 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152
+#> 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>                    label tracked
 #>                   <char>  <lgcl>
 #> 1: singapore-ssp585-amon    TRUE
 #>                                                                             query_file
 #>                                                                                 <char>
-#> 1: queries/query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json
+#> 1: queries/query-5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91.json
 ```
 
 # Preview and Update Query Files

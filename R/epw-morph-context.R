@@ -412,7 +412,7 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
     climate[]
 }
 
-morpher__context <- function(epw, climate, recipe = epw_morph_recipe("belcher"),
+morpher__context <- function(epw, climate, recipe = epw_morph_recipe("original_morphing"),
                               reference_climate = NULL,
                               years = NULL, labels = NULL,
                               reference_years = NULL, reference_labels = NULL,
@@ -723,7 +723,7 @@ morpher__engine_output <- function(context, epw, parts, data = NULL, diagnostics
     if (is.null(data)) {
         data <- morpher__engine_complete_data(epw, parts, by = context$by)
     }
-    if (context$recipe$backend %in% c("belcher", "belcher_absolute")) {
+    if (context$recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
         # Monthly backends predate executable pipeline stages. Applying their
         # declared policy by complete case gives them the same physical boundary
         # as pipeline methods while retaining every legacy field value.

@@ -130,7 +130,10 @@ test_that("daily temperature backend is registered with a daily reference contra
         ),
         "must be odd"
     )
-    expect_error(daily_temperature(), "requires an explicit reference")
+    expect_error(
+        transform__validate_execution_inputs(daily_transform("epwshiftr")),
+        "requires.*reference"
+    )
 })
 
 test_that("daily temperature CLI options retain their numeric types", {
@@ -308,11 +311,9 @@ test_that("daily temperature backend records missing-extrema fallback and freque
     )
 })
 
-test_that("daily temperature shift method validates frequency and reconstructs", {
-    method <- daily_temperature(
-        historical_reference(years = 1995:2014),
-        window_days = 15L
-    )
+test_that("daily temperature transform validates frequency and reconstructs", {
+    transform <- daily_transform("epwshiftr", window_days = 15L)
+    reference <- historical_reference(years = 1995:2014)
     daily_climate <- shift_cmip6(
         "EC-Earth3",
         "ssp585",
@@ -323,7 +324,8 @@ test_that("daily temperature shift method validates frequency and reconstructs",
         epw = get_cache_epw(),
         climate = daily_climate,
         periods = list(`2060s` = 2061L),
-        method = method,
+        transform = transform,
+        reference = reference,
         dir = tempfile("daily-temperature-output-"),
         store = tempfile("daily-temperature-store-"),
         dry_run = TRUE
@@ -331,26 +333,26 @@ test_that("daily temperature shift method validates frequency and reconstructs",
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_true(S7::S7_inherits(plan, ShiftPlan))
-    expect_identical(plan@meta$method@recipe$backend, "daily_temperature")
+    expect_identical(plan@meta$recipe$backend, "daily_temperature")
     expect_identical(
-        plan@meta$method@recipe$recipe_spec,
+        plan@meta$recipe$recipe_spec,
         "epwshiftr_daily_power"
     )
     expect_identical(
-        plan@meta$method@recipe$policy,
+        plan@meta$recipe$policy,
         "harmonized"
     )
     expect_identical(
-        rebuilt@meta$method@recipe$options$window_days,
+        rebuilt@meta$recipe$options$window_days,
         15L
     )
     expect_identical(
-        rebuilt@meta$method@recipe$recipe_spec,
-        plan@meta$method@recipe$recipe_spec
+        rebuilt@meta$recipe$recipe_spec,
+        plan@meta$recipe$recipe_spec
     )
     expect_identical(
-        rebuilt@meta$method@recipe$components,
-        plan@meta$method@recipe$components
+        rebuilt@meta$recipe$components,
+        plan@meta$recipe$components
     )
     expect_silent(shift__validate_background_plan(plan))
     expect_error(
@@ -358,7 +360,8 @@ test_that("daily temperature shift method validates frequency and reconstructs",
             epw = get_cache_epw(),
             climate = shift_cmip6("EC-Earth3", "ssp585"),
             periods = list(`2060s` = 2061L),
-            method = method,
+            transform = transform,
+            reference = reference,
             dir = tempfile("daily-temperature-output-"),
             store = tempfile("daily-temperature-store-"),
             dry_run = TRUE
@@ -409,7 +412,10 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
         store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = epw_morph_recipe("daily_temperature")
+        transform = daily_transform(
+            "epwshiftr",
+            reconstruction = "power"
+        )
     )
     periods <- epw_morph_periods(`2060s` = 2061L)
     workflow <- morpher$workflow(

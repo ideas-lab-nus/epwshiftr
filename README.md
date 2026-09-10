@@ -67,11 +67,11 @@ workflow, use the `legacy` branch on GitHub or install epwshiftr
 ## Quick start
 
 For the common baseline-to-future EPW workflow, use
-`shift_future_epw()`. When matching historical CMIP6 data are available,
-the recommended Belcher method supplies them explicitly with
-`historical_reference()`. The function resolves files, extracts the site
-time series, persists a resumable run, and copies only the final EPWs to
-`dir`.
+`shift_future_epw()`. Select a reusable scientific method with
+`monthly_transform()`, `daily_transform()`, or `hourly_transform()`,
+then pass run-specific climate and reference data separately. The
+function resolves files, extracts the site time series, persists a
+resumable run, and copies only the final EPWs to `dir`.
 
 Run the complete workflow with the scientific intent kept in one call:
 
@@ -88,22 +88,24 @@ run <- shift_future_epw(
         scenarios = c("ssp126", "ssp585")
     ),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(
-        reference = historical_reference(1995:2014)
-    ),
+    transform = monthly_transform("belcher"),
+    reference = historical_reference(1995:2014),
     dir = tempdir()
 )
 ```
 
-`belcher()` now uses the enhanced profile by default. It automatically
-uses combined temperature morphing when matching `tasmax` and `tasmin`
-are complete, prefers a complete `huss + tas + ps` humidity state,
-recalculates the radiation chain and relevant EPW headers, and queries
-`snd` from `LImon` when it is available in both future and historical
-cases. Reproduce the previous numerical path with
-`belcher(profile = "legacy")`; use `belcher_options()` for individual
-policies such as transition width, snow requirements, or header
-preservation.
+`weather_transforms()` lists every supported configuration together with
+its transformation scale, source-frequency requirements, input roles,
+hourly reconstruction, evidence, and maturity. A `WeatherTransformSpec`
+contains only reusable calculation settings; sites, GCMs, scenarios,
+periods, references, and output paths belong to each call of
+`shift_future_epw()`.
+
+The canonical Belcher transform implements the published combined
+temperature equation, so its monthly CMIP6 contract requires `tas`,
+`tasmax`, and `tasmin` for both future and historical model periods.
+Inspect the transform or catalog before querying to see all weather
+variables and humidity alternatives.
 
 The representative terminal recording below is generated from
 deterministic workflow states, so README builds do not depend on live
@@ -160,7 +162,8 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(reference = historical_reference(1995:2014)),
+    transform = monthly_transform("belcher"),
+    reference = historical_reference(1995:2014),
     dir = "~/Downloads/epwshiftr-test",
     ui = shift_ui(
         progress = "auto",
@@ -192,7 +195,8 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(reference = historical_reference(1995:2014)),
+    transform = monthly_transform("belcher"),
+    reference = historical_reference(1995:2014),
     dir = "~/Downloads/epwshiftr-test",
     background = TRUE
 )
@@ -211,9 +215,10 @@ the atmospheric fields use `Amon`, while optional snow depth uses
 asciicast SVG demonstrates the production dashboard without performing
 remote data reads during documentation builds.
 
-If no suitable historical CMIP6 reference is available, use `belcher()`
-as a fallback. It then uses the input EPW climatology and does not infer
-or query a historical reference.
+If no suitable historical CMIP6 reference is available, use
+`monthly_transform("epwshiftr")` without `reference`. Its canonical
+package method can use the input EPW climatology;
+`monthly_transform("belcher")` requires matching historical model data.
 
 ## Inspect a workflow
 
@@ -228,9 +233,8 @@ plan <- shift_future_epw(
         scenarios = c("ssp126", "ssp585")
     ),
     periods = list(`2060s` = 2055:2065),
-    method = belcher(
-        reference = historical_reference(1995:2014)
-    ),
+    transform = monthly_transform("belcher"),
+    reference = historical_reference(1995:2014),
     dir = "~/Downloads/epwshiftr-test",
     dry_run = TRUE
 )
@@ -261,7 +265,11 @@ session object is required: the latest returned stage carries its
 ``` r
 files <- shift_collect(request, store = store)
 climate <- shift_extract(files, site, periods)
-morphed <- shift_morph(climate, baseline = epw)
+morphed <- shift_morph(
+    climate,
+    baseline = epw,
+    transform = monthly_transform("epwshiftr")
+)
 outputs <- shift_export_epw(morphed, dir = output_dir)
 
 shift_run_get(outputs)

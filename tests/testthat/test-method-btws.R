@@ -12,7 +12,7 @@ test_that("BTWS transfer weights implement the published equation", {
     )
 })
 
-test_that("Eames default projection follows equations 7 to 16", {
+test_that("BTWS default projection follows equations 7 to 16", {
     hour <- 1:24
     source <- 20 + 5 * sin(2 * pi * (hour - 1) / 24)
     baseline_minimum <- min(source)
@@ -49,7 +49,7 @@ test_that("Eames default projection follows equations 7 to 16", {
     expect_equal(max(projected$value), max(source), tolerance = 1e-10)
 })
 
-test_that("Eames zero change is an exact identity", {
+test_that("BTWS zero change is an exact identity", {
     source <- 17 + 6 * sin(2 * pi * (0:23) / 24)
     projected <- btws__project_temperature_day(
         source,
@@ -67,7 +67,7 @@ test_that("Eames zero change is an exact identity", {
     expect_true(is.na(projected$fallback_reason))
 })
 
-test_that("Eames projection reduces the relevant exponent to retain bounds", {
+test_that("BTWS projection reduces the relevant exponent to retain bounds", {
     source <- 20 + 5 * sin(2 * pi * (0:23) / 24)
     warmer_mean <- btws__project_temperature_day(
         source,
@@ -101,7 +101,7 @@ test_that("Eames projection reduces the relevant exponent to retain bounds", {
     expect_equal(max(cooler_mean$value), max(source), tolerance = 1e-8)
 })
 
-test_that("Eames projection reports mean-shift fallbacks", {
+test_that("BTWS projection reports mean-shift fallbacks", {
     source <- 20 + 5 * sin(2 * pi * (0:23) / 24)
     infeasible <- btws__project_temperature_day(
         source,
@@ -131,7 +131,7 @@ test_that("Eames projection reports mean-shift fallbacks", {
     expect_equal(no_interior$value, binary + 1, tolerance = 0)
 })
 
-test_that("grouped Eames projection retains method diagnostics and row order", {
+test_that("grouped BTWS projection retains method diagnostics and row order", {
     hour <- 1:24
     source <- 20 + 5 * sin(2 * pi * (hour - 1) / 24)
     template <- data.table::data.table(
@@ -186,7 +186,7 @@ test_that("grouped Eames projection retains method diagnostics and row order", {
     expect_true(all(is.finite(projected$boundary_jump_change)))
 })
 
-test_that("Eames monthly factors close the published temperature statistics", {
+test_that("BTWS monthly factors close the published temperature statistics", {
     hours <- 1:24
     days <- 1:28
     template <- data.table::rbindlist(lapply(days, function(day) {
@@ -207,7 +207,7 @@ test_that("Eames monthly factors close the published temperature statistics", {
         dtr_status = "adjusted"
     )
 
-    # Eames applies one set of monthly change factors to every baseline day;
+    # BTWS applies one set of monthly change factors to every baseline day;
     # monthly mean and average daily extrema must then realize those factors.
     projected <- btws__project_temperature(template, targets)
     baseline_daily <- template[, .(

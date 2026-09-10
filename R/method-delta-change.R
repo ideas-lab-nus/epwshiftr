@@ -18,6 +18,12 @@ bias__validate_delta_change_result <- function(value, inputs, key) {
         "Delta Change"
     )
 }
+
+# Validate and normalize Delta Change settings through the same method
+# contract used immediately before the numerical kernel.
+bias__delta_change_settings <- function(settings) {
+    bias__mean_change_settings(settings, "Delta Change")
+}
 # Define published Delta Change defaults for additive temperature changes and
 # multiplicative precipitation changes on the observed-reference backbone.
 bias__delta_change_profiles <- function() {
@@ -152,6 +158,7 @@ bias__delta_change_component <- function() {
         profiles = bias__delta_change_profiles(),
         apply_group = bias__delta_change_apply_group,
         operations = list(
+            validate_options = bias__delta_change_settings,
             validate_result = bias__validate_delta_change_result
         ),
         metadata = list(

@@ -1,27 +1,27 @@
 #' @include weather-temperature.R component-temperature-epw.R
 NULL
 
-# Eames monthly temperature workflow {{{
+# BTWS monthly temperature workflow {{{
 
-# The temperature-only Eames workflow shares the daily backend's deterministic
+# The temperature-only BTWS workflow shares the daily backend's deterministic
 # hourly and EPW-header controls but does not estimate a circular daily signal.
-EPW_MORPH_EAMES_MONTHLY_TEMPERATURE_OPTIONS <-
+EPW_MORPH_BTWS_MONTHLY_TEMPERATURE_OPTIONS <-
     EPW_MORPH_TEMPERATURE_OPTIONS
 
 # Validate the options that remain meaningful after replacing the daily
 # climatology with the published calendar-month signal.
-eames__monthly_temperature_options <- function(options = NULL) {
+btws__monthly_options <- function(options = NULL) {
     temperature__backend_options(
         options,
-        defaults = EPW_MORPH_EAMES_MONTHLY_TEMPERATURE_OPTIONS,
-        label = "Eames monthly temperature"
+        defaults = EPW_MORPH_BTWS_MONTHLY_TEMPERATURE_OPTIONS,
+        label = "BTWS monthly temperature"
     )
 }
 
-# Declare the three role-addressable inputs shared by the Eames components and
+# Declare the three role-addressable inputs shared by the BTWS components and
 # complete recipe. Daily frequency describes the CMIP6 source, not the temporal
 # resolution of the resulting change factors.
-eames__monthly_temperature_inputs <- function() {
+btws__monthly_inputs <- function() {
     list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -48,7 +48,7 @@ eames__monthly_temperature_inputs <- function() {
 # mean tas, average daily tasmin, and average daily tasmax. Native CF month/day
 # fields take precedence over surrogate timestamps, and February 29 is removed
 # before mapping the source calendar to a non-leap EPW year.
-eames__monthly_temperature_climatology <- function(data, name) {
+btws__monthly_climatology <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
     required <- c("variable_id", "value")
@@ -141,10 +141,10 @@ eames__monthly_temperature_climatology <- function(data, name) {
     monthly[]
 }
 
-# Convert aligned monthly climatologies into one constant set of Eames changes
+# Convert aligned monthly climatologies into one constant set of BTWS changes
 # per EPW calendar month, then expand those 12 rows to the 365 target days
 # required by the shared BTWS hourly component.
-eames__monthly_temperature_changes <- function(
+btws__monthly_changes <- function(
     future_climatology,
     historical_climatology
 ) {
@@ -281,12 +281,12 @@ eames__monthly_temperature_changes <- function(
     target[]
 }
 
-# Build expanded Eames target rows directly from two normalized daily sources.
+# Build expanded BTWS target rows directly from two normalized daily sources.
 # This pure entry point keeps aggregation tests independent of pipeline classes.
-eames__monthly_temperature_targets <- function(future, historical) {
-    eames__monthly_temperature_changes(
-        eames__monthly_temperature_climatology(future, "future climate"),
-        eames__monthly_temperature_climatology(
+btws__monthly_targets <- function(future, historical) {
+    btws__monthly_changes(
+        btws__monthly_climatology(future, "future climate"),
+        btws__monthly_climatology(
             historical,
             "historical climate"
         )
@@ -294,30 +294,30 @@ eames__monthly_temperature_targets <- function(future, historical) {
 }
 
 # Normalize the role-addressable EPW and daily CMIP6 inputs without introducing
-# a daily smoothing window that does not belong to the Eames monthly method.
-eames__monthly_temperature_preprocess_apply <- function(
+# a daily smoothing window that does not belong to monthly BTWS.
+btws__monthly_preprocess_apply <- function(
     inputs,
     context,
     options
 ) {
     morpher__validate_context(context)
-    options <- eames__monthly_temperature_options(options)
+    options <- btws__monthly_options(options)
     temperature__preprocess_inputs(inputs, options)
 }
 
 # Interpret each model's native calendar before the signal kernel so the kernel
 # receives only aligned monthly statistics and cannot infer Gregorian dates.
-eames__monthly_temperature_calendar_apply <- function(
+btws__monthly_calendar_apply <- function(
     data,
     inputs,
     context,
     options
 ) {
-    future <- eames__monthly_temperature_climatology(
+    future <- btws__monthly_climatology(
         data$future,
         "future climate"
     )
-    historical <- eames__monthly_temperature_climatology(
+    historical <- btws__monthly_climatology(
         data$historical,
         "historical climate"
     )
@@ -333,14 +333,14 @@ eames__monthly_temperature_calendar_apply <- function(
 
 # Calculate the three published future-minus-historical monthly changes after
 # calendar interpretation, and emit the shared daily-target payload for BTWS.
-eames__monthly_temperature_signal_apply_group <- function(
+btws__monthly_signal_apply_group <- function(
     inputs,
     settings,
     key
 ) {
     list(
         baseline = inputs$weather_template,
-        targets = eames__monthly_temperature_changes(
+        targets = btws__monthly_changes(
             inputs$model_future,
             inputs$model_historical
         )
@@ -349,8 +349,8 @@ eames__monthly_temperature_signal_apply_group <- function(
 
 # Define the three monthly mean/extrema stages. Sequence, hourly
 # reconstruction, physical closure, and output remain shared components.
-eames__monthly_temperature_component_specs <- function() {
-    complete_inputs <- eames__monthly_temperature_inputs()
+btws__monthly_component_specs <- function() {
+    complete_inputs <- btws__monthly_inputs()
     reference <- "https://doi.org/10.1177/01436244231218861"
     profiles <- lapply(
         c("tas", "tasmin", "tasmax"),
@@ -381,7 +381,7 @@ eames__monthly_temperature_component_specs <- function() {
             output_kinds = "monthly_mean_extrema_preprocessed",
             scopes = "multivariate",
             operations = list(
-                apply = eames__monthly_temperature_preprocess_apply
+                apply = btws__monthly_preprocess_apply
             )
         ),
         calendar = component__spec(
@@ -393,7 +393,7 @@ eames__monthly_temperature_component_specs <- function() {
             output_kinds = "calendar_indexed_monthly_temperature",
             scopes = "multivariate",
             operations = list(
-                apply = eames__monthly_temperature_calendar_apply
+                apply = btws__monthly_calendar_apply
             )
         ),
         signal = signal__component(
@@ -404,23 +404,23 @@ eames__monthly_temperature_component_specs <- function() {
             output_kinds = "daily_temperature_targets",
             scopes = "multivariate",
             profiles = profiles,
-            apply_group = eames__monthly_temperature_signal_apply_group
+            apply_group = btws__monthly_signal_apply_group
         )
     )
 }
 
 # Register the monthly mean/extrema stages once while preserving any explicit
 # process-local implementation already stored under their stable keys.
-eames__register_monthly_temperature_components <- function() {
-    component__register_builtins(eames__monthly_temperature_component_specs())
+btws__register_monthly_components <- function() {
+    component__register_builtins(btws__monthly_component_specs())
 }
 
-# Compose the Eames monthly signal with the already registered EPW sequence,
+# Compose the publication-defined monthly signal with the registered EPW sequence,
 # BTWS hourly reconstruction, humidity closure, and result writer.
-eames__monthly_temperature_pipeline <- function() {
+btws__monthly_pipeline <- function() {
     temperature__register_components()
     btws__register_hourly_component()
-    eames__register_monthly_temperature_components()
+    btws__register_monthly_components()
     pipeline__spec(list(
         preprocess = "monthly_mean_extrema_inputs",
         calendar = "monthly_mean_extrema_climatology",

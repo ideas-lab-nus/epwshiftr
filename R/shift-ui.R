@@ -303,14 +303,9 @@ shift__ui_periods <- function(periods) {
 
 # Describe the reference input without exposing matching fields or plan IDs in
 # the normal startup view; those remain available through shift_explain().
-shift__ui_reference <- function(method) {
-    reference <- method@reference
+shift__ui_reference <- function(reference) {
     if (is.null(reference)) {
-        return(if (isTRUE(morpher__recipe_accepts_reference(method@recipe))) {
-            "baseline EPW"
-        } else {
-            "no reference"
-        })
+        return("no reference")
     }
     if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
         periods_table <- data.table::as.data.table(reference@periods)
@@ -325,7 +320,7 @@ shift__ui_reference <- function(method) {
         } else {
             shift__ui_periods(periods_table)
         }
-        return(sprintf("%s %s", reference@mode, periods))
+        return(sprintf("%s %s %s", reference@role, reference@mode, periods))
     }
     if (S7::S7_inherits(reference, ShiftClimate)) {
         return("supplied climate reference")
@@ -337,7 +332,7 @@ shift__ui_reference <- function(method) {
 # events persist the next stage so a background watch does not need to rebuild
 # the scientific plan merely to explain what comes next.
 shift__ui_stage_sequence <- function(plan) {
-    reference <- plan@meta$method@reference
+    reference <- plan@meta$reference
     reference_expected <- S7::S7_inherits(reference, ShiftReferenceSpec) &&
         identical(reference@mode, "historical")
     c(
@@ -350,7 +345,7 @@ shift__ui_stage_sequence <- function(plan) {
 }
 
 # Format unresolved or explicit CMIP6 selections for the startup summary. The
-# table strategy is part of the scientific selection because enhanced Belcher
+# table strategy is part of the scientific selection because enhanced monthly
 # recipes may resolve Amon and LImon on different grids.
 shift__ui_selection <- function(plan) {
     climate <- plan@meta$climate
@@ -390,14 +385,13 @@ shift__ui_plan_summary <- function(plan, run_id, background = FALSE,
     scenarios <- shift_coalesce(shift__display_values(request$experiment), "<scenario>")
     status <- if (isTRUE(background)) "QUEUED" else "STARTING"
     output_dir <- shift_coalesce(plan@meta$epw$export_dir, "<output directory>")
-    method_label <- shift__format_morph_method(plan@meta$method@name,
-        plan@meta$method@recipe)
+    transform_label <- plan@meta$transform@label
     lines <- c(
         shift__ui_fit(sprintf("Future EPW \u00b7 %s \u00b7 %s", run_id, status), width),
         shift__ui_fit(sprintf("%s \u00b7 %s \u00b7 %s",
             model, scenarios, shift__ui_periods(plan@meta$periods)), width),
         shift__ui_fit(sprintf("%s \u00b7 %s \u00b7 %d expected output(s)",
-            method_label, shift__ui_reference(plan@meta$method),
+            transform_label, shift__ui_reference(plan@meta$reference),
             nrow(plan@meta$expected_cases)), width),
         shift__ui_prefixed_lines("Selection ", shift__ui_selection(plan),
             width),
@@ -405,7 +399,7 @@ shift__ui_plan_summary <- function(plan, run_id, background = FALSE,
     )
     if (!identical(detail, "normal")) {
         option_summary <- shift__format_options(
-            unclass(plan@meta$method@recipe$options))
+            unclass(plan@meta$transform@options))
         lines <- c(lines,
             if (!is.null(option_summary)) shift__ui_labeled_lines(
                 "Options", option_summary, width),
@@ -429,15 +423,14 @@ shift__ui_plan_context <- function(plan) {
         collapse = ", ")
     scenarios <- paste(as.character(shift_coalesce(
         request$experiment, "<scenario>")), collapse = " + ")
-    reference <- shift__ui_reference(plan@meta$method)
+    reference <- shift__ui_reference(plan@meta$reference)
     expected <- nrow(plan@meta$expected_cases)
-    method_label <- shift__format_morph_method(plan@meta$method@name,
-        plan@meta$method@recipe)
+    transform_label <- plan@meta$transform@label
     items <- c(
             model,
             scenarios,
             shift__ui_periods(plan@meta$periods),
-            sprintf("%s / %s", method_label, reference),
+            sprintf("%s / %s", transform_label, reference),
             sprintf("%d EPW%s", expected, if (expected == 1L) "" else "s")
         )
     list(
@@ -1420,14 +1413,28 @@ shift__ui_stage_sequence_from_row <- function(row) {
         current <- as.character(shift_coalesce(row$current_stage[[1L]], task))
         return(current)
     }
-    reference_mode <- as.character(shift_coalesce(
-        spec$method$reference_mode, "none"))[[1L]]
+    reference_mode <- if (is.null(spec$reference)) {
+        "none"
+    } else {
+        as.character(shift_coalesce(spec$reference$mode, "none"))[[1L]]
+    }
+    observed_reference_mode <- if (is.null(spec$observed_reference)) {
+        "none"
+    } else {
+        as.character(shift_coalesce(
+            spec$observed_reference$mode,
+            "none"
+        ))[[1L]]
+    }
     download <- as.character(shift_coalesce(spec$control$download, "auto"))[[1L]]
     c(
         "resolve",
         if (identical(download, "always")) "download",
         "extract_future",
         if (identical(reference_mode, "historical")) "extract_reference",
+        if (identical(observed_reference_mode, "historical")) {
+            "extract_observed_reference"
+        },
         "coverage", "morph", "write_epw"
     )
 }
@@ -1461,12 +1468,11 @@ shift__ui_periods_from_spec <- function(periods) {
 
 # Describe a persisted reference using only explicit values in the run spec;
 # this display helper never infers a historical reference from missing data.
-shift__ui_reference_from_spec <- function(method) {
-    mode <- as.character(shift_coalesce(method$reference_mode, "none"))[[1L]]
-    if (identical(mode, "baseline_epw")) return("baseline EPW")
+shift__ui_reference_from_spec <- function(reference) {
+    mode <- as.character(shift_coalesce(reference$mode, "none"))[[1L]]
     if (identical(mode, "none")) return("no reference")
     if (identical(mode, "historical")) {
-        periods <- shift__ui_periods_from_spec(method$reference$periods)
+        periods <- shift__ui_periods_from_spec(reference$periods)
         periods <- sub("^[^(]+ \\(", "", periods)
         periods <- sub("\\)$", "", periods)
         return(paste("historical", periods))
@@ -1505,17 +1511,14 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
         climate$model, climate$source)), collapse = ", ")
     scenarios <- paste(as.character(shift_coalesce(
         climate$scenarios, climate$experiment)), collapse = " + ")
-    method <- shift__format_morph_method(
-        shift_coalesce(spec$method$name, "method"),
-        spec$method$recipe,
-        missing_belcher_profile = "legacy")
-    reference <- shift__ui_reference_from_spec(spec$method)
+    transform <- shift_coalesce(spec$transform$method, "transform")
+    reference <- shift__ui_reference_from_spec(spec$reference)
     expected <- as.integer(cases_total)
     line <- c(
         if (nzchar(model)) model,
         if (nzchar(scenarios)) scenarios,
         shift__ui_periods_from_spec(spec$periods),
-        sprintf("%s / %s", method, reference),
+        sprintf("%s / %s", transform, reference),
         if (expected > 0L) sprintf("%d EPW%s", expected,
             if (expected == 1L) "" else "s")
     )

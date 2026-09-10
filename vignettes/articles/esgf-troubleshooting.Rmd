@@ -198,7 +198,8 @@ coverage[, .(site_id, variable_id, complete, status, output_rows, output_file_co
 
 If coverage is incomplete:
 
-- check that the requested variables match `epw_morph_variables("recommended")`;
+- check that the requested variables match the selected transform's
+  `model_future` input contract;
 - confirm each File record covers the requested morphing period;
 - inspect whether OPeNDAP access or fallback downloads failed;
 - rerun `shift_extract()` after fixing file selection or access;
@@ -206,14 +207,13 @@ If coverage is incomplete:
 
 # Multi-Table Selection and Snow Depth
 
-Enhanced Belcher recipes can combine atmospheric variables from `Amon` with
-snow depth (`snd`, metres) from `LImon`. Keep both table and grid automatic for
-the first resolution attempt:
+The enhanced monthly epwshiftr transform can combine atmospheric variables
+from `Amon` with snow depth (`snd`, metres) from `LImon`. Keep both table and
+grid automatic for the first resolution attempt:
 
 ```r
-recipe <- epw_morph_recipe("belcher")
-epw_morph_variables(recipe)
-epw_morph_variables(recipe, include_optional = TRUE)
+transform <- monthly_transform("epwshiftr")
+transform@required_inputs$model_future
 
 climate <- shift_cmip6(
     "BCC-CSM2-MR", "ssp585",
@@ -245,12 +245,9 @@ missing future/reference `snd` block resolution, or `"off"` to avoid querying
 it altogether.
 
 ```r
-required_snow <- belcher(
-    reference = historical_reference(1995:2014),
-    options = list(snow_depth = "required")
-)
+required_snow <- monthly_transform("epwshiftr", snow_depth = "required")
 
-no_snow <- belcher(options = list(snow_depth = "off"))
+no_snow <- monthly_transform("epwshiftr", snow_depth = "off")
 ```
 
 If automatic mapping is correct but a particular catalog needs a pin, override
@@ -260,11 +257,16 @@ scalar table forced across all variables.
 
 # Morphing Diagnostics
 
-Strict morphing blocks on missing recipe variables, missing baseline EPW fields,
+Strict morphing blocks on missing transform variables, missing baseline EPW fields,
 or incomplete monthly summaries.
 
 ```r
-morphed <- shift_morph(extracted, baseline = epw, strict = FALSE)
+morphed <- shift_morph(
+    extracted,
+    baseline = epw,
+    transform = monthly_transform("epwshiftr"),
+    strict = FALSE
+)
 shift_diagnostics(morphed)
 ```
 

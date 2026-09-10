@@ -318,11 +318,16 @@ epwshiftr_cli_years <- function(value) {
 # config coercion -------------------------------------------------------------
 
 epwshiftr_cli_validate_shift_config <- function(config) {
-    if (!identical(as.integer(config$version), 1L)) {
-        cli::cli_abort("Only shift workflow config version 1 is supported.")
+    if (!identical(as.integer(config$version), 2L)) {
+        cli::cli_abort("Only shift workflow config version 2 is supported.")
     }
     epwshiftr_cli_periods_from_config(config$periods, "periods")
-    epwshiftr_cli_config_method(config$method)
+    cli_shift__config_transform(config$transform)
+    cli_shift__config_reference(config$reference, "reference")
+    cli_shift__config_reference(
+        config$observed_reference,
+        "observed_reference"
+    )
     epwshiftr_cli_config_climate(config$climate)
     epwshiftr_cli_config_control(config$control)
     invisible(config)
@@ -342,8 +347,16 @@ epwshiftr_cli_config_plan <- function(config, store) {
         epw = epwshiftr_cli_config_string(config$epw),
         climate = epwshiftr_cli_config_climate(config$climate),
         periods = config$periods,
-        method = epwshiftr_cli_config_method(config$method),
+        transform = cli_shift__config_transform(config$transform),
         dir = epwshiftr_cli_config_string(config$dir),
+        reference = cli_shift__config_reference(
+            config$reference,
+            "reference"
+        ),
+        observed_reference = cli_shift__config_reference(
+            config$observed_reference,
+            "observed_reference"
+        ),
         control = epwshiftr_cli_config_control(config$control),
         store = store,
         dry_run = TRUE
@@ -351,27 +364,48 @@ epwshiftr_cli_config_plan <- function(config, store) {
 }
 
 
-# Parse only the nested reference object owned by a method. Missing references
-# remain NULL: optional-reference methods use their baseline input, while a
-# genuinely required-reference backend rejects the method during construction.
-epwshiftr_cli_config_reference <- function(reference) {
+# Parse one execution-owned reference object without attaching it to the
+# reusable transform specification.
+cli_shift__config_reference <- function(reference, field) {
+    checkmate::assert_string(field, min.chars = 1L)
     if (is.null(reference)) {
         return(NULL)
     }
 
     reference <- epwshiftr_cli_config_section(list(reference = reference), "reference")
-    mode <- epwshiftr_cli_config_choice(reference$mode, c("historical", "plan"), default = NULL)
-    if (is.null(mode)) {
-        epwshiftr_cli_usage_abort("method.reference.mode is required.")
+    modes <- if (identical(field, "observed_reference")) {
+        "plan"
+    } else {
+        c("historical", "plan")
     }
-    periods <- epwshiftr_cli_periods_from_config(reference$periods, "method.reference.periods")
+    mode <- epwshiftr_cli_config_choice(
+        reference$mode,
+        modes,
+        default = NULL
+    )
+    if (is.null(mode)) {
+        epwshiftr_cli_usage_abort(sprintf("%s.mode is required.", field))
+    }
+    periods <- epwshiftr_cli_periods_from_config(
+        reference$periods,
+        sprintf("%s.periods", field)
+    )
 
     if (identical(mode, "plan")) {
         plan_id <- epwshiftr_cli_config_character(reference$plan_id, default = NULL)
         if (is.null(plan_id)) {
-            epwshiftr_cli_usage_abort("method.reference.plan_id is required when method.reference.mode is plan.")
+            epwshiftr_cli_usage_abort(sprintf(
+                "%s.plan_id is required when %s.mode is plan.",
+                field,
+                field
+            ))
         }
-        return(shift_reference_plan(plan_id, periods))
+        role <- if (identical(field, "observed_reference")) {
+            "observed_reference"
+        } else {
+            "model_historical"
+        }
+        return(shift_reference_plan(plan_id, periods, role = role))
     }
 
     shift_reference_historical(
@@ -388,42 +422,38 @@ epwshiftr_cli_config_reference <- function(reference) {
 }
 
 
-# Construct a complete morph method and preserve the distinction between a
-# missing optional reference and an explicitly configured one.
-epwshiftr_cli_config_method <- function(config) {
-    config <- epwshiftr_cli_config_section(list(method = config), "method")
-    name <- tolower(epwshiftr_cli_config_string(config$name))
-    methods <- epwshiftr_cli_recipe_methods(config$methods)
-    profile <- epwshiftr_cli_config_string(config$profile, default = NULL)
-    policy <- epwshiftr_cli_config_string(config$policy, default = NULL)
-    registered <- name %in% epw_morph_recipes()[["name"]]
-    backend <- if (registered) {
-        epw_morph_recipe_spec(name)@backend
-    } else {
-        name
-    }
-    options <- cli_shift__recipe_options(
-        epwshiftr_cli_config_named_list(config$options),
-        backend
+# Construct one reusable transform from the same scale-specific public
+# constructors available to R callers.
+cli_shift__config_transform <- function(config) {
+    config <- epwshiftr_cli_config_section(
+        list(transform = config),
+        "transform"
     )
-    reference <- epwshiftr_cli_config_reference(config$reference)
-    if (identical(name, "belcher")) {
-        return(belcher(
-            reference = reference,
-            methods = methods,
-            profile = shift_coalesce(profile, "enhanced"),
-            options = options
-        ))
+    scale <- epwshiftr_cli_config_choice(
+        config$scale,
+        WEATHER_TRANSFORM_SCALES,
+        default = NULL
+    )
+    if (is.null(scale)) {
+        epwshiftr_cli_usage_abort("transform.scale is required.")
     }
-    shift_morph_method(
-        epw_morph_recipe(
-            name = name,
-            methods = methods,
-            profile = profile,
-            options = options,
-            policy = policy
-        ),
-        reference = reference
+    method <- tolower(epwshiftr_cli_config_string(config$method))
+    reconstruction <- epwshiftr_cli_config_string(
+        config$reconstruction,
+        default = NULL
+    )
+    options <- epwshiftr_cli_config_named_list(config$options)
+    constructor <- get(
+        paste0(scale, "_transform"),
+        mode = "function",
+        inherits = TRUE
+    )
+    do.call(
+        constructor,
+        c(
+            list(method = method, reconstruction = reconstruction),
+            options
+        )
     )
 }
 
@@ -441,7 +471,11 @@ epwshiftr_cli_config_climate <- function(config) {
         scenarios = epwshiftr_cli_config_character(config$scenarios),
         member = epwshiftr_cli_config_character(config$member, default = NULL),
         grid = epwshiftr_cli_config_string(config$grid, default = NULL),
-        frequency = epwshiftr_cli_config_string(config$frequency, default = "mon"),
+        frequency = cli_shift__variable_spec(
+            config$frequency,
+            "climate.frequency",
+            default = "mon"
+        ),
         table = cli_shift__table_spec(config$table),
         activity = epwshiftr_cli_config_string(config$activity, default = "ScenarioMIP"),
         index_nodes = epwshiftr_cli_config_character(config$index_nodes, default = NULL),
@@ -454,15 +488,24 @@ epwshiftr_cli_config_climate <- function(config) {
 # Decode either a scalar table pin or a JSON object of variable-specific table
 # overrides without flattening away object names.
 cli_shift__table_spec <- function(value) {
+    cli_shift__variable_spec(value, "climate.table", default = NULL)
+}
+
+
+# Decode either a scalar value or a JSON object of variable-specific values
+# without flattening away the variable names needed by mixed-frequency input.
+cli_shift__variable_spec <- function(value, field, default = NULL) {
+    checkmate::assert_string(field, min.chars = 1L)
     if (is.null(value)) {
-        return(NULL)
+        return(default)
     }
     if (is.list(value)) {
         nms <- names(value)
         if (is.null(nms) || any(!nzchar(nms))) {
-            epwshiftr_cli_usage_abort(
-                "climate.table must be a string or a named variable-to-table object."
-            )
+            epwshiftr_cli_usage_abort(sprintf(
+                "%s must be a string or a named variable-to-value object.",
+                field
+            ))
         }
         value <- vapply(value, epwshiftr_cli_config_string,
             character(1L))
@@ -474,9 +517,10 @@ cli_shift__table_spec <- function(value) {
         return(value[[1L]])
     }
     if (is.null(names(value)) || any(!nzchar(names(value)))) {
-        epwshiftr_cli_usage_abort(
-            "climate.table must be a string or a named variable-to-table object."
-        )
+        epwshiftr_cli_usage_abort(sprintf(
+            "%s must be a string or a named variable-to-value object.",
+            field
+        ))
     }
     value
 }
@@ -638,30 +682,6 @@ epwshiftr_cli_download_args_from_config <- function(config) {
 }
 
 
-epwshiftr_cli_recipe <- function(value = "belcher", methods = NULL,
-                                 profile = NULL, options = NULL,
-                                 policy = NULL) {
-    value <- tolower(epwshiftr_cli_config_string(value, default = "belcher"))
-    registered <- value %in% epw_morph_recipes()[["name"]]
-    if (!registered && !value %in% epw_morph_backends()) {
-        epwshiftr_cli_usage_abort(sprintf("Unknown morph recipe/backend: %s", value))
-    }
-    backend <- if (registered) {
-        epw_morph_recipe_spec(value)@backend
-    } else {
-        value
-    }
-    methods <- epwshiftr_cli_recipe_methods(methods)
-    epw_morph_recipe(
-        value,
-        methods = methods,
-        profile = profile,
-        options = cli_shift__recipe_options(options, backend),
-        policy = policy
-    )
-}
-
-
 # Coerce typed built-in recipe values accepted by command-line key/value inputs.
 # Other values remain character strings for central backend validation.
 cli_shift__recipe_options <- function(options, backend) {
@@ -673,11 +693,11 @@ cli_shift__recipe_options <- function(options, backend) {
     if (!is.list(options)) {
         options <- as.list(options)
     }
-    if (backend %in% c("belcher", "belcher_absolute") &&
+    if (backend %in% c("original_morphing", "original_morphing_absolute") &&
         "transition_hours" %in% names(options)) {
         transition_hours <- suppressWarnings(as.integer(options$transition_hours[[1L]]))
         if (is.na(transition_hours)) {
-            epwshiftr_cli_usage_abort("Belcher option transition_hours must be an integer between 0 and 336.")
+            epwshiftr_cli_usage_abort("Original morphing option transition_hours must be an integer between 0 and 336.")
         }
         options$transition_hours <- transition_hours
     }
@@ -699,7 +719,7 @@ cli_shift__recipe_options <- function(options, backend) {
     }
     if (backend %in% c(
         "daily_temperature", "daily_temperature_btws",
-        "eames_monthly_temperature", "ek_daily_temperature",
+        "btws_monthly_temperature", "ek_daily_temperature",
         "sobie_curry_daily"
     ) &&
         "tolerance" %in% names(options)) {
@@ -716,25 +736,6 @@ cli_shift__recipe_options <- function(options, backend) {
         options$tolerance <- tolerance
     }
     options
-}
-
-
-epwshiftr_cli_recipe_methods <- function(methods) {
-    if (is.null(methods) || !length(methods)) {
-        return(NULL)
-    }
-    if (is.list(methods)) {
-        if (is.null(names(methods)) || any(!nzchar(names(methods)))) {
-            epwshiftr_cli_usage_abort("morph.methods must be a named object.")
-        }
-        methods <- vapply(methods, function(x) as.character(x[[1L]]), character(1L))
-    } else {
-        methods <- as.character(methods)
-    }
-    if (is.null(names(methods)) || any(!nzchar(names(methods)))) {
-        epwshiftr_cli_usage_abort("morph.methods must be named.")
-    }
-    methods
 }
 
 
@@ -859,12 +860,13 @@ epwshiftr_cli_morpher_from_morph_id <- function(store, morph_id) {
         cli::cli_abort("Could not resolve the baseline EPW path for morph ID {.val {morph_id}}.")
     }
     epw <- store_abs_path(row$path[[1L]], root = store$path)
+    recipe <- cli_shift__recipe_from_json(row$recipe_json[[1L]])
     epw_morpher(
         store,
         epw,
         site_id = epwshiftr_cli_na_null(row$site_id[[1L]]),
         label = epwshiftr_cli_na_null(row$label[[1L]]),
-        recipe = epwshiftr_cli_recipe_from_json(row$recipe_json[[1L]])
+        transform = transform__from_recipe_object(recipe)
     )
 }
 
@@ -933,78 +935,102 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             reference_periods <- do.call(epw_morph_periods, reference_values)
         }
     }
+    observed_plan_id <- NULL
+    observed_periods <- NULL
+    if ("observed_summary_id" %in% names(row) &&
+        !is.na(row$observed_summary_id[[1L]]) &&
+        nzchar(row$observed_summary_id[[1L]])) {
+        observed <- shift_query_maybe(store, sprintf(
+            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+            shift_sql_string(row$observed_summary_id[[1L]])
+        ))
+        if (nrow(observed)) {
+            observed_plan_id <- unique(observed$plan_id)
+            observed_rows <- unique(observed[, .(period, years_json)])
+            observed_values <- lapply(seq_len(nrow(observed_rows)),
+                function(i) as.integer(jsonlite::fromJSON(
+                    observed_rows$years_json[[i]], simplifyVector = TRUE)))
+            names(observed_values) <- observed_rows$period
+            observed_periods <- do.call(epw_morph_periods, observed_values)
+        }
+    }
     by <- tryCatch(as.character(jsonlite::fromJSON(row$by_json[[1L]],
         simplifyVector = TRUE)), error = function(e) {
         c("source_id", "experiment_id", "variant_label", "period")
     })
+    recipe <- cli_shift__recipe_from_json(row$recipe_json[[1L]])
+    transform <- transform__from_recipe_object(recipe)
+    reference <- if (is.null(reference_plan_id)) {
+        NULL
+    } else {
+        shift_reference_plan(reference_plan_id, reference_periods)
+    }
+    observed_reference <- if (is.null(observed_plan_id)) {
+        NULL
+    } else {
+        shift_reference_plan(
+            observed_plan_id,
+            observed_periods,
+            role = "observed_reference"
+        )
+    }
     shift_stage_new(ShiftMorphed, "morphed", store_path = store$path,
         ids = list(plan_id = plan_id, summary_id = row$summary_id[[1L]],
             baseline_id = row$baseline_id[[1L]], morph_id = morph_id),
         meta = list(climate = climate, baseline = site,
-            recipe = epwshiftr_cli_recipe_from_json(row$recipe_json[[1L]]),
+            transform = transform,
+            recipe = recipe,
+            reference = reference,
             reference_plan_id = reference_plan_id,
             reference_periods = reference_periods,
+            observed_reference = observed_reference,
+            observed_plan_id = observed_plan_id,
+            observed_periods = observed_periods,
             by = by,
             strict = isTRUE(row$strict[[1L]])))
 }
 
 
-epwshiftr_cli_recipe_from_json <- function(json) {
-    parsed <- tryCatch(jsonlite::fromJSON(json, simplifyVector = TRUE), error = function(e) NULL)
-    if (is.null(parsed) || is.null(parsed$name)) {
-        return(epw_morph_recipe("belcher"))
-    }
-    backend <- if (is.null(parsed$backend)) parsed$name else parsed$backend
-    is_belcher <- backend %in% c("belcher", "belcher_absolute")
-    # Records written before profiles existed remain on the historical
-    # numerical path instead of adopting enhanced defaults during recovery.
-    profile <- if (is.null(parsed$profile)) {
-        if (is_belcher) "legacy" else "default"
-    } else {
-        parsed$profile
-    }
-    methods <- parsed$methods
-    if (is.list(methods) && !is.data.frame(methods)) {
-        methods <- unlist(methods, use.names = TRUE)
-    }
-    # Pre-profile recipe JSON encoded the full named vector as an unnamed
-    # array. Recover those positions from the backend method contract; newer
-    # records use a named JSON object and do not enter this compatibility path.
-    if (!is.null(methods) && (is.null(names(methods)) || any(!nzchar(names(methods))))) {
-        backend_spec <- suppressWarnings(epw_morph_backend(backend))
-        defaults <- if (is_belcher) {
-            morpher__belcher_profile_methods(backend_spec, profile)
-        } else {
-            backend_spec$methods()
-        }
-        if (length(methods) == length(defaults)) {
-            names(methods) <- names(defaults)
-        } else {
-            methods <- NULL
-        }
-    }
-    epw_morph_recipe(
-        parsed$name,
-        backend = backend,
-        methods = methods,
-        profile = profile,
-        options = cli_shift__recipe_options(parsed$options, backend),
-        policy = if (is.null(parsed$policy)) {
-            NULL
-        } else {
-            as.character(parsed$policy)
-        },
-        version = if (is.null(parsed$recipe_version)) {
-            NULL
-        } else {
-            as.integer(parsed$recipe_version)
-        },
-        spec = if (is.null(parsed$recipe_spec)) {
-            NULL
-        } else {
-            as.character(parsed$recipe_spec)
-        }
+# Restore only the canonical recipe identity written by the current transform
+# API. Older profile/method-array payloads are intentionally not inferred.
+cli_shift__recipe_from_json <- function(json) {
+    parsed <- tryCatch(
+        jsonlite::fromJSON(json, simplifyVector = TRUE),
+        error = function(error) NULL
     )
+    required <- c(
+        "name",
+        "recipe_spec",
+        "recipe_version",
+        "policy",
+        "options"
+    )
+    if (is.null(parsed) || !is.list(parsed) ||
+        length(setdiff(required, names(parsed)))) {
+        cli::cli_abort(c(
+            "Persisted morph plan uses an unsupported recipe schema.",
+            "i" = "Create a new plan with the weather transform API."
+        ))
+    }
+
+    recipe_name <- as.character(parsed$recipe_spec)
+    if (!identical(as.character(parsed$name), recipe_name)) {
+        cli::cli_abort(
+            "Persisted morph plan does not identify one canonical recipe."
+        )
+    }
+    recipe <- epw_morph_recipe(
+        recipe_name,
+        version = as.integer(parsed$recipe_version),
+        options = shift_coalesce(parsed$options, list())
+    )
+    if (!identical(as.character(parsed$policy), recipe$policy)) {
+        cli::cli_abort(c(
+            "Persisted morph plan uses a non-canonical physical policy.",
+            "i" = "Create a new plan with the current weather transform registry."
+        ))
+    }
+    recipe
 }
 
 

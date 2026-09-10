@@ -1,16 +1,16 @@
 #' @include weather-temperature.R
 NULL
 
-# Arima month-wise temperature workflow {{{
+# Quantile-mapping morphing for temperature {{{
 
-# The first Arima implementation isolates the published additive temperature
+# Quantile-mapping morphing isolates the published additive temperature
 # path. Other variables use different additive or multiplicative equations and
 # require their own units, zero handling, and hourly aggregation contracts.
-EPW_MORPH_ARIMA_TEMPERATURE_METHODS <- c(tdb = "percentile_additive")
+EPW_MORPH_QUANTILE_MAPPING_TEMPERATURE_METHODS <- c(tdb = "percentile_additive")
 
 # Dry-bulb temperature consumes daily mean tas. Humidity fields are preserved
 # or physically closed after the same daily factor reaches every hourly row.
-EPW_MORPH_ARIMA_TEMPERATURE_RULES <- data.table::data.table(
+EPW_MORPH_QUANTILE_MAPPING_TEMPERATURE_RULES <- data.table::data.table(
     step = c("tdb", "rh", "tdew"),
     epw_field = c(
         "dry_bulb_temperature",
@@ -25,28 +25,28 @@ EPW_MORPH_ARIMA_TEMPERATURE_RULES <- data.table::data.table(
     method_choices = list("percentile_additive", "policy", "policy")
 )
 
-# Arima fixes the change-function smoother at a nine-point moving mean repeated
+# The published workflow fixes the smoother at a nine-point moving mean repeated
 # three times. Only shared deterministic output policies remain configurable.
-EPW_MORPH_ARIMA_TEMPERATURE_OPTIONS <- EPW_MORPH_TEMPERATURE_OPTIONS
+EPW_MORPH_QUANTILE_MAPPING_TEMPERATURE_OPTIONS <- EPW_MORPH_TEMPERATURE_OPTIONS
 
 # These numerical conventions are explicit implementation choices because the
 # publications define inverse CDFs but not an empirical quantile algorithm.
-EPW_MORPH_ARIMA_QUANTILE_TYPE <- 7L
-EPW_MORPH_ARIMA_SMOOTHING_WINDOW <- 9L
-EPW_MORPH_ARIMA_SMOOTHING_PASSES <- 3L
+EPW_MORPH_QUANTILE_MAPPING_QUANTILE_TYPE <- 7L
+EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW <- 9L
+EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_PASSES <- 3L
 
-# Validate the JSON-safe options used by foreground and resumed Arima recipes.
-arima__temperature_options <- function(options = NULL) {
+# Validate JSON-safe options used by foreground and resumed method recipes.
+quantile_mapping_morphing__temperature_options <- function(options = NULL) {
     temperature__backend_options(
         options,
-        defaults = EPW_MORPH_ARIMA_TEMPERATURE_OPTIONS,
-        label = "Arima temperature"
+        defaults = EPW_MORPH_QUANTILE_MAPPING_TEMPERATURE_OPTIONS,
+        label = "Quantile-mapping morphing"
     )
 }
 
 # Declare the TMY, historical model, future model, and observed daily inputs
-# required by the Arima percentile-transfer workflow.
-arima__temperature_inputs <- function() {
+# required by the quantile-mapping morphing workflow.
+quantile_mapping_morphing__temperature_inputs <- function() {
     list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -77,14 +77,14 @@ arima__temperature_inputs <- function() {
 
 # Normalize one daily temperature source and retain only the month-wise samples
 # used by the published CDF construction.
-arima__temperature_series <- function(data, name) {
+quantile_mapping_morphing__temperature_series <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
     required <- c("variable_id", "value", "units", "frequency")
     missing <- setdiff(required, names(data))
     if (length(missing)) {
         cli::cli_abort(
-            "{.arg {name}} is missing Arima daily temperature column{?s}: {.val {missing}}."
+            "{.arg {name}} is missing a daily temperature column required by quantile-mapping morphing: {.val {missing}}."
         )
     }
     frequencies <- unique(tolower(as.character(data[["frequency"]])))
@@ -135,7 +135,7 @@ arima__temperature_series <- function(data, name) {
 
 # Reduce the hourly TMY to one daily mean while preserving the target-day and
 # calendar-month keys needed to return a factor to all 24 hours.
-arima__baseline_days <- function(baseline) {
+quantile_mapping_morphing__baseline_days <- function(baseline) {
     template <- data.table::copy(baseline$template)
     data.table::set(
         template,
@@ -157,7 +157,7 @@ arima__baseline_days <- function(baseline) {
         any(lengths(days[["month"]]) != 1L) ||
         any(!is.finite(days[["baseline_daily_mean"]]))) {
         cli::cli_abort(
-            "Arima temperature requires one finite daily mean for every baseline EPW day."
+            "Quantile-mapping morphing requires one finite daily mean for every baseline EPW day."
         )
     }
     days[, month := as.integer(unlist(month))]
@@ -168,9 +168,9 @@ arima__baseline_days <- function(baseline) {
 # Apply one pass of the paper's endpoint-aware nine-point moving mean. Interior
 # ranks use centered windows; the four ranks at either end use the fixed mean
 # of the nearest nine ranks rather than a shorter or circular window.
-arima__smooth_pass <- function(
+quantile_mapping_morphing__smooth_pass <- function(
     value,
-    window = EPW_MORPH_ARIMA_SMOOTHING_WINDOW
+    window = EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW
 ) {
     checkmate::assert_numeric(
         value,
@@ -180,7 +180,7 @@ arima__smooth_pass <- function(
     checkmate::assert_int(window, lower = 1L)
     if (window %% 2L != 1L || length(value) < window) {
         cli::cli_abort(
-            "Arima smoothing requires an odd window no longer than the percentile change function."
+            "Quantile-mapping morphing requires an odd smoothing window no longer than the percentile change function."
         )
     }
 
@@ -198,15 +198,15 @@ arima__smooth_pass <- function(
 
 # Repeat the endpoint-aware moving mean exactly three times, matching the KZ-
 # like smoothing procedure documented by Arima et al.
-arima__smooth_change <- function(
+quantile_mapping_morphing__smooth_change <- function(
     value,
-    window = EPW_MORPH_ARIMA_SMOOTHING_WINDOW,
-    passes = EPW_MORPH_ARIMA_SMOOTHING_PASSES
+    window = EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW,
+    passes = EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_PASSES
 ) {
     checkmate::assert_int(passes, lower = 1L)
     out <- as.numeric(value)
     for (pass in seq_len(passes)) {
-        out <- arima__smooth_pass(out, window)
+        out <- quantile_mapping_morphing__smooth_pass(out, window)
     }
     out
 }
@@ -214,10 +214,10 @@ arima__smooth_change <- function(
 # Construct one empirical inverse-CDF change function per calendar month. A
 # common midpoint probability grid permits unequal native-calendar sample
 # counts while keeping historical and future quantiles directly comparable.
-arima__change_functions <- function(
+quantile_mapping_morphing__change_functions <- function(
     historical,
     future,
-    quantile_type = EPW_MORPH_ARIMA_QUANTILE_TYPE
+    quantile_type = EPW_MORPH_QUANTILE_MAPPING_QUANTILE_TYPE
 ) {
     checkmate::assert_data_frame(historical)
     checkmate::assert_data_frame(future)
@@ -235,9 +235,9 @@ arima__change_functions <- function(
         n_historical <- length(historical_value)
         n_future <- length(future_value)
         n_common <- min(n_historical, n_future)
-        if (n_common < EPW_MORPH_ARIMA_SMOOTHING_WINDOW) {
+        if (n_common < EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW) {
             cli::cli_abort(
-                "Arima temperature requires at least {EPW_MORPH_ARIMA_SMOOTHING_WINDOW} historical and future daily values in month {month}."
+                "Quantile-mapping morphing requires at least {EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW} historical and future daily values in month {month}."
             )
         }
 
@@ -264,7 +264,7 @@ arima__change_functions <- function(
             historical_quantile = historical_quantile,
             future_quantile = future_quantile,
             raw_delta = raw_delta,
-            smoothed_delta = arima__smooth_change(raw_delta),
+            smoothed_delta = quantile_mapping_morphing__smooth_change(raw_delta),
             n_historical = n_historical,
             n_future = n_future,
             n_common = n_common
@@ -275,7 +275,7 @@ arima__change_functions <- function(
 
 # Evaluate the observed monthly empirical CDF at each baseline TMY daily mean,
 # then interpolate the smoothed model change function at that percentile.
-arima__daily_factors <- function(baseline_days, observed, functions) {
+quantile_mapping_morphing__daily_factors <- function(baseline_days, observed, functions) {
     checkmate::assert_data_frame(baseline_days)
     checkmate::assert_data_frame(observed)
     checkmate::assert_data_frame(functions)
@@ -289,7 +289,7 @@ arima__daily_factors <- function(baseline_days, observed, functions) {
         ][[1L]]
         if (!length(observed_value)) {
             cli::cli_abort(
-                "Arima temperature requires observed daily values in month {month}."
+                "Quantile-mapping morphing requires observed daily values in month {month}."
             )
         }
         percentile <- mean(
@@ -321,24 +321,24 @@ arima__daily_factors <- function(baseline_days, observed, functions) {
 
 # Normalize all four role-addressable inputs before any CDF or percentile
 # interpretation occurs.
-arima__preprocess_apply <- function(inputs, context, options) {
+quantile_mapping_morphing__preprocess_apply <- function(inputs, context, options) {
     morpher__validate_context(context)
-    options <- arima__temperature_options(options)
+    options <- quantile_mapping_morphing__temperature_options(options)
     template <- weather__get_input(inputs, "weather_template")
     historical <- weather__get_input(inputs, "model_historical")
     future <- weather__get_input(inputs, "model_future")
     observed <- weather__get_input(inputs, "observed_reference")
     list(
         baseline = temperature__epw_template(template@source),
-        historical = arima__temperature_series(
+        historical = quantile_mapping_morphing__temperature_series(
             historical@source,
             "historical model climate"
         ),
-        future = arima__temperature_series(
+        future = quantile_mapping_morphing__temperature_series(
             future@source,
             "future model climate"
         ),
-        observed = arima__temperature_series(
+        observed = quantile_mapping_morphing__temperature_series(
             observed@source,
             "observed reference weather"
         ),
@@ -347,9 +347,9 @@ arima__preprocess_apply <- function(inputs, context, options) {
 }
 
 # Keep source calendars native and reduce them to monthly distributions. This
-# is the Arima method's calendar strategy: it never pairs model calendar dates
+# is the method's calendar strategy: it never pairs model calendar dates
 # directly with the 365 baseline EPW dates.
-arima__calendar_apply <- function(data, inputs, context, options) {
+quantile_mapping_morphing__calendar_apply <- function(data, inputs, context, options) {
     list(signal__group(
         inputs = list(
             weather_template = data$baseline,
@@ -363,16 +363,16 @@ arima__calendar_apply <- function(data, inputs, context, options) {
 
 # Calculate the month-wise change functions and select one additive factor for
 # every baseline EPW day from its observed-reference percentile.
-arima__signal_apply_group <- function(inputs, settings, key) {
-    functions <- arima__change_functions(
+quantile_mapping_morphing__signal_apply_group <- function(inputs, settings, key) {
+    functions <- quantile_mapping_morphing__change_functions(
         inputs$model_historical,
         inputs$model_future
     )
-    baseline_days <- arima__baseline_days(inputs$weather_template)
+    baseline_days <- quantile_mapping_morphing__baseline_days(inputs$weather_template)
     list(
         baseline = inputs$weather_template,
         functions = functions,
-        factors = arima__daily_factors(
+        factors = quantile_mapping_morphing__daily_factors(
             baseline_days,
             inputs$observed_reference,
             functions
@@ -382,14 +382,14 @@ arima__signal_apply_group <- function(inputs, settings, key) {
 
 # Preserve the original TMY day sequence instead of sampling or reordering
 # events after the percentile-dependent climate signal has been estimated.
-arima__sequence_generate <- function(data, inputs, context, options) {
-    signal__single_value(data, "Arima")
+quantile_mapping_morphing__sequence_generate <- function(data, inputs, context, options) {
+    signal__single_value(data, "quantile-mapping morphing")
 }
 
 # Apply each daily additive factor to all 24 TMY hours as specified by Arima
 # equation (4)/(7), retaining the original hourly temperature profile shape.
-arima__hourly_reconstruct <- function(data, inputs, context, options) {
-    options <- arima__temperature_options(options)
+quantile_mapping_morphing__hourly_reconstruct <- function(data, inputs, context, options) {
+    options <- quantile_mapping_morphing__temperature_options(options)
     baseline <- data$baseline
     template <- data.table::copy(baseline$template)
     factors <- data.table::copy(data$factors)
@@ -399,7 +399,7 @@ arima__hourly_reconstruct <- function(data, inputs, context, options) {
     )
     if (anyNA(factor_index)) {
         cli::cli_abort(
-            "Arima factors must cover every baseline EPW target day."
+            "Quantile-mapping morphing factors must cover every baseline EPW target day."
         )
     }
     temperature_delta <- factors[["temperature_delta"]][factor_index]
@@ -434,8 +434,8 @@ arima__hourly_reconstruct <- function(data, inputs, context, options) {
 }
 
 # Apply either paper-faithful humidity preservation or the package's shared
-# specific-humidity closure without changing the Arima climate signal.
-arima__physics_apply <- function(data, inputs, context, options) {
+# specific-humidity closure without changing the quantile-mapping climate signal.
+quantile_mapping_morphing__physics_apply <- function(data, inputs, context, options) {
     policy <- context$recipe$policy
     checkmate::assert_choice(
         policy,
@@ -450,25 +450,25 @@ arima__physics_apply <- function(data, inputs, context, options) {
         template = baseline$weather,
         temperature = hourly[["temperature_projected"]],
         policy = epwphys__recipe_policy(context$recipe),
-        adapter = "arima_temperature"
+        adapter = "quantile_mapping_morphing"
     )
     weather <- data.table::copy(physical@weather)
     moisture <- physical@state$humidity
 
     diagnostic_values <- list(
-        arima_target_day = hourly[["target_day"]],
-        arima_observed_percentile = hourly[["observed_percentile"]],
-        arima_temperature_delta = hourly[["temperature_delta"]],
-        arima_percentile_clamped = hourly[["percentile_clamped"]]
+        quantile_mapping_morphing_target_day = hourly[["target_day"]],
+        quantile_mapping_morphing_observed_percentile = hourly[["observed_percentile"]],
+        quantile_mapping_morphing_delta = hourly[["temperature_delta"]],
+        quantile_mapping_morphing_percentile_clamped = hourly[["percentile_clamped"]]
     )
     if (identical(policy, "harmonized")) {
         diagnostic_values <- c(
             diagnostic_values,
             list(
-                arima_baseline_specific_humidity =
+                quantile_mapping_morphing_baseline_specific_humidity =
                     moisture$baseline_specific_humidity,
-                arima_specific_humidity = moisture$specific_humidity,
-                arima_humidity_closure_status = moisture$status
+                quantile_mapping_morphing_specific_humidity = moisture$specific_humidity,
+                quantile_mapping_morphing_humidity_closure_status = moisture$status
             )
         )
     }
@@ -484,28 +484,28 @@ arima__physics_apply <- function(data, inputs, context, options) {
         diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
             stage = "runtime",
             severity = "info",
-            code = "arima_percentile_endpoint_clamped",
+            code = "quantile_mapping_morphing_percentile_endpoint_clamped",
             message = sprintf(
-                "Arima clamped %d baseline day percentile(s) to the empirical model change-function endpoints.",
+                "Quantile-mapping morphing clamped %d baseline day percentile(s) to the empirical model change-function endpoints.",
                 sum(clamped)
             ),
             variable_id = "tas",
             epw_field = "dry_bulb_temperature",
-            action = "Inspect arima_observed_percentile and arima_percentile_clamped."
+            action = "Inspect quantile_mapping_morphing_observed_percentile and quantile_mapping_morphing_percentile_clamped."
         )
     }
     if (identical(policy, "paper_faithful")) {
         # The physical policy already diagnoses unchanged humidity fields
-        # against projected temperature; retain only Arima's diagnostic text.
+        # against projected temperature; retain only the method diagnostic text.
         invalid <- physical@corrections$humidity_inconsistent
         if (invalid > 0L) {
             diagnostics[[length(diagnostics) + 1L]] <-
                 morpher__diagnostic(
                     stage = "runtime",
                     severity = "warning",
-                    code = "arima_temperature_only_state_not_closed",
+                    code = "quantile_mapping_morphing_only_state_not_closed",
                     message = sprintf(
-                        "The Arima paper-faithful mode left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
+                        "The paper-faithful quantile-mapping morphing mode left %d hourly humidity state(s) inconsistent with projected dry-bulb temperature.",
                         invalid
                     ),
                     epw_field = paste(
@@ -526,13 +526,13 @@ arima__physics_apply <- function(data, inputs, context, options) {
                 morpher__diagnostic(
                     stage = "runtime",
                     severity = "info",
-                    code = "arima_humidity_saturation_clipped",
+                    code = "quantile_mapping_morphing_humidity_saturation_clipped",
                     message = sprintf(
-                        "Arima harmonized closure clipped %d hourly moisture state(s) to saturation.",
+                        "Quantile-mapping morphing harmonized closure clipped %d hourly moisture state(s) to saturation.",
                         clipped
                     ),
                     epw_field = "dew_point_temperature,relative_humidity",
-                    action = "Inspect arima_humidity_closure_status."
+                    action = "Inspect quantile_mapping_morphing_humidity_closure_status."
                 )
         }
     }
@@ -540,11 +540,11 @@ arima__physics_apply <- function(data, inputs, context, options) {
     settings <- list(
         distributions = "calendar-month empirical CDFs",
         probability_grid = "midpoint ranks on min(n_historical, n_future)",
-        quantile_type = EPW_MORPH_ARIMA_QUANTILE_TYPE,
+        quantile_type = EPW_MORPH_QUANTILE_MAPPING_QUANTILE_TYPE,
         smoothing = paste(
-            EPW_MORPH_ARIMA_SMOOTHING_WINDOW,
+            EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW,
             "point moving mean repeated",
-            EPW_MORPH_ARIMA_SMOOTHING_PASSES,
+            EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_PASSES,
             "times with fixed endpoint means"
         ),
         observed_percentile = "empirical CDF P(observed <= TMY daily mean)",
@@ -570,7 +570,7 @@ arima__physics_apply <- function(data, inputs, context, options) {
 
 # Return the common result while retaining raw/smoothed change functions,
 # selected daily factors, and empirical-CDF conventions as inspectable parts.
-arima__output_write <- function(data, inputs, context, options, stages) {
+quantile_mapping_morphing__output_write <- function(data, inputs, context, options, stages) {
     epw_morph_result(
         context,
         epw = data$epw,
@@ -588,8 +588,8 @@ arima__output_write <- function(data, inputs, context, options, stages) {
 
 # Define seven method-neutral stages so the monthly percentile-change signal
 # and inherited hourly sequence remain independently inspectable and reusable.
-arima__component_specs <- function() {
-    complete_inputs <- arima__temperature_inputs()
+quantile_mapping_morphing__component_specs <- function() {
+    complete_inputs <- quantile_mapping_morphing__temperature_inputs()
     template <- complete_inputs$weather_template
     reference <- "https://doi.org/10.69357/asim2024.1178"
     profile <- signal__variable_profile(
@@ -603,24 +603,24 @@ arima__component_specs <- function() {
     )
     list(
         preprocess = component__spec(
-            name = "monthly_percentile_temperature_inputs",
+            name = "quantile_mapping_morphing_daily_inputs",
             stage = "preprocess",
             label = "Monthly percentile-temperature input normalization",
             required_inputs = complete_inputs,
             input_kinds = "role_inputs",
-            output_kinds = "monthly_percentile_temperature_preprocessed",
+            output_kinds = "quantile_mapping_morphing_daily_preprocessed",
             scopes = "multivariate",
-            operations = list(apply = arima__preprocess_apply)
+            operations = list(apply = quantile_mapping_morphing__preprocess_apply)
         ),
         calendar = component__spec(
             name = "monthly_temperature_distributions",
             stage = "calendar",
             label = "Native-calendar monthly temperature distributions",
             required_inputs = complete_inputs,
-            input_kinds = "monthly_percentile_temperature_preprocessed",
+            input_kinds = "quantile_mapping_morphing_daily_preprocessed",
             output_kinds = "monthly_temperature_samples",
             scopes = "multivariate",
-            operations = list(apply = arima__calendar_apply)
+            operations = list(apply = quantile_mapping_morphing__calendar_apply)
         ),
         signal = signal__component(
             name = "percentile_temperature_change_function",
@@ -630,7 +630,7 @@ arima__component_specs <- function() {
             output_kinds = "daily_percentile_temperature_factors",
             scopes = "multivariate",
             profiles = list(profile),
-            apply_group = arima__signal_apply_group
+            apply_group = quantile_mapping_morphing__signal_apply_group
         ),
         sequence = component__spec(
             name = "preserve_percentile_tmy_sequence",
@@ -640,7 +640,7 @@ arima__component_specs <- function() {
             input_kinds = "daily_percentile_temperature_factors",
             output_kinds = "percentile_temperature_sequence",
             scopes = "multivariate",
-            operations = list(generate = arima__sequence_generate)
+            operations = list(generate = quantile_mapping_morphing__sequence_generate)
         ),
         hourly = component__spec(
             name = "daily_percentile_temperature_shift",
@@ -650,7 +650,7 @@ arima__component_specs <- function() {
             input_kinds = "percentile_temperature_sequence",
             output_kinds = "percentile_temperature_hourly",
             scopes = "multivariate",
-            operations = list(reconstruct = arima__hourly_reconstruct)
+            operations = list(reconstruct = quantile_mapping_morphing__hourly_reconstruct)
         ),
         physics = component__spec(
             name = "percentile_temperature_physical_policy",
@@ -660,7 +660,7 @@ arima__component_specs <- function() {
             input_kinds = "percentile_temperature_hourly",
             output_kinds = "percentile_temperature_weather",
             scopes = "multivariate",
-            operations = list(apply = arima__physics_apply),
+            operations = list(apply = quantile_mapping_morphing__physics_apply),
             metadata = list(
                 physical_policies = c(
                     "preserve_humidity_fields",
@@ -676,23 +676,23 @@ arima__component_specs <- function() {
             input_kinds = "percentile_temperature_weather",
             output_kinds = "epw_morph_result",
             scopes = "multivariate",
-            operations = list(write = arima__output_write)
+            operations = list(write = quantile_mapping_morphing__output_write)
         )
     )
 }
 
 # Register the monthly percentile-temperature components once without replacing
 # process-local implementations already stored under the same stable keys.
-arima__register_components <- function() {
-    component__register_builtins(arima__component_specs())
+quantile_mapping_morphing__register_components <- function() {
+    component__register_builtins(quantile_mapping_morphing__component_specs())
 }
 
-# Compose the temperature-focused Arima recipe from method-neutral stages while
-# retaining its publication identity at the complete-recipe boundary.
-arima__pipeline <- function() {
-    arima__register_components()
+# Compose the temperature-focused quantile-mapping recipe from method-neutral
+# stages while retaining its publication citation at the recipe boundary.
+quantile_mapping_morphing__pipeline <- function() {
+    quantile_mapping_morphing__register_components()
     pipeline__spec(list(
-        preprocess = "monthly_percentile_temperature_inputs",
+        preprocess = "quantile_mapping_morphing_daily_inputs",
         calendar = "monthly_temperature_distributions",
         signal = "percentile_temperature_change_function",
         sequence = "preserve_percentile_tmy_sequence",

@@ -1,4 +1,4 @@
-#' @include store.R epw-morph-recipe.R epw-morph-context.R backend-belcher.R utils.R
+#' @include store.R weather-transform.R epw-morph-context.R backend-original-morphing.R utils.R
 NULL
 
 # Store-native EPW morpher {{{
@@ -9,13 +9,42 @@ NULL
 #' @param epw Baseline EPW path, internal `EpwFile`, or an external object
 #'   inheriting from `"Epw"`.
 #' @param site_id Optional site identifier.
-#' @param recipe EPW morphing recipe.
+#' @param transform A reusable weather transformation created by
+#'   [monthly_transform()], [daily_transform()], or [hourly_transform()].
 #' @param label Optional source label.
 #'
 #' @return An [EpwMorpher] object.
 #' @export
-epw_morpher <- function(store, epw, site_id = NULL, recipe = epw_morph_recipe("belcher"), label = NULL) {
-    EpwMorpher$new(store = store, epw = epw, site_id = site_id, recipe = recipe, label = label)
+epw_morpher <- function(store, epw, site_id = NULL,
+                        transform = monthly_transform("original_morphing"),
+                        label = NULL) {
+    EpwMorpher$new(
+        store = store,
+        epw = epw,
+        site_id = site_id,
+        transform = transform,
+        label = label
+    )
+}
+
+# Construct an internal morpher from an executable recipe for backend and
+# component tests that intentionally exercise non-public registry extensions.
+morpher__from_recipe <- function(store, epw, recipe, site_id = NULL,
+                                 label = NULL) {
+    if (!inherits(recipe, "epw_morph_recipe")) {
+        cli::cli_abort("{.arg recipe} must be an internal EPW morph recipe.")
+    }
+    object <- EpwMorpher$new(
+        store = store,
+        epw = epw,
+        site_id = site_id,
+        transform = monthly_transform("original_morphing"),
+        label = label
+    )
+    private <- priv(object)
+    private$transform <- NULL
+    private$recipe <- recipe
+    object
 }
 
 morpher__now <- function() {
@@ -308,12 +337,21 @@ EpwMorpher <- R6::R6Class(
         #' @param epw Baseline EPW path, internal `EpwFile`, or an external
         #'   object inheriting from `"Epw"`.
         #' @param site_id Optional site identifier.
-        #' @param recipe EPW morphing recipe.
+        #' @param transform A reusable weather transformation created by a
+        #'   scale-specific transform constructor.
         #' @param label Optional source label.
-        initialize = function(store, epw, site_id = NULL, recipe = epw_morph_recipe("belcher"), label = NULL) {
+        initialize = function(store, epw, site_id = NULL,
+                              transform = monthly_transform("original_morphing"),
+                              label = NULL) {
+            if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
+                cli::cli_abort(
+                    "{.arg transform} must be a {.cls WeatherTransformSpec}."
+                )
+            }
             private$store <- store
             private$store_private <- morpher__private_store(store)
-            private$recipe <- recipe
+            private$transform <- transform
+            private$recipe <- transform__recipe(transform)
             checkmate::assert_string(site_id, null.ok = TRUE)
             checkmate::assert_string(label, null.ok = TRUE)
             private$site_id <- site_id
@@ -324,7 +362,7 @@ EpwMorpher <- R6::R6Class(
         },
 
         #' @description
-        #' Return recipe-required CMIP variable IDs.
+        #' Return transform-required CMIP variable IDs.
         required_variables = function() {
             epw_morph_variables(private$recipe)
         },
@@ -1614,6 +1652,7 @@ EpwMorpher <- R6::R6Class(
         epw_id = NULL,
         site_id = NULL,
         label = NULL,
+        transform = NULL,
         recipe = NULL,
 
         # Build one stable user-facing label from the scientific case identity,

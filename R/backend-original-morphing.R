@@ -1,9 +1,9 @@
 #' @include backend-registry.R epw-morph-context.R epw-physics.R weather-solar.R
 NULL
 
-# Belcher backends {{{
+# Original morphing backends {{{
 
-EPW_MORPH_BELCHER_METHOD_DEFAULTS <- c(
+EPW_MORPH_ORIGINAL_METHOD_DEFAULTS <- c(
     tdb = "stretch",
     rh = "stretch",
     p = "stretch",
@@ -12,7 +12,7 @@ EPW_MORPH_BELCHER_METHOD_DEFAULTS <- c(
     wind = "stretch"
 )
 
-EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS <- c(
+EPW_MORPH_ORIGINAL_CHANGE_FACTOR_METHOD_DEFAULTS <- c(
     tdb = "shift",
     rh = "shift",
     p = "shift",
@@ -21,30 +21,34 @@ EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS <- c(
     wind = "stretch"
 )
 
-EPW_MORPH_BELCHER_METHOD_CHOICES <- c("shift", "stretch", "combined")
+EPW_MORPH_ORIGINAL_METHOD_CHOICES <- c("shift", "stretch", "combined")
 
 # Profiles make the numerical compatibility boundary explicit. The legacy
-# defaults reproduce the historical calculation path, while enhanced enables
-# the guarded temperature method and the standards-based post-process.
-EPW_MORPH_BELCHER_PROFILES <- c("enhanced", "legacy")
-EPW_MORPH_BELCHER_PROFILE_METHODS <- list(
+# profile retains the published independent-field handling while using the
+# publication's combined mean-and-diurnal-range temperature transformation;
+# enhanced adds guarded fallbacks and the standards-based post-process.
+EPW_MORPH_ORIGINAL_PROFILES <- c("enhanced", "legacy")
+EPW_MORPH_ORIGINAL_PROFILE_METHODS <- list(
     enhanced = utils::modifyList(
-        as.list(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS),
+        as.list(EPW_MORPH_ORIGINAL_CHANGE_FACTOR_METHOD_DEFAULTS),
         list(tdb = "auto")
     ),
-    legacy = as.list(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS)
+    legacy = utils::modifyList(
+        as.list(EPW_MORPH_ORIGINAL_CHANGE_FACTOR_METHOD_DEFAULTS),
+        list(tdb = "combined")
+    )
 )
-EPW_MORPH_BELCHER_ABSOLUTE_PROFILE_METHODS <- list(
+EPW_MORPH_ORIGINAL_ABSOLUTE_PROFILE_METHODS <- list(
     enhanced = utils::modifyList(
-        as.list(EPW_MORPH_BELCHER_METHOD_DEFAULTS),
+        as.list(EPW_MORPH_ORIGINAL_METHOD_DEFAULTS),
         list(tdb = "auto")
     ),
-    legacy = as.list(EPW_MORPH_BELCHER_METHOD_DEFAULTS)
+    legacy = as.list(EPW_MORPH_ORIGINAL_METHOD_DEFAULTS)
 )
 
 # Each profile owns a complete option set so recipe JSON never depends on
 # process-global defaults when a queued or resumed task is reconstructed.
-EPW_MORPH_BELCHER_PROFILE_OPTIONS <- list(
+EPW_MORPH_ORIGINAL_PROFILE_OPTIONS <- list(
     enhanced = list(
         transition_hours = 72L,
         humidity_source = "auto",
@@ -67,7 +71,7 @@ EPW_MORPH_BELCHER_PROFILE_OPTIONS <- list(
     )
 )
 
-EPW_MORPH_BELCHER_OPTION_CHOICES <- list(
+EPW_MORPH_ORIGINAL_OPTION_CHOICES <- list(
     humidity_source = c("auto", "huss", "hurs"),
     diffuse_model = c("rbl_2010", "preserve_fraction"),
     illuminance_model = c("perez_1990", "preserve"),
@@ -77,7 +81,10 @@ EPW_MORPH_BELCHER_OPTION_CHOICES <- list(
     design_conditions = c("drop", "preserve")
 )
 
-EPW_MORPH_BELCHER_RULES <- data.table::data.table(
+# This table is the single source for original-morphing field requirements and
+# choices. Snow depth remains optional; recipe options decide whether it is
+# queried, required, or disabled.
+EPW_MORPH_ORIGINAL_RULES <- data.table::data.table(
     step = c(
         "tdb",
         "rh",
@@ -87,6 +94,7 @@ EPW_MORPH_BELCHER_RULES <- data.table::data.table(
         "wind",
         "total_cover",
         "precip",
+        "snow_depth",
         "tdew",
         "diff_rad",
         "norm_rad",
@@ -102,58 +110,42 @@ EPW_MORPH_BELCHER_RULES <- data.table::data.table(
         "wind_speed",
         "total_sky_cover",
         "liquid_precip_depth",
+        "snow_depth",
         "dew_point_temperature",
         "diffuse_horizontal_radiation",
         "direct_normal_radiation",
         "opaque_sky_cover",
         "liquid_precip_rate"
     ),
-    variable_id = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_),
-    optional_variable_id = c("tasmax,tasmin", "hursmax,hursmin", NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_, NA_character_),
-    method = c(EPW_MORPH_BELCHER_METHOD_DEFAULTS, "sky_cover", "precipitation", "derived", "derived", "derived", "derived", "derived"),
-    required = c(rep(TRUE, 8L), rep(FALSE, 5L)),
-    derived = c(rep(FALSE, 8L), rep(TRUE, 5L))
+    variable_id = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", "snd", rep(NA_character_, 5L)),
+    optional_variable_id = c("tasmax,tasmin", "hursmax,hursmin", rep(NA_character_, 12L)),
+    method = c(EPW_MORPH_ORIGINAL_METHOD_DEFAULTS, "sky_cover", "precipitation", "ratio", rep("derived", 5L)),
+    required = c(rep(TRUE, 8L), rep(FALSE, 6L)),
+    derived = c(rep(FALSE, 9L), rep(TRUE, 5L))
 )
 
 # Temperature alone accepts the automatic combined-to-shift fallback. Other
-# user-selectable fields retain the three original Belcher methods.
-EPW_MORPH_BELCHER_RULES[, method_choices := lapply(step, function(step_name) {
+# user-selectable fields retain the three published transformation types.
+EPW_MORPH_ORIGINAL_RULES[, method_choices := lapply(step, function(step_name) {
     if (identical(step_name, "tdb")) {
-        c("auto", EPW_MORPH_BELCHER_METHOD_CHOICES)
-    } else if (step_name %in% names(EPW_MORPH_BELCHER_CHANGE_FACTOR_METHOD_DEFAULTS)) {
-        EPW_MORPH_BELCHER_METHOD_CHOICES
+        c("auto", EPW_MORPH_ORIGINAL_METHOD_CHOICES)
+    } else if (step_name %in% names(EPW_MORPH_ORIGINAL_CHANGE_FACTOR_METHOD_DEFAULTS)) {
+        EPW_MORPH_ORIGINAL_METHOD_CHOICES
     } else {
         method[step == step_name]
     }
 })]
 
-# Snow depth is an optional state variable rather than a required atmospheric
-# input. Recipe options decide whether it is queried, required, or disabled.
-EPW_MORPH_BELCHER_RULES <- data.table::rbindlist(list(
-    EPW_MORPH_BELCHER_RULES[seq_len(8L)],
-    data.table::data.table(
-        step = "snow_depth",
-        epw_field = "snow_depth",
-        variable_id = "snd",
-        optional_variable_id = NA_character_,
-        method = "ratio",
-        required = FALSE,
-        derived = FALSE,
-        method_choices = list("ratio")
-    ),
-    EPW_MORPH_BELCHER_RULES[-seq_len(8L)]
-), use.names = TRUE, fill = TRUE)
-
-# Validate one complete Belcher option list before it enters a recipe. Keeping
+# Validate one complete original-morphing option list before it enters a recipe. Keeping
 # this check at construction time prevents workers from interpreting malformed
 # task JSON differently after a resume.
-morpher__belcher_validate_options <- function(options) {
+original_morphing__validate_options <- function(options) {
     if (!is.list(options) || is.null(names(options)) || any(!nzchar(names(options)))) {
-        cli::cli_abort("Belcher `options` must be a named list or the result of {.fn belcher_options}.")
+        cli::cli_abort("Original morphing `options` must be a named list or the result of {.fn original_morphing__options}.")
     }
-    unknown <- setdiff(names(options), names(EPW_MORPH_BELCHER_PROFILE_OPTIONS$enhanced))
+    unknown <- setdiff(names(options), names(EPW_MORPH_ORIGINAL_PROFILE_OPTIONS$enhanced))
     if (length(unknown)) {
-        cli::cli_abort("Unknown Belcher option(s): {.val {unknown}}.")
+        cli::cli_abort("Unknown original morphing option(s): {.val {unknown}}.")
     }
     transition_hours <- options$transition_hours
     checkmate::assert_count(transition_hours, na.ok = FALSE)
@@ -161,52 +153,52 @@ morpher__belcher_validate_options <- function(options) {
         cli::cli_abort("`transition_hours` must be between 0 and 336.")
     }
     options$transition_hours <- as.integer(transition_hours)
-    for (name in names(EPW_MORPH_BELCHER_OPTION_CHOICES)) {
+    for (name in names(EPW_MORPH_ORIGINAL_OPTION_CHOICES)) {
         value <- options[[name]]
         checkmate::assert_string(value, min.chars = 1L)
         value <- tolower(value)
-        allowed <- EPW_MORPH_BELCHER_OPTION_CHOICES[[name]]
+        allowed <- EPW_MORPH_ORIGINAL_OPTION_CHOICES[[name]]
         if (!value %in% allowed) {
             cli::cli_abort(
-                "Unsupported Belcher option value {.val {value}} for {.field {name}}. Allowed value(s): {.val {allowed}}."
+                "Unsupported original morphing option value {.val {value}} for {.field {name}}. Allowed value(s): {.val {allowed}}."
             )
         }
         options[[name]] <- value
     }
-    class(options) <- unique(c("belcher_options", class(options)))
+    class(options) <- unique(c("original_morphing_options", class(options)))
     options
 }
 
 # Resolve partial user options against the selected profile. This function is
 # also the single compatibility boundary used when old serialized recipes are
 # reconstructed explicitly with `profile = "legacy"`.
-morpher__belcher_resolve_options <- function(profile, options = NULL) {
-    defaults <- EPW_MORPH_BELCHER_PROFILE_OPTIONS[[profile]]
+original_morphing__resolve_options <- function(profile, options = NULL) {
+    defaults <- EPW_MORPH_ORIGINAL_PROFILE_OPTIONS[[profile]]
     if (is.null(options)) {
-        return(morpher__belcher_validate_options(defaults))
+        return(original_morphing__validate_options(defaults))
     }
     if (!is.list(options)) {
-        cli::cli_abort("Belcher `options` must be a named list or the result of {.fn belcher_options}.")
+        cli::cli_abort("Original morphing `options` must be a named list or the result of {.fn original_morphing__options}.")
     }
     unknown <- setdiff(names(options), names(defaults))
     if (length(unknown)) {
-        cli::cli_abort("Unknown Belcher option(s): {.val {unknown}}.")
+        cli::cli_abort("Unknown original morphing option(s): {.val {unknown}}.")
     }
-    morpher__belcher_validate_options(utils::modifyList(defaults, unclass(options)))
+    original_morphing__validate_options(utils::modifyList(defaults, unclass(options)))
 }
 
 # Resolve the profile-specific method baseline independently of the backend's
 # registry default so legacy recipes retain their historical methods.
-morpher__belcher_profile_methods <- function(backend, profile) {
-    methods <- if (identical(backend$name, "belcher_absolute")) {
-        EPW_MORPH_BELCHER_ABSOLUTE_PROFILE_METHODS[[profile]]
+original_morphing__profile_methods <- function(backend, profile) {
+    methods <- if (identical(backend$name, "original_morphing_absolute")) {
+        EPW_MORPH_ORIGINAL_ABSOLUTE_PROFILE_METHODS[[profile]]
     } else {
-        EPW_MORPH_BELCHER_PROFILE_METHODS[[profile]]
+        EPW_MORPH_ORIGINAL_PROFILE_METHODS[[profile]]
     }
     unlist(methods, use.names = TRUE)
 }
 
-#' Configure enhanced Belcher morphing
+#' Configure enhanced original morphing
 #'
 #' @param transition_hours Total width in hours of each cyclic transition
 #'   centered on a month boundary. Must be between 0 and 336; `0` disables
@@ -227,7 +219,7 @@ morpher__belcher_profile_methods <- function(backend, profile) {
 #'   `DESIGN CONDITIONS,0` because one morphed year cannot support a new ASHRAE
 #'   design-condition calculation; `"preserve"` retains the baseline header.
 #'
-#' @return A validated `belcher_options` list.
+#' @return A validated `original_morphing_options` list.
 #'
 #' @references
 #' Ridley B, Boland J, Lauret P (2010), "Modelling of diffuse solar fraction
@@ -240,8 +232,8 @@ morpher__belcher_profile_methods <- function(backend, profile) {
 #'
 #' EnergyPlus Weather File Data Dictionary:
 #' <https://bigladdersoftware.com/epx/docs/22-2/auxiliary-programs/energyplus-weather-file-epw-data-dictionary.html>
-#' @export
-belcher_options <- function(
+#' @noRd
+original_morphing__options <- function(
     transition_hours = 72L,
     humidity_source = "auto",
     diffuse_model = "rbl_2010",
@@ -251,7 +243,7 @@ belcher_options <- function(
     typical_extreme_periods = "recalculate",
     design_conditions = "drop"
 ) {
-    morpher__belcher_validate_options(list(
+    original_morphing__validate_options(list(
         transition_hours = transition_hours,
         humidity_source = humidity_source,
         diffuse_model = diffuse_model,
@@ -263,7 +255,7 @@ belcher_options <- function(
     ))
 }
 
-morpher__belcher_monthly_variable <- function(context, variable_id) {
+original_morphing__monthly_variable <- function(context, variable_id) {
     data <- morpher__context_variable(context, variable_id)
     if (!nrow(data)) {
         return(data.table::data.table())
@@ -277,7 +269,7 @@ morpher__belcher_monthly_variable <- function(context, variable_id) {
     )
 }
 
-morpher__belcher_monthly_reference_variable <- function(context, variable_id) {
+original_morphing__monthly_reference_variable <- function(context, variable_id) {
     data <- morpher__context_reference_variable(context, variable_id)
     if (!nrow(data)) {
         return(data.table::data.table())
@@ -290,7 +282,7 @@ morpher__belcher_monthly_reference_variable <- function(context, variable_id) {
     )
 }
 
-morpher__belcher_epw_monthly <- function(data_epw, var, keep_units = TRUE) {
+original_morphing__epw_monthly <- function(data_epw, var, keep_units = TRUE) {
     monthly <- data_epw[,
         list(val_mean = mean(get(var)), val_max = max(get(var)), val_min = min(get(var))),
         by = "month"
@@ -300,9 +292,9 @@ morpher__belcher_epw_monthly <- function(data_epw, var, keep_units = TRUE) {
 }
 
 # Compute the EPW diurnal range from daily extrema, not from the single most
-# extreme hours in a month. This is the denominator used by enhanced combined
-# temperature morphing and is intentionally independent of CMIP sampling.
-morpher__belcher_epw_monthly_dtr <- function(data_epw, var) {
+# extreme hours in a month. This is the denominator used by every combined
+# temperature transform and is intentionally independent of CMIP sampling.
+original_morphing__epw_monthly_dtr <- function(data_epw, var) {
     values <- morpher__drop_units(data_epw[[var]])
     daily <- data.table::data.table(
         year = as.integer(data_epw$year),
@@ -333,7 +325,7 @@ morpher__belcher_epw_monthly_dtr <- function(data_epw, var) {
 
 # Convert climate values from their declared source units into the explicit EPW
 # field unit before monthly morphing factors are calculated.
-morpher__belcher_align_units <- function(data, target_units) {
+original_morphing__align_units <- function(data, target_units) {
     converted <- lapply(seq_len(nrow(data)), function(i) {
         morpher__convert_value_checked(data$value[[i]], data$units[[i]], target_units)
     })
@@ -350,7 +342,7 @@ morpher__belcher_align_units <- function(data, target_units) {
     data
 }
 
-morpher__belcher_drop_units <- function(data, vars) {
+original_morphing__drop_units <- function(data, vars) {
     for (var in c(vars, "delta", "alpha")) {
         if (var %in% names(data)) {
             data.table::set(data, NULL, var, as.numeric(data[[var]]))
@@ -359,34 +351,34 @@ morpher__belcher_drop_units <- function(data, vars) {
     data
 }
 
-morpher__belcher_day_angle <- function(day_of_year) {
+original_morphing__day_angle <- function(day_of_year) {
     2.0 * pi * (day_of_year - 1.0) / 365.0
 }
 
-morpher__belcher_equation_of_time <- function(day_of_year) {
-    d <- morpher__belcher_day_angle(day_of_year)
+original_morphing__equation_of_time <- function(day_of_year) {
+    d <- original_morphing__day_angle(day_of_year)
     (-7.659 * sin(d) + 9.863 * sin(2.0 * d + 3.5932)) / 60.0
 }
 
-morpher__belcher_solar_time <- function(longitude, day_of_year, hour, timezone) {
+original_morphing__solar_time <- function(longitude, day_of_year, hour, timezone) {
     local_standard_time <- (hour - 0.5) %% 24.0
     local_standard_time + (longitude - timezone * 15.0) / 15.0 +
-        morpher__belcher_equation_of_time(day_of_year)
+        original_morphing__equation_of_time(day_of_year)
 }
 
-morpher__belcher_hour_angle <- function(longitude, day_of_year, hour, timezone) {
-    solar_time <- morpher__belcher_solar_time(longitude, day_of_year, hour, timezone)
+original_morphing__hour_angle <- function(longitude, day_of_year, hour, timezone) {
+    solar_time <- original_morphing__solar_time(longitude, day_of_year, hour, timezone)
     360 / 24 * (solar_time - 12)
 }
 
-morpher__belcher_declination <- function(day_of_year) {
-    d <- morpher__belcher_day_angle(day_of_year)
+original_morphing__declination <- function(day_of_year) {
+    d <- original_morphing__day_angle(day_of_year)
     solar__spencer_declination(d)
 }
 
-morpher__belcher_solar_angle <- function(latitude, longitude, day_of_year, hour, timezone) {
-    declination <- morpher__belcher_declination(day_of_year)
-    hour_angle <- morpher__belcher_hour_angle(longitude, day_of_year, hour, timezone)
+original_morphing__solar_angle <- function(latitude, longitude, day_of_year, hour, timezone) {
+    declination <- original_morphing__declination(day_of_year)
+    hour_angle <- original_morphing__hour_angle(longitude, day_of_year, hour, timezone)
     solar__cos_zenith(
         solar__radians(latitude),
         declination,
@@ -400,9 +392,9 @@ morpher__belcher_solar_angle <- function(latitude, longitude, day_of_year, hour,
 morpher__humidity_variable_complete <- function(context, variable_id,
                                                   reference = FALSE) {
     data <- if (isTRUE(reference)) {
-        morpher__belcher_monthly_reference_variable(context, variable_id)
+        original_morphing__monthly_reference_variable(context, variable_id)
     } else {
-        morpher__belcher_monthly_variable(context, variable_id)
+        original_morphing__monthly_variable(context, variable_id)
     }
     if (!nrow(data) || !all(1:12 %in% unique(data$month))) {
         return(FALSE)
@@ -414,7 +406,7 @@ morpher__humidity_variable_complete <- function(context, variable_id,
 # Select one humidity source for the complete case. Enhanced auto mode prefers
 # HUSS only when huss, tas, and ps are complete in both future and reference;
 # non-shift RH methods stay on HURS because they explicitly override that path.
-morpher__belcher_humidity_source <- function(context) {
+original_morphing__humidity_source <- function(context) {
     source <- context$recipe$options$humidity_source
     if (!identical(context$recipe$profile, "enhanced")) {
         return("hurs")
@@ -434,7 +426,7 @@ morpher__belcher_humidity_source <- function(context) {
     if (identical(source, "huss")) {
         if (!huss_complete) {
             cli::cli_abort(
-                "Belcher humidity_source = 'huss' requires complete huss + tas + ps data for both future and reference periods.",
+                "Original morphing with humidity_source = 'huss' requires complete huss + tas + ps data for both future and reference periods.",
                 class = "epwshiftr_huss_required_error"
             )
         }
@@ -451,18 +443,18 @@ morpher__belcher_humidity_source <- function(context) {
     }
     if (isTRUE(context$strict)) {
         cli::cli_abort(
-            "Enhanced Belcher humidity requires either complete huss + tas + ps or complete hurs data."
+            "Enhanced original morphing requires either complete huss + tas + ps or complete hurs data."
         )
     }
     "hurs"
 }
 
 # Normalize monthly HUSS summaries to kg/kg before calculating a state change.
-morpher__belcher_monthly_huss <- function(context, reference = FALSE) {
+original_morphing__monthly_huss <- function(context, reference = FALSE) {
     data <- if (isTRUE(reference)) {
-        morpher__belcher_monthly_reference_variable(context, "huss")
+        original_morphing__monthly_reference_variable(context, "huss")
     } else {
-        morpher__belcher_monthly_variable(context, "huss")
+        original_morphing__monthly_variable(context, "huss")
     }
     if (!nrow(data)) {
         return(data.table::data.table())
@@ -476,19 +468,19 @@ morpher__belcher_monthly_huss <- function(context, reference = FALSE) {
 # Apply the monthly HUSS state change to baseline EPW specific humidity, smooth
 # it cyclically, cap at saturation, and invert the future state to RH and dew
 # point using morphed temperature and station pressure.
-morpher__belcher_huss_state <- function(data_epw, context, tdb, pressure) {
+original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
     if (!nrow(tdb)) {
         return(list(rh = data.table::data.table(), tdew = data.table::data.table()))
     }
-    future <- morpher__belcher_monthly_huss(context)
+    future <- original_morphing__monthly_huss(context)
     if (!nrow(future)) {
         return(list(rh = data.table::data.table(), tdew = data.table::data.table()))
     }
     external_reference <- !is.null(context$reference_climate)
     if (external_reference) {
-        reference <- morpher__belcher_monthly_huss(context, reference = TRUE)
-        future <- morpher__belcher_attach_reference(future, reference, "reference_value")
-        future <- morpher__belcher_handle_missing_reference(
+        reference <- original_morphing__monthly_huss(context, reference = TRUE)
+        future <- original_morphing__attach_reference(future, reference, "reference_value")
+        future <- original_morphing__handle_missing_reference(
             future, "huss", strict = context$strict
         )
         future[, huss_target := as.numeric(value - reference_value)]
@@ -605,7 +597,7 @@ morpher__belcher_huss_state <- function(data_epw, context, tdb, pressure) {
 # Normalize the narrowly supported CF units needed by the hurs derivation.
 # Rejecting unknown units is safer than silently treating scaled humidity or
 # pressure as SI input.
-morpher__belcher_tdew <- function(tdb, rh) {
+original_morphing__tdew <- function(tdb, rh) {
     # Join only on scientific case identity and EPW time. Enhanced factor
     # diagnostics legitimately differ between temperature and humidity and
     # must not become accidental equality keys.
@@ -641,7 +633,7 @@ morpher__belcher_tdew <- function(tdb, rh) {
     tdew
 }
 
-morpher__belcher_diffuse_radiation <- function(data_epw, glob_rad) {
+original_morphing__diffuse_radiation <- function(data_epw, glob_rad) {
     diff_rad <- data.table::copy(glob_rad)
     if (!nrow(diff_rad)) {
         return(data.table::data.table())
@@ -654,7 +646,7 @@ morpher__belcher_diffuse_radiation <- function(data_epw, glob_rad) {
     diff_rad[, diffuse_horizontal_radiation := as.numeric(diffuse_horizontal_radiation)][]
 }
 
-morpher__belcher_direct_normal_radiation <- function(glob_rad, diff_rad, latitude = NULL,
+original_morphing__direct_normal_radiation <- function(glob_rad, diff_rad, latitude = NULL,
                                                       longitude = NULL, timezone = NULL) {
     norm_rad <- data.table::copy(glob_rad)
     if (!nrow(glob_rad) || !nrow(diff_rad)) {
@@ -675,7 +667,7 @@ morpher__belcher_direct_normal_radiation <- function(glob_rad, diff_rad, latitud
     if (is.null(timezone) || is.na(timezone)) {
         timezone <- 0
     }
-    norm_rad[, solar_angle := morpher__belcher_solar_angle(lat_calc, lon_calc, day_of_year, hour, timezone)]
+    norm_rad[, solar_angle := original_morphing__solar_angle(lat_calc, lon_calc, day_of_year, hour, timezone)]
     ghi <- morpher__drop_units(norm_rad$global_horizontal_radiation)
     dhi <- morpher__drop_units(norm_rad$diffuse_horizontal_radiation)
     sin_altitude <- norm_rad$solar_angle
@@ -944,7 +936,7 @@ radiation__enhanced_chain <- function(data_epw, glob_rad, epw, tdew,
     )
 }
 
-morpher__belcher_opaque_sky_cover <- function(data_epw, total_sky_cover) {
+original_morphing__opaque_sky_cover <- function(data_epw, total_sky_cover) {
     if (!nrow(total_sky_cover)) {
         return(data.table::data.table())
     }
@@ -973,21 +965,21 @@ morpher__belcher_opaque_sky_cover <- function(data_epw, total_sky_cover) {
     )]
 }
 
-morpher__belcher_from_monthly <- function(var, data_epw, data_mean, data_max = NULL, data_min = NULL,
+original_morphing__from_monthly <- function(var, data_epw, data_mean, data_max = NULL, data_min = NULL,
                                            type = c("shift", "stretch", "combined")) {
     type <- match.arg(type)
     if (!nrow(data_mean)) {
         return(data.table::data.table())
     }
 
-    monthly <- morpher__belcher_epw_monthly(data_epw, var)
+    monthly <- original_morphing__epw_monthly(data_epw, var)
     u <- morpher__default_epw_units(var)
-    data_mean <- morpher__belcher_align_units(data.table::copy(data_mean), u)
+    data_mean <- original_morphing__align_units(data.table::copy(data_mean), u)
 
     case_fallback <- data.table::data.table()
     if (identical(type, "combined") && !is.null(data_max) && !is.null(data_min)) {
-        data_max <- morpher__belcher_align_units(data.table::copy(data_max), u)
-        data_min <- morpher__belcher_align_units(data.table::copy(data_min), u)
+        data_max <- original_morphing__align_units(data.table::copy(data_max), u)
+        data_min <- original_morphing__align_units(data.table::copy(data_min), u)
         join_cols <- c(
             "activity_drs", "institution_id", "source_id", "experiment_id",
             "member_id", "table_id", "lat", "lon", "units", "month",
@@ -1167,13 +1159,13 @@ morpher__monthly_target_vector <- function(data, column) {
 # Identify only stable scientific case columns. Variable-specific table IDs and
 # floating-point site coordinates are metadata: including either would split a
 # single model/member/period into false monthly cases after spatial averaging.
-BELCHER_PROJECTED_EXTREME_IDENTITY_COLUMNS <- c(
+ORIGINAL_MORPHING_PROJECTED_EXTREME_IDENTITY_COLUMNS <- c(
     "activity_drs", "institution_id", "source_id", "experiment_id",
     "member_id", "interval", "month"
 )
 
-BELCHER_REFERENCE_EXTREME_IDENTITY_COLUMNS <- c(
-    "activity_drs", "institution_id", "source_id", "member_id", "month"
+ORIGINAL_MORPHING_REFERENCE_EXTREME_IDENTITY_COLUMNS <- c(
+    "institution_id", "source_id", "member_id", "month"
 )
 
 # Aggregate and attach one monthly-extreme field using an explicitly supplied
@@ -1216,7 +1208,7 @@ morpher__attach_extreme_value <- function(target, extreme, value_name) {
         target,
         extreme,
         value_name,
-        identity_columns = BELCHER_PROJECTED_EXTREME_IDENTITY_COLUMNS,
+        identity_columns = ORIGINAL_MORPHING_PROJECTED_EXTREME_IDENTITY_COLUMNS,
         missing_month_message = "Cannot align monthly extrema without a month column."
     )
 }
@@ -1287,7 +1279,7 @@ morpher__smooth_enhanced_factors <- function(data, var, transform,
 # Enhanced absolute-target morphing uses mean daily extrema for the EPW DTR.
 # For combined temperature, alpha = (R_future - R_epw) / R_epw; invalid or
 # nearly flat EPW ranges are represented explicitly as shift fallbacks.
-morpher__belcher_from_monthly_enhanced <- function(
+original_morphing__from_monthly_enhanced <- function(
     var, data_epw, data_mean, data_max = NULL, data_min = NULL,
     type = c("shift", "stretch", "combined", "auto"), transition_hours = 72L
 ) {
@@ -1296,16 +1288,16 @@ morpher__belcher_from_monthly_enhanced <- function(
         return(data.table::data.table())
     }
     units <- morpher__default_epw_units(var)
-    data_mean <- morpher__belcher_align_units(data.table::copy(data_mean), units)
+    data_mean <- original_morphing__align_units(data.table::copy(data_mean), units)
     if (!is.null(data_max) && nrow(data_max)) {
-        data_max <- morpher__belcher_align_units(data.table::copy(data_max), units)
+        data_max <- original_morphing__align_units(data.table::copy(data_max), units)
     }
     if (!is.null(data_min) && nrow(data_min)) {
-        data_min <- morpher__belcher_align_units(data.table::copy(data_min), units)
+        data_min <- original_morphing__align_units(data.table::copy(data_min), units)
     }
     data_mean <- morpher__attach_extreme_value(data_mean, data_max, "value_max")
     data_mean <- morpher__attach_extreme_value(data_mean, data_min, "value_min")
-    monthly <- morpher__belcher_epw_monthly_dtr(data_epw, var)
+    monthly <- original_morphing__epw_monthly_dtr(data_epw, var)
     data_mean[monthly, on = "month", `:=`(
         epw_mean = i.val_mean,
         epw_dtr = i.val_dtr
@@ -1371,8 +1363,11 @@ morpher__belcher_from_monthly_enhanced <- function(
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
 
-morpher__belcher_reference_join_cols <- function(target, reference) {
-    cols <- c("institution_id", "source_id", "member_id", "table_id", "month")
+# Select the stable identity shared by future and historical rows. Activity,
+# experiment, interval, table, grid, and coordinates may legitimately differ
+# across periods or variables and therefore cannot identify a climate case.
+original_morphing__reference_join_cols <- function(target, reference) {
+    cols <- c("institution_id", "source_id", "member_id", "month")
     cols <- intersect(cols, intersect(names(target), names(reference)))
     if (!"month" %in% cols && "month" %in% names(target) && "month" %in% names(reference)) {
         cols <- c(cols, "month")
@@ -1380,14 +1375,14 @@ morpher__belcher_reference_join_cols <- function(target, reference) {
     cols
 }
 
-morpher__belcher_attach_reference <- function(target, reference, value_name = "reference_value") {
+original_morphing__attach_reference <- function(target, reference, value_name = "reference_value") {
     if (!nrow(target) || !nrow(reference)) {
         target[, (value_name) := NA_real_]
         return(target)
     }
     reference <- data.table::copy(reference)
     data.table::setnames(reference, "value", value_name)
-    join_cols <- morpher__belcher_reference_join_cols(target, reference)
+    join_cols <- original_morphing__reference_join_cols(target, reference)
     if (!length(join_cols)) {
         cli::cli_abort("Cannot align target and reference climate data without shared identity columns.")
     }
@@ -1400,7 +1395,7 @@ morpher__belcher_attach_reference <- function(target, reference, value_name = "r
     target[]
 }
 
-morpher__belcher_handle_missing_reference <- function(data, var, strict = TRUE) {
+original_morphing__handle_missing_reference <- function(data, var, strict = TRUE) {
     missing <- data[is.na(reference_value)]
     if (!nrow(missing)) {
         return(data)
@@ -1414,7 +1409,7 @@ morpher__belcher_handle_missing_reference <- function(data, var, strict = TRUE) 
     data
 }
 
-morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, reference_mean,
+original_morphing__from_monthly_change <- function(var, data_epw, data_mean, reference_mean,
                                                   data_max = NULL, data_min = NULL,
                                                   reference_max = NULL, reference_min = NULL,
                                                   type = c("shift", "stretch", "combined"),
@@ -1430,29 +1425,50 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
         return(data.table::data.table())
     }
 
-    monthly <- morpher__belcher_epw_monthly(data_epw, var)
+    # Belcher et al. equation (4) uses the difference between the average daily
+    # maximum and average daily minimum, rather than the two most extreme
+    # individual hours in the month.
+    monthly <- if (identical(type, "combined")) {
+        original_morphing__epw_monthly_dtr(data_epw, var)
+    } else {
+        original_morphing__epw_monthly(data_epw, var)
+    }
     u <- morpher__default_epw_units(var)
-    data_mean <- morpher__belcher_align_units(data.table::copy(data_mean), u)
-    reference_mean <- morpher__belcher_align_units(data.table::copy(reference_mean), u)
-    data_mean <- morpher__belcher_attach_reference(data_mean, reference_mean, "reference_value")
-    data_mean <- morpher__belcher_handle_missing_reference(data_mean, var, strict = strict)
+    data_mean <- original_morphing__align_units(data.table::copy(data_mean), u)
+    reference_mean <- original_morphing__align_units(data.table::copy(reference_mean), u)
+    data_mean <- original_morphing__attach_reference(data_mean, reference_mean, "reference_value")
+    data_mean <- original_morphing__handle_missing_reference(data_mean, var, strict = strict)
 
     case_fallback <- data.table::data.table()
     if (identical(type, "combined") && !is.null(data_max) && !is.null(data_min) &&
         !is.null(reference_max) && !is.null(reference_min)) {
-        data_max <- morpher__belcher_align_units(data.table::copy(data_max), u)
-        data_min <- morpher__belcher_align_units(data.table::copy(data_min), u)
-        reference_max <- morpher__belcher_align_units(data.table::copy(reference_max), u)
-        reference_min <- morpher__belcher_align_units(data.table::copy(reference_min), u)
-        join_cols <- intersect(c(
-            "activity_drs", "institution_id", "source_id", "experiment_id",
-            "member_id", "table_id", "lat", "lon", "units", "month",
-            "interval"
-        ), names(data_mean))
-        data_mean[data_max, on = join_cols, value_max := i.value]
-        data_mean[data_min, on = join_cols, value_min := i.value]
-        data_mean <- morpher__belcher_attach_reference(data_mean, reference_max, "reference_max")
-        data_mean <- morpher__belcher_attach_reference(data_mean, reference_min, "reference_min")
+        data_max <- original_morphing__align_units(data.table::copy(data_max), u)
+        data_min <- original_morphing__align_units(data.table::copy(data_min), u)
+        reference_max <- original_morphing__align_units(data.table::copy(reference_max), u)
+        reference_min <- original_morphing__align_units(data.table::copy(reference_min), u)
+        # Extrema are separate CMIP variables and may legitimately be selected
+        # from different tables or grids than tas. Align by scientific case and
+        # month instead of treating storage partition metadata as identity.
+        data_mean <- morpher__attach_extreme_value(
+            data_mean,
+            data_max,
+            "value_max"
+        )
+        data_mean <- morpher__attach_extreme_value(
+            data_mean,
+            data_min,
+            "value_min"
+        )
+        data_mean <- morpher__attach_reference_extreme(
+            data_mean,
+            reference_max,
+            "reference_max"
+        )
+        data_mean <- morpher__attach_reference_extreme(
+            data_mean,
+            reference_min,
+            "reference_min"
+        )
 
         missing_extreme <- data_mean[
             is.na(value_max) | is.na(value_min) | is.na(reference_max) | is.na(reference_min)
@@ -1475,11 +1491,18 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
         }
     }
 
-    data_mean[monthly, on = "month", `:=`(
-        epw_mean = i.val_mean,
-        epw_max = i.val_max,
-        epw_min = i.val_min
-    )]
+    if (identical(type, "combined")) {
+        data_mean[monthly, on = "month", `:=`(
+            epw_mean = i.val_mean,
+            epw_dtr = i.val_dtr
+        )]
+    } else {
+        data_mean[monthly, on = "month", `:=`(
+            epw_mean = i.val_mean,
+            epw_max = i.val_max,
+            epw_min = i.val_min
+        )]
+    }
     data_mean[, delta := value - reference_value]
 
     data <- data_epw[, .SD, .SDcols = c("datetime", "year", "month", "day", "hour", "minute", var)][
@@ -1487,7 +1510,8 @@ morpher__belcher_from_monthly_change <- function(var, data_epw, data_mean, refer
     ]
 
     if (identical(type, "combined") && all(c("value_min", "value_max", "reference_min", "reference_max") %in% names(data))) {
-        data[, alpha := ((value_max - reference_max) - (value_min - reference_min)) / (epw_max - epw_min)]
+        data[, alpha := ((value_max - reference_max) -
+            (value_min - reference_min)) / epw_dtr]
         if (nrow(case_fallback)) {
             data[case_fallback, on = names(case_fallback), alpha := 0.0]
         }
@@ -1563,7 +1587,7 @@ morpher__attach_reference_extreme <- function(target, reference, value_name) {
         target,
         reference,
         value_name,
-        identity_columns = BELCHER_REFERENCE_EXTREME_IDENTITY_COLUMNS,
+        identity_columns = ORIGINAL_MORPHING_REFERENCE_EXTREME_IDENTITY_COLUMNS,
         missing_month_message = "Cannot align historical monthly extrema without a month column."
     )
 }
@@ -1572,7 +1596,7 @@ morpher__attach_reference_extreme <- function(target, reference, value_name) {
 # alpha = (R_future - R_reference) / R_epw to the EPW anomaly. The same guarded
 # per-month fallback and covariance-compensated smoothing used by the absolute
 # path keeps the target monthly mean exact across month boundaries.
-morpher__belcher_from_monthly_change_enhanced <- function(
+original_morphing__from_monthly_change_enhanced <- function(
     var, data_epw, data_mean, reference_mean,
     data_max = NULL, data_min = NULL,
     reference_max = NULL, reference_min = NULL,
@@ -1591,21 +1615,21 @@ morpher__belcher_from_monthly_change_enhanced <- function(
     }
 
     units <- morpher__default_epw_units(var)
-    data_mean <- morpher__belcher_align_units(data.table::copy(data_mean), units)
-    reference_mean <- morpher__belcher_align_units(data.table::copy(reference_mean), units)
-    data_mean <- morpher__belcher_attach_reference(data_mean, reference_mean, "reference_value")
-    data_mean <- morpher__belcher_handle_missing_reference(data_mean, var, strict = strict)
+    data_mean <- original_morphing__align_units(data.table::copy(data_mean), units)
+    reference_mean <- original_morphing__align_units(data.table::copy(reference_mean), units)
+    data_mean <- original_morphing__attach_reference(data_mean, reference_mean, "reference_value")
+    data_mean <- original_morphing__handle_missing_reference(data_mean, var, strict = strict)
 
     align_optional <- function(data) {
         if (is.null(data) || !nrow(data)) return(NULL)
-        morpher__belcher_align_units(data.table::copy(data), units)
+        original_morphing__align_units(data.table::copy(data), units)
     }
     data_mean <- morpher__attach_extreme_value(data_mean, align_optional(data_max), "value_max")
     data_mean <- morpher__attach_extreme_value(data_mean, align_optional(data_min), "value_min")
     data_mean <- morpher__attach_reference_extreme(data_mean, align_optional(reference_max), "reference_max")
     data_mean <- morpher__attach_reference_extreme(data_mean, align_optional(reference_min), "reference_min")
 
-    monthly <- morpher__belcher_epw_monthly_dtr(data_epw, var)
+    monthly <- original_morphing__epw_monthly_dtr(data_epw, var)
     data_mean[monthly, on = "month", `:=`(
         epw_mean = i.val_mean,
         epw_dtr = i.val_dtr
@@ -1673,15 +1697,15 @@ morpher__belcher_from_monthly_change_enhanced <- function(
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
 
-morpher__belcher_tdb <- function(data_epw, context, type) {
-    tas <- morpher__belcher_monthly_variable(context, "tas")
+original_morphing__tdb <- function(data_epw, context, type) {
+    tas <- original_morphing__monthly_variable(context, "tas")
     if (!nrow(tas)) {
         return(data.table::data.table())
     }
-    tasmax <- morpher__belcher_monthly_variable(context, "tasmax")
-    tasmin <- morpher__belcher_monthly_variable(context, "tasmin")
+    tasmax <- original_morphing__monthly_variable(context, "tasmax")
+    tasmin <- original_morphing__monthly_variable(context, "tasmin")
     if (identical(context$recipe$profile, "enhanced")) {
-        return(morpher__belcher_from_monthly_enhanced(
+        return(original_morphing__from_monthly_enhanced(
             "dry_bulb_temperature", data_epw, tas,
             if (nrow(tasmax)) tasmax else NULL,
             if (nrow(tasmin)) tasmin else NULL,
@@ -1689,7 +1713,7 @@ morpher__belcher_tdb <- function(data_epw, context, type) {
             transition_hours = context$recipe$options$transition_hours
         ))
     }
-    morpher__belcher_from_monthly(
+    original_morphing__from_monthly(
         "dry_bulb_temperature", data_epw, tas,
         if (nrow(tasmax)) tasmax else NULL,
         if (nrow(tasmin)) tasmin else NULL,
@@ -1697,15 +1721,15 @@ morpher__belcher_tdb <- function(data_epw, context, type) {
     )
 }
 
-morpher__belcher_rh <- function(data_epw, context, type) {
-    hurs <- morpher__belcher_monthly_variable(context, "hurs")
+original_morphing__rh <- function(data_epw, context, type) {
+    hurs <- original_morphing__monthly_variable(context, "hurs")
     if (!nrow(hurs)) {
         return(data.table::data.table())
     }
-    hursmax <- morpher__belcher_monthly_variable(context, "hursmax")
-    hursmin <- morpher__belcher_monthly_variable(context, "hursmin")
+    hursmax <- original_morphing__monthly_variable(context, "hursmax")
+    hursmin <- original_morphing__monthly_variable(context, "hursmin")
     rh <- if (identical(context$recipe$profile, "enhanced")) {
-        morpher__belcher_from_monthly_enhanced(
+        original_morphing__from_monthly_enhanced(
             "relative_humidity", data_epw, hurs,
             if (nrow(hursmax)) hursmax else NULL,
             if (nrow(hursmin)) hursmin else NULL,
@@ -1713,7 +1737,7 @@ morpher__belcher_rh <- function(data_epw, context, type) {
             transition_hours = context$recipe$options$transition_hours
         )
     } else {
-        morpher__belcher_from_monthly(
+        original_morphing__from_monthly(
             "relative_humidity", data_epw, hurs,
             if (nrow(hursmax)) hursmax else NULL,
             if (nrow(hursmin)) hursmin else NULL,
@@ -1725,18 +1749,18 @@ morpher__belcher_rh <- function(data_epw, context, type) {
     rh
 }
 
-morpher__belcher_change_tdb <- function(data_epw, context, type) {
-    tas <- morpher__belcher_monthly_variable(context, "tas")
-    tas_ref <- morpher__belcher_monthly_reference_variable(context, "tas")
+original_morphing__change_tdb <- function(data_epw, context, type) {
+    tas <- original_morphing__monthly_variable(context, "tas")
+    tas_ref <- original_morphing__monthly_reference_variable(context, "tas")
     if (!nrow(tas)) {
         return(data.table::data.table())
     }
-    tasmax <- morpher__belcher_monthly_variable(context, "tasmax")
-    tasmin <- morpher__belcher_monthly_variable(context, "tasmin")
-    tasmax_ref <- morpher__belcher_monthly_reference_variable(context, "tasmax")
-    tasmin_ref <- morpher__belcher_monthly_reference_variable(context, "tasmin")
+    tasmax <- original_morphing__monthly_variable(context, "tasmax")
+    tasmin <- original_morphing__monthly_variable(context, "tasmin")
+    tasmax_ref <- original_morphing__monthly_reference_variable(context, "tasmax")
+    tasmin_ref <- original_morphing__monthly_reference_variable(context, "tasmin")
     if (identical(context$recipe$profile, "enhanced")) {
-        return(morpher__belcher_from_monthly_change_enhanced(
+        return(original_morphing__from_monthly_change_enhanced(
             "dry_bulb_temperature", data_epw, tas, tas_ref,
             if (nrow(tasmax)) tasmax else NULL,
             if (nrow(tasmin)) tasmin else NULL,
@@ -1747,7 +1771,7 @@ morpher__belcher_change_tdb <- function(data_epw, context, type) {
             transition_hours = context$recipe$options$transition_hours
         ))
     }
-    morpher__belcher_from_monthly_change(
+    original_morphing__from_monthly_change(
         "dry_bulb_temperature", data_epw, tas, tas_ref,
         if (nrow(tasmax)) tasmax else NULL,
         if (nrow(tasmin)) tasmin else NULL,
@@ -1758,18 +1782,18 @@ morpher__belcher_change_tdb <- function(data_epw, context, type) {
     )
 }
 
-morpher__belcher_change_rh <- function(data_epw, context, type) {
-    hurs <- morpher__belcher_monthly_variable(context, "hurs")
-    hurs_ref <- morpher__belcher_monthly_reference_variable(context, "hurs")
+original_morphing__change_rh <- function(data_epw, context, type) {
+    hurs <- original_morphing__monthly_variable(context, "hurs")
+    hurs_ref <- original_morphing__monthly_reference_variable(context, "hurs")
     if (!nrow(hurs)) {
         return(data.table::data.table())
     }
-    hursmax <- morpher__belcher_monthly_variable(context, "hursmax")
-    hursmin <- morpher__belcher_monthly_variable(context, "hursmin")
-    hursmax_ref <- morpher__belcher_monthly_reference_variable(context, "hursmax")
-    hursmin_ref <- morpher__belcher_monthly_reference_variable(context, "hursmin")
+    hursmax <- original_morphing__monthly_variable(context, "hursmax")
+    hursmin <- original_morphing__monthly_variable(context, "hursmin")
+    hursmax_ref <- original_morphing__monthly_reference_variable(context, "hursmax")
+    hursmin_ref <- original_morphing__monthly_reference_variable(context, "hursmin")
     rh <- if (identical(context$recipe$profile, "enhanced")) {
-        morpher__belcher_from_monthly_change_enhanced(
+        original_morphing__from_monthly_change_enhanced(
             "relative_humidity", data_epw, hurs, hurs_ref,
             if (nrow(hursmax)) hursmax else NULL,
             if (nrow(hursmin)) hursmin else NULL,
@@ -1780,7 +1804,7 @@ morpher__belcher_change_rh <- function(data_epw, context, type) {
             transition_hours = context$recipe$options$transition_hours
         )
     } else {
-        morpher__belcher_from_monthly_change(
+        original_morphing__from_monthly_change(
             "relative_humidity", data_epw, hurs, hurs_ref,
             if (nrow(hursmax)) hursmax else NULL,
             if (nrow(hursmin)) hursmin else NULL,
@@ -1795,28 +1819,28 @@ morpher__belcher_change_rh <- function(data_epw, context, type) {
     rh
 }
 
-morpher__belcher_monthly_field <- function(data_epw, context, variable_id, epw_field, type) {
-    data <- morpher__belcher_monthly_variable(context, variable_id)
+original_morphing__monthly_field <- function(data_epw, context, variable_id, epw_field, type) {
+    data <- original_morphing__monthly_variable(context, variable_id)
     if (!nrow(data)) {
         return(data.table::data.table())
     }
     if (identical(context$recipe$profile, "enhanced")) {
-        return(morpher__belcher_from_monthly_enhanced(
+        return(original_morphing__from_monthly_enhanced(
             epw_field, data_epw, data, type = type,
             transition_hours = context$recipe$options$transition_hours
         ))
     }
-    morpher__belcher_from_monthly(epw_field, data_epw, data, type = type)
+    original_morphing__from_monthly(epw_field, data_epw, data, type = type)
 }
 
-morpher__belcher_change_monthly_field <- function(data_epw, context, variable_id, epw_field, type) {
-    data <- morpher__belcher_monthly_variable(context, variable_id)
-    reference <- morpher__belcher_monthly_reference_variable(context, variable_id)
+original_morphing__change_monthly_field <- function(data_epw, context, variable_id, epw_field, type) {
+    data <- original_morphing__monthly_variable(context, variable_id)
+    reference <- original_morphing__monthly_reference_variable(context, variable_id)
     if (!nrow(data)) {
         return(data.table::data.table())
     }
     if (identical(context$recipe$profile, "enhanced")) {
-        return(morpher__belcher_from_monthly_change_enhanced(
+        return(original_morphing__from_monthly_change_enhanced(
             epw_field,
             data_epw,
             data,
@@ -1826,7 +1850,7 @@ morpher__belcher_change_monthly_field <- function(data_epw, context, variable_id
             transition_hours = context$recipe$options$transition_hours
         ))
     }
-    morpher__belcher_from_monthly_change(
+    original_morphing__from_monthly_change(
         epw_field,
         data_epw,
         data,
@@ -1836,9 +1860,9 @@ morpher__belcher_change_monthly_field <- function(data_epw, context, variable_id
     )
 }
 
-morpher__belcher_monthly_change_variable <- function(context, variable_id, target_units = NULL) {
-    data <- morpher__belcher_monthly_variable(context, variable_id)
-    reference <- morpher__belcher_monthly_reference_variable(context, variable_id)
+original_morphing__monthly_change_variable <- function(context, variable_id, target_units = NULL) {
+    data <- original_morphing__monthly_variable(context, variable_id)
+    reference <- original_morphing__monthly_reference_variable(context, variable_id)
     if (!nrow(data)) {
         return(data.table::data.table())
     }
@@ -1849,11 +1873,11 @@ morpher__belcher_monthly_change_variable <- function(context, variable_id, targe
         return(data.table::data.table())
     }
     if (!is.null(target_units)) {
-        data <- morpher__belcher_align_units(data.table::copy(data), target_units)
-        reference <- morpher__belcher_align_units(data.table::copy(reference), target_units)
+        data <- original_morphing__align_units(data.table::copy(data), target_units)
+        reference <- original_morphing__align_units(data.table::copy(reference), target_units)
     }
-    data <- morpher__belcher_attach_reference(data, reference, "reference_value")
-    data <- morpher__belcher_handle_missing_reference(data, variable_id, strict = context$strict)
+    data <- original_morphing__attach_reference(data, reference, "reference_value")
+    data <- original_morphing__handle_missing_reference(data, variable_id, strict = context$strict)
     data[, value := value - reference_value]
     data[, reference_value := NULL]
     data[]
@@ -1862,7 +1886,7 @@ morpher__belcher_monthly_change_variable <- function(context, variable_id, targe
 # Morph cloud cover as a smoothed additive factor while retaining the baseline
 # hourly cloud sequence. Values are rounded only after the constrained factor
 # series is applied because EPW stores sky cover in tenths.
-morpher__belcher_total_sky_cover_enhanced <- function(
+original_morphing__total_sky_cover_enhanced <- function(
     data_epw, context, data_mean, change_factor = FALSE
 ) {
     baseline_monthly <- data_epw[, .(
@@ -1904,16 +1928,16 @@ morpher__belcher_total_sky_cover_enhanced <- function(
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
 
-morpher__belcher_total_sky_cover <- function(data_epw, context, data_mean = NULL, change_factor = FALSE) {
+original_morphing__total_sky_cover <- function(data_epw, context, data_mean = NULL, change_factor = FALSE) {
     var <- "total_sky_cover"
     if (is.null(data_mean)) {
-        data_mean <- morpher__belcher_monthly_variable(context, "clt")
+        data_mean <- original_morphing__monthly_variable(context, "clt")
     }
     if (!nrow(data_mean)) {
         return(data.table::data.table())
     }
     if (!is.null(context) && identical(context$recipe$profile, "enhanced")) {
-        return(morpher__belcher_total_sky_cover_enhanced(
+        return(original_morphing__total_sky_cover_enhanced(
             data_epw, context, data_mean,
             change_factor = change_factor
         ))
@@ -1943,9 +1967,9 @@ morpher__belcher_total_sky_cover <- function(data_epw, context, data_mean = NULL
     )]
 }
 
-morpher__belcher_change_total_sky_cover <- function(data_epw, context) {
-    data_mean <- morpher__belcher_monthly_change_variable(context, "clt", target_units = "%")
-    morpher__belcher_total_sky_cover(data_epw, context, data_mean = data_mean, change_factor = TRUE)
+original_morphing__change_total_sky_cover <- function(data_epw, context) {
+    data_mean <- original_morphing__monthly_change_variable(context, "clt", target_units = "%")
+    original_morphing__total_sky_cover(data_epw, context, data_mean = data_mean, change_factor = TRUE)
 }
 
 # Return a non-blocking diagnostic when optional snow data cannot form the
@@ -1972,7 +1996,7 @@ morpher__snow_unavailable <- function(context, message) {
 # Scale existing EPW snow events by the monthly future/reference SND ratio.
 # CMIP SND is converted from metres to EPW centimetres; zero reference or a
 # snow-free EPW month never synthesizes new event timing.
-morpher__belcher_snow_depth <- function(data_epw, context) {
+original_morphing__snow_depth <- function(data_epw, context) {
     policy <- context$recipe$options$snow_depth
     if (!identical(context$recipe$profile, "enhanced") || identical(policy, "off")) {
         return(list(data = data.table::data.table(), diagnostics = morpher__empty_diagnostics()))
@@ -1983,8 +2007,8 @@ morpher__belcher_snow_depth <- function(data_epw, context) {
             "Snow-depth morphing requires an explicit historical climate reference containing snd."
         ))
     }
-    future <- morpher__belcher_monthly_variable(context, "snd")
-    reference <- morpher__belcher_monthly_reference_variable(context, "snd")
+    future <- original_morphing__monthly_variable(context, "snd")
+    reference <- original_morphing__monthly_reference_variable(context, "snd")
     future_complete <- nrow(future) && all(1:12 %in% unique(future$month)) &&
         all(is.finite(as.numeric(future$value)))
     reference_complete <- nrow(reference) && all(1:12 %in% unique(reference$month)) &&
@@ -1995,10 +2019,10 @@ morpher__belcher_snow_depth <- function(data_epw, context) {
             "Snow-depth morphing was skipped because future and historical snd are not both complete."
         ))
     }
-    future <- morpher__belcher_align_units(data.table::copy(future), "cm")
-    reference <- morpher__belcher_align_units(data.table::copy(reference), "cm")
-    future <- morpher__belcher_attach_reference(future, reference, "reference_value")
-    future <- morpher__belcher_handle_missing_reference(
+    future <- original_morphing__align_units(data.table::copy(future), "cm")
+    reference <- original_morphing__align_units(data.table::copy(reference), "cm")
+    future <- original_morphing__attach_reference(future, reference, "reference_value")
+    future <- original_morphing__handle_missing_reference(
         future, "snd", strict = identical(policy, "required")
     )
     future[, `:=`(
@@ -2149,7 +2173,7 @@ morpher__baseline_precip_depth_checked <- function(value, units, month) {
 }
 
 # Summarise raw `pr` climate data to monthly water-equivalent depths.
-morpher__belcher_monthly_precip_variable <- function(context, variable_id, reference = FALSE) {
+original_morphing__monthly_precip_variable <- function(context, variable_id, reference = FALSE) {
     data <- if (isTRUE(reference)) {
         morpher__context_reference_variable(context, variable_id)
     } else {
@@ -2198,7 +2222,7 @@ morpher__belcher_monthly_precip_variable <- function(context, variable_id, refer
 }
 
 # Report conservative precipitation fallbacks consistently across strict modes.
-morpher__belcher_precip_guard <- function(rows, message, strict = TRUE) {
+original_morphing__precip_guard <- function(rows, message, strict = TRUE) {
     if (!nrow(rows)) {
         return(invisible(NULL))
     }
@@ -2212,7 +2236,7 @@ morpher__belcher_precip_guard <- function(rows, message, strict = TRUE) {
 }
 
 # Apply monthly precipitation targets while preserving baseline wet-hour timing.
-morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = TRUE,
+original_morphing__precip_from_monthly <- function(data_epw, data_mean, strict = TRUE,
                                                  change_factor = FALSE) {
     if (!nrow(data_mean) || !"liquid_precip_depth" %in% names(data_epw)) {
         return(data.table::data.table())
@@ -2237,7 +2261,7 @@ morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = T
     if (isTRUE(change_factor)) {
         data_mean[, reference_total := morpher__drop_units(reference_value)]
         zero_reference <- data_mean[reference_total <= .Machine$double.eps & future_total > .Machine$double.eps]
-        morpher__belcher_precip_guard(
+        original_morphing__precip_guard(
             zero_reference,
             "Reference climate precipitation is zero while future precipitation is positive; preserving baseline precipitation in relaxed mode.",
             strict = strict
@@ -2262,7 +2286,7 @@ morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = T
     }
 
     dry_target <- data_mean[baseline_total <= .Machine$double.eps & future_total > .Machine$double.eps]
-    morpher__belcher_precip_guard(
+    original_morphing__precip_guard(
         dry_target,
         "Baseline EPW has no wet hours for positive target precipitation; keeping the month dry in relaxed mode.",
         strict = strict
@@ -2290,16 +2314,16 @@ morpher__belcher_precip_from_monthly <- function(data_epw, data_mean, strict = T
     )]
 }
 
-# Build absolute-target Belcher precipitation from future climate monthly totals.
-morpher__belcher_precip <- function(data_epw, context) {
-    pr <- morpher__belcher_monthly_precip_variable(context, "pr")
-    morpher__belcher_precip_from_monthly(data_epw, pr, strict = context$strict)
+# Build absolute-target original-morphing precipitation from future monthly totals.
+original_morphing__precip <- function(data_epw, context) {
+    pr <- original_morphing__monthly_precip_variable(context, "pr")
+    original_morphing__precip_from_monthly(data_epw, pr, strict = context$strict)
 }
 
-# Build change-factor Belcher precipitation from future/reference monthly totals.
-morpher__belcher_change_precip <- function(data_epw, context) {
-    pr <- morpher__belcher_monthly_precip_variable(context, "pr")
-    pr_ref <- morpher__belcher_monthly_precip_variable(context, "pr", reference = TRUE)
+# Build change-factor original-morphing precipitation from future/reference totals.
+original_morphing__change_precip <- function(data_epw, context) {
+    pr <- original_morphing__monthly_precip_variable(context, "pr")
+    pr_ref <- original_morphing__monthly_precip_variable(context, "pr", reference = TRUE)
     if (!nrow(pr)) {
         return(data.table::data.table())
     }
@@ -2310,9 +2334,9 @@ morpher__belcher_change_precip <- function(data_epw, context) {
         warning("Reference climate data are missing for pr; precipitation is left unchanged.", call. = FALSE)
         return(data.table::data.table())
     }
-    pr <- morpher__belcher_attach_reference(pr, pr_ref, "reference_value")
-    pr <- morpher__belcher_handle_missing_reference(pr, "pr", strict = context$strict)
-    morpher__belcher_precip_from_monthly(data_epw, pr, strict = context$strict, change_factor = TRUE)
+    pr <- original_morphing__attach_reference(pr, pr_ref, "reference_value")
+    pr <- original_morphing__handle_missing_reference(pr, "pr", strict = context$strict)
+    original_morphing__precip_from_monthly(data_epw, pr, strict = context$strict, change_factor = TRUE)
 }
 
 # Summarise runtime fallback and clipping states into inspectable factor rows
@@ -2373,31 +2397,31 @@ morpher__enhanced_factor_metadata <- function(context, parts) {
 }
 
 # Select the five builders that differ between absolute-target and
-# change-factor Belcher execution while leaving their equations independent.
-morpher__belcher_execution_steps <- function(change_factor = FALSE) {
+# change-factor original-morphing execution while leaving equations independent.
+original_morphing__execution_steps <- function(change_factor = FALSE) {
     if (isTRUE(change_factor)) {
         return(list(
-            tdb = morpher__belcher_change_tdb,
-            monthly_field = morpher__belcher_change_monthly_field,
-            rh = morpher__belcher_change_rh,
-            total_cover = morpher__belcher_change_total_sky_cover,
-            precip = morpher__belcher_change_precip
+            tdb = original_morphing__change_tdb,
+            monthly_field = original_morphing__change_monthly_field,
+            rh = original_morphing__change_rh,
+            total_cover = original_morphing__change_total_sky_cover,
+            precip = original_morphing__change_precip
         ))
     }
 
     list(
-        tdb = morpher__belcher_tdb,
-        monthly_field = morpher__belcher_monthly_field,
-        rh = morpher__belcher_rh,
-        total_cover = morpher__belcher_total_sky_cover,
-        precip = morpher__belcher_precip
+        tdb = original_morphing__tdb,
+        monthly_field = original_morphing__monthly_field,
+        rh = original_morphing__rh,
+        total_cover = original_morphing__total_sky_cover,
+        precip = original_morphing__precip
     )
 }
 
-# Execute the common Belcher EPW assembly after the runner wrapper has chosen
+# Execute common original-morphing EPW assembly after the runner has chosen
 # whether fields come from absolute targets or future-minus-reference changes.
-morpher__belcher_execute <- function(context, change_factor = FALSE) {
-    steps <- morpher__belcher_execution_steps(change_factor)
+original_morphing__execute <- function(context, change_factor = FALSE) {
+    steps <- original_morphing__execution_steps(change_factor)
     methods <- context$recipe$methods
     epw <- context$epw$clone()
     data_epw <- suppressMessages(epw$add_unit()$data())
@@ -2413,9 +2437,9 @@ morpher__belcher_execute <- function(context, change_factor = FALSE) {
 
     # Keep the profile-specific humidity source decision in the shared flow so
     # both execution modes apply identical thermodynamic closure behavior.
-    humidity_source <- morpher__belcher_humidity_source(context)
+    humidity_source <- original_morphing__humidity_source(context)
     if (identical(humidity_source, "huss")) {
-        humidity <- morpher__belcher_huss_state(data_epw, context, tdb, p)
+        humidity <- original_morphing__huss_state(data_epw, context, tdb, p)
         rh <- humidity$rh
         tdew <- humidity$tdew
     } else {
@@ -2423,7 +2447,7 @@ morpher__belcher_execute <- function(context, change_factor = FALSE) {
         tdew <- if (!nrow(tdb) || !nrow(rh)) {
             data.table::data.table()
         } else {
-            morpher__belcher_tdew(tdb, rh)
+            original_morphing__tdew(tdb, rh)
         }
     }
 
@@ -2466,7 +2490,7 @@ morpher__belcher_execute <- function(context, change_factor = FALSE) {
         diff_rad <- if (!nrow(glob_rad)) {
             data.table::data.table()
         } else {
-            morpher__belcher_diffuse_radiation(data_epw, glob_rad)
+            original_morphing__diffuse_radiation(data_epw, glob_rad)
         }
         epw_lat <- morpher__epw_location_numeric(
             epw,
@@ -2484,7 +2508,7 @@ morpher__belcher_execute <- function(context, change_factor = FALSE) {
         norm_rad <- if (!nrow(glob_rad) || !nrow(diff_rad)) {
             data.table::data.table()
         } else {
-            morpher__belcher_direct_normal_radiation(
+            original_morphing__direct_normal_radiation(
                 glob_rad,
                 diff_rad,
                 latitude = epw_lat,
@@ -2505,10 +2529,10 @@ morpher__belcher_execute <- function(context, change_factor = FALSE) {
     opaque_cover <- if (!nrow(total_cover)) {
         data.table::data.table()
     } else {
-        morpher__belcher_opaque_sky_cover(data_epw, total_cover)
+        original_morphing__opaque_sky_cover(data_epw, total_cover)
     }
     precip <- steps$precip(data_epw, context)
-    snow <- morpher__belcher_snow_depth(data_epw, context)
+    snow <- original_morphing__snow_depth(data_epw, context)
 
     # Keep the established part order because it controls both field overlay
     # precedence and the persisted result contract fixed by the snapshots.
@@ -2531,7 +2555,7 @@ morpher__belcher_execute <- function(context, change_factor = FALSE) {
     )
     suppressMessages(epw$drop_unit())
     for (name in names(parts)) {
-        parts[[name]] <- morpher__belcher_drop_units(
+        parts[[name]] <- original_morphing__drop_units(
             parts[[name]],
             intersect(names(parts[[name]]), names(data_epw))
         )
@@ -2548,21 +2572,21 @@ morpher__belcher_execute <- function(context, change_factor = FALSE) {
 }
 
 # Retain the registered absolute-target runner while delegating its common EPW
-# assembly to the shared Belcher executor.
-morpher__belcher_absolute_run <- function(context, backend = NULL) {
-    morpher__belcher_execute(context, change_factor = FALSE)
+# assembly to the shared original-morphing executor.
+original_morphing__absolute_run <- function(context, backend = NULL) {
+    original_morphing__execute(context, change_factor = FALSE)
 }
 
 # Retain the registered change-factor runner and its no-reference fallback while
-# delegating identified change cases to the shared Belcher executor.
-morpher__belcher_run <- function(context, backend = NULL) {
+# delegating identified change cases to the shared original-morphing executor.
+original_morphing__run <- function(context, backend = NULL) {
     if (is.null(context$reference_climate)) {
         # Without external historical climate, the EPW monthly climatology is
         # the reference. Applying future-minus-EPW changes is equivalent to the
         # absolute-target implementation, including precipitation scaling.
-        return(morpher__belcher_absolute_run(context, backend))
+        return(original_morphing__absolute_run(context, backend))
     }
 
-    morpher__belcher_execute(context, change_factor = TRUE)
+    original_morphing__execute(context, change_factor = TRUE)
 }
 # }}}
