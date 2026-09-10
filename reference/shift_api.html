@@ -53,7 +53,7 @@ next step without manually passing manifest IDs."><meta property="og:image" cont
       <a href="../articles/downloader.html">Run Persistent Downloads</a>
     </li>
     <li>
-      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
+      <a href="../articles/epw-morpher.html">Inspect Future-Weather Transformations</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
@@ -124,10 +124,6 @@ next step without manually passing manifest IDs.</p>
 <span>  metadata <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">shift_morph_method</span><span class="op">(</span><span class="va">recipe</span>, reference <span class="op">=</span> <span class="cn">NULL</span>, observed_reference <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">belcher</span><span class="op">(</span>reference <span class="op">=</span> <span class="cn">NULL</span>, methods <span class="op">=</span> <span class="cn">NULL</span>, profile <span class="op">=</span> <span class="st">"enhanced"</span>, options <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
-<span></span>
 <span><span class="fu">shift_cmip6</span><span class="op">(</span></span>
 <span>  <span class="va">model</span>,</span>
 <span>  <span class="va">scenarios</span>,</span>
@@ -167,7 +163,11 @@ next step without manually passing manifest IDs.</p>
 <span>  options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">shift_reference_plan</span><span class="op">(</span><span class="va">plan_id</span>, <span class="va">periods</span><span class="op">)</span></span>
+<span><span class="fu">shift_reference_plan</span><span class="op">(</span></span>
+<span>  <span class="va">plan_id</span>,</span>
+<span>  <span class="va">periods</span>,</span>
+<span>  role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"model_historical"</span>, <span class="st">"observed_reference"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">historical_reference</span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span>, period <span class="op">=</span> <span class="st">"reference"</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
@@ -176,7 +176,9 @@ next step without manually passing manifest IDs.</p>
 <span>  <span class="va">site</span>,</span>
 <span>  <span class="va">periods</span>,</span>
 <span>  <span class="va">store</span>,</span>
-<span>  <span class="va">method</span>,</span>
+<span>  <span class="va">transform</span>,</span>
+<span>  reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  observed_reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  control <span class="op">=</span> <span class="fu">shift_control</span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  collect <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  download <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
@@ -189,8 +191,10 @@ next step without manually passing manifest IDs.</p>
 <span>  <span class="va">epw</span>,</span>
 <span>  <span class="va">climate</span>,</span>
 <span>  <span class="va">periods</span>,</span>
-<span>  <span class="va">method</span>,</span>
+<span>  <span class="va">transform</span>,</span>
 <span>  <span class="va">dir</span>,</span>
+<span>  reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  observed_reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  control <span class="op">=</span> <span class="fu">shift_control</span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  ui <span class="op">=</span> <span class="fu">shift_ui</span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -249,13 +253,9 @@ next step without manually passing manifest IDs.</p>
 <span><span class="fu">shift_morph</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
 <span>  baseline <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  recipe <span class="op">=</span> <span class="fu"><a href="epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span>,</span>
+<span>  <span class="va">transform</span>,</span>
 <span>  reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  reference_plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  reference_periods <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  observed_reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  observed_plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  observed_periods <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  complete_only <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
@@ -374,7 +374,7 @@ next step without manually passing manifest IDs.</p>
 <dt id="arg-source-experiment-variant-frequency">source, experiment, variant, frequency<a class="anchor" aria-label="anchor" href="#arg-source-experiment-variant-frequency"></a></dt>
 <dd><p>Provider-neutral request fields.
 Values must use the selected provider's controlled vocabulary.
-In <code>shift_cmip6()</code>, an unnamed scalar <code>frequency</code> applies to every recipe
+In <code>shift_cmip6()</code>, an unnamed scalar <code>frequency</code> applies to every transform
 input, while a named character vector assigns one frequency to every
 source variable so <code>3hrPt</code>, <code>3hr</code>, and <code>day</code> data can be collected together.
 In <code>shift_reference_historical()</code>, <code>experiment</code> is the historical
@@ -400,9 +400,8 @@ extraction filters in <code>shift_extract()</code>.</p></dd>
 
 
 <dt id="arg-options">options<a class="anchor" aria-label="anchor" href="#arg-options"></a></dt>
-<dd><p>For <code>belcher()</code>, an optional named list created by
-<code><a href="belcher_options.html">belcher_options()</a></code>. For <code>shift_request()</code>, provider-specific request
-options; ESGF recognizes <code>index_node</code> and <code>time_filter_method</code>.</p></dd>
+<dd><p>Provider-specific request options. For ESGF, <code>index_node</code> and
+<code>time_filter_method</code> are recognized.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -433,28 +432,6 @@ EPW export option list.</p></dd>
 <dd><p>Optional site metadata.</p></dd>
 
 
-<dt id="arg-recipe">recipe<a class="anchor" aria-label="anchor" href="#arg-recipe"></a></dt>
-<dd><p>Morphing recipe, usually from <code><a href="epw_morph_recipe.html">epw_morph_recipe()</a></code>.</p></dd>
-
-
-<dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>
-<dd><p>Optional <code>ShiftReferenceSpec</code> or <code>ShiftClimate</code> stage for
-change-factor morphing.</p></dd>
-
-
-<dt id="arg-observed-reference">observed_reference<a class="anchor" aria-label="anchor" href="#arg-observed-reference"></a></dt>
-<dd><p>Optional plan-backed <code>ShiftReferenceSpec</code> or
-<code>ShiftClimate</code> stage containing multi-year observed daily weather.</p></dd>
-
-
-<dt id="arg-methods">methods<a class="anchor" aria-label="anchor" href="#arg-methods"></a></dt>
-<dd><p>Optional named Belcher step method overrides.</p></dd>
-
-
-<dt id="arg-profile">profile<a class="anchor" aria-label="anchor" href="#arg-profile"></a></dt>
-<dd><p>Belcher compatibility profile, <code>"enhanced"</code> by default.</p></dd>
-
-
 <dt id="arg-model">model<a class="anchor" aria-label="anchor" href="#arg-model"></a></dt>
 <dd><p>CMIP6 source/model IDs.</p></dd>
 
@@ -473,7 +450,7 @@ change-factor morphing.</p></dd>
 
 <dt id="arg-table">table<a class="anchor" aria-label="anchor" href="#arg-table"></a></dt>
 <dd><p>Optional CMIP6 table selection. <code>NULL</code> automatically maps each
-recipe input to its native table (including <code>snd</code> to <code>LImon</code>); an unnamed
+transform input to its native table (including <code>snd</code> to <code>LImon</code>); an unnamed
 scalar pins every variable to one table; a named character vector
 overrides individual variables.</p></dd>
 
@@ -551,7 +528,14 @@ climate data.</p></dd>
 
 
 <dt id="arg-periods">periods<a class="anchor" aria-label="anchor" href="#arg-periods"></a></dt>
-<dd><p>A period table, usually from <code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.</p></dd>
+<dd><p>A period table, usually from <code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.
+<code>shift_future_epw()</code> and <code>shift_plan()</code> also accept a numeric vector of
+target years; each year becomes an independently named output period.</p></dd>
+
+
+<dt id="arg-role">role<a class="anchor" aria-label="anchor" href="#arg-role"></a></dt>
+<dd><p>Semantic role of the plan-backed climate. Use
+<code>"observed_reference"</code> only for an observational extraction plan.</p></dd>
 
 
 <dt id="arg-period">period<a class="anchor" aria-label="anchor" href="#arg-period"></a></dt>
@@ -572,9 +556,20 @@ climate data.</p></dd>
 <dd><p>An <a href="EsgStore.html">EsgStore</a>, store path, or <code>NULL</code>.</p></dd>
 
 
-<dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
-<dd><p>In task-level planning, a complete <code>shift_morph_method()</code>
-object. In <code>shift_extract()</code>, the grid extraction method.</p></dd>
+<dt id="arg-transform">transform<a class="anchor" aria-label="anchor" href="#arg-transform"></a></dt>
+<dd><p>A reusable specification from <code><a href="monthly_transform.html">monthly_transform()</a></code>,
+<code><a href="monthly_transform.html">daily_transform()</a></code>, or <code><a href="monthly_transform.html">hourly_transform()</a></code>.</p></dd>
+
+
+<dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>
+<dd><p>Optional <code>ShiftReferenceSpec</code> or <code>ShiftClimate</code> stage
+containing historical model climate when required by <code>transform</code>.</p></dd>
+
+
+<dt id="arg-observed-reference">observed_reference<a class="anchor" aria-label="anchor" href="#arg-observed-reference"></a></dt>
+<dd><p>Optional plan-backed <code>ShiftReferenceSpec</code> or
+<code>ShiftClimate</code> stage containing observed weather when required by
+<code>transform</code>.</p></dd>
 
 
 <dt id="arg-control">control<a class="anchor" aria-label="anchor" href="#arg-control"></a></dt>
@@ -596,7 +591,7 @@ stage.</p></dd>
 
 <dt id="arg-morph">morph<a class="anchor" aria-label="anchor" href="#arg-morph"></a></dt>
 <dd><p>Named morph-stage options. Stage option lists are validated and
-cannot override task-level controls or the method recipe/reference.</p></dd>
+cannot override task-level controls or the transform/reference inputs.</p></dd>
 
 
 <dt id="arg-climate">climate<a class="anchor" aria-label="anchor" href="#arg-climate"></a></dt>
@@ -655,6 +650,10 @@ can use OPeNDAP first and only download as a fallback when requested.</p></dd>
 <dd><p>Optional download session label.</p></dd>
 
 
+<dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
+<dd><p>Grid extraction method used by <code>shift_extract()</code>.</p></dd>
+
+
 <dt id="arg-fallback">fallback<a class="anchor" aria-label="anchor" href="#arg-fallback"></a></dt>
 <dd><p>Extraction fallback policy.</p></dd>
 
@@ -662,16 +661,6 @@ can use OPeNDAP first and only download as a fallback when requested.</p></dd>
 <dt id="arg-baseline">baseline<a class="anchor" aria-label="anchor" href="#arg-baseline"></a></dt>
 <dd><p>Optional baseline EPW path or
 <code>shift_site()</code> object containing <code>epw</code>.</p></dd>
-
-
-<dt id="arg-reference-plan-id-reference-periods">reference_plan_id, reference_periods<a class="anchor" aria-label="anchor" href="#arg-reference-plan-id-reference-periods"></a></dt>
-<dd><p>Optional store plan IDs and period
-table for reference climate data.</p></dd>
-
-
-<dt id="arg-observed-plan-id-observed-periods">observed_plan_id, observed_periods<a class="anchor" aria-label="anchor" href="#arg-observed-plan-id-observed-periods"></a></dt>
-<dd><p>Optional store plan IDs and period
-table for observed daily weather.</p></dd>
 
 
 <dt id="arg-complete-only">complete_only<a class="anchor" aria-label="anchor" href="#arg-complete-only"></a></dt>

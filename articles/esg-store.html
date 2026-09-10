@@ -69,7 +69,7 @@
       <a href="../articles/downloader.html">Run Persistent Downloads</a>
     </li>
     <li>
-      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
+      <a href="../articles/epw-morpher.html">Inspect Future-Weather Transformations</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
@@ -174,9 +174,9 @@ reproducible.</p>
 <span><span class="va">store</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgStore.html">EsgStore</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="va">store_path</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">path</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store"</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="va">manifest</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store/manifest.duckdb"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="va">path</span>, all.files <span class="op">=</span> <span class="cn">TRUE</span>, no.. <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;  [1] "dicts"               "downloads"           "extracts"</span></span>
 <span><span class="co">#&gt;  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"</span></span>
@@ -220,36 +220,37 @@ safe read path for ad-hoc inspection.</p>
 <span><span class="st">    WHERE table_schema = 'main'</span></span>
 <span><span class="st">    ORDER BY table_name</span></span>
 <span><span class="st">"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                 table_name</span></span>
-<span><span class="co">#&gt;                     &lt;char&gt;</span></span>
-<span><span class="co">#&gt;  1:               artifact</span></span>
-<span><span class="co">#&gt;  2:   epw_baseline_summary</span></span>
-<span><span class="co">#&gt;  3:    epw_climate_summary</span></span>
-<span><span class="co">#&gt;  4:       epw_morph_factor</span></span>
-<span><span class="co">#&gt;  5:         epw_morph_plan</span></span>
-<span><span class="co">#&gt;  6:       epw_morph_result</span></span>
-<span><span class="co">#&gt;  7:             epw_output</span></span>
-<span><span class="co">#&gt;  8:             epw_source</span></span>
-<span><span class="co">#&gt;  9:               esg_file</span></span>
-<span><span class="co">#&gt; 10:              esg_query</span></span>
-<span><span class="co">#&gt; 11:   esg_query_dependency</span></span>
-<span><span class="co">#&gt; 12:         esg_query_file</span></span>
-<span><span class="co">#&gt; 13:          esg_query_tag</span></span>
-<span><span class="co">#&gt; 14:       esg_query_update</span></span>
-<span><span class="co">#&gt; 15:  esg_query_update_file</span></span>
-<span><span class="co">#&gt; 16: extraction_grid_source</span></span>
-<span><span class="co">#&gt; 17:        extraction_plan</span></span>
-<span><span class="co">#&gt; 18:      extraction_result</span></span>
-<span><span class="co">#&gt; 19:           file_catalog</span></span>
-<span><span class="co">#&gt; 20:              query_run</span></span>
-<span><span class="co">#&gt; 21:              shift_run</span></span>
-<span><span class="co">#&gt; 22:         shift_run_case</span></span>
-<span><span class="co">#&gt; 23:        shift_run_event</span></span>
-<span><span class="co">#&gt; 24:          shift_run_job</span></span>
-<span><span class="co">#&gt; 25:         shift_run_step</span></span>
-<span><span class="co">#&gt; 26:             store_meta</span></span>
-<span><span class="co">#&gt;                 table_name</span></span>
-<span><span class="co">#&gt;                     &lt;char&gt;</span></span></code></pre></div>
+<span><span class="co">#&gt;                       table_name</span></span>
+<span><span class="co">#&gt;                           &lt;char&gt;</span></span>
+<span><span class="co">#&gt;  1:                     artifact</span></span>
+<span><span class="co">#&gt;  2:         epw_baseline_summary</span></span>
+<span><span class="co">#&gt;  3:          epw_climate_summary</span></span>
+<span><span class="co">#&gt;  4:             epw_morph_factor</span></span>
+<span><span class="co">#&gt;  5: epw_morph_observed_reference</span></span>
+<span><span class="co">#&gt;  6:               epw_morph_plan</span></span>
+<span><span class="co">#&gt;  7:             epw_morph_result</span></span>
+<span><span class="co">#&gt;  8:                   epw_output</span></span>
+<span><span class="co">#&gt;  9:                   epw_source</span></span>
+<span><span class="co">#&gt; 10:                     esg_file</span></span>
+<span><span class="co">#&gt; 11:                    esg_query</span></span>
+<span><span class="co">#&gt; 12:         esg_query_dependency</span></span>
+<span><span class="co">#&gt; 13:               esg_query_file</span></span>
+<span><span class="co">#&gt; 14:                esg_query_tag</span></span>
+<span><span class="co">#&gt; 15:             esg_query_update</span></span>
+<span><span class="co">#&gt; 16:        esg_query_update_file</span></span>
+<span><span class="co">#&gt; 17:       extraction_grid_source</span></span>
+<span><span class="co">#&gt; 18:              extraction_plan</span></span>
+<span><span class="co">#&gt; 19:            extraction_result</span></span>
+<span><span class="co">#&gt; 20:                 file_catalog</span></span>
+<span><span class="co">#&gt; 21:                    query_run</span></span>
+<span><span class="co">#&gt; 22:                    shift_run</span></span>
+<span><span class="co">#&gt; 23:               shift_run_case</span></span>
+<span><span class="co">#&gt; 24:              shift_run_event</span></span>
+<span><span class="co">#&gt; 25:                shift_run_job</span></span>
+<span><span class="co">#&gt; 26:               shift_run_step</span></span>
+<span><span class="co">#&gt; 27:                   store_meta</span></span>
+<span><span class="co">#&gt;                       table_name</span></span>
+<span><span class="co">#&gt;                           &lt;char&gt;</span></span></code></pre></div>
 <p>The core table families are:</p>
 <ul>
 <li>metadata: <code>store_meta</code>;</li>
@@ -342,7 +343,8 @@ operation.</p>
 collected result. Tracked queries can later be previewed, updated,
 tagged, and used to build download plans.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"recommended"</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">transform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span></span>
+<span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="va">transform</span><span class="op">@</span><span class="va">required_inputs</span><span class="op">$</span><span class="va">model_future</span><span class="op">@</span><span class="va">variable_sets</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
 <span></span>
 <span><span class="va">query</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/EsgQuery.html">esg_query</a></span><span class="op">(</span><span class="st">"https://esgf-data.dkrz.de"</span><span class="op">)</span><span class="op">$</span></span>
 <span>    <span class="fu">activity_id</span><span class="op">(</span><span class="st">"ScenarioMIP"</span><span class="op">)</span><span class="op">$</span></span>
@@ -364,49 +366,49 @@ tagged, and used to build download plans.</p>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">tag_query</span><span class="op">(</span><span class="va">query_id</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"cmip6"</span>, <span class="st">"future-weather"</span>, <span class="st">"singapore"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                              tag_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3</span></span>
-<span><span class="co">#&gt; 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71</span></span>
-<span><span class="co">#&gt; 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b</span></span>
+<span><span class="co">#&gt; 1: a300621091de45bdde1b1adf4157cd6cc841504df9c2fac4d586147b0e935e77</span></span>
+<span><span class="co">#&gt; 2: 395569e31cd452c818511f89a6d2c88b73bc144a5211703be3730554ae009cc6</span></span>
+<span><span class="co">#&gt; 3: 9cbdedcf4d9d8357785f24bc81f844bff9afee19892aa09470269b9d45e95295</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
-<span><span class="co">#&gt; 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
-<span><span class="co">#&gt; 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
+<span><span class="co">#&gt; 2: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
+<span><span class="co">#&gt; 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-07-25 17:08:31</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-07-25 17:08:31</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-07-25 17:08:31</span></span>
+<span><span class="co">#&gt; 1:          cmip6 2026-09-10 09:36:50</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-09-10 09:36:50</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-09-10 09:36:50</span></span>
 <span><span class="fu">select_cols</span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="fu">queries</span><span class="op">(</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"query_id"</span>, <span class="st">"label"</span>, <span class="st">"index_node"</span>, <span class="st">"tracked"</span>, <span class="st">"created_at"</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
 <span><span class="co">#&gt;                    label                index_node tracked          created_at</span></span>
 <span><span class="co">#&gt;                   &lt;char&gt;                    &lt;char&gt;  &lt;lgcl&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-07-25 17:08:31</span></span>
+<span><span class="co">#&gt; 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-09-10 09:36:50</span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">query_tags</span><span class="op">(</span><span class="va">query_id</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                              tag_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 9913160dec9459da162a460e13c761b5504a187f3924b51d9ccf9aa0850007a3</span></span>
-<span><span class="co">#&gt; 2: c18dfc3756029099f2172bfcaf5f881c3e8e90790066bc339ac0f4141e0b1e71</span></span>
-<span><span class="co">#&gt; 3: 4bf1f26772ef5c8a9d84fbf950e3fa819c6439789a9ced967189215dba758f4b</span></span>
+<span><span class="co">#&gt; 1: a300621091de45bdde1b1adf4157cd6cc841504df9c2fac4d586147b0e935e77</span></span>
+<span><span class="co">#&gt; 2: 395569e31cd452c818511f89a6d2c88b73bc144a5211703be3730554ae009cc6</span></span>
+<span><span class="co">#&gt; 3: 9cbdedcf4d9d8357785f24bc81f844bff9afee19892aa09470269b9d45e95295</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
-<span><span class="co">#&gt; 2: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
-<span><span class="co">#&gt; 3: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
+<span><span class="co">#&gt; 2: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
+<span><span class="co">#&gt; 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
 <span><span class="co">#&gt;               tag          created_at</span></span>
 <span><span class="co">#&gt;            &lt;char&gt;              &lt;POSc&gt;</span></span>
-<span><span class="co">#&gt; 1:          cmip6 2026-07-25 17:08:31</span></span>
-<span><span class="co">#&gt; 2: future-weather 2026-07-25 17:08:31</span></span>
-<span><span class="co">#&gt; 3:      singapore 2026-07-25 17:08:31</span></span></code></pre></div>
+<span><span class="co">#&gt; 1:          cmip6 2026-09-10 09:36:50</span></span>
+<span><span class="co">#&gt; 2: future-weather 2026-09-10 09:36:50</span></span>
+<span><span class="co">#&gt; 3:      singapore 2026-09-10 09:36:50</span></span></code></pre></div>
 <p>The query snapshot is written under <code>queries/</code>, while the
 query identity and tracking state are recorded in the manifest.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">store</span><span class="op">$</span><span class="va">path</span>, <span class="st">"queries"</span><span class="op">)</span>, recursive <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json"</span></span>
+<span><span class="co">#&gt; [1] "query-5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91.json"</span></span>
 <span></span>
 <span><span class="va">store</span><span class="op">$</span><span class="fu">query</span><span class="op">(</span><span class="st">"</span></span>
 <span><span class="st">    SELECT query_id, label, tracked, query_file</span></span>
@@ -414,13 +416,13 @@ query identity and tracking state are recorded in the manifest.</p>
 <span><span class="st">"</span><span class="op">)</span></span>
 <span><span class="co">#&gt;                                                            query_id</span></span>
 <span><span class="co">#&gt;                                                              &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: 44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152</span></span>
+<span><span class="co">#&gt; 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91</span></span>
 <span><span class="co">#&gt;                    label tracked</span></span>
 <span><span class="co">#&gt;                   &lt;char&gt;  &lt;lgcl&gt;</span></span>
 <span><span class="co">#&gt; 1: singapore-ssp585-amon    TRUE</span></span>
 <span><span class="co">#&gt;                                                                             query_file</span></span>
 <span><span class="co">#&gt;                                                                                 &lt;char&gt;</span></span>
-<span><span class="co">#&gt; 1: queries/query-44182b5adba905c4236489a16fd0e83663c732b4cb31c66ab3ecda5577cf7152.json</span></span></code></pre></div>
+<span><span class="co">#&gt; 1: queries/query-5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91.json</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="preview-and-update-query-files">Preview and Update Query Files<a class="anchor" aria-label="anchor" href="#preview-and-update-query-files"></a>

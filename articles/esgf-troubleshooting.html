@@ -69,7 +69,7 @@
       <a href="../articles/downloader.html">Run Persistent Downloads</a>
     </li>
     <li>
-      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
+      <a href="../articles/epw-morpher.html">Inspect Future-Weather Transformations</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
@@ -287,8 +287,8 @@ EPWs.</p>
 <span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">site_id</span>, <span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>If coverage is incomplete:</p>
 <ul>
-<li>check that the requested variables match
-<code>epw_morph_variables("recommended")</code>;</li>
+<li>check that the requested variables match the selected transform’s
+<code>model_future</code> input contract;</li>
 <li>confirm each File record covers the requested morphing period;</li>
 <li>inspect whether OPeNDAP access or fallback downloads failed;</li>
 <li>rerun <code><a href="../reference/shift_api.html">shift_extract()</a></code> after fixing file selection or
@@ -300,14 +300,13 @@ record.</li>
 <div class="section level2">
 <h2 id="multi-table-selection-and-snow-depth">Multi-Table Selection and Snow Depth<a class="anchor" aria-label="anchor" href="#multi-table-selection-and-snow-depth"></a>
 </h2>
-<p>Enhanced Belcher recipes can combine atmospheric variables from
-<code>Amon</code> with snow depth (<code>snd</code>, metres) from
-<code>LImon</code>. Keep both table and grid automatic for the first
-resolution attempt:</p>
+<p>The enhanced monthly epwshiftr transform can combine atmospheric
+variables from <code>Amon</code> with snow depth (<code>snd</code>,
+metres) from <code>LImon</code>. Keep both table and grid automatic for
+the first resolution attempt:</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">recipe</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">recipe</span>, include_optional <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">transform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span></span>
+<span><span class="va">transform</span><span class="op">@</span><span class="va">required_inputs</span><span class="op">$</span><span class="va">model_future</span></span>
 <span></span>
 <span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>    <span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span>,</span>
@@ -341,12 +340,9 @@ Use <code>snow_depth = "required"</code> to make missing
 future/reference <code>snd</code> block resolution, or
 <code>"off"</code> to avoid querying it altogether.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">required_snow</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span></span>
-<span>    reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
-<span>    options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>snow_depth <span class="op">=</span> <span class="st">"required"</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">required_snow</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"epwshiftr"</span>, snow_depth <span class="op">=</span> <span class="st">"required"</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">no_snow</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span>options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>snow_depth <span class="op">=</span> <span class="st">"off"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">no_snow</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"epwshiftr"</span>, snow_depth <span class="op">=</span> <span class="st">"off"</span><span class="op">)</span></span></code></pre></div>
 <p>If automatic mapping is correct but a particular catalog needs a pin,
 override only that variable with <code>table = c(snd = "LImon")</code>.
 Normal and verbose prints preserve the distinction between an automatic
@@ -356,10 +352,15 @@ variables.</p>
 <div class="section level2">
 <h2 id="morphing-diagnostics">Morphing Diagnostics<a class="anchor" aria-label="anchor" href="#morphing-diagnostics"></a>
 </h2>
-<p>Strict morphing blocks on missing recipe variables, missing baseline
-EPW fields, or incomplete monthly summaries.</p>
+<p>Strict morphing blocks on missing transform variables, missing
+baseline EPW fields, or incomplete monthly summaries.</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span><span class="va">extracted</span>, baseline <span class="op">=</span> <span class="va">epw</span>, strict <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
+<span>    <span class="va">extracted</span>,</span>
+<span>    baseline <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span>,</span>
+<span>    strict <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
 <p>Use the lower-level <code>EpwMorpher</code> article when you need to
 inspect climate summaries, baseline summaries, factors, and morphing

@@ -50,7 +50,7 @@
       <a href="../articles/downloader.html">Run Persistent Downloads</a>
     </li>
     <li>
-      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
+      <a href="../articles/epw-morpher.html">Inspect Future-Weather Transformations</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
@@ -151,17 +151,25 @@
         </td>
         <td><p>Recreate an epwshiftr store</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
-          <h2 id="epw-morphing-and-backends">EPW morphing and backends <a href="#epw-morphing-and-backends" class="anchor" aria-hidden="true"></a></h2>
-          <p class="section-desc"></p><p>Configure store-native EPW morphing, recipes, and statistical downscaling backends.</p>
+          <h2 id="future-weather-transformations">Future-weather transformations <a href="#future-weather-transformations" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p><p>Discover, configure, and execute built-in future-weather methods.</p>
         </th>
       </tr></tbody><tbody><tr><td>
+          <p><code><a href="weather_transforms.html">weather_transforms()</a></code> </p>
+        </td>
+        <td><p>List built-in future-weather transformations</p></td>
+      </tr><tr><td>
+          <p><code><a href="monthly_transform.html">monthly_transform()</a></code> <code><a href="monthly_transform.html">daily_transform()</a></code> <code><a href="monthly_transform.html">hourly_transform()</a></code> </p>
+        </td>
+        <td><p>Configure a built-in future-weather transformation</p></td>
+      </tr><tr><td>
+          <p><code><a href="shift_api.html">shift_complete()</a></code> <code><a href="shift_api.html">shift_request()</a></code> <code><a href="shift_api.html">shift_site()</a></code> <code><a href="shift_api.html">shift_cmip6()</a></code> <code><a href="shift_api.html">shift_control()</a></code> <code><a href="shift_api.html">shift_cmip6_scenario()</a></code> <code><a href="shift_api.html">shift_reference_plan()</a></code> <code><a href="shift_api.html">historical_reference()</a></code> <code><a href="shift_api.html">shift_plan()</a></code> <code><a href="shift_api.html">shift_future_epw()</a></code> <code><a href="shift_api.html">shift_reference_historical()</a></code> <code><a href="shift_api.html">shift_collect()</a></code> <code><a href="shift_api.html">shift_download()</a></code> <code><a href="shift_api.html">shift_extract()</a></code> <code><a href="shift_api.html">shift_morph()</a></code> <code><a href="shift_api.html">shift_epw()</a></code> <code><a href="shift_api.html">shift_explain()</a></code> <code><a href="shift_api.html">shift_run()</a></code> <code><a href="shift_api.html">shift_export_epw()</a></code> <code><a href="shift_api.html">shift_check()</a></code> <code><a href="shift_api.html">shift_refresh()</a></code> <code><a href="shift_api.html">shift_ids()</a></code> <code><a href="shift_api.html">shift_cases()</a></code> <code><a href="shift_api.html">shift_missing()</a></code> <code><a href="shift_api.html">shift_runs()</a></code> <code><a href="shift_api.html">shift_run_get()</a></code> <code><a href="shift_api.html">shift_result()</a></code> <code><a href="shift_api.html">shift_resume()</a></code> <code><a href="shift_api.html">shift_watch()</a></code> <code><a href="shift_api.html">shift_cancel()</a></code> <code><a href="shift_api.html">shift_logs()</a></code> <code><a href="shift_api.html">shift_datasets()</a></code> <code><a href="shift_api.html">shift_files()</a></code> <code><a href="shift_api.html">shift_data()</a></code> <code><a href="shift_api.html">shift_diagnostics()</a></code> <code><a href="shift_api.html">shift_store()</a></code> <code><a href="shift_api.html">shift_target()</a></code> <code><a href="shift_api.html">shift_coverage()</a></code> <code><a href="shift_api.html">shift_outputs()</a></code> <code><a href="shift_api.html">shift_artifacts()</a></code> <code><a href="shift_api.html">shift_status()</a></code> <code><a href="shift_api.html">shift_ui()</a></code> </p>
+        </td>
+        <td><p>Store-native shift workflow API</p></td>
+      </tr><tr><td>
           <p><code><a href="EpwMorpher.html">EpwMorpher</a></code> </p>
         </td>
         <td><p>Store-native EPW morpher</p></td>
-      </tr><tr><td>
-          <p><code><a href="EpwMorphBackend.html">EpwMorphBackend</a></code> </p>
-        </td>
-        <td><p>EPW morphing backend</p></td>
       </tr><tr><td>
           <p><code><a href="epw_morpher.html">epw_morpher()</a></code> </p>
         </td>
@@ -170,34 +178,14 @@
           <p><code><a href="epw_morph_periods.html">epw_morph_periods()</a></code> </p>
         </td>
         <td><p>EPW morphing periods</p></td>
-      </tr><tr><td>
-          <p><code><a href="epw_morph_recipe.html">epw_morph_recipe()</a></code> </p>
+      </tr></tbody><tbody><tr><th colspan="2">
+          <h2 id="backend-extension">Backend extension <a href="#backend-extension" class="anchor" aria-hidden="true"></a></h2>
+          <p class="section-desc"></p><p>Inspect and register low-level execution backends for package extensions.</p>
+        </th>
+      </tr></tbody><tbody><tr><td>
+          <p><code><a href="EpwMorphBackend.html">EpwMorphBackend</a></code> </p>
         </td>
-        <td><p>EPW morphing recipe</p></td>
-      </tr><tr><td>
-          <p><code><a href="epw_morph_recipes.html">epw_morph_recipes()</a></code> </p>
-        </td>
-        <td><p>Inspect registered future-weather recipes</p></td>
-      </tr><tr><td>
-          <p><code><a href="epw_morph_recipe_spec.html">epw_morph_recipe_spec()</a></code> </p>
-        </td>
-        <td><p>Get a registered future-weather recipe specification</p></td>
-      </tr><tr><td>
-          <p><code><a href="epw_morph_methods.html">epw_morph_methods()</a></code> </p>
-        </td>
-        <td><p>Inspect registered future-weather methods</p></td>
-      </tr><tr><td>
-          <p><code><a href="epw_morph_method_spec.html">epw_morph_method_spec()</a></code> </p>
-        </td>
-        <td><p>Get a registered future-weather method specification</p></td>
-      </tr><tr><td>
-          <p><code><a href="belcher_options.html">belcher_options()</a></code> </p>
-        </td>
-        <td><p>Configure enhanced Belcher morphing</p></td>
-      </tr><tr><td>
-          <p><code><a href="epw_morph_variables.html">epw_morph_variables()</a></code> </p>
-        </td>
-        <td><p>EPW morphing variable sets</p></td>
+        <td><p>EPW morphing backend</p></td>
       </tr><tr><td>
           <p><code><a href="epw_morph_backends.html">epw_morph_backends()</a></code> </p>
         </td>
@@ -219,37 +207,13 @@
           <p class="section-desc"></p><p>Run the high-level staged workflow from request collection to future EPW output.</p>
         </th>
       </tr></tbody><tbody><tr><td>
-          <p><code><a href="shift_api.html">shift_complete()</a></code> <code><a href="shift_api.html">shift_request()</a></code> <code><a href="shift_api.html">shift_site()</a></code> <code><a href="shift_api.html">shift_morph_method()</a></code> <code><a href="shift_api.html">belcher()</a></code> <code><a href="shift_api.html">shift_cmip6()</a></code> <code><a href="shift_api.html">shift_control()</a></code> <code><a href="shift_api.html">shift_cmip6_scenario()</a></code> <code><a href="shift_api.html">shift_reference_plan()</a></code> <code><a href="shift_api.html">historical_reference()</a></code> <code><a href="shift_api.html">shift_plan()</a></code> <code><a href="shift_api.html">shift_future_epw()</a></code> <code><a href="shift_api.html">shift_reference_historical()</a></code> <code><a href="shift_api.html">shift_collect()</a></code> <code><a href="shift_api.html">shift_download()</a></code> <code><a href="shift_api.html">shift_extract()</a></code> <code><a href="shift_api.html">shift_morph()</a></code> <code><a href="shift_api.html">shift_epw()</a></code> <code><a href="shift_api.html">shift_explain()</a></code> <code><a href="shift_api.html">shift_run()</a></code> <code><a href="shift_api.html">shift_export_epw()</a></code> <code><a href="shift_api.html">shift_check()</a></code> <code><a href="shift_api.html">shift_refresh()</a></code> <code><a href="shift_api.html">shift_ids()</a></code> <code><a href="shift_api.html">shift_cases()</a></code> <code><a href="shift_api.html">shift_missing()</a></code> <code><a href="shift_api.html">shift_runs()</a></code> <code><a href="shift_api.html">shift_run_get()</a></code> <code><a href="shift_api.html">shift_result()</a></code> <code><a href="shift_api.html">shift_resume()</a></code> <code><a href="shift_api.html">shift_watch()</a></code> <code><a href="shift_api.html">shift_cancel()</a></code> <code><a href="shift_api.html">shift_logs()</a></code> <code><a href="shift_api.html">shift_datasets()</a></code> <code><a href="shift_api.html">shift_files()</a></code> <code><a href="shift_api.html">shift_data()</a></code> <code><a href="shift_api.html">shift_diagnostics()</a></code> <code><a href="shift_api.html">shift_store()</a></code> <code><a href="shift_api.html">shift_target()</a></code> <code><a href="shift_api.html">shift_coverage()</a></code> <code><a href="shift_api.html">shift_outputs()</a></code> <code><a href="shift_api.html">shift_artifacts()</a></code> <code><a href="shift_api.html">shift_status()</a></code> <code><a href="shift_api.html">shift_ui()</a></code> </p>
+          <p><code><a href="shift_api.html">shift_complete()</a></code> <code><a href="shift_api.html">shift_request()</a></code> <code><a href="shift_api.html">shift_site()</a></code> <code><a href="shift_api.html">shift_cmip6()</a></code> <code><a href="shift_api.html">shift_control()</a></code> <code><a href="shift_api.html">shift_cmip6_scenario()</a></code> <code><a href="shift_api.html">shift_reference_plan()</a></code> <code><a href="shift_api.html">historical_reference()</a></code> <code><a href="shift_api.html">shift_plan()</a></code> <code><a href="shift_api.html">shift_future_epw()</a></code> <code><a href="shift_api.html">shift_reference_historical()</a></code> <code><a href="shift_api.html">shift_collect()</a></code> <code><a href="shift_api.html">shift_download()</a></code> <code><a href="shift_api.html">shift_extract()</a></code> <code><a href="shift_api.html">shift_morph()</a></code> <code><a href="shift_api.html">shift_epw()</a></code> <code><a href="shift_api.html">shift_explain()</a></code> <code><a href="shift_api.html">shift_run()</a></code> <code><a href="shift_api.html">shift_export_epw()</a></code> <code><a href="shift_api.html">shift_check()</a></code> <code><a href="shift_api.html">shift_refresh()</a></code> <code><a href="shift_api.html">shift_ids()</a></code> <code><a href="shift_api.html">shift_cases()</a></code> <code><a href="shift_api.html">shift_missing()</a></code> <code><a href="shift_api.html">shift_runs()</a></code> <code><a href="shift_api.html">shift_run_get()</a></code> <code><a href="shift_api.html">shift_result()</a></code> <code><a href="shift_api.html">shift_resume()</a></code> <code><a href="shift_api.html">shift_watch()</a></code> <code><a href="shift_api.html">shift_cancel()</a></code> <code><a href="shift_api.html">shift_logs()</a></code> <code><a href="shift_api.html">shift_datasets()</a></code> <code><a href="shift_api.html">shift_files()</a></code> <code><a href="shift_api.html">shift_data()</a></code> <code><a href="shift_api.html">shift_diagnostics()</a></code> <code><a href="shift_api.html">shift_store()</a></code> <code><a href="shift_api.html">shift_target()</a></code> <code><a href="shift_api.html">shift_coverage()</a></code> <code><a href="shift_api.html">shift_outputs()</a></code> <code><a href="shift_api.html">shift_artifacts()</a></code> <code><a href="shift_api.html">shift_status()</a></code> <code><a href="shift_api.html">shift_ui()</a></code> </p>
         </td>
         <td><p>Store-native shift workflow API</p></td>
       </tr><tr><td>
           <p><code><a href="shift_cmip6_avail.html">shift_cmip6_avail()</a></code> </p>
         </td>
         <td><p>Query CMIP6 variable availability</p></td>
-      </tr><tr><td>
-          <p><code><a href="daily_temperature.html">daily_temperature()</a></code> </p>
-        </td>
-        <td><p>Daily temperature projection method</p></td>
-      </tr><tr><td>
-          <p><code><a href="eames_temperature.html">eames_temperature()</a></code> </p>
-        </td>
-        <td><p>Eames monthly temperature method</p></td>
-      </tr><tr><td>
-          <p><code><a href="ek_daily_temperature.html">ek_daily_temperature()</a></code> </p>
-        </td>
-        <td><p>Ek daily temperature method</p></td>
-      </tr><tr><td>
-          <p><code><a href="arima_temperature.html">arima_temperature()</a></code> </p>
-        </td>
-        <td><p>Arima month-wise quantile-mapping temperature method</p></td>
-      </tr><tr><td>
-          <p><code><a href="hourly_kernel_qdm.html">hourly_kernel_qdm()</a></code> </p>
-        </td>
-        <td><p>Hourly kernel QDM future-weather method</p></td>
-      </tr><tr><td>
-          <p><code><a href="sobie_curry_daily.html">sobie_curry_daily()</a></code> </p>
-        </td>
-        <td><p>Sobie-Curry daily morphing method</p></td>
       </tr></tbody><tbody><tr><th colspan="2">
           <h2 id="command-line-and-package-options">Command line and package options <a href="#command-line-and-package-options" class="anchor" aria-hidden="true"></a></h2>
           <p class="section-desc"></p>

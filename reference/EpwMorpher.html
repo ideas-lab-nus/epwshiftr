@@ -51,7 +51,7 @@ future EPW files through a store-backed morphing workflow."><meta property="og:i
       <a href="../articles/downloader.html">Run Persistent Downloads</a>
     </li>
     <li>
-      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
+      <a href="../articles/epw-morpher.html">Inspect Future-Weather Transformations</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
@@ -128,7 +128,7 @@ future EPW files through a store-backed morphing workflow.</p>
 <span>  <span class="va">store</span>,</span>
 <span>  <span class="va">epw</span>,</span>
 <span>  site_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  recipe <span class="op">=</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span>,</span>
+<span>  transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span>,</span>
 <span>  label <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
@@ -148,8 +148,9 @@ object inheriting from <code>"Epw"</code>.</p></dd>
 <dd><p>Optional site identifier.</p></dd>
 
 
-<dt><code>recipe</code></dt>
-<dd><p>EPW morphing recipe.</p></dd>
+<dt><code>transform</code></dt>
+<dd><p>A reusable weather transformation created by a
+scale-specific transform constructor.</p></dd>
 
 
 <dt><code>label</code></dt>
@@ -161,7 +162,7 @@ object inheriting from <code>"Epw"</code>.</p></dd>
 
 </div><p></p><hr><a id="method-EpwMorpher-required_variables"></a><div class="section">
 <h3 id="method-required-variables-">Method <code>required_variables()</code><a class="anchor" aria-label="anchor" href="#method-required-variables-"></a></h3>
-<p>Return recipe-required CMIP variable IDs.</p><div class="section">
+<p>Return transform-required CMIP variable IDs.</p><div class="section">
 <h4 id="usage-1">Usage<a class="anchor" aria-label="anchor" href="#usage-1"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EpwMorpher</span><span class="op">$</span><span class="fu">required_variables</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>

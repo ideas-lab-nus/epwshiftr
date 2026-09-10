@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Inspect EPW Morphing • epwshiftr</title>
+<title>Inspect Future-Weather Transformations • epwshiftr</title>
 <!-- jquery --><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script><!-- Bootstrap --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha256-bZLfwXAP04zRMK2BjiO8iu9pf4FbLqX6zitd+tIvLhE=" crossorigin="anonymous">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js" integrity="sha256-nuL8/2cJ5NDSSwnKD8VqreErSWHtnEP9E7AySL+1ev4=" crossorigin="anonymous"></script><!-- bootstrap-toc --><link rel="stylesheet" href="../bootstrap-toc.css">
 <script src="../bootstrap-toc.js"></script><!-- Font Awesome icons --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/all.min.css" integrity="sha256-mmgLkCYLUQbXn0B1SRqzHar6dCnv9oZFPEC1g1cwlkk=" crossorigin="anonymous">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/v4-shims.min.css" integrity="sha256-wZjR52fzng1pJHwx4aV2AO3yyTOXrcDW7jBpJtTwVxw=" crossorigin="anonymous">
 <!-- clipboard.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.6/clipboard.min.js" integrity="sha256-inc5kl9MA1hkeYUt+EC3BhlIgyp/2jDIyBLS6k3UxPI=" crossorigin="anonymous"></script><!-- headroom.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/headroom.min.js" integrity="sha256-AsUX4SJE1+yuDu5+mAVzJbuYNPHj/WroHuZ8Ir/CkE0=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/jQuery.headroom.min.js" integrity="sha256-ZX/yNShbjqsohH1k95liqY9Gd8uOiE1S4vZc+9KQ1K4=" crossorigin="anonymous"></script><!-- pkgdown --><link href="../pkgdown.css" rel="stylesheet">
-<script src="../pkgdown.js"></script><meta property="og:title" content="Inspect EPW Morphing">
-<meta property="og:description" content="Use EpwMorpher to inspect climate summaries, baseline summaries, morphing plans, diagnostics, morphed weather, and written EPW files.">
+<script src="../pkgdown.js"></script><meta property="og:title" content="Inspect Future-Weather Transformations">
+<meta property="og:description" content="Discover weather transformations, inspect their input contracts, and use EpwMorpher for store-native climate summaries and EPW generation.">
 <meta property="og:image" content="https://ideas-lab-nus.github.io/epwshiftr/logo.svg">
 <!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
@@ -69,7 +69,7 @@
       <a href="../articles/downloader.html">Run Persistent Downloads</a>
     </li>
     <li>
-      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
+      <a href="../articles/epw-morpher.html">Inspect Future-Weather Transformations</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
@@ -109,7 +109,7 @@
       </header><div class="row">
   <div class="col-md-9 contents">
     <div class="page-header toc-ignore">
-      <h1 data-toc-skip>Inspect EPW Morphing</h1>
+      <h1 data-toc-skip>Inspect Future-Weather Transformations</h1>
                         <h4 data-toc-skip class="author">Hongyuan
 Jia</h4>
             
@@ -128,1730 +128,267 @@ Jia</h4>
   Regenerate with: rawvignette::precompile_raw_vignettes()
   =====================================================================
 -->
-<p><code><a href="../reference/shift_api.html">shift_future_epw()</a></code> is the recommended user-facing
-interface in <a href="future-epw-workflow.html">Create Future EPW
-Files</a>. Use <code><a href="../reference/shift_api.html">shift_plan()</a></code> and
-<code><a href="../reference/shift_api.html">shift_explain()</a></code> when you want to inspect the stages before
-running them. <code><a href="../reference/shift_api.html">shift_morph()</a></code> and <code><a href="../reference/shift_api.html">shift_epw()</a></code>
-remain the lower-level wrappers around <code>EpwMorpher</code>, the
-store-native morphing engine.</p>
-<p>Use <code>EpwMorpher</code> directly when you need to inspect monthly
-summaries, preview factor calculations, diagnose missing variables,
-choose morphing case grouping, change the statistical downscaling
-backend, or rerun only the morph/write part of a workflow.</p>
+<p><code><a href="../reference/shift_api.html">shift_future_epw()</a></code> is the recommended interface for
+generating future EPW files. A weather transform selects the scientific
+calculation, while each run supplies the EPW template, climate data,
+study periods, references, and output directory. Keeping those
+responsibilities separate lets the same transform be reused for
+different sites, GCMs, scenarios, and periods.</p>
 <div class="section level2">
-<h2 id="inputs">Inputs<a class="anchor" aria-label="anchor" href="#inputs"></a>
+<h2 id="discover-methods">Discover Methods<a class="anchor" aria-label="anchor" href="#discover-methods"></a>
 </h2>
-<p><code>EpwMorpher</code> consumes completed extraction outputs in an
-<code>EsgStore</code> and a baseline EPW file. The examples below assume
-the store already has a future extraction plan named <code>region</code>
-and a historical reference extraction plan named
-<code>reference_region</code>.</p>
+<p><code><a href="../reference/weather_transforms.html">weather_transforms()</a></code> is the public method catalog. Each
+row is one selectable combination of transformation scale, scientific
+method, and hourly reconstruction.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">store</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgStore.html">EsgStore</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="st">"~/cmip6-singapore-store"</span>, create <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
-<span>    <span class="st">"extdata"</span>, <span class="st">"examples"</span>, <span class="st">"SGP_Singapore.486980_IWEC.epw"</span>,</span>
-<span>    package <span class="op">=</span> <span class="st">"epwshiftr"</span>,</span>
-<span>    mustWork <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
-<span>    store <span class="op">=</span> <span class="va">store</span>,</span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>    site_id <span class="op">=</span> <span class="st">"SIN"</span>,</span>
-<span>    recipe <span class="op">=</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span>,</span>
-<span>    label <span class="op">=</span> <span class="st">"Singapore baseline"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>The helper functions used by the high-level workflow are available
-directly:</p>
+<code class="sourceCode R"><span><span class="va">catalog</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/weather_transforms.html">weather_transforms</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="va">catalog</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span></span>
+<span>    <span class="va">scale</span>,</span>
+<span>    <span class="va">method</span>,</span>
+<span>    <span class="va">label</span>,</span>
+<span>    <span class="va">reconstruction</span>,</span>
+<span>    <span class="va">reconstruction_label</span>,</span>
+<span>    <span class="va">statistical_grouping</span>,</span>
+<span>    <span class="va">output_frequency</span>,</span>
+<span>    <span class="va">status</span></span>
+<span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
+<p>The catalog and constructors use the same registry. This prevents the
+documentation from advertising a combination that the executor cannot
+resolve. The input-contract columns are list columns because different
+semantic roles can require different variables and source
+frequencies.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"minimal"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"recommended"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"extended"</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span>
-<span><span class="va">reference_spec</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">request</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6_scenario</a></span><span class="op">(</span></span>
-<span>    source <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
-<span>    scenario <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
-<span>    years <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span>,</span>
-<span>    variables <span class="op">=</span> <span class="st">"belcher"</span>,</span>
-<span>    frequency <span class="op">=</span> <span class="st">"mon"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p><code>"recommended"</code> is the strict Belcher recipe set used by
-the main workflow. <code>"minimal"</code> is useful for relaxed
-demonstrations, and <code>"extended"</code> adds related variables for
-future recipes.</p>
-<p>When you already have a recipe or backend object, ask that object for
-its variables instead of choosing a named set manually:</p>
+<code class="sourceCode R"><span><span class="va">catalog</span><span class="op">[</span><span class="va">scale</span> <span class="op">==</span> <span class="st">"daily"</span> <span class="op">&amp;</span> <span class="va">method</span> <span class="op">==</span> <span class="st">"qdm"</span>, <span class="fu">.</span><span class="op">(</span></span>
+<span>    <span class="va">required_inputs</span>,</span>
+<span>    <span class="va">source_frequencies</span>,</span>
+<span>    <span class="va">evidence</span>,</span>
+<span>    <span class="va">references</span></span>
+<span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="construct-a-transform">Construct a Transform<a class="anchor" aria-label="anchor" href="#construct-a-transform"></a>
+</h2>
+<p>Use the constructor that names the scale on which the climate signal
+is calculated or applied:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">belcher_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">belcher_recipe</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">belcher_recipe</span>, include_optional <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="fu"><a href="../reference/epw_morph_backend.html">epw_morph_backend</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p>The enhanced Belcher profile is the default. Required variables block
-strict execution when absent; optional <code>tasmax</code>,
-<code>tasmin</code>, and <code>snd</code> inputs improve the result when
-matching future/reference data exist but do not otherwise block it. The
-high-level <code>shift_cmip6(table = NULL)</code> workflow maps
-atmospheric variables to <code>Amon</code> and <code>snd</code> to
-<code>LImon</code> automatically.</p>
-</div>
-<div class="section level2">
-<h2 id="recipes-and-backends">Recipes and Backends<a class="anchor" aria-label="anchor" href="#recipes-and-backends"></a>
-</h2>
-<p>A recipe selects a backend and carries backend-specific profile,
-options, and method overrides. The default recipe is
-<code>"belcher"</code>, which applies the Belcher-style statistical
-downscaling steps used by the high-level workflow.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">enhanced_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"belcher"</span>,</span>
-<span>    options <span class="op">=</span> <span class="fu"><a href="../reference/belcher_options.html">belcher_options</a></span><span class="op">(</span></span>
-<span>        transition_hours <span class="op">=</span> <span class="fl">72L</span>,</span>
-<span>        snow_depth <span class="op">=</span> <span class="st">"auto"</span>,</span>
-<span>        design_conditions <span class="op">=</span> <span class="st">"drop"</span></span>
-<span>    <span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">original_morphing</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span></span>
+<span><span class="va">btws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"btws"</span><span class="op">)</span></span>
+<span><span class="va">daily_power</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">daily_transform</a></span><span class="op">(</span></span>
+<span>    <span class="st">"epwshiftr"</span>,</span>
+<span>    reconstruction <span class="op">=</span> <span class="st">"power"</span></span>
 <span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Reproduce the numerical and header behavior from before enhanced profiles.</span></span>
-<span><span class="va">legacy_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span><span class="st">"belcher"</span>, profile <span class="op">=</span> <span class="st">"legacy"</span><span class="op">)</span></span></code></pre></div>
-<div class="section level3">
-<h3 id="complete-recipe-catalog">Complete Recipe Catalog<a class="anchor" aria-label="anchor" href="#complete-recipe-catalog"></a>
-</h3>
-<p>Methods and executable recipes are separate records:</p>
-<table class="table">
-<colgroup>
-<col width="13%">
-<col width="23%">
-<col width="36%">
-<col width="26%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Record</th>
-<th align="left">What it owns</th>
-<th align="left">What it does not own</th>
-<th align="left">Inspection API</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td align="left">Method</td>
-<td align="left">Equations, required variables and temporal frequency,
-algorithm parameters, output backbone, and stochastic behavior</td>
-<td align="left">Model choice, study years, EPW template, calendar
-mapping, physical closure, and evaluation metrics</td>
-<td align="left"><code><a href="../reference/epw_morph_methods.html">epw_morph_methods()</a></code></td>
-</tr>
-<tr class="even">
-<td align="left">Recipe</td>
-<td align="left">A runnable composition of one method with explicit
-input roles, calendar handling, sequence, hourly reconstruction,
-physical policy, output calendar, diagnostics, and provenance</td>
-<td align="left">A paper’s selected GCMs and periods, or a user
-evaluation design</td>
-<td align="left"><code><a href="../reference/epw_morph_recipes.html">epw_morph_recipes()</a></code></td>
-</tr>
-</tbody>
-</table>
-<p>Source selections, periods, scenarios, and evaluation metrics remain
-caller owned. This keeps a published algorithm available without turning
-one paper’s experiment into the package default. Users can evaluate
-methods under a common design by supplying the same eligible source
-data, periods, and EPW template to their selected recipes.
-Method-specific inputs still remain explicit: for example, Arima
-requires an observed reference while several other daily-temperature
-methods do not.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_methods.html">epw_morph_methods</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p>The complete recipe catalog then describes named runnable
-compositions assembled from backends and the seven component stages. Its
-<code>method</code> column identifies the algorithm, while the input,
-calendar, component, physical-policy, target-calendar, diagnostic, and
-provenance fields make the execution boundary inspectable. A method’s
-intrinsic calendar statistic remains method-owned: Eames calculates
-monthly mean/extrema changes and Arima calculates month-wise empirical
-distributions. Inspecting the catalog does not run a recipe or serialize
-any function:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_recipes.html">epw_morph_recipes</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"belcher_monthly"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"epwshiftr_monthly"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"epwshiftr_daily_power"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"epwshiftr_daily_btws"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"eames_monthly_temperature"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"ek_daily_factors"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"monthly_percentile_temperature"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"sobie_curry_daily"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/epw_morph_recipe_spec.html">epw_morph_recipe_spec</a></span><span class="op">(</span><span class="st">"hourly_kernel_qdm"</span><span class="op">)</span></span></code></pre></div>
-<p>The initial catalog distinguishes the following complete recipes:</p>
-<table class="table">
-<colgroup>
-<col width="19%">
-<col width="19%">
-<col width="39%">
-<col width="21%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Recipe</th>
-<th align="left">Policy</th>
-<th align="left">Implementation</th>
-<th align="left">Purpose</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td align="left"><code>belcher_monthly</code></td>
-<td align="left"><code>paper_faithful</code></td>
-<td align="left">Existing backend adapter</td>
-<td align="left">Belcher monthly workflow preserving the published field
-treatment</td>
-</tr>
-<tr class="even">
-<td align="left"><code>epwshiftr_monthly</code></td>
-<td align="left"><code>harmonized</code></td>
-<td align="left">Existing backend adapter</td>
-<td align="left">Enhanced production workflow, including its optional
-historical-input fallback</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>epwshiftr_daily_power</code></td>
-<td align="left"><code>harmonized</code></td>
-<td align="left">Seven-stage pipeline</td>
-<td align="left">Calendar-neutral daily temperature signal and
-constrained power projection</td>
-</tr>
-<tr class="even">
-<td align="left"><code>epwshiftr_daily_btws</code></td>
-<td align="left"><code>harmonized</code></td>
-<td align="left">Seven-stage pipeline</td>
-<td align="left">Existing daily CMIP6 temperature signal combined with
-the BTWS hourly projection</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>eames_monthly_temperature</code></td>
-<td align="left"><code>harmonized</code></td>
-<td align="left">Seven-stage pipeline</td>
-<td align="left">Eames monthly mean/average-daily-extrema changes and
-BTWS, with monthly statistics derived from daily CMIP6 inputs</td>
-</tr>
-<tr class="even">
-<td align="left"><code>ek_daily_factors</code></td>
-<td align="left">
-<code>paper_faithful</code>,
-<code>harmonized</code>
-</td>
-<td align="left">Seven-stage pipeline</td>
-<td align="left">Ek day-of-year mean/DTR factors and combined hourly
-temperature transform without an added smoothing window</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>monthly_percentile_temperature</code></td>
-<td align="left">
-<code>paper_faithful</code>,
-<code>harmonized</code>
-</td>
-<td align="left">Seven-stage pipeline</td>
-<td align="left">Arima month-wise model CDF change functions selected by
-each TMY day’s percentile in a multi-year observed CDF</td>
-</tr>
-<tr class="even">
-<td align="left"><code>hourly_kernel_qdm</code></td>
-<td align="left"><code>harmonized</code></td>
-<td align="left">Seven-stage pipeline</td>
-<td align="left">Three-hourly model variables reconstructed to hourly
-KDE-QDM distributions and retained as a physically closed multi-year EPW
-sequence</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>sobie_curry_daily</code></td>
-<td align="left">
-<code>paper_faithful</code>,
-<code>harmonized</code>
-</td>
-<td align="left">Seven-stage pipeline</td>
-<td align="left">Published daily mean/DTR transformations with
-independent or shared humidity closure</td>
-</tr>
-</tbody>
-</table>
-<p>Eight daily bias-adjustment methods use one reusable
-temperature-to-EPW adapter: Linear Scaling, Delta Change, Quantile
-Mapping, Quantile Delta Mapping, Scaled Distribution Mapping, CDF-t,
-Equidistant CDF Matching, and ISIMIP3BASD. Their recipes use the same
-daily <code>tas</code> role contract, 365-day calendar mapping, hourly
-temperature reconstruction, specific-humidity closure, EPW output, and
-diagnostics; only the signal component changes. The method catalog
-retains each algorithm’s own settings and stochastic-variable
-declaration.</p>
-<p>The <code>paper_faithful</code> policy on older recipes controls
-their documented field treatment only. It does not choose a paper’s
-model, member, scenario, or years. Those conditions are supplied by the
-user and are never applied implicitly.</p>
-<p>Create a configured recipe by its stable catalog name. The selected
-policy, catalog version, backend profile, and component names are
-persisted with the workflow:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">enhanced_monthly</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"epwshiftr_monthly"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">daily_power</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"epwshiftr_daily_power"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">daily_btws_variant</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"epwshiftr_daily_btws"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">eames_monthly_temperature</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"eames_monthly_temperature"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">ek_daily</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"ek_daily_factors"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">monthly_percentile_temperature</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"monthly_percentile_temperature"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">hourly_kernel_qdm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"hourly_kernel_qdm"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">sobie_curry</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"sobie_curry_daily"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">sobie_curry_harmonized</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"sobie_curry_daily"</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"harmonized"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>The complete hourly workflow requires hourly observed
-<code>tas</code>, <code>ps</code>, <code>hurs</code>,
-<code>sfcWind</code>, <code>rsds</code>, and <code>rsdsdiff</code>.
-Historical and future model roles use point-sampled <code>3hrPt</code>
-<code>tas</code>, <code>ps</code>, <code>huss</code>, <code>uas</code>,
-and <code>vas</code>, together with interval-mean <code>3hr</code>
-<code>rsds</code> and <code>rsdsdiff</code>. Daily <code>tasmin</code>
-and <code>tasmax</code> are optional interpolation anchors. After hourly
-reconstruction, the input adapter derives relative humidity, scalar wind
-speed, and meteorological direction before KQDM. It preserves every
-complete future model year as a separate output member instead of
-collapsing the corrected sequence into a representative year.</p>
-<p>Check the live Dataset catalogue before selecting a model. CMIP6
-stores the required state variables and radiation fluxes under different
-<code>frequency</code> facets even though they share the
-<code>3hr</code> table. A scalar <code>frequency = "3hr"</code>
-therefore excludes the point-sampled fields and creates a false
-incomplete result. Source-specific substitutions reported by a paper are
-data-preparation choices and are not applied automatically by the
-statistical method.</p>
-<p>Leaving <code>table = NULL</code> searches every CMIP6 table at the
-requested frequencies. The availability reduction selects one table per
-variable within each model/member/grid identity and returns that named
-mapping in the <code>table</code> list-column. Pass the mapping to
-<code><a href="../reference/shift_api.html">shift_cmip6()</a></code> so the download request uses the same
-variable-specific selection; <code>table_id</code> is only its compact
-display value.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">hourly_frequencies</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
-<span>    tas <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
-<span>    ps <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
-<span>    huss <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
-<span>    uas <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
-<span>    vas <span class="op">=</span> <span class="st">"3hrPt"</span>,</span>
-<span>    rsds <span class="op">=</span> <span class="st">"3hr"</span>,</span>
-<span>    rsdsdiff <span class="op">=</span> <span class="st">"3hr"</span>,</span>
-<span>    tasmin <span class="op">=</span> <span class="st">"day"</span>,</span>
-<span>    tasmax <span class="op">=</span> <span class="st">"day"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">hourly_availability</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_cmip6_avail.html">shift_cmip6_avail</a></span><span class="op">(</span></span>
-<span>    variables <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
-<span>        <span class="st">"tas"</span>, <span class="st">"ps"</span>, <span class="st">"huss"</span>, <span class="st">"uas"</span>, <span class="st">"vas"</span>, <span class="st">"rsds"</span>, <span class="st">"rsdsdiff"</span></span>
-<span>    <span class="op">)</span>,</span>
-<span>    scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
-<span>    member <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>    frequency <span class="op">=</span> <span class="va">hourly_frequencies</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
-<span>        <span class="st">"tas"</span>, <span class="st">"ps"</span>, <span class="st">"huss"</span>, <span class="st">"uas"</span>, <span class="st">"vas"</span>, <span class="st">"rsds"</span>, <span class="st">"rsdsdiff"</span></span>
-<span>    <span class="op">)</span><span class="op">]</span>,</span>
-<span>    index_node <span class="op">=</span> <span class="st">"ORNL"</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">available_hourly</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">hourly_availability</span>, <span class="va">complete</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">hourly_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/hourly_kernel_qdm.html">hourly_kernel_qdm</a></span><span class="op">(</span></span>
-<span>    reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
-<span>    observed_reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_plan</a></span><span class="op">(</span></span>
-<span>        plan_id <span class="op">=</span> <span class="va">observed_hourly_plan_ids</span>,</span>
-<span>        periods <span class="op">=</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>observed <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
-<span>    <span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">available_hourly</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
-<span>    <span class="va">selected</span> <span class="op">&lt;-</span> <span class="va">available_hourly</span><span class="op">[</span><span class="fl">1</span>, <span class="op">]</span></span>
-<span>    <span class="va">hourly_climate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
-<span>        model <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">source_id</span>,</span>
-<span>        scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
-<span>        member <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">variant_label</span>,</span>
-<span>        grid <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">grid_label</span>,</span>
-<span>        frequency <span class="op">=</span> <span class="va">hourly_frequencies</span>,</span>
-<span>        table <span class="op">=</span> <span class="va">selected</span><span class="op">$</span><span class="va">table</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
-<span>    <span class="op">)</span></span>
-<span></span>
-<span>    <span class="va">hourly_plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>        epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>        climate <span class="op">=</span> <span class="va">hourly_climate</span>,</span>
-<span>        periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2061</span><span class="op">:</span><span class="fl">2070</span><span class="op">)</span>,</span>
-<span>        method <span class="op">=</span> <span class="va">hourly_method</span>,</span>
-<span>        dir <span class="op">=</span> <span class="st">"future-epw"</span>,</span>
-<span>        dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span>    <span class="op">)</span></span>
-<span><span class="op">}</span></span></code></pre></div>
-<p>The planner expands historical and future extraction windows by one
-source timestep. This supplies the edge samples needed by bounded linear
-interpolation; only complete native-calendar years shared by every
-reconstructed variable continue into KDE-QDM. The requested period
-remains the case and coverage contract, and the retained/discarded
-boundary-year status is recorded in preprocessing diagnostics.</p>
-<p>Catalog input roles are validated before backend execution. The two
-monthly entries remain explicitly labelled backend adapters because
-their established runner has not yet been decomposed into executable
-components; the daily entries are checked against their registered
-seven-stage pipelines. Ad hoc recipes such as
-<code>epw_morph_recipe("belcher")</code> remain supported and preserve
-their previous defaults.</p>
-<p>The BTWS composition requires daily <code>tas</code>,
-<code>tasmin</code>, and <code>tasmax</code> from matching historical
-and future model periods. It reuses epwshiftr’s calendar-neutral daily
-target signal, baseline EPW sequence, specific-humidity closure, and
-output stages, while replacing only the hourly stage with equations
-(7)–(16) from Eames et al. (2024). The complete recipe is therefore
-intentionally labelled as a combination rather than a reproduction of
-the paper’s monthly UKCP18 workflow. The paper directs implementations
-to reduce <code>m</code> for a positive stretch or <code>n</code> for a
-negative stretch when the default <code>m = n = 1</code> would leave
-<code>[0, 1]</code>, but does not publish solver code. epwshiftr uses
-deterministic bisection to retain the largest admissible exponent and
-records <code>S</code>, <code>m</code>, <code>n</code>, closure errors,
-and every mean-shift fallback reason.</p>
-<p>At the high-level workflow, select the same daily temperature method
-and change only its hourly reconstruction component:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">btws_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/daily_temperature.html">daily_temperature</a></span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
+<span><span class="va">daily_btws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">daily_transform</a></span><span class="op">(</span></span>
+<span>    <span class="st">"epwshiftr"</span>,</span>
 <span>    reconstruction <span class="op">=</span> <span class="st">"btws"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>Eames et al. did not drive BTWS with daily CMIP6 series. Their paper
-applies monthly UKCP18 change factors for mean temperature and the
-monthly averages of daily minimum and maximum temperature to an hourly
-baseline month, with BTWS executed day by day.
-<code>eames_monthly_temperature</code> implements that temporal
-structure for temperature: it aggregates matching daily CMIP6
-<code>tas</code>, <code>tasmin</code>, and <code>tasmax</code> into the
-same three monthly statistics and maps one factor set to every EPW day
-in the corresponding month:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">eames_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/eames_temperature.html">eames_temperature</a></span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>The CMIP6 aggregation is a source adaptation because the paper used
-UKCP18. The recipe is also explicitly temperature-only: it reuses
-epwshiftr’s specific-humidity closure and does not implement the paper’s
-radiation, cloud, pressure, or other non-temperature transformations.
-The <code>epwshiftr_daily_btws</code> recipe remains available to
-compare hourly reconstruction algorithms under the same daily-varying
-CMIP6 signal.</p>
-<p>Ek et al. (2018) instead form a climate baseline for each day of the
-annual cycle and apply daily Belcher-style change factors to the
-inherited hourly weather sequence. The temperature recipe derives mean
-temperature and DTR from matching <code>tasmin</code> and
-<code>tasmax</code>, applies no additional smoothing window, and uses
-the combined shift-and-stretch equation:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>x</mi><mi>h</mi><mo>′</mo></msubsup><mo>=</mo><msub><mi>x</mi><mi>h</mi></msub><mo>+</mo><mi mathvariant="normal">Δ</mi><msub><mover><mi>x</mi><mo accent="true">‾</mo></mover><mi>d</mi></msub><mo>+</mo><msub><mi>α</mi><mrow><mrow><mi mathvariant="normal">D</mi><mi mathvariant="normal">T</mi><mi mathvariant="normal">R</mi></mrow><mo>,</mo><mi>d</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mi>h</mi></msub><mo>−</mo><msub><mover><mi>x</mi><mo accent="true">‾</mo></mover><mrow><mn>0</mn><mo>,</mo><mi>d</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">
-x_h' = x_h + \Delta\bar{x}_d +
-       \alpha_{\mathrm{DTR},d}(x_h - \bar{x}_{0,d})
-</annotation></semantics></math></p>
-<p>Here <code>alpha_DTR</code> is implemented as the relative modeled
-DTR change. This is the interpretation that makes zero climate change an
-identity and satisfies the paper’s stated daily mean and variance
-behavior; the original publication’s generic factor equations and
-variance wording are not fully self-consistent, so the interpretation is
-retained explicitly in recipe provenance.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ek_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ek_daily_temperature.html">ek_daily_temperature</a></span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>The initial recipe is temperature-only. Its
-<code>paper_faithful</code> policy preserves the baseline humidity
-fields so the Ek temperature transformation can be compared directly;
-<code>policy = "harmonized"</code> applies the shared specific-humidity
-closure. Wind, cloud, radiation, and other transformations are not
-included where the source publication is contradictory or
-underspecified.</p>
-<p>Arima et al. (2024) use four distinct inputs: the baseline TMY,
-historical and future daily model values, and multi-year observed daily
-weather for the target location. For temperature, historical and future
-inverse CDFs are constructed within each month and subtracted at common
-percentiles:</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi mathvariant="normal">Δ</mi><msub><mi>T</mi><mi>m</mi></msub><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><msubsup><mi>F</mi><mrow><mi>f</mi><mo>,</mo><mi>m</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msubsup><mi>F</mi><mrow><mi>c</mi><mo>,</mo><mi>m</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">
-\Delta T_m(p) = F^{-1}_{f,m}(p) - F^{-1}_{c,m}(p)
-</annotation></semantics></math></p>
-<p>The change function is smoothed with an endpoint-aware nine-point
-moving mean repeated three times. The baseline TMY daily mean is then
-located in the observed monthly empirical CDF, and the selected additive
-change is applied to all 24 hours of that day. Model calendars therefore
-contribute samples to monthly distributions; this method does not map
-model dates directly onto the 365 EPW days.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">arima_method</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/arima_temperature.html">arima_temperature</a></span><span class="op">(</span></span>
-<span>    reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
-<span>    observed_reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_plan</a></span><span class="op">(</span></span>
-<span>        plan_id <span class="op">=</span> <span class="va">observed_plan_ids</span>,</span>
-<span>        periods <span class="op">=</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>observed <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
-<span>    <span class="op">)</span>,</span>
-<span>    policy <span class="op">=</span> <span class="st">"paper_faithful"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>The publications do not specify empirical plotting positions,
-quantile interpolation, or endpoint evaluation. The implementation
-therefore records its midpoint probability grid, type-7 quantiles,
-linear factor interpolation, and endpoint clamping in every result. The
-initial recipe covers additive dry-bulb temperature for one model case;
-multi-model averaging and the published non-temperature transformations
-remain separate extensions.</p>
-<p>The Sobie-Curry recipe requires daily <code>tas</code>,
-<code>tasmin</code>, <code>tasmax</code>, <code>huss</code>, and surface
-pressure <code>ps</code> from matching historical and future model
-periods. It uses a circular 21-day window on the shared 365-day
-annual-phase grid, preserves the baseline CWEC/EPW sequence, and adjusts
-dry-bulb temperature and atmospheric pressure. Paper-faithful mode
-independently adjusts dew point and relative humidity. Harmonized mode
-applies the smoothed future-minus-historical daily <code>huss</code>
-change to baseline EPW specific humidity, clips the target only at zero
-or saturation, and derives relative humidity and dew point from
-projected temperature and pressure. Other EPW fields are unchanged. The
-paper-faithful dew-point standard-deviation factor is implemented as
-<code>sigma_future / sigma_historical - 1</code>: this preserves the
-paper’s stated past-future difference and makes zero climate change an
-identity transform. The printed ratio without <code>- 1</code>, when
-added to the original anomaly as shown in the paper, would double hourly
-anomalies under zero change.</p>
-<p>The profiles resolve to a complete, persisted option contract:</p>
-<table class="table">
-<colgroup>
-<col width="25%">
-<col width="25%">
-<col width="25%">
-<col width="25%">
-</colgroup>
-<thead><tr class="header">
-<th>Option</th>
-<th>Enhanced default</th>
-<th>Legacy default</th>
-<th>Meaning and allowed values</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td><code>transition_hours</code></td>
-<td><code>72</code></td>
-<td><code>0</code></td>
-<td>Total cyclic smoothing window centered on each month boundary;
-integer <code>0</code>–<code>336</code>. Precipitation is never
-smoothed.</td>
-</tr>
-<tr class="even">
-<td><code>humidity_source</code></td>
-<td><code>"auto"</code></td>
-<td><code>"hurs"</code></td>
-<td>Whole-case humidity source: <code>"auto"</code>,
-<code>"huss"</code>, or <code>"hurs"</code>.</td>
-</tr>
-<tr class="odd">
-<td><code>diffuse_model</code></td>
-<td><code>"rbl_2010"</code></td>
-<td><code>"preserve_fraction"</code></td>
-<td>Recalculate diffuse radiation with Ridley–Boland–Lauret 2010 or
-retain the baseline diffuse fraction.</td>
-</tr>
-<tr class="even">
-<td><code>illuminance_model</code></td>
-<td><code>"perez_1990"</code></td>
-<td><code>"preserve"</code></td>
-<td>Recalculate illuminance/luminance with Pérez 1990 or preserve the
-prior relation.</td>
-</tr>
-<tr class="odd">
-<td><code>snow_depth</code></td>
-<td><code>"auto"</code></td>
-<td><code>"off"</code></td>
-<td>Use <code>snd</code> when both future and reference cases contain
-it, require it, or do not query it: <code>"auto"</code>,
-<code>"required"</code>, <code>"off"</code>.</td>
-</tr>
-<tr class="even">
-<td><code>ground_temperatures</code></td>
-<td><code>"recalculate"</code></td>
-<td><code>"preserve"</code></td>
-<td>Recalculate the EPW ground-temperature header with Kusuda–Achenbach
-or retain it.</td>
-</tr>
-<tr class="odd">
-<td><code>typical_extreme_periods</code></td>
-<td><code>"recalculate"</code></td>
-<td><code>"preserve"</code></td>
-<td>Recalculate six hemisphere-aware periods or retain the baseline
-header.</td>
-</tr>
-<tr class="even">
-<td><code>design_conditions</code></td>
-<td><code>"drop"</code></td>
-<td><code>"preserve"</code></td>
-<td>Write <code>DESIGN CONDITIONS,0</code> or retain the baseline design
-conditions.</td>
-</tr>
-</tbody>
-</table>
-<p><code><a href="../reference/belcher_options.html">belcher_options()</a></code> creates a complete option list using
-enhanced defaults. For a legacy profile, pass a partial named list when
-only selected legacy defaults should change, for example
-<code>belcher(profile = "legacy", options = list(snow_depth = "auto"))</code>.
-Use <code>print(belcher(), verbose = TRUE)</code> to inspect all
-resolved values that will be stored with a task.</p>
-<p>Enhanced <code>tdb = "auto"</code> uses combined morphing month by
-month when complete <code>tasmax</code> and <code>tasmin</code> are
-available and falls back to shift with a diagnostic otherwise.
-<code>humidity_source = "auto"</code> selects one source for the whole
-case: complete <code>huss + tas + ps</code> is preferred for the default
-shift humidity method, while an explicit non-shift RH override keeps the
-HURS path. Radiation and EPW header policies are likewise persisted in
-the recipe so resumed jobs cannot change behavior when package defaults
-evolve.</p>
-</div>
-<div class="section level3">
-<h3 id="enhanced-calculation-stages">Enhanced Calculation Stages<a class="anchor" aria-label="anchor" href="#enhanced-calculation-stages"></a>
-</h3>
-<p>Temperature <code>"combined"</code> uses the mean daily range of the
-baseline EPW,</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>R</mi><mrow><mi>e</mi><mi>p</mi><mi>w</mi></mrow></msub><mo>=</mo><msub><mrow><mi mathvariant="normal">mean</mi><mo>⁡</mo></mrow><mi>d</mi></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>T</mi><mrow><mi>m</mi><mi>a</mi><mi>x</mi><mo>,</mo><mi>d</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msub><mrow><mi mathvariant="normal">mean</mi><mo>⁡</mo></mrow><mi>d</mi></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>T</mi><mrow><mi>m</mi><mi>i</mi><mi>n</mi><mo>,</mo><mi>d</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo><mo>,</mo></mrow><annotation encoding="application/x-tex">
-R_{epw}=\operatorname{mean}_d(T_{max,d})-
-        \operatorname{mean}_d(T_{min,d}),
-</annotation></semantics></math></p>
-<p>rather than the difference between one absolute monthly maximum and
-minimum. The hourly transformation remains</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>T</mi><mo>′</mo></msup><mo>=</mo><mi>T</mi><mo>+</mo><mi mathvariant="normal">Δ</mi><mover><mi>T</mi><mo accent="true">‾</mo></mover><mo>+</mo><mi>α</mi><mo stretchy="false" form="prefix">(</mo><mi>T</mi><mo>−</mo><msub><mover><mi>T</mi><mo accent="true">‾</mo></mover><mrow><mi>e</mi><mi>p</mi><mi>w</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo><mo>,</mo></mrow><annotation encoding="application/x-tex">
-T'=T+\Delta\bar{T}+\alpha(T-\bar{T}_{epw}),
-</annotation></semantics></math></p>
-<p>where <code>alpha</code> is the future-minus-reference DTR change
-divided by
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>R</mi><mrow><mi>e</mi><mi>p</mi><mi>w</mi></mrow></msub><annotation encoding="application/x-tex">R_{epw}</annotation></semantics></math>.
-A month with missing extrema, a non-finite factor, or
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>R</mi><mrow><mi>e</mi><mi>p</mi><mi>w</mi></mrow></msub><mo>≤</mo><mn>0.1</mn><msup><mspace width="0.222em"></mspace><mo>∘</mo></msup><mi mathvariant="normal">C</mi></mrow><annotation encoding="application/x-tex">R_{epw}\leq0.1\ ^\circ\mathrm{C}</annotation></semantics></math>
-uses shift for that month and records the fallback in
-factors/diagnostics.</p>
-<p>The default 72-hour cyclic transition is centered on every month
-boundary, including December–January. A constrained smoothstep system
-retains the original monthly mean of each factor. Combined temperature
-also corrects the baseline-temperature/time-varying-alpha covariance;
-precipitation is excluded from smoothing so monthly totals and the
-baseline wet-hour mask remain intact.</p>
-<p>For state-based humidity, the baseline EPW dry bulb, RH, and station
-pressure are converted to hourly specific humidity. The monthly
-future-minus-reference <code>huss</code> change is applied before RH and
-dew point are recovered using morphed temperature and pressure.
-Saturation clipping enforces <code>0 &lt;= RH &lt;= 100</code> and
-<code>Tdew &lt;= Tdb</code>. The <code>"auto"</code> source decision is
-made once for a complete case, so future and reference data never mix
-HUSS and HURS paths.</p>
-<p>The enhanced short-wave chain integrates solar geometry at one-minute
-steps over each EPW interval to recalculate extraterrestrial horizontal
-and direct normal irradiation (N10/N11). RBL 2010 partitions morphed GHI
-into DHI and DNI; the result is bounded, non-negative, and closed
-against the effective solar projection. Pérez 1990 then recalculates
-N16–N19 illuminance/luminance, with night values and EPW sentinels
-handled explicitly.</p>
-<p>When enabled, <code>snd</code> is converted from CMIP metres to EPW
-centimetres and scales the existing EPW snow-depth sequence by the
-future/reference monthly ratio. Zero reference snow or a baseline
-without snow does not synthesize new snow events. Final writing derives
-header updates from the persisted hourly Parquet artifact: ground
-temperatures use Kusuda–Achenbach, typical/extreme periods use complete
-rolling seven-day windows and hemisphere-aware seasons, and design
-conditions follow the selected drop/preserve policy.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_backends.html">epw_morph_backends</a></span><span class="op">(</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">belcher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_backend.html">epw_morph_backend</a></span><span class="op">(</span><span class="st">"belcher"</span><span class="op">)</span></span>
-<span><span class="va">belcher</span><span class="op">$</span><span class="va">label</span></span>
-<span><span class="va">belcher</span><span class="op">$</span><span class="fu">required_variables</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="va">belcher</span><span class="op">$</span><span class="fu">methods</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="va">belcher</span><span class="op">$</span><span class="fu">rules</span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
-<p>The backend rules are the contract between planning and execution.
-Each rule declares a backend step, the EPW weather field it produces or
-checks, required and optional CMIP variables, method choices, and
-whether the step is derived from other backend outputs.
-<code>preview_plan()</code>, <code>summarise_baseline()</code>, and
-<code><a href="../reference/epw_morph_variables.html">epw_morph_variables()</a></code> read these rules; they do not keep a
-separate hard-coded list of Belcher fields.</p>
-<p>Use method overrides when the algorithm is still Belcher but you want
-a different transformation for selected primary variables:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">belcher_shift_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"belcher"</span>,</span>
-<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
-<span>        tdb <span class="op">=</span> <span class="st">"shift"</span>,</span>
-<span>        rh <span class="op">=</span> <span class="st">"shift"</span></span>
-<span>    <span class="op">)</span></span>
 <span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
-<span>    store <span class="op">=</span> <span class="va">store</span>,</span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>    site_id <span class="op">=</span> <span class="st">"SIN"</span>,</span>
-<span>    recipe <span class="op">=</span> <span class="va">belcher_shift_recipe</span>,</span>
-<span>    label <span class="op">=</span> <span class="st">"Singapore baseline"</span></span>
+<span><span class="va">qdm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">daily_transform</a></span><span class="op">(</span><span class="st">"qdm"</span><span class="op">)</span></span>
+<span><span class="va">hourly_kqdm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">hourly_transform</a></span><span class="op">(</span><span class="st">"kernel_qdm"</span><span class="op">)</span></span></code></pre></div>
+<p>Only methods with more than one permitted hourly reconstruction
+accept the <code>reconstruction</code> argument. Method-specific values
+are supplied through <code>...</code>; unknown names and invalid values
+fail before climate data are accessed.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">configured</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">daily_transform</a></span><span class="op">(</span></span>
+<span>    <span class="st">"qdm"</span>,</span>
+<span>    seasonal_window_days <span class="op">=</span> <span class="fl">31L</span>,</span>
+<span>    min_samples <span class="op">=</span> <span class="fl">30L</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>The override names must be backend step names. For the built-in
-Belcher backend, the primary overrideable steps are <code>tdb</code>,
-<code>rh</code>, <code>p</code>, <code>hor_ir</code>,
-<code>glob_rad</code>, and <code>wind</code>; allowed values are
-<code>"shift"</code>, <code>"stretch"</code>, and
-<code>"combined"</code>, with <code>"auto"</code> additionally available
-for <code>tdb</code>. Precipitation is handled by a dedicated
-conservative step that preserves the baseline wet-hour timing. Derived
-steps such as dew point, direct normal radiation, and precipitation rate
-are declared in the rules but are not independent method overrides.</p>
+<p>Printing a transform distinguishes five temporal concepts that are
+easy to confuse:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">btws</span><span class="op">)</span></span></code></pre></div>
+<table class="table">
+<colgroup>
+<col width="50%">
+<col width="50%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Concept</th>
+<th align="left">Meaning</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td align="left">Transformation scale</td>
+<td align="left">Lattice on which the climate signal is estimated or
+applied</td>
+</tr>
+<tr class="even">
+<td align="left">Source frequency</td>
+<td align="left">Native frequency required from each climate input</td>
+</tr>
+<tr class="odd">
+<td align="left">Statistical grouping</td>
+<td align="left">Samples combined to estimate a factor or
+distribution</td>
+</tr>
+<tr class="even">
+<td align="left">Hourly reconstruction</td>
+<td align="left">Rule that transfers the result to the EPW hourly
+profile</td>
+</tr>
+<tr class="odd">
+<td align="left">Output frequency</td>
+<td align="left">Frequency of the delivered weather sequence</td>
+</tr>
+</tbody>
+</table>
+<p>For example, the monthly BTWS transform calculates change statistics
+from daily <code>tas</code>, <code>tasmin</code>, and
+<code>tasmax</code>, then applies BTWS to reconstruct hourly dry bulb
+temperature. Its monthly transform scale therefore does not imply
+monthly source data.</p>
 </div>
-<div class="section level3">
-<h3 id="adding-a-backend">Adding a Backend<a class="anchor" aria-label="anchor" href="#adding-a-backend"></a>
-</h3>
-<p>Register a new backend when the variable requirements, output fields,
-or execution algorithm change. A backend is an
-<code>EpwMorphBackend</code> R6 object with a rule table and a runner
-function. The built-in <code>"belcher"</code> backend is just the first
-registration; it is not a special execution path.</p>
-<p>The runner receives one canonical context:</p>
-<ul>
-<li>
-<code>context$inputs</code>: role-addressable future-weather inputs.
-Its <code>weather_template</code>, <code>observed_reference</code>,
-<code>model_historical</code>, and <code>model_future</code> properties
-remain distinct even when one role is absent;</li>
-<li>
-<code>context$epw</code>: the package’s internal baseline EPW
-representation;</li>
-<li>
-<code>context$climate</code>: store-native climate rows with
-<code>variable_id</code>, <code>time</code>, <code>period</code>,
-<code>year</code>, <code>lon</code>, <code>lat</code>,
-<code>dist</code>, <code>units</code>, <code>value</code>, and case
-metadata;</li>
-<li>
-<code>context$reference_climate</code>: optional matching historical
-model rows;</li>
-<li>
-<code>context$observed_reference</code>: optional observations or
-reanalysis rows;</li>
-<li>
-<code>context$recipe</code>: the selected recipe, including method
-overrides and rules;</li>
-<li>
-<code>context$by</code>, <code>context$case</code>,
-<code>context$strict</code>, and <code>context$warning</code>.</li>
-</ul>
-<p><code>context$epw</code>, <code>context$climate</code>, and
-<code>context$reference_climate</code> remain available for existing
-backends. New components should select inputs by their role through
-<code>context$inputs</code> instead of interpreting a generic
-reference.</p>
-<p>Future-weather methods can be assembled from seven ordered component
-stages. Each component declares its required and optional input roles,
-supported representations, frequencies, calendars, variable
-alternatives, input and output kinds, dimensional scope, and whether it
-is stochastic. Compatibility is checked from stage order and the
-intermediate kinds exchanged between components.</p>
+<div class="section level2">
+<h2 id="inspect-input-roles">Inspect Input Roles<a class="anchor" aria-label="anchor" href="#inspect-input-roles"></a>
+</h2>
+<p><code>WeatherTransformSpec</code> records required and optional
+semantic roles. The role contract includes representations, variable
+alternatives, source frequencies, and calendars.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">original_morphing</span><span class="op">@</span><span class="va">required_inputs</span></span>
+<span><span class="va">btws</span><span class="op">@</span><span class="va">source_frequencies</span></span></code></pre></div>
+<p>The main roles are:</p>
 <table class="table">
-<colgroup>
-<col width="20%">
-<col width="18%">
-<col width="27%">
-<col width="34%">
-</colgroup>
 <thead><tr class="header">
-<th align="left">Component</th>
-<th align="left">Used for</th>
-<th align="left">Main function</th>
-<th align="left">Problem addressed</th>
+<th align="left">Role</th>
+<th align="left">Supplied by</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td align="left"><code>preprocess</code></td>
-<td align="left">Preparing every source before climate calculations</td>
-<td align="left">Normalize variables, units, missing values, spatial
-selections, and source metadata into method-ready inputs</td>
-<td align="left">Raw EPW, observations, reanalysis, and climate-model
-data otherwise have incompatible schemas and units</td>
+<td align="left"><code>weather_template</code></td>
+<td align="left"><code>epw</code></td>
 </tr>
 <tr class="even">
-<td align="left"><code>calendar</code></td>
-<td align="left">Placing sources on a shared annual and temporal
-coordinate</td>
-<td align="left">Preserve each source calendar, calculate annual phase,
-form circular windows, and align 360-, 365-, and 366-day inputs</td>
-<td align="left">Direct date matching either loses days or assigns
-different seasonal positions to nominally similar dates</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>signal</code></td>
-<td align="left">Estimating or transferring the future climate
-signal</td>
-<td align="left">Apply delta, scaling, quantile-based, weather-typing,
-or other statistical transformations to aligned groups</td>
-<td align="left">Different methods require different reference inputs
-and assumptions but need one validated, comparable execution
-contract</td>
-</tr>
-<tr class="even">
-<td align="left"><code>sequence</code></td>
-<td align="left">Constructing the order of future days or weather
-states</td>
-<td align="left">Preserve, resample, rearrange, or generate daily
-sequences, including stochastic and analogue methods</td>
-<td align="left">A climatology or corrected distribution does not define
-event order, persistence, spells, or compound extremes</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>hourly</code></td>
-<td align="left">Converting daily targets or selected days into hourly
-weather</td>
-<td align="left">Reconstruct 24-hour profiles from an EPW template, an
-hourly library, or a method-specific disaggregation model</td>
-<td align="left">Daily CMIP data cannot be written directly as an hourly
-EPW and naive interpolation damages diurnal shape and extrema</td>
-</tr>
-<tr class="even">
-<td align="left"><code>physics</code></td>
-<td align="left">Closing related weather variables after
-transformation</td>
-<td align="left">Enforce temperature statistics, humidity closure,
-radiation balance, bounds, and cross-variable consistency</td>
-<td align="left">Independently transformed variables can violate
-thermodynamic, radiative, or EPW constraints</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>output</code></td>
-<td align="left">Producing the final weather artifact and its
-record</td>
-<td align="left">Assemble fields and headers, write EPW or intermediate
-artifacts, and retain method settings, provenance, and diagnostics</td>
-<td align="left">Numerically valid series are not yet a
-standards-compliant, reproducible, and auditable future weather
-file</td>
-</tr>
-</tbody>
-</table>
-<p>These components run inside the existing high-level workflow rather
-than replacing it. <code><a href="../reference/shift_api.html">shift_request()</a></code>, collection, download,
-and extraction obtain and persist the source data.
-<code><a href="../reference/shift_api.html">shift_morph()</a></code> builds the four role-addressable inputs,
-compiles the component names stored in the selected recipe, and executes
-the scientific stages through the backend. <code><a href="../reference/shift_api.html">shift_epw()</a></code>
-remains the durable final file writer. The built-in
-<code><a href="../reference/daily_temperature.html">daily_temperature()</a></code> and <code><a href="../reference/sobie_curry_daily.html">sobie_curry_daily()</a></code>
-methods use all seven stages, including explicit <code>sequence</code>
-components that preserve the baseline EPW day order. The
-<code><a href="../reference/ek_daily_temperature.html">ek_daily_temperature()</a></code> method uses the same seven-stage
-execution boundary. <code><a href="../reference/arima_temperature.html">arima_temperature()</a></code> also uses all seven
-stages, but its <code>calendar</code> component forms native-calendar
-monthly distributions and its <code>signal</code> component requires
-both historical model output and a separate observed reference.</p>
-<p>Preprocessing implementations can also be registered independently of
-a complete recipe. The current standalone preprocessing contract is:</p>
-<table class="table">
-<colgroup>
-<col width="22%">
-<col width="36%">
-<col width="15%">
-<col width="25%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Registry name</th>
-<th align="left">Accepted source inputs</th>
-<th align="left">Behavior</th>
-<th align="left">Output contract</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td align="left"><code>linear_temporal_interpolation</code></td>
-<td align="left">Materialized <code>model_historical</code> and
-<code>model_future</code> series at a regular three- or six-hour
-timestep, using any supported CF calendar and containing
-<code>tas</code>, <code>huss</code>, <code>hurs</code>, <code>ps</code>,
-<code>psl</code>, <code>sfcWind</code>, <code>uas</code>, or
-<code>vas</code>
-</td>
-<td align="left">Interpolate each independent
-variable/model/member/grid/site group onto an exact midnight-anchored
-hourly native-calendar lattice, retain original source values at
-matching hours, and never extrapolate beyond source support</td>
-<td align="left">One <code>WeatherStageResult</code> of kind
-<code>hourly_role_inputs</code>, containing rebuilt hourly
-<code>WeatherInputs</code>, left/right source timestamps and rows,
-interpolation weights, group diagnostics, and source provenance</td>
-</tr>
-<tr class="even">
-<td align="left"><code>solar_radiation_interpolation</code></td>
-<td align="left">Materialized <code>model_historical</code> and
-<code>model_future</code> series containing interval-mean
-<code>rsds</code> or <code>rsdsdiff</code> at a regular three- or
-six-hour timestep, with explicit CF time bounds, UTC coordinates, site
-longitude and latitude, and any supported CF calendar</td>
-<td align="left">Partition each source interval into one-hour intervals
-and scale its mean flux by each target interval’s positive solar
-projection relative to the source-interval mean projection</td>
-<td align="left">One <code>WeatherStageResult</code> of kind
-<code>hourly_role_inputs</code>, containing rebuilt non-negative hourly
-<code>WeatherInputs</code>, target interval bounds, source rows and
-bounds, solar projections and weights, conservation diagnostics, and
-source provenance</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>hourly_weather_interpolation</code></td>
-<td align="left">Hourly <code>observed_reference</code> series plus
-materialized historical and future model series containing any supported
-point-state and shortwave variables; paired daily <code>tasmin</code>
-and <code>tasmax</code> may accompany three-hourly <code>tas</code>
-</td>
-<td align="left">Dispatch point-state variables to bounded linear
-interpolation and interval-mean shortwave variables to solar-projection
-allocation, optionally insert daily temperature extrema at hours
-informed by observed site/month extrema, and merge the variable families
-without changing their time-coordinate semantics</td>
-<td align="left">One multivariate <code>WeatherStageResult</code> of
-kind <code>hourly_role_inputs</code>; daily extrema are auxiliary
-anchors rather than output variables, and all source rows, fallbacks,
-diagnostics, and family-specific provenance are retained</td>
-</tr>
-</tbody>
-</table>
-<p>The component accepts only variables with explicit continuous
-point-state semantics. Radiation, fluxes, accumulations, and derived
-variables are rejected instead of being assigned the same interpolation
-equation. Radiation downscaling that accounts for the hourly
-solar-elevation cycle therefore requires a separate preprocessing
-implementation. A complete workflow must also provide sufficient source
-samples around the requested output boundaries, because
-<code>linear_temporal_interpolation</code> deliberately performs no
-extrapolation.</p>
-<p><code>solar_radiation_interpolation</code> follows the interval
-allocation described by <a href="https://doi.org/10.5194/essd-7-157-2015" class="external-link">Vuichard and Papale
-(2015)</a> and later used for CMIP6 weather generation by <a href="https://doi.org/10.1038/s41467-023-41458-5" class="external-link">Wang et
-al. (2023)</a>. The source value must represent the mean flux over its
-declared CF time bounds. Positive cosine of solar zenith is integrated
-at one-minute midpoints for the source and hourly target intervals;
-target values are normalized so their interval mean equals the source
-value. The cited implementations use three-hourly inputs; support for
-regular six-hourly intervals applies the same allocation equation as an
-explicit package extension. Native CF annual phase maps 360-day,
-no-leap, all-leap, and Gregorian calendars onto the common astronomical
-cycle without assigning them surrogate Gregorian dates. Positive
-radiation in an interval with zero solar projection is reported as an
-error because the published ratio is then undefined.</p>
-<p><code>hourly_weather_interpolation</code> provides the single
-preprocessing stage needed when a method uses point-state and
-interval-mean radiation variables together. It composes the two
-algorithms above instead of applying one interpolation equation to every
-variable. Following the supplementary method of <a href="https://doi.org/10.1038/s41467-023-41458-5" class="external-link">Wang et
-al. (2023)</a>, paired daily <code>tasmin</code> and <code>tasmax</code>
-values can be inserted between three-hourly temperature samples so daily
-extremes missing from the coarser series remain represented. The paper
-states that the insertion hour can shift by one hour using knowledge
-from historical observations, but does not specify the selection
-algorithm. This implementation therefore chooses between the two
-interior hourly positions using the observed site-and-month modal
-extreme hour. If the two unconstrained highest or lowest samples are not
-adjacent, it uses the adjacent pair with the most extreme mean; if an
-observed mode is unavailable, it uses the earliest interior hour. These
-implementation choices and every inserted anchor are recorded in
-diagnostics. Without paired extrema, <code>tas</code> retains the
-ordinary bounded linear result. <code>tasmin</code> and
-<code>tasmax</code> are consumed as auxiliary inputs and are not passed
-to the hourly signal stage as independent variables.</p>
-<p>Calendar implementations can also be registered independently of a
-complete recipe. The current standalone hourly calendar contract is:</p>
-<table class="table">
-<colgroup>
-<col width="23%">
-<col width="34%">
-<col width="15%">
-<col width="26%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Registry name</th>
-<th align="left">Accepted stage input</th>
-<th align="left">Behavior</th>
-<th align="left">Output contract</th>
-</tr></thead>
-<tbody><tr class="odd">
-<td align="left"><code>hourly_calendar_grouping</code></td>
-<td align="left">One <code>WeatherInputs</code> stage value of kind
-<code>hourly_role_inputs</code>, containing hourly
-<code>observed_reference</code>, <code>model_historical</code>, and
-<code>model_future</code> series</td>
-<td align="left">Validate identical variable sets and units, matching
-historical/future model identities, complete native-calendar years,
-unique hourly coordinates, and one 24-position lattice; then form one
-univariate group per variable, future-model case, and site while
-preserving each role’s CF calendar</td>
-<td align="left">One <code>WeatherStageResult</code> of kind
-<code>calendar_indexed_hourly_series</code>, containing
-<code>SignalGroup</code> objects plus role-level coverage diagnostics
-and calendar/grouping provenance</td>
-</tr></tbody>
-</table>
-<p><code>hourly_calendar_grouping</code> performs no row-wise date
-matching. An observed Gregorian year, a historical 360-day model year,
-and a future no-leap model year therefore remain separate distributions
-inside the same signal group. Every role must nevertheless cover each
-included native-calendar year fully. Missing hours, incomplete days or
-years, duplicate calendar coordinates, different role variable sets or
-units, and mismatched historical/future model identities stop before a
-statistical signal kernel executes. This boundary allows
-<code>kernel_quantile_delta_mapping_hourly</code> and other
-distribution-based hourly signals to consume validated groups without
-interpreting calendars inside their numerical kernels.</p>
-<p>Sequence implementations can also be registered independently of a
-complete recipe. The current standalone sequence contract is:</p>
-<table class="table">
-<colgroup>
-<col width="22%">
-<col width="36%">
-<col width="15%">
-<col width="25%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Registry name</th>
-<th align="left">Accepted signal result</th>
-<th align="left">Behavior</th>
-<th align="left">Output contract</th>
-</tr></thead>
-<tbody><tr class="odd">
-<td align="left"><code>direct_model_realization</code></td>
-<td align="left">Complete <code>DailyAdjustedSeries</code> or
-<code>SubdailyAdjustedSeries</code> groups satisfying the common
-<code>AdjustedWeatherSeries</code> contract and retaining the
-<code>model_future</code> backbone</td>
-<td align="left">Preserve native CF chronology, partition complete
-source years, and perform no timestep selection or resampling</td>
-<td align="left">One <code>DirectModelSequence</code> containing
-deterministic year members, group keys, corrected values, frequency,
-timestep, signal provenance, source years, and calendars</td>
-</tr></tbody>
-</table>
-<p><code>AdjustedWeatherSeries</code> is the frequency-aware
-signal-result boundary. <code>DailyAdjustedSeries</code> remains its
-strict daily specialization, while <code>SubdailyAdjustedSeries</code>
-requires an explicit regular timestep and exact
-<code>cf_second_of_day</code> values in addition to the calendar-native
-date and annual phase. <code>direct_model_realization</code> requires
-every group to use the same frequency and timestep and to cover each
-source year completely. It does not interpolate, resample, or construct
-EPW fields. Workflows that interpolate climate-model inputs before bias
-adjustment must perform that transformation in an earlier component and
-retain its provenance.</p>
-<p>Hourly implementations can also be registered independently of a
-complete recipe. The current direct-model calendar bridge is:</p>
-<table class="table">
-<colgroup>
-<col width="22%">
-<col width="37%">
-<col width="14%">
-<col width="25%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Registry name</th>
-<th align="left">Accepted sequence input</th>
-<th align="left">Behavior</th>
-<th align="left">Output contract</th>
-</tr></thead>
-<tbody><tr class="odd">
-<td align="left"><code>direct_model_epw_calendar_mapping</code></td>
-<td align="left">One hourly <code>DirectModelSequence</code> with a
-3600-second timestep plus a 365-day <code>weather_template</code>
-</td>
-<td align="left">Preserve the 24 source time-of-day positions; retain
-exact values for aligned 365-day years; map point variables across
-seasonal day position with circular interpolation; conservatively remap
-interval-mean radiation across seasonal day position</td>
-<td align="left">One <code>MappedHourlyClimateSequence</code> of kind
-<code>epw_hourly_climate_sequence</code>, containing 8760-row variable
-groups for each source-model year plus source calendar, group identity,
-mapping diagnostics, and signal provenance</td>
-</tr></tbody>
-</table>
-<p>The mapping is performed independently at each of the 24 source daily
-positions. A 360- or 366-day year therefore changes seasonal day
-placement without allowing midnight, noon, or another source sampling
-position to drift across the day. Continuous point variables use their
-native annual phase at a fixed time of day. <code>rsds</code>,
-<code>rsdsdiff</code>, and <code>rlds</code> are treated as interval
-means; their piecewise-constant values are integrated over normalized
-source and target day intervals so the annual mean at every daily
-position is conserved. The component records the source second of day
-and the actual mapping selected for every output row. It deliberately
-leaves climate-unit conversion, thermodynamic and radiative closure,
-unchanged EPW field policy, and final <code>WeatherSequenceResult</code>
-construction to the following <code>physics</code> and
-<code>output</code> stages.</p>
-<p>The complete hourly recipe closes those final two stages explicitly.
-<code>epw_hourly_physical_closure</code> applies
-<code>absolute_model_fields</code> independently to each mapped year,
-and <code>direct_model_epw_result</code> converts the closed members
-into the existing <code>WeatherSequenceResult</code> contract.
-<code>EpwMorpher</code> then persists and writes every member through
-the same output implementation used by other sequence backends; neither
-component parses or writes EPW files itself.</p>
-<p>Every built-in complete weather method enters the same internal EPW
-physical boundary. An <code>EpwPhysicalRequest</code> carries the EPW
-template and only the target fields produced by the method. An
-<code>EpwPhysicalPolicy</code> declares which fields are retained,
-independently transformed, derived, bounded, or jointly closed. The
-common executor returns an <code>EpwPhysicalResult</code> containing the
-complete weather table, derived states, correction counts, and the
-policy actually applied. These are internal types; <code>EpwFile</code>
-remains the package’s only EPW parser and writer.</p>
-<p>Method-specific physics components are thin adapters around that
-executor. The policy preserves the scientific definition selected by the
-recipe:</p>
-<table style="width:100%;" class="table">
-<colgroup>
-<col width="27%">
-<col width="29%">
-<col width="43%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Weather method</th>
-<th align="left">Physical policy</th>
-<th align="left">Physical interpretation</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td align="left">Belcher monthly</td>
-<td align="left"><code>legacy_independent_fields</code></td>
-<td align="left">Retain the original independent humidity, radiation,
-wind, and EPW field treatment</td>
-</tr>
-<tr class="even">
-<td align="left">Enhanced monthly epwshiftr</td>
-<td align="left"><code>monthly_harmonized</code></td>
-<td align="left">Use the selected HURS/HUSS path and the enhanced
-radiation closure</td>
-</tr>
-<tr class="odd">
-<td align="left">Daily power, daily BTWS, and Eames/BTWS</td>
-<td align="left"><code>preserve_specific_humidity</code></td>
-<td align="left">Preserve baseline specific humidity after
-reconstructing temperature, with saturation closure</td>
-</tr>
-<tr class="even">
-<td align="left">Ek and Arima paper-faithful</td>
-<td align="left"><code>preserve_humidity_fields</code></td>
-<td align="left">Preserve baseline RH and dew point and report any
-inconsistency without correcting it</td>
-</tr>
-<tr class="odd">
-<td align="left">Ek and Arima harmonized</td>
-<td align="left"><code>preserve_specific_humidity</code></td>
-<td align="left">Close baseline specific humidity against projected
-temperature</td>
-</tr>
-<tr class="even">
-<td align="left">Sobie-Curry paper-faithful</td>
-<td align="left"><code>independent_thermodynamic_fields</code></td>
-<td align="left">Retain the independently transformed temperature,
-pressure, RH, and dew point</td>
-</tr>
-<tr class="odd">
-<td align="left">Sobie-Curry harmonized</td>
-<td align="left"><code>specific_humidity_delta</code></td>
-<td align="left">Close the method-defined baseline-HUSS-plus-delta
-target</td>
-</tr>
-<tr class="even">
-<td align="left">Direct-model hourly sequence</td>
-<td align="left"><code>absolute_model_fields</code></td>
-<td align="left">Interpret corrected absolute temperature, pressure,
-humidity, wind, and radiation fields</td>
-</tr>
-</tbody>
-</table>
-<p>Daily marginal signal methods such as Delta Change, QM, QDM, SDM,
-CDF-t, EDCDFm, ISIMIP3BASD, and KDE-QDM enter
-<code>absolute_model_fields</code> after their adjusted sequences have
-been reconstructed and mapped to EPW hours. Their statistical kernels do
-not duplicate physical closure.</p>
-<p>Physics implementations can also be registered independently of a
-complete recipe. The direct-model hourly adapter is:</p>
-<table class="table">
-<colgroup>
-<col width="23%">
-<col width="35%">
-<col width="15%">
-<col width="26%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Registry name</th>
-<th align="left">Accepted hourly input</th>
-<th align="left">Behavior</th>
-<th align="left">Output contract</th>
-</tr></thead>
-<tbody><tr class="odd">
-<td align="left"><code>epw_hourly_physical_closure</code></td>
-<td align="left">One <code>MappedHourlyClimateSequence</code> plus a
-365-day <code>weather_template</code>; every future year must contain
-<code>tas</code>, <code>ps</code>, <code>rsds</code>, and
-<code>rsdsdiff</code>, exactly one of <code>hurs</code> or
-<code>huss</code>, exactly one of <code>sfcWind</code> or paired
-<code>uas</code> and <code>vas</code>, and may contain
-<code>rlds</code>
-</td>
-<td align="left">Convert climate variables into one
-<code>EpwPhysicalRequest</code> and apply
-<code>absolute_model_fields</code>; derive vector wind speed and
-direction, use direction supplied with scalar speed, or inherit template
-direction when scalar inputs contain no direction, while preserving
-unrelated template fields</td>
-<td align="left">One typed <code>EpwHourlyWeatherSequence</code> of kind
-<code>epw_hourly_weather_sequence</code>, containing one 8760-row
-EPW-shaped member per future year, constructed/inherited field
-provenance, input-path choices, bound counts, radiation corrections, and
-closure errors</td>
-</tr></tbody>
-</table>
-<p><code>epw_hourly_physical_closure</code> operates after climate
-calendar mapping, so its rows already have an unambiguous position on
-the fixed EPW lattice. A leap future year retains its source-year label
-while solar geometry is evaluated on a non-leap surrogate year; March
-through December therefore cannot shift by one day. The component uses
-the package-wide unit aliases and conversions; hourly <code>W/m^2</code>
-interval means are numerically equal to the one-hour <code>Wh/m^2</code>
-EPW values. At night GHI, DHI, and DNI are zero. During daylight the
-shared radiation kernel bounds DHI by GHI, limits DNI to
-extraterrestrial direct normal energy, and reallocates excess beam
-energy to DHI so closure remains exact. If <code>rlds</code> is absent,
-the template’s horizontal infrared field is retained. The component
-stops on ambiguous humidity or wind paths, unsupported variables, or
-undeclared units instead of silently choosing an interpretation.</p>
-<p>Bias-adjustment implementations belong to the <code>signal</code>
-stage. Their common <code>apply</code> operation validates the
-role-addressable inputs, resolves variable-specific settings, and
-executes aligned groups. Each method supplies only an
-<code>apply_group</code> kernel receiving the group’s input payloads,
-resolved settings, and key. Published defaults retain their references,
-experimental defaults are labelled and warned about, and user overrides
-do not change that provenance. The execution result records the settings
-actually used after overrides. Calendar mapping and group alignment
-happen before the kernel, so a method cannot silently impose a
-Gregorian, no-leap, or fixed 366-day interpretation. Group failures
-either abort or return an explicit diagnostic with a <code>NULL</code>
-result; they are never silently converted to missing numeric values.</p>
-<p>Nine package-native standalone signals currently use this
-contract:</p>
-<table class="table">
-<colgroup>
-<col width="21%">
-<col width="16%">
-<col width="23%">
-<col width="38%">
-</colgroup>
-<thead><tr class="header">
-<th align="left">Registry name</th>
-<th align="left">Correction</th>
-<th align="left">Output backbone</th>
-<th align="left">Variable-profile evidence</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td align="left"><code>linear_scaling_daily</code></td>
-<td align="left">Monthly observed-minus-model mean bias, additive for
-temperature and multiplicative for precipitation</td>
 <td align="left"><code>model_future</code></td>
-<td align="left">Published defaults for <code>tas</code>,
-<code>tasmin</code>, <code>tasmax</code>, and <code>pr</code>
-</td>
+<td align="left"><code>climate</code></td>
+</tr>
+<tr class="odd">
+<td align="left"><code>model_historical</code></td>
+<td align="left"><code>reference</code></td>
 </tr>
 <tr class="even">
-<td align="left"><code>delta_change_daily</code></td>
-<td align="left">Monthly historical-to-future mean change, additive for
-temperature and multiplicative for precipitation</td>
 <td align="left"><code>observed_reference</code></td>
-<td align="left">Published defaults for <code>tas</code>,
-<code>tasmin</code>, <code>tasmax</code>, and <code>pr</code>
-</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>quantile_mapping_daily</code></td>
-<td align="left">
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><msub><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">F^{-1}_{obs}(F_{hist}(x_{future}))</annotation></semantics></math>
-in calendar-neutral circular daily windows</td>
-<td align="left"><code>model_future</code></td>
-<td align="left">Published method-variable profiles for <code>tas</code>
-and <code>pr</code>; implementation-selected defaults for
-<code>hurs</code>, <code>psl</code>, <code>rlds</code>,
-<code>sfcWind</code>, <code>tasmin</code>, and <code>tasmax</code>
-remain experimental</td>
-</tr>
-<tr class="even">
-<td align="left"><code>quantile_delta_mapping_daily</code></td>
-<td align="left">Transfer
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x_{future} - F^{-1}_{hist}(p)</annotation></semantics></math>
-or
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mi>/</mi><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x_{future} / F^{-1}_{hist}(p)</annotation></semantics></math>
-onto
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">F^{-1}_{obs}(p)</annotation></semantics></math>,
-where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><msub><mi>F</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi><mo>,</mo><mi>t</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">p = F_{future,t}(x_{future})</annotation></semantics></math>
-</td>
-<td align="left"><code>model_future</code></td>
-<td align="left">Published absolute-change temperature and
-relative-change precipitation profiles; implementation-selected defaults
-for other supported variables remain experimental</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>kernel_quantile_delta_mapping_hourly</code></td>
-<td align="left">Fit KDE CDFs in centered three-month calendar windows,
-then transfer additive or multiplicative modeled quantile changes</td>
-<td align="left"><code>model_future</code></td>
-<td align="left">Published hourly KDE-QDM window and transformation
-families; unreported kernel, bandwidth, grid, tail, and zero-denominator
-defaults remain experimental and explicit</td>
-</tr>
-<tr class="even">
-<td align="left"><code>equidistant_cdf_matching_daily</code></td>
-<td align="left">Apply
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>+</mo><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x_{future} + F^{-1}_{obs}(p) - F^{-1}_{hist}(p)</annotation></semantics></math>,
-where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><msub><mi>F</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">p = F_{future}(x_{future})</annotation></semantics></math>,
-using the Li et al. parametric distributions</td>
-<td align="left"><code>model_future</code></td>
-<td align="left">Li et al. published monthly profiles for
-<code>tas</code> and <code>pr</code>; native calendar-month daily
-pooling is an experimental epwshiftr adaptation</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>scaled_distribution_mapping_daily</code></td>
-<td align="left">Parametric distribution and recurrence-interval
-scaling, absolute for temperature and relative for precipitation</td>
-<td align="left"><code>model_future</code></td>
-<td align="left">Published profiles for <code>tas</code> and
-<code>pr</code>; applying the Normal branch to <code>tasmin</code> and
-<code>tasmax</code> remains experimental</td>
-</tr>
-<tr class="even">
-<td align="left"><code>cdf_transform_daily</code></td>
-<td align="left">Construct
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi><mo>,</mo><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><msub><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi><mo>,</mo><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msubsup><mi>F</mi><mrow><mi>m</mi><mi>o</mi><mi>d</mi><mi>e</mi><mi>l</mi><mo>,</mo><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><msub><mi>F</mi><mrow><mi>m</mi><mi>o</mi><mi>d</mi><mi>e</mi><mi>l</mi><mo>,</mo><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">F_{obs,future}(x) = F_{obs,hist}(F^{-1}_{model,hist}(F_{model,future}(x)))</annotation></semantics></math>,
-then quantile match the future-model sequence to that target CDF</td>
-<td align="left"><code>model_future</code></td>
-<td align="left">Published daily profiles for <code>pr</code>,
-<code>tas</code>, <code>tasmin</code>, <code>tasmax</code>,
-<code>rsds</code>, and <code>sfcWind</code>
-</td>
-</tr>
-<tr class="odd">
-<td align="left"><code>isimip3basd_daily</code></td>
-<td align="left">Generate pseudo-future observations by transferring
-modeled quantile changes, then map the future-model distribution onto
-the pseudo-future target</td>
-<td align="left"><code>model_future</code></td>
-<td align="left">Published ISIMIP3BASD 3.0.x profiles for eight direct
-variables and the three <code>prsnratio</code>, <code>tasrange</code>,
-and <code>tasskew</code> reconstruction components</td>
+<td align="left"><code>observed_reference</code></td>
 </tr>
 </tbody>
 </table>
-<p><code>quantile_mapping_daily</code> uses linear empirical-CDF
-interpolation with average-rank ties, type-7 inverse quantiles, and
-endpoint clamping. Its default 31-day window is selected by canonical
-annual phase, so 360-, 365-, and 366-day source calendars are not paired
-by nominal date. Precipitation uses a mixed dry-day/positive-amount
-hurdle distribution rather than the continuous mapping unchanged.
-Dry-day randomization is controlled by a recorded seed and a fixed
-method-local generator, leaving R’s global random-number state
-untouched. Bounds, sample coverage, tail use, clipping, dry-day
-frequencies, and the resolved stochastic settings are retained in result
-provenance.</p>
-<p><code>quantile_delta_mapping_daily</code> differs from ordinary
-Quantile Mapping by estimating each projected value’s probability from a
-time-dependent future distribution. Its default calendar-neutral 91-day
-seasonal window represents the published three-month pool, while a
-symmetric 31-year future window makes the publication’s 30-year
-moving-period calculation executable on whole model years. Temperature
-transfers absolute changes in quantiles and precipitation transfers
-relative changes. Precipitation values at or below the published 0.05
-mm/day trace threshold are replaced by deterministic positive uniforms
-before adjustment and censored back to zero afterward. Window sample
-counts, transferred changes, clipping, censoring, and effective seeds
-are retained in provenance.</p>
-<p><code>kernel_quantile_delta_mapping_hourly</code> implements the
-hourly variant described by <a href="https://doi.org/10.1038/s41467-023-41458-5" class="external-link">Wang et al. (2023)</a>
-after temporal downscaling. For every future calendar month, the
-preceding, current, and following months are pooled independently from
-<code>observed_reference</code>, <code>model_historical</code>, and
-<code>model_future</code>; December and January wrap without coercing
-360-, 365-, or 366-day inputs to Gregorian dates. The future KDE gives
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>p</mi><annotation encoding="application/x-tex">p</annotation></semantics></math>,
-and observed and historical KDE quantiles at
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>p</mi><annotation encoding="application/x-tex">p</annotation></semantics></math>
-receive the additive or multiplicative QDM equation. The future rows,
-exact time-of-day positions, and native CF chronology remain the output
-backbone.</p>
-<p>The publication specifies KDE CDFs, a three-month moving window,
-additive temperature and pressure changes, and multiplicative wind,
-humidity, and radiation changes. It and its supplementary information do
-not specify the KDE kernel, bandwidth, numerical CDF grid, finite-grid
-tail behavior, minimum sample count, bounds, or treatment of a zero
-multiplicative denominator. The component therefore labels every current
-profile experimental. Its default Gaussian kernel, <code>nrd0</code>
-bandwidth, grid, endpoint clamp, bounds, and zero handling are ordinary
-package settings rather than claims about the authors’ unpublished code.
-Supported <code><a href="https://rdrr.io/r/stats/density.html" class="external-link">stats::density()</a></code> kernels and bandwidth selectors,
-an erroring tail policy, and strict zero-denominator handling can be
-selected through the same validated overrides. The resolved values,
-per-month sample counts and bandwidths, mapped probability and change
-ranges, tail use, zero handling, and clipping remain in result
-provenance.</p>
-<p><code>equidistant_cdf_matching_daily</code> implements the additive
-equation published by Li et al. (2010):
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow><mo>′</mo></msubsup><mo>=</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo>+</mo><msubsup><mi>F</mi><mrow><mi>o</mi><mi>b</mi><mi>s</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo><mo>−</mo><msubsup><mi>F</mi><mrow><mi>h</mi><mi>i</mi><mi>s</mi><mi>t</mi></mrow><mrow><mi>−</mi><mn>1</mn></mrow></msubsup><mo stretchy="false" form="prefix">(</mo><mi>p</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">x'_{future} = x_{future} + F^{-1}_{obs}(p) -
-F^{-1}_{hist}(p)</annotation></semantics></math>, where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo>=</mo><msub><mi>F</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="prefix">(</mo><msub><mi>x</mi><mrow><mi>f</mi><mi>u</mi><mi>t</mi><mi>u</mi><mi>r</mi><mi>e</mi></mrow></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">p = F_{future}(x_{future})</annotation></semantics></math>.
-Cannon et al. (2015) showed that this equation is mathematically
-equivalent to the absolute form of Quantile Delta Mapping. The component
-remains separate because it preserves the Li distribution model:
-temperature uses four-parameter Beta distributions whose observed range
-is extended by half a sample standard deviation, while precipitation
-uses a point mass at zero plus a zero-location Gamma distribution for
-wet values. The original method was applied to monthly fields, not daily
-series. epwshiftr therefore marks its native CF-calendar month pooling
-of daily values as an experimental frequency adaptation rather than a
-published daily default. Negative adjusted precipitation values are
-clipped to zero. Fitted parameters, monthly sample coverage, probability
-clamping, dry counts, clipping, and this frequency provenance remain
-inspectable in the result.</p>
-<p><code>scaled_distribution_mapping_daily</code> instead fits the
-parametric distributions and recurrence-interval changes from Switanek
-et al. (2017) within each calendar month. Temperature is linearly
-detrended, fitted with Normal distributions, adjusted through two-tailed
-recurrence intervals, and restored with the projected trend and
-observed-minus-historical model mean bias. Precipitation values below
-0.1 mm/day are dry; positive amounts use zero-location Gamma
-maximum-likelihood fits, multiplicative quantile scaling, one-tailed
-recurrence intervals, and the published expected wet-day equation. The
-projected period is divided into disjoint 10-year output blocks fitted
-on surrounding 30-year windows where data exist. Edge truncation,
-distribution parameters, sample coverage, corrected wet counts, and the
-method’s inability to turn additional dry projected days into wet days
-are explicit in result provenance. Native 360-, 365-, and 366-day
-calendars contribute samples to their own calendar months without
-Gregorian date coercion.</p>
-<p><code>cdf_transform_daily</code> differs from both ordinary Quantile
-Mapping and QDM by first estimating a complete future observed-reference
-CDF from the historical observed/model relation and the future-model
-CDF. The implementation aligns the historical and future model samples
-by the same observed-minus-historical-model mean shift used in the
-method authors’ R package. It then evaluates the chained empirical CDF
-on an explicit grid, extends unsupported tails through the published
-constant-correction rule, and uses the left endpoint of CDF plateaus as
-the generalized inverse. Following the Famien et al. (2018) daily Africa
-application, each native calendar month is fitted in a 17-year future
-window and writes only its central 9-year block. Those numbers are
-application defaults rather than requirements of the original CDF-t
-transformation. Famien et al. do not specify how to supply the four-year
-flanks at the start and end of a requested series, so epwshiftr
-truncates unavailable flanks and records this package-selected edge
-policy explicitly. For precipitation, Singularity Stochastic Removal
-replaces sub-threshold values with deterministic uniforms below
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>10</mn><mrow><mi>−</mi><mn>8</mn></mrow></msup><annotation encoding="application/x-tex">10^{-8}</annotation></semantics></math>
-kg m-2 s-1 before CDF-t and returns adjusted sub-threshold values to
-zero afterward. The generator and effective role-specific seeds are
-recorded without changing R’s global random state.</p>
-<p><code>isimip3basd_daily</code> implements the daily marginal
-bias-adjustment stage from Lange (2019) with the official ISIMIP3BASD
-3.0.x variable configuration. It first transfers the modeled
-historical-to-future change at common quantiles onto historical
-observations to form a pseudo-future target, then maps the future-model
-sequence to that target. Variable profiles select additive,
-multiplicative/mixed, or bounded change transfer; Normal, Gamma,
-Weibull, or empirical distribution mapping; physical threshold
-frequencies; optional annual-mean detrending; snow-ratio missing-value
-imputation; and the short-wave upper-bound climatology. Short-wave
-<code>rsds</code> bounds apply to its dimensionless upper-bound
-fraction; the final result is rescaled to the future physical radiation
-magnitude. The registered direct variables are <code>hurs</code>,
-<code>pr</code>, <code>ps</code>, <code>psl</code>, <code>rlds</code>,
-<code>rsds</code>, <code>sfcWind</code>, and <code>tas</code>.
-<code>prsnratio</code>, <code>tasrange</code>, and <code>tasskew</code>
-are adjusted as published intermediate components; reconstructing
-<code>prsn</code>, <code>tasmin</code>, and <code>tasmax</code> from
-them remains a separate physics-stage operation rather than three
-independent marginal adjustments.</p>
-<p>The original software requires a proleptic Gregorian time coordinate.
-epwshiftr instead assigns each native 360-, 365-, or 366-day observation
-to a calendar-neutral annual phase and applies the published 31-day
-circular window on a common 365-day target grid. This calendar
-adaptation, every effective seed, parameter fit or empirical fallback,
-transferred bound frequency, detrending decision, short-wave upper-bound
-cycle, and clipping count are retained in result provenance. The
-component implements marginal bias adjustment only; the ISIMIP MBCnSD
-spatial downscaling workflow is a separate stage and is not implied by
-selecting this signal.</p>
-<p>The runner returns <code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> with complete
-hourly EPW weather data. <code>EpwMorpher$run()</code> writes that data
-as Parquet and adds the case metadata columns needed by
-<code>write_epw()</code>. Built-in sequence-generating recipes use an
-internal year-addressable result instead. Each member records its output
-type, sequence identifier, weather year, calendar, optional stochastic
-seed, and source provenance; public custom backends that return one
-<code><a href="../reference/epw_morph_result.html">epw_morph_result()</a></code> retain their existing
-representative-year behavior.</p>
-<p>Rule tables must include <code>step</code>, <code>epw_field</code>,
-<code>method</code>, and <code>required</code>. They can use either the
-compact scalar columns <code>variable_id</code> and
-<code>optional_variable_id</code> or list columns
-<code>required_variables</code> and <code>optional_variables</code>. Use
-a <code>method_choices</code> list column when one step supports a
-narrower set of method values than the backend as a whole.</p>
-<p>This minimal backend copies the baseline EPW and offsets dry-bulb
-temperature. It is deliberately simple: a real backend would read
-<code>context$climate</code>, validate its required variables, and
-calculate weather fields from those rows.</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">offset_rules</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
-<span>    step <span class="op">=</span> <span class="st">"dry"</span>,</span>
-<span>    epw_field <span class="op">=</span> <span class="st">"dry_bulb_temperature"</span>,</span>
-<span>    variable_id <span class="op">=</span> <span class="st">"tas"</span>,</span>
-<span>    optional_variable_id <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
-<span>    method <span class="op">=</span> <span class="st">"plus_one"</span>,</span>
-<span>    required <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>    derived <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>    method_choices <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"plus_one"</span>, <span class="st">"plus_two"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">offset_runner</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">context</span>, <span class="va">backend</span><span class="op">)</span> <span class="op">{</span></span>
-<span>    <span class="va">epw</span> <span class="op">&lt;-</span> <span class="va">context</span><span class="op">$</span><span class="va">epw</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span><span class="op">)</span></span>
-<span>    <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">suppressMessages</a></span><span class="op">(</span><span class="va">epw</span><span class="op">$</span><span class="fu">drop_unit</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span>    <span class="va">weather</span> <span class="op">&lt;-</span> <span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/as.data.table.html" class="external-link">as.data.table</a></span><span class="op">(</span><span class="va">epw</span><span class="op">$</span><span class="fu">data</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span>    <span class="va">amount</span> <span class="op">&lt;-</span> <span class="kw"><a href="https://rdrr.io/r/base/switch.html" class="external-link">switch</a></span><span class="op">(</span></span>
-<span>        <span class="va">context</span><span class="op">$</span><span class="va">recipe</span><span class="op">$</span><span class="va">methods</span><span class="op">[[</span><span class="st">"dry"</span><span class="op">]</span><span class="op">]</span>,</span>
-<span>        plus_two <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>        plus_one <span class="op">=</span> <span class="fl">1</span></span>
-<span>    <span class="op">)</span></span>
-<span>    <span class="va">weather</span><span class="op">[</span>, <span class="va">dry_bulb_temperature</span> <span class="op">:=</span> <span class="va">dry_bulb_temperature</span> <span class="op">+</span> <span class="va">amount</span><span class="op">]</span></span>
-<span></span>
-<span>    <span class="fu"><a href="../reference/epw_morph_result.html">epw_morph_result</a></span><span class="op">(</span><span class="va">context</span>, epw <span class="op">=</span> <span class="va">epw</span>, data <span class="op">=</span> <span class="va">weather</span><span class="op">)</span></span>
-<span><span class="op">}</span></span>
-<span></span>
-<span><span class="va">offset_backend</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EpwMorphBackend.html">EpwMorphBackend</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span></span>
-<span>    name <span class="op">=</span> <span class="st">"constant_offset"</span>,</span>
-<span>    label <span class="op">=</span> <span class="st">"Constant dry-bulb offset"</span>,</span>
-<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>dry <span class="op">=</span> <span class="st">"plus_one"</span><span class="op">)</span>,</span>
-<span>    method_choices <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"plus_one"</span>, <span class="st">"plus_two"</span><span class="op">)</span>,</span>
-<span>    rules <span class="op">=</span> <span class="va">offset_rules</span>,</span>
-<span>    runner <span class="op">=</span> <span class="va">offset_runner</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="../reference/epw_morph_register_backend.html">epw_morph_register_backend</a></span><span class="op">(</span><span class="st">"constant_offset"</span>, <span class="va">offset_backend</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">offset_recipe</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_recipe.html">epw_morph_recipe</a></span><span class="op">(</span></span>
-<span>    <span class="st">"constant_offset"</span>,</span>
-<span>    backend <span class="op">=</span> <span class="st">"constant_offset"</span>,</span>
-<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>dry <span class="op">=</span> <span class="st">"plus_two"</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="va">offset_recipe</span><span class="op">)</span></span></code></pre></div>
-<p>Use the recipe exactly like the built-in one:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
-<span>    store <span class="op">=</span> <span class="va">store</span>,</span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>    site_id <span class="op">=</span> <span class="st">"SIN"</span>,</span>
-<span>    recipe <span class="op">=</span> <span class="va">offset_recipe</span>,</span>
-<span>    label <span class="op">=</span> <span class="st">"Singapore baseline"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>Prefer registering a new backend name over overwriting
-<code>"belcher"</code>. Use <code>overwrite = TRUE</code> only for
-interactive experiments where replacing an existing registration is
-intentional.</p>
-</div>
+<p><code><a href="../reference/shift_api.html">shift_future_epw()</a></code> checks these roles before collecting
+or calculating data. Supplying an irrelevant reference is an error, as
+is omitting a required one. References are execution inputs and never
+become part of a reusable transform.</p>
 </div>
 <div class="section level2">
-<h2 id="preflight-before-writing">Preflight Before Writing<a class="anchor" aria-label="anchor" href="#preflight-before-writing"></a>
+<h2 id="run-a-complete-workflow">Run a Complete Workflow<a class="anchor" aria-label="anchor" href="#run-a-complete-workflow"></a>
 </h2>
-<p>Preflight checks extraction coverage and baseline readiness without
-modifying store state.</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">diagnostics</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preflight</span><span class="op">(</span></span>
-<span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
-<span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
-<span>    reference_plan_id <span class="op">=</span> <span class="va">reference_region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
-<span>    reference_periods <span class="op">=</span> <span class="va">reference_periods</span>,</span>
-<span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">diagnostics</span></span></code></pre></div>
-<p>Blocking diagnostics should be fixed before planning. Common causes
-are missing required variables, incomplete monthly coverage, missing
-baseline EPW fields, or using periods that are not covered by the
-extracted climate data.</p>
-</div>
-<div class="section level2">
-<h2 id="summarise-climate-and-baseline">Summarise Climate and Baseline<a class="anchor" aria-label="anchor" href="#summarise-climate-and-baseline"></a>
-</h2>
-<p>Morphing uses monthly summary statistics. The climate summary comes
-from store extraction outputs; the baseline summary comes from the EPW
-file.</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_climate</span><span class="op">(</span></span>
-<span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
-<span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
-<span>    strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>    overwrite <span class="op">=</span> <span class="cn">FALSE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">reference_climate</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_climate</span><span class="op">(</span></span>
-<span>    plan_id <span class="op">=</span> <span class="va">reference_region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
-<span>    periods <span class="op">=</span> <span class="va">reference_periods</span>,</span>
-<span>    strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>    overwrite <span class="op">=</span> <span class="cn">FALSE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">baseline</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">summarise_baseline</span><span class="op">(</span>overwrite <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">baseline</span><span class="op">$</span><span class="va">baseline_id</span><span class="op">)</span></span></code></pre></div>
-<p>The summary IDs are stable for the selected extraction plans,
-periods, baseline, and recipe. Reusing them lets you preview or rerun
-later stages without re-extracting climate data.</p>
-</div>
-<div class="section level2">
-<h2 id="preview-and-create-a-morphing-plan">Preview and Create a Morphing Plan<a class="anchor" aria-label="anchor" href="#preview-and-create-a-morphing-plan"></a>
-</h2>
-<p><code>preview_plan()</code> calculates plan rows, factor rows, and
-diagnostics without writing them. <code>plan()</code> persists the
-selected plan and factor rows.</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">preview</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">preview_plan</span><span class="op">(</span></span>
-<span>    summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
-<span>    reference_summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
-<span>    baseline_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">baseline</span><span class="op">$</span><span class="va">baseline_id</span><span class="op">)</span>,</span>
-<span>    by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
-<span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">preview</span><span class="op">$</span><span class="va">plan</span></span>
-<span><span class="va">preview</span><span class="op">$</span><span class="va">factors</span></span>
-<span><span class="va">preview</span><span class="op">$</span><span class="va">diagnostics</span></span>
-<span></span>
-<span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">plan</span><span class="op">(</span></span>
-<span>    summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
-<span>    reference_summary_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">reference_climate</span><span class="op">$</span><span class="va">summary_id</span><span class="op">)</span>,</span>
-<span>    baseline_id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">baseline</span><span class="op">$</span><span class="va">baseline_id</span><span class="op">)</span>,</span>
-<span>    by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
-<span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>The <code>by</code> columns define morphing cases. The default
-creates one case per model, experiment, member, and period. Add or
-remove grouping columns only when those columns exist in the climate
-summary and reflect the cases you intend to write.</p>
-</div>
-<div class="section level2">
-<h2 id="diagnose-and-run">Diagnose and Run<a class="anchor" aria-label="anchor" href="#diagnose-and-run"></a>
-</h2>
-<p>Run diagnostics before executing strict plans.</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">morph_id</span> <span class="op">&lt;-</span> <span class="va">plan</span><span class="op">$</span><span class="va">morph_id</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
-<span></span>
-<span><span class="va">morpher</span><span class="op">$</span><span class="fu">diagnose</span><span class="op">(</span><span class="va">morph_id</span><span class="op">)</span></span>
-<span><span class="va">morpher</span><span class="op">$</span><span class="fu">check</span><span class="op">(</span><span class="va">morph_id</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">results</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">run</span><span class="op">(</span></span>
-<span>    <span class="va">morph_id</span>,</span>
-<span>    overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>    resume <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p><code>run()</code> writes hourly morphed weather as Parquet artifacts
-under the store. A representative-year result produces one artifact per
-climate case. A future sequence produces one independently resumable
-artifact per sequence member and weather year; <code>output_type</code>,
-<code>sequence_id</code>, <code>weather_year</code>,
-<code>calendar</code>, and <code>stochastic_seed</code> identify those
-rows in the result manifest. It does not write EPW text files yet.</p>
-</div>
-<div class="section level2">
-<h2 id="write-epw-files">Write EPW Files<a class="anchor" aria-label="anchor" href="#write-epw-files"></a>
-</h2>
-<p>Write EnergyPlus Weather files after morphing succeeds.</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">write_epw</span><span class="op">(</span></span>
-<span>    <span class="va">morph_id</span>,</span>
-<span>    dir <span class="op">=</span> <span class="st">"outputs/future-epw"</span>,</span>
-<span>    separate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>    overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>    resume <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">morpher</span><span class="op">$</span><span class="fu">status</span><span class="op">(</span><span class="va">morph_id</span><span class="op">)</span></span>
-<span><span class="va">morpher</span><span class="op">$</span><span class="fu">outputs</span><span class="op">(</span><span class="va">morph_id</span><span class="op">)</span></span></code></pre></div>
-<p>The high-level <code><a href="../reference/shift_api.html">shift_epw()</a></code> function wraps this step and
-returns a <code>ShiftOutputs</code> stage. Use
-<code><a href="../reference/shift_api.html">shift_outputs()</a></code> and <code><a href="../reference/shift_api.html">shift_data()</a></code> when you do
-not need lower-level manifest IDs. Sequence results are written as one
-EPW per weather year, with the sequence identifier and year included in
-the path and filename; multiple years are never flattened into a single
-EPW text file.</p>
-<p>For the enhanced profile, final EPW writing uses the persisted hourly
-Parquet artifact to recalculate ground temperatures and six
-hemisphere-aware typical/extreme periods. Stale design conditions are
-written as <code>DESIGN CONDITIONS,0</code>; set the corresponding
-<code><a href="../reference/belcher_options.html">belcher_options()</a></code> policies to <code>"preserve"</code> when
-the original headers must remain untouched.</p>
-</div>
-<div class="section level2">
-<h2 id="one-call-workflow">One-Call Workflow<a class="anchor" aria-label="anchor" href="#one-call-workflow"></a>
-</h2>
-<p>For most scripts, use the task-oriented API and supply matching
-historical CMIP6 data when they are available. epwshiftr resolves the
-store stages, EPW writing, and final export path:</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<p>The original morphing method published by Belcher et al. requires
+matching historical model data:</p>
+<p>Its CMIP6 temperature contract includes monthly <code>tas</code>,
+<code>tasmax</code>, and <code>tasmin</code>. The mean change comes from
+<code>tas</code>; the published combined transformation uses the
+future-minus-historical change in average daily range from
+<code>tasmax</code> and <code>tasmin</code>, divided by the EPW’s
+monthly average daily range. The remaining input contract and its
+humidity alternatives are visible in
+<code>monthly_transform("original_morphing")@required_inputs</code>.</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    epw <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
+<span>        <span class="st">"extdata/examples/SGP_Singapore.486980_IWEC.epw"</span>,</span>
+<span>        package <span class="op">=</span> <span class="st">"epwshiftr"</span></span>
+<span>    <span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>        model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
 <span>        scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
 <span>    <span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
-<span>    method <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span></span>
-<span>        reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
-<span>    <span class="op">)</span>,</span>
-<span>    dir <span class="op">=</span> <span class="st">"~/Downloads/epwshiftr-test"</span></span>
+<span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span>,</span>
+<span>    reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="st">"future-epw"</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/shift_api.html">shift_missing</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span></code></pre></div>
-<p>If no suitable historical reference data exist,
-<code><a href="../reference/shift_api.html">belcher()</a></code> is the fallback: it uses the EPW climatology
-directly and does not infer a historical request.</p>
-<p>When you already have lower-level extraction plan IDs and need direct
-control of the morphing engine, use <code>workflow()</code>.</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">workflow</span><span class="op">(</span></span>
-<span>    plan_id <span class="op">=</span> <span class="va">region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span></code></pre></div>
+<p>The package’s enhanced monthly method accepts a matching historical
+model reference when one is available and can also use the EPW
+climatology without one:</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2080s` <span class="op">=</span> <span class="fl">2075</span><span class="op">:</span><span class="fl">2085</span><span class="op">)</span>,</span>
+<span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span>,</span>
+<span>    reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>    dir <span class="op">=</span> <span class="st">"future-epw"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Daily bias-adjustment methods such as QDM and ISIMIP3BASD require
+both historical model and observed reference data. The observed role
+must point to a plan containing observations; an automatically resolved
+CMIP6 historical run cannot silently substitute for observations.</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">reference_periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
+<span><span class="va">historical</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_plan</a></span><span class="op">(</span></span>
+<span>    <span class="va">historical_plan_id</span>,</span>
+<span>    <span class="va">reference_periods</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">observed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_plan</a></span><span class="op">(</span></span>
+<span>    <span class="va">observed_plan_id</span>,</span>
+<span>    <span class="va">reference_periods</span>,</span>
+<span>    role <span class="op">=</span> <span class="st">"observed_reference"</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="va">future_cmip6</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span>,</span>
+<span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">daily_transform</a></span><span class="op">(</span><span class="st">"isimip3basd"</span><span class="op">)</span>,</span>
+<span>    reference <span class="op">=</span> <span class="va">historical</span>,</span>
+<span>    observed_reference <span class="op">=</span> <span class="va">observed</span>,</span>
+<span>    dir <span class="op">=</span> <span class="st">"future-epw"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Use <code>dry_run = TRUE</code> to inspect the plan without accessing
+ESGF:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
+<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
+<span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span>,</span>
+<span>    reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="st">"future-epw"</span>,</span>
+<span>    dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_explain</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span>
+<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_run</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="use-epwmorpher-directly">Use EpwMorpher Directly<a class="anchor" aria-label="anchor" href="#use-epwmorpher-directly"></a>
+</h2>
+<p><code>EpwMorpher</code> is the store-native calculation engine used
+by <code><a href="../reference/shift_api.html">shift_morph()</a></code>. Use it directly when extraction plans
+already exist and you need separate climate summaries, baseline
+summaries, preflight diagnostics, factor previews, or control over
+morph/write reruns.</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">store</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgStore.html">EsgStore</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span><span class="st">"~/cmip6-singapore-store"</span>, create <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">morpher</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morpher.html">epw_morpher</a></span><span class="op">(</span></span>
+<span>    store <span class="op">=</span> <span class="va">store</span>,</span>
+<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    site_id <span class="op">=</span> <span class="st">"SIN"</span>,</span>
+<span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span>,</span>
+<span>    label <span class="op">=</span> <span class="st">"Singapore baseline"</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">morpher</span><span class="op">$</span><span class="fu">required_variables</span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span></span>
+<span><span class="va">reference_periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">morpher</span><span class="op">$</span><span class="fu">workflow</span><span class="op">(</span></span>
+<span>    plan_id <span class="op">=</span> <span class="va">future_plan_id</span>,</span>
 <span>    periods <span class="op">=</span> <span class="va">periods</span>,</span>
-<span>    reference_plan_id <span class="op">=</span> <span class="va">reference_region</span><span class="op">$</span><span class="va">plan_id</span>,</span>
+<span>    reference_plan_id <span class="op">=</span> <span class="va">historical_plan_id</span>,</span>
 <span>    reference_periods <span class="op">=</span> <span class="va">reference_periods</span>,</span>
 <span>    by <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"period"</span><span class="op">)</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -1861,40 +398,94 @@ control of the morphing engine, use <code>workflow()</code>.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span></code></pre></div>
-<p>For most users, the equivalent high-level path is still clearer:</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
-<span>        model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
-<span>        scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
-<span>    <span class="op">)</span>,</span>
-<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
-<span>    method <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">belcher</a></span><span class="op">(</span></span>
-<span>        reference <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
-<span>    <span class="op">)</span>,</span>
-<span>    dir <span class="op">=</span> <span class="st">"~/Downloads/epwshiftr-test"</span>,</span>
-<span>    store <span class="op">=</span> <span class="st">"~/cmip6-singapore-store"</span>,</span>
-<span>    dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="../reference/shift_api.html">shift_explain</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span>
-<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_run</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span></code></pre></div>
+<p>The morpher stores climate summaries, baseline summaries, plans,
+intermediate hourly weather, diagnostics, and EPW outputs in
+<code>EsgStore</code>. Existing results are addressed by stable IDs, so
+a failed or interrupted execution can resume without repeating completed
+calculations.</p>
 </div>
 <div class="section level2">
-<h2 id="relationship-to-other-layers">Relationship to Other Layers<a class="anchor" aria-label="anchor" href="#relationship-to-other-layers"></a>
+<h2 id="internal-execution-stages">Internal Execution Stages<a class="anchor" aria-label="anchor" href="#internal-execution-stages"></a>
 </h2>
-<ul>
-<li>
-<a href="esg-store.html">ESG stores</a> owns extraction results and
-artifacts consumed by <code>EpwMorpher</code>.</li>
-<li>
-<a href="esgf-troubleshooting.html">ESGF troubleshooting</a>
-explains incomplete coverage and missing variable diagnostics.</li>
-<li>
-<a href="future-epw-workflow.html">Create Future EPW Files</a> shows
-the recommended high-level path.</li>
-</ul>
+<p>Complete methods execute through seven ordered component
+responsibilities. The stages are internal; ordinary users select a
+complete transform instead of assembling them manually.</p>
+<table class="table">
+<colgroup>
+<col width="17%">
+<col width="41%">
+<col width="41%">
+</colgroup>
+<thead><tr class="header">
+<th align="left">Stage</th>
+<th align="left">Responsibility</th>
+<th align="left">Problem solved</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td align="left"><code>preprocess</code></td>
+<td align="left">Normalize variables, units, and representations</td>
+<td align="left">Gives later calculations a consistent input
+contract</td>
+</tr>
+<tr class="even">
+<td align="left"><code>calendar</code></td>
+<td align="left">Map source calendars and annual phase</td>
+<td align="left">Prevents implicit Gregorian, no-leap, or 360-day
+assumptions</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>signal</code></td>
+<td align="left">Estimate or apply the climate-change adjustment</td>
+<td align="left">Owns the scientific transformation method</td>
+</tr>
+<tr class="even">
+<td align="left"><code>sequence</code></td>
+<td align="left">Preserve or construct daily and multi-year
+ordering</td>
+<td align="left">Keeps temporal dependence and realization identity
+explicit</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>hourly</code></td>
+<td align="left">Reconstruct hourly EPW candidates</td>
+<td align="left">Separates daily or monthly signals from hourly profile
+rules</td>
+</tr>
+<tr class="even">
+<td align="left"><code>physics</code></td>
+<td align="left">Apply the method’s canonical physical treatment</td>
+<td align="left">Centralizes humidity, radiation, wind, pressure, and
+field bounds</td>
+</tr>
+<tr class="odd">
+<td align="left"><code>output</code></td>
+<td align="left">Produce representative-year or multi-year weather
+results</td>
+<td align="left">Standardizes metadata and handoff to EPW writing</td>
+</tr>
+</tbody>
+</table>
+<p>Every built-in complete transform selects one physical treatment
+internally. Users do not choose backend profiles or physical-policy
+switches. This keeps each public method definition stable while allowing
+the common physical layer to be reused by all implementations.</p>
+</div>
+<div class="section level2">
+<h2 id="diagnostics-and-provenance">Diagnostics and Provenance<a class="anchor" aria-label="anchor" href="#diagnostics-and-provenance"></a>
+</h2>
+<p><code><a href="../reference/shift_api.html">shift_diagnostics()</a></code> reports input coverage, calendar
+mapping, fallback use, physical closure, and output status with the case
+identity that produced each message. <code><a href="../reference/shift_api.html">shift_explain()</a></code>
+reports the selected public transform and its execution inputs; backend,
+component, and internal recipe keys are not required to configure a
+normal run.</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/shift_api.html">shift_explain</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span><span class="va">run</span>, n <span class="op">=</span> <span class="fl">24L</span><span class="op">)</span></span></code></pre></div>
+<p>For incomplete ESGF data or extraction failures, see <a href="esgf-troubleshooting.html">Troubleshoot ESGF Workflows</a>. For
+the complete task-oriented workflow, see <a href="future-epw-workflow.html">Create Future EPW Files</a>.</p>
 </div>
   </div>
 

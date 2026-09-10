@@ -69,7 +69,7 @@
       <a href="../articles/downloader.html">Run Persistent Downloads</a>
     </li>
     <li>
-      <a href="../articles/epw-morpher.html">Inspect EPW Morphing</a>
+      <a href="../articles/epw-morpher.html">Inspect Future-Weather Transformations</a>
     </li>
     <li>
       <a href="../articles/cli-esgf-store.html">Manage ESGF Stores from the Command Line</a>
@@ -203,7 +203,7 @@ when the local dictionary was built.</p>
 <span><span class="co">#&gt; [1] "78a465a7dabb01e357928ea223bc5da871a6e6dc"</span></span>
 <span><span class="co">#&gt;</span></span>
 <span><span class="co">#&gt; $vocab$source_dir</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-dictionaries/sources/CMIP6/vocab/6.2.60.0"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-dictionaries/sources/CMIP6/vocab/6.2.60.0"</span></span>
 <span><span class="co">#&gt;</span></span>
 <span><span class="co">#&gt;</span></span>
 <span><span class="co">#&gt; $request</span></span>
@@ -217,7 +217,7 @@ when the local dictionary was built.</p>
 <span><span class="co">#&gt; [1] "c8810526268e8cb13f2b37aba6af377e15644561"</span></span>
 <span><span class="co">#&gt;</span></span>
 <span><span class="co">#&gt; $request$source_dir</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-dictionaries/sources/CMIP6/request/6.9.33"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-dictionaries/sources/CMIP6/request/6.9.33"</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">version</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; $vocab</span></span>
 <span><span class="co">#&gt; [1] '6.2.60.0'</span></span>
@@ -267,7 +267,7 @@ when the local dictionary was built.</p>
 <span><span class="co">#&gt; $table_id</span></span>
 <span><span class="co">#&gt; [1] "2017-01-13 16:27:00 UTC"</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">built_time</span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "2026-07-26 01:08:08 CST"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "2026-09-10 17:36:24 CST"</span></span></code></pre></div>
 <p><code><a href="https://rdrr.io/r/base/capabilities.html" class="external-link">capabilities()</a></code> is the fastest way to see whether a
 project dictionary has vocabulary data, request metadata, and relation
 indices.</p>
@@ -615,13 +615,16 @@ explicit.</p>
 <p><code>$check()</code> validates known values and known relationships
 before the request goes to ESGF.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">request_check</span> <span class="op">&lt;-</span> <span class="va">dict</span><span class="op">$</span><span class="fu">check</span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">transform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span></span>
+<span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="va">transform</span><span class="op">@</span><span class="va">required_inputs</span><span class="op">$</span><span class="va">model_future</span><span class="op">@</span><span class="va">variable_sets</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
+<span></span>
+<span><span class="va">request_check</span> <span class="op">&lt;-</span> <span class="va">dict</span><span class="op">$</span><span class="fu">check</span><span class="op">(</span></span>
 <span>    activity_id <span class="op">=</span> <span class="st">"ScenarioMIP"</span>,</span>
 <span>    experiment_id <span class="op">=</span> <span class="st">"ssp585"</span>,</span>
 <span>    source_id <span class="op">=</span> <span class="st">"MPI-ESM1-2-LR"</span>,</span>
 <span>    variant_label <span class="op">=</span> <span class="st">"r1i1p1f1"</span>,</span>
 <span>    table_id <span class="op">=</span> <span class="st">"Amon"</span>,</span>
-<span>    variable_id <span class="op">=</span> <span class="fu"><a href="../reference/epw_morph_variables.html">epw_morph_variables</a></span><span class="op">(</span><span class="st">"recommended"</span><span class="op">)</span></span>
+<span>    variable_id <span class="op">=</span> <span class="va">variables</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">show_rows</span><span class="op">(</span><span class="va">request_check</span>, <span class="fl">20L</span><span class="op">)</span></span>
@@ -633,13 +636,15 @@ before the request goes to ESGF.</p>
 <span><span class="co">#&gt;  4: variant_label      r1i1p1f1   TRUE  value field_value pattern</span></span>
 <span><span class="co">#&gt;  5:      table_id          Amon   TRUE  value field_value   vocab</span></span>
 <span><span class="co">#&gt;  6:   variable_id           tas   TRUE  value field_value request</span></span>
-<span><span class="co">#&gt;  7:   variable_id          hurs   TRUE  value field_value request</span></span>
-<span><span class="co">#&gt;  8:   variable_id           psl   TRUE  value field_value request</span></span>
-<span><span class="co">#&gt;  9:   variable_id          rlds   TRUE  value field_value request</span></span>
-<span><span class="co">#&gt; 10:   variable_id          rsds   TRUE  value field_value request</span></span>
-<span><span class="co">#&gt; 11:   variable_id       sfcWind   TRUE  value field_value request</span></span>
-<span><span class="co">#&gt; 12:   variable_id           clt   TRUE  value field_value request</span></span>
-<span><span class="co">#&gt; 13:   variable_id            pr   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt;  7:   variable_id        tasmax   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt;  8:   variable_id        tasmin   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt;  9:   variable_id          hurs   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt; 10:   variable_id           psl   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt; 11:   variable_id          rlds   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt; 12:   variable_id          rsds   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt; 13:   variable_id       sfcWind   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt; 14:   variable_id           clt   TRUE  value field_value request</span></span>
+<span><span class="co">#&gt; 15:   variable_id            pr   TRUE  value field_value request</span></span>
 <span><span class="co">#&gt;     constraint_fields message suggestions compatible_values</span></span>
 <span><span class="co">#&gt;                &lt;list&gt;  &lt;char&gt;      &lt;list&gt;            &lt;list&gt;</span></span>
 <span><span class="co">#&gt;  1:                      &lt;NA&gt;</span></span>
@@ -654,7 +659,9 @@ before the request goes to ESGF.</p>
 <span><span class="co">#&gt; 10:                      &lt;NA&gt;</span></span>
 <span><span class="co">#&gt; 11:                      &lt;NA&gt;</span></span>
 <span><span class="co">#&gt; 12:                      &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 13:                      &lt;NA&gt;</span></span></code></pre></div>
+<span><span class="co">#&gt; 13:                      &lt;NA&gt;</span></span>
+<span><span class="co">#&gt; 14:                      &lt;NA&gt;</span></span>
+<span><span class="co">#&gt; 15:                      &lt;NA&gt;</span></span></code></pre></div>
 <p>Suggestions are useful for typographical errors or aliases that do
 not match the project vocabulary.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
@@ -716,7 +723,7 @@ analysis artifact.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dict_path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"cmip6-dict-live.json"</span><span class="op">)</span></span>
 <span><span class="va">dict</span><span class="op">$</span><span class="fu">save</span><span class="op">(</span><span class="va">dict_path</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//RtmptvdKFu/epwshiftr-esg-dictionaries/cmip6-dict-live.json"</span></span>
+<span><span class="co">#&gt; [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//RtmpMQQ6xU/epwshiftr-esg-dictionaries/cmip6-dict-live.json"</span></span>
 <span></span>
 <span><span class="va">restored</span> <span class="op">&lt;-</span> <span class="va"><a href="../reference/EsgDict.html">EsgDict</a></span><span class="op">$</span><span class="fu">new</span><span class="op">(</span>project <span class="op">=</span> <span class="st">"CMIP6"</span><span class="op">)</span></span>
 <span><span class="va">restored</span><span class="op">$</span><span class="fu">load</span><span class="op">(</span><span class="va">dict_path</span><span class="op">)</span></span>
@@ -761,7 +768,7 @@ and relation checks reflect what is available upstream.</p>
 <span><span class="co">#&gt; [1] NA</span></span>
 <span><span class="co">#&gt;</span></span>
 <span><span class="co">#&gt; $vocab$source_dir</span></span>
-<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmptvdKFu/epwshiftr-esg-dictionaries/sources/CMIP6PLUS/vocab/esgvoc"</span></span>
+<span><span class="co">#&gt; [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-dictionaries/sources/CMIP6PLUS/vocab/esgvoc"</span></span>
 <span><span class="co">#&gt;</span></span>
 <span><span class="co">#&gt;</span></span>
 <span><span class="co">#&gt; $request</span></span>
