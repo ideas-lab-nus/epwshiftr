@@ -78,7 +78,7 @@ data, the CEDA data node, and the current recommended morphing variables.
 
 ``` r
 index_node <- "https://esgf-data.dkrz.de"
-transform <- monthly_transform("belcher")
+transform <- monthly_transform("original_morphing")
 variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 dataset_fields <- c(
     "id", "source_id", "experiment_id", "variant_label",
@@ -750,9 +750,9 @@ query_path <- file.path(workflow_root, "query.json")
 files_path <- file.path(workflow_root, "files-2060.json")
 
 query$save(query_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-esgf-query-results/query.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esgf-query-results/query.json"
 files_2060$save(files_path)
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-esgf-query-results/files-2060.json"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esgf-query-results/files-2060.json"
 
 query_copy <- esg_query()$load(query_path)
 files_copy <- esg_result("file")$load(files_path)

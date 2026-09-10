@@ -302,7 +302,7 @@ epwphys__recipe_policy <- function(recipe) {
     }
     spec <- morpher__recipe_spec(recipe)
     if (is.null(spec)) {
-        if (recipe$backend %in% c("belcher", "belcher_absolute")) {
+        if (recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
             return(epwphys__policy(if (
                 identical(recipe$profile, "enhanced")
             ) {

@@ -12,7 +12,7 @@ test_that("shared status views are stage-adaptive and remain within the terminal
         unit_current = 1L,
         unit_total = 6L,
         plan_context = list(
-            line = "BCC-CSM2-MR \u00b7 ssp126 + ssp585 \u00b7 2060s \u00b7 belcher",
+            line = "BCC-CSM2-MR \u00b7 ssp126 + ssp585 \u00b7 2060s \u00b7 original_morphing",
             selection = "member auto \u00b7 grid auto"
         ),
         cases_ready = 0L,
@@ -28,7 +28,7 @@ test_that("shared status views are stage-adaptive and remain within the terminal
     expect_true(all(cli::ansi_nchar(lines, type = "width") <= 79L))
     plain <- cli::ansi_strip(lines)
     expect_match(plain[[1L]], "Future EPW.*RUNNING")
-    expect_true(any(grepl("Plan.*BCC-CSM2-MR.*belcher", plain)))
+    expect_true(any(grepl("Plan.*BCC-CSM2-MR.*original_morphing", plain)))
     expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
     expect_true(any(grepl("Flow.*Resolve.*Future", plain)))
     expect_true(any(grepl("Now.*DKRZ", plain)))
@@ -48,7 +48,7 @@ test_that("wide dashboards add quiet hierarchy while narrow views preserve conte
         unit_current = 2L, unit_total = 6L,
         current_details = list(current = 2L, total = 6L),
         plan_context = list(
-            line = "BCC-CSM2-MR · ssp585 · 2060s · belcher",
+            line = "BCC-CSM2-MR · ssp585 · 2060s · original_morphing",
             selection = "member auto · grid auto"
         ),
         elapsed_seconds = 5
@@ -758,7 +758,7 @@ test_that("failed dashboards remain legible without colour and at narrow widths"
         unit_label = "No ESGF index node resolved a complete input set",
         current_details = list(current = 6L, total = 6L),
         plan_context = list(
-            line = "BCC-CSM2-MR · ssp126 + ssp585 · 2060s · belcher",
+            line = "BCC-CSM2-MR · ssp126 + ssp585 · 2060s · original_morphing",
             selection = "member auto · grid auto"
         ),
         failure_details = list(
@@ -981,7 +981,7 @@ test_that("wide resolver frames keep one motion focus and terse node outcomes", 
         unit_total = 6L,
         plan_context = list(
             line = paste("BCC-CSM2-MR", "ssp126 + ssp585", "2060s (2055\u20132065)",
-                "belcher / historical 1995\u20132014", "2 EPWs", sep = " \u00b7 "),
+                "original_morphing / historical 1995\u20132014", "2 EPWs", sep = " \u00b7 "),
             selection = "member auto \u00b7 grid auto"
         ),
         node_rows = data.table::data.table(
@@ -1014,7 +1014,7 @@ test_that("dashboard plan content reflows with the current terminal width", {
         "BCC-CSM2-MR",
         "ssp126 + ssp585",
         "2060s (2055–2065)",
-        "belcher / historical 1995–2014",
+        "original_morphing / historical 1995–2014",
         "2 EPWs"
     ))
     medium <- shift__ui_plan_lines(context, width = 90L)
@@ -1040,7 +1040,7 @@ test_that("dashboard prose wraps semantically and preserves a safe terminal colu
         current_details = list(current = 6L, total = 6L),
         plan_context = list(items = c(
             "BCC-CSM2-MR", "ssp126 + ssp585", "2060s (2055–2065)",
-            "belcher / historical 1995–2014", "2 EPWs"),
+            "original_morphing / historical 1995–2014", "2 EPWs"),
             selection = "member auto · grid auto"),
         failure_details = list(
             cause = paste("No member and grid covers every requested future",

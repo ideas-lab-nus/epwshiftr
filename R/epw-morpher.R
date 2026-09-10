@@ -1,4 +1,4 @@
-#' @include store.R weather-transform.R epw-morph-context.R backend-belcher.R utils.R
+#' @include store.R weather-transform.R epw-morph-context.R backend-original-morphing.R utils.R
 NULL
 
 # Store-native EPW morpher {{{
@@ -16,7 +16,7 @@ NULL
 #' @return An [EpwMorpher] object.
 #' @export
 epw_morpher <- function(store, epw, site_id = NULL,
-                        transform = monthly_transform("belcher"),
+                        transform = monthly_transform("original_morphing"),
                         label = NULL) {
     EpwMorpher$new(
         store = store,
@@ -38,7 +38,7 @@ morpher__from_recipe <- function(store, epw, recipe, site_id = NULL,
         store = store,
         epw = epw,
         site_id = site_id,
-        transform = monthly_transform("belcher"),
+        transform = monthly_transform("original_morphing"),
         label = label
     )
     private <- priv(object)
@@ -341,7 +341,7 @@ EpwMorpher <- R6::R6Class(
         #'   scale-specific transform constructor.
         #' @param label Optional source label.
         initialize = function(store, epw, site_id = NULL,
-                              transform = monthly_transform("belcher"),
+                              transform = monthly_transform("original_morphing"),
                               label = NULL) {
             if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
                 cli::cli_abort(

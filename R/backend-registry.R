@@ -60,7 +60,7 @@ morpher__missing_variable_guidance <- function(variable_id, present_variables = 
     if (identical(variable_id, "hurs")) {
         return(list(
             suffix = paste(
-                " Belcher humidity morphing requires near-surface relative humidity (hurs)",
+                " Original morphing requires near-surface relative humidity (hurs)",
                 "or derivable huss + tas + ps inputs."
             ),
             action = paste(
@@ -183,7 +183,7 @@ EpwMorphBackend <- R6::R6Class(
         #'   `TRUE`.
         #' @param accepts_reference Whether external reference climate data can
         #'   be consumed. `TRUE` with `requires_reference = FALSE` defines an
-        #'   optional-reference backend such as Belcher.
+        #'   optional-reference backend such as original morphing.
         #' @param pipeline Optional internal component pipeline specification.
         #' @param runner Optional function taking `(context, backend)` and
         #'        returning an `epw_morph_result`. Exactly one of `pipeline` and
@@ -328,22 +328,22 @@ EpwMorphBackend <- R6::R6Class(
 
 morpher__default_backend_specs <- function() {
     builtins <- list(
-        belcher = EpwMorphBackend$new(
-            name = "belcher",
-            label = "Belcher statistical downscaling with optional external reference",
-            methods = unlist(EPW_MORPH_BELCHER_PROFILE_METHODS$enhanced, use.names = TRUE),
-            method_choices = EPW_MORPH_BELCHER_METHOD_CHOICES,
-            rules = EPW_MORPH_BELCHER_RULES,
+        original_morphing = EpwMorphBackend$new(
+            name = "original_morphing",
+            label = "Original morphing with optional external reference",
+            methods = unlist(EPW_MORPH_ORIGINAL_PROFILE_METHODS$enhanced, use.names = TRUE),
+            method_choices = EPW_MORPH_ORIGINAL_METHOD_CHOICES,
+            rules = EPW_MORPH_ORIGINAL_RULES,
             accepts_reference = TRUE,
-            runner = morpher__belcher_run
+            runner = original_morphing__run
         ),
-        belcher_absolute = EpwMorphBackend$new(
-            name = "belcher_absolute",
-            label = "Belcher absolute-target statistical downscaling",
-            methods = unlist(EPW_MORPH_BELCHER_ABSOLUTE_PROFILE_METHODS$enhanced, use.names = TRUE),
-            method_choices = EPW_MORPH_BELCHER_METHOD_CHOICES,
-            rules = EPW_MORPH_BELCHER_RULES,
-            runner = morpher__belcher_absolute_run
+        original_morphing_absolute = EpwMorphBackend$new(
+            name = "original_morphing_absolute",
+            label = "Original morphing with absolute climate targets",
+            methods = unlist(EPW_MORPH_ORIGINAL_ABSOLUTE_PROFILE_METHODS$enhanced, use.names = TRUE),
+            method_choices = EPW_MORPH_ORIGINAL_METHOD_CHOICES,
+            rules = EPW_MORPH_ORIGINAL_RULES,
+            runner = original_morphing__absolute_run
         ),
         daily_temperature = EpwMorphBackend$new(
             name = "daily_temperature",
@@ -363,14 +363,14 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = daily__temperature_pipeline("btws")
         ),
-        eames_monthly_temperature = EpwMorphBackend$new(
-            name = "eames_monthly_temperature",
-            label = "Eames monthly temperature signal with BTWS projection",
+        btws_monthly_temperature = EpwMorphBackend$new(
+            name = "btws_monthly_temperature",
+            label = "Monthly temperature signal with BTWS projection",
             methods = EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS,
             method_choices = "btws",
             rules = EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES,
             requires_reference = TRUE,
-            pipeline = eames__monthly_temperature_pipeline()
+            pipeline = btws__monthly_pipeline()
         ),
         ek_daily_temperature = EpwMorphBackend$new(
             name = "ek_daily_temperature",
@@ -381,14 +381,14 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = ek__pipeline()
         ),
-        arima_temperature = EpwMorphBackend$new(
-            name = "arima_temperature",
-            label = "Arima month-wise quantile-mapping temperature workflow",
-            methods = EPW_MORPH_ARIMA_TEMPERATURE_METHODS,
+        quantile_mapping_morphing = EpwMorphBackend$new(
+            name = "quantile_mapping_morphing",
+            label = "Quantile-mapping morphing for temperature",
+            methods = EPW_MORPH_QUANTILE_MAPPING_TEMPERATURE_METHODS,
             method_choices = "percentile_additive",
-            rules = EPW_MORPH_ARIMA_TEMPERATURE_RULES,
+            rules = EPW_MORPH_QUANTILE_MAPPING_TEMPERATURE_RULES,
             requires_reference = TRUE,
-            pipeline = arima__pipeline()
+            pipeline = quantile_mapping_morphing__pipeline()
         ),
         sobie_curry_daily = EpwMorphBackend$new(
             name = "sobie_curry_daily",
@@ -416,7 +416,7 @@ morpher__default_backend_specs <- function() {
 }
 
 morpher__warn_backend <- function(name) {
-    if (!identical(name, "belcher_absolute")) {
+    if (!identical(name, "original_morphing_absolute")) {
         return(invisible(NULL))
     }
     if (exists(name, envir = EPW_MORPH_BACKEND_WARNINGS, inherits = FALSE)) {
@@ -424,9 +424,9 @@ morpher__warn_backend <- function(name) {
     }
     assign(name, TRUE, envir = EPW_MORPH_BACKEND_WARNINGS)
     cli::cli_warn(c(
-        "!" = "Backend {.val belcher_absolute} uses the legacy absolute-target Belcher implementation.",
+        "!" = "Backend {.val original_morphing_absolute} uses the legacy absolute-target form of original morphing.",
         "i" = paste(
-            "Use {.code monthly_transform(\"belcher\")} with a matching",
+            "Use {.code monthly_transform(\"original_morphing\")} with a matching",
             "historical reference for the current public workflow."
         )
     ))
@@ -458,7 +458,7 @@ epw_morph_backends <- function() {
 #'
 #' @return An [EpwMorphBackend] object.
 #' @export
-epw_morph_backend <- function(name = "belcher") {
+epw_morph_backend <- function(name = "original_morphing") {
     morpher__register_default_backends()
     checkmate::assert_string(name, min.chars = 1L)
     name <- tolower(name)

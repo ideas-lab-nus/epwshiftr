@@ -263,7 +263,7 @@ WeatherTransformSpec <- S7::new_class(
 # stable while concise method keys and scientific scale remain user-facing.
 transform__records <- function() {
     reconstruction_labels <- c(
-        belcher_field_equations = "Belcher field equations",
+        original_morphing_field_equations = "Original morphing field equations",
         enhanced_field_equations = "Enhanced monthly field equations",
         btws = "BTWS",
         power = "POWER",
@@ -276,11 +276,11 @@ transform__records <- function() {
     records <- list(
         list(
             scale = "monthly",
-            method = "belcher",
-            recipe = "belcher_monthly",
-            method_definition = "belcher_monthly",
-            reconstructions = "belcher_field_equations",
-            default_reconstruction = "belcher_field_equations",
+            method = "original_morphing",
+            recipe = "original_morphing_monthly",
+            method_definition = "original_morphing_monthly",
+            reconstructions = "original_morphing_field_equations",
+            default_reconstruction = "original_morphing_field_equations",
             statistical_grouping = "calendar_month"
         ),
         list(
@@ -294,9 +294,9 @@ transform__records <- function() {
         ),
         list(
             scale = "monthly",
-            method = "eames",
-            recipe = "eames_monthly_temperature",
-            method_definition = "eames_monthly_temperature",
+            method = "btws",
+            recipe = "btws_monthly_temperature",
+            method_definition = "btws_monthly_temperature",
             reconstructions = "btws",
             default_reconstruction = "btws",
             statistical_grouping = "calendar_month"
@@ -324,9 +324,9 @@ transform__records <- function() {
         ),
         list(
             scale = "daily",
-            method = "arima",
-            recipe = "monthly_percentile_temperature",
-            method_definition = "monthly_percentile_temperature",
+            method = "qm_morphing",
+            recipe = "quantile_mapping_morphing_daily",
+            method_definition = "quantile_mapping_morphing_daily",
             reconstructions = "daily_additive_application",
             default_reconstruction = "daily_additive_application",
             statistical_grouping = "calendar_month_distribution"
@@ -809,12 +809,12 @@ transform__with_variable_sets <- function(requirement, variable_sets) {
     )
 }
 
-# Resolve option-dependent Belcher source variables after recipe construction.
+# Resolve option-dependent original-morphing variables after recipe construction.
 # Other recipes already declare fixed role contracts in their canonical specs.
 transform__input_contracts <- function(recipe_spec, recipe) {
     required_inputs <- recipe_spec@required_inputs
     optional_inputs <- recipe_spec@optional_inputs
-    if (!recipe$backend %in% c("belcher", "belcher_absolute")) {
+    if (!recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
         return(list(
             required_inputs = required_inputs,
             optional_inputs = optional_inputs

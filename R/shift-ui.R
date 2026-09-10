@@ -345,7 +345,7 @@ shift__ui_stage_sequence <- function(plan) {
 }
 
 # Format unresolved or explicit CMIP6 selections for the startup summary. The
-# table strategy is part of the scientific selection because enhanced Belcher
+# table strategy is part of the scientific selection because enhanced monthly
 # recipes may resolve Amon and LImon on different grids.
 shift__ui_selection <- function(plan) {
     climate <- plan@meta$climate

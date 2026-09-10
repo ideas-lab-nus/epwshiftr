@@ -5,7 +5,7 @@
 EPW_MORPH_TEMPERATURE_PROJECTION_OPTIONS <- list(tolerance = 1e-8)
 
 # Reduce one hourly projection to auditable daily targets and numerical closure
-# values shared by POWER, BTWS, and Eames temperature workflows.
+# values shared by POWER, daily BTWS, and monthly BTWS workflows.
 temperature__factor_rows <- function(targets, projected) {
     method_columns <- intersect(
         c(
@@ -149,7 +149,7 @@ temperature__hourly_result <- function(data, options, projector) {
 }
 
 # Close humidity through the shared physical policy while preserving the
-# established POWER, BTWS, and Eames diagnostic columns and messages.
+# established POWER, daily BTWS, and monthly BTWS diagnostic columns and messages.
 temperature__physics_apply <- function(
     data,
     inputs,

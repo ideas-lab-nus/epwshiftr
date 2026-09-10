@@ -693,11 +693,11 @@ cli_shift__recipe_options <- function(options, backend) {
     if (!is.list(options)) {
         options <- as.list(options)
     }
-    if (backend %in% c("belcher", "belcher_absolute") &&
+    if (backend %in% c("original_morphing", "original_morphing_absolute") &&
         "transition_hours" %in% names(options)) {
         transition_hours <- suppressWarnings(as.integer(options$transition_hours[[1L]]))
         if (is.na(transition_hours)) {
-            epwshiftr_cli_usage_abort("Belcher option transition_hours must be an integer between 0 and 336.")
+            epwshiftr_cli_usage_abort("Original morphing option transition_hours must be an integer between 0 and 336.")
         }
         options$transition_hours <- transition_hours
     }
@@ -719,7 +719,7 @@ cli_shift__recipe_options <- function(options, backend) {
     }
     if (backend %in% c(
         "daily_temperature", "daily_temperature_btws",
-        "eames_monthly_temperature", "ek_daily_temperature",
+        "btws_monthly_temperature", "ek_daily_temperature",
         "sobie_curry_daily"
     ) &&
         "tolerance" %in% names(options)) {

@@ -30,7 +30,7 @@ test_that("future-weather sequence contracts validate year-addressable members",
             units = "K",
             value = 300
         ),
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute"))
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute"))
     )
     result <- sequence__result(
         context,

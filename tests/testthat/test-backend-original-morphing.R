@@ -83,7 +83,7 @@ enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
 
 # Encode a result column deterministically before hashing complete runner
 # tables. Classes and factor levels are recorded separately by the snapshot.
-belcher_test__canonical_column <- function(value, significant_digits = 7L) {
+original_morphing_test__canonical_column <- function(value, significant_digits = 7L) {
     if (is.list(value) && !is.data.frame(value)) {
         return(vapply(value, function(item) {
             jsonlite::toJSON(
@@ -137,7 +137,7 @@ belcher_test__canonical_column <- function(value, significant_digits = 7L) {
 
 # Capture the complete schema, row order, and values of one runner table in a
 # compact, reviewable form suitable for cross-platform test snapshots.
-belcher_test__table_behavior <- function(data, significant_digits = 7L) {
+original_morphing_test__table_behavior <- function(data, significant_digits = 7L) {
     data <- data.table::as.data.table(data)
     schema <- vapply(seq_along(data), function(index) {
         value <- data[[index]]
@@ -168,7 +168,7 @@ belcher_test__table_behavior <- function(data, significant_digits = 7L) {
     }, character(1L))
     encoded <- lapply(
         data,
-        belcher_test__canonical_column,
+        original_morphing_test__canonical_column,
         significant_digits = significant_digits
     )
     rows <- if (nrow(data) && ncol(data)) {
@@ -199,7 +199,7 @@ belcher_test__table_behavior <- function(data, significant_digits = 7L) {
 
 # Render compact behavior records as stable text rather than serializing R's
 # nested object metadata into the checked-in snapshot.
-belcher_test__snapshot_json <- function(value) {
+original_morphing_test__snapshot_json <- function(value) {
     jsonlite::toJSON(
         value,
         auto_unbox = TRUE,
@@ -210,25 +210,26 @@ belcher_test__snapshot_json <- function(value) {
 }
 
 
-# Snapshot every persisted and intermediate surface returned by a Belcher
-# runner while retaining the method identity and selected physical policy.
-belcher_test__result_behavior <- function(result) {
+# Snapshot every persisted and intermediate surface returned by an
+# original-morphing runner while retaining the method identity and selected
+# physical policy.
+original_morphing_test__result_behavior <- function(result) {
     policy <- epwphys__recipe_policy(result$recipe)
     list(
         backend = result$backend,
         profile = result$recipe$profile,
         policy = policy@name,
-        data = belcher_test__table_behavior(result$data),
-        parts = lapply(result$parts, belcher_test__table_behavior),
-        factors = belcher_test__table_behavior(result$factors),
-        diagnostics = belcher_test__table_behavior(result$diagnostics)
+        data = original_morphing_test__table_behavior(result$data),
+        parts = lapply(result$parts, original_morphing_test__table_behavior),
+        factors = original_morphing_test__table_behavior(result$factors),
+        diagnostics = original_morphing_test__table_behavior(result$diagnostics)
     )
 }
 
 
 # Build the same single-case context boundary used by EpwMorpher after it has
 # separated model, scenario, member, and period cases.
-belcher_test__context <- function(epw, climate, backend, profile,
+original_morphing_test__context <- function(epw, climate, backend, profile,
                                   reference_climate = NULL) {
     morpher__context(
         epw,
@@ -292,48 +293,48 @@ enhanced_test__change_climate <- function(reference = FALSE) {
 }
 
 
-test_that("Belcher runner behavior is fixed across modes and profiles", {
+test_that("Original morphing runner behavior is fixed across modes and profiles", {
     epw <- epw_file_read(get_cache_epw())
     future <- enhanced_test__change_climate()
     reference <- enhanced_test__change_climate(reference = TRUE)
     contexts <- list(
-        absolute_legacy = belcher_test__context(
-            epw, future, "belcher_absolute", "legacy"
+        absolute_legacy = original_morphing_test__context(
+            epw, future, "original_morphing_absolute", "legacy"
         ),
-        absolute_enhanced = belcher_test__context(
-            epw, future, "belcher_absolute", "enhanced"
+        absolute_enhanced = original_morphing_test__context(
+            epw, future, "original_morphing_absolute", "enhanced"
         ),
-        change_legacy = belcher_test__context(
-            epw, future, "belcher", "legacy", reference
+        change_legacy = original_morphing_test__context(
+            epw, future, "original_morphing", "legacy", reference
         ),
-        change_enhanced = belcher_test__context(
-            epw, future, "belcher", "enhanced", reference
+        change_enhanced = original_morphing_test__context(
+            epw, future, "original_morphing", "enhanced", reference
         ),
-        baseline_fallback = belcher_test__context(
-            epw, future, "belcher", "enhanced"
+        baseline_fallback = original_morphing_test__context(
+            epw, future, "original_morphing", "enhanced"
         )
     )
     results <- lapply(contexts, morpher__run_context)
 
-    # The no-reference Belcher path must remain the absolute-target runner for
-    # its own recipe rather than silently switching method identity.
-    direct_fallback <- morpher__belcher_absolute_run(
+    # The no-reference original-morphing path must remain the absolute-target
+    # runner for its own recipe rather than silently switching method identity.
+    direct_fallback <- original_morphing__absolute_run(
         contexts$baseline_fallback,
-        epw_morph_backend("belcher")
+        epw_morph_backend("original_morphing")
     )
     expect_identical(
-        belcher_test__result_behavior(results$baseline_fallback),
-        belcher_test__result_behavior(direct_fallback)
+        original_morphing_test__result_behavior(results$baseline_fallback),
+        original_morphing_test__result_behavior(direct_fallback)
     )
-    expect_identical(results$baseline_fallback$backend, "belcher")
+    expect_identical(results$baseline_fallback$backend, "original_morphing")
 
-    expect_snapshot(cat(belcher_test__snapshot_json(
-        lapply(results, belcher_test__result_behavior)
+    expect_snapshot(cat(original_morphing_test__snapshot_json(
+        lapply(results, original_morphing_test__result_behavior)
     )), cran = TRUE)
 })
 
 
-test_that("Belcher production case contexts preserve identity and isolation", {
+test_that("Original morphing production case contexts preserve identity and isolation", {
     epw <- epw_file_read(get_cache_epw())
     future_a <- enhanced_test__change_climate()
     reference_a <- enhanced_test__change_climate(reference = TRUE)
@@ -346,11 +347,11 @@ test_that("Belcher production case contexts preserve identity and isolation", {
     future_b[variable_id == "tas", value := value + 1]
 
     results <- list(
-        model_a = morpher__run_context(belcher_test__context(
-            epw, future_a, "belcher", "enhanced", reference_a
+        model_a = morpher__run_context(original_morphing_test__context(
+            epw, future_a, "original_morphing", "enhanced", reference_a
         )),
-        model_b = morpher__run_context(belcher_test__context(
-            epw, future_b, "belcher", "enhanced", reference_b
+        model_b = morpher__run_context(original_morphing_test__context(
+            epw, future_b, "original_morphing", "enhanced", reference_b
         ))
     )
 
@@ -364,15 +365,15 @@ test_that("Belcher production case contexts preserve identity and isolation", {
         results$model_a$data$dry_bulb_temperature -
             results$model_b$data$dry_bulb_temperature
     ) > 1e-6))
-    expect_snapshot(cat(belcher_test__snapshot_json(
-        lapply(results, belcher_test__result_behavior)
+    expect_snapshot(cat(original_morphing_test__snapshot_json(
+        lapply(results, original_morphing_test__result_behavior)
     )), cran = TRUE)
 })
 
 
-test_that("internal Belcher profiles and current recipe JSON have explicit semantics", {
-    enhanced <- epw_morph_recipe("belcher")
-    legacy <- epw_morph_recipe("belcher", profile = "legacy")
+test_that("original-morphing profiles and current recipe JSON have explicit semantics", {
+    enhanced <- epw_morph_recipe("original_morphing")
+    legacy <- epw_morph_recipe("original_morphing", profile = "legacy")
 
     expect_identical(enhanced$profile, "enhanced")
     expect_identical(enhanced$methods[["tdb"]], "auto")
@@ -381,18 +382,18 @@ test_that("internal Belcher profiles and current recipe JSON have explicit seman
     expect_identical(legacy$methods[["tdb"]], "combined")
     expect_identical(legacy$options$transition_hours, 0L)
     expect_identical(legacy$options$design_conditions, "preserve")
-    expect_error(belcher_options(transition_hours = 337L), "0 and 336")
+    expect_error(original_morphing__options(transition_hours = 337L), "0 and 336")
 
     expect_true(all(c("tasmax", "tasmin", "snd") %in%
         epw_morph_variables(enhanced, include_optional = TRUE)))
 
-    canonical <- transform__recipe(monthly_transform("belcher"))
+    canonical <- transform__recipe(monthly_transform("original_morphing"))
     named_recipe <- cli_shift__recipe_from_json(morpher__json(canonical))
-    expect_identical(named_recipe$recipe_spec, "belcher_monthly")
+    expect_identical(named_recipe$recipe_spec, "original_morphing_monthly")
     expect_identical(named_recipe$methods[["tdb"]], "combined")
 
     old_array_json <- jsonlite::toJSON(list(
-        name = "belcher", backend = "belcher",
+        name = "original_morphing", backend = "original_morphing",
         methods = unname(legacy$methods)
     ), auto_unbox = TRUE, null = "null")
     expect_error(
@@ -408,7 +409,7 @@ test_that("legacy profile preserves the historical 35-field EPW golden output", 
     context <- morpher__context(
         epw, enhanced_test__legacy_climate(),
         recipe = suppressWarnings(epw_morph_recipe(
-            "belcher_absolute", profile = "legacy"
+            "original_morphing_absolute", profile = "legacy"
         )),
         years = 2060L, labels = "future", strict = TRUE
     )
@@ -439,7 +440,7 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
         day = rep(1:2, each = 2L),
         dry_bulb_temperature = c(10, 20, 20, 30)
     )
-    dtr <- morpher__belcher_epw_monthly_dtr(
+    dtr <- original_morphing__epw_monthly_dtr(
         synthetic, "dry_bulb_temperature"
     )
     expect_equal(dtr$val_daily_max, 25)
@@ -447,7 +448,7 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
     expect_equal(dtr$val_dtr, 10)
 
     epw <- enhanced_test__hourly_year()
-    baseline <- morpher__belcher_epw_monthly_dtr(
+    baseline <- original_morphing__epw_monthly_dtr(
         epw, "dry_bulb_temperature"
     )
     target <- baseline[, .(
@@ -465,7 +466,7 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
         value = val_mean + 2 - 0.6 * val_dtr,
         units = "degC"
     )]
-    morphed <- morpher__belcher_from_monthly_enhanced(
+    morphed <- original_morphing__from_monthly_enhanced(
         "dry_bulb_temperature", epw, target, target_max, target_min,
         type = "auto", transition_hours = 72L
     )
@@ -476,7 +477,7 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
     expect_true(all(morphed$method_applied == "combined"))
 
     target_max$value[[1L]] <- NA_real_
-    fallback <- morpher__belcher_from_monthly_enhanced(
+    fallback <- original_morphing__from_monthly_enhanced(
         "dry_bulb_temperature", epw, target, target_max, target_min,
         type = "auto", transition_hours = 0L
     )
@@ -610,13 +611,13 @@ test_that("enhanced runner integrates HUSS, radiation, snow, and final headers",
     epw <- epw_file_read(get_cache_epw())
     context <- morpher__context(
         epw, enhanced_test__change_climate(),
-        recipe = epw_morph_recipe("belcher"),
+        recipe = epw_morph_recipe("original_morphing"),
         reference_climate = enhanced_test__change_climate(reference = TRUE),
         years = 2060L, labels = "future",
         reference_years = 1995L, reference_labels = "reference",
         strict = TRUE
     )
-    expect_identical(morpher__belcher_humidity_source(context), "huss")
+    expect_identical(original_morphing__humidity_source(context), "huss")
     result <- morpher__run_context(context)
     weather <- result$data
 
@@ -718,13 +719,13 @@ test_that("snow depth uses metres-to-centimetres ratios without new events", {
         value := 0]
     context <- morpher__context(
         epw, climate,
-        recipe = epw_morph_recipe("belcher"),
+        recipe = epw_morph_recipe("original_morphing"),
         reference_climate = reference,
         years = 2060L, labels = "future",
         reference_years = 1995L, reference_labels = "reference",
         strict = TRUE
     )
-    snow <- morpher__belcher_snow_depth(weather, context)$data
+    snow <- original_morphing__snow_depth(weather, context)$data
 
     expect_equal(snow[month == 1L, mean(alpha)], 1, tolerance = 1e-10)
     expect_equal(snow[month == 2L, mean(alpha)], 2, tolerance = 1e-10)
@@ -743,7 +744,7 @@ test_that("structured EPW headers round trip and enhanced policies recalculate",
     expect_identical(readLines(path, n = 8L), readLines(untouched, n = 8L))
 
     weather <- epw$data()
-    epw_file__apply_morph_headers(epw, weather, belcher_options())
+    epw_file__apply_morph_headers(epw, weather, original_morphing__options())
     expect_identical(epw$header("DESIGN CONDITIONS"), "0")
     expect_identical(epw$header("GROUND TEMPERATURES")[[1L]], "3")
     expect_length(epw$header("GROUND TEMPERATURES"), 49L)
@@ -973,15 +974,15 @@ test_that("CMIP6 table pins and named overrides persist through task specs", {
     )
 })
 
-test_that("Belcher humidity capabilities keep hurs canonical and derive from surface inputs", {
-    recipe <- epw_morph_recipe("belcher")
+test_that("Original morphing humidity capabilities keep hurs canonical and derive from surface inputs", {
+    recipe <- epw_morph_recipe("original_morphing")
     requirements <- morpher__variable_requirements(recipe)
     guidance <- morpher__missing_variable_guidance("hurs", present_variables = c("tas", "huss"))
 
     expect_equal(requirements$hurs, list(c("huss", "tas", "ps"), "hurs"))
     expect_equal(
         morpher__variable_requirements(
-            epw_morph_recipe("belcher", profile = "legacy")
+            epw_morph_recipe("original_morphing", profile = "legacy")
         )$hurs,
         list("hurs", c("huss", "tas", "ps"))
     )
@@ -1004,7 +1005,7 @@ test_that("Belcher humidity capabilities keep hurs canonical and derive from sur
     )
 })
 
-test_that("Belcher change-factor and solar radiation helpers follow reference formulas", {
+test_that("Original morphing change-factor and solar radiation helpers follow reference formulas", {
     data_epw <- data.table::data.table(
         datetime = as.POSIXct(c("2001-01-15 08:00:00", "2001-01-15 09:00:00"), tz = "UTC"),
         year = 2001L,
@@ -1034,7 +1035,7 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         value = 300,
         interval = "reference"
     )]
-    shifted <- morpher__belcher_from_monthly_change(
+    shifted <- original_morphing__from_monthly_change(
         "dry_bulb_temperature",
         data_epw,
         future,
@@ -1068,7 +1069,7 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         global_horizontal_radiation = NULL,
         diffuse_horizontal_radiation = c(200, 200)
     )]
-    dni <- morpher__belcher_direct_normal_radiation(glob, diff, latitude = 0, longitude = 0, timezone = 0)
+    dni <- original_morphing__direct_normal_radiation(glob, diff, latitude = 0, longitude = 0, timezone = 0)
     dni_value <- dni$direct_normal_radiation
     expect_gt(dni_value[[1L]], 800)
     expect_equal(dni_value[[2L]], 0)
@@ -1097,8 +1098,8 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         month = 1L,
         interval = "future"
     )
-    total_cover <- morpher__belcher_total_sky_cover(cloud_epw, NULL, data_mean = cloud_target)
-    opaque <- morpher__belcher_opaque_sky_cover(cloud_epw, total_cover)
+    total_cover <- original_morphing__total_sky_cover(cloud_epw, NULL, data_mean = cloud_target)
+    opaque <- original_morphing__opaque_sky_cover(cloud_epw, total_cover)
     expect_equal(total_cover$total_sky_cover, 4L)
     expect_true(is.na(total_cover$alpha))
     expect_equal(opaque$opaque_sky_cover, 2L)
@@ -1129,7 +1130,7 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
         month = 1L,
         interval = "future"
     )
-    doubled_precip <- morpher__belcher_precip_from_monthly(
+    doubled_precip <- original_morphing__precip_from_monthly(
         precip_epw,
         precip_target,
         strict = TRUE,
@@ -1141,18 +1142,18 @@ test_that("Belcher change-factor and solar radiation helpers follow reference fo
     dry_precip_epw <- data.table::copy(precip_epw)
     dry_precip_epw[, liquid_precip_depth := 0]
     expect_error(
-        morpher__belcher_precip_from_monthly(dry_precip_epw, precip_target, strict = TRUE),
+        original_morphing__precip_from_monthly(dry_precip_epw, precip_target, strict = TRUE),
         "no wet hours"
     )
     relaxed_dry <- NULL
     expect_warning(
-        relaxed_dry <- morpher__belcher_precip_from_monthly(dry_precip_epw, precip_target, strict = FALSE),
+        relaxed_dry <- original_morphing__precip_from_monthly(dry_precip_epw, precip_target, strict = FALSE),
         "keeping the month dry"
     )
     expect_equal(sum(relaxed_dry$liquid_precip_depth), 0)
 })
 
-test_that("Belcher combined temperature uses average daily EPW range", {
+test_that("Original morphing combined temperature uses average daily EPW range", {
     data_epw <- data.table::data.table(
         datetime = as.POSIXct(c(
             "2001-01-01 01:00:00", "2001-01-01 02:00:00",
@@ -1208,7 +1209,7 @@ test_that("Belcher combined temperature uses average daily EPW range", {
     reference_max[, table_id := "AmonReferenceExtrema"]
     reference_min[, table_id := "AmonReferenceExtrema"]
 
-    morphed <- morpher__belcher_from_monthly_change(
+    morphed <- original_morphing__from_monthly_change(
         "dry_bulb_temperature",
         data_epw,
         future_mean,

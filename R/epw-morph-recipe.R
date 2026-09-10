@@ -25,7 +25,7 @@ epw_morph_variables <- function(level = c("recommended", "minimal", "extended"),
             rules[required == TRUE & !derived, optional_variables],
             rules[required == FALSE & !derived, required_variables]
         ), use.names = FALSE))
-        if (identical(level$backend, "belcher") || identical(level$backend, "belcher_absolute")) {
+        if (identical(level$backend, "original_morphing") || identical(level$backend, "original_morphing_absolute")) {
             if (identical(level$options$snow_depth, "off")) {
                 optional <- setdiff(optional, "snd")
             }
@@ -72,7 +72,7 @@ morpher__variable_requirements <- function(recipe) {
         canonical
     )
     if (inherits(recipe, "epw_morph_recipe") &&
-        recipe$backend %in% c("belcher", "belcher_absolute") &&
+        recipe$backend %in% c("original_morphing", "original_morphing_absolute") &&
         "hurs" %in% canonical) {
         source <- recipe$options$humidity_source
         rh_method <- recipe$methods[["rh"]]
@@ -93,7 +93,7 @@ morpher__variable_requirements <- function(recipe) {
         }
     }
     if (inherits(recipe, "epw_morph_recipe") &&
-        recipe$backend %in% c("belcher", "belcher_absolute") &&
+        recipe$backend %in% c("original_morphing", "original_morphing_absolute") &&
         identical(recipe$options$snow_depth, "required")) {
         requirements[["snd"]] <- list("snd")
     }
@@ -121,7 +121,7 @@ morpher__input_variables <- function(recipe) {
     }
     optional <- epw_morph_variables(recipe, include_optional = TRUE)
     if (inherits(recipe, "epw_morph_recipe") &&
-        recipe$backend %in% c("belcher", "belcher_absolute")) {
+        recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
         if (!recipe$methods[["tdb"]] %in% c("auto", "combined")) {
             optional <- setdiff(optional, c("tasmax", "tasmin"))
         }
@@ -151,7 +151,7 @@ morpher__requirement_match <- function(available, alternatives) {
 
 # Construct the internal executable recipe selected by a public transform.
 #' @noRd
-epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
+epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods = NULL,
                              profile = NULL, options = NULL, policy = NULL,
                              version = NULL, spec = NULL) {
     checkmate::assert_string(name, min.chars = 1L)
@@ -218,17 +218,17 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
     backend <- tolower(backend)
     backend_spec <- epw_morph_backend(backend)
 
-    is_belcher <- backend %in% c("belcher", "belcher_absolute")
+    is_belcher <- backend %in% c("original_morphing", "original_morphing_absolute")
     is_daily_temperature <- backend %in% c(
         "daily_temperature",
         "daily_temperature_btws"
     )
-    is_eames_temperature <- identical(
+    is_btws_monthly_temperature <- identical(
         backend,
-        "eames_monthly_temperature"
+        "btws_monthly_temperature"
     )
     is_ek_temperature <- identical(backend, "ek_daily_temperature")
-    is_arima_temperature <- identical(backend, "arima_temperature")
+    is_quantile_mapping_morphing <- identical(backend, "quantile_mapping_morphing")
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
     is_hourly_kernel_qdm <- identical(backend, "hourly_kernel_qdm")
     is_daily_adjustment <- backend %in% unname(DAILY_ADJUSTMENT_BACKENDS)
@@ -236,16 +236,16 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         if (is.null(profile)) {
             profile <- "enhanced"
         }
-        checkmate::assert_choice(profile, EPW_MORPH_BELCHER_PROFILES)
+        checkmate::assert_choice(profile, EPW_MORPH_ORIGINAL_PROFILES)
         profile <- tolower(profile)
-        base_methods <- morpher__belcher_profile_methods(backend_spec, profile)
+        base_methods <- original_morphing__profile_methods(backend_spec, profile)
         if (!is.null(methods)) {
             checkmate::assert_character(methods, any.missing = FALSE, names = "named")
             methods <- unlist(utils::modifyList(as.list(base_methods), as.list(methods)), use.names = TRUE)
         } else {
             methods <- base_methods
         }
-        options <- morpher__belcher_resolve_options(profile, options)
+        options <- original_morphing__resolve_options(profile, options)
     } else if (is_daily_temperature) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
@@ -254,14 +254,14 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         }
         profile <- "default"
         options <- daily__temperature_backend_options(options)
-    } else if (is_eames_temperature) {
+    } else if (is_btws_monthly_temperature) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
-                "Eames monthly temperature recipes only support {.val default} profile metadata."
+                "BTWS monthly temperature recipes only support {.val default} profile metadata."
             )
         }
         profile <- "default"
-        options <- eames__monthly_temperature_options(options)
+        options <- btws__monthly_options(options)
     } else if (is_ek_temperature) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
@@ -270,14 +270,14 @@ epw_morph_recipe <- function(name = "belcher", backend = NULL, methods = NULL,
         }
         profile <- "default"
         options <- ek__daily_temperature_options(options)
-    } else if (is_arima_temperature) {
+    } else if (is_quantile_mapping_morphing) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
-                "Arima temperature recipes only support {.val default} profile metadata."
+                "Quantile-mapping morphing recipes only support {.val default} profile metadata."
             )
         }
         profile <- "default"
-        options <- arima__temperature_options(options)
+        options <- quantile_mapping_morphing__temperature_options(options)
     } else if (is_sobie_curry) {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
@@ -408,7 +408,7 @@ morpher__recipe_time_padding_seconds <- function(recipe) {
     max(as.numeric(TEMPORAL_SOURCE_STEPS[source_frequencies]))
 }
 
-morpher__recipe_methods <- function(methods = NULL, backend = epw_morph_backend("belcher")) {
+morpher__recipe_methods <- function(methods = NULL, backend = epw_morph_backend("original_morphing")) {
     if (!inherits(backend, "EpwMorphBackend")) {
         cli::cli_abort("`backend` must be an {.cls EpwMorphBackend} object.")
     }
@@ -592,8 +592,8 @@ morpher__recipe_method_overrides <- function(recipe) {
     if (is.null(methods)) {
         return(NULL)
     }
-    defaults <- if (recipe$backend %in% c("belcher", "belcher_absolute")) {
-        morpher__belcher_profile_methods(backend, recipe$profile)
+    defaults <- if (recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
+        original_morphing__profile_methods(backend, recipe$profile)
     } else {
         backend$methods()
     }

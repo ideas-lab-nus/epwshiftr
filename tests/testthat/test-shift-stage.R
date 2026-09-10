@@ -460,7 +460,7 @@ test_that("Shift scientific labels preserve table policy and partitions", {
 })
 
 test_that("shift_cmip6_scenario() and shift_plan() describe future EPW workflows", {
-    transform <- monthly_transform("belcher")
+    transform <- monthly_transform("original_morphing")
     req <- shift_cmip6_scenario(
         source = "BCC-CSM2-MR",
         scenario = c("ssp126", "ssp585"),
@@ -544,7 +544,7 @@ test_that("historical workflow queries preserve years without exact datetime bou
             index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2055:2065),
-        transform = monthly_transform("belcher"),
+        transform = monthly_transform("original_morphing"),
         reference = historical_reference(reference_years),
         dir = tempfile("historical-query-output-"),
         store = tempfile("historical-query-store-"),
@@ -904,7 +904,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
             fallback = "error"
         )
     derived <- shift__derive_hurs_climate(
-        climate, epw_morph_recipe("belcher")
+        climate, epw_morph_recipe("original_morphing")
     )
     coverage <- shift_coverage(derived)
     hurs <- coverage[variable_id == "hurs"]
@@ -932,7 +932,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     expect_match(artifact$metadata_json[[1L]], "huss,tas,ps")
 
     reused <- shift__derive_hurs_climate(
-        derived, epw_morph_recipe("belcher"), resume = TRUE
+        derived, epw_morph_recipe("original_morphing"), resume = TRUE
     )
     expect_equal(shift_ids(reused)$plan_id, shift_ids(derived)$plan_id)
 })
@@ -941,7 +941,7 @@ test_that("weather transforms remain reusable and validate execution references"
     historical <- historical_reference(1995:2014)
     manual <- shift_reference_plan("plan-reference", epw_morph_periods(reference = 1995L))
 
-    transform <- monthly_transform("belcher")
+    transform <- monthly_transform("original_morphing")
     expect_true(S7::S7_inherits(transform, WeatherTransformSpec))
     expect_false("reference" %in% S7::props(transform))
     expect_true(transform__validate_execution_inputs(transform, historical))
@@ -1457,7 +1457,7 @@ test_that("shift_future_epw() requires a transform and returns a task plan", {
     expect_error(
         shift_future_epw(
             epw = get_cache_epw(), climate = shift_cmip6("EC-Earth3", "ssp585"),
-            periods = list(`2060s` = 2060L), transform = "belcher",
+            periods = list(`2060s` = 2060L), transform = "original_morphing",
             dir = tempfile("future-epw-"), dry_run = TRUE
         ),
         "WeatherTransformSpec"
@@ -1537,7 +1537,7 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
     withr::local_options(cli.num_colors = 1L)
     site <- shift_site("SIN", 103.98, 1.37, label = "Singapore")
     periods <- epw_morph_periods(`2060s` = 2055:2065)
-    transform <- monthly_transform("belcher")
+    transform <- monthly_transform("original_morphing")
     plan <- shift_future_epw(
         epw = get_cache_epw(),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
@@ -1649,7 +1649,7 @@ test_that("ShiftRun print refreshes state and reuses the static dashboard", {
         epw = get_cache_epw(),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
         periods = list(`2060s` = 2055:2065),
-        transform = monthly_transform("belcher"),
+        transform = monthly_transform("original_morphing"),
         reference = historical_reference(1995:2014),
         dir = tempfile("shift-print-run-output-"),
         store = store_path,
@@ -1692,10 +1692,10 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
         periods = list(`2060s` = 2055:2065),
         transform = list(
             scale = "monthly",
-            method = "belcher",
-            recipe = "belcher_monthly",
+            method = "original_morphing",
+            recipe = "original_morphing_monthly",
             recipe_version = 1L,
-            reconstruction = "belcher_field_equations",
+            reconstruction = "original_morphing_field_equations",
             options = list()
         ),
         reference = list(
@@ -2127,9 +2127,9 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
 
     # Exercise the production fallback for both future scenarios and the
     # explicit historical reference instead of supplying direct hurs.
-    belcher_recipe <- transform__recipe(monthly_transform("belcher"))
+    original_morphing_recipe <- transform__recipe(monthly_transform("original_morphing"))
     variables <- unique(c(
-        setdiff(epw_morph_variables(belcher_recipe), "hurs"),
+        setdiff(epw_morph_variables(original_morphing_recipe), "hurs"),
         "huss", "ps"
     ))
     future_nc <- stats::setNames(vapply(variables, function(variable_id) {
@@ -2262,7 +2262,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             frequency = "mon", table = "Amon", index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2060L),
-        transform = monthly_transform("belcher"),
+        transform = monthly_transform("original_morphing"),
         reference = historical_reference(1995L),
         dir = output_dir,
         control = shift_control(strict = TRUE, overwrite = TRUE),
@@ -2297,7 +2297,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 frequency = "mon", table = "Amon", index_nodes = "https://example.org"
             ),
             periods = list(`2060s` = 2060L),
-            transform = monthly_transform("belcher"),
+            transform = monthly_transform("original_morphing"),
             reference = historical_reference(1995L),
             dir = tempfile("shift-default-missing-output-"),
             store = missing_store,
@@ -2327,7 +2327,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             frequency = "mon", table = "Amon", index_nodes = "https://example.org"
         ),
         periods = list(`2060s` = 2060L),
-        transform = monthly_transform("belcher"),
+        transform = monthly_transform("original_morphing"),
         reference = historical_reference(1995L),
         dir = tempfile("shift-partial-output-"),
         control = shift_control(strict = TRUE, allow_partial = TRUE, overwrite = TRUE),
@@ -2360,7 +2360,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 frequency = "mon", table = "Amon", index_nodes = "https://example.org"
             ),
             periods = list(`2060s` = 2060L),
-            transform = monthly_transform("belcher"),
+            transform = monthly_transform("original_morphing"),
             reference = historical_reference(1995L),
             dir = tempfile("shift-resume-output-"),
             control = shift_control(strict = TRUE, overwrite = TRUE),
@@ -2603,7 +2603,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     skip_if_not_installed("RNetCDF")
 
     variables <- epw_morph_variables(
-        transform__recipe(monthly_transform("belcher"))
+        transform__recipe(monthly_transform("original_morphing"))
     )
     future_nc <- stats::setNames(vapply(variables, function(variable_id) {
         path <- tempfile(fileext = ".nc")
@@ -2676,7 +2676,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         shift_collect(store = store_path, label = "future") |>
         shift_extract(site = site, periods = future_periods, variables = variables)
 
-    transform <- monthly_transform("belcher")
+    transform <- monthly_transform("original_morphing")
     recipe <- transform__recipe(transform)
     collect_count_before_baseline <- length(calls$collect_times)
     baseline_reference <- shift_morph(

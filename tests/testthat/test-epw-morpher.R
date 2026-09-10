@@ -85,7 +85,7 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute"))
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute"))
     )
     climate <- morpher$summarise_climate(
         plan$plan_id,
@@ -133,7 +133,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
         store = store,
         epw = external_epw,
         site_id = "SIN",
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute")),
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute")),
         label = "singapore"
     )
     expect_true(inherits(morpher, "EpwMorpher"))
@@ -284,7 +284,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute")),
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute")),
         label = "singapore"
     )
     periods <- epw_morph_periods(`2060s` = 2060L)
@@ -371,7 +371,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute", methods = c(tdb = "shift", rh = "shift"))),
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute", methods = c(tdb = "shift", rh = "shift"))),
         label = "singapore"
     )
     override_baseline <- override_morpher$summarise_baseline()
@@ -477,7 +477,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         store = workflow_store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = suppressWarnings(epw_morph_recipe("belcher_absolute")),
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute")),
         label = "singapore"
     )
     workflow_no_epw <- workflow_morpher$workflow(

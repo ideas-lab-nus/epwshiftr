@@ -76,7 +76,7 @@ mandatory. This can be \code{TRUE} only when \code{accepts_reference} is also
 
 \item{\code{accepts_reference}}{Whether external reference climate data can
 be consumed. \code{TRUE} with \code{requires_reference = FALSE} defines an
-optional-reference backend such as Belcher.}
+optional-reference backend such as original morphing.}
 
 \item{\code{pipeline}}{Optional internal component pipeline specification.}
 

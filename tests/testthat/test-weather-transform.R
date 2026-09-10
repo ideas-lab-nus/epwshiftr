@@ -147,23 +147,23 @@ test_that("transform type enforces complete role contracts", {
 })
 
 test_that("scale-specific constructors resolve fixed and selectable reconstruction", {
-    belcher <- monthly_transform("belcher")
-    eames <- monthly_transform("eames")
+    original_morphing <- monthly_transform("original_morphing")
+    monthly_btws <- monthly_transform("btws")
     power <- daily_transform("epwshiftr")
-    btws <- daily_transform("epwshiftr", reconstruction = "btws")
+    daily_btws <- daily_transform("epwshiftr", reconstruction = "btws")
     hourly <- hourly_transform("kernel_qdm")
 
-    expect_s7_class(belcher, WeatherTransformSpec)
-    expect_identical(belcher@recipe_version, 2L)
+    expect_s7_class(original_morphing, WeatherTransformSpec)
+    expect_identical(original_morphing@recipe_version, 2L)
     expect_true(all(c("tas", "tasmax", "tasmin") %in%
-        belcher@required_inputs$model_future@variable_sets[[1L]]))
-    expect_identical(eames@scale, "monthly")
-    expect_identical(eames@source_frequencies$model_future, "day")
+        original_morphing@required_inputs$model_future@variable_sets[[1L]]))
+    expect_identical(monthly_btws@scale, "monthly")
+    expect_identical(monthly_btws@source_frequencies$model_future, "day")
     expect_identical(power@reconstruction, "power")
-    expect_identical(btws@reconstruction, "btws")
+    expect_identical(daily_btws@reconstruction, "btws")
     expect_identical(hourly@output_type, "multi_year")
     expect_error(
-        monthly_transform("belcher", reconstruction = "btws"),
+        monthly_transform("original_morphing", reconstruction = "btws"),
         "fixed hourly reconstruction"
     )
     expect_error(daily_transform("unknown"), "Available methods")
@@ -172,16 +172,16 @@ test_that("scale-specific constructors resolve fixed and selectable reconstructi
 
 test_that("printed transforms hide internal execution identifiers", {
     output <- capture.output(
-        print(monthly_transform("belcher")),
+        print(monthly_transform("original_morphing")),
         type = "message"
     )
 
     expect_true(any(grepl("Transformation scale: monthly", output)))
     expect_true(any(grepl("Required source frequency", output)))
-    expect_true(any(grepl("Hourly reconstruction: Belcher field equations", output)))
+    expect_true(any(grepl("Hourly reconstruction: Original morphing field equations", output)))
     expect_false(any(grepl(
         paste(
-            "belcher_monthly|belcher_field_equations|paper_faithful|",
+            "original_morphing_monthly|original_morphing_field_equations|paper_faithful|",
             "legacy_epw_field_closure|backend"
         ),
         output
@@ -241,13 +241,13 @@ test_that("transform options use method schemas and survive persistence", {
 })
 
 test_that("stored recipes recover their public reconstruction label", {
-    transform <- monthly_transform("belcher")
+    transform <- monthly_transform("original_morphing")
     restored <- transform__from_recipe_object(transform__recipe(transform))
 
     expect_identical(restored@reconstruction, transform@reconstruction)
     expect_identical(
         restored@reconstruction_label,
-        "Belcher field equations"
+        "Original morphing field equations"
     )
 })
 

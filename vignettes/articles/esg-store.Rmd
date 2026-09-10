@@ -74,9 +74,9 @@ store_path <- file.path(workflow_root, "store")
 store <- EsgStore$new(store_path)
 
 store$path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-esg-store/store"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store"
 store$manifest
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-esg-store/store/manifest.duckdb"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store/manifest.duckdb"
 list.files(store$path, all.files = TRUE, no.. = TRUE)
 #>  [1] "dicts"               "downloads"           "extracts"
 #>  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"
@@ -233,7 +233,7 @@ plans.
 
 
 ``` r
-transform <- monthly_transform("belcher")
+transform <- monthly_transform("original_morphing")
 variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 
 query <- esg_query("https://esgf-data.dkrz.de")$
@@ -266,9 +266,9 @@ store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
 #> 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-09-09 02:08:14
-#> 2: future-weather 2026-09-09 02:08:14
-#> 3:      singapore 2026-09-09 02:08:14
+#> 1:          cmip6 2026-09-10 09:36:50
+#> 2: future-weather 2026-09-10 09:36:50
+#> 3:      singapore 2026-09-10 09:36:50
 select_cols(store$queries(), c(
     "query_id", "label", "index_node", "tracked", "created_at"
 ))
@@ -277,7 +277,7 @@ select_cols(store$queries(), c(
 #> 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>                    label                index_node tracked          created_at
 #>                   <char>                    <char>  <lgcl>              <POSc>
-#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-09-09 02:08:14
+#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-09-10 09:36:50
 store$query_tags(query_id)
 #>                                                              tag_id
 #>                                                              <char>
@@ -291,9 +291,9 @@ store$query_tags(query_id)
 #> 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-09-09 02:08:14
-#> 2: future-weather 2026-09-09 02:08:14
-#> 3:      singapore 2026-09-09 02:08:14
+#> 1:          cmip6 2026-09-10 09:36:50
+#> 2: future-weather 2026-09-10 09:36:50
+#> 3:      singapore 2026-09-10 09:36:50
 ```
 
 The query snapshot is written under `queries/`, while the query identity and

@@ -44,12 +44,12 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
         "--quiet", "--store", setup$dir, "morph", "transforms"
     ))
     expect_equal(transforms$status, 0L)
-    expect_true("belcher" %in% transforms$result$method)
+    expect_true("original_morphing" %in% transforms$result$method)
     expect_true("epwshiftr" %in% transforms$result$method)
     expect_true("reconstruction_label" %in% names(transforms$result))
     expect_identical(
-        transforms$result[method == "belcher", reconstruction_label],
-        "Belcher field equations"
+        transforms$result[method == "original_morphing", reconstruction_label],
+        "Original morphing field equations"
     )
 
     run <- epwshiftr_cli(c(

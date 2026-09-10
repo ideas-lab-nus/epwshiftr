@@ -141,7 +141,7 @@ cli_morph__transform <- function(parsed) {
     )
     method <- epwshiftr_cli_config_string(
         parsed$options[["--method"]],
-        default = "belcher"
+        default = "original_morphing"
     )
     reconstruction <- epwshiftr_cli_config_string(
         parsed$options[["--reconstruction"]],

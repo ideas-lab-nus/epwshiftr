@@ -60,8 +60,8 @@ Use the constructor that names the scale on which the climate signal is
 calculated or applied:
 
 ```r
-belcher <- monthly_transform("belcher")
-eames <- monthly_transform("eames")
+original_morphing <- monthly_transform("original_morphing")
+btws <- monthly_transform("btws")
 daily_power <- daily_transform(
     "epwshiftr",
     reconstruction = "power"
@@ -90,7 +90,7 @@ Printing a transform distinguishes five temporal concepts that are easy to
 confuse:
 
 ```r
-print(eames)
+print(btws)
 ```
 
 | Concept | Meaning |
@@ -101,8 +101,8 @@ print(eames)
 | Hourly reconstruction | Rule that transfers the result to the EPW hourly profile |
 | Output frequency | Frequency of the delivered weather sequence |
 
-For example, the Eames transform calculates monthly change statistics from
-daily `tas`, `tasmin`, and `tasmax`, then uses BTWS to reconstruct hourly dry
+For example, the monthly BTWS transform calculates change statistics from
+daily `tas`, `tasmin`, and `tasmax`, then applies BTWS to reconstruct hourly dry
 bulb temperature. Its monthly transform scale therefore does not imply monthly
 source data.
 
@@ -113,8 +113,8 @@ contract includes representations, variable alternatives, source frequencies,
 and calendars.
 
 ```r
-belcher@required_inputs
-eames@source_frequencies
+original_morphing@required_inputs
+btws@source_frequencies
 ```
 
 The main roles are:
@@ -132,14 +132,15 @@ References are execution inputs and never become part of a reusable transform.
 
 # Run a Complete Workflow
 
-The published Belcher transform requires matching historical model data:
+The original morphing method published by Belcher et al. requires matching
+historical model data:
 
 Its CMIP6 temperature contract includes monthly `tas`, `tasmax`, and `tasmin`.
 The mean change comes from `tas`; the published combined transformation uses
 the future-minus-historical change in average daily range from `tasmax` and
 `tasmin`, divided by the EPW's monthly average daily range. The remaining input
 contract and its humidity alternatives are visible in
-`monthly_transform("belcher")@required_inputs`.
+`monthly_transform("original_morphing")@required_inputs`.
 
 ```r
 run <- shift_future_epw(
@@ -152,7 +153,7 @@ run <- shift_future_epw(
         scenarios = c("ssp126", "ssp585")
     ),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = "future-epw"
 )
@@ -212,7 +213,7 @@ plan <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = "future-epw",
     dry_run = TRUE
@@ -236,7 +237,7 @@ morpher <- epw_morpher(
     store = store,
     epw = epw,
     site_id = "SIN",
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     label = "Singapore baseline"
 )
 

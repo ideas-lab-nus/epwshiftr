@@ -4,7 +4,7 @@
 \alias{epw_morph_backend}
 \title{Get an EPW morphing backend}
 \usage{
-epw_morph_backend(name = "belcher")
+epw_morph_backend(name = "original_morphing")
 }
 \arguments{
 \item{name}{Backend name.}

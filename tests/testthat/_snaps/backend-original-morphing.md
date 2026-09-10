@@ -1,11 +1,12 @@
-# Belcher runner behavior is fixed across modes and profiles
+# Original morphing runner behavior is fixed across modes and profiles
 
     Code
-      cat(belcher_test__snapshot_json(lapply(results, belcher_test__result_behavior)))
+      cat(original_morphing_test__snapshot_json(lapply(results,
+        original_morphing_test__result_behavior)))
     Output
       {
         "absolute_legacy": {
-          "backend": "belcher_absolute",
+          "backend": "original_morphing_absolute",
           "profile": "legacy",
           "policy": "legacy_independent_fields",
           "data": {
@@ -102,7 +103,7 @@
           }
         },
         "absolute_enhanced": {
-          "backend": "belcher_absolute",
+          "backend": "original_morphing_absolute",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
@@ -199,7 +200,7 @@
           }
         },
         "change_legacy": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "legacy",
           "policy": "legacy_independent_fields",
           "data": {
@@ -296,7 +297,7 @@
           }
         },
         "change_enhanced": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
@@ -393,7 +394,7 @@
           }
         },
         "baseline_fallback": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
@@ -490,14 +491,15 @@
           }
         }
       }
-# Belcher production case contexts preserve identity and isolation
+# Original morphing production case contexts preserve identity and isolation
 
     Code
-      cat(belcher_test__snapshot_json(lapply(results, belcher_test__result_behavior)))
+      cat(original_morphing_test__snapshot_json(lapply(results,
+        original_morphing_test__result_behavior)))
     Output
       {
         "model_a": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {
@@ -594,7 +596,7 @@
           }
         },
         "model_b": {
-          "backend": "belcher",
+          "backend": "original_morphing",
           "profile": "enhanced",
           "policy": "monthly_harmonized",
           "data": {

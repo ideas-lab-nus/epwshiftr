@@ -153,7 +153,7 @@
       * Status: planned
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
-      * Transform: Belcher monthly morphing
+      * Transform: Original monthly morphing
       * Reference: model_historical · historical · reference 1995–2014
       * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
@@ -204,7 +204,7 @@
         columns.
       == Morphed EPW =================================================================
       * Status: partial
-      * Transform: Belcher monthly morphing
+      * Transform: Original monthly morphing
       * Reference: model_historical · historical · reference 1995–2014
       * Cases: 4
       * Results: 4
@@ -246,7 +246,7 @@
       * Status: planned
       * Climate: BCC-CSM2-MR · ssp126, ssp585
       * Periods: 2060s 2055–2065
-      * Transform: Belcher monthly morphing
+      * Transform: Original monthly morphing
       * Reference: model_historical · historical · reference 1995–2014
       * Observed reference: none
       * Selection: member auto · grid auto · tables auto by variable
@@ -312,7 +312,7 @@
       * Status: partial
       == Morphed EPW =====================================================================================
       * Status: partial
-      * Transform: Belcher monthly morphing
+      * Transform: Original monthly morphing
       * Reference: model_historical · historical · reference 1995–2014
       * Cases: 4
       * Results: 4
@@ -354,7 +354,7 @@
     Message
       ╭─ Future EPW  COMPLETED  5s  run 12345678 ───────────────────────────╮
       │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065)          │
-      │          belcher / historical 1995–2014 · 2 EPWs                    │
+      │          original_morphing / historical 1995–2014 · 2 EPWs          │
       ├─ Workflow ──────────────────────────────────────────────────────────┤
       │ Flow     [6/6] ✔ EPW · final stage                                  │
       │ Now      ✔ Workflow completed                                       │
@@ -378,8 +378,8 @@
       print(run, width = 100L, verbose = TRUE)
     Message
       ╭─ Future EPW  COMPLETED  5s  run 12345678 ───────────────────────────────────────────────────────╮
-      │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065) · belcher / historical 1995–2014     │
-      │          2 EPWs                                                                                 │
+      │ Plan     BCC-CSM2-MR · ssp126 + ssp585 · 2060s (2055–2065)                                      │
+      │          original_morphing / historical 1995–2014 · 2 EPWs                                      │
       ├─ Workflow ──────────────────────────────────────────────────────────────────────────────────────┤
       │ Flow     ✔ Resolve  ›  ✔ Future  ›  ✔ Reference  ›  ✔ Coverage  ›  ✔ Morph  ›  ✔ EPW            │
       │ Now      ✔ Workflow completed                                                                   │

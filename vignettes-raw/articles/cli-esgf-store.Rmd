@@ -78,8 +78,8 @@ Use `shift run --config` when you want one command to execute the main workflow:
 request, collect, optional download, extract, morph, and write EPW files. The
 configuration file is JSON and is validated before work starts. The transform
 selects the scientific calculation; run-specific model and observed references
-are separate top-level inputs. The Belcher transform requires a matching
-historical model reference.
+are separate top-level inputs. Original morphing requires a matching historical
+model reference.
 
 ```json
 {
@@ -99,7 +99,7 @@ historical model reference.
   },
   "transform": {
     "scale": "monthly",
-    "method": "belcher"
+    "method": "original_morphing"
   },
   "reference": {
     "mode": "historical",
@@ -203,14 +203,14 @@ extracted `plan_id` values, and write EPW outputs later from the stored
 epwshiftr --store ~/cmip6-store morph transforms
 epwshiftr --store ~/cmip6-store morph variables \
   --scale monthly \
-  --method belcher
+  --method original_morphing
 
 epwshiftr --store ~/cmip6-store morph run \
   --plan <plan_id> \
   --epw baseline/SIN.epw \
   --period 2060s=2055:2064 \
   --scale monthly \
-  --method belcher \
+  --method original_morphing \
   --reference historical \
   --reference-period reference=1995 \
   --strict true

@@ -90,7 +90,7 @@ epwshiftr_cli_shift_example_config <- function() {
         periods = list(`2060s` = "2055:2065"),
         transform = list(
             scale = "monthly",
-            method = "belcher"
+            method = "original_morphing"
         ),
         reference = list(
             mode = "historical",

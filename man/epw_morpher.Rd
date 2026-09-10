@@ -8,7 +8,7 @@ epw_morpher(
   store,
   epw,
   site_id = NULL,
-  transform = monthly_transform("belcher"),
+  transform = monthly_transform("original_morphing"),
   label = NULL
 )
 }

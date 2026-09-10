@@ -18,12 +18,12 @@ WEATHER_METHOD_IMPLEMENTATIONS <- c("backend", "signal_component")
 # presets. BTWS and POWER are hourly reconstruction choices, so the shared
 # daily temperature signal appears only once in this catalog.
 WEATHER_METHOD_DEFAULTS <- c(
-    "belcher_monthly",
+    "original_morphing_monthly",
     "epwshiftr_monthly",
     "daily_temperature_delta",
-    "eames_monthly_temperature",
+    "btws_monthly_temperature",
     "ek_daily_factors",
-    "monthly_percentile_temperature",
+    "quantile_mapping_morphing_daily",
     "sobie_curry_daily",
     "kernel_quantile_delta_mapping_hourly",
     "linear_scaling_daily",
@@ -329,9 +329,9 @@ method__register_components <- function() {
     edcdf__register_component()
     isimip__register_component()
     daily__register_temperature_components()
-    eames__register_monthly_temperature_components()
+    btws__register_monthly_components()
     ek__register_components()
-    arima__register_components()
+    quantile_mapping_morphing__register_components()
     sobie__register_components()
     hourly_kqdm__register_components()
     invisible(NULL)
@@ -342,12 +342,12 @@ method__register_components <- function() {
 method__default_specs <- function() {
     method__register_components()
     list(
-        belcher_monthly = method__spec(
-            name = "belcher_monthly",
-            label = "Belcher monthly morphing",
+        original_morphing_monthly = method__spec(
+            name = "original_morphing_monthly",
+            label = "Original monthly morphing",
             domain = "monthly_morphing",
             implementation = "backend",
-            implementation_key = "belcher",
+            implementation_key = "original_morphing",
             frequencies = "mon",
             input_roles = c("model_historical", "model_future"),
             variable_sets = list(
@@ -361,7 +361,7 @@ method__default_specs <- function() {
                 )
             ),
             output_role = "weather_template",
-            parameters = EPW_MORPH_BELCHER_PROFILE_METHODS$legacy,
+            parameters = EPW_MORPH_ORIGINAL_PROFILE_METHODS$legacy,
             references = "https://doi.org/10.1191/0143624405bt112oa",
             version = 2L
         ),
@@ -370,7 +370,7 @@ method__default_specs <- function() {
             label = "epwshiftr monthly morphing",
             domain = "monthly_morphing",
             implementation = "backend",
-            implementation_key = "belcher",
+            implementation_key = "original_morphing",
             frequencies = "mon",
             input_roles = c("model_historical", "model_future"),
             variable_sets = list(
@@ -384,7 +384,7 @@ method__default_specs <- function() {
                 )
             ),
             output_role = "weather_template",
-            parameters = EPW_MORPH_BELCHER_PROFILE_METHODS$enhanced,
+            parameters = EPW_MORPH_ORIGINAL_PROFILE_METHODS$enhanced,
             evidence = "package_method",
             references = c(
                 "https://doi.org/10.1191/0143624405bt112oa",
@@ -407,9 +407,9 @@ method__default_specs <- function() {
                 "https://github.com/ideas-lab-nus/epwshiftr/pull/141"
             )
         ),
-        eames_monthly_temperature = method__from_signal_component(
-            name = "eames_monthly_temperature",
-            label = "Eames monthly temperature changes",
+        btws_monthly_temperature = method__from_signal_component(
+            name = "btws_monthly_temperature",
+            label = "BTWS monthly temperature changes",
             domain = "daily_temperature",
             component = "monthly_mean_extrema_changes",
             frequencies = "day",
@@ -431,9 +431,9 @@ method__default_specs <- function() {
             output_role = "weather_template",
             evidence = "reconstructed_publication"
         ),
-        monthly_percentile_temperature = method__from_signal_component(
-            name = "monthly_percentile_temperature",
-            label = "Monthly percentile temperature change",
+        quantile_mapping_morphing_daily = method__from_signal_component(
+            name = "quantile_mapping_morphing_daily",
+            label = "Quantile-mapping morphing for daily temperature",
             domain = "daily_temperature",
             component = "percentile_temperature_change_function",
             frequencies = "day",

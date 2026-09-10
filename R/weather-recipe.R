@@ -23,13 +23,13 @@ WEATHER_RECIPE_STATUSES <- c("production", "experimental")
 # Built-in keys allow idempotent registration to return without rebuilding
 # component and input specifications on every recipe construction.
 WEATHER_RECIPE_DEFAULTS <- c(
-    "belcher_monthly",
+    "original_morphing_monthly",
     "epwshiftr_monthly",
     "epwshiftr_daily_power",
     "epwshiftr_daily_btws",
-    "eames_monthly_temperature",
+    "btws_monthly_temperature",
     "ek_daily_factors",
-    "monthly_percentile_temperature",
+    "quantile_mapping_morphing_daily",
     "sobie_curry_daily",
     "hourly_kernel_qdm",
     "linear_scaling_daily_temperature",
@@ -434,15 +434,15 @@ recipe__monthly_components <- function(enhanced = FALSE) {
         preprocess = "monthly_climate_summary",
         calendar = "gregorian_months",
         signal = if (enhanced) {
-            "enhanced_belcher_change_factors"
+            "epwshiftr_change_factors"
         } else {
-            "belcher_change_factors"
+            "original_morphing_change_factors"
         },
         sequence = "preserve_epw_sequence",
         hourly = if (enhanced) {
-            "enhanced_belcher_transform"
+            "epwshiftr_monthly_transform"
         } else {
-            "belcher_monthly_transform"
+            "original_morphing_monthly_transform"
         },
         physics = if (enhanced) {
             "enhanced_weather_closure"
@@ -582,10 +582,10 @@ recipe__default_specs <- function() {
     faithful_inputs <- recipe__monthly_inputs(enhanced = FALSE)
     enhanced_inputs <- recipe__monthly_inputs(enhanced = TRUE)
     daily_pipeline <- daily__temperature_pipeline()
-    btws_pipeline <- daily__temperature_pipeline("btws")
-    eames_pipeline <- eames__monthly_temperature_pipeline()
+    daily_btws_pipeline <- daily__temperature_pipeline("btws")
+    monthly_btws_pipeline <- btws__monthly_pipeline()
     ek_pipeline <- ek__pipeline()
-    arima_pipeline <- arima__pipeline()
+    quantile_mapping_pipeline <- quantile_mapping_morphing__pipeline()
     sobie_pipeline <- sobie__pipeline()
     hourly_kqdm_pipeline <- hourly_kqdm__pipeline()
     daily_inputs <- list(
@@ -608,7 +608,7 @@ recipe__default_specs <- function() {
             variable_sets = "tas"
         )
     )
-    btws_inputs <- list(
+    daily_btws_inputs <- list(
         weather_template = daily_inputs$weather_template,
         model_historical = component__input_requirement(
             "model_historical",
@@ -623,9 +623,9 @@ recipe__default_specs <- function() {
             variable_sets = c("tas", "tasmin", "tasmax")
         )
     )
-    eames_inputs <- eames__monthly_temperature_inputs()
+    monthly_btws_inputs <- btws__monthly_inputs()
     ek_inputs <- ek__daily_temperature_inputs()
-    arima_inputs <- arima__temperature_inputs()
+    quantile_mapping_inputs <- quantile_mapping_morphing__temperature_inputs()
     sobie_inputs <- list(
         weather_template = component__input_requirement(
             "weather_template",
@@ -683,11 +683,11 @@ recipe__default_specs <- function() {
     )
 
     builtins <- list(
-        belcher_monthly = recipe__spec(
-            name = "belcher_monthly",
-            label = "Belcher monthly morphing",
-            method = "belcher_monthly",
-            backend = "belcher",
+        original_morphing_monthly = recipe__spec(
+            name = "original_morphing_monthly",
+            label = "Original monthly morphing",
+            method = "original_morphing_monthly",
+            backend = "original_morphing",
             implementation = "backend",
             source = list(
                 type = "published",
@@ -730,7 +730,7 @@ recipe__default_specs <- function() {
             name = "epwshiftr_monthly",
             label = "Enhanced epwshiftr monthly morphing",
             method = "epwshiftr_monthly",
-            backend = "belcher",
+            backend = "original_morphing",
             implementation = "backend",
             source = list(
                 type = "package_method",
@@ -838,9 +838,9 @@ recipe__default_specs <- function() {
                     "targets to the published hourly reconstruction component."
                 )
             ),
-            required_inputs = btws_inputs,
+            required_inputs = daily_btws_inputs,
             calendar_policy = "cf_annual_phase_365",
-            components = pipeline__records(btws_pipeline),
+            components = pipeline__records(daily_btws_pipeline),
             policy_profiles = c(harmonized = "default"),
             physical_policies = c(
                 harmonized = "preserve_specific_humidity"
@@ -865,11 +865,11 @@ recipe__default_specs <- function() {
             ),
             status = "experimental"
         ),
-        eames_monthly_temperature = recipe__spec(
-            name = "eames_monthly_temperature",
-            label = "Eames monthly temperature with BTWS projection",
-            method = "eames_monthly_temperature",
-            backend = "eames_monthly_temperature",
+        btws_monthly_temperature = recipe__spec(
+            name = "btws_monthly_temperature",
+            label = "BTWS monthly temperature morphing",
+            method = "btws_monthly_temperature",
+            backend = "btws_monthly_temperature",
             implementation = "pipeline",
             source = list(
                 type = "adapted_publication",
@@ -902,9 +902,9 @@ recipe__default_specs <- function() {
                     "implemented by this recipe."
                 )
             ),
-            required_inputs = eames_inputs,
+            required_inputs = monthly_btws_inputs,
             calendar_policy = "cf_calendar_month_to_epw_365",
-            components = pipeline__records(eames_pipeline),
+            components = pipeline__records(monthly_btws_pipeline),
             policy_profiles = c(harmonized = "default"),
             physical_policies = c(
                 harmonized = "preserve_specific_humidity"
@@ -996,11 +996,11 @@ recipe__default_specs <- function() {
             ),
             status = "experimental"
         ),
-        monthly_percentile_temperature = recipe__spec(
-            name = "monthly_percentile_temperature",
-            label = "Monthly percentile-dependent temperature change",
-            method = "monthly_percentile_temperature",
-            backend = "arima_temperature",
+        quantile_mapping_morphing_daily = recipe__spec(
+            name = "quantile_mapping_morphing_daily",
+            label = "Quantile-mapping morphing for daily temperature",
+            method = "quantile_mapping_morphing_daily",
+            backend = "quantile_mapping_morphing",
             implementation = "pipeline",
             source = list(
                 type = "published",
@@ -1029,10 +1029,10 @@ recipe__default_specs <- function() {
                     "linear factor interpolation, and endpoint clamping."
                 )
             ),
-            required_inputs = arima_inputs,
+            required_inputs = quantile_mapping_inputs,
             calendar_policy = "native_calendar_month_distributions",
             target_calendar = "epw_365_day",
-            components = pipeline__records(arima_pipeline),
+            components = pipeline__records(quantile_mapping_pipeline),
             policy_profiles = c(
                 paper_faithful = "default",
                 harmonized = "default"
@@ -1218,8 +1218,8 @@ recipe__validate_registration <- function(spec) {
     method__get(spec@method)
     backend <- epw_morph_backend(spec@backend)
     profiles <- unname(spec@policy_profiles)
-    if (spec@backend %in% c("belcher", "belcher_absolute")) {
-        invalid <- setdiff(profiles, EPW_MORPH_BELCHER_PROFILES)
+    if (spec@backend %in% c("original_morphing", "original_morphing_absolute")) {
+        invalid <- setdiff(profiles, EPW_MORPH_ORIGINAL_PROFILES)
     } else {
         invalid <- setdiff(profiles, "default")
     }

@@ -2,11 +2,11 @@
 
 ## Breaking changes
 
-* Renamed reusable future-weather registry keys, intermediate kinds, BTWS
-  diagnostics, and method choices by the algorithms they implement rather than
-  by a reference paper or software package. The Arima et al. complete workflow
-  remains available through `daily_transform("arima")`, while its internal
-  recipe key is now `monthly_percentile_temperature` (#165).
+* Named future-weather registry keys, intermediate kinds, diagnostics, and
+  method choices after the algorithms they implement. The quantile-mapping
+  morphing workflow described by Arima et al. is available through
+  `daily_transform("qm_morphing")`, with the internal recipe key
+  `quantile_mapping_morphing_daily` (#165, #250).
 
 * Standalone `shift_*()` stages now carry their persisted `run_id` and
   `step_id` into the next stage automatically. The public API does not expose a
@@ -281,8 +281,8 @@
   CF-calendar coordinates, resolved settings, correction provenance, bounds,
   and explicit diagnostics (#161).
 
-* Added `daily_transform("arima")` and registered the temperature-focused
-  `monthly_percentile_temperature` recipe. The workflow carries baseline EPW,
+* Added `daily_transform("qm_morphing")` and registered the temperature-focused
+  `quantile_mapping_morphing_daily` recipe. The workflow carries baseline EPW,
   historical daily model `tas`, future daily model `tas`, and multi-year
   observed daily `tas` as four distinct input roles. It builds month-wise
   historical/future inverse-CDF change functions, applies the published
@@ -303,8 +303,8 @@
   humidity fields and reports thermodynamic inconsistencies without modifying
   them (#155).
 
-* Added the temperature-only `monthly_transform("eames")` method and registered
-  `eames_monthly_temperature` recipe. Matching daily CMIP6 `tas`, `tasmin`, and
+* Added the temperature-only `monthly_transform("btws")` method and registered
+  the `btws_monthly_temperature` recipe. Matching daily CMIP6 `tas`, `tasmin`, and
   `tasmax` are aggregated into the monthly mean, average daily minimum, and
   average daily maximum changes used by Eames et al. (2024), then applied
   month-by-month through the BTWS hourly reconstruction. Provenance records the
@@ -398,7 +398,7 @@
   are available, integrated EPW solar geometry, RBL diffuse radiation, Perez
   illuminance, optional `snd` scaling, and recalculated ground-temperature and
   typical/extreme-period headers. The original Belcher formulation remains
-  available through `monthly_transform("belcher")`; method-specific options
+  available through `monthly_transform("original_morphing")`; method-specific options
   are supplied to the transform constructor (#126, #250).
 
 * `shift_cmip6(table = NULL)` now resolves exact variable/table/grid

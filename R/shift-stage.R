@@ -9822,16 +9822,16 @@ shift__format_auto <- function(x) {
 }
 
 # Format the public method name together with its persisted compatibility
-# profile. Old Belcher specs did not carry a profile and must remain visibly
-# legacy when they are rendered without first reconstructing the recipe.
+# profile. Earlier original-morphing specs did not carry a profile and remain
+# visibly legacy when rendered without first reconstructing the recipe.
 shift__format_morph_method <- function(name, recipe = NULL,
-                                       missing_belcher_profile = NULL) {
+                                       missing_original_morphing_profile = NULL) {
     name <- as.character(shift_coalesce(name, "method"))[[1L]]
     backend <- as.character(shift_coalesce(recipe$backend, name))[[1L]]
     profile <- recipe$profile
     if ((is.null(profile) || !length(profile)) &&
-        backend %in% c("belcher", "belcher_absolute")) {
-        profile <- missing_belcher_profile
+        backend %in% c("original_morphing", "original_morphing_absolute")) {
+        profile <- missing_original_morphing_profile
     }
     if (is.null(profile) || !length(profile) || is.na(profile[[1L]]) ||
         !nzchar(as.character(profile[[1L]]))) {
@@ -10381,7 +10381,7 @@ shift__print_morphed <- function(x, n = 10L, width = NULL,
         shift__format_morph_method(
             shift_coalesce(recipe$name, recipe$backend),
             recipe,
-            missing_belcher_profile = "legacy"
+            missing_original_morphing_profile = "legacy"
         )
     }
 

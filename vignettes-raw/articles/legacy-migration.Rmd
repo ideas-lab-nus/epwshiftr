@@ -102,8 +102,9 @@ Use `shift_status()`, `shift_diagnostics()`, `shift_coverage()`,
 
 ## Select a Current Canonical Method
 
-Select the published Belcher transform when matching historical model data are
-available. The reference belongs to this run and is not stored inside the
+Select the original morphing transform published by Belcher et al. when
+matching historical model data are available. The reference belongs to this
+run and is not stored inside the
 reusable transform:
 
 ```r
@@ -115,7 +116,7 @@ run <- shift_future_epw(
         member = "r1i1p1f1"
     ),
     periods = list(`2060s` = 2060L),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = "outputs/future-epw"
 )

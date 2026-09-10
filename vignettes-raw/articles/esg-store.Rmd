@@ -160,7 +160,7 @@ queries can later be previewed, updated, tagged, and used to build download
 plans.
 
 ```{r live-query}
-transform <- monthly_transform("belcher")
+transform <- monthly_transform("original_morphing")
 variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 
 query <- esg_query("https://esgf-data.dkrz.de")$

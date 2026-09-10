@@ -209,8 +209,9 @@ options(
 
 # Recommended Task API
 
-The recommended user call selects Belcher as a reusable monthly transformation
-and gives the run an explicit matching historical CMIP6 reference. A transform
+The recommended user call selects original morphing as a reusable monthly
+transformation and gives the run an explicit matching historical CMIP6
+reference. A transform
 contains calculation settings only; the site, model, periods, reference, and
 output directory remain execution inputs.
 
@@ -228,7 +229,7 @@ run <- shift_future_epw(
         scenarios = c("ssp126", "ssp585")
     ),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = file.path(workflow_root, "future-epw")
 )
@@ -239,8 +240,9 @@ shift_missing(run)
 ```
 
 Use `weather_transforms()` to inspect the available methods, their source
-frequencies, required input roles, and hourly reconstruction. Belcher is one
-canonical published method. The enhanced package method is selected separately
+frequencies, required input roles, and hourly reconstruction. Original morphing,
+introduced by Belcher et al., is one canonical published method. The enhanced
+package method is selected separately
 with `monthly_transform("epwshiftr")`; neither method exposes backend profiles
 or physical-policy switches.
 
@@ -285,7 +287,7 @@ climate <- shift_cmip6(
     model = "BCC-CSM2-MR",
     scenarios = c("ssp126", "ssp585")
 )
-transform <- monthly_transform("belcher")
+transform <- monthly_transform("original_morphing")
 plan <- shift_future_epw(
     epw = epw,
     climate = climate,
@@ -335,7 +337,7 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = file.path(workflow_root, "future-epw"),
     ui = shift_ui(progress = "log", detail = "detail", heartbeat = 10)
@@ -352,7 +354,7 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = file.path(workflow_root, "future-epw"),
     background = TRUE
@@ -415,18 +417,18 @@ predictable, while the EPW file itself is passed later as the morphing baseline.
 The selected transform exposes its semantic input contract. This staged
 walkthrough reads the required future-model variable set from that contract so
 the same IDs are used in the ESGF request, extraction, coverage check, and
-`shift_morph()` call. Belcher requires matching historical and future model
+`shift_morph()` call. Original morphing requires matching historical and future model
 inputs.
 
 ```{r variables}
-transform <- monthly_transform("belcher")
+transform <- monthly_transform("original_morphing")
 variables <- transform@required_inputs$model_future@variable_sets[[1L]]
 variables
 ```
 
 `shift_request()` describes the remote climate data you want. The future request
 targets one ESGF ScenarioMIP model, scenario, member, and monthly table. The
-reference request uses the matching historical experiment so Belcher
+reference request uses the matching historical experiment so original morphing
 change-factor morphing can compare future monthly fields with reference monthly
 fields before applying those changes to the baseline EPW.
 
@@ -807,7 +809,7 @@ coverage are blocking errors instead of warnings.
 See [EpwMorpher](epw-morpher.html) when you need to inspect monthly summaries,
 factor diagnostics, case grouping, or transform input contracts.
 
-Matching historical CMIP6 data are required so Belcher can compute
+Matching historical CMIP6 data are required so original morphing can compute
 future-versus-historical change factors. Pass either an extracted historical
 `ShiftClimate` stage or an explicit reference spec such as
 `historical_reference(1995:2014)`. The same transform can be reused across
