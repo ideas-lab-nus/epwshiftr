@@ -21,7 +21,7 @@ WEATHER_METHOD_DEFAULTS <- c(
     "original_morphing_monthly",
     "epwshiftr_monthly",
     "daily_temperature_delta",
-    "btws_monthly_temperature",
+    "bws_btws_monthly",
     "ek_daily_factors",
     "quantile_mapping_morphing_daily",
     "sobie_curry_daily",
@@ -329,7 +329,7 @@ method__register_components <- function() {
     edcdf__register_component()
     isimip__register_component()
     daily__register_temperature_components()
-    btws__register_monthly_components()
+    bws_btws__register_components()
     ek__register_components()
     quantile_mapping_morphing__register_components()
     sobie__register_components()
@@ -407,17 +407,18 @@ method__default_specs <- function() {
                 "https://github.com/ideas-lab-nus/epwshiftr/pull/141"
             )
         ),
-        btws_monthly_temperature = method__from_signal_component(
-            name = "btws_monthly_temperature",
-            label = "BTWS monthly temperature changes",
-            domain = "daily_temperature",
-            component = "monthly_mean_extrema_changes",
-            frequencies = "day",
+        bws_btws_monthly = method__from_signal_component(
+            name = "bws_btws_monthly",
+            label = "BWS and BTWS monthly weather changes",
+            domain = "monthly_morphing",
+            component = "bws_btws_monthly_changes",
+            frequencies = "mon",
             input_roles = c("model_historical", "model_future"),
-            variable_sets = c("tas", "tasmin", "tasmax"),
-            output_variables = "tas",
+            variable_sets = c("tas", "tasmin", "tasmax", "rsds", "clt"),
+            output_variables = c("tas", "rsds", "clt"),
             output_role = "weather_template",
-            evidence = "adapted_publication"
+            evidence = "adapted_publication",
+            references = "https://doi.org/10.1177/01436244231218861"
         ),
         ek_daily_factors = method__from_signal_component(
             name = "ek_daily_factors",

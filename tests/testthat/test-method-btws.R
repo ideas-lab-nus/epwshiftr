@@ -2,12 +2,12 @@ test_that("BTWS transfer weights implement the published equation", {
     normalized <- c(0, 0.25, 0.5, 0.75, 1)
 
     expect_equal(
-        btws__transfer_weight(normalized, 1, 1),
+        bws__transfer_weight(normalized, 1, 1),
         normalized * (1 - normalized),
         tolerance = 0
     )
     expect_identical(
-        btws__transfer_weight(c(0, 1), 0, 0),
+        bws__transfer_weight(c(0, 1), 0, 0),
         c(0, 0)
     )
 })

@@ -303,14 +303,14 @@
   humidity fields and reports thermodynamic inconsistencies without modifying
   them (#155).
 
-* Added the temperature-only `monthly_transform("btws")` method and registered
-  the `btws_monthly_temperature` recipe. Matching daily CMIP6 `tas`, `tasmin`, and
-  `tasmax` are aggregated into the monthly mean, average daily minimum, and
-  average daily maximum changes used by Eames et al. (2024), then applied
-  month-by-month through the BTWS hourly reconstruction. Provenance records the
-  substitution of daily CMIP6-derived monthly statistics for the paper's
-  UKCP18 factors and states that non-temperature transformations are not
-  included (#153).
+* Added `monthly_transform("bws_btws")` and the `bws_btws_monthly` recipe. Matching
+  monthly CMIP6 `tas`, `tasmin`, `tasmax`, `rsds`, and `clt` provide the change
+  factors used by Eames et al. (2024). BTWS reconstructs hourly
+  dry-bulb temperature, while the reusable BWS kernel transforms global solar
+  radiation and total sky cover without changing zero or upper-bound states.
+  The unified physical layer then closes humidity, diffuse/direct radiation,
+  and opaque sky cover. Provenance records the substitution of CMIP6 monthly
+  factors for the paper's UKCP18 factors (#153, #251).
 
 * Added `daily_transform("epwshiftr", reconstruction = "btws")` and registered
   the internal `epwshiftr_daily_btws` recipe. It combines the existing
@@ -615,7 +615,7 @@
 ## Internal changes
 
 * Consolidated temperature-only physical-policy execution across the shared
-  Daily/BTWS/Eames component and the Arima and Ek adapters, while preserving
+  Daily/BTWS/BWS component and the Arima and Ek adapters, while preserving
   each method's diagnostics, result schema, and selected policy (#236).
 
 * Consolidated dictionary and ESGF query-result truncation footer rendering

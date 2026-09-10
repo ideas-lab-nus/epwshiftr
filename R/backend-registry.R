@@ -363,14 +363,14 @@ morpher__default_backend_specs <- function() {
             requires_reference = TRUE,
             pipeline = daily__temperature_pipeline("btws")
         ),
-        btws_monthly_temperature = EpwMorphBackend$new(
-            name = "btws_monthly_temperature",
-            label = "Monthly temperature signal with BTWS projection",
-            methods = EPW_MORPH_DAILY_TEMPERATURE_BTWS_METHODS,
-            method_choices = "btws",
-            rules = EPW_MORPH_DAILY_TEMPERATURE_BTWS_RULES,
+        bws_btws_monthly = EpwMorphBackend$new(
+            name = "bws_btws_monthly",
+            label = "BWS and BTWS monthly weather morphing",
+            methods = EPW_MORPH_BWS_BTWS_METHODS,
+            method_choices = c("btws", "bws"),
+            rules = EPW_MORPH_BWS_BTWS_RULES,
             requires_reference = TRUE,
-            pipeline = btws__monthly_pipeline()
+            pipeline = bws_btws__pipeline()
         ),
         ek_daily_temperature = EpwMorphBackend$new(
             name = "ek_daily_temperature",

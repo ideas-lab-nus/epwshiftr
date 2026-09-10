@@ -46,6 +46,18 @@ EPW_PHYS_POLICY_SPECS <- list(
         missing_action = "preserve",
         diagnose_inconsistency = TRUE
     ),
+    bws_btws_weather = list(
+        humidity = "preserve_specific_humidity",
+        wind = "preserve_fields",
+        shortwave = "absolute",
+        bounded_fields = c(
+            "dry_bulb_temperature",
+            "total_sky_cover",
+            "opaque_sky_cover"
+        ),
+        missing_action = "preserve",
+        diagnose_inconsistency = TRUE
+    ),
     preserve_humidity_fields = list(
         humidity = "preserve_fields",
         wind = "preserve_fields",
@@ -460,6 +472,49 @@ epwphys__bound_field <- function(value, field, upper = NULL) {
     )
 }
 
+# Preserve the baseline opaque-to-total cloud fraction after a method changes
+# total sky cover. The half-cover fallback retains established Belcher behavior
+# for a baseline row whose total cover is zero.
+epwphys__opaque_sky_cover <- function(
+    total,
+    baseline_total,
+    baseline_opaque,
+    fallback_fraction = 0.5,
+    integer = TRUE
+) {
+    total <- as.numeric(total)
+    baseline_total <- as.numeric(baseline_total)
+    baseline_opaque <- as.numeric(baseline_opaque)
+    checkmate::assert_number(
+        fallback_fraction,
+        lower = 0,
+        upper = 1,
+        finite = TRUE
+    )
+    checkmate::assert_flag(integer)
+    lengths <- c(length(total), length(baseline_total), length(baseline_opaque))
+    if (length(unique(lengths)) != 1L || any(!is.finite(c(
+        total,
+        baseline_total,
+        baseline_opaque
+    )))) {
+        cli::cli_abort(
+            "Total and opaque sky-cover vectors must have matching finite values."
+        )
+    }
+    fraction <- ifelse(
+        baseline_total > .Machine$double.eps,
+        baseline_opaque / baseline_total,
+        fallback_fraction
+    )
+    opaque <- pmin(total, pmax(0, total * fraction))
+    if (isTRUE(integer)) {
+        opaque <- as.integer(round(opaque))
+        opaque <- pmin(as.integer(round(total)), opaque)
+    }
+    opaque
+}
+
 # Close a method-defined specific-humidity target and retain the unclipped,
 # saturation, closed, RH, dew-point, and status states for method diagnostics.
 epwphys__close_specific_humidity <- function(
@@ -793,6 +848,8 @@ epwphys__apply <- function(request, policy) {
         specific_humidity_clipped = 0L,
         dew_point_clipped = 0L,
         wind_speed_clipped = 0L,
+        total_sky_cover_clipped = 0L,
+        opaque_sky_cover_clipped = 0L,
         radiation_night_values_zeroed = 0L,
         radiation_negative_global_clipped = 0L,
         radiation_negative_diffuse_clipped = 0L,
@@ -804,6 +861,11 @@ epwphys__apply <- function(request, policy) {
     )
     for (field in intersect(policy@bounded_fields, names(request@fields))) {
         bounded <- epwphys__bound_field(weather[[field]], field)
+        # EPW sky-cover fields occupy a discrete 0-10 lattice. Preserve that
+        # storage contract after generic numeric boundary enforcement.
+        if (field %in% c("total_sky_cover", "opaque_sky_cover")) {
+            bounded$value <- as.integer(round(bounded$value))
+        }
         data.table::set(weather, j = field, value = bounded$value)
         correction <- switch(
             field,
@@ -811,11 +873,26 @@ epwphys__apply <- function(request, policy) {
             atmospheric_pressure = "pressure_clipped",
             horizontal_infrared_radiation_intensity_from_sky =
                 "infrared_negative_clipped",
+            total_sky_cover = "total_sky_cover_clipped",
+            opaque_sky_cover = "opaque_sky_cover_clipped",
             NULL
         )
         if (!is.null(correction)) {
             corrections[[correction]] <- bounded$clipped
         }
+    }
+    if (all(c("total_sky_cover", "opaque_sky_cover") %in%
+        names(request@fields))) {
+        opaque_raw <- weather[["opaque_sky_cover"]]
+        opaque <- pmin(weather[["total_sky_cover"]], opaque_raw)
+        corrections$opaque_sky_cover_clipped <-
+            corrections$opaque_sky_cover_clipped +
+            as.integer(sum(opaque != opaque_raw, na.rm = TRUE))
+        data.table::set(
+            weather,
+            j = "opaque_sky_cover",
+            value = as.integer(opaque)
+        )
     }
 
     state <- list()

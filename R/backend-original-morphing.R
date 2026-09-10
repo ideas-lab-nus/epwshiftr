@@ -733,19 +733,6 @@ radiation__rbl_2010_diffuse <- function(ghi, geometry, day_key,
     pmin(ghi, pmax(0, diffuse))
 }
 
-# Preserve the baseline diffuse fraction as an explicit compatibility option.
-# Zero-GHI hours use a fully diffuse fraction so no beam is synthesized.
-radiation__preserved_diffuse <- function(data_epw, ghi) {
-    baseline_ghi <- pmax(0, as.numeric(data_epw$global_horizontal_radiation))
-    baseline_dhi <- pmax(0, as.numeric(data_epw$diffuse_horizontal_radiation))
-    fraction <- ifelse(
-        baseline_ghi > .Machine$double.eps,
-        pmin(1, baseline_dhi / baseline_ghi),
-        1
-    )
-    pmin(ghi, pmax(0, as.numeric(ghi) * fraction))
-}
-
 # Perez et al. (1990), Table 4. Rows correspond to the eight sky-clearness
 # bins; columns are the four coefficients in each published transfer equation.
 ILLUMINANCE__PEREZ_GLOBAL <- rbind(
@@ -948,13 +935,11 @@ original_morphing__opaque_sky_cover <- function(data_epw, total_sky_cover) {
             baseline_total_sky_cover = i.total_sky_cover
         )
     ]
-    data[, opaque_sky_cover := ifelse(
-        baseline_total_sky_cover == 0,
-        as.integer(round(total_sky_cover / 2.0)),
-        as.integer(round(total_sky_cover * baseline_opaque_sky_cover / baseline_total_sky_cover))
+    data[, opaque_sky_cover := epwphys__opaque_sky_cover(
+        total_sky_cover,
+        baseline_total_sky_cover,
+        baseline_opaque_sky_cover
     )]
-    data[opaque_sky_cover > total_sky_cover, opaque_sky_cover := total_sky_cover]
-    data[opaque_sky_cover < 0, opaque_sky_cover := 0L]
     data[, c("total_sky_cover", "baseline_opaque_sky_cover", "baseline_total_sky_cover") := NULL]
 
     data[, .SD, .SDcols = c(

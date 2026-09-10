@@ -140,7 +140,7 @@ temperature__hourly_result <- function(data, options, projector) {
         factors = factors,
         hourly = hourly
     )
-    # Comparison adapters may retain raw method factors or change functions as
+    # Method adapters may retain their native factors or change functions as
     # inspectable result parts without changing the common hourly contract.
     if (!is.null(data$method_parts)) {
         result$method_parts <- data$method_parts
@@ -148,23 +148,15 @@ temperature__hourly_result <- function(data, options, projector) {
     result
 }
 
-# Close humidity through the shared physical policy while preserving the
-# established POWER, daily BTWS, and monthly BTWS diagnostic columns and messages.
-temperature__physics_apply <- function(
-    data,
-    inputs,
-    context,
-    options
-) {
+# Translate a shared physical result back to the established daily-temperature
+# payload. BWS+BTWS reuses it after adding bounded-weather candidates.
+temperature__physics_payload <- function(data, physical) {
+    if (!S7::S7_inherits(physical, EpwPhysicalResult)) {
+        cli::cli_abort("{.arg physical} must be an EpwPhysicalResult object.")
+    }
     baseline <- data$baseline
     hourly <- data$hourly
     factors <- data$factors
-    physical <- epwphys__apply_temperature(
-        template = baseline$weather,
-        temperature = hourly[["temperature_projected"]],
-        policy = epwphys__policy("preserve_specific_humidity"),
-        adapter = "daily_temperature"
-    )
     humidity <- physical@state$humidity
     weather <- data.table::copy(physical@weather)
 
@@ -287,6 +279,23 @@ temperature__physics_apply <- function(
         result$method_parts <- data$method_parts
     }
     result
+}
+
+# Close a temperature-only projection through the shared physical policy while
+# preserving the existing POWER and BTWS diagnostic columns and messages.
+temperature__physics_apply <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
+    physical <- epwphys__apply_temperature(
+        template = data$baseline$weather,
+        temperature = data$hourly[["temperature_projected"]],
+        policy = epwphys__policy("preserve_specific_humidity"),
+        adapter = "daily_temperature"
+    )
+    temperature__physics_payload(data, physical)
 }
 
 # Assemble the shared physics-closed payload into the existing backend result

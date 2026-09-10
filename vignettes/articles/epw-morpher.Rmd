@@ -109,10 +109,11 @@ print(btws)
 | Hourly reconstruction | Rule that transfers the result to the EPW hourly profile |
 | Output frequency | Frequency of the delivered weather sequence |
 
-For example, the monthly BTWS transform calculates change statistics from
-daily `tas`, `tasmin`, and `tasmax`, then applies BTWS to reconstruct hourly dry
-bulb temperature. Its monthly transform scale therefore does not imply monthly
-source data.
+For example, the BWS+BTWS transform calculates change factors from monthly `tas`,
+`tasmin`, `tasmax`, `rsds`, and `clt`. It uses BTWS to reconstruct hourly
+dry-bulb temperature and BWS to transform global solar radiation and total sky
+cover while preserving their physical bounds. Both its transformation scale
+and its required CMIP6 source frequency are monthly.
 
 # Inspect Input Roles
 

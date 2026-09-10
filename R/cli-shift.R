@@ -719,7 +719,7 @@ cli_shift__recipe_options <- function(options, backend) {
     }
     if (backend %in% c(
         "daily_temperature", "daily_temperature_btws",
-        "btws_monthly_temperature", "ek_daily_temperature",
+        "bws_btws_monthly", "ek_daily_temperature",
         "sobie_curry_daily"
     ) &&
         "tolerance" %in% names(options)) {
