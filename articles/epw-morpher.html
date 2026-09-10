@@ -232,11 +232,13 @@ profile</td>
 </tr>
 </tbody>
 </table>
-<p>For example, the monthly BTWS transform calculates change statistics
-from daily <code>tas</code>, <code>tasmin</code>, and
-<code>tasmax</code>, then applies BTWS to reconstruct hourly dry bulb
-temperature. Its monthly transform scale therefore does not imply
-monthly source data.</p>
+<p>For example, the BWS+BTWS transform calculates change factors from
+monthly <code>tas</code>, <code>tasmin</code>, <code>tasmax</code>,
+<code>rsds</code>, and <code>clt</code>. It uses BTWS to reconstruct
+hourly dry-bulb temperature and BWS to transform global solar radiation
+and total sky cover while preserving their physical bounds. Both its
+transformation scale and its required CMIP6 source frequency are
+monthly.</p>
 </div>
 <div class="section level2">
 <h2 id="inspect-input-roles">Inspect Input Roles<a class="anchor" aria-label="anchor" href="#inspect-input-roles"></a>
