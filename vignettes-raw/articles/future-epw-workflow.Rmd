@@ -209,11 +209,104 @@ options(
 
 # Recommended Task API
 
-The recommended user call selects original morphing as a reusable monthly
+The shortest workflow names one or more registered weather methods directly.
+The package discovers CMIP6 models that can satisfy every selected method,
+uses the same model/member/grid identities for each method, obtains matching
+historical model periods where required, and routes observational calibration
+only to methods that declare that role.
+
+The following call uses the San Francisco weather file shipped with the latest
+locally installed EnergyPlus version. It requests SSP1-2.6 and SSP5-8.5,
+selects three complete `r1i1p1f1` GCMs, and produces 2050 and 2080 weather files
+with original morphing, BWS+BTWS, and ISIMIP3BASD.
+
+```{r ergonomic-task-api, eval = FALSE}
+energyplus_version <- tail(eplusr::avail_eplus(), 1L)
+san_francisco_epw <- eplusr::path_eplus_weather(
+    energyplus_version,
+    "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+    strict = TRUE
+)
+
+run <- shift_future_epw(
+    epw = san_francisco_epw,
+    climate = shift_cmip6(
+        model = 3L,
+        scenarios = c("ssp126", "ssp585"),
+        member = "r1i1p1f1"
+    ),
+    periods = list(`2050` = 2041:2060, `2080` = 2071:2090),
+    methods = c("original_morphing", "bws_btws", "isimip3basd"),
+    calibration = shift_era5(years = 1995:2014),
+    dir = file.path(workflow_root, "future-epw")
+)
+
+shift_status(run)
+shift_outputs(run)
+shift_diagnostics(run)
+```
+
+`bws_btws` is the complete Eames method: BTWS reconstructs hourly temperature,
+while BWS transforms bounded global solar radiation and total sky cover. ERA5
+is used only by ISIMIP3BASD in this selection because that method declares an
+`observed_reference` role. Each method/model child remains independently
+resumable. Output and diagnostic tables include method, model, member, and grid
+columns for downstream analysis; the package does not calculate method-ranking
+or comparison metrics.
+
+With `access = "auto"`, `shift_era5()` uses the official point time-series
+service when all required variables are available there and otherwise uses the
+complete CDS subset service. CDS access reads a personal access token from
+`ECMWF_DATASTORES_KEY`, `~/.ecmwfdatastoresrc`, or `~/.cdsapirc`; credentials
+are never stored in a shift plan. `shift_era6()` reserves the same
+provider-neutral boundary but currently raises an explicit unavailable error,
+because no stable public ERA6 dataset endpoint exists yet. It never substitutes
+ERA5 under an ERA6 label.
+
+## Configure and Check CDS Access
+
+The source object deliberately contains no credentials, and creating it does
+not contact CDS. Before the first retrieval:
+
+1. Register or sign in at the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/).
+2. Open each required ERA5 dataset page and accept its current terms.
+3. Create a personal access token following the [CDS API setup guide](https://cds.climate.copernicus.eu/en/how-to-api).
+4. Store it outside the project in `ECMWF_DATASTORES_KEY`,
+   `~/.ecmwfdatastoresrc`, or `~/.cdsapirc`.
+
+The local check validates that configuration without making a network request.
+The explicit network check verifies the token through the CDS account endpoint
+without submitting or downloading a climate dataset:
+
+```{r check-era5-access, eval = FALSE}
+era5 <- shift_era5(years = 1995:2014)
+shift_check(era5)
+shift_check(era5, network = TRUE)
+```
+
+An empty diagnostic table means the requested check passed. A successful token
+check cannot guarantee access to every dataset because CDS terms are
+dataset-specific. The first retrieval remains the authoritative check and, if
+terms are missing, returns a dedicated error with the exact dataset page. The
+package never accepts terms on the user's behalf.
+
+Maintainers can exercise the complete remote request, download, NetCDF
+normalization, persistence, and reuse workflow after configuring a token:
+
+``` sh
+EPWSHIFTR_RUN_LIVE_ERA5=true Rscript -e \
+    'devtools::test(filter = "era5-live", stop_on_failure = TRUE)'
+```
+
+The repository runs the same test in its separate manual and weekly workflow.
+It requires the `ECMWF_DATASTORES_KEY` repository secret and is intentionally
+excluded from ordinary pull-request checks, where secrets are unavailable.
+
+Use an explicit transform when method-specific options or one exact model are
+needed. The following form selects original morphing as a reusable monthly
 transformation and gives the run an explicit matching historical CMIP6
-reference. A transform
-contains calculation settings only; the site, model, periods, reference, and
-output directory remain execution inputs.
+reference. A transform contains calculation settings only; the site, model,
+periods, reference, and output directory remain execution inputs.
 
 ```{r task-api, eval = FALSE}
 epw <- system.file(

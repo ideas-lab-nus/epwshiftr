@@ -66,33 +66,71 @@ workflow, use the `legacy` branch on GitHub or install epwshiftr
 
 ## Quick start
 
-For the common baseline-to-future EPW workflow, use
-`shift_future_epw()`. Select a reusable scientific method with
-`monthly_transform()`, `daily_transform()`, or `hourly_transform()`,
-then pass run-specific climate and reference data separately. The
-function resolves files, extracts the site time series, persists a
-resumable run, and copies only the final EPWs to `dir`.
+For the common baseline-to-future EPW workflow, use `shift_future_epw()`
+and name the methods directly. The function can discover CMIP6 models
+that satisfy all selected methods, obtain the historical model periods
+they require, route an ERA5 calibration source only to methods that use
+observations, and copy the final EPWs to `dir`.
 
-Run the complete workflow with the scientific intent kept in one call:
+This example uses the San Francisco weather file installed with
+EnergyPlus, selects three common GCMs for SSP1-2.6 and SSP5-8.5, and
+generates 2050 and 2080 EPWs with original morphing, BWS+BTWS, and
+ISIMIP3BASD:
 
 ``` r
 library(epwshiftr)
 
+energyplus_version <- tail(eplusr::avail_eplus(), 1L)
+san_francisco_epw <- eplusr::path_eplus_weather(
+    energyplus_version,
+    "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+    strict = TRUE
+)
+
 run <- shift_future_epw(
-    epw = system.file(
-        "extdata/examples/SGP_Singapore.486980_IWEC.epw",
-        package = "epwshiftr"
-    ),
+    epw = san_francisco_epw,
     climate = shift_cmip6(
-        model = "BCC-CSM2-MR",
-        scenarios = c("ssp126", "ssp585")
+        model = 3L,
+        scenarios = c("ssp126", "ssp585"),
+        member = "r1i1p1f1"
     ),
-    periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
-    reference = historical_reference(1995:2014),
-    dir = tempdir()
+    periods = list(`2050` = 2041:2060, `2080` = 2071:2090),
+    methods = c("original_morphing", "bws_btws", "isimip3basd"),
+    calibration = shift_era5(years = 1995:2014),
+    dir = "future-epw"
 )
 ```
+
+`bws_btws` is the complete Eames method implemented by the package: BTWS
+reconstructs hourly temperature and BWS transforms bounded
+solar-radiation and cloud-cover fields. `shift_outputs(run)` returns
+method and model identity columns so users can analyse the generated
+files; epwshiftr does not impose a method-comparison metric.
+
+`model` keeps model selection in one argument: a positive whole number
+asks for that many compatible GCMs, a character vector names exact GCMs,
+and `NULL` selects every compatible model. Omitting it uses the bounded
+default of three.
+
+ERA retrieval credentials remain outside the package and every persisted
+workflow. Register with the [Copernicus Climate Data
+Store](https://cds.climate.copernicus.eu/), accept the terms shown on
+the required dataset page, create a personal access token using the [CDS
+API setup guide](https://cds.climate.copernicus.eu/en/how-to-api), then
+place the token in `ECMWF_DATASTORES_KEY`, `~/.ecmwfdatastoresrc`, or
+`~/.cdsapirc`. Check local configuration without contacting CDS, or
+explicitly verify the token over the network:
+
+``` r
+era5 <- shift_era5(years = 1995:2014)
+shift_check(era5)
+shift_check(era5, network = TRUE)
+```
+
+Neither check stores or prints the token. Dataset terms remain specific
+to the requested ERA product; an actual retrieval that lacks accepted
+terms stops with a dataset-specific link instead of changing the user’s
+CDS account.
 
 `weather_transforms()` lists every supported configuration together with
 its transformation scale, source-frequency requirements, input roles,
@@ -100,6 +138,11 @@ hourly reconstruction, evidence, and maturity. A `WeatherTransformSpec`
 contains only reusable calculation settings; sites, GCMs, scenarios,
 periods, references, and output paths belong to each call of
 `shift_future_epw()`.
+
+For one explicitly configured method or model, pass a transform built by
+`monthly_transform()`, `daily_transform()`, or `hourly_transform()`
+through `transform`. This retains the single-run `ShiftPlan`/`ShiftRun`
+interface.
 
 The canonical Belcher transform implements the published combined
 temperature equation, so its monthly CMIP6 contract requires `tas`,
@@ -162,7 +205,7 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = "~/Downloads/epwshiftr-test",
     ui = shift_ui(
@@ -195,7 +238,7 @@ run <- shift_future_epw(
     epw = epw,
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = "~/Downloads/epwshiftr-test",
     background = TRUE
@@ -218,7 +261,8 @@ remote data reads during documentation builds.
 If no suitable historical CMIP6 reference is available, use
 `monthly_transform("epwshiftr")` without `reference`. Its canonical
 package method can use the input EPW climatology;
-`monthly_transform("belcher")` requires matching historical model data.
+`monthly_transform("original_morphing")` requires matching historical
+model data.
 
 ## Inspect a workflow
 
@@ -233,7 +277,7 @@ plan <- shift_future_epw(
         scenarios = c("ssp126", "ssp585")
     ),
     periods = list(`2060s` = 2055:2065),
-    transform = monthly_transform("belcher"),
+    transform = monthly_transform("original_morphing"),
     reference = historical_reference(1995:2014),
     dir = "~/Downloads/epwshiftr-test",
     dry_run = TRUE

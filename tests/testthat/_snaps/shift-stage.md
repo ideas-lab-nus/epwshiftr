@@ -9,7 +9,7 @@
       * Scenarios: ssp126, ssp585
       * Member: auto
       * Grid: auto
-      * Frequency: mon
+      * Frequency: inferred by weather method
       * Table: auto by variable
       * Activity: ScenarioMIP
       * Index nodes: 6-node failover
@@ -75,7 +75,7 @@
       * Scenarios: ssp126, ssp585
       * Member: auto
       * Grid: auto
-      * Frequency: mon
+      * Frequency: inferred by weather method
       * Table: auto by variable
       * Activity: ScenarioMIP
       * Index nodes: 6-node failover
@@ -253,7 +253,8 @@
       * Expected outputs: 2
       * Output directory: <tempdir>/shift-print-output
       -- Discovery ---------------------------------------------------------------------------------------
-      * Frequency: mon
+      * Frequency: tas=mon | tasmax=mon | tasmin=mon | hurs=mon | huss=mon | ps=mon | psl=mon | rlds=mon
+        | rsds=mon | sfcWind=mon | clt=mon | pr=mon
       * Table: auto by variable
       * Index nodes: https://esgf-data.dkrz.de, https://esgf.ceda.ac.uk,
         https://esgf-node.ornl.gov/esgf-1-5-bridge, https://esgf.nci.org.au,

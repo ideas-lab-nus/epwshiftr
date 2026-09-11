@@ -388,6 +388,41 @@ test_that("Shift configuration printers use compact semantic receipts", {
         width = 100L, n = 3L, verbose = TRUE))
 })
 
+test_that("shift_cmip6 preserves the established positional member argument", {
+    climate <- shift_cmip6(
+        "BCC-CSM2-MR",
+        "ssp585",
+        "r1i1p1f1"
+    )
+
+    expect_identical(climate@model, "BCC-CSM2-MR")
+    expect_identical(climate@member, "r1i1p1f1")
+    expect_null(climate@n_models)
+})
+
+test_that("shift_cmip6 model values express explicit and automatic selection", {
+    default <- shift_cmip6(scenarios = "ssp585")
+    bounded <- shift_cmip6(model = 2L, scenarios = "ssp585")
+    all_models <- shift_cmip6(model = NULL, scenarios = "ssp585")
+    explicit <- shift_cmip6(
+        model = c("Model-A", "Model-B"),
+        scenarios = "ssp585"
+    )
+
+    expect_null(default@model)
+    expect_identical(default@n_models, 3L)
+    expect_null(bounded@model)
+    expect_identical(bounded@n_models, 2L)
+    expect_null(all_models@model)
+    expect_null(all_models@n_models)
+    expect_identical(explicit@model, c("Model-A", "Model-B"))
+    expect_null(explicit@n_models)
+    expect_identical(formals(shift_cmip6)$model, 3L)
+    expect_false("n_models" %in% names(formals(shift_cmip6)))
+    expect_error(shift_cmip6(model = 0L, scenarios = "ssp585"))
+    expect_error(shift_cmip6(model = 1.5, scenarios = "ssp585"))
+})
+
 test_that("Shift scientific labels preserve table policy and partitions", {
     expect_identical(shift__format_cmip6_tables(NULL), "auto by variable")
     expect_identical(shift__format_cmip6_tables("Amon"), "Amon (forced)")
@@ -437,6 +472,16 @@ test_that("Shift scientific labels preserve table policy and partitions", {
         shift__climate_from_spec(hourly_decoded)@frequency,
         c(tas = "3hrPt", rsds = "3hr")
     )
+
+    bounded <- shift_cmip6(model = 2L, scenarios = "ssp585")
+    bounded_spec <- shift__climate_spec_value(bounded)
+    expect_identical(
+        shift__climate_from_spec(bounded_spec)@n_models,
+        2L
+    )
+    all_models <- shift_cmip6(model = NULL, scenarios = "ssp585")
+    all_spec <- shift__climate_spec_value(all_models)
+    expect_null(shift__climate_from_spec(all_spec)@n_models)
 
     request <- shift_cmip6_scenario(
         source = "BCC-CSM2-MR",
@@ -1400,7 +1445,7 @@ test_that("standalone shift APIs carry run context without session arguments", {
     expect_true(all(c("store", "ui") %in% names(formals(shift_datasets))))
 })
 
-test_that("shift_future_epw() requires a transform and returns a task plan", {
+test_that("shift_future_epw() validates explicit transforms and returns a task plan", {
     transform <- monthly_transform("epwshiftr")
     climate <- shift_cmip6(
         model = "EC-Earth3", scenarios = "ssp585",

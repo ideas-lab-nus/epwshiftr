@@ -3563,11 +3563,15 @@ EsgStore <- R6::R6Class(
                     role VARCHAR,
                     grid_lon DOUBLE,
                     grid_lat DOUBLE,
+                    grid_elevation_m DOUBLE,
                     grid_dist_km DOUBLE,
                     weight DOUBLE,
                     created_at TIMESTAMP
                 )
             "
+            )
+            private$exec(
+                "ALTER TABLE extraction_grid_source ADD COLUMN IF NOT EXISTS grid_elevation_m DOUBLE"
             )
             private$exec(
                 "
@@ -6209,6 +6213,9 @@ EsgStore <- R6::R6Class(
             if (!nrow(sources)) {
                 return(sources)
             }
+            if (!"grid_elevation_m" %in% names(sources)) {
+                sources[, grid_elevation_m := NA_real_]
+            }
             now <- store__now()
             sources[, `:=`(
                 plan_id = plan$plan_id[[1L]],
@@ -6242,6 +6249,7 @@ EsgStore <- R6::R6Class(
                 "role",
                 "grid_lon",
                 "grid_lat",
+                "grid_elevation_m",
                 "grid_dist_km",
                 "weight",
                 "created_at"
@@ -6257,6 +6265,7 @@ EsgStore <- R6::R6Class(
                 "role",
                 "grid_lon",
                 "grid_lat",
+                "grid_elevation_m",
                 "grid_dist_km",
                 "weight",
                 "created_at"
@@ -6265,7 +6274,16 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # write_extract_partitions {{{
-        write_extract_partitions = function(dt, plan, file, overwrite = FALSE) {
+        write_extract_partitions = function(
+            dt,
+            plan,
+            file,
+            overwrite = FALSE,
+            project = "CMIP6"
+        ) {
+            # The same durable extraction representation is shared by ESGF
+            # projections and provider-normalized reanalysis observations.
+            checkmate::assert_string(project, min.chars = 1L)
             # Preserve the historical `year` column while making it agree with
             # the source CF calendar for new extraction artifacts.
             partition_year <- if ("cf_year" %in% names(dt)) {
@@ -6281,13 +6299,18 @@ EsgStore <- R6::R6Class(
                 # Use a non-column variable name so data.table does not resolve
                 # both sides of the predicate to `dt$year`.
                 chunk <- dt[dt[["year"]] == target_year]
-                output_path <- private$output_path(plan, file, target_year)
+                output_path <- private$output_path(
+                    plan,
+                    file,
+                    target_year,
+                    project = project
+                )
                 private$write_parquet(chunk, output_path, overwrite = overwrite)
                 artifact_id <- self$register_artifact(
                     kind = "extract",
                     path = output_path,
                     role = "derived",
-                    project = "CMIP6",
+                    project = project,
                     query_id = plan$query_id[[1L]],
                     file_key = plan$file_key[[1L]],
                     metadata = list(
@@ -6327,9 +6350,10 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # output_path {{{
-        output_path = function(plan, file, year) {
+        output_path = function(plan, file, year, project = "CMIP6") {
+            checkmate::assert_string(project, min.chars = 1L)
             parts <- c(
-                project = "CMIP6",
+                project = project,
                 source_id = file$source_id[[1L]],
                 experiment_id = file$experiment_id[[1L]],
                 variant_label = file$variant_label[[1L]],
