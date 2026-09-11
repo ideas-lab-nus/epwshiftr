@@ -25,6 +25,86 @@ bws__project_normalized <- function(normalized, scale, m, n) {
     normalized + scale * mean(normalized) * weight / mean_weight
 }
 
+# Derive the exact mean interval that remains reachable when BWS preserves
+# values already located at either physical endpoint. Interior values may move
+# to an endpoint, but observations at the opposite endpoint cannot move away.
+bws__attainable_mean_bounds <- function(
+    value,
+    lower,
+    upper,
+    tolerance = 1e-8
+) {
+    value <- as.numeric(value)
+    checkmate::assert_number(lower, finite = TRUE)
+    checkmate::assert_number(upper, lower = lower, finite = TRUE)
+    checkmate::assert_number(tolerance, lower = 0, finite = TRUE)
+    if (!length(value) || any(!is.finite(value))) {
+        cli::cli_abort("BWS input must contain finite values.")
+    }
+    if (upper < lower) {
+        cli::cli_abort(
+            "BWS requires an upper bound at least as large as its lower bound."
+        )
+    }
+    if (abs(upper - lower) <= tolerance) {
+        return(c(lower = lower, upper = upper))
+    }
+
+    span <- upper - lower
+    normalized <- (pmin(upper, pmax(lower, value)) - lower) / span
+    normalized_tolerance <- tolerance / span
+    fixed_lower <- normalized <= normalized_tolerance
+    fixed_upper <- normalized >= 1 - normalized_tolerance
+
+    c(
+        lower = lower + span * mean(fixed_upper),
+        upper = upper - span * mean(fixed_lower)
+    )
+}
+
+# Resolve a requested BWS mean against both the declared physical limits and
+# the narrower interval imposed by endpoint preservation. Adjustments are
+# returned as data so callers can retain the original signal and explain the
+# exact reason instead of silently clipping the projected series afterward.
+bws__resolve_target_mean <- function(
+    value,
+    requested_target_mean,
+    lower,
+    upper,
+    tolerance = 1e-8
+) {
+    checkmate::assert_number(requested_target_mean, finite = TRUE)
+    bounds <- bws__attainable_mean_bounds(
+        value,
+        lower,
+        upper,
+        tolerance = tolerance
+    )
+    target_mean <- min(
+        unname(bounds[["upper"]]),
+        max(unname(bounds[["lower"]]), requested_target_mean)
+    )
+    adjustment <- if (requested_target_mean < lower - tolerance) {
+        "physical_lower_bound"
+    } else if (requested_target_mean > upper + tolerance) {
+        "physical_upper_bound"
+    } else if (requested_target_mean < bounds[["lower"]] - tolerance) {
+        "endpoint_preservation_lower_bound"
+    } else if (requested_target_mean > bounds[["upper"]] + tolerance) {
+        "endpoint_preservation_upper_bound"
+    } else {
+        "none"
+    }
+
+    list(
+        requested_target_mean = requested_target_mean,
+        target_mean = target_mean,
+        attainable_lower = unname(bounds[["lower"]]),
+        attainable_upper = unname(bounds[["upper"]]),
+        target_adjustment = adjustment
+    )
+}
+
 # Retain the largest admissible exponent when the symmetric equation (7)
 # projection would cross a bound. This is the directed m/n reduction described
 # by Eames et al.; deterministic bisection supplies the unpublished solver.
@@ -124,8 +204,9 @@ bws__bounded_normalized_projection <- function(
 }
 
 # Project one bounded series to a requested mean while preserving every value
-# at the declared lower or upper bound. Infeasible signals are explicit errors
-# because silently clipping them would lose either the bound or climate signal.
+# at the declared lower or upper bound. An unattainable mean is resolved to the
+# nearest attainable boundary and returned with its original request and reason
+# so callers can diagnose the scientific compromise explicitly.
 bws__project <- function(
     value,
     target_mean,
@@ -147,12 +228,14 @@ bws__project <- function(
     if (any(value < lower - tolerance | value > upper + tolerance)) {
         cli::cli_abort("BWS input contains values outside its declared bounds.")
     }
-    if (target_mean < lower - tolerance || target_mean > upper + tolerance) {
-        cli::cli_abort(
-            "BWS target mean lies outside its declared bounds.",
-            class = "epwshiftr_bws_infeasible_error"
-        )
-    }
+    target <- bws__resolve_target_mean(
+        value,
+        requested_target_mean = target_mean,
+        lower = lower,
+        upper = upper,
+        tolerance = tolerance
+    )
+    target_mean <- target$target_mean
 
     baseline_mean <- mean(value)
     # A collapsed physical range has one admissible state. This matters for an
@@ -168,10 +251,14 @@ bws__project <- function(
         return(list(
             value = value,
             baseline_mean = baseline_mean,
+            requested_target_mean = target$requested_target_mean,
             target_mean = target_mean,
             projected_mean = baseline_mean,
             lower = lower,
             upper = upper,
+            attainable_lower = target$attainable_lower,
+            attainable_upper = target$attainable_upper,
+            target_adjustment = target$target_adjustment,
             scale = 0,
             m = 1,
             n = 1,
@@ -183,10 +270,14 @@ bws__project <- function(
         return(list(
             value = value,
             baseline_mean = baseline_mean,
+            requested_target_mean = target$requested_target_mean,
             target_mean = target_mean,
             projected_mean = baseline_mean,
             lower = lower,
             upper = upper,
+            attainable_lower = target$attainable_lower,
+            attainable_upper = target$attainable_upper,
+            target_adjustment = target$target_adjustment,
             scale = 0,
             m = 1,
             n = 1,
@@ -222,10 +313,14 @@ bws__project <- function(
     list(
         value = projected,
         baseline_mean = baseline_mean,
+        requested_target_mean = target$requested_target_mean,
         target_mean = target_mean,
         projected_mean = mean(projected),
         lower = lower,
         upper = upper,
+        attainable_lower = target$attainable_lower,
+        attainable_upper = target$attainable_upper,
+        target_adjustment = target$target_adjustment,
         scale = shape$scale,
         m = shape$m,
         n = shape$n,
@@ -325,11 +420,15 @@ bws__project_monthly <- function(
             variable_id = variable_id,
             month = calendar_month,
             baseline_mean = result$baseline_mean,
+            requested_target_mean = result$requested_target_mean,
             target_mean = result$target_mean,
             continuous_mean = continuous_mean,
             projected_mean = mean(output),
             lower_bound = result$lower,
             upper_bound = result$upper,
+            attainable_lower = result$attainable_lower,
+            attainable_upper = result$attainable_upper,
+            target_adjustment = result$target_adjustment,
             scale = result$scale,
             m = result$m,
             n = result$n,

@@ -283,10 +283,23 @@ original_morphing__monthly_reference_variable <- function(context, variable_id) 
 }
 
 original_morphing__epw_monthly <- function(data_epw, var, keep_units = TRUE) {
-    monthly <- data_epw[,
-        list(val_mean = mean(get(var)), val_max = max(get(var)), val_min = min(get(var))),
-        by = "month"
-    ]
+    monthly <- data_epw[, {
+        value <- as.numeric(.SD[[1L]])
+        valid <- is.finite(value)
+        if (!any(valid)) {
+            list(
+                val_mean = NA_real_,
+                val_max = NA_real_,
+                val_min = NA_real_
+            )
+        } else {
+            list(
+                val_mean = mean(value[valid]),
+                val_max = max(value[valid]),
+                val_min = min(value[valid])
+            )
+        }
+    }, by = "month", .SDcols = var]
 
     monthly
 }
@@ -2235,17 +2248,74 @@ original_morphing__precip_from_monthly <- function(data_epw, data_mean, strict =
     if (!rate_col %in% names(baseline)) {
         baseline[, (rate_col) := 0]
     }
-    baseline[, .baseline_precip_depth := pmax(0, morpher__drop_units(liquid_precip_depth))]
-    monthly <- baseline[, .(baseline_total = sum(.baseline_precip_depth, na.rm = TRUE)), by = "month"]
+    # Direct callers and the shared runner receive the same calculation view;
+    # 999 mm and 99 h remain missing rather than becoming rainfall magnitudes.
+    baseline <- epw_file__calculation_weather(
+        baseline,
+        c("liquid_precip_depth", "liquid_precip_rate")
+    )
+    baseline[, .baseline_precip_depth := pmax(
+        0,
+        morpher__drop_units(liquid_precip_depth)
+    )]
+    monthly <- baseline[, .(
+        baseline_total = if (all(is.na(.baseline_precip_depth))) {
+            NA_real_
+        } else {
+            sum(.baseline_precip_depth, na.rm = TRUE)
+        },
+        baseline_missing_hours = sum(is.na(.baseline_precip_depth)),
+        baseline_hours = .N
+    ), by = "month"]
 
     data_mean <- data.table::copy(data_mean)
-    data_mean[monthly, on = "month", baseline_total := i.baseline_total]
-    data_mean[is.na(baseline_total), baseline_total := 0]
+    monthly_index <- match(data_mean[["month"]], monthly[["month"]])
+    # Assign join results explicitly so package checks do not depend on
+    # data.table's generated `i.` symbols for the diagnostic count columns.
+    for (field in c(
+        "baseline_total",
+        "baseline_missing_hours",
+        "baseline_hours"
+    )) {
+        data.table::set(
+            data_mean,
+            j = field,
+            value = monthly[[field]][monthly_index]
+        )
+    }
     data_mean[, future_total := morpher__drop_units(value)]
+
+    missing_baseline <- data_mean[!is.finite(baseline_total)]
+    original_morphing__precip_guard(
+        missing_baseline,
+        paste(
+            "Baseline EPW liquid precipitation depth is missing for every",
+            "hour; preserving missing precipitation in relaxed mode."
+        ),
+        strict = strict
+    )
+    partial_baseline <- data_mean[
+        is.finite(baseline_total) &
+            data_mean[["baseline_missing_hours"]] > 0L &
+            data_mean[["baseline_missing_hours"]] <
+                data_mean[["baseline_hours"]]
+    ]
+    original_morphing__precip_guard(
+        partial_baseline,
+        paste(
+            "Baseline EPW liquid precipitation depth contains missing hours;",
+            "scaling observed hours and preserving missing rows in relaxed mode."
+        ),
+        strict = strict
+    )
 
     if (isTRUE(change_factor)) {
         data_mean[, reference_total := morpher__drop_units(reference_value)]
-        zero_reference <- data_mean[reference_total <= .Machine$double.eps & future_total > .Machine$double.eps]
+        zero_reference <- data_mean[
+            is.finite(reference_total) &
+                reference_total <= .Machine$double.eps &
+                future_total > .Machine$double.eps
+        ]
         original_morphing__precip_guard(
             zero_reference,
             "Reference climate precipitation is zero while future precipitation is positive; preserving baseline precipitation in relaxed mode.",
@@ -2270,7 +2340,11 @@ original_morphing__precip_from_monthly <- function(data_epw, data_mean, strict =
         data_mean[, delta := target_total - baseline_total]
     }
 
-    dry_target <- data_mean[baseline_total <= .Machine$double.eps & future_total > .Machine$double.eps]
+    dry_target <- data_mean[
+        is.finite(baseline_total) &
+            baseline_total <= .Machine$double.eps &
+            future_total > .Machine$double.eps
+    ]
     original_morphing__precip_guard(
         dry_target,
         "Baseline EPW has no wet hours for positive target precipitation; keeping the month dry in relaxed mode.",
@@ -2278,18 +2352,27 @@ original_morphing__precip_from_monthly <- function(data_epw, data_mean, strict =
     )
     # Without baseline wet hours, v1 deliberately refuses to synthesize event
     # timing and therefore leaves precipitation at zero for that month.
-    data_mean[baseline_total <= .Machine$double.eps, `:=`(
-        target_total = 0,
-        alpha = NA_real_
-    )]
+    data_mean[
+        is.finite(baseline_total) &
+            baseline_total <= .Machine$double.eps,
+        `:=`(
+            target_total = 0,
+            alpha = NA_real_
+        )
+    ]
 
     data <- baseline[data_mean, on = "month", allow.cartesian = TRUE]
-    scale <- ifelse(is.na(data$alpha), 0, data$alpha)
+    scale <- ifelse(
+        is.finite(data$baseline_total),
+        ifelse(is.na(data$alpha), 0, data$alpha),
+        NA_real_
+    )
     # CMIP6 `pr` only supplies precipitation amount after time integration; the
-    # EPW liquid precipitation duration/rate field is derived from wet hours.
+    # EPW accumulation-quantity field retains its baseline value and missing
+    # state because a monthly amount does not provide a new accumulation period.
     depth <- data$.baseline_precip_depth * scale
     data[, liquid_precip_depth := as.numeric(depth)]
-    data[, liquid_precip_rate := as.numeric(depth > .Machine$double.eps)]
+    data[, liquid_precip_rate := as.numeric(liquid_precip_rate)]
     data[, .baseline_precip_depth := NULL]
     data[, .SD, .SDcols = c(
         "activity_drs", "institution_id", "source_id", "experiment_id", "member_id",
@@ -2409,7 +2492,11 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
     steps <- original_morphing__execution_steps(change_factor)
     methods <- context$recipe$methods
     epw <- context$epw$clone()
-    data_epw <- suppressMessages(epw$add_unit()$data())
+    # Belcher calculations use an NA-based view while the cloned EpwFile keeps
+    # its original sentinels for fields that this method does not replace.
+    data_epw <- epw_file__calculation_weather(
+        suppressMessages(epw$add_unit()$data())
+    )
 
     tdb <- steps$tdb(data_epw, context, methods[["tdb"]])
     p <- steps$monthly_field(

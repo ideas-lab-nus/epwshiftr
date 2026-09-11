@@ -901,6 +901,10 @@ recipe__default_specs <- function() {
                     "The BWS kernel retains zero and upper-bound states.",
                     "For EPW cloud cover, the paper's normalized bounded",
                     "equation is applied on the equivalent 0-10 tenths scale.",
+                    "If a CMIP6 change requests a mean outside the interval",
+                    "attainable while preserving those endpoints, epwshiftr",
+                    "uses the nearest attainable mean and records both targets,",
+                    "the bounds, source means, and adjustment reason.",
                     "The unified physical layer closes humidity, diffuse and",
                     "direct radiation after all method candidates are formed."
                 )
@@ -918,6 +922,7 @@ recipe__default_specs <- function() {
                 "daily_extrema_closure",
                 "btws_scale_and_exponents",
                 "bws_scale_and_exponents",
+                "bws_target_adjustment",
                 "mean_shift_fallback",
                 "humidity_closure",
                 "shortwave_closure",

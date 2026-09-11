@@ -215,14 +215,15 @@ otherwise \code{self}.
 \if{html}{\out{<a id="method-EsgResultFile-repair_urls"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-repair_urls}{}}}
 \subsection{Method \code{repair_urls()}}{
-Replace unreachable service URLs with reachable replica records.
+Replace unreachable service URLs from compatible replicas.
 
-\verb{$repair_urls()} probes the current records for the selected service,
-queries ESGF replicas by \code{master_id} for records whose URL is missing or
-unreachable, probes candidate replica URLs, and returns a new result with
-repaired records in the original row order. The original result is not
-modified. The returned result records the original query URL plus the
-replica lookup query URL in \verb{$query_url("all")}.
+\verb{$repair_urls()} checks the current records for the selected service,
+queries compatible ESGF replicas for records whose URL is missing or
+unreachable, checks candidate replica URLs, and returns a new result with
+only that service URL repaired in the original row order. The logical
+record and its other service URLs are retained. The original result is
+not modified. The returned result records the original query URL plus
+the replica lookup query URL in \verb{$query_url("all")}.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$repair_urls(
   service = c("OPENDAP", "HTTPServer"),

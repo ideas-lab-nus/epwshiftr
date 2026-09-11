@@ -5,6 +5,7 @@ output:
     rmarkdown::html_vignette:
         df_print: "paged"
         toc: true
+        number_sections: true
 vignette: >
     %\VignetteIndexEntry{Inspect Future-Weather Transformations}
     %\VignetteEngine{knitr::rmarkdown}
@@ -61,7 +62,7 @@ calculated or applied:
 
 ```r
 original_morphing <- monthly_transform("original_morphing")
-btws <- monthly_transform("btws")
+bws_btws <- monthly_transform("bws_btws")
 daily_power <- daily_transform(
     "epwshiftr",
     reconstruction = "power"
@@ -90,7 +91,7 @@ Printing a transform distinguishes five temporal concepts that are easy to
 confuse:
 
 ```r
-print(btws)
+print(bws_btws)
 ```
 
 | Concept | Meaning |
@@ -115,7 +116,7 @@ and calendars.
 
 ```r
 original_morphing@required_inputs
-btws@source_frequencies
+bws_btws@source_frequencies
 ```
 
 The main roles are:
@@ -223,6 +224,13 @@ plan <- shift_future_epw(
 shift_explain(plan)
 run <- shift_run(plan)
 ```
+
+With the default `shift_control(resume = TRUE)`, repeating the same call with
+the same store and output directory returns the existing durable run without
+repeating catalog queries, service checks, extraction, morphing, or EPW
+writing. Set `control = shift_control(refresh = TRUE)` only when remote CMIP6
+catalog and service information must be refreshed deliberately. The refreshed
+selection is then persisted for later ordinary resumes.
 
 # Use EpwMorpher Directly
 

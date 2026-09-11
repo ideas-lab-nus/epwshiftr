@@ -1,0 +1,43 @@
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '43 3 * * 1'
+
+name: ESGF live
+
+permissions:
+  contents: read
+
+concurrency:
+  group: esgf-live
+  cancel-in-progress: false
+
+jobs:
+  esgf-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      EPWSHIFTR_RUN_LIVE_ESGF: "true"
+      NOT_CRAN: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::devtools
+          needs: tests
+
+      - name: Run the live ESGF service workflow
+        shell: Rscript {0}
+        run: |
+          devtools::test(
+            filter = "service-live-esgf",
+            stop_on_failure = TRUE
+          )

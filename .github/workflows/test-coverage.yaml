@@ -48,7 +48,6 @@ jobs:
         with:
           extra-packages: |
             any::covr
-            url::https://cran.r-project.org/src/contrib/Archive/PCICt/PCICt_0.5-4.4.tar.gz
           needs: coverage
 
       - name: Test coverage

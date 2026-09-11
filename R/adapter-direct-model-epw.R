@@ -484,7 +484,9 @@ direct_epw__apply <- function(data, inputs, context, options) {
     }
     epw <- template_input@source
     hourmap__target_grid(epw)
-    template <- data.table::as.data.table(data.table::copy(epw$data()))
+    # Absolute-model recipes inherit fields outside their climate contract;
+    # represent missing inherited observations as NA inside the result.
+    template <- epw_file__calculation_weather(epw$data())
     geometry <- direct_epw__solar_geometry(template, epw)
     members <- lapply(
         data@members,

@@ -42,28 +42,69 @@ EPW_FILE_UNITS <- c(
     liquid_precip_rate = "h"
 )
 
-# Principal EPW limits and missing sentinels are defined once so validation,
-# physical closure, and file serialization cannot silently diverge.
+# Construct one EPW numeric-field definition with distinct exact-code and
+# threshold semantics. Illuminance is missing from 999900 upwards but is
+# serialized with 999999, while most fields use one exact missing code.
+epw_file__field_spec <- function(
+    minimum = -Inf,
+    maximum = Inf,
+    missing_value,
+    missing_from = NA_real_
+) {
+    list(
+        minimum = as.numeric(minimum),
+        maximum = as.numeric(maximum),
+        missing_value = as.numeric(missing_value),
+        missing_from = as.numeric(missing_from)
+    )
+}
+
+# Principal EPW limits and missing sentinels are defined once so raw-file
+# preservation, calculation views, validation, physical closure, and file
+# serialization cannot silently diverge. Most fields match `missing_value`
+# exactly; only fields with a finite `missing_from` use threshold detection.
 EPW_FILE_FIELD_SPECS <- list(
-    dry_bulb_temperature = c(-70, 70, 99.9),
-    dew_point_temperature = c(-70, 70, 99.9),
-    relative_humidity = c(0, 110, 999),
-    atmospheric_pressure = c(31000, 120000, 999999),
-    horizontal_infrared_radiation_intensity_from_sky = c(0, Inf, 9999),
-    global_horizontal_radiation = c(0, Inf, 9999),
-    direct_normal_radiation = c(0, Inf, 9999),
-    diffuse_horizontal_radiation = c(0, Inf, 9999),
-    global_horizontal_illuminance = c(0, Inf, 999999),
-    direct_normal_illuminance = c(0, Inf, 999999),
-    diffuse_horizontal_illuminance = c(0, Inf, 999999),
-    zenith_luminance = c(0, Inf, 9999),
-    wind_direction = c(0, 360, 999),
-    wind_speed = c(0, 40, 999),
-    total_sky_cover = c(0, 10, 99),
-    opaque_sky_cover = c(0, 10, 99),
-    liquid_precip_depth = c(0, Inf, 999),
-    liquid_precip_rate = c(0, Inf, 99),
-    snow_depth = c(0, Inf, 999)
+    dry_bulb_temperature = epw_file__field_spec(-70, 70, 99.9),
+    dew_point_temperature = epw_file__field_spec(-70, 70, 99.9),
+    relative_humidity = epw_file__field_spec(0, 110, 999),
+    atmospheric_pressure = epw_file__field_spec(31000, 120000, 999999),
+    extraterrestrial_horizontal_radiation =
+        epw_file__field_spec(0, Inf, 9999),
+    extraterrestrial_direct_normal_radiation =
+        epw_file__field_spec(0, Inf, 9999),
+    horizontal_infrared_radiation_intensity_from_sky =
+        epw_file__field_spec(0, Inf, 9999),
+    global_horizontal_radiation = epw_file__field_spec(0, Inf, 9999),
+    direct_normal_radiation = epw_file__field_spec(0, Inf, 9999),
+    diffuse_horizontal_radiation = epw_file__field_spec(0, Inf, 9999),
+    global_horizontal_illuminance =
+        epw_file__field_spec(0, Inf, 999999, 999900),
+    direct_normal_illuminance =
+        epw_file__field_spec(0, Inf, 999999, 999900),
+    diffuse_horizontal_illuminance =
+        epw_file__field_spec(0, Inf, 999999, 999900),
+    zenith_luminance = epw_file__field_spec(0, Inf, 9999, 9999),
+    wind_direction = epw_file__field_spec(0, 360, 999),
+    wind_speed = epw_file__field_spec(0, 40, 999),
+    total_sky_cover = epw_file__field_spec(0, 10, 99),
+    opaque_sky_cover = epw_file__field_spec(0, 10, 99),
+    visibility = epw_file__field_spec(0, Inf, 9999),
+    ceiling_height = epw_file__field_spec(0, Inf, 99999),
+    present_weather_observation = epw_file__field_spec(0, 9, 9),
+    precipitable_water = epw_file__field_spec(0, Inf, 999),
+    aerosol_optical_depth = epw_file__field_spec(0, Inf, 0.999),
+    snow_depth = epw_file__field_spec(0, Inf, 999),
+    days_since_last_snow = epw_file__field_spec(0, Inf, 99),
+    albedo = epw_file__field_spec(0, 1, 999),
+    liquid_precip_depth = epw_file__field_spec(0, Inf, 999),
+    liquid_precip_rate = epw_file__field_spec(0, Inf, 99)
+)
+
+# Present-weather codes are the sole non-numeric EPW weather field with a
+# documented missing code. Keep it separate so leading zeroes in valid weather
+# codes are never lost through numeric conversion.
+EPW_FILE_TEXT_MISSING_CODES <- c(
+    present_weather_codes = "999999999"
 )
 
 EPW_FILE_HEADER_NAMES <- c(
@@ -406,6 +447,117 @@ epw_file_normalize_weather <- function(weather) {
     weather[]
 }
 
+# Return a calculation-only copy in which every documented EPW missing
+# sentinel is represented by NA. The EpwFile object keeps its original values,
+# so untouched fields still round-trip with the source file's exact sentinel.
+epw_file__calculation_weather <- function(weather, fields = NULL) {
+    weather <- data.table::as.data.table(data.table::copy(weather))
+    known_fields <- c(
+        names(EPW_FILE_FIELD_SPECS),
+        names(EPW_FILE_TEXT_MISSING_CODES)
+    )
+    if (is.null(fields)) {
+        fields <- intersect(known_fields, names(weather))
+    } else {
+        checkmate::assert_character(
+            fields,
+            any.missing = FALSE,
+            unique = TRUE
+        )
+        unknown <- setdiff(fields, known_fields)
+        if (length(unknown)) {
+            cli::cli_abort(
+                "Unknown EPW missing-code specification{?s}: {.field {unknown}}."
+            )
+        }
+        fields <- intersect(fields, names(weather))
+    }
+
+    for (field in intersect(fields, names(EPW_FILE_FIELD_SPECS))) {
+        spec <- EPW_FILE_FIELD_SPECS[[field]]
+        original <- weather[[field]]
+        numeric_value <- suppressWarnings(as.numeric(original))
+        missing <- !is.finite(numeric_value) |
+            numeric_value == spec$missing_value
+        if (is.finite(spec$missing_from)) {
+            missing <- missing | numeric_value >= spec$missing_from
+        }
+        # Assign through the original vector so unit-bearing weather columns
+        # keep their units while integer EPW fields keep their storage type.
+        value <- original
+        value[missing] <- NA
+        data.table::set(weather, j = field, value = value)
+    }
+    for (field in intersect(fields, names(EPW_FILE_TEXT_MISSING_CODES))) {
+        original <- as.character(weather[[field]])
+        missing <- is.na(original) |
+            original == EPW_FILE_TEXT_MISSING_CODES[[field]]
+        original[missing] <- NA_character_
+        data.table::set(weather, j = field, value = original)
+    }
+    weather[]
+}
+
+# Count documented EPW missing sentinels by field and month before a method
+# discards them from its calculation view. These counts support diagnostics
+# without mutating or reparsing the original EPW data.
+epw_file__missing_summary <- function(weather, fields = NULL) {
+    weather <- data.table::as.data.table(weather)
+    known_fields <- c(
+        names(EPW_FILE_FIELD_SPECS),
+        names(EPW_FILE_TEXT_MISSING_CODES)
+    )
+    if (is.null(fields)) {
+        fields <- intersect(known_fields, names(weather))
+    } else {
+        checkmate::assert_character(
+            fields,
+            any.missing = FALSE,
+            unique = TRUE
+        )
+        unknown <- setdiff(fields, known_fields)
+        if (length(unknown)) {
+            cli::cli_abort(
+                "Unknown EPW missing-code specification{?s}: {.field {unknown}}."
+            )
+        }
+        fields <- intersect(fields, names(weather))
+    }
+    if (!length(fields)) {
+        return(data.table::data.table())
+    }
+
+    month <- if ("month" %in% names(weather)) {
+        as.integer(weather[["month"]])
+    } else {
+        rep.int(NA_integer_, nrow(weather))
+    }
+    rows <- lapply(fields, function(field) {
+        if (field %in% names(EPW_FILE_FIELD_SPECS)) {
+            spec <- EPW_FILE_FIELD_SPECS[[field]]
+            value <- suppressWarnings(as.numeric(weather[[field]]))
+            missing <- !is.finite(value) | value == spec$missing_value
+            if (is.finite(spec$missing_from)) {
+                missing <- missing | value >= spec$missing_from
+            }
+        } else {
+            value <- as.character(weather[[field]])
+            missing <- is.na(value) |
+                value == EPW_FILE_TEXT_MISSING_CODES[[field]]
+        }
+        data.table::data.table(month = month, missing = missing)[, .(
+            missing_hours = sum(missing),
+            total_hours = .N
+        ), by = "month"][, epw_field := field]
+    })
+    out <- data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
+    data.table::setcolorder(
+        out,
+        c("epw_field", "month", "missing_hours", "total_hours")
+    )
+    out[]
+}
+
 # Construct end-of-hour timestamps from EPW date columns.
 epw_file_datetime <- function(year, month, day, hour) {
     safe_year <- as.integer(year)
@@ -696,13 +848,43 @@ epw_file_fill_abnormal <- function(weather, missing = TRUE, out_of_range = TRUE,
         spec <- EPW_FILE_FIELD_SPECS[[field]]
         value <- suppressWarnings(as.numeric(weather[[field]]))
         invalid <- if (isTRUE(missing) || isTRUE(special)) !is.finite(value) else rep(FALSE, length(value))
-        if (isTRUE(out_of_range)) {
-            invalid <- invalid | value < spec[[1L]] | value > spec[[2L]]
+        if (isTRUE(special)) {
+            invalid <- invalid | value == spec$missing_value
+            if (is.finite(spec$missing_from)) {
+                invalid <- invalid | value >= spec$missing_from
+            }
         }
-        value[invalid] <- spec[[3L]]
-        if (field %in% c("total_sky_cover", "opaque_sky_cover")) {
+        if (isTRUE(out_of_range)) {
+            invalid <- invalid |
+                value < spec$minimum |
+                value > spec$maximum
+        }
+        value[invalid] <- spec$missing_value
+        if (field %in% c(
+            "total_sky_cover",
+            "opaque_sky_cover",
+            "present_weather_observation",
+            "days_since_last_snow"
+        )) {
             value <- as.integer(round(value))
         }
+        data.table::set(weather, j = field, value = value)
+    }
+    for (field in intersect(
+        names(EPW_FILE_TEXT_MISSING_CODES),
+        names(weather)
+    )) {
+        value <- as.character(weather[[field]])
+        invalid <- if (isTRUE(missing) || isTRUE(special)) {
+            is.na(value)
+        } else {
+            rep(FALSE, length(value))
+        }
+        if (isTRUE(special)) {
+            invalid <- invalid |
+                value == EPW_FILE_TEXT_MISSING_CODES[[field]]
+        }
+        value[invalid] <- EPW_FILE_TEXT_MISSING_CODES[[field]]
         data.table::set(weather, j = field, value = value)
     }
     weather[]

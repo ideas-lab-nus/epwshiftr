@@ -54,6 +54,73 @@
 
 ## New features
 
+* Added an ergonomic `shift_future_epw()` workflow for multiple weather methods
+  and CMIP6 models. Method keys resolve through `weather_transforms()`, model
+  discovery selects common model/member/grid identities across every method,
+  required historical periods are created automatically, and `ShiftBatch`
+  results support the existing status, output, diagnostic, resume, and cancel
+  operations without imposing package-owned comparison metrics. Added
+  `shift_era5()` as a credential-free reanalysis source specification with
+  direct R access to official CDS services and CF weather normalization.
+  `shift_era6()` reserves the same provider-neutral interface and fails
+  explicitly until a stable public ERA6 dataset is available. `shift_cmip6()`
+  now expresses all selection modes through `model`: a positive count selects
+  a bounded compatible ensemble, character values select exact models, and
+  `NULL` selects all compatible models. Reanalysis sources support local and
+  opt-in remote credential checks, classify dataset-term failures, and have a
+  separate opt-in live ERA5 retrieval workflow. Batch model selection now
+  verifies requested future and automatic historical File-year coverage before
+  applying a model count. File-service resolution now validates OPeNDAP through
+  its DDS response, retains a compatible HTTPServer recovery candidate without
+  checking the unused endpoint eagerly, composes endpoints across distributed
+  replicas, and deduplicates node records by normalized CMIP6 DRS file
+  identity. Regional extraction checks and repairs HTTPServer only after an
+  OPeNDAP open, metadata, or read failure, retries once through the selected
+  download, and records both service attempts with their stage, URL, host,
+  duration, and original error (#254).
+  Identical future-weather calls now restore their persisted batch selection
+  and original child runs before any catalog or service request, verify that
+  completed EPW artifacts still exist, and avoid repeating extraction,
+  morphing, or export. `shift_control(refresh = TRUE)` provides the explicit
+  opt-in path for refreshing remote catalog and service information. Batch
+  method keys now construct only their requested transforms, and initialized
+  backend registries no longer rebuild every default backend, pipeline, and
+  component specification during each lookup. Completed batch children reuse
+  one authoritative store connection for run reconstruction and artifact
+  verification instead of opening the same manifest twice.
+  Dry-run `ShiftBatch` objects can now be passed directly to `shift_run()`, and
+  direct high-level execution first builds the complete child matrix so one
+  operational child failure does not prevent independent children from
+  running. File-service checks are applied only after scientific
+  model/member/table/grid selection and exact disjoint-year filtering;
+  automatic numeric model selection prefers complete candidates requiring
+  fewer physical source files. Identical ERA5 requests share one locked raw
+  cache across child stores while retaining store-local registered artifacts.
+  Equivalent site extractions from immutable climate files now share a locked,
+  content-addressed payload cache across method stores; store-specific plan and
+  query identities are attached only when the cached payload is materialized.
+  Failed service checks remain cached for the package cache lifetime so an
+  adjacent method does not repeat the same endpoint timeout.
+  Successful-run scientific warnings are persisted as idempotent run events
+  and remain available from `shift_diagnostics()` after refresh or resume.
+  Morphing cases now fail independently within one method run, with durable
+  per-case status and current diagnostics. BWS retains the original
+  Historical-to-Scenario change signal but resolves an unattainable bounded
+  EPW target to the nearest attainable mean and records both targets, source
+  means, bounds, and the adjustment reason. Every result manifest records
+  transformed, derived, physically closed, and inherited EPW field sets for
+  downstream user-owned comparisons.
+
+* Added a calculation-only EPW view that converts documented numeric and
+  present-weather missing codes to `NA` before weather algorithms run, while
+  preserving raw codes for exact reads and restoring canonical missing codes
+  on output. Original Morphing now rejects missing precipitation months in
+  strict mode and retains explicit diagnostics in relaxed mode instead of
+  treating `999` and `99` as measured precipitation. Its factor diagnostics
+  now distinguish missing future climate, Historical reference, and EPW
+  baseline months instead of reporting every unavailable factor as a generic
+  climate-or-baseline problem.
+
 * Kept future-weather generation contracts independent of user evaluation
   designs. Package-owned comparison protocols, publication study presets, and
   duplicate `_comparison` recipes were removed; every method now has one

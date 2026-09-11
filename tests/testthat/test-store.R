@@ -97,6 +97,89 @@ store_test__completed_store <- function() {
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
 
+# Create one real catalog and extraction plan while exposing the internal rows
+# needed to exercise failure recovery without relying on an external service.
+store_test__planned_extract <- function() {
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L)
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    docs <- store_test__file_docs(
+        path = basename(nc),
+        opendap_url = "https://remote.example.org/dods/tas.nc",
+        download_url = "https://download.example.org/files/tas.nc"
+    )
+    query_id <- store$add_files(store_test__result(docs = docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        site_id = "SIN"
+    )
+    file <- data.table::as.data.table(
+        ddb_read_table(priv(store)$conn, "file_catalog")
+    )[1L]
+    list(store = store, dir = dir, nc = nc, plan = plan, file = file)
+}
+
+# Mimic an already-open remote dataset that fails at a chosen access phase;
+# read-phase fixtures reuse a genuine CF time axis to isolate the failure.
+store_test__failing_dataset <- function(phase, time_info = NULL) {
+    checkmate::assert_choice(phase, c("metadata", "read"))
+    ds <- new.env(parent = emptyenv())
+    ds$is_open <- TRUE
+    ds$close <- function() {
+        ds$is_open <- FALSE
+        invisible(NULL)
+    }
+    ds$get_time_axis <- function(index = 1L) {
+        if (identical(phase, "metadata")) {
+            stop("remote metadata timed out", call. = FALSE)
+        }
+        time_info
+    }
+    ds$read_region <- function(...) {
+        stop("remote read timed out", call. = FALSE)
+    }
+    ds$att_get <- function(...) "K"
+    ds
+}
+
+# Capture reporter events in memory so tests can verify the exact structured
+# fields later persisted by the workflow reporter in shift_run_event.
+store_test__access_reporter <- function() {
+    reporter <- new.env(parent = emptyenv())
+    reporter$events <- list()
+    reporter$notice <- function(message, outcome, details) {
+        reporter$events[[length(reporter$events) + 1L]] <- list(
+            message = message,
+            outcome = outcome,
+            details = details
+        )
+        invisible(NULL)
+    }
+    reporter$detail <- function(...) invisible(NULL)
+    reporter$heartbeat <- function(...) invisible(NULL)
+    reporter
+}
+
+# Temporarily replace one locked R6 private method and restore it when the
+# current test exits, keeping fault injection local to the owning store object.
+store_test__mock_private <- function(store, name, value, env = parent.frame()) {
+    private <- priv(store)
+    original <- private[[name]]
+    unlockBinding(name, private)
+    assign(name, value, envir = private)
+    lockBinding(name, private)
+    withr::defer({
+        unlockBinding(name, private)
+        assign(name, original, envir = private)
+        lockBinding(name, private)
+    }, envir = env)
+    invisible(NULL)
+}
+
 # Build a test-only downloader whose public methods assert they are called
 # outside EsgStore's manifest lock.
 store_test__lock_check_downloader <- function(store) {
@@ -339,11 +422,83 @@ test_that("EsgStore$new()", {
             "extraction_plan", "extraction_result", "extraction_grid_source",
             "epw_source", "epw_baseline_summary", "epw_climate_summary",
             "epw_morph_plan", "epw_morph_factor",
-            "epw_morph_observed_reference", "epw_morph_result",
+            "epw_morph_observed_reference", "epw_morph_case",
+            "epw_morph_diagnostic", "epw_morph_result",
             "epw_output", "shift_run", "shift_run_case", "shift_run_event",
             "shift_run_job", "shift_run_step"
         )
     )
+})
+
+test_that("site extraction cache is shared without store-local identities", {
+    cache_dir <- withr::local_tempdir()
+    withr::local_options(list(epwshiftr.dir_cache = cache_dir))
+    plan <- data.table::data.table(
+        plan_id = "plan-a",
+        query_id = "query-a",
+        variable_id = "tas",
+        lon = -122.375,
+        lat = 37.619,
+        method = "nearest",
+        time_start = as.POSIXct("2041-01-01", tz = "UTC"),
+        time_stop = as.POSIXct("2060-12-31 23:59:59", tz = "UTC")
+    )
+    file <- data.table::data.table(
+        filename = "tas_day_Model_ssp585_r1i1p1f1_gn_20410101-20601231.nc",
+        checksum = "abc123",
+        checksum_type = "sha256",
+        size = 100,
+        version = "v20260101",
+        source_id = "Model",
+        experiment_id = "ssp585",
+        variant_label = "r1i1p1f1",
+        frequency = "day",
+        table_id = "day",
+        variable_id = "tas",
+        grid_label = "gn",
+        url_opendap = "https://node-a.example/tas.nc",
+        url_download = "https://node-a.example/tas.nc"
+    )
+    payload <- list(
+        data = data.table::data.table(
+            time = as.POSIXct("2050-01-01", tz = "UTC"),
+            value = 280
+        ),
+        grid_sources = NULL,
+        available_time_count = 1L,
+        actual_start = as.POSIXct("2041-01-01", tz = "UTC"),
+        actual_end = as.POSIXct("2060-12-31", tz = "UTC")
+    )
+    calls <- 0L
+    generate <- function() {
+        calls <<- calls + 1L
+        list(
+            payload = payload,
+            opened = list(access_method = "OPeNDAP", target = "remote"),
+            recovery_error = NULL
+        )
+    }
+
+    first <- store__extract_cache_resolve(plan, file, generate)
+    second_plan <- data.table::copy(plan)[, `:=`(
+        plan_id = "plan-b",
+        query_id = "query-b"
+    )]
+    second_file <- data.table::copy(file)[, `:=`(
+        url_opendap = "https://node-b.example/tas.nc",
+        url_download = "https://node-b.example/tas.nc"
+    )]
+    second <- store__extract_cache_resolve(
+        second_plan,
+        second_file,
+        generate
+    )
+
+    expect_identical(calls, 1L)
+    expect_false(first$cache_reused)
+    expect_true(second$cache_reused)
+    expect_identical(second$opened$access_method, "shared_cache")
+    expect_identical(second$payload$data$value, 280)
 })
 
 test_that("EsgStore$new(create = FALSE)", {
@@ -1738,6 +1893,9 @@ test_that("EsgStore$add_files() deduplicates File replicas", {
         download_url = "https://replica.example.org/fileServer/tas.nc"
     )
     replica$id <- "tas-replica|dataset-1"
+    replica$master_id <- NA_character_
+    replica$tracking_id <- NA_character_
+    replica$checksum <- NA_character_
     replica$replica <- TRUE
     replica$data_node <- "replica.example.org"
 
@@ -1950,9 +2108,9 @@ test_that("store download plan helpers preserve catalog identity and schema", {
     expect_identical(
         store__logical_file_id(catalog),
         c(
-            "tracking-a:checksum-a:a.nc:esgf-a",
-            "checksum-b:b.nc:esgf-b",
-            ""
+            "tracking:tracking-a",
+            "checksum:checksum-b:invalid:b.nc",
+            "file-key:file-c"
         )
     )
 
@@ -1969,6 +2127,10 @@ test_that("store download plan helpers preserve catalog identity and schema", {
     expect_identical(plan$size, c(123, NA_real_, NA_real_))
     expect_identical(plan$priority, 1:3)
     expect_identical(plan$service, rep("HTTPServer", 3L))
+    expect_identical(
+        plan$data_node,
+        c("example.org", "example.org", NA_character_)
+    )
     expect_true(all(is.na(plan$subdir)))
     expect_true(all(is.na(plan$probe_latency)))
     expect_true(all(is.na(plan$probe_throughput)))
@@ -2321,6 +2483,262 @@ test_that("EsgStore$extract()", {
     resumed <- store$extract(plan_id = plan$plan_id)
     expect_equal(resumed$status, "done")
     expect_equal(nrow(ddb_read_table(conn, "extraction_result")), 1L)
+})
+
+test_that("EsgStore open failures use HTTP fallback only in auto mode", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    invalid <- tempfile(fileext = ".nc")
+    writeBin(charToRaw("not a NetCDF file"), invalid)
+    on.exit(unlink(invalid), add = TRUE)
+
+    file <- data.table::copy(fixture$file)
+    file[, `:=`(local_path = NA_character_, url_opendap = invalid)]
+    download_calls <- 0L
+    store_test__mock_private(
+        store,
+        "download_plan_file",
+        function(file, overwrite = FALSE, reporter = NULL) {
+            download_calls <<- download_calls + 1L
+            fixture$nc
+        }
+    )
+
+    opened <- priv(store)$open_plan_dataset(file, fallback = "auto")
+    on.exit(if (isTRUE(opened$dataset$is_open)) opened$dataset$close(), add = TRUE)
+    expect_identical(opened$access_method, "HTTPServer")
+    expect_identical(download_calls, 1L)
+
+    error <- expect_error(
+        priv(store)$open_plan_dataset(file, fallback = "error"),
+        class = "epwshiftr_store_access_error"
+    )
+    expect_identical(error$phase, "open")
+    expect_identical(error$service, "OPeNDAP")
+    expect_identical(error$target, invalid)
+    expect_identical(download_calls, 1L)
+})
+
+test_that("EsgStore metadata and read failures retry once through HTTP", {
+    skip_if_not_installed("duckdb")
+
+    for (phase in c("metadata", "read")) {
+        fixture <- store_test__planned_extract()
+        store <- fixture$store
+        source <- EsgDataset$new(fixture$nc)
+        source$open()
+        time_info <- source$get_time_axis(index = 1L)
+        source$close()
+        remote <- store_test__failing_dataset(phase, time_info)
+        reporter <- store_test__access_reporter()
+        download_calls <- 0L
+
+        store_test__mock_private(
+            store,
+            "open_plan_dataset",
+            function(file, fallback = "auto", overwrite = FALSE,
+                     reporter = NULL) {
+                list(
+                    dataset = remote,
+                    target = file$url_opendap[[1L]],
+                    access_method = "OPeNDAP"
+                )
+            }
+        )
+        store_test__mock_private(
+            store,
+            "download_plan_file",
+            function(file, overwrite = FALSE, reporter = NULL) {
+                download_calls <<- download_calls + 1L
+                fixture$nc
+            }
+        )
+
+        result <- priv(store)$extract_one(
+            fixture$plan,
+            fixture$file,
+            fallback = "auto",
+            reporter = reporter
+        )
+        expect_identical(result$status, "done", info = phase)
+        expect_identical(attr(result, "access_method"), "HTTPServer", info = phase)
+        expect_identical(download_calls, 1L, info = phase)
+        expect_false(remote$is_open, info = phase)
+        persisted <- ddb_read_table(
+            priv(store)$conn,
+            "extraction_result"
+        )
+        expect_equal(nrow(persisted), 1L, info = phase)
+        expect_equal(persisted$row_count, 2L, info = phase)
+        expect_equal(persisted$unique_time_count, 2L, info = phase)
+        expect_length(reporter$events, 1L)
+        event <- reporter$events[[1L]]
+        expect_identical(event$outcome, "fallback", info = phase)
+        expect_identical(event$details$access_method, "OPeNDAP", info = phase)
+        expect_identical(event$details$access_phase, phase, info = phase)
+        expect_identical(event$details$attempt, 1L, info = phase)
+        expect_match(event$details$target, "remote\\.example\\.org", info = phase)
+        expect_true(is.numeric(event$details$elapsed_seconds), info = phase)
+        expect_true(nzchar(event$details$error_class), info = phase)
+        expect_true(nzchar(event$details$error), info = phase)
+
+        store$close()
+        unlink(fixture$nc)
+    }
+})
+
+test_that("EsgStore fallback errors retain both attempts in last_error", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    remote <- store_test__failing_dataset("metadata")
+    download_calls <- 0L
+    store_test__mock_private(
+        store,
+        "open_plan_dataset",
+        function(file, fallback = "auto", overwrite = FALSE,
+                 reporter = NULL) {
+            list(
+                dataset = remote,
+                target = file$url_opendap[[1L]],
+                access_method = "OPeNDAP"
+            )
+        }
+    )
+    store_test__mock_private(
+        store,
+        "download_plan_file",
+        function(file, overwrite = FALSE, reporter = NULL) {
+            download_calls <<- download_calls + 1L
+            stop("HTTP download timed out", call. = FALSE)
+        }
+    )
+
+    processed <- store$extract(
+        plan_id = fixture$plan$plan_id,
+        fallback = "auto"
+    )
+    expect_identical(processed$status, "failed")
+    expect_identical(download_calls, 1L)
+    expect_match(processed$last_error, "OPeNDAP extraction and HTTP fallback")
+    expect_match(processed$last_error, "OPeNDAP metadata failed")
+    expect_match(processed$last_error, "HTTPServer download failed")
+    expect_match(processed$last_error, "remote\\.example\\.org")
+    expect_match(processed$last_error, "download\\.example\\.org")
+})
+
+test_that("EsgStore fallback error mode does not download after read failure", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    source <- EsgDataset$new(fixture$nc)
+    source$open()
+    time_info <- source$get_time_axis(index = 1L)
+    source$close()
+    remote <- store_test__failing_dataset("read", time_info)
+    download_calls <- 0L
+    store_test__mock_private(
+        store,
+        "open_plan_dataset",
+        function(file, fallback = "auto", overwrite = FALSE,
+                 reporter = NULL) {
+            list(
+                dataset = remote,
+                target = file$url_opendap[[1L]],
+                access_method = "OPeNDAP"
+            )
+        }
+    )
+    store_test__mock_private(
+        store,
+        "download_plan_file",
+        function(...) {
+            download_calls <<- download_calls + 1L
+            fixture$nc
+        }
+    )
+
+    error <- expect_error(
+        priv(store)$extract_one(
+            fixture$plan,
+            fixture$file,
+            fallback = "error"
+        ),
+        class = "epwshiftr_store_access_error"
+    )
+    expect_identical(error$phase, "read")
+    expect_identical(error$service, "OPeNDAP")
+    expect_identical(download_calls, 0L)
+})
+
+test_that("EsgStore classifies persistence failures without another read", {
+    skip_if_not_installed("duckdb")
+
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    dataset <- EsgDataset$new(fixture$nc)
+    dataset$open()
+    reporter <- store_test__access_reporter()
+    read_calls <- 0L
+    store_test__mock_private(
+        store,
+        "open_plan_dataset",
+        function(file, fallback = "auto", overwrite = FALSE,
+                 reporter = NULL) {
+            list(
+                dataset = dataset,
+                target = fixture$nc,
+                access_method = "HTTPServer"
+            )
+        }
+    )
+    store_test__mock_private(
+        store,
+        "read_extract_dataset",
+        function(ds, plan, file, opened, reporter = NULL) {
+            read_calls <<- read_calls + 1L
+            list(
+                data = data.table::data.table(),
+                grid_sources = data.table::data.table(),
+                available_time_count = 0L,
+                actual_start = as.POSIXct("2060-01-01", tz = "UTC"),
+                actual_end = as.POSIXct("2060-12-31", tz = "UTC")
+            )
+        }
+    )
+    store_test__mock_private(
+        store,
+        "persist_extract_payload",
+        function(...) stop("manifest write failed", call. = FALSE)
+    )
+
+    error <- expect_error(
+        priv(store)$extract_one(
+            fixture$plan,
+            fixture$file,
+            fallback = "auto",
+            reporter = reporter
+        ),
+        class = "epwshiftr_store_access_error"
+    )
+    expect_identical(error$phase, "persist")
+    expect_identical(error$service, "HTTPServer")
+    expect_identical(read_calls, 1L)
+    expect_length(reporter$events, 1L)
+    expect_identical(reporter$events[[1L]]$details$access_phase, "persist")
+    expect_identical(reporter$events[[1L]]$details$attempt, 1L)
 })
 
 test_that("EsgStore$extract() persists and partitions calendar-native years", {

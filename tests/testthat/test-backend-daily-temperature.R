@@ -355,18 +355,19 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         plan@meta$recipe$components
     )
     expect_silent(shift__validate_background_plan(plan))
-    expect_error(
-        shift_future_epw(
-            epw = get_cache_epw(),
-            climate = shift_cmip6("EC-Earth3", "ssp585"),
-            periods = list(`2060s` = 2061L),
-            transform = transform,
-            reference = reference,
-            dir = tempfile("daily-temperature-output-"),
-            store = tempfile("daily-temperature-store-"),
-            dry_run = TRUE
-        ),
-        "requires CMIP frequencies.*day"
+    inferred <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("EC-Earth3", "ssp585"),
+        periods = list(`2060s` = 2061L),
+        transform = transform,
+        reference = reference,
+        dir = tempfile("daily-temperature-output-"),
+        store = tempfile("daily-temperature-store-"),
+        dry_run = TRUE
+    )
+    expect_identical(
+        unique(unname(inferred@meta$request@meta$frequency)),
+        "day"
     )
 })
 

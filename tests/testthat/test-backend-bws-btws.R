@@ -395,6 +395,34 @@ test_that("BTWS records infeasible-day fallback in the combined recipe", {
     )
 })
 
+test_that("BWS records bounded climate targets without aborting sibling work", {
+    context <- bws_btws_monthly_test__context(
+        cloud_scale = rep(3, 12L)
+    )
+    context$case <- data.table::data.table(
+        source_id = "IPSL-CM6A-LR",
+        experiment_id = "ssp126",
+        variant_label = "r1i1p1f1",
+        period = "2050"
+    )
+
+    result <- morpher__run_context(context)
+    adjusted <- result$parts$bws_factors[
+        variable_id == "clt" & target_adjustment != "none"
+    ]
+
+    expect_gt(nrow(adjusted), 0L)
+    expect_true(all(adjusted$requested_target_mean > adjusted$target_mean))
+    expect_true(all(adjusted$target_mean <= adjusted$attainable_upper))
+    expect_true("bws_target_adjusted" %in% result$diagnostics$code)
+    diagnostic <- result$diagnostics[code == "bws_target_adjusted"][1L]
+    expect_identical(diagnostic$variable_id, "clt")
+    expect_identical(diagnostic$period, "2050")
+    expect_match(diagnostic$message, "IPSL-CM6A-LR/ssp126/r1i1p1f1/2050")
+    expect_match(diagnostic$message, "GCM historical mean")
+    expect_match(diagnostic$message, "baseline EPW mean")
+})
+
 test_that("BWS/BTWS validates all five monthly climate inputs", {
     missing_extrema <- bws_btws_monthly_test__climate(
         2001,

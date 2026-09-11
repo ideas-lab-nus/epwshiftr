@@ -74,6 +74,37 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
     )))
 })
 
+test_that("complete recipes expose one comparable EPW field-role contract", {
+    original <- morpher__weather_field_roles(
+        epw_morph_recipe("original_morphing_monthly")
+    )
+    bounded <- morpher__weather_field_roles(
+        epw_morph_recipe("bws_btws_monthly")
+    )
+    isimip <- morpher__weather_field_roles(
+        epw_morph_recipe("isimip3basd_daily_temperature")
+    )
+
+    expect_named(original, c(
+        "transformed_fields", "derived_fields",
+        "physically_closed_fields", "inherited_fields"
+    ))
+    expect_true("liquid_precip_depth" %in% original$transformed_fields)
+    expect_true("dry_bulb_temperature" %in% bounded$transformed_fields)
+    expect_true("total_sky_cover" %in% bounded$transformed_fields)
+    expect_true("relative_humidity" %in% bounded$physically_closed_fields)
+    expect_true("dry_bulb_temperature" %in% isimip$transformed_fields)
+    expect_true("wind_speed" %in% isimip$inherited_fields)
+    expect_length(
+        Reduce(intersect, list(
+            isimip$transformed_fields,
+            isimip$derived_fields,
+            isimip$inherited_fields
+        )),
+        0L
+    )
+})
+
 test_that("recipe registry rejects duplicate and incompatible definitions", {
     registry <- new.env(parent = emptyenv())
     daily <- epw_morph_recipe_spec("epwshiftr_daily_power")

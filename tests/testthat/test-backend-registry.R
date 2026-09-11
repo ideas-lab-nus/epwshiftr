@@ -110,3 +110,21 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     expect_s3_class(result, "epw_morph_result")
     expect_equal(unique(result$data$custom_backend), backend_name)
 })
+
+test_that("complete default backend registration avoids rebuilding specs", {
+    expect_setequal(
+        names(morpher__default_backend_specs()),
+        EPW_MORPH_BACKEND_DEFAULTS
+    )
+    registered <- epw_morph_backends()
+    expect_true(all(EPW_MORPH_BACKEND_DEFAULTS %in% registered))
+    testthat::local_mocked_bindings(
+        morpher__default_backend_specs = function() {
+            stop("Default backend specifications were rebuilt.")
+        },
+        .package = "epwshiftr"
+    )
+
+    expect_silent(epw_morph_backends())
+    expect_silent(epw_morph_backend("original_morphing"))
+})

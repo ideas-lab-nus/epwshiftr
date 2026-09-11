@@ -6,6 +6,21 @@ NULL
 EPW_MORPH_BACKEND_REGISTRY <- new.env(parent = emptyenv())
 EPW_MORPH_BACKEND_WARNINGS <- new.env(parent = emptyenv())
 
+# List the immutable package-provided backend names without constructing their
+# R6 objects, pipelines, or component specifications merely to test presence.
+EPW_MORPH_BACKEND_DEFAULTS <- c(
+    "original_morphing",
+    "original_morphing_absolute",
+    "daily_temperature",
+    "daily_temperature_btws",
+    "bws_btws_monthly",
+    "ek_daily_temperature",
+    "quantile_mapping_morphing",
+    "sobie_curry_daily",
+    "hourly_kernel_qdm",
+    unname(DAILY_ADJUSTMENT_BACKENDS)
+)
+
 morpher__split_rule_variables <- function(x) {
     if (is.list(x) && length(x) == 1L) {
         x <- x[[1L]]
@@ -434,11 +449,20 @@ morpher__warn_backend <- function(name) {
 }
 
 morpher__register_default_backends <- function() {
+    registered <- ls(
+        envir = EPW_MORPH_BACKEND_REGISTRY,
+        all.names = FALSE
+    )
+    if (all(EPW_MORPH_BACKEND_DEFAULTS %in% registered)) {
+        return(invisible(NULL))
+    }
+
+    # Construct the complete defaults only for a genuine missing-backend case.
+    # Existing entries, including explicit user replacements, remain untouched.
     specs <- morpher__default_backend_specs()
-    for (name in names(specs)) {
-        if (!exists(name, envir = EPW_MORPH_BACKEND_REGISTRY, inherits = FALSE)) {
-            assign(name, specs[[name]], envir = EPW_MORPH_BACKEND_REGISTRY)
-        }
+    missing <- setdiff(EPW_MORPH_BACKEND_DEFAULTS, registered)
+    for (name in missing) {
+        assign(name, specs[[name]], envir = EPW_MORPH_BACKEND_REGISTRY)
     }
     invisible(NULL)
 }

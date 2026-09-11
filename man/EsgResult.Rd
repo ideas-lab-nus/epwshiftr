@@ -229,11 +229,13 @@ A named character vector of query URLs.
 \if{html}{\out{<a id="method-EsgResult-reachable"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResult-reachable}{}}}
 \subsection{Method \code{reachable()}}{
-Probe whether result records are reachable through a service URL.
+Check whether result records are reachable through a service URL.
 
-\verb{$reachable()} performs a lightweight probe of the selected service
+\verb{$reachable()} performs a lightweight check of the selected service
 URL for each record already held in the result. It returns diagnostic
-rows and does not modify result context or saved-result metadata.
+rows and does not modify result context or saved-result metadata. At
+URL level, OPeNDAP must return a valid DDS description; HTTPServer
+uses HEAD with a minimal Range fallback.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{EsgResult$reachable(
   service = "OPENDAP",
@@ -245,10 +247,10 @@ rows and does not modify result context or saved-result metadata.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{service}}{ESGF URL service to probe. Default: \code{"OPENDAP"}.}
+\item{\code{service}}{ESGF URL service to check. Default: \code{"OPENDAP"}.}
 
-\item{\code{level}}{Probe level. \code{"data_node"} probes the root URL of each
-data node; \code{"url"} probes the actual service URL for each
+\item{\code{level}}{Check level. \code{"data_node"} checks the root URL of each
+data node; \code{"url"} checks the actual service URL for each
 record. Default: \code{"data_node"}.}
 
 \item{\code{probe}}{Optional named list of probe settings. Supported fields

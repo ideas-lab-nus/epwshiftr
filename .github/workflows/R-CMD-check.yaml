@@ -55,7 +55,6 @@ jobs:
         with:
           extra-packages: |
             any::rcmdcheck
-            url::https://cran.r-project.org/src/contrib/Archive/PCICt/PCICt_0.5-4.4.tar.gz
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2

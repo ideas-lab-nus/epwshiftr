@@ -457,9 +457,9 @@ epwphys__bound_field <- function(value, field, upper = NULL) {
     if (is.null(spec)) {
         cli::cli_abort("EPW field {.val {field}} has no physical specification.")
     }
-    lower <- spec[[1L]]
+    lower <- spec$minimum
     if (is.null(upper)) {
-        upper <- spec[[2L]]
+        upper <- spec$maximum
     }
     value <- as.numeric(value)
     bounded <- pmin(upper, pmax(lower, value))

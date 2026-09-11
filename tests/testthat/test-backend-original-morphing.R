@@ -418,7 +418,10 @@ test_that("legacy profile preserves the historical 35-field EPW golden output", 
     expect_equal(ncol(result$data) - 1L, 35L)
 
     output <- tempfile(fileext = ".epw")
-    result$epw$set(result$data)$save(output, overwrite = TRUE)
+    result$epw$set(result$data)$fill_abnormal()$save(
+        output,
+        overwrite = TRUE
+    )
     expect_identical(
         readLines(output, n = 8L, warn = FALSE),
         readLines(input, n = 8L, warn = FALSE)
@@ -1151,6 +1154,49 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
         "keeping the month dry"
     )
     expect_equal(sum(relaxed_dry$liquid_precip_depth), 0)
+
+    missing_precip_epw <- data.table::copy(precip_epw)
+    missing_precip_epw[, `:=`(
+        liquid_precip_depth = 999,
+        liquid_precip_rate = 99
+    )]
+    expect_error(
+        original_morphing__precip_from_monthly(
+            missing_precip_epw,
+            precip_target,
+            strict = TRUE
+        ),
+        "missing for every hour"
+    )
+    relaxed_missing <- NULL
+    expect_warning(
+        relaxed_missing <- original_morphing__precip_from_monthly(
+            missing_precip_epw,
+            precip_target,
+            strict = FALSE
+        ),
+        "preserving missing precipitation"
+    )
+    expect_true(all(is.na(relaxed_missing$liquid_precip_depth)))
+    expect_true(all(is.na(relaxed_missing$liquid_precip_rate)))
+
+    partial_precip_epw <- data.table::copy(precip_epw)
+    partial_precip_epw[2L, `:=`(
+        liquid_precip_depth = 999,
+        liquid_precip_rate = 99
+    )]
+    relaxed_partial <- NULL
+    expect_warning(
+        relaxed_partial <- original_morphing__precip_from_monthly(
+            partial_precip_epw,
+            precip_target,
+            strict = FALSE,
+            change_factor = TRUE
+        ),
+        "contains missing hours"
+    )
+    expect_equal(relaxed_partial$liquid_precip_depth, c(2, NA_real_))
+    expect_equal(relaxed_partial$liquid_precip_rate, c(1, NA_real_))
 })
 
 test_that("Original morphing combined temperature uses average daily EPW range", {

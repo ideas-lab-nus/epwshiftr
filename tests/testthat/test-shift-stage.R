@@ -339,6 +339,9 @@ test_that("Shift configuration printers use compact semantic receipts", {
     withr::local_options(cli.num_colors = 1L)
     climate <- shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585"))
     control <- shift_control()
+    expect_false(control@refresh)
+    expect_true(shift_control(refresh = TRUE)@refresh)
+    expect_error(shift_control(refresh = NA), "May not be NA")
     ui <- shift_ui()
     reference <- historical_reference(1995:2014)
     transform <- monthly_transform("epwshiftr")
@@ -386,6 +389,41 @@ test_that("Shift configuration printers use compact semantic receipts", {
     expect_snapshot(shift_test_print_objects(
         list(climate, control, ui, reference, transform, site),
         width = 100L, n = 3L, verbose = TRUE))
+})
+
+test_that("shift_cmip6 preserves the established positional member argument", {
+    climate <- shift_cmip6(
+        "BCC-CSM2-MR",
+        "ssp585",
+        "r1i1p1f1"
+    )
+
+    expect_identical(climate@model, "BCC-CSM2-MR")
+    expect_identical(climate@member, "r1i1p1f1")
+    expect_null(climate@n_models)
+})
+
+test_that("shift_cmip6 model values express explicit and automatic selection", {
+    default <- shift_cmip6(scenarios = "ssp585")
+    bounded <- shift_cmip6(model = 2L, scenarios = "ssp585")
+    all_models <- shift_cmip6(model = NULL, scenarios = "ssp585")
+    explicit <- shift_cmip6(
+        model = c("Model-A", "Model-B"),
+        scenarios = "ssp585"
+    )
+
+    expect_null(default@model)
+    expect_identical(default@n_models, 3L)
+    expect_null(bounded@model)
+    expect_identical(bounded@n_models, 2L)
+    expect_null(all_models@model)
+    expect_null(all_models@n_models)
+    expect_identical(explicit@model, c("Model-A", "Model-B"))
+    expect_null(explicit@n_models)
+    expect_identical(formals(shift_cmip6)$model, 3L)
+    expect_false("n_models" %in% names(formals(shift_cmip6)))
+    expect_error(shift_cmip6(model = 0L, scenarios = "ssp585"))
+    expect_error(shift_cmip6(model = 1.5, scenarios = "ssp585"))
 })
 
 test_that("Shift scientific labels preserve table policy and partitions", {
@@ -437,6 +475,16 @@ test_that("Shift scientific labels preserve table policy and partitions", {
         shift__climate_from_spec(hourly_decoded)@frequency,
         c(tas = "3hrPt", rsds = "3hr")
     )
+
+    bounded <- shift_cmip6(model = 2L, scenarios = "ssp585")
+    bounded_spec <- shift__climate_spec_value(bounded)
+    expect_identical(
+        shift__climate_from_spec(bounded_spec)@n_models,
+        2L
+    )
+    all_models <- shift_cmip6(model = NULL, scenarios = "ssp585")
+    all_spec <- shift__climate_spec_value(all_models)
+    expect_null(shift__climate_from_spec(all_spec)@n_models)
 
     request <- shift_cmip6_scenario(
         source = "BCC-CSM2-MR",
@@ -627,6 +675,77 @@ test_that("workflow File collection fills omitted ESGF times from DRS names", {
         "2055")
     expect_equal(format(catalog$datetime_end[[1L]], "%Y", tz = "UTC"),
         "2065")
+})
+
+test_that("workflow resolver resolves both File service paths", {
+    skip_if_not_installed("duckdb")
+
+    store_path <- tempfile("shift-service-store-")
+    store <- EsgStore$new(store_path)
+    docs <- shift_test_file_docs(
+        "tas_day_Model_ssp585_r1i1p1f1_gn_20600101-20601231.nc"
+    )
+    query_id <- store$add_files(shift_test_file_result(docs))
+    store$close()
+    files <- shift_stage_new(
+        ShiftFiles,
+        "files",
+        store_path = store_path,
+        ids = list(query_id = query_id),
+        meta = list(
+            request = shift_request(),
+            dataset_count = 1L,
+            file_count = 1L,
+            fields = SHIFT_WORKFLOW_FILE_FIELDS
+        )
+    )
+    resolver_calls <- 0L
+    resolver_check <- NULL
+    withr::local_options(list(
+        epwshiftr.shift.file_service_resolution = function(
+            value,
+            index_node = NULL,
+            check = NULL
+        ) {
+            resolver_calls <<- resolver_calls + 1L
+            resolver_check <<- check
+            list(
+                result = value,
+                diagnostics = data.table::data.table(
+                    service = c("OPENDAP", "HTTPServer"),
+                    selected = TRUE
+                )
+            )
+        }
+    ))
+
+    resolved <- shift__resolve_file_services(files, "future")
+    resolved_store <- shift_store(resolved)
+    on.exit(resolved_store$close(), add = TRUE)
+    catalog <- shift_file_catalog(
+        resolved_store,
+        resolved@ids$query_id
+    )
+
+    expect_identical(resolver_calls, 1L)
+    expect_identical(resolver_check$concurrency, 32L)
+    expect_identical(resolver_check$cache_seconds, 3600L)
+    expect_identical(resolver_check$cache_failures_seconds, 1800L)
+    expect_s7_class(resolved, ShiftFiles)
+    expect_equal(nrow(catalog), 1L)
+    expect_equal(
+        catalog$url_opendap,
+        sub("\\|.*$", "", docs$url[[1L]][[1L]])
+    )
+    expect_equal(
+        catalog$url_download,
+        sub("\\|.*$", "", docs$url[[1L]][[2L]])
+    )
+
+    shift__resolve_file_services(files, "future", refresh = TRUE)
+    expect_identical(resolver_calls, 2L)
+    expect_identical(resolver_check$cache_seconds, 0L)
+    expect_identical(resolver_check$cache_failures_seconds, 0L)
 })
 
 test_that("resolver coverage defensively repairs cached catalogs without times", {
@@ -1288,7 +1407,10 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_true(nrow(output_artifacts) >= 1L)
     expect_true(all(morph_artifacts$role %in% "derived"))
     expect_true(all(output_artifacts$role %in% "output"))
-    expect_named(morphed@meta$workflow, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
+    expect_named(morphed@meta$workflow, c(
+        "preflight", "climate", "baseline", "preview", "plan",
+        "diagnostics", "cases", "results", "outputs"
+    ))
     expect_null(morphed@meta$workflow$outputs)
     expect_true(nrow(shift_outputs(epws)) >= 1L)
     epw_run <- shift_run_get(epws)
@@ -1400,7 +1522,7 @@ test_that("standalone shift APIs carry run context without session arguments", {
     expect_true(all(c("store", "ui") %in% names(formals(shift_datasets))))
 })
 
-test_that("shift_future_epw() requires a transform and returns a task plan", {
+test_that("shift_future_epw() validates explicit transforms and returns a task plan", {
     transform <- monthly_transform("epwshiftr")
     climate <- shift_cmip6(
         model = "EC-Earth3", scenarios = "ssp585",
@@ -1913,6 +2035,168 @@ test_that("foreground interrupts persist one meaningful cancelled state", {
     expect_equal(terminal$message, "Interrupted by user.")
 })
 
+test_that("an identical complete workflow returns its original durable run", {
+    skip_if_not_installed("duckdb")
+
+    store_path <- tempfile("shift-idempotent-run-store-")
+    output_dir <- tempfile("shift-idempotent-run-output-")
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6(
+            "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr",
+            frequency = "mon", table = "Amon"
+        ),
+        periods = list(`2060s` = 2060L),
+        transform = monthly_transform("epwshiftr"),
+        dir = output_dir,
+        store = store_path,
+        dry_run = TRUE
+    )
+    run_id <- shift__run_register(plan)
+    store <- shift_store(plan)
+    private <- morpher__private_store(store)
+    cases <- private$read_table("shift_run_case")
+    cases <- cases[cases[["run_id"]] == run_id]
+
+    canonical <- file.path(store_path, "outputs", "future.epw")
+    exported <- file.path(output_dir, "future.epw")
+    dir.create(dirname(canonical), recursive = TRUE, showWarnings = FALSE)
+    dir.create(dirname(exported), recursive = TRUE, showWarnings = FALSE)
+    expect_true(file.create(canonical))
+    expect_true(file.create(exported))
+    output_id <- "output-idempotent"
+    morph_id <- "morph-idempotent"
+    cases[, `:=`(
+        status = "completed",
+        output_id = "output-idempotent",
+        export_path = exported,
+        missing_reason = NA_character_
+    )]
+    shift__run_cases_write(store, run_id, cases)
+    private$append_new_rows(
+        "epw_output",
+        data.frame(
+            output_id = output_id,
+            morph_id = morph_id,
+            case_id = cases$case_id[[1L]],
+            result_id = "result-idempotent",
+            artifact_id = NA_character_,
+            path = store_rel_path(canonical, root = store_path),
+            source_id = cases$source_id[[1L]],
+            experiment_id = cases$experiment_id[[1L]],
+            variant_label = cases$variant_label[[1L]],
+            period = cases$period[[1L]],
+            output_type = "representative_year",
+            sequence_id = NA_character_,
+            weather_year = NA_integer_,
+            calendar = "365_day",
+            stochastic_seed = NA_integer_,
+            member_count = 1L,
+            provenance_json = "[]",
+            created_at = store__now(),
+            stringsAsFactors = FALSE
+        ),
+        "output_id"
+    )
+    shift__run_update(
+        store,
+        run_id,
+        status = "completed",
+        current_stage = "completed",
+        morph_id = morph_id,
+        completed_at = store__now()
+    )
+    stored_run <- private$read_table("shift_run")
+    stored_run <- stored_run[stored_run[["run_id"]] == run_id]
+    stored_cases <- private$read_table("shift_run_case")
+    stored_cases <- stored_cases[stored_cases[["run_id"]] == run_id]
+    stored_outputs <- private$read_table("epw_output")
+    expect_identical(stored_run$status[[1L]], "completed")
+    expect_true(all(stored_cases$status == "completed"))
+    expect_true(all(file.exists(stored_cases$export_path)))
+    expect_identical(stored_run$morph_id[[1L]], morph_id)
+    expect_true(output_id %in% stored_outputs$output_id)
+    expect_true(file.exists(store_abs_path(
+        stored_outputs$path[[1L]], root = store_path
+    )))
+    expect_true(shift__run_artifacts_complete(store, run_id))
+    expected_hash <- store__hash(shift__spec_json(shift__plan_spec(plan)))
+    expect_identical(
+        stored_run[["spec_hash"]][[1L]],
+        expected_hash
+    )
+    store$close()
+    before <- file.info(c(canonical, exported))[, "mtime", drop = TRUE]
+    checksums <- unname(tools::md5sum(c(canonical, exported)))
+
+    existing <- shift__run_existing(plan)
+    expect_s7_class(existing, ShiftRun)
+    expect_identical(existing@ids$run_id, run_id)
+    reused <- shift_run(plan, ui = shift_ui("none"))
+
+    expect_s7_class(reused, ShiftRun)
+    expect_identical(reused@ids$run_id, run_id)
+    expect_identical(shift_status(reused, refresh = FALSE), "completed")
+    expect_identical(
+        file.info(c(canonical, exported))[, "mtime", drop = TRUE],
+        before
+    )
+    expect_identical(
+        unname(tools::md5sum(c(canonical, exported))),
+        checksums
+    )
+    reopened <- shift_store(plan)
+    on.exit(reopened$close(), add = TRUE)
+    runs <- morpher__private_store(reopened)$read_table("shift_run")
+    expect_equal(nrow(runs[runs[["spec_hash"]] ==
+        runs[runs[["run_id"]] == run_id][["spec_hash"]][[1L]]]), 1L)
+})
+
+test_that("an identical interrupted workflow resumes its original run ID", {
+    skip_if_not_installed("duckdb")
+
+    store_path <- tempfile("shift-idempotent-resume-store-")
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6(
+            "EC-Earth3", "ssp585", member = "r1i1p1f1", grid = "gr",
+            frequency = "mon", table = "Amon"
+        ),
+        periods = list(`2060s` = 2060L),
+        transform = monthly_transform("epwshiftr"),
+        dir = tempfile("shift-idempotent-resume-output-"),
+        store = store_path,
+        dry_run = TRUE
+    )
+    run_id <- shift__run_register(plan)
+    store <- shift_store(plan)
+    shift__run_update(
+        store,
+        run_id,
+        status = "failed",
+        current_stage = "resolve",
+        last_error = "interrupted fixture"
+    )
+    store$close()
+
+    resumed_ids <- character()
+    testthat::local_mocked_bindings(
+        shift_resume = function(x, background, ui) {
+            resumed_ids <<- c(resumed_ids, x@ids$run_id)
+            x
+        },
+        .package = "epwshiftr"
+    )
+    resumed <- shift_run(plan, ui = shift_ui("none"))
+
+    expect_identical(resumed@ids$run_id, run_id)
+    expect_identical(resumed_ids, run_id)
+    reopened <- shift_store(plan)
+    on.exit(reopened$close(), add = TRUE)
+    runs <- morpher__private_store(reopened)$read_table("shift_run")
+    expect_equal(nrow(runs), 1L)
+})
+
 test_that("background live sidecars carry transient reporter state without events", {
     skip_if_not_installed("duckdb")
 
@@ -1993,6 +2277,69 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
     nodes <- shift__ui_event_nodes(run@meta$events)
     expect_equal(nodes$node, "DKRZ")
     expect_equal(nodes$result, "coverage: missing hurs")
+})
+
+test_that("successful-run scientific diagnostics survive refresh", {
+    skip_if_not_installed("duckdb")
+
+    store_path <- tempfile("shift-scientific-diagnostic-store-")
+    plan <- shift_future_epw(
+        epw = get_cache_epw(),
+        climate = shift_cmip6("Model-A", "ssp585"),
+        periods = list(`2050` = 2050L),
+        transform = monthly_transform("epwshiftr"),
+        dir = tempfile("shift-scientific-diagnostic-output-"),
+        store = store_path,
+        dry_run = TRUE
+    )
+    run_id <- shift__run_register(plan)
+    store <- shift_store(plan)
+    on.exit(store$close(), add = TRUE)
+    diagnostic <- shift_diagnostic(
+        "plan",
+        "warning",
+        "dry_baseline_precip",
+        "Baseline month contains no wet hours.",
+        variable_id = "pr",
+        epw_field = "liquid_precip_depth",
+        period = "2050",
+        month = 6L,
+        action = "Keep the dry baseline month."
+    )
+
+    shift__run_diagnostics_record(store, run_id, diagnostic)
+    shift__run_diagnostics_record(store, run_id, diagnostic)
+    refreshed <- shift__run_handle(store, run_id)
+    actual <- shift_diagnostics(refreshed, refresh = FALSE)
+
+    expect_equal(nrow(actual), 1L)
+    expect_identical(actual$code, "dry_baseline_precip")
+    expect_identical(actual$severity, "warning")
+    expect_identical(actual$variable_id, "pr")
+    expect_equal(
+        nrow(refreshed@meta$events[status == "diagnostic"]),
+        1L
+    )
+})
+
+test_that("file year selection preserves an exact disjoint year union", {
+    rows <- data.table::data.table(
+        datetime_start = c(
+            "2041-01-01T00:00:00Z",
+            "2061-01-01T00:00:00Z",
+            NA_character_
+        ),
+        datetime_end = c(
+            "2060-12-31T23:59:59Z",
+            "2070-12-31T23:59:59Z",
+            NA_character_
+        )
+    )
+
+    expect_identical(
+        shift__file_year_match(rows, c(2041:2060, 2071:2090)),
+        c(TRUE, FALSE, TRUE)
+    )
 })
 
 test_that("background runs register live jobs before launching workers", {
@@ -2746,6 +3093,30 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         "does not use.*observed_reference"
     )
     expect_true(sum(calls$values %in% "File") >= 2L)
+})
+
+test_that("morph case failures update only their matching public case", {
+    cases <- data.table::data.table(
+        source_id = "IPSL-CM6A-LR",
+        experiment_id = c("ssp126", "ssp585"),
+        variant_label = "r1i1p1f1",
+        grid_label = "gr",
+        period = "2050",
+        status = "ready",
+        missing_reason = NA_character_
+    )
+    morph_cases <- data.table::copy(cases)[, `:=`(
+        status = c("failed", "completed"),
+        last_error = c("bounded target failed", NA_character_)
+    )]
+
+    updated <- shift__apply_morph_case_status(cases, morph_cases)
+
+    expect_identical(updated$status, c("failed", "ready"))
+    expect_identical(
+        updated$missing_reason,
+        c("bounded target failed", NA_character_)
+    )
 })
 
 test_that("shift_extract() fallback policy is available from collected files", {

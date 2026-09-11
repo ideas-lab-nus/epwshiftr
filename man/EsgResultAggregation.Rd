@@ -178,14 +178,15 @@ A data.table download plan.
 \if{html}{\out{<a id="method-EsgResultAggregation-repair_urls"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultAggregation-repair_urls}{}}}
 \subsection{Method \code{repair_urls()}}{
-Replace unreachable service URLs with reachable replica records.
+Replace unreachable service URLs from compatible replicas.
 
-\verb{$repair_urls()} probes the current records for the selected service,
-queries ESGF replicas by \code{master_id} for records whose URL is missing or
-unreachable, probes candidate replica URLs, and returns a new result with
-repaired records in the original row order. The original result is not
-modified. Aggregation results are not downloadable as files; repaired
-aggregation URLs are intended for service access such as OPeNDAP.
+\verb{$repair_urls()} checks the current records for the selected service,
+queries compatible ESGF replicas for records whose URL is missing or
+unreachable, checks candidate replica URLs, and returns a new result with
+only that service URL repaired in the original row order. The logical
+record and its other service URLs are retained. The original result is
+not modified. Aggregation results are not downloadable as files;
+repaired aggregation URLs are intended for service access such as OPeNDAP.
 The returned result records the original query URL plus the replica
 lookup query URL in \verb{$query_url("all")}.
 \subsection{Usage}{

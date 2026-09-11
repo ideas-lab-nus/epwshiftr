@@ -1,4 +1,4 @@
-#' @include weather-recipe.R epw-morph-recipe.R
+#' @include weather-recipe.R epw-morph-recipe.R source-reanalysis.R
 NULL
 
 # Public transform scales describe where the climate signal is calculated,
@@ -1360,10 +1360,19 @@ transform__validate_execution_inputs <- function(
                 "Weather transformation {.val {transform@method}} does not use {.arg {name}}."
             )
         }
+        is_reanalysis <- S7::S7_inherits(value, ShiftReanalysisSpec)
         if (!S7::S7_inherits(value, ShiftReferenceSpec) &&
-            !S7::S7_inherits(value, ShiftClimate)) {
+            !S7::S7_inherits(value, ShiftClimate) && !is_reanalysis) {
             cli::cli_abort(
-                "{.arg {name}} must be a {.cls ShiftReferenceSpec} or a {.cls ShiftClimate} stage."
+                paste(
+                    "{.arg {name}} must be a {.cls ShiftReferenceSpec},",
+                    "a {.cls ShiftReanalysisSpec}, or a {.cls ShiftClimate} stage."
+                )
+            )
+        }
+        if (is_reanalysis && !identical(role, "observed_reference")) {
+            cli::cli_abort(
+                "A reanalysis source can only satisfy {.arg observed_reference}."
             )
         }
         if (S7::S7_inherits(value, ShiftReferenceSpec) &&

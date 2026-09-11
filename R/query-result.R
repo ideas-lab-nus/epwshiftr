@@ -192,15 +192,17 @@ EsgResult <- R6::R6Class(
 
         # reachable {{{
         #' @description
-        #' Probe whether result records are reachable through a service URL.
+        #' Check whether result records are reachable through a service URL.
         #'
-        #' `$reachable()` performs a lightweight probe of the selected service
+        #' `$reachable()` performs a lightweight check of the selected service
         #' URL for each record already held in the result. It returns diagnostic
-        #' rows and does not modify result context or saved-result metadata.
+        #' rows and does not modify result context or saved-result metadata. At
+        #' URL level, OPeNDAP must return a valid DDS description; HTTPServer
+        #' uses HEAD with a minimal Range fallback.
         #'
-        #' @param service ESGF URL service to probe. Default: `"OPENDAP"`.
-        #' @param level Probe level. `"data_node"` probes the root URL of each
-        #'        data node; `"url"` probes the actual service URL for each
+        #' @param service ESGF URL service to check. Default: `"OPENDAP"`.
+        #' @param level Check level. `"data_node"` checks the root URL of each
+        #'        data node; `"url"` checks the actual service URL for each
         #'        record. Default: `"data_node"`.
         #' @param probe Optional named list of probe settings. Supported fields
         #'        are `timeout`, `concurrency`, `network_policy`,
@@ -222,6 +224,7 @@ EsgResult <- R6::R6Class(
             probes <- query_result__reach_targets(
                 urls,
                 data_node = data_node,
+                service = service,
                 level = level,
                 timeout = probe$timeout,
                 network_policy = probe$network_policy,
@@ -1401,30 +1404,10 @@ query_result__col <- function(dt, name, default = NA_character_) {
 }
 
 query_result__file_key <- function(dt) {
-    master_id <- query_result__col(dt, "master_id")
-    tracking_id <- query_result__col(dt, "tracking_id")
-    checksum <- query_result__col(dt, "checksum")
-    size <- as.character(query_result__col(dt, "size"))
-    filename <- query_result__col(dt, "filename")
-    id <- query_result__col(dt, "id")
-
-    out <- rep(NA_character_, nrow(dt))
-    use <- !is.na(master_id) & nzchar(master_id)
-    out[use] <- paste0("master:", master_id[use])
-    use <- is.na(out) & !is.na(tracking_id) & nzchar(tracking_id)
-    out[use] <- paste0("tracking:", tracking_id[use])
-    use <- is.na(out) & !is.na(checksum) & nzchar(checksum) & !is.na(filename) & nzchar(filename)
-    out[use] <- vapply(
-        which(use),
-        function(i) {
-            paste("checksum", checksum[[i]], size[[i]], filename[[i]], sep = ":")
-        },
-        character(1L)
-    )
-    use <- is.na(out) & !is.na(id) & nzchar(id)
-    out[use] <- paste0("id:", id[use])
-    out[is.na(out)] <- paste0("row:", which(is.na(out)))
-    out
+    # Use the same logical identity as the persistent store so replica
+    # candidates cannot split into independent download tasks before they are
+    # normalized in the catalog.
+    store__logical_file_id(data.table::as.data.table(dt))
 }
 
 query_result__url_scheme <- function(url) {
@@ -1622,8 +1605,12 @@ query_result__run_url_checks <- function(
     serial_check,
     done_result,
     clock = function() proc.time()[["elapsed"]],
-    failonerror = NULL
+    failonerror = NULL,
+    nobody = TRUE,
+    request_url = function(url) url,
+    retry_failed = TRUE
 ) {
+    checkmate::assert_flag(retry_failed)
     # Keep serial execution authoritative for one target and as the fallback path.
     serial <- function(targets) {
         stats::setNames(lapply(targets, serial_check), targets)
@@ -1638,6 +1625,7 @@ query_result__run_url_checks <- function(
     out <- vector("list", length(urls))
     names(out) <- urls
     failed <- rep(FALSE, length(urls))
+    failure_messages <- rep(NA_character_, length(urls))
     ok <- tryCatch(
         {
             if (is.null(network_policy)) {
@@ -1664,12 +1652,15 @@ query_result__run_url_checks <- function(
                         ssl_verifypeer = ssl_verifypeer,
                         proxy = network_policy$proxy,
                         useragent = network_policy$useragent,
-                        nobody = TRUE
+                        nobody = nobody
                     )
                     if (!is.null(failonerror)) {
                         curl::handle_setopt(handle, failonerror = isTRUE(failonerror))
                     }
-                    curl::handle_setopt(handle, url = urls[[j]])
+                    curl::handle_setopt(
+                        handle,
+                        url = request_url(urls[[j]])
+                    )
                     curl::multi_add(
                         handle,
                         done = function(response) {
@@ -1681,6 +1672,14 @@ query_result__run_url_checks <- function(
                         },
                         fail = function(error) {
                             failed[[j]] <<- TRUE
+                            failure_messages[[j]] <<- if (inherits(
+                                error,
+                                "condition"
+                            )) {
+                                conditionMessage(error)
+                            } else {
+                                as.character(error)[[1L]]
+                            }
                         },
                         pool = pool
                     )
@@ -1700,10 +1699,31 @@ query_result__run_url_checks <- function(
         return(serial(urls))
     }
 
-    # Retry individual failed or unreported requests through method-specific logic.
-    missing <- vapply(out, is.null, logical(1L)) | failed
-    if (any(missing)) {
-        out[missing] <- lapply(urls[missing], serial_check)
+    # HTTP checks may need a serial HEAD-to-Range recovery. A failed DDS GET is
+    # already conclusive and should not repeat the same timeout one URL at a
+    # time after the concurrent request has finished.
+    unreported <- vapply(out, is.null, logical(1L)) & !failed
+    if (any(unreported)) {
+        # A pool-level timeout can leave a handle without either callback.
+        # Retry only those indeterminate handles so the result is classified.
+        out[unreported] <- lapply(urls[unreported], serial_check)
+    }
+    if (any(failed)) {
+        if (isTRUE(retry_failed)) {
+            out[failed] <- lapply(urls[failed], serial_check)
+        } else {
+            out[failed] <- lapply(which(failed), function(index) {
+                message <- failure_messages[[index]]
+                if (is.na(message) || !nzchar(message)) {
+                    message <- "Concurrent URL check failed without a response."
+                }
+                list(
+                    reachable = FALSE,
+                    latency_ms = NA_real_,
+                    error = message
+                )
+            })
+        }
     }
 
     out
@@ -1902,12 +1922,138 @@ query_result__reach_url <- function(url, timeout = 5, network_policy = NULL) {
         error <- head$error
     }
     if (is.null(error) || !length(error) || is.na(error[[1L]]) || !nzchar(error[[1L]])) {
-        error <- "URL probe failed."
+        error <- "URL check failed."
     }
     list(
         reachable = FALSE,
         latency_ms = NA_real_,
         error = error
+    )
+}
+
+# Convert an ESGF OPeNDAP data URL to its DAP2 Dataset Descriptor Structure
+# endpoint without carrying a selection expression or fragment into the check.
+query_result__opendap_dds_url <- function(url) {
+    url <- sub("[?#].*$", "", as.character(url))
+    url <- sub("\\.html$", "", url, ignore.case = TRUE)
+    ifelse(grepl("\\.dds$", url, ignore.case = TRUE), url, paste0(url, ".dds"))
+}
+
+# Confirm that a successful HTTP response is a DAP Dataset Descriptor Structure
+# rather than an HTML error page returned with status 200.
+query_result__valid_dds <- function(content) {
+    if (is.null(content) || !length(content)) {
+        return(FALSE)
+    }
+    text <- tryCatch(rawToChar(content), error = function(error) "")
+    isTRUE(grepl("^[[:space:]]*Dataset[[:space:]]*\\{", text)) &&
+        isTRUE(grepl("\\}[[:space:]]*[^;[:space:]]+[[:space:]]*;[[:space:]]*$", text))
+}
+
+# Check one exact OPeNDAP file endpoint by requesting its DDS metadata. A data
+# node homepage or an arbitrary 200 response cannot satisfy this contract.
+query_result__check_opendap_url <- function(
+    url,
+    timeout = 5,
+    network_policy = NULL
+) {
+    query_result__reach_check(timeout, network_policy)
+    if (is.na(url) || !nzchar(url)) {
+        return(query_result__reach_missing("Missing URL."))
+    }
+    if (!query_result__url_http(url)) {
+        return(query_result__reach_missing("Unsupported URL scheme."))
+    }
+    if (is.null(network_policy)) {
+        network_policy <- list()
+    }
+    connect_timeout <- network_policy$connect_timeout
+    if (is.null(connect_timeout)) {
+        connect_timeout <- min(timeout, 3)
+    }
+    ssl_verifypeer <- network_policy$ssl_verifypeer
+    if (is.null(ssl_verifypeer)) {
+        ssl_verifypeer <- TRUE
+    }
+    started_at <- proc.time()[["elapsed"]]
+    tryCatch(
+        {
+            handle <- downloader__curl_handle(
+                timeout = timeout,
+                connect_timeout = connect_timeout,
+                ssl_verifypeer = ssl_verifypeer,
+                proxy = network_policy$proxy,
+                useragent = network_policy$useragent,
+                nobody = FALSE
+            )
+            curl::handle_setopt(handle, failonerror = TRUE)
+            response <- curl::curl_fetch_memory(
+                query_result__opendap_dds_url(url),
+                handle = handle
+            )
+            if (!query_result__valid_dds(response$content)) {
+                return(list(
+                    reachable = FALSE,
+                    latency_ms = NA_real_,
+                    error = "OPeNDAP endpoint did not return a valid DDS response."
+                ))
+            }
+            list(
+                reachable = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - started_at) * 1000,
+                error = NA_character_
+            )
+        },
+        error = function(error) {
+            list(
+                reachable = FALSE,
+                latency_ms = NA_real_,
+                error = conditionMessage(error)
+            )
+        }
+    )
+}
+
+# Check unique OPeNDAP URLs concurrently while retaining the original base URL
+# as the result key used by catalog records and cache entries.
+query_result__check_opendap_urls <- function(
+    urls,
+    timeout = 5,
+    network_policy = NULL,
+    concurrency = 1L
+) {
+    urls <- unique(urls[!is.na(urls) & nzchar(urls)])
+    urls <- urls[query_result__url_http(urls)]
+    query_result__run_url_checks(
+        urls = urls,
+        timeout = timeout,
+        network_policy = network_policy,
+        concurrency = concurrency,
+        serial_check = function(url) {
+            query_result__check_opendap_url(
+                url,
+                timeout = timeout,
+                network_policy = network_policy
+            )
+        },
+        done_result = function(response, url, started_at) {
+            if (!query_result__valid_dds(response$content)) {
+                return(list(
+                    reachable = FALSE,
+                    latency_ms = NA_real_,
+                    error = "OPeNDAP endpoint did not return a valid DDS response."
+                ))
+            }
+            list(
+                reachable = TRUE,
+                latency_ms = (proc.time()[["elapsed"]] - started_at) * 1000,
+                error = NA_character_
+            )
+        },
+        failonerror = TRUE,
+        nobody = FALSE,
+        request_url = query_result__opendap_dds_url,
+        retry_failed = FALSE
     )
 }
 
@@ -1993,6 +2139,110 @@ query_result__reach_urls <- function(urls, timeout = 5, network_policy = NULL, p
         }
     }
 
+    out[]
+}
+
+# Dispatch exact URL checks by ESGF service and cache them independently so a
+# generic HTTP response can never be reused as evidence of DAP availability.
+query_result__reach_service_urls <- function(
+    urls,
+    service,
+    timeout = 5,
+    network_policy = NULL,
+    concurrency = 1L,
+    cache_seconds = 3600L,
+    cache_failures_seconds = 0L
+) {
+    checkmate::assert_character(urls, any.missing = TRUE)
+    checkmate::assert_string(service)
+    query_result__reach_check(timeout, network_policy, concurrency)
+    out <- data.table::data.table(
+        url = urls,
+        reachable = rep(NA, length(urls)),
+        latency_ms = rep(NA_real_, length(urls)),
+        error = rep(NA_character_, length(urls)),
+        probe_cached = rep(FALSE, length(urls))
+    )
+    if (!length(urls)) {
+        return(out)
+    }
+
+    unique_urls <- unique(urls)
+    pending <- character()
+    cache_level <- paste0("url:", toupper(service))
+    for (url in unique_urls) {
+        target_url <- url
+        if (is.na(url) || !nzchar(url) || !query_result__url_http(url)) {
+            result <- query_result__reach_url(
+                url,
+                timeout = timeout,
+                network_policy = network_policy
+            )
+            idx <- if (is.na(url)) is.na(out$url) else out$url == target_url
+            out[idx, `:=`(
+                reachable = as.logical(result$reachable),
+                latency_ms = as.numeric(result$latency_ms),
+                error = as.character(result$error)
+            )]
+            next
+        }
+        cached <- query_result__reach_cache_get(
+            cache_level,
+            url,
+            timeout = timeout,
+            network_policy = network_policy,
+            cache_seconds = cache_seconds,
+            cache_failures_seconds = cache_failures_seconds
+        )
+        if (is.null(cached)) {
+            pending <- c(pending, url)
+            next
+        }
+        out[!is.na(url) & url == target_url, `:=`(
+            reachable = as.logical(cached$reachable),
+            latency_ms = as.numeric(cached$latency_ms),
+            error = as.character(cached$error),
+            probe_cached = TRUE
+        )]
+    }
+
+    if (length(pending)) {
+        checked <- if (identical(toupper(service), "OPENDAP")) {
+            query_result__check_opendap_urls(
+                pending,
+                timeout = timeout,
+                network_policy = network_policy,
+                concurrency = concurrency
+            )
+        } else {
+            query_result__reach_http_urls(
+                pending,
+                timeout = timeout,
+                network_policy = network_policy,
+                probe_concurrency = concurrency
+            )
+        }
+        for (url in names(checked)) {
+            target_url <- url
+            result <- checked[[url]]
+            result$probe_url <- url
+            query_result__reach_cache_set(
+                cache_level,
+                url,
+                timeout = timeout,
+                network_policy = network_policy,
+                result = result,
+                cache_seconds = cache_seconds,
+                cache_failures_seconds = cache_failures_seconds
+            )
+            out[!is.na(url) & url == target_url, `:=`(
+                reachable = as.logical(result$reachable),
+                latency_ms = as.numeric(result$latency_ms),
+                error = as.character(result$error),
+                probe_cached = FALSE
+            )]
+        }
+    }
     out[]
 }
 
@@ -2193,6 +2443,7 @@ query_result__reach_url_table <- function(probes, urls) {
 query_result__reach_targets <- function(
     urls,
     data_node = NULL,
+    service = "OPENDAP",
     level = c("data_node", "url"),
     timeout = 5,
     network_policy = NULL,
@@ -2210,13 +2461,16 @@ query_result__reach_targets <- function(
     checkmate::assert_character(data_node, any.missing = TRUE, len = n)
 
     if (identical(level, "url")) {
-        probes <- query_result__reach_urls(
+        checks <- query_result__reach_service_urls(
             urls,
+            service = service,
             timeout = timeout,
             network_policy = network_policy,
-            probe_concurrency = probe_concurrency
+            concurrency = probe_concurrency,
+            cache_seconds = cache_seconds,
+            cache_failures_seconds = cache_failures_seconds
         )
-        return(query_result__reach_url_table(probes, urls))
+        return(query_result__reach_url_table(checks, urls))
     }
 
     out <- data.table::data.table(
@@ -2789,6 +3043,15 @@ query_result__identity <- function(docs) {
     has_instance <- !is.na(instance_id) & nzchar(instance_id)
     has_master_version <- !has_instance & !is.na(master_id) & nzchar(master_id) & !is.na(version) & nzchar(version)
 
+    # Distributed File searches sometimes omit provider identity fields while
+    # retaining a standard DRS filename that is stable across replica rows.
+    logical_id <- tryCatch(
+        query_result__file_key(data.table::as.data.table(docs)),
+        error = function(error) rep(NA_character_, nrow(docs))
+    )
+    has_logical <- !has_instance & !has_master_version &
+        !is.na(logical_id) & startsWith(logical_id, "drs:")
+
     key <- rep(NA_character_, nrow(docs))
     key[has_instance] <- paste("instance_id", instance_id[has_instance], sep = "\r")
     key[has_master_version] <- paste(
@@ -2797,14 +3060,17 @@ query_result__identity <- function(docs) {
         version[has_master_version],
         sep = "\r"
     )
+    key[has_logical] <- paste("logical_file", logical_id[has_logical], sep = "\r")
 
     data.frame(
         key = key,
         instance_id = instance_id,
         master_id = master_id,
         version = version,
+        logical_id = logical_id,
         has_instance = has_instance,
         has_master_version = has_master_version,
+        has_logical = has_logical,
         check.names = FALSE,
         stringsAsFactors = FALSE
     )
@@ -2822,8 +3088,96 @@ query_result__identity_match <- function(target, candidates) {
                 candidates$version == target$version
         ))
     }
+    if (isTRUE(target$has_logical)) {
+        return(which(
+            candidates$has_logical &
+                candidates$logical_id == target$logical_id
+        ))
+    }
 
     integer()
+}
+
+# Reject replica rows whose available version, checksum, or size metadata
+# proves they are not the same file content as the selected catalog record.
+query_result__compatible_content <- function(target, candidates) {
+    if (!nrow(candidates)) {
+        return(logical())
+    }
+    compatible <- rep(TRUE, nrow(candidates))
+    target_version <- as.character(query_result__col(target, "version"))[[1L]]
+    candidate_version <- as.character(query_result__col(candidates, "version"))
+    compare_version <- !is.na(target_version) & nzchar(target_version) &
+        !is.na(candidate_version) & nzchar(candidate_version)
+    compatible[compare_version] <-
+        candidate_version[compare_version] == target_version
+
+    target_checksum <- tolower(as.character(
+        query_result__col(target, "checksum")
+    )[[1L]])
+    candidate_checksum <- tolower(as.character(
+        query_result__col(candidates, "checksum")
+    ))
+    compare_checksum <- !is.na(target_checksum) & nzchar(target_checksum) &
+        !is.na(candidate_checksum) & nzchar(candidate_checksum)
+    compatible[compare_checksum] <- compatible[compare_checksum] &
+        candidate_checksum[compare_checksum] == target_checksum
+
+    target_size <- suppressWarnings(as.numeric(
+        query_result__col(target, "size")
+    )[[1L]])
+    candidate_size <- suppressWarnings(as.numeric(
+        query_result__col(candidates, "size")
+    ))
+    compare_size <- is.finite(target_size) & is.finite(candidate_size)
+    compatible[compare_size] <- compatible[compare_size] &
+        candidate_size[compare_size] == target_size
+    compatible
+}
+
+# Assign File rows to logical-content groups without merging replicas whose
+# known version, checksum, or size disagree. Pairwise compatibility prevents a
+# metadata-sparse row from bridging two replicas that prove different content.
+query_result__compatible_file_groups <- function(docs) {
+    if (!nrow(docs)) {
+        return(integer())
+    }
+    logical_id <- tryCatch(
+        query_result__file_key(data.table::as.data.table(docs)),
+        error = function(error) paste0("row:", seq_len(nrow(docs)))
+    )
+    groups <- integer(nrow(docs))
+    group_count <- 0L
+    for (i in seq_len(nrow(docs))) {
+        assigned <- FALSE
+        for (group in seq_len(group_count)) {
+            members <- which(groups == group)
+            if (!length(members) ||
+                !all(logical_id[members] == logical_id[[i]])) {
+                next
+            }
+            forward <- query_result__compatible_content(
+                docs[i, , drop = FALSE],
+                docs[members, , drop = FALSE]
+            )
+            reverse <- vapply(members, function(member) {
+                query_result__compatible_content(
+                    docs[member, , drop = FALSE],
+                    docs[i, , drop = FALSE]
+                )[[1L]]
+            }, logical(1L))
+            if (all(forward) && all(reverse)) {
+                groups[[i]] <- group
+                assigned <- TRUE
+                break
+            }
+        }
+        if (!assigned) {
+            group_count <- group_count + 1L
+            groups[[i]] <- group_count
+        }
+    }
+    groups
 }
 
 query_result__identity_in <- function(candidates, targets) {
@@ -3083,6 +3437,10 @@ query_result__repair_urls <- function(result, service = c("OPENDAP", "HTTPServer
     repaired <- rep(FALSE, n)
     for (i in repair_targets) {
         rows <- setdiff(query_result__identity_match(identity[i, , drop = FALSE], identity), i)
+        rows <- rows[query_result__compatible_content(
+            docs[i, , drop = FALSE],
+            docs[rows, , drop = FALSE]
+        )]
         rows <- rows[reach$reachable[rows] %in% TRUE]
         if (!length(rows)) {
             next
@@ -3091,11 +3449,20 @@ query_result__repair_urls <- function(result, service = c("OPENDAP", "HTTPServer
         latency <- reach$latency_ms[rows]
         latency[is.na(latency)] <- Inf
         chosen <- rows[order(latency, rows)[[1L]]]
-        out[i, ] <- out[chosen, ]
+        # Repair only the requested service. The logical record and every
+        # already-valid endpoint remain anchored to the original selection.
+        out$url[i] <- list(query_result__set_service_url(
+            out$url[[i]],
+            service,
+            reach$url[[chosen]]
+        ))
         repaired[[i]] <- TRUE
     }
 
-    external_targets <- repair_targets[!repaired[repair_targets]]
+    can_collect <- identity$has_instance | identity$has_master_version
+    external_targets <- repair_targets[
+        !repaired[repair_targets] & can_collect[repair_targets]
+    ]
     context <- query_result__context(priv(result)$context)
     if (length(external_targets)) {
         candidates <- query_result__collect_identity(
@@ -3114,14 +3481,13 @@ query_result__repair_urls <- function(result, service = c("OPENDAP", "HTTPServer
                 probe = probe[names(probe) != "level"]
             )
             candidate_identity <- query_result__identity(candidate_docs)
-            fields <- unique(c(names(out), names(candidate_docs)))
-            out <- query_result__align_docs(out, fields, template = candidate_docs)
-            candidate_docs <- query_result__align_docs(candidate_docs, fields, template = out)
-            out <- data.table::as.data.table(out)
-            candidate_docs <- data.table::as.data.table(candidate_docs)
 
             for (i in external_targets) {
                 rows <- query_result__identity_match(identity[i, , drop = FALSE], candidate_identity)
+                rows <- rows[query_result__compatible_content(
+                    docs[i, , drop = FALSE],
+                    candidate_docs[rows, , drop = FALSE]
+                )]
                 rows <- rows[candidate_reach$reachable[rows] %in% TRUE]
                 if (!length(rows)) {
                     next
@@ -3130,7 +3496,14 @@ query_result__repair_urls <- function(result, service = c("OPENDAP", "HTTPServer
                 latency <- candidate_reach$latency_ms[rows]
                 latency[is.na(latency)] <- Inf
                 chosen <- rows[order(latency, rows)[[1L]]]
-                out[i, ] <- candidate_docs[chosen, ]
+                # External replicas supply only a compatible service URL; the
+                # caller's logical record, other service, and row order remain
+                # unchanged.
+                out$url[i] <- list(query_result__set_service_url(
+                    out$url[[i]],
+                    service,
+                    candidate_reach$url[[chosen]]
+                ))
                 repaired[[i]] <- TRUE
             }
         }
@@ -3146,23 +3519,227 @@ query_result__repair_urls <- function(result, service = c("OPENDAP", "HTTPServer
     priv(result)$result_with_docs(as.data.frame(out, stringsAsFactors = FALSE), context = context)
 }
 
-query_result__http_fallback <- function(result, indices, downloader, session_label = NULL, progress = TRUE) {
-    checkmate::assert_integerish(indices, lower = 1L, any.missing = FALSE, min.len = 1L)
-    if (is.null(downloader)) {
-        cli::cli_abort(
-            "HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable."
-        )
+# Replace selected service entries in one raw ESGF URL cell while preserving
+# unrelated services exactly as returned by the index node.
+query_result__set_service_url <- function(value, service, url) {
+    value <- unlist(value, recursive = TRUE, use.names = FALSE)
+    value <- as.character(value)
+    parsed <- strsplit(value, "|", fixed = TRUE)
+    keep <- !vapply(parsed, function(parts) {
+        length(parts) == 3L && identical(parts[[3L]], service)
+    }, logical(1L))
+    value <- value[keep]
+    if (!is.na(url) && nzchar(url)) {
+        value <- c(value, paste(url, "application/netcdf", service, sep = "|"))
+    }
+    unique(value)
+}
+
+# Describe one service without contacting its endpoint. Deferred HTTP rows use
+# the same diagnostic shape as checked services so callers can distinguish a
+# selected recovery candidate from evidence that it has already succeeded.
+query_result__deferred_service_rows <- function(result, service) {
+    docs <- priv(result)$get_docs()
+    n <- nrow(docs)
+    data.table::data.table(
+        record_index = seq_len(n),
+        id = as.character(query_result__col(docs, "id")),
+        data_node = as.character(query_result__col(docs, "data_node")),
+        service = rep(service, n),
+        url = priv(result)$get_url(service, service),
+        reachable = rep(NA, n),
+        latency_ms = rep(NA_real_, n),
+        error = rep(NA_character_, n),
+        probe_level = rep("deferred", n),
+        probe_url = rep(NA_character_, n),
+        probe_cached = rep(FALSE, n)
+    )
+}
+
+# Resolve the preferred OPeNDAP service before extraction and retain a
+# compatible HTTPServer recovery candidate without checking it eagerly. The
+# HTTP endpoint is checked and repaired only if execution actually falls back.
+query_result__resolve_file_services <- function(
+    result,
+    index_node = NULL,
+    check = NULL
+) {
+    if (!inherits(result, "EsgResultFile")) {
+        cli::cli_abort("File-service resolution requires an EsgResultFile object.")
+    }
+    services <- c("OPENDAP", "HTTPServer")
+    original_docs <- priv(result)$get_docs()
+    resolved <- stats::setNames(vector("list", length(services)), services)
+    resolved_urls <- stats::setNames(vector("list", length(services)), services)
+    diagnostics <- vector("list", length(services))
+    contexts <- list(priv(result)$context)
+
+    for (i in seq_along(services)) {
+        service <- services[[i]]
+        if (identical(service, "OPENDAP")) {
+            current <- query_result__repair_urls(
+                result,
+                service = service,
+                index_node = index_node,
+                probe = check
+            )
+            diagnostics[[i]] <- data.table::as.data.table(current$reachable(
+                service = service,
+                level = "url",
+                probe = check[names(check) != "level"]
+            ))
+        } else {
+            current <- result
+            diagnostics[[i]] <- query_result__deferred_service_rows(
+                current,
+                service
+            )
+        }
+        resolved[[service]] <- current
+        resolved_urls[[service]] <- priv(current)$get_url(service, service)
+        contexts[[length(contexts) + 1L]] <- priv(current)$context
     }
 
-    plan <- result$download_plan(replica = "current", service = "HTTPServer", probe = FALSE)
-    plan <- plan[record_index %in% indices]
+    groups <- query_result__compatible_file_groups(original_docs)
+    for (i in seq_along(services)) {
+        diagnostics[[i]][, `:=`(
+            selected = FALSE,
+            selected_url = NA_character_
+        )]
+    }
+    docs <- list()
+    for (group in unique(groups)) {
+        members <- which(groups == group)
+        replica <- as.logical(query_result__col(
+            original_docs[members, , drop = FALSE],
+            "replica"
+        ))
+        replica[is.na(replica)] <- TRUE
+        base <- members[order(replica, members)[[1L]]]
+        row <- original_docs[base, , drop = FALSE]
+        if (is.null(row$url)) {
+            row$url <- I(list(character()))
+        }
+        has_service <- FALSE
+        for (i in seq_along(services)) {
+            service <- services[[i]]
+            check_rows <- match(
+                members,
+                diagnostics[[i]]$record_index
+            )
+            values <- resolved_urls[[service]][members]
+            available <- !is.na(check_rows) & !is.na(values) & nzchar(values)
+            if (identical(service, "OPENDAP")) {
+                available <- available &
+                    diagnostics[[i]]$reachable[check_rows] %in% TRUE
+            }
+            chosen_url <- NA_character_
+            if (any(available)) {
+                choices <- which(available)
+                latency <- diagnostics[[i]]$latency_ms[check_rows[choices]]
+                latency[is.na(latency)] <- Inf
+                chosen_local <- choices[order(latency, members[choices])[[1L]]]
+                chosen <- members[[chosen_local]]
+                chosen_url <- values[[chosen_local]]
+                diagnostic_row <- match(
+                    chosen,
+                    diagnostics[[i]]$record_index
+                )
+                diagnostics[[i]][diagnostic_row, `:=`(
+                    selected = TRUE,
+                    selected_url = chosen_url
+                )]
+                has_service <- TRUE
+            }
+            row$url[1L] <- list(query_result__set_service_url(
+                row$url[[1L]],
+                service,
+                chosen_url
+            ))
+        }
+        if (has_service) {
+            docs[[length(docs) + 1L]] <- row
+        }
+    }
+
+    docs <- if (length(docs)) {
+        as.data.frame(data.table::rbindlist(
+            lapply(docs, data.table::as.data.table),
+            use.names = TRUE,
+            fill = TRUE
+        ), stringsAsFactors = FALSE)
+    } else {
+        original_docs[0L, , drop = FALSE]
+    }
+    context_urls <- unique(unlist(lapply(contexts, function(context) {
+        unname(query_result__context(context)$query_url)
+    }), use.names = FALSE))
+    context <- query_result__context(priv(result)$context)
+    context$query_url <- query_result__query_urls(context_urls, named = FALSE)
+    list(
+        result = priv(result)$result_with_docs(
+            docs,
+            context = context
+        ),
+        diagnostics = data.table::rbindlist(
+            diagnostics,
+            use.names = TRUE,
+            fill = TRUE
+        )
+    )
+}
+
+query_result__http_fallback <- function(
+    result,
+    indices,
+    downloader,
+    session_label = NULL,
+    progress = TRUE,
+    missing_message = "HTTPServer download URLs are missing."
+) {
+    checkmate::assert_integerish(indices, lower = 1L, any.missing = FALSE, min.len = 1L)
+    checkmate::assert_string(missing_message, min.chars = 1L)
+
+    # HTTPServer is deliberately deferred during normal OPeNDAP resolution.
+    # Check the exact recovery subset here and search compatible replicas only
+    # for files that genuinely require a full download.
+    selected <- result$slice(as.integer(indices))
+    workers <- tryCatch(as.integer(downloader$n_workers), error = function(e) 1L)
+    if (length(workers) != 1L || is.na(workers) || workers < 1L) {
+        workers <- 1L
+    }
+    network_policy <- tryCatch(downloader$network_policy, error = function(e) NULL)
+    selected <- query_result__repair_urls(
+        selected,
+        service = "HTTPServer",
+        probe = list(
+            level = "url",
+            concurrency = min(workers, 8L),
+            network_policy = network_policy,
+            cache_failures_seconds = 1800L
+        )
+    )
+    plan <- selected$download_plan(
+        replica = "current",
+        service = "HTTPServer",
+        probe = FALSE
+    )
     if (!nrow(plan)) {
         cli::cli_abort("HTTPServer download URLs are missing for one or more file records.")
     }
 
-    missing <- setdiff(as.integer(indices), unique(plan$record_index))
+    selected_indices <- seq_along(indices)
+    missing <- setdiff(selected_indices, unique(plan$record_index))
     if (length(missing)) {
-        cli::cli_abort("HTTPServer download URLs are missing for one or more file records.")
+        cli::cli_abort(c(
+            missing_message,
+            "x" = "Missing HTTPServer URL: {priv(selected)$record_labels(missing)}"
+        ))
+    }
+    if (is.null(downloader)) {
+        cli::cli_abort(
+            "HTTP fallback requires an explicit `store` or `downloader` so downloaded files are recoverable."
+        )
     }
 
     session_id <- downloader$enqueue(plan, session_label = session_label)
@@ -3176,7 +3753,7 @@ query_result__http_fallback <- function(result, indices, downloader, session_lab
 
     by_logical_file <- stats::setNames(tasks$target_path, tasks$logical_file_id)
     paths <- vapply(
-        as.integer(indices),
+        selected_indices,
         function(index) {
             row <- plan[record_index == index][1L]
             path <- by_logical_file[[row$logical_file_id[[1L]]]]
@@ -3354,7 +3931,8 @@ query_result__open_dataset <- function(
         }
 
         download_urls <- result$url_download[indices[fallback_pos]]
-        if (any(is.na(download_urls))) {
+        if (any(is.na(download_urls)) &&
+            is.null(store) && is.null(downloader)) {
             http_missing_pos <- fallback_pos[is.na(download_urls)]
             cli::cli_abort(c(
                 http_missing_message,
@@ -3373,7 +3951,8 @@ query_result__open_dataset <- function(
             result,
             indices[fallback_pos],
             downloader,
-            progress = progress
+            progress = progress,
+            missing_message = http_missing_message
         )
     }
 
@@ -4218,14 +4797,15 @@ EsgResultFile <- R6::R6Class(
 
         # repair_urls {{{
         #' @description
-        #' Replace unreachable service URLs with reachable replica records.
+        #' Replace unreachable service URLs from compatible replicas.
         #'
-        #' `$repair_urls()` probes the current records for the selected service,
-        #' queries ESGF replicas by `master_id` for records whose URL is missing or
-        #' unreachable, probes candidate replica URLs, and returns a new result with
-        #' repaired records in the original row order. The original result is not
-        #' modified. The returned result records the original query URL plus the
-        #' replica lookup query URL in `$query_url("all")`.
+        #' `$repair_urls()` checks the current records for the selected service,
+        #' queries compatible ESGF replicas for records whose URL is missing or
+        #' unreachable, checks candidate replica URLs, and returns a new result with
+        #' only that service URL repaired in the original row order. The logical
+        #' record and its other service URLs are retained. The original result is
+        #' not modified. The returned result records the original query URL plus
+        #' the replica lookup query URL in `$query_url("all")`.
         #'
         #' @param service Service URL to repair. One of `"OPENDAP"` or
         #'        `"HTTPServer"`. Default: `"OPENDAP"`.
@@ -4587,14 +5167,15 @@ EsgResultAggregation <- R6::R6Class(
 
         # repair_urls {{{
         #' @description
-        #' Replace unreachable service URLs with reachable replica records.
+        #' Replace unreachable service URLs from compatible replicas.
         #'
-        #' `$repair_urls()` probes the current records for the selected service,
-        #' queries ESGF replicas by `master_id` for records whose URL is missing or
-        #' unreachable, probes candidate replica URLs, and returns a new result with
-        #' repaired records in the original row order. The original result is not
-        #' modified. Aggregation results are not downloadable as files; repaired
-        #' aggregation URLs are intended for service access such as OPeNDAP.
+        #' `$repair_urls()` checks the current records for the selected service,
+        #' queries compatible ESGF replicas for records whose URL is missing or
+        #' unreachable, checks candidate replica URLs, and returns a new result with
+        #' only that service URL repaired in the original row order. The logical
+        #' record and its other service URLs are retained. The original result is
+        #' not modified. Aggregation results are not downloadable as files;
+        #' repaired aggregation URLs are intended for service access such as OPeNDAP.
         #' The returned result records the original query URL plus the replica
         #' lookup query URL in `$query_url("all")`.
         #'

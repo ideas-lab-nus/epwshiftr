@@ -23,8 +23,10 @@ SHIFT_UI_DETAIL_LEVELS <- c("normal", "detail", "debug")
 #'   also shows full URLs, paths, and low-level transfer context.
 #' @param motion Dynamic-terminal animation policy: `"auto"`, `"full"`,
 #'   `"reduced"`, or `"none"`. This never changes log, JSON, or workflow data.
-#' @param refresh In [shift_ui()], minimum seconds between visual animation
-#'   frames. In `ShiftRun` inspectors, whether to reload persisted state first.
+#' @param refresh In [shift_control()], whether to refresh remote catalogs and
+#'   service addresses instead of resuming persisted inputs. In [shift_ui()],
+#'   minimum seconds between visual animation frames. In `ShiftRun` inspectors,
+#'   whether to reload persisted state first.
 #' @param heartbeat Minimum seconds between job-liveness updates. Durable
 #'   writes are always throttled to at least one second.
 #'   Use `progress = "log"` for screen readers, reduced-motion use, redirected

@@ -3,6 +3,76 @@ NULL
 
 # BWS and BTWS EPW components {{{
 
+# Convert every adjusted BWS monthly target into a method-level diagnostic with
+# the climate means, EPW baseline, requested target, applied target, and exact
+# attainable interval needed to reproduce the decision.
+bws_btws_epw__target_diagnostics <- function(factors, context) {
+    factors <- data.table::as.data.table(data.table::copy(factors))
+    adjustment <- factors[["target_adjustment"]]
+    adjusted <- factors[!is.na(adjustment) & adjustment != "none"]
+    if (!nrow(adjusted)) {
+        return(morpher__empty_diagnostics())
+    }
+    case <- data.table::as.data.table(context$case)
+    case_value <- function(name) {
+        if (name %in% names(case)) {
+            store__chr1(case[[name]][[1L]])
+        } else {
+            NA_character_
+        }
+    }
+    source_id <- case_value("source_id")
+    experiment_id <- case_value("experiment_id")
+    variant_label <- case_value("variant_label")
+    period <- case_value("period")
+
+    rows <- vector("list", nrow(adjusted))
+    for (i in seq_len(nrow(adjusted))) {
+        row <- adjusted[i]
+        rows[[i]] <- morpher__diagnostic(
+            stage = "runtime",
+            severity = "warning",
+            code = "bws_target_adjusted",
+            message = sprintf(
+                paste(
+                    "BWS adjusted %s month %d for %s/%s/%s/%s",
+                    "from %.8g to %.8g",
+                    "within the attainable interval [%.8g, %.8g]",
+                    "(%s); GCM historical mean %.8g, GCM future mean %.8g,",
+                    "and baseline EPW mean %.8g."
+                ),
+                row$variable_id[[1L]],
+                row$month[[1L]],
+                source_id,
+                experiment_id,
+                variant_label,
+                period,
+                row$requested_target_mean[[1L]],
+                row$target_mean[[1L]],
+                row$attainable_lower[[1L]],
+                row$attainable_upper[[1L]],
+                row$target_adjustment[[1L]],
+                row$model_historical_mean[[1L]],
+                row$model_future_mean[[1L]],
+                row$baseline_mean[[1L]]
+            ),
+            variable_id = row$variable_id[[1L]],
+            epw_field = if (identical(row$variable_id[[1L]], "clt")) {
+                "total_sky_cover"
+            } else {
+                "global_horizontal_radiation"
+            },
+            period = period,
+            month = row$month[[1L]],
+            action = paste(
+                "Inspect bws_factors for the requested and applied targets;",
+                "the Historical-to-Scenario signal is retained unchanged."
+            )
+        )
+    }
+    morpher__bind_diagnostics(rows)
+}
+
 # Apply BTWS to dry-bulb temperature and BWS to the two published bounded
 # variables while retaining baseline hourly ordering for physical closure.
 bws_btws_epw__hourly_reconstruct <- function(
@@ -179,6 +249,13 @@ bws_btws_epw__physics_apply <- function(
         epwphys__policy("bws_btws_weather")
     )
     result <- temperature__physics_payload(data, physical)
+    result$diagnostics <- morpher__bind_diagnostics(
+        result$diagnostics,
+        bws_btws_epw__target_diagnostics(
+            data$method_parts$bws_factors,
+            context
+        )
+    )
 
     # Surface any physical-layer radiation adjustment as one compact runtime
     # diagnostic while the detailed monthly BWS factors remain in result parts.

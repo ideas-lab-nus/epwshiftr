@@ -111,6 +111,27 @@ local_downloader_http_server <- function(env = parent.frame()) {
     app$all("/redirect/range.bin", function(req, res) {
         res$redirect("/files/range.bin")
     })
+    app$all("/dods/valid.nc", function(req, res) {
+        res$set_status(200L)$send("dataset landing page")
+    })
+    app$all("/dods/valid.nc.dds", function(req, res) {
+        res$
+            set_status(200L)$
+            set_header("Content-Type", "text/plain")$
+            send("Dataset { Float32 tas[time = 1]; } valid.nc;")
+    })
+    app$all("/dods/html.nc", function(req, res) {
+        res$set_status(200L)$send("dataset landing page")
+    })
+    app$all("/dods/html.nc.dds", function(req, res) {
+        res$
+            set_status(200L)$
+            set_header("Content-Type", "text/html")$
+            send("<html><body>temporary error</body></html>")
+    })
+    app$all("/dods/missing.nc.dds", function(req, res) {
+        res$set_status(404L)$send("missing")
+    })
 
     proc <- webfakes::new_app_process(app)
     withr::defer(proc$stop(), envir = env)

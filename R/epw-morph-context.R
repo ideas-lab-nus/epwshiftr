@@ -288,6 +288,137 @@ morpher__bind_diagnostics <- function(...) {
     out[, morpher__diagnostic_columns(), with = FALSE]
 }
 
+# Attach the durable morph and case identities to diagnostics emitted inside a
+# backend, while retaining any more specific variable, field, period, or month
+# values already supplied by that backend.
+morpher__decorate_case_diagnostics <- function(
+    diagnostics,
+    morph_id,
+    case_id,
+    case
+) {
+    diagnostics <- morpher__bind_diagnostics(diagnostics)
+    if (!nrow(diagnostics)) {
+        return(diagnostics)
+    }
+    case <- data.table::as.data.table(case)
+    fill <- function(column, value) {
+        missing <- is.na(diagnostics[[column]]) |
+            !nzchar(as.character(diagnostics[[column]]))
+        diagnostics[[column]][missing] <<- store__chr1(value)
+    }
+    fill("morph_id", morph_id)
+    fill("case_id", case_id)
+    if ("period" %in% names(case)) {
+        fill("period", case$period[[1L]])
+    }
+    diagnostics[]
+}
+
+# Represent one isolated case failure in the same diagnostic schema used by
+# method warnings so status tables and final run receipts retain its identity.
+morpher__case_error_diagnostic <- function(error, morph_id, case_id, case) {
+    case <- data.table::as.data.table(case)
+    pick <- function(name) {
+        if (name %in% names(case)) store__chr1(case[[name]][[1L]]) else NA_character_
+    }
+    morpher__diagnostic(
+        stage = "runtime",
+        severity = "error",
+        code = "morph_case_failed",
+        message = sprintf(
+            paste(
+                "Morphing failed for model %s, scenario %s, member %s,",
+                "period %s: %s"
+            ),
+            pick("source_id"),
+            pick("experiment_id"),
+            pick("variant_label"),
+            pick("period"),
+            conditionMessage(error)
+        ),
+        morph_id = morph_id,
+        case_id = case_id,
+        period = pick("period"),
+        action = paste(
+            "Inspect this case diagnostic and resume the run after correcting",
+            "its inputs; independent cases have continued."
+        )
+    )
+}
+
+# Read diagnostics through the result class' native interface. Legacy
+# `epw_morph_result` objects are lists, while multi-year weather sequences are
+# S7 objects and therefore require property access with `@`.
+morpher__result_diagnostics <- function(result) {
+    if (S7::S7_inherits(result, WeatherSequenceResult)) {
+        return(result@diagnostics)
+    }
+    result$diagnostics
+}
+
+# Describe how one complete weather recipe treats EPW weather fields. Roles are
+# allowed to overlap: a method-transformed field can also be bounded or closed
+# by the shared physical layer. The explicit inherited set is the complement of
+# every active treatment and supports external method comparisons.
+morpher__weather_field_roles <- function(recipe) {
+    rules <- morpher__recipe_rules(recipe)
+    weather_fields <- setdiff(
+        EPW_FILE_COLUMNS,
+        c("year", "month", "day", "hour", "minute", "data_source")
+    )
+    transformed <- unique(as.character(
+        rules[required %in% TRUE & !derived, epw_field]
+    ))
+    derived <- unique(as.character(rules[derived %in% TRUE, epw_field]))
+    transformed <- intersect(weather_fields, transformed)
+    derived <- intersect(weather_fields, derived)
+
+    policy <- epwphys__recipe_policy(recipe)
+    physically_closed <- character()
+    if (!is.null(policy)) {
+        physically_closed <- policy@bounded_fields
+        if (policy@humidity %in% c(
+            "preserve_specific_humidity",
+            "specific_humidity_target",
+            "absolute"
+        )) {
+            physically_closed <- c(
+                physically_closed,
+                "relative_humidity",
+                "dew_point_temperature"
+            )
+        }
+        if (identical(policy@wind, "absolute")) {
+            physically_closed <- c(
+                physically_closed,
+                "wind_speed",
+                "wind_direction"
+            )
+        }
+        if (identical(policy@shortwave, "absolute")) {
+            physically_closed <- c(
+                physically_closed,
+                "global_horizontal_radiation",
+                "diffuse_horizontal_radiation",
+                "direct_normal_radiation"
+            )
+        }
+    }
+    physically_closed <- intersect(
+        weather_fields,
+        unique(physically_closed)
+    )
+    treated <- unique(c(transformed, derived, physically_closed))
+
+    list(
+        transformed_fields = sort(transformed),
+        derived_fields = sort(derived),
+        physically_closed_fields = sort(physically_closed),
+        inherited_fields = sort(setdiff(weather_fields, treated))
+    )
+}
+
 morpher__abort_diagnostics <- function(diagnostics, message = "EPW morphing preflight has blocking issues.") {
     errors <- diagnostics[diagnostics$severity == "error"]
     if (!nrow(errors)) {
