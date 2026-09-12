@@ -83,6 +83,9 @@ reference:
       - daily_transform
       - hourly_transform
       - shift_future_epw
+      - shift_cmip6
+      - shift_era5
+      - shift_era6
       - shift_plan
       - EpwMorpher
       - epw_morpher

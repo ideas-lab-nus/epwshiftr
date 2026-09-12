@@ -1,4 +1,5 @@
 #' @include query.R store.R epw-morpher.R utils.R weather-transform.R
+#' @include source-reanalysis.R source-era5.R source-cds.R
 NULL
 
 # shift diagnostics -----------------------------------------------------------
@@ -206,17 +207,40 @@ ShiftSite <- S7::new_class(
 ShiftCmip6Spec <- S7::new_class(
     "ShiftCmip6Spec",
     properties = list(
-        model = S7::new_property(S7::class_character),
+        model = S7::new_property(S7::class_any, default = NULL),
+        n_models = S7::new_property(S7::class_any, default = NULL),
         scenarios = S7::new_property(S7::class_character),
         member = S7::new_property(S7::class_any, default = NULL),
         grid = S7::new_property(S7::class_any, default = NULL),
-        frequency = S7::new_property(S7::class_character),
+        frequency = S7::new_property(S7::class_any, default = NULL),
         table = S7::new_property(S7::class_any, default = NULL),
         activity = shift_prop_string(min.chars = 1L),
         index_nodes = S7::new_property(S7::class_character),
         data_node = S7::new_property(S7::class_any, default = NULL),
         filters = S7::new_property(S7::class_list, default = list())
-    )
+    ),
+    validator = function(self) {
+        if (!is.null(self@model) &&
+            (!is.character(self@model) || !length(self@model) ||
+                anyNA(self@model) || any(!nzchar(self@model)) ||
+                anyDuplicated(self@model))) {
+            return("`model` must be NULL or unique, non-empty model IDs.")
+        }
+        if (!is.null(self@n_models) &&
+            (length(self@n_models) != 1L ||
+                !is.integer(self@n_models) || is.na(self@n_models) ||
+                self@n_models < 1L)) {
+            return("The internal model count must be NULL or one positive integer.")
+        }
+        if (!is.null(self@model) && !is.null(self@n_models)) {
+            return("Explicit model IDs and an automatic model count cannot be combined.")
+        }
+        if (anyNA(self@scenarios) || !length(self@scenarios) ||
+            any(!nzchar(self@scenarios)) || anyDuplicated(self@scenarios)) {
+            return("`scenarios` must contain unique, non-empty experiment IDs.")
+        }
+        NULL
+    }
 )
 
 # ShiftControl centralises workflow-wide execution and fulfilment policies so
@@ -1906,10 +1930,13 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 }
 
 #' @rdname shift_api
-#' @param model CMIP6 source/model IDs.
+#' @param model CMIP6 model selection. A positive whole number selects that
+#'   many compatible models deterministically; a character vector selects
+#'   explicit source/model IDs; `NULL` selects every compatible model. The
+#'   default selects three models.
 #' @param scenarios CMIP6 future scenario experiment IDs.
-#' @param member Optional CMIP6 variant labels. `NULL` asks the task workflow to
-#'   choose one complete member.
+#' @param member Optional CMIP6 variant labels. In high-level automatic model
+#'   discovery, `NULL` uses the required default `"r1i1p1f1"`.
 #' @param grid Optional single CMIP6 grid label.
 #' @param table Optional CMIP6 table selection. `NULL` automatically maps each
 #'   transform input to its native table (including `snd` to `LImon`); an unnamed
@@ -1919,15 +1946,30 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 #' @param index_nodes Ordered ESGF index nodes used for failover.
 #' @param data_node Optional ESGF data-node filter.
 #' @export
-shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
-                        frequency = "mon", table = NULL,
+shift_cmip6 <- function(model = 3L, scenarios, member = NULL, grid = NULL,
+                        frequency = NULL, table = NULL,
                         activity = "ScenarioMIP", index_nodes = NULL,
                         data_node = NULL, filters = list()) {
-    checkmate::assert_character(model, any.missing = FALSE, min.len = 1L, unique = TRUE)
+    # Numeric model input is a bounded automatic selection request. Internally
+    # it remains distinct from explicit model IDs so persistence and discovery
+    # do not confuse a count with a CMIP6 source identifier.
+    n_models <- if (is.numeric(model)) {
+        checkmate::assert_count(model, positive = TRUE)
+        as.integer(model)
+    } else {
+        checkmate::assert_character(model, any.missing = FALSE, min.len = 1L,
+            unique = TRUE, null.ok = TRUE)
+        NULL
+    }
+    if (is.numeric(model)) {
+        model <- NULL
+    }
     checkmate::assert_character(scenarios, any.missing = FALSE, min.len = 1L, unique = TRUE)
     checkmate::assert_character(member, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
     checkmate::assert_string(grid, min.chars = 1L, null.ok = TRUE)
-    frequency <- shift__cmip6_frequency_spec(frequency)
+    if (!is.null(frequency)) {
+        frequency <- shift__cmip6_frequency_spec(frequency)
+    }
     table <- shift__cmip6_table_spec(table)
     checkmate::assert_string(activity, min.chars = 1L)
     checkmate::assert_character(index_nodes, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
@@ -1942,6 +1984,7 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
     index_nodes <- unique(vapply(index_nodes, query__normalize_node, character(1L)))
     ShiftCmip6Spec(
         model = model,
+        n_models = n_models,
         scenarios = scenarios,
         member = member,
         grid = grid,
@@ -1954,13 +1997,60 @@ shift_cmip6 <- function(model, scenarios, member = NULL, grid = NULL,
     )
 }
 
+# Resolve the exact CMIP6 frequency of every source variable from either an
+# explicit climate override or the selected weather method's role contract.
+shift__transform_cmip6_frequencies <- function(
+    transform,
+    variables,
+    frequency = NULL
+) {
+    variables <- unique(as.character(variables))
+    if (!is.null(frequency)) {
+        return(shift__cmip6_variable_frequencies(variables, frequency))
+    }
+    recipe <- transform__recipe(transform)
+    declared <- morpher__recipe_required_frequency(recipe)
+    if (is.null(declared) || !length(declared)) {
+        cli::cli_abort(
+            "Weather transformation {.val {transform@method}} does not declare a CMIP6 source frequency."
+        )
+    }
+    if (is.null(names(declared))) {
+        return(stats::setNames(rep(
+            as.character(declared[[1L]]),
+            length(variables)
+        ), variables))
+    }
+    output <- stats::setNames(rep(NA_character_, length(variables)), variables)
+    shared <- unique(as.character(unname(declared)))
+    optional <- transform@optional_variable_frequencies[["model_future"]]
+    for (variable in variables) {
+        value <- declared[[variable]]
+        if (is.null(value) && !is.null(optional)) {
+            value <- optional[[variable]]
+        }
+        if (is.null(value) && length(shared) == 1L) {
+            value <- shared
+        }
+        if (is.null(value) || !length(value)) {
+            cli::cli_abort(
+                "Cannot infer a CMIP6 frequency for {.val {variable}} in weather transformation {.val {transform@method}}."
+            )
+        }
+        output[[variable]] <- as.character(value[[1L]])
+    }
+    output
+}
+
 # Translate one complete CMIP6 climate specification into the lower-level
 # request consumed by the staged workflow and ESGF collector.
 shift__request_from_cmip6 <- function(climate, periods, transform) {
     recipe <- transform__recipe(transform)
     variables <- morpher__input_variables(recipe)
-    frequencies <- shift__cmip6_variable_frequencies(
-        variables, climate@frequency
+    frequencies <- shift__transform_cmip6_frequencies(
+        transform,
+        variables,
+        climate@frequency
     )
     tables <- shift__cmip6_variable_tables(
         variables, frequencies, climate@table
@@ -2257,29 +2347,30 @@ shift_plan <- function(request, site, periods, store, transform,
 #' @param climate A complete future-climate specification from [shift_cmip6()].
 #' @param transform A reusable specification from [monthly_transform()],
 #'   [daily_transform()], or [hourly_transform()].
+#' @param methods One or more unambiguous method keys from
+#'   [weather_transforms()]. This high-level form creates a `ShiftBatch` across
+#'   every selected method and model.
 #' @param reference Historical model climate required by the selected
 #'   transformation.
 #' @param observed_reference Observed climate required by bias-adjustment
 #'   transformations.
+#' @param calibration Alias for `observed_reference` in high-level multi-method
+#'   workflows. It is routed only to methods that accept observational input.
 #' @param dir User-facing directory that receives only exported EPW files.
 #' @param control Workflow controls from [shift_control()].
 #' @param dry_run If `TRUE`, return the planned workflow without running it.
 #' @param ui Runtime presentation options from [shift_ui()]. These options are
 #'   excluded from persisted scientific intent and `spec_hash`.
 #' @export
-shift_future_epw <- function(epw, climate, periods, transform, dir,
+shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
                              reference = NULL, observed_reference = NULL,
                              control = shift_control(), ui = shift_ui(),
                              store = NULL, dry_run = FALSE,
-                             background = FALSE) {
+                             background = FALSE, methods = NULL,
+                             calibration = NULL) {
     checkmate::assert_string(dir, min.chars = 1L)
     checkmate::assert_flag(dry_run)
     checkmate::assert_flag(background)
-    transform__validate_execution_inputs(
-        transform,
-        reference,
-        observed_reference
-    )
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
         cli::cli_abort("`climate` must be a complete {.cls ShiftCmip6Spec} created by {.fn shift_cmip6}.")
     }
@@ -2292,6 +2383,73 @@ shift_future_epw <- function(epw, climate, periods, transform, dir,
     if (isTRUE(dry_run) && isTRUE(background)) {
         cli::cli_abort("`dry_run = TRUE` cannot be combined with `background = TRUE`.")
     }
+    if (!is.null(observed_reference) && !is.null(calibration)) {
+        cli::cli_abort(
+            "Supply either `observed_reference` or `calibration`, not both."
+        )
+    }
+    calibration <- shift_coalesce(calibration, observed_reference)
+    transforms <- shift_batch__transforms(
+        methods = methods,
+        transform = transform
+    )
+    # Preserve the established single-transform return type and store layout
+    # when the caller uses the advanced explicit-transform interface.
+    if (is.null(methods) && length(transforms) == 1L &&
+        !is.null(climate@model)) {
+        return(shift__future_epw_one(
+            epw = epw,
+            climate = climate,
+            periods = periods,
+            transform = transforms[[1L]],
+            dir = dir,
+            reference = reference,
+            observed_reference = calibration,
+            control = control,
+            ui = ui,
+            store = store,
+            dry_run = dry_run,
+            background = background
+        ))
+    }
+    shift_batch__future_epw(
+        epw = epw,
+        climate = climate,
+        periods = periods,
+        transforms = transforms,
+        dir = dir,
+        reference = reference,
+        calibration = calibration,
+        control = control,
+        ui = ui,
+        store = store,
+        dry_run = dry_run,
+        background = background
+    )
+}
+
+# Execute one explicit method through the original staged workflow. The
+# high-level batch interface calls this same function for every child, keeping
+# planning, persistence, extraction, physical closure, and EPW writing shared.
+shift__future_epw_one <- function(
+    epw,
+    climate,
+    periods,
+    transform,
+    dir,
+    reference = NULL,
+    observed_reference = NULL,
+    control = shift_control(),
+    ui = shift_ui(),
+    store = NULL,
+    dry_run = FALSE,
+    background = FALSE
+) {
+    transform__validate_execution_inputs(
+        transform,
+        reference,
+        observed_reference
+    )
 
     periods <- shift__periods_from_input(periods)
     store <- shift_coalesce(store, store_dir(init = FALSE))
@@ -2708,8 +2866,16 @@ shift_export_epw <- function(x, dir, separate = TRUE, overwrite = FALSE,
 
 #' @rdname shift_api
 #' @param strict If `TRUE`, abort when diagnostics contain errors.
+#' @param network For a reanalysis source, whether to verify the configured
+#'   token against the provider. The default performs local configuration
+#'   checks only and never submits a data request.
 #' @export
-shift_check <- S7::new_generic("shift_check", "x", function(x, strict = FALSE, ...) {
+shift_check <- S7::new_generic("shift_check", "x", function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
     S7::S7_dispatch()
 })
 
@@ -2719,6 +2885,9 @@ shift_check <- S7::new_generic("shift_check", "x", function(x, strict = FALSE, .
 #' @export
 shift_refresh <- function(x) {
     shift_assert_stage(x)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__refresh(x))
+    }
     if (S7::S7_inherits(x, ShiftRun)) {
         return(shift_run_get(x@ids$run_id, store = x@store_path))
     }
@@ -2735,6 +2904,12 @@ shift_refresh <- function(x) {
 shift_ids <- function(x, refresh = TRUE) {
     shift_assert_stage(x)
     checkmate::assert_flag(refresh)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        if (isTRUE(refresh)) {
+            x <- shift_batch__refresh(x)
+        }
+        return(x@ids)
+    }
     if (isTRUE(refresh) && S7::S7_inherits(x, ShiftRun)) {
         x <- shift_refresh(x)
     }
@@ -2746,6 +2921,16 @@ shift_ids <- function(x, refresh = TRUE) {
 shift_cases <- function(x, refresh = TRUE) {
     shift_assert_stage(x)
     checkmate::assert_flag(refresh)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        if (isTRUE(refresh)) {
+            x <- shift_batch__refresh(x)
+        }
+        return(shift_batch__inspect(
+            x@meta$children,
+            x@meta$manifest,
+            function(child) shift_cases(child, refresh = FALSE)
+        ))
+    }
     if (S7::S7_inherits(x, ShiftPlan)) {
         return(data.table::as.data.table(data.table::copy(x@meta$expected_cases)))
     }
@@ -3000,6 +3185,9 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
     checkmate::assert_flag(background)
     if (!S7::S7_inherits(ui, ShiftUiOptions)) {
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
+    }
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__resume(x, background = background, ui = ui))
     }
     run <- if (S7::S7_inherits(x, ShiftRun)) {
         shift_refresh(x)
@@ -3267,6 +3455,9 @@ shift_watch <- function(x, store = NULL, follow = TRUE, interval = 1,
 #' @export
 shift_cancel <- function(x, store = NULL, force = FALSE) {
     checkmate::assert_flag(force)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__cancel(x, force = force))
+    }
     run <- shift__as_run(x, store = store)
     status <- shift_status(run, refresh = FALSE)
     if (status %in% c("completed", "partial", "failed", "cancelled")) {
@@ -3395,6 +3586,18 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
 #' @export
 shift_logs <- function(x, store = NULL, tail = 100L) {
     checkmate::assert_count(tail, positive = FALSE)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__inspect(
+            x@meta$children,
+            x@meta$manifest,
+            function(child) {
+                if (S7::S7_inherits(child, ShiftPlan)) {
+                    return(data.table::data.table())
+                }
+                shift_logs(child, tail = tail)
+            }
+        ))
+    }
     run <- shift__as_run(x, store = store)
     run_store <- shift_store(run)
     download_context <- shift__background_download_context(
@@ -3753,6 +3956,14 @@ shift_diagnostics <- function(x, severity = NULL, refresh = TRUE) {
     shift_assert_stage(x)
     checkmate::assert_flag(refresh)
     checkmate::assert_character(severity, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__diagnostics(
+            x@meta$children,
+            x@meta$manifest,
+            severity = severity,
+            refresh = refresh
+        ))
+    }
     if (isTRUE(refresh) && S7::S7_inherits(x, ShiftRun)) {
         x <- shift_refresh(x)
     }
@@ -3789,6 +4000,9 @@ shift_target <- function(x) {
         return(x)
     }
     shift_assert_stage(x)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_target(x@meta$children[[1L]]))
+    }
     meta <- x@meta
     if (S7::S7_inherits(meta$site, ShiftSite)) {
         return(meta$site)
@@ -3809,6 +4023,13 @@ shift_target <- function(x) {
 #' @export
 shift_coverage <- function(x) {
     shift_assert_stage(x)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__inspect(
+            x@meta$children,
+            x@meta$manifest,
+            shift_coverage
+        ))
+    }
     if (S7::S7_inherits(x, ShiftClimate)) {
         return(data.table::as.data.table(shift_coalesce(x@meta$coverage, data.table::data.table())))
     }
@@ -3825,6 +4046,16 @@ shift_coverage <- function(x) {
 shift_outputs <- function(x, refresh = TRUE) {
     shift_assert_stage(x)
     checkmate::assert_flag(refresh)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        if (isTRUE(refresh)) {
+            x <- shift_batch__refresh(x)
+        }
+        return(shift_batch__inspect(
+            x@meta$children,
+            x@meta$manifest,
+            function(child) shift_outputs(child, refresh = FALSE)
+        ))
+    }
     if (S7::S7_inherits(x, ShiftRun)) {
         if (isTRUE(refresh)) {
             x <- shift_refresh(x)
@@ -3869,6 +4100,13 @@ shift_outputs <- function(x, refresh = TRUE) {
 #' @export
 shift_artifacts <- function(x) {
     shift_assert_stage(x)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__inspect(
+            x@meta$children,
+            x@meta$manifest,
+            shift_artifacts
+        ))
+    }
     ids <- shift_ids(x)
 
     if (S7::S7_inherits(x, ShiftMorphed) && !is.null(ids$morph_id)) {
@@ -3910,6 +4148,10 @@ shift_artifacts <- function(x) {
 shift_status <- function(x, refresh = TRUE) {
     shift_assert_stage(x)
     checkmate::assert_flag(refresh)
+
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__status(x, refresh = refresh))
+    }
 
     if (S7::S7_inherits(x, ShiftRun)) {
         if (isTRUE(refresh)) {
@@ -4651,6 +4893,24 @@ shift__observed_reference_resolve <- function(
     resume = TRUE,
     reporter = NULL
 ) {
+    if (S7::S7_inherits(observed_reference, ShiftReanalysisSpec)) {
+        climate <- reanalysis__materialize(
+            x = x,
+            recipe = recipe,
+            site = site,
+            spec = observed_reference,
+            overwrite = overwrite,
+            resume = resume,
+            reporter = reporter
+        )
+        climate_ids <- shift_ids(climate)
+        return(list(
+            reference = climate,
+            spec = observed_reference,
+            plan_id = climate_ids$plan_id,
+            periods = shift_reference_periods(climate@meta$periods)
+        ))
+    }
     if (S7::S7_inherits(observed_reference, ShiftReferenceSpec) &&
         !identical(observed_reference@mode, "plan")) {
         cli::cli_abort(
@@ -4872,6 +5132,14 @@ shift__reference_spec_value <- function(reference, role) {
         return(NULL)
     }
     checkmate::assert_choice(role, SHIFT_REFERENCE_ROLES)
+    if (S7::S7_inherits(reference, ShiftReanalysisSpec)) {
+        if (!identical(role, "observed_reference")) {
+            cli::cli_abort(
+                "A reanalysis source cannot be persisted as {.val {role}}."
+            )
+        }
+        return(reanalysis__spec_value(reference))
+    }
     if (S7::S7_inherits(reference, ShiftClimate)) {
         return(list(
             mode = "plan",
@@ -4909,12 +5177,23 @@ shift__reference_from_spec <- function(spec) {
     if (is.null(spec)) {
         return(NULL)
     }
-    periods <- shift__periods_from_input(spec$periods, arg = "reference$periods")
     if (is.null(spec$role)) {
         cli::cli_abort(
             "Persisted reference is missing its semantic input role."
         )
     }
+    if (identical(spec$mode, "reanalysis")) {
+        if (!identical(as.character(spec$role), "observed_reference")) {
+            cli::cli_abort(
+                "Persisted reanalysis input has an invalid semantic role."
+            )
+        }
+        return(reanalysis__from_spec(spec))
+    }
+    periods <- shift__periods_from_input(
+        spec$periods,
+        arg = "reference$periods"
+    )
     if (identical(spec$mode, "plan")) {
         return(shift_reference_plan(
             as.character(spec$plan_id),
@@ -4954,6 +5233,7 @@ shift__climate_spec_value <- function(climate) {
     list(
         provider = "cmip6",
         model = climate@model,
+        n_models = if (is.null(climate@model)) climate@n_models else NULL,
         scenarios = climate@scenarios,
         member = climate@member,
         grid = climate@grid,
@@ -4987,7 +5267,21 @@ shift__climate_from_spec <- function(spec) {
     if (!identical(as.character(spec$provider), "cmip6")) {
         cli::cli_abort("Unsupported persisted climate provider: {.val {spec$provider}}.")
     }
-    do.call(shift_cmip6, spec[setdiff(names(spec), "provider")])
+    # Persisted specifications retain a private count field so plans created by
+    # earlier development builds can be resumed through the public `model`
+    # argument without reintroducing `n_models` into the user API.
+    arguments <- spec[setdiff(names(spec), c("provider", "n_models"))]
+    model <- if (!is.null(spec$model)) {
+        as.character(unlist(spec$model, use.names = FALSE))
+    } else if (!is.null(spec$n_models)) {
+        as.integer(unlist(spec$n_models, use.names = FALSE))
+    } else {
+        NULL
+    }
+    # Single-bracket assignment preserves an explicit NULL list element;
+    # `$<- NULL` would delete it and accidentally restore the default count.
+    arguments["model"] <- list(model)
+    do.call(shift_cmip6, arguments)
 }
 
 # Preserve variable names on request frequency mappings because jsonlite
@@ -7375,7 +7669,11 @@ shift__resolve_cmip6_selection <- function(plan, future_catalog, reference_catal
     variables <- morpher__input_variables(meta$recipe)
     member <- if (is.null(climate)) request$variant else climate@member
     grid <- if (is.null(climate)) request$filters$grid_label else climate@grid
-    frequency <- if (is.null(climate)) request$frequency else climate@frequency
+    frequency <- if (is.null(climate) || is.null(climate@frequency)) {
+        request$frequency
+    } else {
+        climate@frequency
+    }
     table <- if (is.null(climate)) {
         shift__cmip6_request_table_spec(request$filters$table_id)
     } else {
@@ -7548,7 +7846,11 @@ shift__historical_request <- function(plan, node) {
     member <- if (is.null(climate)) request$variant else climate@member
     grid <- if (is.null(climate)) request$filters$grid_label else climate@grid
     variables <- morpher__input_variables(meta$recipe)
-    frequency <- if (is.null(climate)) request$frequency else climate@frequency
+    frequency <- if (is.null(climate) || is.null(climate@frequency)) {
+        request$frequency
+    } else {
+        climate@frequency
+    }
     tables <- if (is.null(climate)) {
         as.character(request$filters$table_id)
     } else {
@@ -9521,8 +9823,14 @@ S7::method(shift_epw, ShiftMorphed) <- function(x, dir = NULL, separate = TRUE,
 
 # check methods ---------------------------------------------------------------
 
-S7::method(shift_check, ShiftStage) <- function(x, strict = FALSE, ...) {
+S7::method(shift_check, ShiftStage) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
     checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
     diagnostics <- shift_diagnostics_normalize(x@diagnostics)
     if (isTRUE(strict)) {
         shift_abort_diagnostics(diagnostics)
@@ -9530,7 +9838,14 @@ S7::method(shift_check, ShiftStage) <- function(x, strict = FALSE, ...) {
     diagnostics
 }
 
-S7::method(shift_check, ShiftRequest) <- function(x, strict = FALSE, ...) {
+S7::method(shift_check, ShiftRequest) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
+    checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
     diagnostics <- shift_diagnostics_empty()
     if (!identical(x@meta$provider, "esgf")) {
         diagnostics <- shift_diagnostic(
@@ -9547,8 +9862,79 @@ S7::method(shift_check, ShiftRequest) <- function(x, strict = FALSE, ...) {
     diagnostics
 }
 
-S7::method(shift_check, ShiftFiles) <- function(x, strict = FALSE, ...) {
+# Validate local CDS configuration for reanalysis sources and optionally
+# authenticate it remotely without submitting a dataset retrieval request.
+S7::method(shift_check, ShiftReanalysisSpec) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
     checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
+    diagnostics <- shift_diagnostics_empty()
+    config <- tryCatch(
+        cds__config(),
+        epwshiftr_cds_auth_error = function(error) error
+    )
+    if (inherits(config, "epwshiftr_cds_auth_error")) {
+        diagnostics <- shift_diagnostic(
+            stage = "source",
+            severity = "error",
+            code = "cds_auth_missing",
+            message = conditionMessage(config),
+            action = paste(
+                "Register for CDS access, create a personal access token,",
+                "and configure `ECMWF_DATASTORES_KEY` or `~/.cdsapirc`."
+            )
+        )
+    } else if (isTRUE(network)) {
+        remote_error <- tryCatch(
+            {
+                cds__check_authentication(config = config)
+                NULL
+            },
+            epwshiftr_cds_auth_error = function(error) error,
+            epwshiftr_cds_request_error = function(error) error
+        )
+        if (!is.null(remote_error)) {
+            diagnostics <- shift_diagnostic(
+                stage = "source",
+                severity = "error",
+                code = if (inherits(
+                    remote_error,
+                    "epwshiftr_cds_auth_error"
+                )) {
+                    "cds_auth_invalid"
+                } else {
+                    "cds_auth_unavailable"
+                },
+                message = conditionMessage(remote_error),
+                action = if (inherits(
+                    remote_error,
+                    "epwshiftr_cds_auth_error"
+                )) {
+                    "Replace the configured CDS personal access token."
+                } else {
+                    "Check network access and the CDS service status, then retry."
+                }
+            )
+        }
+    }
+    if (isTRUE(strict)) {
+        shift_abort_diagnostics(diagnostics)
+    }
+    diagnostics
+}
+
+S7::method(shift_check, ShiftFiles) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
+    checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
     diagnostics <- shift_diagnostics_empty()
     store <- tryCatch(shift_store(x), error = function(e) NULL)
     if (is.null(store)) {
@@ -9576,8 +9962,14 @@ S7::method(shift_check, ShiftFiles) <- function(x, strict = FALSE, ...) {
     diagnostics
 }
 
-S7::method(shift_check, ShiftDownload) <- function(x, strict = FALSE, ...) {
+S7::method(shift_check, ShiftDownload) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
     checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
     diagnostics <- shift_diagnostics_empty()
     store <- tryCatch(shift_store(x), error = function(e) NULL)
     if (!is.null(store)) {
@@ -9609,8 +10001,14 @@ S7::method(shift_check, ShiftDownload) <- function(x, strict = FALSE, ...) {
     diagnostics
 }
 
-S7::method(shift_check, ShiftClimate) <- function(x, strict = FALSE, ...) {
+S7::method(shift_check, ShiftClimate) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
     checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
     store <- shift_store(x)
     coverage <- store$coverage(plan_id = x@ids$plan_id)
     diagnostics <- shift_bind_diagnostics(x@diagnostics, shift_diagnostics_from_coverage(coverage))
@@ -9620,8 +10018,14 @@ S7::method(shift_check, ShiftClimate) <- function(x, strict = FALSE, ...) {
     diagnostics
 }
 
-S7::method(shift_check, ShiftMorphed) <- function(x, strict = FALSE, ...) {
+S7::method(shift_check, ShiftMorphed) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
     checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
     diagnostics <- shift_diagnostics_normalize(x@diagnostics)
     if (isTRUE(strict)) {
         shift_abort_diagnostics(diagnostics)
@@ -9629,8 +10033,14 @@ S7::method(shift_check, ShiftMorphed) <- function(x, strict = FALSE, ...) {
     diagnostics
 }
 
-S7::method(shift_check, ShiftOutputs) <- function(x, strict = FALSE, ...) {
+S7::method(shift_check, ShiftOutputs) <- function(
+    x,
+    strict = FALSE,
+    network = FALSE,
+    ...
+) {
     checkmate::assert_flag(strict)
+    checkmate::assert_flag(network)
     diagnostics <- shift_diagnostics_empty()
     store <- shift_store(x)
     outputs <- shift_outputs(x)
@@ -9808,6 +10218,15 @@ shift__format_reference <- function(reference, recipe = NULL) {
         parts <- c(reference@role, reference@mode, periods)
         parts <- parts[!is.na(parts) & nzchar(parts)]
         return(paste(parts, collapse = " \u00b7 "))
+    }
+    if (S7::S7_inherits(reference, ShiftReanalysisSpec)) {
+        return(sprintf(
+            "%s \u00b7 %s \u00b7 %d\u2013%d",
+            toupper(reference@dataset),
+            reference@product,
+            min(reference@years),
+            max(reference@years)
+        ))
     }
     if (S7::S7_inherits(reference, ShiftClimate)) {
         return("supplied ShiftClimate")
@@ -10213,8 +10632,11 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         cli::cli_rule("Discovery")
         shift__print_facts(list(
             "Frequency" = shift__format_cmip6_frequencies(
-                if (!is.null(climate)) climate@frequency else
+                if (!is.null(climate) && !is.null(climate@frequency)) {
+                    climate@frequency
+                } else {
                     request$frequency
+                }
             ),
             "Table" = shift__format_cmip6_tables(
                 if (!is.null(climate)) climate@table else
@@ -10473,11 +10895,23 @@ shift__print_cmip6 <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     shift__print_use_width(width)
     shift__print_header("CMIP6 Climate")
     shift__print_facts(list(
-        "Model" = shift__display_values(x@model),
+        "Model" = if (is.null(x@model)) {
+            if (is.null(x@n_models)) {
+                "auto (all compatible models)"
+            } else {
+                sprintf("auto (%d models)", x@n_models)
+            }
+        } else {
+            shift__display_values(x@model)
+        },
         "Scenarios" = shift__display_values(x@scenarios),
         "Member" = shift__format_auto(x@member),
         "Grid" = shift__format_auto(x@grid),
-        "Frequency" = shift__format_cmip6_frequencies(x@frequency),
+        "Frequency" = if (is.null(x@frequency)) {
+            "inferred by weather method"
+        } else {
+            shift__format_cmip6_frequencies(x@frequency)
+        },
         "Table" = shift__format_cmip6_tables(x@table),
         "Activity" = x@activity,
         "Index nodes" = sprintf("%d-node failover", length(x@index_nodes)),

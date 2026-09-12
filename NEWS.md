@@ -54,6 +54,22 @@
 
 ## New features
 
+* Added an ergonomic `shift_future_epw()` workflow for multiple weather methods
+  and CMIP6 models. Method keys resolve through `weather_transforms()`, model
+  discovery selects common model/member/grid identities across every method,
+  required historical periods are created automatically, and `ShiftBatch`
+  results support the existing status, output, diagnostic, resume, and cancel
+  operations without imposing package-owned comparison metrics. Added
+  `shift_era5()` as a credential-free reanalysis source specification with
+  direct R access to official CDS services and CF weather normalization.
+  `shift_era6()` reserves the same provider-neutral interface and fails
+  explicitly until a stable public ERA6 dataset is available. `shift_cmip6()`
+  now expresses all selection modes through `model`: a positive count selects
+  a bounded compatible ensemble, character values select exact models, and
+  `NULL` selects all compatible models. Reanalysis sources support local and
+  opt-in remote credential checks, classify dataset-term failures, and have a
+  separate opt-in live ERA5 retrieval workflow (#254).
+
 * Kept future-weather generation contracts independent of user evaluation
   designs. Package-owned comparison protocols, publication study presets, and
   duplicate `_comparison` recipes were removed; every method now has one

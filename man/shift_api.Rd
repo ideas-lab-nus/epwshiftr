@@ -72,11 +72,11 @@ shift_site(
 )
 
 shift_cmip6(
-  model,
+  model = 3L,
   scenarios,
   member = NULL,
   grid = NULL,
-  frequency = "mon",
+  frequency = NULL,
   table = NULL,
   activity = "ScenarioMIP",
   index_nodes = NULL,
@@ -138,7 +138,7 @@ shift_future_epw(
   epw,
   climate,
   periods,
-  transform,
+  transform = NULL,
   dir,
   reference = NULL,
   observed_reference = NULL,
@@ -146,7 +146,9 @@ shift_future_epw(
   ui = shift_ui(),
   store = NULL,
   dry_run = FALSE,
-  background = FALSE
+  background = FALSE,
+  methods = NULL,
+  calibration = NULL
 )
 
 shift_reference_historical(
@@ -234,7 +236,7 @@ shift_export_epw(
   ui = NULL
 )
 
-shift_check(x, strict = FALSE, ...)
+shift_check(x, strict = FALSE, network = FALSE, ...)
 
 shift_refresh(x)
 
@@ -347,7 +349,10 @@ EPW export option list.}
 
 \item{metadata}{Optional site metadata.}
 
-\item{model}{CMIP6 source/model IDs.}
+\item{model}{CMIP6 model selection. A positive whole number selects that
+many compatible models deterministically; a character vector selects
+explicit source/model IDs; \code{NULL} selects every compatible model. The
+default selects three models.}
 
 \item{scenarios}{CMIP6 future scenario experiment IDs.}
 
@@ -455,6 +460,13 @@ are resolved under the store root.}
 a background job. For task-level run/resume functions, whether to launch a
 detached \code{Rscript} worker and return a queued \code{ShiftRun} immediately.}
 
+\item{methods}{One or more unambiguous method keys from
+\code{\link[=weather_transforms]{weather_transforms()}}. This high-level form creates a \code{ShiftBatch} across
+every selected method and model.}
+
+\item{calibration}{Alias for \code{observed_reference} in high-level multi-method
+workflows. It is routed only to methods that accept observational input.}
+
 \item{match}{File metadata fields copied from the future climate stage when
 resolving an automatic historical reference.}
 
@@ -492,6 +504,10 @@ plans.}
 
 \item{export_dir}{Optional directory outside or inside the store where EPW
 files should also be copied for user-facing delivery.}
+
+\item{network}{For a reanalysis source, whether to verify the configured
+token against the provider. The default performs local configuration
+checks only and never submits a data request.}
 
 \item{refresh}{In \code{\link[=shift_ui]{shift_ui()}}, minimum seconds between visual animation
 frames. In \code{ShiftRun} inspectors, whether to reload persisted state first.}
