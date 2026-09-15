@@ -1359,9 +1359,10 @@ Execute pending or failed regional extraction plans.
 \item{\code{status}}{Plan statuses to run when \code{plan_id} is \code{NULL}.
 Default: \code{c("pending", "failed")}.}
 
-\item{\code{fallback}}{What to do when OPeNDAP is unavailable. \code{"auto"}
-downloads through HTTPServer when possible; \code{"error"} marks
-the plan failed without downloading. Default: \code{"auto"}.}
+\item{\code{fallback}}{What to do when OPeNDAP open, metadata, or read
+access fails. \code{"auto"} downloads through HTTPServer and
+retries once when possible; \code{"error"} marks the plan failed
+without downloading. Default: \code{"auto"}.}
 
 \item{\code{overwrite}}{If \code{TRUE}, overwrite existing Parquet outputs.
 Default: \code{FALSE}.}

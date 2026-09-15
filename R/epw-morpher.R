@@ -142,6 +142,26 @@ morpher__delete_by_key <- function(store, table, key, values) {
     invisible(NULL)
 }
 
+# Delete current diagnostics for exactly one morphing case. A case hash can be
+# shared by different method plans, so filtering by both identities prevents a
+# retry in one method from erasing another method's evidence.
+morpher__delete_case_diagnostics <- function(store, morph_id, case_id) {
+    diagnostics <- morpher__read_table(store, "epw_morph_diagnostic")
+    diagnostics <- diagnostics[
+        diagnostics[["morph_id"]] == morph_id &
+            diagnostics[["case_id"]] == case_id
+    ]
+    if (nrow(diagnostics)) {
+        morpher__delete_by_key(
+            store,
+            "epw_morph_diagnostic",
+            "diagnostic_id",
+            diagnostics[["diagnostic_id"]]
+        )
+    }
+    invisible(NULL)
+}
+
 morpher__case_columns <- function() {
     c("source_id", "experiment_id", "variant_label", "period")
 }
@@ -169,11 +189,21 @@ morpher__monthly_long <- function(data, id_cols, value_cols, units_map) {
         value <- morpher__drop_units(data[[field]])
         units <- units_map[[field]]
         dt <- data.table::data.table(month = data$month, value = value)
-        summary <- dt[, .(
-            mean = mean(value, na.rm = TRUE),
-            max = max(value, na.rm = TRUE),
-            min = min(value, na.rm = TRUE)
-        ), by = "month"]
+        summary <- dt[, {
+            valid <- value[is.finite(value)]
+            if (!length(valid)) {
+                list(mean = NA_real_, max = NA_real_, min = NA_real_)
+            } else {
+                list(
+                    mean = mean(valid),
+                    max = max(valid),
+                    min = min(valid)
+                )
+            }
+        }, by = "month"]
+        # An all-missing month has no baseline statistic. Omitting it lets the
+        # existing baseline coverage diagnostics identify the exact gap.
+        summary <- summary[is.finite(mean) & is.finite(max) & is.finite(min)]
         summary <- data.table::melt(
             summary,
             id.vars = "month",
@@ -274,14 +304,36 @@ morpher__normalize_result_manifest <- function(rows) {
             value = defaults[[name]]
         )
     }
+    # Representative-year rows written before member manifests were added can
+    # contain a non-positive count. Their one-file contract is unambiguous and
+    # can be upgraded without rerunning the scientific method kernel.
+    representative <- rows[["output_type"]] == "representative_year" &
+        (is.na(rows[["member_count"]]) | rows[["member_count"]] < 1L)
+    data.table::set(
+        rows,
+        i = which(representative),
+        j = "member_count",
+        value = 1L
+    )
     rows[]
 }
 
 # A resumed case is complete only when every member promised by its manifest
 # still exists; one surviving year must not hide a missing sibling year.
-morpher__result_case_complete <- function(rows) {
+morpher__result_case_complete <- function(rows, store_root = NULL) {
     if (!nrow(rows)) {
         return(FALSE)
+    }
+    if (!is.null(store_root)) {
+        paths <- vapply(
+            rows[["output_path"]],
+            store_abs_path,
+            character(1L),
+            root = store_root
+        )
+        if (any(!file.exists(paths))) {
+            return(FALSE)
+        }
     }
     expected <- unique(as.integer(rows$member_count))
     member_keys <- paste(
@@ -600,9 +652,12 @@ EpwMorpher <- R6::R6Class(
 
             epw <- private$epw$clone()
             suppressMessages(epw$add_unit())
-            data <- data.table::as.data.table(epw$data())
             rules <- morpher__recipe_rules(private$recipe)
             fields <- unique(rules[required == TRUE & !derived, epw_field])
+            data <- epw_file__calculation_weather(
+                epw$data(),
+                intersect(fields, names(EPW_FILE_FIELD_SPECS))
+            )
             fields <- intersect(fields, names(data))
             units_map <- stats::setNames(lapply(fields, morpher__default_epw_units), fields)
             rows <- morpher__monthly_long(data, character(), fields, units_map)
@@ -939,21 +994,23 @@ EpwMorpher <- R6::R6Class(
             )
             target_morph_id <- morph_id
             existing <- existing[existing[["morph_id"]] == target_morph_id]
-            existing_paths <- if (nrow(existing)) {
-                vapply(existing[["output_path"]], store_abs_path, character(1L), root = private$store$path)
-            } else {
-                character()
-            }
             complete_existing <- existing[
-                existing[["case_id"]] %in% cases &
-                    vapply(existing_paths, file.exists, logical(1L))
+                existing[["case_id"]] %in% cases
             ]
             complete_cases <- cases[vapply(cases, function(case_id) {
                 rows <- complete_existing[
                     complete_existing[["case_id"]] == case_id
                 ]
-                morpher__result_case_complete(rows)
+                morpher__result_case_complete(
+                    rows,
+                    store_root = private$store$path
+                )
             }, logical(1L))]
+            private$reset_case_statuses(
+                morph_id,
+                plan_cases,
+                complete_cases
+            )
             if (!isTRUE(overwrite) && isTRUE(resume) &&
                 length(complete_cases) == length(cases)) {
                 private$set_plan_status(morph_id, "result_done")
@@ -1025,6 +1082,8 @@ EpwMorpher <- R6::R6Class(
                     reference_by <- morpher__reference_case_by(by)
                     observed_by <- morpher__observed_case_by(by)
                     result_rows <- list()
+                    case_errors <- list()
+                    case_diagnostics <- list()
                     for (case_index in seq_along(cases)) {
                         if (!is.null(reporter)) {
                             reporter$check_cancel("morph")
@@ -1036,171 +1095,125 @@ EpwMorpher <- R6::R6Class(
                             reporter$unit_started(label, current = case_index, total = length(cases),
                                 details = private$report_case_details(case, "morph_case"))
                         }
-                        target_case_id <- case_id
-                        existing_case <- complete_existing[complete_existing[["case_id"]] == target_case_id]
-                        if (!isTRUE(overwrite) && isTRUE(resume) &&
-                            morpher__result_case_complete(existing_case)) {
-                            result_rows[[length(result_rows) + 1L]] <- existing_case
+                        attempt <- tryCatch(
+                            private$execute_case(
+                                morph_id,
+                                case,
+                                climate,
+                                reference_climate,
+                                observed_climate,
+                                by,
+                                reference_by,
+                                observed_by,
+                                existing,
+                                overwrite,
+                                resume
+                            ),
+                            error = identity
+                        )
+                        if (inherits(attempt, "error")) {
+                            morpher__delete_case_diagnostics(
+                                private$store,
+                                morph_id,
+                                case_id
+                            )
+                            private$set_case_status(
+                                morph_id,
+                                case,
+                                "failed",
+                                error = attempt
+                            )
+                            diagnostic <- morpher__case_error_diagnostic(
+                                attempt,
+                                morph_id,
+                                case_id,
+                                case
+                            )
+                            case_diagnostics[[length(case_diagnostics) + 1L]] <-
+                                diagnostic
+                            case_errors[[length(case_errors) + 1L]] <- attempt
                             if (!is.null(reporter)) {
-                                reporter$unit_skipped(sprintf("Reused %s", label),
-                                    current = case_index, total = length(cases))
+                                reporter$unit_completed(
+                                    sprintf("Failed %s", label),
+                                    current = case_index,
+                                    total = length(cases),
+                                    outcome = "failed",
+                                    details = c(
+                                        private$report_case_details(
+                                            case,
+                                            "morph_case"
+                                        ),
+                                        list(
+                                            error_class = class(attempt)[[1L]],
+                                            error = conditionMessage(attempt)
+                                        )
+                                    )
+                                )
                             }
                             next
                         }
-                        case_climate <- private$filter_case_climate(climate, case, by)
-                        if (!nrow(case_climate)) {
-                            cli::cli_abort("No extracted climate rows matched morphing case {.val {target_case_id}}.")
-                        }
-                        reference_case_climate <- NULL
-                        if (!is.null(reference_climate)) {
-                            reference_case_climate <- private$filter_case_climate(reference_climate, case, reference_by)
-                            # Supplying an external reference selects
-                            # change-factor mode for every case; never fall
-                            # back to the baseline EPW for an unmatched case.
-                            if (!nrow(reference_case_climate)) {
-                                cli::cli_abort("No reference climate rows matched morphing case {.val {target_case_id}}.")
-                            }
-                        }
-                        observed_case_climate <- NULL
-                        if (!is.null(observed_climate)) {
-                            observed_case_climate <- private$filter_case_climate(
-                                observed_climate,
-                                case,
-                                observed_by
-                            )
-                            # Observations are shared across future-model cases,
-                            # but an explicit site key must still match.
-                            if (!nrow(observed_case_climate)) {
-                                cli::cli_abort(
-                                    "No observed climate rows matched morphing case {.val {target_case_id}}."
-                                )
-                            }
-                        }
-                        context <- morpher__context(
-                            epw = private$epw,
-                            climate = case_climate,
-                            reference_climate = reference_case_climate,
-                            observed_reference = observed_case_climate,
-                            recipe = private$recipe,
-                            by = by,
-                            case = case,
-                            strict = isTRUE(plan$strict[[1L]]),
-                            warning = FALSE
-                        )
-                        case_result <- morpher__run_context(context)
-                        member_records <- sequence__records(case_result)
-                        member_count <- length(member_records)
-                        for (member in member_records) {
-                            case_data <- member$data
-                            if (!nrow(case_data)) {
-                                cli::cli_abort(
-                                    "No morphed data were produced for morphing case {.val {target_case_id}}."
-                                )
-                            }
-                            path <- private$morph_result_path(
+                        if (!isTRUE(attempt$reused)) {
+                            morpher__delete_case_diagnostics(
+                                private$store,
                                 morph_id,
-                                case_id,
-                                output_type = member$output_type,
-                                sequence_id = member$sequence_id,
-                                weather_year = member$weather_year
-                            )
-                            path_rel <- store_rel_path(
-                                path,
-                                root = private$store$path
-                            )
-                            existing_member <- existing[
-                                existing[["case_id"]] == case_id &
-                                    existing[["output_path"]] == path_rel
-                            ]
-                            if (!isTRUE(overwrite) && isTRUE(resume) &&
-                                nrow(existing_member) == 1L &&
-                                file.exists(path)) {
-                                # Partial sequence recovery reuses intact
-                                # siblings and regenerates only missing years.
-                                result_rows[[length(result_rows) + 1L]] <-
-                                    existing_member
-                                next
-                            }
-                            if (file.exists(path) && !isTRUE(overwrite)) {
-                                cli::cli_abort(
-                                    "Morph result already exists without a complete manifest row: {.path {path}}."
-                                )
-                            }
-                            case_meta <- private$case_metadata_from_case(
-                                case,
-                                case_data
-                            )
-                            for (name in names(case_meta)) {
-                                case_data[, (name) := case_meta[[name]]]
-                            }
-                            write_parquet_file(case_data, path)
-                            provenance_json <- as.character(morpher__json(
-                                member$provenance
-                            ))
-                            identity <- list(
-                                output_type = member$output_type,
-                                sequence_id = member$sequence_id,
-                                weather_year = member$weather_year,
-                                calendar = member$calendar,
-                                stochastic_seed = member$stochastic_seed,
-                                member_count = member_count,
-                                provenance_json = provenance_json
-                            )
-                            artifact_id <- private$store$register_artifact(
-                                kind = "output",
-                                path = path,
-                                role = "derived",
-                                project = "CMIP6",
-                                metadata = c(
-                                    list(
-                                        morph_id = morph_id,
-                                        case_id = case_id
-                                    ),
-                                    identity
-                                )
-                            )
-                            result_id <- if (identical(
-                                member$output_type,
-                                "representative_year"
-                            )) {
-                                morpher__hash(morph_id, case_id, path)
-                            } else {
-                                morpher__hash(
-                                    morph_id,
-                                    case_id,
-                                    member$output_type,
-                                    member$sequence_id,
-                                    member$weather_year,
-                                    path
-                                )
-                            }
-                            result_rows[[length(result_rows) + 1L]] <- data.frame(
-                                result_id = result_id,
-                                morph_id = morph_id,
-                                case_id = case_id,
-                                artifact_id = artifact_id,
-                                output_path = path_rel,
-                                row_count = nrow(case_data),
-                                output_type = member$output_type,
-                                sequence_id = member$sequence_id,
-                                weather_year = member$weather_year,
-                                calendar = member$calendar,
-                                stochastic_seed = member$stochastic_seed,
-                                member_count = member_count,
-                                provenance_json = provenance_json,
-                                created_at = morpher__now(),
-                                stringsAsFactors = FALSE
+                                case_id
                             )
                         }
+                        result_rows[[length(result_rows) + 1L]] <- attempt$rows
+                        private$set_case_status(morph_id, case, "completed")
+                        case_diagnostics[[length(case_diagnostics) + 1L]] <-
+                            attempt$diagnostics
                         if (!is.null(reporter)) {
-                            reporter$unit_completed(sprintf("Morphed %s", label),
-                                current = case_index, total = length(cases), outcome = "completed")
+                            if (isTRUE(attempt$reused)) {
+                                reporter$unit_skipped(
+                                    sprintf("Reused %s", label),
+                                    current = case_index,
+                                    total = length(cases)
+                                )
+                            } else {
+                                reporter$unit_completed(
+                                    sprintf("Morphed %s", label),
+                                    current = case_index,
+                                    total = length(cases),
+                                    outcome = "completed"
+                                )
+                            }
                         }
                     }
+                    # Publish one coherent diagnostic set after all cases have
+                    # attempted. Per-case deletion above preserves diagnostics
+                    # for resumed siblings, while this batched write makes the
+                    # result independent of successful/failed case order.
+                    private$persist_case_diagnostics(
+                        morpher__bind_diagnostics(case_diagnostics)
+                    )
                     results <- data.table::rbindlist(result_rows, use.names = TRUE, fill = TRUE)
+                    if (!nrow(results)) {
+                        messages <- unique(vapply(
+                            case_errors,
+                            conditionMessage,
+                            character(1L)
+                        ))
+                        cli::cli_abort(c(
+                            "Every morphing case failed.",
+                            "x" = messages
+                        ))
+                    }
                     morpher__delete_by_key(private$store, "epw_morph_result", "morph_id", morph_id)
                     morpher__replace_rows(private$store, "epw_morph_result", results, "result_id")
-                    private$set_plan_status(morph_id, "result_done")
+                    private$set_plan_status(
+                        morph_id,
+                        if (length(case_errors)) "result_partial" else "result_done",
+                        if (length(case_errors)) {
+                            sprintf(
+                                "%d of %d morphing cases failed.",
+                                length(case_errors),
+                                length(cases)
+                            )
+                        } else {
+                            NA_character_
+                        }
+                    )
                     morpher__order_result_rows(results, cases)
                 },
                 error = function(e) {
@@ -1434,7 +1447,22 @@ EpwMorpher <- R6::R6Class(
                     outputs <- data.table::rbindlist(output_rows, use.names = TRUE, fill = TRUE)
                     morpher__delete_by_key(private$store, "epw_output", "morph_id", morph_id)
                     morpher__replace_rows(private$store, "epw_output", outputs, "output_id")
-                    private$set_plan_status(morph_id, "epw_written")
+                    morph_cases <- morpher__read_table(
+                        private$store,
+                        "epw_morph_case"
+                    )
+                    morph_cases <- morph_cases[
+                        morph_cases[["morph_id"]] == morph_id
+                    ]
+                    private$set_plan_status(
+                        morph_id,
+                        if (nrow(morph_cases) &&
+                            any(morph_cases$status == "failed")) {
+                            "epw_partial"
+                        } else {
+                            "epw_written"
+                        }
+                    )
                     outputs[]
                 },
                 error = function(e) {
@@ -1598,6 +1626,28 @@ EpwMorpher <- R6::R6Class(
             }
             results <- self$run(plan$morph_id[[1L]], overwrite = overwrite,
                 resume = resume, reporter = reporter)
+            target_morph_id <- plan$morph_id[[1L]]
+            runtime_diagnostics <- morpher__read_table(
+                private$store,
+                "epw_morph_diagnostic"
+            )
+            runtime_diagnostics <- runtime_diagnostics[
+                runtime_diagnostics[["morph_id"]] == target_morph_id
+            ]
+            if ("diagnostic_id" %in% names(runtime_diagnostics)) {
+                runtime_diagnostics[, diagnostic_id := NULL]
+            }
+            diagnostics <- morpher__bind_diagnostics(
+                diagnostics,
+                runtime_diagnostics
+            )
+            case_status <- morpher__read_table(
+                private$store,
+                "epw_morph_case"
+            )
+            case_status <- case_status[
+                case_status[["morph_id"]] == target_morph_id
+            ]
             outputs <- if (is.null(dir)) {
                 NULL
             } else {
@@ -1611,6 +1661,7 @@ EpwMorpher <- R6::R6Class(
                 preview = preview,
                 plan = plan,
                 diagnostics = diagnostics,
+                cases = case_status,
                 results = results,
                 outputs = outputs
             )
@@ -2129,6 +2180,49 @@ EpwMorpher <- R6::R6Class(
             rules <- morpher__recipe_rules(private$recipe)
             fields <- unique(rules[required == TRUE & !derived, epw_field])
             diagnostics <- list()
+
+            # Inspect the raw EPW before its documented numeric sentinels are
+            # converted to NA, retaining exact hourly and monthly evidence.
+            epw <- private$epw$clone()
+            raw_weather <- data.table::as.data.table(epw$data())
+            missing_values <- epw_file__missing_summary(
+                raw_weather,
+                intersect(fields, names(EPW_FILE_FIELD_SPECS))
+            )[missing_hours > 0L]
+            for (i in seq_len(nrow(missing_values))) {
+                row <- missing_values[i]
+                complete_month <- row$missing_hours[[1L]] ==
+                    row$total_hours[[1L]]
+                message <- if (complete_month) {
+                    sprintf(
+                        "Baseline EPW field %s is missing for all %s hours in month %s.",
+                        row$epw_field[[1L]],
+                        row$total_hours[[1L]],
+                        row$month[[1L]]
+                    )
+                } else {
+                    sprintf(
+                        "Baseline EPW field %s is missing for %s of %s hours in month %s.",
+                        row$epw_field[[1L]],
+                        row$missing_hours[[1L]],
+                        row$total_hours[[1L]],
+                        row$month[[1L]]
+                    )
+                }
+                diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
+                    stage = "baseline",
+                    severity = severity,
+                    code = "missing_epw_values",
+                    message = message,
+                    baseline_id = baseline_id,
+                    epw_field = row$epw_field[[1L]],
+                    month = row$month[[1L]],
+                    action = paste(
+                        "Use a baseline EPW with valid observations for this",
+                        "field before morphing."
+                    )
+                )
+            }
             if (!is.null(baseline_id)) {
                 baseline <- morpher__read_table(private$store, "epw_baseline_summary")
                 target_baseline_id <- baseline_id
@@ -2158,6 +2252,19 @@ EpwMorpher <- R6::R6Class(
                 present <- unique(baseline[, .(epw_field, month)])
                 expected <- data.table::CJ(epw_field = fields, month = 1:12, unique = TRUE)
                 missing <- expected[!present, on = c("epw_field", "month")]
+                # A documented all-month EPW sentinel already has a more
+                # precise hourly diagnostic above; do not report the same gap
+                # again as a generic missing summary month.
+                sentinel_months <- missing_values[
+                    missing_hours == total_hours,
+                    .(epw_field, month)
+                ]
+                if (nrow(sentinel_months)) {
+                    missing <- missing[
+                        !sentinel_months,
+                        on = c("epw_field", "month")
+                    ]
+                }
                 for (i in seq_len(nrow(missing))) {
                     diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
                         stage = "baseline",
@@ -2173,7 +2280,6 @@ EpwMorpher <- R6::R6Class(
                 return(morpher__bind_diagnostics(diagnostics))
             }
 
-            epw <- private$epw$clone()
             suppressMessages(epw$add_unit())
             data <- data.table::as.data.table(epw$data())
             missing_fields <- setdiff(fields, names(data))
@@ -2198,8 +2304,23 @@ EpwMorpher <- R6::R6Class(
             severity <- if (isTRUE(strict)) "error" else "warning"
             rows <- vector("list", nrow(bad))
             for (i in seq_len(nrow(bad))) {
+                # Name the failed input boundary explicitly. A missing EPW
+                # monthly summary must not be reported as a missing CMIP6
+                # variable merely because both prevent factor calculation.
                 message <- switch(
                     bad$status[[i]],
+                    missing_climate = sprintf(
+                        "Future climate input %s is missing for month %s.",
+                        bad$variable_id[[i]], bad$month[[i]]
+                    ),
+                    missing_reference = sprintf(
+                        "Historical climate reference %s is missing for month %s.",
+                        bad$variable_id[[i]], bad$month[[i]]
+                    ),
+                    missing_baseline = sprintf(
+                        "Baseline EPW has no valid monthly value for %s in month %s.",
+                        bad$epw_field[[i]], bad$month[[i]]
+                    ),
                     dry_baseline_precip = sprintf(
                         "Baseline EPW has no wet hours for positive target precipitation in month %s.",
                         bad$month[[i]]
@@ -2216,6 +2337,21 @@ EpwMorpher <- R6::R6Class(
                 )
                 action <- switch(
                     bad$status[[i]],
+                    missing_climate = sprintf(
+                        "Provide complete future climate input for %s.",
+                        bad$variable_id[[i]]
+                    ),
+                    missing_reference = sprintf(
+                        "Provide complete Historical climate input for %s.",
+                        bad$variable_id[[i]]
+                    ),
+                    missing_baseline = sprintf(
+                        paste(
+                            "Use a baseline EPW with valid %s observations",
+                            "for this month."
+                        ),
+                        bad$epw_field[[i]]
+                    ),
                     dry_baseline_precip = "Use a baseline EPW with wet hours for that month, or run in relaxed mode to keep it dry.",
                     zero_reference_precip = "Provide non-zero historical precipitation for that month, or run in relaxed mode to keep baseline precipitation unchanged.",
                     unit_conversion_failed = if (identical(bad$variable_id[[i]], "pr")) {
@@ -2415,6 +2551,316 @@ EpwMorpher <- R6::R6Class(
             plan$last_error <- store__chr1(error)
             morpher__replace_rows(private$store, "epw_morph_plan", plan, "morph_id")
             invisible(NULL)
+        },
+
+        # Initialize one durable state row per morphing case. Completed result
+        # manifests are authoritative during resume; every other case starts as
+        # ready and is updated independently after its own attempt.
+        reset_case_statuses = function(morph_id, cases, complete_cases) {
+            cases <- data.table::as.data.table(data.table::copy(cases))
+            rows <- vector("list", nrow(cases))
+            for (i in seq_len(nrow(cases))) {
+                case <- cases[i]
+                case_id <- case$case_id[[1L]]
+                rows[[i]] <- private$case_status_row(
+                    morph_id,
+                    case,
+                    status = if (case_id %in% complete_cases) {
+                        "completed"
+                    } else {
+                        "ready"
+                    }
+                )
+            }
+            morpher__delete_by_key(
+                private$store,
+                "epw_morph_case",
+                "morph_id",
+                morph_id
+            )
+            if (length(rows)) {
+                morpher__replace_rows(
+                    private$store,
+                    "epw_morph_case",
+                    data.table::rbindlist(rows, use.names = TRUE, fill = TRUE),
+                    "morph_case_id"
+                )
+            }
+            invisible(NULL)
+        },
+
+        # Build one normalized case-state row from the scientific identity used
+        # by the current morphing plan.
+        case_status_row = function(
+            morph_id,
+            case,
+            status,
+            error = NULL
+        ) {
+            case <- data.table::as.data.table(case)
+            case_id <- case$case_id[[1L]]
+            pick <- function(name) {
+                if (name %in% names(case)) {
+                    store__chr1(case[[name]][[1L]])
+                } else {
+                    NA_character_
+                }
+            }
+            data.frame(
+                morph_case_id = morpher__hash(morph_id, case_id),
+                morph_id = morph_id,
+                case_id = case_id,
+                source_id = pick("source_id"),
+                experiment_id = pick("experiment_id"),
+                variant_label = pick("variant_label"),
+                period = pick("period"),
+                status = status,
+                error_class = if (is.null(error)) {
+                    NA_character_
+                } else {
+                    class(error)[[1L]]
+                },
+                last_error = if (is.null(error)) {
+                    NA_character_
+                } else {
+                    conditionMessage(error)
+                },
+                updated_at = morpher__now(),
+                stringsAsFactors = FALSE
+            )
+        },
+
+        # Replace only the selected case row so a failure cannot overwrite the
+        # state of completed or not-yet-attempted siblings.
+        set_case_status = function(morph_id, case, status, error = NULL) {
+            row <- private$case_status_row(
+                morph_id,
+                case,
+                status,
+                error = error
+            )
+            morpher__replace_rows(
+                private$store,
+                "epw_morph_case",
+                row,
+                "morph_case_id"
+            )
+            invisible(row)
+        },
+
+        # Keep current morph diagnostics in a dedicated table. Shift run events
+        # retain attempt history, while this table is replaced on each resumed
+        # morph so inspectors do not confuse superseded failures with current
+        # case state.
+        persist_case_diagnostics = function(diagnostics) {
+            diagnostics <- morpher__bind_diagnostics(diagnostics)
+            if (!nrow(diagnostics)) {
+                return(invisible(diagnostics))
+            }
+            rows <- data.table::copy(diagnostics)
+            rows[, diagnostic_id := vapply(
+                seq_len(.N),
+                function(i) morpher__hash(as.list(rows[i])),
+                character(1L)
+            )]
+            data.table::setcolorder(
+                rows,
+                c("diagnostic_id", morpher__diagnostic_columns())
+            )
+            morpher__replace_rows(
+                private$store,
+                "epw_morph_diagnostic",
+                rows,
+                "diagnostic_id"
+            )
+            invisible(diagnostics)
+        },
+
+        # Execute one scientific case and return its complete manifest rows.
+        # Keeping this boundary inside the R6 engine gives run() a safe place to
+        # catch one case failure without weakening validation inside backends.
+        execute_case = function(
+            morph_id,
+            case,
+            climate,
+            reference_climate,
+            observed_climate,
+            by,
+            reference_by,
+            observed_by,
+            existing,
+            overwrite,
+            resume
+        ) {
+            case_id <- case$case_id[[1L]]
+            existing_case <- existing[existing[["case_id"]] == case_id]
+            reusable <- existing_case
+            if (!isTRUE(overwrite) && isTRUE(resume) &&
+                morpher__result_case_complete(
+                    reusable,
+                    store_root = private$store$path
+                )) {
+                return(list(
+                    rows = reusable,
+                    diagnostics = morpher__empty_diagnostics(),
+                    reused = TRUE
+                ))
+            }
+
+            case_climate <- private$filter_case_climate(climate, case, by)
+            if (!nrow(case_climate)) {
+                cli::cli_abort(
+                    "No extracted climate rows matched morphing case {.val {case_id}}."
+                )
+            }
+            reference_case_climate <- NULL
+            if (!is.null(reference_climate)) {
+                reference_case_climate <- private$filter_case_climate(
+                    reference_climate,
+                    case,
+                    reference_by
+                )
+                if (!nrow(reference_case_climate)) {
+                    cli::cli_abort(
+                        "No reference climate rows matched morphing case {.val {case_id}}."
+                    )
+                }
+            }
+            observed_case_climate <- NULL
+            if (!is.null(observed_climate)) {
+                observed_case_climate <- private$filter_case_climate(
+                    observed_climate,
+                    case,
+                    observed_by
+                )
+                if (!nrow(observed_case_climate)) {
+                    cli::cli_abort(
+                        "No observed climate rows matched morphing case {.val {case_id}}."
+                    )
+                }
+            }
+            context <- morpher__context(
+                epw = private$epw,
+                climate = case_climate,
+                reference_climate = reference_case_climate,
+                observed_reference = observed_case_climate,
+                recipe = private$recipe,
+                by = by,
+                case = case,
+                strict = isTRUE(private$get_plan(morph_id)$strict[[1L]]),
+                warning = FALSE
+            )
+            case_result <- morpher__run_context(context)
+            diagnostics <- morpher__decorate_case_diagnostics(
+                morpher__result_diagnostics(case_result),
+                morph_id,
+                case_id,
+                case
+            )
+            member_records <- sequence__records(case_result)
+            member_count <- length(member_records)
+            rows <- list()
+            for (member in member_records) {
+                case_data <- member$data
+                if (!nrow(case_data)) {
+                    cli::cli_abort(
+                        "No morphed data were produced for morphing case {.val {case_id}}."
+                    )
+                }
+                path <- private$morph_result_path(
+                    morph_id,
+                    case_id,
+                    output_type = member$output_type,
+                    sequence_id = member$sequence_id,
+                    weather_year = member$weather_year
+                )
+                path_rel <- store_rel_path(path, root = private$store$path)
+                existing_member <- existing[
+                    existing[["case_id"]] == case_id &
+                        existing[["output_path"]] == path_rel
+                ]
+                if (!isTRUE(overwrite) && isTRUE(resume) &&
+                    nrow(existing_member) == 1L && file.exists(path)) {
+                    rows[[length(rows) + 1L]] <- existing_member
+                    next
+                }
+                if (file.exists(path) && !isTRUE(overwrite)) {
+                    cli::cli_abort(
+                        "Morph result already exists without a complete manifest row: {.path {path}}."
+                    )
+                }
+                case_meta <- private$case_metadata_from_case(case, case_data)
+                for (name in names(case_meta)) {
+                    case_data[, (name) := case_meta[[name]]]
+                }
+                write_parquet_file(case_data, path)
+                # Standard field roles supplement method-owned provenance so
+                # every output exposes the same comparison boundary.
+                provenance <- utils::modifyList(
+                    member$provenance,
+                    list(
+                        weather_field_roles =
+                            morpher__weather_field_roles(private$recipe)
+                    )
+                )
+                provenance_json <- as.character(morpher__json(provenance))
+                identity <- list(
+                    output_type = member$output_type,
+                    sequence_id = member$sequence_id,
+                    weather_year = member$weather_year,
+                    calendar = member$calendar,
+                    stochastic_seed = member$stochastic_seed,
+                    member_count = member_count,
+                    provenance_json = provenance_json
+                )
+                artifact_id <- private$store$register_artifact(
+                    kind = "output",
+                    path = path,
+                    role = "derived",
+                    project = "CMIP6",
+                    metadata = c(
+                        list(morph_id = morph_id, case_id = case_id),
+                        identity
+                    )
+                )
+                result_id <- if (identical(
+                    member$output_type,
+                    "representative_year"
+                )) {
+                    morpher__hash(morph_id, case_id, path)
+                } else {
+                    morpher__hash(
+                        morph_id,
+                        case_id,
+                        member$output_type,
+                        member$sequence_id,
+                        member$weather_year,
+                        path
+                    )
+                }
+                rows[[length(rows) + 1L]] <- data.frame(
+                    result_id = result_id,
+                    morph_id = morph_id,
+                    case_id = case_id,
+                    artifact_id = artifact_id,
+                    output_path = path_rel,
+                    row_count = nrow(case_data),
+                    output_type = member$output_type,
+                    sequence_id = member$sequence_id,
+                    weather_year = member$weather_year,
+                    calendar = member$calendar,
+                    stochastic_seed = member$stochastic_seed,
+                    member_count = member_count,
+                    provenance_json = provenance_json,
+                    created_at = morpher__now(),
+                    stringsAsFactors = FALSE
+                )
+            }
+            list(
+                rows = data.table::rbindlist(rows, use.names = TRUE, fill = TRUE),
+                diagnostics = diagnostics,
+                reused = FALSE
+            )
         },
 
         case_metadata_from_case = function(case, data) {

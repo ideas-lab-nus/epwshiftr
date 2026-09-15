@@ -10,6 +10,219 @@ STORE_DOWNLOAD_LAYOUT_CHOICES <- c("flat", "dataset", "drs", "template")
 STORE_DOWNLOAD_COLLISION_CHOICES <- c("error", "checksum", "suffix")
 STORE_DOWNLOAD_MISSING_CHOICES <- c("fallback", "error")
 
+# Wrap one access failure with the exact service, phase, target, duration, and
+# original condition needed by workflow diagnostics and final plan errors.
+store__access_error <- function(error, phase, service, target, started_at) {
+    elapsed <- proc.time()[["elapsed"]] - started_at
+    message <- sprintf(
+        "%s %s failed for %s after %.3f seconds: %s",
+        service,
+        phase,
+        target,
+        elapsed,
+        conditionMessage(error)
+    )
+    structure(
+        list(
+            message = message,
+            call = NULL,
+            parent = error,
+            phase = phase,
+            service = service,
+            target = target,
+            elapsed_seconds = elapsed,
+            error_class = class(error)[[1L]],
+            error_message = conditionMessage(error)
+        ),
+        class = c("epwshiftr_store_access_error", "error", "condition")
+    )
+}
+
+# Preserve both remote and local failures when an automatic HTTP retry cannot
+# recover an OPeNDAP extraction attempt.
+store__fallback_error <- function(remote, local) {
+    structure(
+        list(
+            message = paste(
+                "OPeNDAP extraction and HTTP fallback both failed.",
+                sprintf("Remote: %s", conditionMessage(remote)),
+                sprintf("Fallback: %s", conditionMessage(local))
+            ),
+            call = NULL,
+            parent = local,
+            remote_error = remote,
+            fallback_error = local
+        ),
+        class = c(
+            "epwshiftr_store_fallback_error",
+            "epwshiftr_store_access_error",
+            "error",
+            "condition"
+        )
+    )
+}
+
+# Record one structured access failure through the existing workflow reporter;
+# standalone store calls retain the same information in their condition text.
+store__report_access_failure <- function(
+    reporter,
+    file,
+    error,
+    attempt,
+    outcome = "fallback"
+) {
+    if (is.null(reporter)) {
+        return(invisible(NULL))
+    }
+    reporter$notice(
+        sprintf(
+            "%s %s failed for %s",
+            error$service,
+            error$phase,
+            file$filename[[1L]]
+        ),
+        outcome = outcome,
+        details = list(
+            unit_type = "extraction_plan",
+            variable = file$variable_id[[1L]],
+            access_method = error$service,
+            access_phase = error$phase,
+            target = error$target,
+            data_node = query_result__url_host(error$target),
+            elapsed_seconds = error$elapsed_seconds,
+            error_class = error$error_class,
+            error = error$error_message,
+            attempt = as.integer(attempt)
+        )
+    )
+    reporter$detail(
+        sprintf("  %s", conditionMessage(error)),
+        level = "detail"
+    )
+    invisible(NULL)
+}
+
+# Build a content-addressed path for one undecorated point-extraction payload.
+# Store-local plan IDs are excluded deliberately so method children requesting
+# the same immutable file, location, time range, and spatial method can share
+# the expensive NetCDF read while retaining independent manifests.
+store__extract_cache_path <- function(plan, file) {
+    file <- data.table::as.data.table(file)
+    source_fields <- intersect(c(
+        "checksum", "checksum_type", "size", "version",
+        "source_id", "experiment_id", "variant_label", "frequency",
+        "table_id", "variable_id", "grid_label"
+    ), names(file))
+    source <- as.list(file[1L, source_fields, with = FALSE])
+    checksum <- store__chr1(file[["checksum"]])
+    version <- store__chr1(file[["version"]])
+    if ((is.na(checksum) || !nzchar(checksum)) &&
+        (is.na(version) || !nzchar(version))) {
+        # Generic records without immutable content/version metadata retain
+        # service URLs in the key so a provider replacement cannot reuse stale
+        # bytes under a weak logical identity.
+        source$service_urls <- c(
+            store__chr1(file[["url_opendap"]]),
+            store__chr1(file[["url_download"]])
+        )
+    }
+    key <- store__hash(
+        "site-extraction-v1",
+        store__logical_file_id(file)[[1L]],
+        source,
+        list(
+            variable_id = plan$variable_id[[1L]],
+            lon = as.numeric(plan$lon[[1L]]),
+            lat = as.numeric(plan$lat[[1L]]),
+            method = plan$method[[1L]],
+            time_start = as.numeric(plan$time_start[[1L]]),
+            time_stop = as.numeric(plan$time_stop[[1L]])
+        )
+    )
+    file.path(
+        cache__option("dir_cache", cache__default_dir()),
+        "site-extractions",
+        substr(key, 1L, 2L),
+        paste0(key, ".rds")
+    )
+}
+
+# Read a shared extraction only when its complete method-neutral payload is
+# present. Invalid or interrupted cache files are treated as misses and safely
+# replaced while the content-addressed lock is held.
+store__extract_cache_read <- function(path) {
+    if (!file.exists(path)) {
+        return(NULL)
+    }
+    payload <- tryCatch(readRDS(path), error = identity)
+    required <- c(
+        "data", "grid_sources", "available_time_count", "actual_start",
+        "actual_end"
+    )
+    if (inherits(payload, "error") || !is.list(payload) ||
+        !all(required %in% names(payload)) ||
+        !is.data.frame(payload$data)) {
+        return(NULL)
+    }
+    payload
+}
+
+# Atomically publish an undecorated extraction payload. Plan/query identities
+# are attached only after materialization in the requesting store.
+store__extract_cache_write <- function(path, payload) {
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    temporary <- tempfile(
+        pattern = paste0(basename(path), "-"),
+        tmpdir = dirname(path)
+    )
+    on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
+    saveRDS(payload, temporary, version = 3L, compress = FALSE)
+    if (file.exists(path)) {
+        unlink(path)
+    }
+    if (!file.rename(temporary, path)) {
+        cli::cli_abort("Could not publish the shared extraction cache entry.")
+    }
+    invisible(path)
+}
+
+# Resolve one shared extraction under a cross-process lock. The generator owns
+# all remote/local fallback behavior; this wrapper stores only successful,
+# fully-read payloads and identifies reuse without copying store-specific IDs.
+store__extract_cache_resolve <- function(plan, file, generate) {
+    checkmate::assert_function(generate)
+    if (identical(cache__mode(), "off")) {
+        value <- generate()
+        value$cache_reused <- FALSE
+        return(value)
+    }
+    path <- store__extract_cache_path(plan, file)
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    manifest_with_lock(path, {
+        payload <- store__extract_cache_read(path)
+        if (!is.null(payload)) {
+            return(list(
+                payload = payload,
+                opened = list(
+                    access_method = "shared_cache",
+                    target = path
+                ),
+                recovery_error = NULL,
+                cache_reused = TRUE
+            ))
+        }
+        if (identical(cache__mode(), "offline")) {
+            cli::cli_abort(
+                "Shared extraction cache is missing in offline mode."
+            )
+        }
+        value <- generate()
+        store__extract_cache_write(path, value$payload)
+        value$cache_reused <- FALSE
+        value
+    }, timeout = 86400)
+}
+
 # Canonicalize reset targets and reject broad directories whose replacement
 # could damage a user profile, R installation, temporary session, or project.
 store__reset_path <- function(path) {
@@ -2284,9 +2497,10 @@ EsgStore <- R6::R6Class(
         #' @param plan_id Optional plan IDs to run.
         #' @param status Plan statuses to run when `plan_id` is `NULL`.
         #'        Default: `c("pending", "failed")`.
-        #' @param fallback What to do when OPeNDAP is unavailable. `"auto"`
-        #'        downloads through HTTPServer when possible; `"error"` marks
-        #'        the plan failed without downloading. Default: `"auto"`.
+        #' @param fallback What to do when OPeNDAP open, metadata, or read
+        #'        access fails. `"auto"` downloads through HTTPServer and
+        #'        retries once when possible; `"error"` marks the plan failed
+        #'        without downloading. Default: `"auto"`.
         #' @param overwrite If `TRUE`, overwrite existing Parquet outputs.
         #'        Default: `FALSE`.
         #' @param resume Whether to reuse complete existing extraction outputs.
@@ -3563,11 +3777,15 @@ EsgStore <- R6::R6Class(
                     role VARCHAR,
                     grid_lon DOUBLE,
                     grid_lat DOUBLE,
+                    grid_elevation_m DOUBLE,
                     grid_dist_km DOUBLE,
                     weight DOUBLE,
                     created_at TIMESTAMP
                 )
             "
+            )
+            private$exec(
+                "ALTER TABLE extraction_grid_source ADD COLUMN IF NOT EXISTS grid_elevation_m DOUBLE"
             )
             private$exec(
                 "
@@ -3765,7 +3983,45 @@ EsgStore <- R6::R6Class(
                     units VARCHAR,
                     status VARCHAR
                 )
-            "
+                "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_case (
+                    morph_case_id VARCHAR PRIMARY KEY,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    source_id VARCHAR,
+                    experiment_id VARCHAR,
+                    variant_label VARCHAR,
+                    period VARCHAR,
+                    status VARCHAR,
+                    error_class VARCHAR,
+                    last_error VARCHAR,
+                    updated_at TIMESTAMP
+                )
+                "
+            )
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_morph_diagnostic (
+                    diagnostic_id VARCHAR PRIMARY KEY,
+                    stage VARCHAR,
+                    severity VARCHAR,
+                    code VARCHAR,
+                    message VARCHAR,
+                    plan_id VARCHAR,
+                    summary_id VARCHAR,
+                    baseline_id VARCHAR,
+                    morph_id VARCHAR,
+                    case_id VARCHAR,
+                    variable_id VARCHAR,
+                    epw_field VARCHAR,
+                    period VARCHAR,
+                    month INTEGER,
+                    action VARCHAR
+                )
+                "
             )
             private$exec(
                 "
@@ -4572,23 +4828,54 @@ EsgStore <- R6::R6Class(
             }
             dt <- data.table::as.data.table(dt)
             dt[, file_key := store__file_keys(.SD)]
+            dt[, logical_file_id := store__logical_file_id(.SD)]
+
+            # A previously downloaded candidate outranks a fresh remote
+            # replica of the same logical file. Remaining ties prefer current,
+            # authoritative, newest records with both service URLs available.
+            existing <- private$read_table("esg_file")
+            existing <- existing[existing[["file_key"]] %in% dt$file_key]
+            existing_created <- stats::setNames(
+                existing$created_at,
+                existing$file_key
+            )
+            existing_local_path <- stats::setNames(
+                existing$local_path,
+                existing$file_key
+            )
+            existing_artifact <- stats::setNames(
+                existing$local_artifact_id,
+                existing$file_key
+            )
+            local_path <- store__match_chr(existing_local_path, dt$file_key)
             dt[, `:=`(
                 row_order = seq_len(.N),
+                local_order = data.table::fifelse(
+                    !is.na(local_path) & nzchar(local_path), 0L, 1L
+                ),
+                latest_order = data.table::fifelse(
+                    store__lgl(latest) %in% FALSE, 1L, 0L
+                ),
                 replica_order = data.table::fifelse(store__lgl(replica) %in% TRUE, 1L, 0L),
                 retracted_order = data.table::fifelse(store__lgl(retracted) %in% TRUE, 1L, 0L),
-                deprecated_order = data.table::fifelse(store__lgl(deprecated) %in% TRUE, 1L, 0L)
+                deprecated_order = data.table::fifelse(store__lgl(deprecated) %in% TRUE, 1L, 0L),
+                version_order = store__version_rank(version),
+                service_order = as.integer(is.na(url_opendap) | !nzchar(url_opendap)) +
+                    as.integer(is.na(url_download) | !nzchar(url_download))
             )]
             data.table::setorderv(
                 dt,
-                c("file_key", "retracted_order", "deprecated_order", "replica_order", "row_order")
+                c(
+                    "logical_file_id", "retracted_order",
+                    "deprecated_order", "latest_order", "local_order",
+                    "replica_order", "version_order", "service_order",
+                    "data_node", "file_key", "row_order"
+                ),
+                c(1L, 1L, 1L, 1L, 1L, 1L, -1L, 1L, 1L, 1L, 1L),
+                na.last = TRUE
             )
-            dt <- dt[!duplicated(file_key)]
-
-            existing <- private$read_table("esg_file")
+            dt <- dt[!duplicated(logical_file_id)]
             existing <- existing[existing[["file_key"]] %in% dt$file_key]
-            existing_created <- stats::setNames(existing$created_at, existing$file_key)
-            existing_local_path <- stats::setNames(existing$local_path, existing$file_key)
-            existing_artifact <- stats::setNames(existing$local_artifact_id, existing$file_key)
 
             data.table::data.table(
                 file_key = dt$file_key,
@@ -5874,28 +6161,269 @@ EsgStore <- R6::R6Class(
 
         extract_one = function(plan, file, fallback = "auto", overwrite = FALSE,
                                reporter = NULL) {
-            opened <- private$open_plan_dataset(file, fallback = fallback,
-                overwrite = overwrite, reporter = reporter)
-            ds <- opened$dataset
-            on.exit(if (isTRUE(ds$is_open)) ds$close(), add = TRUE)
+            # Keep the complete service and fallback sequence inside the cache
+            # generator so concurrent method children wait for one source read.
+            generate <- function() {
+                opened <- private$open_plan_dataset(
+                    file,
+                    fallback = fallback,
+                    overwrite = overwrite,
+                    reporter = reporter
+                )
+                ds <- opened$dataset
+                on.exit(if (isTRUE(ds$is_open)) ds$close(), add = TRUE)
+                recovery_error <- opened$remote_error
 
-            time_info <- ds$get_time_axis(index = 1L)
-            time_axis <- time_info$values
-            valid_time <- time_axis[!is.na(time_axis)]
-            if (!length(valid_time)) {
-                stop("The NetCDF time axis is empty or unavailable.", call. = FALSE)
+                payload <- tryCatch(
+                    private$read_extract_dataset(
+                        ds,
+                        plan,
+                        file,
+                        opened,
+                        reporter = reporter
+                    ),
+                    error = identity
+                )
+                remote_error <- if (inherits(
+                    payload,
+                    "epwshiftr_store_access_error"
+                ) && identical(opened$access_method, "OPeNDAP")) {
+                    payload
+                } else {
+                    NULL
+                }
+                if (!is.null(remote_error) &&
+                    identical(opened$access_method, "OPeNDAP") &&
+                    identical(fallback, "auto")) {
+                    recovery_error <- remote_error
+                    store__report_access_failure(
+                        reporter,
+                        file,
+                        remote_error,
+                        attempt = 1L
+                    )
+                    if (isTRUE(ds$is_open)) {
+                        ds$close()
+                    }
+
+                    download_started <- proc.time()[["elapsed"]]
+                    local_path <- tryCatch(
+                        private$download_plan_file(
+                            file,
+                            overwrite = overwrite,
+                            reporter = reporter
+                        ),
+                        error = function(error) {
+                            store__access_error(
+                                error,
+                                phase = "download",
+                                service = "HTTPServer",
+                                target = store__chr1(file$url_download),
+                                started_at = download_started
+                            )
+                        }
+                    )
+                    if (inherits(
+                        local_path,
+                        "epwshiftr_store_access_error"
+                    )) {
+                        store__report_access_failure(
+                            reporter,
+                            file,
+                            local_path,
+                            attempt = 2L,
+                            outcome = "failed"
+                        )
+                        stop(store__fallback_error(
+                            remote_error,
+                            local_path
+                        ))
+                    }
+
+                    local_open <- tryCatch(
+                        private$open_dataset(
+                            local_path,
+                            service = "HTTPServer"
+                        ),
+                        error = identity
+                    )
+                    if (inherits(local_open, "error")) {
+                        store__report_access_failure(
+                            reporter,
+                            file,
+                            local_open,
+                            attempt = 2L,
+                            outcome = "failed"
+                        )
+                        stop(store__fallback_error(
+                            remote_error,
+                            local_open
+                        ))
+                    }
+                    opened <- local_open
+                    ds <- opened$dataset
+                    payload <- tryCatch(
+                        private$read_extract_dataset(
+                            ds,
+                            plan,
+                            file,
+                            opened,
+                            reporter = reporter
+                        ),
+                        error = identity
+                    )
+                    if (inherits(payload, "error")) {
+                        local_error <- if (inherits(
+                            payload,
+                            "epwshiftr_store_access_error"
+                        )) {
+                            payload
+                        } else {
+                            store__access_error(
+                                payload,
+                                phase = "read",
+                                service = "HTTPServer",
+                                target = local_path,
+                                started_at = proc.time()[["elapsed"]]
+                            )
+                        }
+                        store__report_access_failure(
+                            reporter,
+                            file,
+                            local_error,
+                            attempt = 2L,
+                            outcome = "failed"
+                        )
+                        stop(store__fallback_error(
+                            remote_error,
+                            local_error
+                        ))
+                    }
+                } else if (inherits(payload, "error")) {
+                    if (!is.null(recovery_error)) {
+                        local_error <- if (inherits(
+                            payload,
+                            "epwshiftr_store_access_error"
+                        )) {
+                            payload
+                        } else {
+                            store__access_error(
+                                payload,
+                                phase = "read",
+                                service = opened$access_method,
+                                target = opened$target,
+                                started_at = proc.time()[["elapsed"]]
+                            )
+                        }
+                        store__report_access_failure(
+                            reporter,
+                            file,
+                            local_error,
+                            attempt = 2L,
+                            outcome = "failed"
+                        )
+                        stop(store__fallback_error(
+                            recovery_error,
+                            local_error
+                        ))
+                    }
+                    stop(payload)
+                }
+
+                list(
+                    payload = payload,
+                    opened = opened,
+                    recovery_error = recovery_error
+                )
             }
-            actual_start <- min(valid_time)
-            actual_end <- max(valid_time)
+            resolved <- store__extract_cache_resolve(
+                plan,
+                file,
+                generate
+            )
+            payload <- resolved$payload
+            opened <- resolved$opened
+            recovery_error <- resolved$recovery_error
+
+            persist_started <- proc.time()[["elapsed"]]
+            tryCatch(
+                private$persist_extract_payload(
+                    payload,
+                    plan,
+                    file,
+                    opened,
+                    overwrite = overwrite
+                ),
+                error = function(error) {
+                    if (inherits(error, c(
+                        "epwshiftr_store_access_error",
+                        "epwshiftr_store_extract_conflict"
+                    ))) {
+                        stop(error)
+                    }
+                    classified <- store__access_error(
+                        error,
+                        phase = "persist",
+                        service = opened$access_method,
+                        target = opened$target,
+                        started_at = persist_started
+                    )
+                    store__report_access_failure(
+                        reporter,
+                        file,
+                        classified,
+                        attempt = if (
+                            identical(opened$access_method, "HTTPServer") &&
+                            !is.null(recovery_error)
+                        ) 2L else 1L,
+                        outcome = "failed"
+                    )
+                    if (!is.null(recovery_error)) {
+                        stop(store__fallback_error(
+                            recovery_error,
+                            classified
+                        ))
+                    }
+                    stop(classified)
+                }
+            )
+        },
+        # }}}
+
+        # read_extract_dataset {{{
+        read_extract_dataset = function(ds, plan, file, opened,
+                                        reporter = NULL) {
+            metadata_started <- proc.time()[["elapsed"]]
+            time_info <- tryCatch(
+                {
+                    value <- ds$get_time_axis(index = 1L)
+                    valid <- value$values[!is.na(value$values)]
+                    if (!length(valid)) {
+                        stop(
+                            "The NetCDF time axis is empty or unavailable.",
+                            call. = FALSE
+                        )
+                    }
+                    list(info = value, valid = valid)
+                },
+                error = function(error) {
+                    stop(store__access_error(
+                        error,
+                        phase = "metadata",
+                        service = opened$access_method,
+                        target = opened$target,
+                        started_at = metadata_started
+                    ))
+                }
+            )
             requested_time <- c(plan$time_start[[1L]], plan$time_stop[[1L]])
             # Count the same calendar-native indices that read_region() will
             # extract; surrogate POSIXct years are wrong at 360-day boundaries.
             available_time_count <- length(cf_time__range_indices(
-                time_axis,
-                time_info$coordinates,
+                time_info$info$values,
+                time_info$info$coordinates,
                 requested_time
             ))
-            private$update_file_actual_time(file, actual_start, actual_end)
 
             # Remote reads run in the existing one-shot dataset worker so the
             # main R process can refresh elapsed time and observe cancellation.
@@ -5923,32 +6451,82 @@ EsgStore <- R6::R6Class(
             )
             use_async <- !is.null(reporter) &&
                 identical(opened$access_method, "OPeNDAP")
+            read_started <- proc.time()[["elapsed"]]
             dt <- tryCatch(
-                do.call(ds$read_region, c(read_args, list(async = use_async))),
-                epwshiftr_async_unavailable = function(e) {
-                    # Some locked-down hosts cannot launch mirai's local
-                    # worker. Keep extraction functional and make the loss of
-                    # fine-grained liveness explicit in the workflow history.
-                    reporter$notice(
-                        "Worker unavailable; continuing with synchronous OPeNDAP read",
-                        outcome = "fallback",
-                        details = list(
-                            unit_type = "extraction_plan",
-                            scenario = store__chr1(file$experiment_id[[1L]]),
-                            variable = plan$variable_id[[1L]],
-                            access_method = opened$access_method,
-                            reason = conditionMessage(e)
+                tryCatch(
+                    do.call(ds$read_region,
+                        c(read_args, list(async = use_async))),
+                    epwshiftr_async_unavailable = function(error) {
+                        # A worker launch failure changes liveness only; the
+                        # same OPeNDAP read remains valid synchronously.
+                        reporter$notice(
+                            paste(
+                                "Worker unavailable; continuing with",
+                                "synchronous OPeNDAP read"
+                            ),
+                            outcome = "fallback",
+                            details = list(
+                                unit_type = "extraction_plan",
+                                scenario = store__chr1(
+                                    file$experiment_id[[1L]]
+                                ),
+                                variable = plan$variable_id[[1L]],
+                                access_method = opened$access_method,
+                                reason = conditionMessage(error)
+                            )
                         )
-                    )
-                    do.call(ds$read_region, c(read_args, list(async = FALSE)))
+                        do.call(ds$read_region,
+                            c(read_args, list(async = FALSE)))
+                    }
+                ),
+                error = function(error) {
+                    stop(store__access_error(
+                        error,
+                        phase = "read",
+                        service = opened$access_method,
+                        target = opened$target,
+                        started_at = read_started
+                    ))
                 }
             )
             grid_sources <- attr(dt, "grid_sources", exact = TRUE)
             units <- tryCatch(
-                as.character(ds$att_get(plan$variable_id[[1L]], "units", index = 1L))[[1L]],
-                error = function(e) NA_character_
+                as.character(ds$att_get(
+                    plan$variable_id[[1L]],
+                    "units",
+                    index = 1L
+                ))[[1L]],
+                error = function(error) NA_character_
             )
             dt[, units := units]
+            list(
+                data = dt,
+                grid_sources = grid_sources,
+                available_time_count = available_time_count,
+                actual_start = min(time_info$valid),
+                actual_end = max(time_info$valid)
+            )
+        },
+        # }}}
+
+        # persist_extract_payload {{{
+        # Commit one successfully read payload exactly once. Keeping this after
+        # the recovery boundary prevents a failed OPeNDAP attempt from creating
+        # duplicate Parquet partitions or time-coverage updates.
+        persist_extract_payload = function(payload, plan, file, opened,
+                                           overwrite = FALSE) {
+            # A payload restored from the shared RDS cache is guaranteed to be
+            # a data frame, but it need not retain data.table's by-reference
+            # class. Materialize a private data.table copy before attaching
+            # store-specific plan, query, and site identities.
+            dt <- data.table::as.data.table(data.table::copy(payload$data))
+            grid_sources <- payload$grid_sources
+            available_time_count <- payload$available_time_count
+            private$update_file_actual_time(
+                file,
+                payload$actual_start,
+                payload$actual_end
+            )
             if (!nrow(dt)) {
                 result <- private$mark_plan_status(
                     plan,
@@ -5961,15 +6539,36 @@ EsgStore <- R6::R6Class(
             }
 
             private$decorate_extract(dt, plan, file)
-            results <- private$write_extract_partitions(dt, plan, file, overwrite = overwrite)
-            grid_sources <- private$decorate_extract_grid_sources(grid_sources, plan, file)
-            private$delete_by_key("extraction_result", "plan_id", plan$plan_id)
-            private$delete_by_key("extraction_grid_source", "plan_id", plan$plan_id)
+            results <- private$write_extract_partitions(
+                dt,
+                plan,
+                file,
+                overwrite = overwrite
+            )
+            grid_sources <- private$decorate_extract_grid_sources(
+                grid_sources,
+                plan,
+                file
+            )
+            private$delete_by_key(
+                "extraction_result",
+                "plan_id",
+                plan$plan_id
+            )
+            private$delete_by_key(
+                "extraction_grid_source",
+                "plan_id",
+                plan$plan_id
+            )
             if (nrow(results)) {
                 ddb_append_table(private$conn, "extraction_result", results)
             }
             if (nrow(grid_sources)) {
-                ddb_append_table(private$conn, "extraction_grid_source", grid_sources)
+                ddb_append_table(
+                    private$conn,
+                    "extraction_grid_source",
+                    grid_sources
+                )
             }
 
             result <- private$mark_plan_status(
@@ -5983,6 +6582,39 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
+        # open_dataset {{{
+        # Construct and open one EsgDataset inside a single classified phase so
+        # constructor failures and NetCDF open failures follow the same recovery
+        # path and retain the exact service and target in diagnostics.
+        open_dataset = function(target, service) {
+            started_at <- proc.time()[["elapsed"]]
+            ds <- NULL
+            tryCatch(
+                {
+                    ds <- EsgDataset$new(target)
+                    ds$open()
+                    list(
+                        dataset = ds,
+                        target = target,
+                        access_method = service
+                    )
+                },
+                error = function(error) {
+                    if (!is.null(ds) && isTRUE(ds$is_open)) {
+                        ds$close()
+                    }
+                    stop(store__access_error(
+                        error,
+                        phase = "open",
+                        service = service,
+                        target = target,
+                        started_at = started_at
+                    ))
+                }
+            )
+        },
+        # }}}
+
         # open_plan_dataset {{{
         open_plan_dataset = function(file, fallback = "auto", overwrite = FALSE,
                                      reporter = NULL) {
@@ -5990,66 +6622,89 @@ EsgStore <- R6::R6Class(
             if (!is.na(local) && nzchar(local)) {
                 local <- store_abs_path(local, root = private$store_path)
                 if (file.exists(local)) {
-                    ds <- EsgDataset$new(local)
-                    ds$open()
-                    return(list(dataset = ds, target = local,
-                        access_method = "local"))
+                    return(private$open_dataset(local, service = "local"))
                 }
             }
             opendap <- store__chr1(file$url_opendap)
+            remote_error <- NULL
             if (!is.na(opendap) && nzchar(opendap)) {
-                ds <- EsgDataset$new(opendap)
-                open_error <- NULL
-                ok <- tryCatch(
-                    {
-                        ds$open()
-                        TRUE
-                    },
-                    error = function(e) {
-                        open_error <<- e
-                        FALSE
-                    }
+                opened <- tryCatch(
+                    private$open_dataset(opendap, service = "OPeNDAP"),
+                    error = identity
                 )
-                if (isTRUE(ok)) {
-                    return(list(dataset = ds, target = opendap,
-                        access_method = if (file.exists(opendap)) {
-                            "local"
-                        } else {
-                            "OPeNDAP"
-                        }))
+                if (!inherits(opened, "error")) {
+                    if (file.exists(opendap)) {
+                        opened$access_method <- "local"
+                    }
+                    return(opened)
                 }
+                remote_error <- opened
                 if (identical(fallback, "error")) {
-                    stop(open_error)
+                    stop(remote_error)
                 }
-                if (isTRUE(ds$is_open)) {
-                    ds$close()
-                }
-                if (!is.null(reporter)) {
-                    reporter$notice(
-                        sprintf("OPeNDAP unavailable for %s; using HTTP fallback.", file$filename[[1L]]),
-                        outcome = "fallback",
-                        details = list(
-                            unit_type = "extraction_plan",
-                            variable = file$variable_id[[1L]],
-                            access_method = "HTTPServer",
-                            error = conditionMessage(open_error)
-                        )
-                    )
-                    reporter$detail(sprintf("  fallback reason: %s",
-                        conditionMessage(open_error)), level = "detail")
-                }
+                store__report_access_failure(
+                    reporter,
+                    file,
+                    remote_error,
+                    attempt = 1L
+                )
             }
 
             if (identical(fallback, "error")) {
                 stop("OPeNDAP is not available for this file record.", call. = FALSE)
             }
 
-            local_path <- private$download_plan_file(file, overwrite = overwrite,
-                reporter = reporter)
-            ds <- EsgDataset$new(local_path)
-            ds$open()
-            list(dataset = ds, target = local_path,
-                access_method = "HTTPServer")
+            download_started <- proc.time()[["elapsed"]]
+            local_path <- tryCatch(
+                private$download_plan_file(
+                    file,
+                    overwrite = overwrite,
+                    reporter = reporter
+                ),
+                error = function(error) {
+                    store__access_error(
+                        error,
+                        phase = "download",
+                        service = "HTTPServer",
+                        target = store__chr1(file$url_download),
+                        started_at = download_started
+                    )
+                }
+            )
+            if (inherits(local_path, "epwshiftr_store_access_error")) {
+                store__report_access_failure(
+                    reporter,
+                    file,
+                    local_path,
+                    attempt = if (is.null(remote_error)) 1L else 2L,
+                    outcome = "failed"
+                )
+                if (!is.null(remote_error)) {
+                    stop(store__fallback_error(remote_error, local_path))
+                }
+                stop(local_path)
+            }
+            local_open <- tryCatch(
+                private$open_dataset(local_path, service = "HTTPServer"),
+                error = identity
+            )
+            if (inherits(local_open, "error")) {
+                store__report_access_failure(
+                    reporter,
+                    file,
+                    local_open,
+                    attempt = if (is.null(remote_error)) 1L else 2L,
+                    outcome = "failed"
+                )
+                if (!is.null(remote_error)) {
+                    stop(store__fallback_error(remote_error, local_open))
+                }
+                stop(local_open)
+            }
+            if (!is.null(remote_error)) {
+                local_open$remote_error <- remote_error
+            }
+            local_open
         },
         # }}}
 
@@ -6098,7 +6753,12 @@ EsgStore <- R6::R6Class(
                 size = suppressWarnings(as.numeric(file$size[[1L]])),
                 url = download,
                 service = "HTTPServer",
-                data_node = file$data_node[[1L]],
+                # The selected HTTP service can come from a different replica
+                # than the catalog's OPeNDAP record.
+                data_node = shift_coalesce(
+                    query_result__url_host(download),
+                    file$data_node[[1L]]
+                ),
                 priority = 1L,
                 probe_latency = NA_real_,
                 probe_throughput = NA_real_
@@ -6209,6 +6869,9 @@ EsgStore <- R6::R6Class(
             if (!nrow(sources)) {
                 return(sources)
             }
+            if (!"grid_elevation_m" %in% names(sources)) {
+                sources[, grid_elevation_m := NA_real_]
+            }
             now <- store__now()
             sources[, `:=`(
                 plan_id = plan$plan_id[[1L]],
@@ -6242,6 +6905,7 @@ EsgStore <- R6::R6Class(
                 "role",
                 "grid_lon",
                 "grid_lat",
+                "grid_elevation_m",
                 "grid_dist_km",
                 "weight",
                 "created_at"
@@ -6257,6 +6921,7 @@ EsgStore <- R6::R6Class(
                 "role",
                 "grid_lon",
                 "grid_lat",
+                "grid_elevation_m",
                 "grid_dist_km",
                 "weight",
                 "created_at"
@@ -6265,7 +6930,16 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # write_extract_partitions {{{
-        write_extract_partitions = function(dt, plan, file, overwrite = FALSE) {
+        write_extract_partitions = function(
+            dt,
+            plan,
+            file,
+            overwrite = FALSE,
+            project = "CMIP6"
+        ) {
+            # The same durable extraction representation is shared by ESGF
+            # projections and provider-normalized reanalysis observations.
+            checkmate::assert_string(project, min.chars = 1L)
             # Preserve the historical `year` column while making it agree with
             # the source CF calendar for new extraction artifacts.
             partition_year <- if ("cf_year" %in% names(dt)) {
@@ -6281,13 +6955,18 @@ EsgStore <- R6::R6Class(
                 # Use a non-column variable name so data.table does not resolve
                 # both sides of the predicate to `dt$year`.
                 chunk <- dt[dt[["year"]] == target_year]
-                output_path <- private$output_path(plan, file, target_year)
+                output_path <- private$output_path(
+                    plan,
+                    file,
+                    target_year,
+                    project = project
+                )
                 private$write_parquet(chunk, output_path, overwrite = overwrite)
                 artifact_id <- self$register_artifact(
                     kind = "extract",
                     path = output_path,
                     role = "derived",
-                    project = "CMIP6",
+                    project = project,
                     query_id = plan$query_id[[1L]],
                     file_key = plan$file_key[[1L]],
                     metadata = list(
@@ -6327,9 +7006,10 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # output_path {{{
-        output_path = function(plan, file, year) {
+        output_path = function(plan, file, year, project = "CMIP6") {
+            checkmate::assert_string(project, min.chars = 1L)
             parts <- c(
-                project = "CMIP6",
+                project = project,
                 source_id = file$source_id[[1L]],
                 experiment_id = file$experiment_id[[1L]],
                 variant_label = file$variant_label[[1L]],
@@ -6709,11 +7389,23 @@ store__file_keys <- function(dt) {
             }
 
             id <- store__cell(dt, "id", i)
+            if (is.na(id) || !nzchar(id)) {
+                id <- store__cell(dt, "esgf_id", i)
+            }
             if (!is.na(id) && nzchar(id)) {
                 return(paste0("id:", id))
             }
 
-            pieces <- unlist(dt[i, c("url_opendap", "url_download", "title"), with = FALSE], use.names = FALSE)
+            file_key <- store__cell(dt, "file_key", i)
+            if (!is.na(file_key) && nzchar(file_key)) {
+                return(paste0("file-key:", file_key))
+            }
+
+            pieces <- c(
+                store__cell(dt, "url_opendap", i),
+                store__cell(dt, "url_download", i),
+                store__cell(dt, "title", i)
+            )
             if (all(is.na(pieces) | !nzchar(pieces))) {
                 cli::cli_abort(
                     "Cannot create a stable file key because file record {i} has no master ID, tracking ID, checksum, ID, URL, or title."
@@ -6725,32 +7417,51 @@ store__file_keys <- function(dt) {
     )
 }
 
-# Build the composite logical identity used to keep catalog download tasks distinct.
+# Identify a standard CMIP6 DRS filename. Unlike node-specific ESGF record IDs,
+# the filename carries variable, table, model, experiment, member, grid, and
+# time-slice identity and is therefore stable across replicas.
+store__drs_file_name <- function(value) {
+    value <- basename(as.character(value))
+    valid <- !is.na(value) & nzchar(value) &
+        grepl(
+            "^[^_]+_[^_]+_[^_]+_[^_]+_r[0-9]+i[0-9]+p[0-9]+f[0-9]+_[^_]+_.+\\.nc$",
+            value
+        )
+    value[!valid] <- NA_character_
+    value
+}
+
+# Build one logical file identity shared by catalog normalization and download
+# planning. DRS identity takes precedence for CMIP6 files; generic ESGF results
+# retain the established master/tracking/checksum fallback hierarchy.
 store__logical_file_id <- function(catalog) {
     catalog <- data.table::as.data.table(catalog)
     if (!nrow(catalog)) {
         return(character())
     }
-
-    vapply(
-        seq_len(nrow(catalog)),
-        function(i) {
-            # Preserve the existing identity order while omitting unavailable metadata.
-            pieces <- c(
-                store__chr1(catalog$tracking_id[[i]]),
-                store__chr1(catalog$checksum[[i]]),
-                store__chr1(catalog$filename[[i]]),
-                store__chr1(catalog$esgf_id[[i]])
-            )
-            paste(pieces[!is.na(pieces) & nzchar(pieces)], collapse = ":")
-        },
-        character(1L)
-    )
+    filename <- if ("filename" %in% names(catalog)) {
+        catalog$filename
+    } else if ("title" %in% names(catalog)) {
+        catalog$title
+    } else {
+        rep(NA_character_, nrow(catalog))
+    }
+    drs <- store__drs_file_name(filename)
+    use_drs <- !is.na(drs) & nzchar(drs)
+    identity <- rep(NA_character_, nrow(catalog))
+    identity[use_drs] <- paste0("drs:", drs[use_drs])
+    if (any(!use_drs)) {
+        identity[!use_drs] <- store__file_keys(catalog[!use_drs])
+    }
+    identity
 }
 
 # Construct the shared base schema for operational and validation download plans.
 store__download_plan_rows <- function(catalog) {
     catalog <- data.table::as.data.table(catalog)
+    download_node <- query_result__url_host(catalog$url_download)
+    use_catalog_node <- is.na(download_node) | !nzchar(download_node)
+    download_node[use_catalog_node] <- catalog$data_node[use_catalog_node]
     data.table::data.table(
         logical_file_id = store__logical_file_id(catalog),
         file_key = catalog$file_key,
@@ -6763,7 +7474,7 @@ store__download_plan_rows <- function(catalog) {
         size = suppressWarnings(as.numeric(catalog$size)),
         url = catalog$url_download,
         service = "HTTPServer",
-        data_node = catalog$data_node,
+        data_node = download_node,
         priority = seq_len(nrow(catalog)),
         probe_latency = NA_real_,
         probe_throughput = NA_real_

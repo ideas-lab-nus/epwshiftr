@@ -304,7 +304,10 @@ epwshiftr_cli_morph_retry <- function(store, args, json = FALSE,
         options = c("--morph", "--status")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
-    status_choices <- c("planned", "running", "blocked", "failed", "result_done", "epw_written")
+    status_choices <- c(
+        "planned", "running", "blocked", "failed", "result_partial",
+        "result_done", "epw_partial", "epw_written"
+    )
     statuses <- cli_retry__resolve_statuses(
         parsed$options[["--status"]],
         status_choices

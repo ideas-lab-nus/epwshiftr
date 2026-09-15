@@ -49,6 +49,204 @@ test_that("packaged Singapore EPW fixture is readable", {
 })
 
 
+test_that("baseline summaries and preflight preserve EPW missing-value evidence", {
+    skip_if_not_installed("duckdb")
+
+    source <- epw_file_read(get_cache_epw())
+    weather <- source$data()
+    february <- weather$month == 2L
+    january_partial <- weather$month == 1L & seq_len(nrow(weather)) <= 8L
+    weather[february | january_partial, `:=`(
+        liquid_precip_depth = 999,
+        liquid_precip_rate = 99
+    )]
+    source$set(weather)
+    path <- tempfile(fileext = ".epw")
+    source$save(path)
+
+    store <- EsgStore$new(tempfile("missing-epw-store-"))
+    on.exit(store$close(), add = TRUE)
+    morpher <- morpher__from_recipe(
+        store = store,
+        epw = path,
+        site_id = "SIN",
+        recipe = suppressWarnings(
+            epw_morph_recipe("original_morphing_absolute")
+        )
+    )
+
+    baseline <- morpher$summarise_baseline()
+    expect_false(any(
+        baseline$epw_field == "liquid_precip_depth" &
+            baseline$month == 2L
+    ))
+
+    diagnostics <- morpher$.__enclos_env__$private$preflight_baseline(
+        unique(baseline$baseline_id),
+        strict = TRUE
+    )
+    precipitation <- diagnostics[
+        epw_field == "liquid_precip_depth" & month %in% c(1L, 2L)
+    ]
+    expect_equal(nrow(precipitation), 2L)
+    expect_equal(precipitation$code, rep("missing_epw_values", 2L))
+    expect_match(
+        precipitation[month == 1L, message],
+        "missing for 8 of 744 hours"
+    )
+    expect_match(
+        precipitation[month == 2L, message],
+        "missing for all 672 hours"
+    )
+    expect_false(any(
+        diagnostics$code == "missing_baseline_month" &
+            diagnostics$epw_field == "liquid_precip_depth" &
+            diagnostics$month == 2L
+    ))
+
+    # Case-level factor diagnostics must identify the EPW baseline as the
+    # missing source instead of implying that the CMIP6 `pr` input is absent.
+    factors <- data.table::data.table(
+        status = "missing_baseline",
+        case_id = "case-1",
+        variable_id = "pr",
+        epw_field = "liquid_precip_depth",
+        period = "2050",
+        month = 2L
+    )
+    factor_diagnostic <- morpher$.__enclos_env__$private$factor_diagnostics(
+        factors,
+        strict = FALSE,
+        morph_id = "morph-1"
+    )
+    expect_identical(factor_diagnostic$code, "missing_baseline")
+    expect_match(
+        factor_diagnostic$message,
+        "Baseline EPW has no valid monthly value"
+    )
+    expect_false(grepl("from pr", factor_diagnostic$message, fixed = TRUE))
+    expect_match(factor_diagnostic$action, "valid liquid_precip_depth")
+})
+
+test_that("EpwMorpher isolates case failures and persists current case state", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+
+    nc <- c(
+        ssp126 = tempfile(fileext = ".nc"),
+        ssp585 = tempfile(fileext = ".nc")
+    )
+    for (path in nc) {
+        write_local_cmip6_netcdf_fixture(path, 2060L)
+    }
+    on.exit(unlink(nc), add = TRUE)
+    store <- EsgStore$new(tempfile("isolated-morph-case-store-"))
+    on.exit(store$close(), add = TRUE)
+    docs <- data.table::rbindlist(lapply(names(nc), function(experiment) {
+        rows <- epw_morpher_test_file_docs(
+            path = basename(nc[[experiment]]),
+            opendap_url = nc[[experiment]],
+            download_url = nc[[experiment]]
+        )
+        rows$id <- paste0(rows$id, "-", experiment)
+        rows$instance_id <- paste0(rows$instance_id, "-", experiment)
+        rows$master_id <- paste0(rows$master_id, "-", experiment)
+        rows$experiment_id <- experiment
+        rows
+    }), fill = TRUE)
+    query_id <- store$add_files(epw_morpher_test_result(docs))
+    extraction <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        site_id = "SIN"
+    )
+    expect_true(all(
+        store$extract(plan_id = extraction$plan_id)$status == "done"
+    ))
+
+    morpher <- morpher__from_recipe(
+        store = store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        recipe = suppressWarnings(
+            epw_morph_recipe("original_morphing_absolute")
+        )
+    )
+    periods <- epw_morph_periods(`2060s` = 2060L)
+    climate <- morpher$summarise_climate(
+        extraction$plan_id,
+        periods,
+        strict = FALSE
+    )
+    summary_id <- unique(climate$summary_id)
+    baseline <- morpher$summarise_baseline()
+    plan <- morpher$plan(
+        summary_id = summary_id,
+        baseline_id = unique(baseline$baseline_id),
+        by = c("source_id", "experiment_id", "variant_label", "period"),
+        strict = FALSE
+    )
+
+    original_run <- morpher__run_context
+    testthat::local_mocked_bindings(
+        morpher__run_context = function(context) {
+            if (identical(
+                context$case$experiment_id[[1L]],
+                "ssp126"
+            )) {
+                stop("synthetic method failure", call. = FALSE)
+            }
+            original_run(context)
+        },
+        .package = "epwshiftr"
+    )
+    results <- morpher$run(plan$morph_id, overwrite = TRUE)
+    expect_equal(nrow(results), 1L)
+    provenance <- jsonlite::fromJSON(results$provenance_json[[1L]])
+    expect_named(provenance$weather_field_roles, c(
+        "transformed_fields", "derived_fields",
+        "physically_closed_fields", "inherited_fields"
+    ))
+    expect_identical(
+        morpher$status(plan$morph_id)$status,
+        "result_partial"
+    )
+
+    cases <- morpher__read_table(store, "epw_morph_case")
+    cases <- cases[cases$morph_id == plan$morph_id]
+    expect_identical(
+        cases$status[match(c("ssp126", "ssp585"), cases$experiment_id)],
+        c("failed", "completed")
+    )
+    expect_match(
+        cases[experiment_id == "ssp126", last_error],
+        "synthetic method failure"
+    )
+    diagnostics <- morpher__read_table(store, "epw_morph_diagnostic")
+    target_morph_id <- plan$morph_id[[1L]]
+    diagnostic <- diagnostics[
+        diagnostics[["code"]] == "morph_case_failed"
+    ]
+    expect_equal(nrow(diagnostic), 1L)
+    expect_identical(diagnostic$morph_id, target_morph_id)
+    expect_match(diagnostic$message, "ssp126")
+    expect_match(diagnostic$message, "2060s")
+
+    outputs <- morpher$write_epw(
+        plan$morph_id,
+        dir = "outputs/isolation",
+        overwrite = TRUE
+    )
+    expect_equal(nrow(outputs), 1L)
+    expect_identical(
+        morpher$status(plan$morph_id)$status,
+        "epw_partial"
+    )
+})
+
+
 test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
@@ -364,7 +562,13 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_true(any(abs(result_data$liquid_precip_depth - baseline_data$liquid_precip_depth) > 1e-6, na.rm = TRUE))
     expect_setequal(unique(result_data$liquid_precip_rate), c(0, 1))
 
-    resumed_results <- morpher$run(strict$morph_id, overwrite = FALSE, resume = TRUE)
+    resumed_results <- testthat::with_mocked_bindings(
+        morpher$run(strict$morph_id, overwrite = FALSE, resume = TRUE),
+        morpher__run_context = function(...) {
+            stop("recomputed a complete morphing case")
+        },
+        .package = "epwshiftr"
+    )
     expect_equal(resumed_results$result_id, results$result_id)
 
     override_morpher <- morpher__from_recipe(
@@ -487,7 +691,10 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         dir = NULL,
         overwrite = TRUE
     )
-    expect_named(workflow_no_epw, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
+    expect_named(workflow_no_epw, c(
+        "preflight", "climate", "baseline", "preview", "plan",
+        "diagnostics", "cases", "results", "outputs"
+    ))
     expect_null(workflow_no_epw$outputs)
     expect_equal(workflow_morpher$status(workflow_no_epw$plan$morph_id)$status, "result_done")
 
@@ -499,7 +706,10 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         separate = FALSE,
         overwrite = TRUE
     )
-    expect_named(workflow, c("preflight", "climate", "baseline", "preview", "plan", "diagnostics", "results", "outputs"))
+    expect_named(workflow, c(
+        "preflight", "climate", "baseline", "preview", "plan",
+        "diagnostics", "cases", "results", "outputs"
+    ))
     expect_equal(workflow$plan$status, "planned")
     expect_equal(workflow_morpher$status(workflow$plan$morph_id)$status, "epw_written")
     expect_equal(nrow(workflow$outputs), 1L)

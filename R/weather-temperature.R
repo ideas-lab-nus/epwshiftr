@@ -182,7 +182,9 @@ temperature__epw_template <- function(epw) {
     }
     epw <- epw$clone()
     suppressMessages(epw$drop_unit())
-    weather <- data.table::as.data.table(data.table::copy(epw$data()))
+    # Daily, bounded, and distribution-based backends share this template;
+    # none may interpret an EPW numeric missing sentinel as observed weather.
+    weather <- epw_file__calculation_weather(epw$data())
     required <- c(
         "month", "day", "hour", "dry_bulb_temperature",
         "relative_humidity", "dew_point_temperature",

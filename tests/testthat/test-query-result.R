@@ -552,9 +552,38 @@ test_that("concurrent URL check wrappers preserve their HTTP semantics", {
     expect_true(all(vapply(latency, function(x) is.finite(x$latency), logical(1L))))
     expect_true(all(vapply(latency, function(x) is.na(x$throughput), logical(1L))))
 })
+
+test_that("OPeNDAP URL checks require a valid DDS response", {
+    skip_if_not_installed("webfakes")
+
+    # Use distinct local hosts because the callr-backed fixture server handles
+    # only one simultaneous connection per process. Production ESGF endpoints
+    # are still checked through the shared concurrent curl implementation.
+    valid_server <- local_downloader_http_server()
+    html_server <- local_downloader_http_server()
+    missing_server <- local_downloader_http_server()
+    valid <- valid_server$url("/dods/valid.nc")
+    html <- html_server$url("/dods/html.nc")
+    missing <- missing_server$url("/dods/missing.nc")
+    checked <- query_result__check_opendap_urls(
+        c(valid, html, missing),
+        timeout = 5,
+        concurrency = 3L
+    )
+
+    expect_true(checked[[valid]]$reachable)
+    expect_false(checked[[html]]$reachable)
+    expect_match(checked[[html]]$error, "valid DDS")
+    expect_false(checked[[missing]]$reachable)
+    expect_match(checked[[missing]]$error, "404")
+    expect_true(query_result__valid_dds(charToRaw(
+        "Dataset { Float32 tas[time = 1]; } valid.nc;"
+    )))
+    expect_false(query_result__valid_dds(charToRaw("<html>error</html>")))
+})
 # }}}
 # EsgResult$reachable() {{{
-test_that("EsgResult$reachable() returns per-record service probe diagnostics", {
+test_that("EsgResult$reachable() returns per-record service diagnostics", {
     docs <- data.frame(
         id = c("file-ok", "file-dup", "file-missing", "file-fail"),
         dataset_id = "dataset-1",
@@ -585,19 +614,40 @@ test_that("EsgResult$reachable() returns per-record service probe diagnostics", 
     timeouts <- numeric()
     agents <- character()
     testthat::local_mocked_bindings(
-        query_result__reach_url = function(url, timeout = 5, network_policy = NULL) {
-            calls <<- c(calls, url)
+        query_result__reach_service_urls = function(
+            urls,
+            service,
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
+            calls <<- c(calls, unique(urls))
             timeouts <<- c(timeouts, timeout)
             useragent <- if (is.null(network_policy$useragent)) NA_character_ else network_policy$useragent
             agents <<- c(agents, useragent)
-            if (is.na(url) || !nzchar(url)) {
-                return(list(reachable = NA, latency_ms = NA_real_, error = "Missing URL."))
-            }
-            if (grepl("bad", url)) {
-                return(list(reachable = FALSE, latency_ms = NA_real_, error = "boom"))
-            }
-
-            list(reachable = TRUE, latency_ms = 125, error = NA_character_)
+            missing <- is.na(urls) | !nzchar(urls)
+            bad <- !missing & grepl("bad", urls)
+            data.table::data.table(
+                url = urls,
+                reachable = data.table::fifelse(
+                    missing,
+                    NA,
+                    !bad
+                ),
+                latency_ms = data.table::fifelse(
+                    !missing & !bad,
+                    125,
+                    NA_real_
+                ),
+                error = data.table::fifelse(
+                    missing,
+                    "Missing URL.",
+                    data.table::fifelse(bad, "boom", NA_character_)
+                ),
+                probe_cached = FALSE
+            )
         },
         .package = "epwshiftr"
     )
@@ -811,9 +861,17 @@ test_that("EsgResult$repair_urls() repairs unreachable OPeNDAP URLs using reacha
     )
 
     expect_identical(result$id, c("file-bad", "file-ok"))
-    expect_identical(repaired$id, c("file-repaired", "file-ok"))
-    expect_identical(repaired$data_node, c("replica.example.org", "ok.example.org"))
-    expect_identical(repaired$dataset_id, c("dataset-bad|replica.example.org", "dataset-ok|ok.example.org"))
+    expect_identical(repaired$id, c("file-bad", "file-ok"))
+    expect_identical(repaired$data_node, c("bad.example.org", "ok.example.org"))
+    expect_identical(repaired$dataset_id, c("dataset-bad|bad.example.org", "dataset-ok|ok.example.org"))
+    expect_identical(
+        repaired$url_opendap[[1L]],
+        "https://replica.example.org/dods/file.nc"
+    )
+    expect_identical(
+        repaired$url_download[[1L]],
+        "https://bad.example.org/file.nc"
+    )
     expect_equal(repaired$count(), 2L)
     expect_identical(repaired$selection(), result$selection())
     expect_equal(length(collect_calls), 1L)
@@ -867,8 +925,12 @@ test_that("EsgResult$repair_urls() prefers reachable replicas already present in
 
     repaired <- expect_s3_class(result$repair_urls(), "EsgResultFile")
 
-    expect_identical(repaired$id, c("file-current-replica", "file-current-replica"))
-    expect_identical(repaired$data_node, c("good.example.org", "good.example.org"))
+    expect_identical(repaired$id, c("file-bad", "file-current-replica"))
+    expect_identical(repaired$data_node, c("bad.example.org", "good.example.org"))
+    expect_identical(
+        repaired$url_opendap,
+        rep("https://good.example.org/dods/file.nc", 2L)
+    )
 })
 # }}}
 # EsgResult$expand_replicas() {{{
@@ -928,14 +990,22 @@ test_that("EsgResult$repair_urls() repairs HTTPServer URLs independently", {
 
     probed <- character()
     testthat::local_mocked_bindings(
-        query_result__reach_urls = function(urls, timeout = 5, network_policy = NULL,
-                                                     probe_concurrency = 1L) {
+        query_result__reach_service_urls = function(
+            urls,
+            service,
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
             probed <<- c(probed, urls)
             data.table::data.table(
                 url = urls,
                 reachable = grepl("http-replica", urls),
                 latency_ms = ifelse(grepl("http-replica", urls), 8, NA_real_),
-                error = ifelse(grepl("http-replica", urls), NA_character_, "bad http")
+                error = ifelse(grepl("http-replica", urls), NA_character_, "bad http"),
+                probe_cached = FALSE
             )
         },
         query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
@@ -959,10 +1029,299 @@ test_that("EsgResult$repair_urls() repairs HTTPServer URLs independently", {
         "EsgResultFile"
     )
 
-    expect_identical(repaired$id, "file-http-repaired")
-    expect_identical(repaired$data_node, "http-replica.example.org")
+    expect_identical(repaired$id, "file-http-bad")
+    expect_identical(repaired$data_node, "bad-http.example.org")
+    expect_identical(
+        repaired$url_opendap,
+        "https://opendap.example.org/dods/file.nc"
+    )
+    expect_identical(
+        repaired$url_download,
+        "https://http-replica.example.org/file.nc"
+    )
     expect_true(any(grepl("bad-http", probed)))
     expect_true(any(grepl("http-replica", probed)))
+})
+
+test_that("File service resolution composes compatible replica URLs", {
+    original_docs <- query_result_test_file_docs(c(
+        "https://bad.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://bad.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    original_docs$id <- "file-original"
+    original_docs$instance_id <- "instance-shared"
+    original_docs$master_id <- "master-shared"
+    original_docs$data_node <- "bad.example.org"
+    result <- query_result_test_object(
+        "File",
+        original_docs,
+        query_result_test_params("File")
+    )
+
+    opendap_replica <- query_result_test_file_docs(c(
+        "https://dap.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://dap.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    opendap_replica$id <- "file-dap"
+    opendap_replica$instance_id <- "instance-shared"
+    opendap_replica$master_id <- "master-shared"
+    opendap_replica$data_node <- "dap.example.org"
+    http_replica <- query_result_test_file_docs(c(
+        "https://http.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://http.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    http_replica$id <- "file-http"
+    http_replica$instance_id <- "instance-shared"
+    http_replica$master_id <- "master-shared"
+    http_replica$data_node <- "http.example.org"
+    candidate_docs <- data.table::rbindlist(
+        list(opendap_replica, http_replica),
+        use.names = TRUE,
+        fill = TRUE
+    )
+
+    testthat::local_mocked_bindings(
+        query_result__reach_service_urls = function(
+            urls,
+            service,
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
+            good <- if (identical(service, "OPENDAP")) {
+                grepl("dap.example.org", urls, fixed = TRUE)
+            } else {
+                grepl("http.example.org", urls, fixed = TRUE)
+            }
+            data.table::data.table(
+                url = urls,
+                reachable = good,
+                latency_ms = ifelse(good, 10, NA_real_),
+                error = ifelse(good, NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE
+        ) {
+            list(
+                response = query_result_test_response(candidate_docs),
+                docs = candidate_docs,
+                parameter = query_param__clone(params),
+                context = list(query_url = "https://example.org/replicas")
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    resolved <- query_result__resolve_file_services(
+        result,
+        check = list(
+            level = "url",
+            cache_seconds = 0L,
+            cache_failures_seconds = 0L
+        )
+    )
+
+    expect_s3_class(resolved$result, "EsgResultFile")
+    expect_identical(resolved$result$id, "file-original")
+    expect_identical(
+        resolved$result$url_opendap,
+        "https://dap.example.org/dods/file.nc"
+    )
+    expect_identical(
+        resolved$result$url_download,
+        "https://bad.example.org/file.nc"
+    )
+    expect_equal(sum(resolved$diagnostics$selected), 2L)
+    expect_true(all(is.na(
+        resolved$diagnostics[service == "HTTPServer", reachable]
+    )))
+    expect_true(all(
+        resolved$diagnostics[service == "HTTPServer", probe_level] ==
+            "deferred"
+    ))
+
+    incompatible <- data.table::copy(candidate_docs)
+    incompatible$checksum[[2L]] <- "different"
+    expect_identical(
+        query_result__compatible_content(original_docs, incompatible),
+        c(TRUE, FALSE)
+    )
+    expect_identical(
+        query_result__compatible_file_groups(incompatible),
+        c(1L, 2L)
+    )
+})
+
+test_that("File service resolution retains unchecked HTTP recovery candidates", {
+    dead <- query_result_test_file_docs(c(
+        "https://dead.example.org/dods/dead.nc|application/netcdf|OPENDAP",
+        "https://dead.example.org/files/dead.nc|application/netcdf|HTTPServer"
+    ))
+    dead$id <- "file-dead"
+    dead$instance_id <- "instance-dead"
+    dead$master_id <- "master-dead"
+    http_only <- query_result_test_file_docs(c(
+        "https://http-only.example.org/dods/http.nc|application/netcdf|OPENDAP",
+        "https://http-only.example.org/files/http.nc|application/netcdf|HTTPServer"
+    ))
+    http_only$id <- "file-http-only"
+    http_only$instance_id <- "instance-http-only"
+    http_only$master_id <- "master-http-only"
+    docs <- data.table::rbindlist(
+        list(dead, http_only),
+        use.names = TRUE,
+        fill = TRUE
+    )
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+
+    testthat::local_mocked_bindings(
+        query_result__repair_urls = function(
+            result,
+            service = c("OPENDAP", "HTTPServer"),
+            index_node = NULL,
+            probe = NULL
+        ) {
+            result
+        },
+        query_result__reach_service_urls = function(
+            urls,
+            service,
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
+            available <- identical(service, "HTTPServer") &
+                grepl("http-only", urls, fixed = TRUE)
+            data.table::data.table(
+                url = urls,
+                reachable = available,
+                latency_ms = ifelse(available, 5, NA_real_),
+                error = ifelse(available, NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    resolved <- query_result__resolve_file_services(
+        result,
+        check = list(level = "url", cache_seconds = 0L)
+    )
+    expect_identical(resolved$result$id, c("file-dead", "file-http-only"))
+    expect_true(all(is.na(resolved$result$url_opendap)))
+    expect_identical(
+        resolved$result$url_download,
+        c(
+            "https://dead.example.org/files/dead.nc",
+            "https://http-only.example.org/files/http.nc"
+        )
+    )
+    expect_equal(sum(resolved$diagnostics$selected), 2L)
+    expect_true(all(is.na(
+        resolved$diagnostics[service == "HTTPServer", reachable]
+    )))
+})
+
+test_that("File service resolution collapses compatible distributed replicas", {
+    dap <- query_result_test_file_docs(c(
+        "https://dap.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://dap.example.org/files/file.nc|application/netcdf|HTTPServer"
+    ))
+    dap$id <- "file-dap-replica"
+    dap$instance_id <- "file-instance-dap"
+    dap$data_node <- "dap.example.org"
+    http <- query_result_test_file_docs(c(
+        "https://http.example.org/dods/file.nc|application/netcdf|OPENDAP",
+        "https://http.example.org/files/file.nc|application/netcdf|HTTPServer"
+    ))
+    http$id <- "file-http-replica"
+    http$instance_id <- "file-instance-http"
+    http$data_node <- "http.example.org"
+    docs <- data.table::rbindlist(
+        list(dap, http),
+        use.names = TRUE,
+        fill = TRUE
+    )
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+
+    testthat::local_mocked_bindings(
+        query_result__repair_urls = function(
+            result,
+            service = c("OPENDAP", "HTTPServer"),
+            index_node = NULL,
+            probe = NULL
+        ) {
+            result
+        },
+        query_result__reach_service_urls = function(
+            urls,
+            service,
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
+            available <- if (identical(service, "OPENDAP")) {
+                grepl("dap.example.org", urls, fixed = TRUE)
+            } else {
+                grepl("http.example.org", urls, fixed = TRUE)
+            }
+            data.table::data.table(
+                url = urls,
+                reachable = available,
+                latency_ms = ifelse(available, 5, NA_real_),
+                error = ifelse(available, NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    resolved <- query_result__resolve_file_services(
+        result,
+        check = list(level = "url", cache_seconds = 0L)
+    )
+    expect_equal(resolved$result$count(), 1L)
+    expect_match(resolved$result$url_opendap, "dap\\.example\\.org")
+    expect_match(resolved$result$url_download, "dap\\.example\\.org")
+    expect_equal(sum(resolved$diagnostics$selected), 2L)
+})
+
+test_that("URL check cache keys distinguish HTTP and OPeNDAP contracts", {
+    url <- "https://example.org/data/file.nc"
+    opendap_key <- query_result__reach_cache_key(
+        "url:OPENDAP",
+        url,
+        timeout = 5
+    )
+    http_key <- query_result__reach_cache_key(
+        "url:HTTPSERVER",
+        url,
+        timeout = 5
+    )
+
+    expect_false(identical(opendap_key, http_key))
 })
 
 test_that("EsgResult$repair_urls() repairs Aggregation URLs with replica queries", {
@@ -1011,8 +1370,12 @@ test_that("EsgResult$repair_urls() repairs Aggregation URLs with replica queries
 
     repaired <- expect_s3_class(result$repair_urls(), "EsgResultAggregation")
 
-    expect_identical(repaired$id, "aggregation-repaired")
-    expect_identical(repaired$data_node, "agg-replica.example.org")
+    expect_identical(repaired$id, "aggregation-bad")
+    expect_identical(repaired$data_node, "bad.example.org")
+    expect_identical(
+        repaired$url_opendap,
+        "https://agg-replica.example.org/dods/agg.nc"
+    )
     expect_identical(unname(repaired$query_url("all"))[[2L]], "https://example.org/aggregation-replicas")
 })
 
@@ -2236,6 +2599,14 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
     testthat::local_mocked_bindings(
         EsgDataset = FakeEsgDataset,
         Downloader = FakeDownloader,
+        query_result__repair_urls = function(
+            result,
+            service = c("OPENDAP", "HTTPServer"),
+            index_node = NULL,
+            probe = NULL
+        ) {
+            result
+        },
         .package = "epwshiftr"
     )
 
@@ -2391,6 +2762,47 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
     expect_identical(agg_fail_ds$target[[1L]], "https://example.org/dods/file-1.nc")
     expect_true(file.exists(agg_fail_ds$target[[2L]]))
     expect_identical(tail(calls$downloads, length(calls$downloads) - length(downloads_before)), "https://example.org/file-2.nc")
+
+    # A missing HTTP URL on the selected catalog row must not abort before the
+    # fallback helper has a chance to recover it from a compatible replica.
+    repairable_docs <- query_result_test_file_docs(character())
+    repairable <- query_result_test_object(
+        "File",
+        repairable_docs,
+        query_result_test_params("File")
+    )
+    repaired_docs <- repairable_docs
+    repaired_docs$url <- I(list(
+        "https://replica.example.org/file.nc|application/netcdf|HTTPServer"
+    ))
+    repaired <- query_result_test_object(
+        "File",
+        repaired_docs,
+        query_result_test_params("File")
+    )
+    testthat::local_mocked_bindings(
+        query_result__repair_urls = function(
+            result,
+            service = c("OPENDAP", "HTTPServer"),
+            index_node = NULL,
+            probe = NULL
+        ) {
+            repaired
+        },
+        .package = "epwshiftr"
+    )
+    repaired_ds <- expect_s3_class(
+        repairable$open_dataset(
+            fallback = "auto",
+            downloader = FakeDownloader$new()
+        ),
+        "FakeEsgDataset"
+    )
+    expect_true(file.exists(repaired_ds$target))
+    expect_identical(
+        tail(calls$downloads, 1L),
+        "https://replica.example.org/file.nc"
+    )
 })
 
 test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() report open progress", {
@@ -2438,7 +2850,14 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() re
     dones <- list()
     testthat::local_mocked_bindings(
         EsgDataset = FakeEsgDataset,
-        query_result__http_fallback = function(result, indices, downloader, session_label = NULL, progress = TRUE) {
+        query_result__http_fallback = function(
+            result,
+            indices,
+            downloader,
+            session_label = NULL,
+            progress = TRUE,
+            missing_message = "HTTPServer download URLs are missing."
+        ) {
             calls$fallback_progress[[length(calls$fallback_progress) + 1L]] <<- progress
             sprintf("/tmp/fallback-%d.nc", indices)
         },
