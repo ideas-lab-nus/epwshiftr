@@ -138,6 +138,7 @@ Collate:
     'netcdf.R'
     'print-truncation.R'
     'schema.R'
+    'shift-batch-ui.R'
     'shift-batch.R'
     'shift-path.R'
     'shift-tui.R'

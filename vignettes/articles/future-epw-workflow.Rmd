@@ -185,6 +185,26 @@ resumable. Output and diagnostic tables include method, model, member, and grid
 columns for downstream analysis; the package does not calculate method-ranking
 or comparison metrics.
 
+For method/model batches, save `shift_ids(run)$batch_id` to reopen the result
+in a later R session using the same store:
+
+
+``` r
+batch <- shift_batch_get(batch_id, store = store_dir())
+shift_watch(batch)
+shift_outputs(batch)
+shift_diagnostics(batch)
+```
+
+`shift_resume(batch)` continues unfinished children and reuses verified
+completed outputs. Case counts describe scientific combinations of site,
+scenario, and period within each child; physical EPW file counts can be larger
+when a method produces several weather years. The batch receipt shows method,
+reconstruction, model, maturity status, warnings, and reuse for each call.
+It shares the single-workflow box style, separating the batch overview,
+`Workflows`, and `Results` with labelled rules. Narrow terminals preserve the
+same information without borders.
+
 With `access = "auto"`, `shift_era5()` uses the official point time-series
 service when all required variables are available there and otherwise uses the
 complete CDS subset service. CDS access reads a personal access token from
@@ -355,11 +375,31 @@ optional `extract_reference`, `coverage`, `morph`, and `write_epw`. Within a
 stage it identifies the node, future/reference role, variable, scenario,
 period, reuse/fallback outcome, and output count.
 
-`shift_ui()` controls only presentation. `"auto"` selects a fixed four-row
-stage/current/case/last-event view in a capable terminal and scoped log lines
-elsewhere; `"none"` suppresses non-error Console output while retaining
-persisted events. The `detail` levels are `"normal"`, `"detail"`, and
-`"debug"`; only debug output includes full URLs and internal paths.
+`shift_ui()` controls only presentation. In a capable terminal, the foreground
+dashboard updates in place with plan context, a stage rail, the current
+operation, measured progress, and recent outcomes. Wide terminals group these
+rows under `Workflow` and `Activity`; narrow terminals keep the same content
+with less decoration. A final `Results` receipt stays in scrollback with
+completed cases, EPW file counts, warnings, the output directory, and filenames.
+
+| Setting | Use |
+| --- | --- |
+| `progress = "auto"` | Choose a live dashboard or append-only logs to match the terminal. |
+| `progress = "log"` | Use stable logs for redirected output and screen readers. |
+| `progress = "none"` | Suppress progress while retaining persisted events. |
+| `detail = "detail"` | Include selection, reuse, fallback, and all output paths. |
+| `detail = "debug"` | Also include full URLs and internal paths. |
+| `motion = "reduced"` or `"none"` | Reduce or remove animation while keeping status visible. |
+
+Resolver attempts and elapsed time are reported separately from measured
+workflow progress. On failure, `Diagnosis` summarizes repeated mirror failures,
+the cause, and any missing coverage. Transient failures can be retried;
+incomplete scientific coverage requires changing the selection or reference.
+
+`shift_ui(refresh = ...)` controls visual update frequency, while
+`shift_control(refresh = TRUE)` explicitly refreshes remote catalog and service
+information. Ordinary resume retains the resolved selection. The `heartbeat`
+setting controls durable worker liveness and is independent of animation.
 
 
 ``` r

@@ -1,7 +1,7 @@
 # Render a deterministic representative Future EPW run for the README. The
 # README must exercise the production dashboard formatter without depending on
 # live ESGF services or opening the persistent DuckDB store during a build.
-readme_future_epw_demo <- function() {
+readme__future_epw_demo <- function() {
     stages <- c(
         "resolve", "extract_future", "extract_reference",
         "coverage", "morph", "write_epw"
@@ -21,7 +21,8 @@ readme_future_epw_demo <- function() {
             "BCC-CSM2-MR",
             "ssp126 + ssp585",
             "2060s (2055–2065)",
-            "belcher / historical 1995–2014",
+            paste(epwshiftr::monthly_transform("original_morphing")@label,
+                "/ historical 1995–2014"),
             "2 EPWs"
         ),
         selection = "member r1i1p1f1 · grid gn",
@@ -203,6 +204,14 @@ readme_future_epw_demo <- function() {
         output_paths = output_paths,
         elapsed_seconds = 27
     ))
+    # Use the production completion facts so case/file semantics cannot drift
+    # back to the legacy assumption that every case always writes one file.
+    completion <- epwshiftr:::shift__ui_completion(
+        data.table::data.table(status = rep("completed", 2L)),
+        data.table::data.table(export_path = output_paths),
+        epwshiftr:::shift_diagnostics_empty()
+    )
+    state[names(completion)] <- completion
     renderer$draw(
         epwshiftr:::shift__ui_status_lines(
             state,
@@ -218,6 +227,107 @@ readme_future_epw_demo <- function() {
         )
     )
     Sys.sleep(1.5)
+    renderer$commit("done")
+    invisible(NULL)
+}
+
+# Build representative batch snapshots from real transform metadata. The
+# counts describe eight cases, while no climate data or files are fabricated.
+readme__batch_states <- function() {
+    transforms <- list(
+        epwshiftr::monthly_transform("original_morphing"),
+        epwshiftr::daily_transform("qdm")
+    )
+    models <- c("BCC-CSM2-MR", "MPI-ESM1-2-HR")
+    children <- data.table::rbindlist(lapply(transforms, function(transform) {
+        record <- epwshiftr:::transform__record(transform@scale, transform@method)
+        data.table::data.table(
+            method = transform@method,
+            scale = transform@scale,
+            reconstruction = transform@reconstruction,
+            model = models,
+            method_status = epwshiftr:::recipe__get(record$recipe)@status,
+            status = "queued",
+            current_stage = NA_character_
+        )
+    }))
+    children[, child_key := paste0("child_readme", seq_len(.N))]
+    summary <- data.table::data.table(
+        batch_id = "batch_readme8",
+        status = "running",
+        configurations = 2L,
+        models = 2L,
+        children = 4L,
+        completed = 0L,
+        active = 4L,
+        failed = 0L,
+        partial = 0L,
+        waiting = 0L,
+        cases = 8L,
+        epw_files = 0L,
+        warnings = 0L,
+        output_dir = "future-epw"
+    )
+    snapshot <- list(
+        batch = summary,
+        children = children,
+        cases = data.table::data.table(),
+        outputs = data.table::data.table(),
+        diagnostics = epwshiftr:::shift_diagnostics_empty(),
+        execution = data.table::data.table()
+    )
+    children[1:2, `:=`(status = "running", current_stage = "extract_future")]
+    states <- list(data.table::copy(snapshot))
+
+    # Advance both methods through the same renderer used by shift_watch().
+    # Copies keep earlier frames stable despite data.table's reference updates.
+    children[1:2, `:=`(status = "completed", current_stage = "write_epw")]
+    children[3:4, `:=`(status = "running", current_stage = "morph")]
+    summary[, `:=`(completed = 2L, active = 2L, epw_files = 4L)]
+    states[[2L]] <- data.table::copy(snapshot)
+
+    children[, `:=`(status = "completed", current_stage = "write_epw")]
+    summary[, `:=`(status = "completed", completed = 4L, active = 0L,
+        epw_files = 8L, warnings = 2L)]
+    snapshot$diagnostics <- data.table::data.table(
+        severity = "warning",
+        method = "qdm",
+        model = models,
+        message = "Signal defaults for 'tas' are experimental."
+    )
+    snapshot$execution <- data.table::data.table(
+        child_key = children$child_key,
+        action = "started",
+        elapsed_seconds = c(12, 14, 18, 20)
+    )
+    snapshot$call_elapsed_seconds <- 64
+    states[[3L]] <- data.table::copy(snapshot)
+
+    # A repeated completed request retains its warnings and reports reuse
+    # separately from the elapsed time of the original work.
+    snapshot$execution[, `:=`(action = "reused", elapsed_seconds = 0.05)]
+    snapshot$call_elapsed_seconds <- 0.2
+    states[[4L]] <- data.table::copy(snapshot)
+    states
+}
+
+# Record the production batch view with the same atomic framebuffer used by
+# foreground workflows. Only the representative input states are scripted.
+readme__batch_demo <- function() {
+    renderer <- epwshiftr:::ShiftFrameRenderer$new(
+        output = cli::cli_output_connection(),
+        backend = "frame"
+    )
+    on.exit(renderer$close("done"), add = TRUE)
+    for (snapshot in readme__batch_states()) {
+        for (frame in seq_len(4L)) {
+            view <- epwshiftr:::shift_batch__view(snapshot, width = 112L,
+                motion = "full", frame = frame)
+            renderer$draw(view$lines, view$compact)
+            Sys.sleep(0.06)
+        }
+        Sys.sleep(1.2)
+    }
     renderer$commit("done")
     invisible(NULL)
 }

@@ -1,7 +1,12 @@
 epwshiftr_cli_shift_show <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = "--run")
+    parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
     epwshiftr_cli_assert_no_positionals(parsed)
-    run <- shift_run_get(epwshiftr_cli_required_single_id(parsed, "--run"), store)
+    run <- cli_shift__target(parsed, store)
+    if (S7::S7_inherits(run, ShiftBatch)) {
+        snapshot <- shift_batch__snapshot(run, event_count = Inf, refresh = FALSE)
+        snapshot$explain <- shift_explain(run)
+        return(snapshot)
+    }
     list(
         run = run@meta$run,
         cases = shift_cases(run),
@@ -21,10 +26,18 @@ epwshiftr_cli_shift_watch <- function(store, args, json = FALSE,
         args,
         flags = c("--follow", "--no-progress", "--reduced-motion",
             "--verbose", "--debug"),
-        options = c("--run", "--interval", "--count", "--events")
+        options = c("--run", "--batch", "--interval", "--count", "--events")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
-    run_id <- epwshiftr_cli_required_single_id(parsed, "--run")
+    batch_id <- parsed$options[["--batch"]]
+    if (is.null(batch_id) == is.null(parsed$options[["--run"]])) {
+        epwshiftr_cli_usage_abort("Supply exactly one of --run or --batch.")
+    }
+    run_id <- if (is.null(batch_id)) {
+        epwshiftr_cli_required_single_id(parsed, "--run")
+    } else {
+        epwshiftr_cli_required_single_id(parsed, "--batch")
+    }
     detail <- epwshiftr_cli_shift_detail(parsed)
     progress <- if (isTRUE(parsed$flags[["--no-progress"]])) {
         "none"
@@ -45,7 +58,8 @@ epwshiftr_cli_shift_watch <- function(store, args, json = FALSE,
             quiet = isTRUE(quiet) || isTRUE(json),
             progress = progress,
             detail = detail,
-            motion = epwshiftr_cli_shift_motion(parsed)
+            motion = epwshiftr_cli_shift_motion(parsed),
+            batch_id = batch_id
         )
         if (isTRUE(json)) {
             # JSON follow suppresses intermediate snapshots and lets the
@@ -54,8 +68,13 @@ epwshiftr_cli_shift_watch <- function(store, args, json = FALSE,
         }
         return(snapshot)
     }
-    snapshot <- epwshiftr_cli_shift_watch_snapshot(
-        store, run_id = run_id, event_count = event_count)
+    snapshot <- if (is.null(batch_id)) {
+        epwshiftr_cli_shift_watch_snapshot(
+            store, run_id = run_id, event_count = event_count)
+    } else {
+        shift_batch__snapshot(shift_batch_get(batch_id, store),
+            event_count = event_count, refresh = FALSE)
+    }
     attr(snapshot, "shift_ui_detail") <- detail
     snapshot
 }
@@ -100,7 +119,8 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
                                              jsonl = FALSE, quiet = FALSE,
                                              progress = c("dynamic", "log", "none"),
                                              detail = "normal",
-                                             motion = c("auto", "full", "reduced", "none")) {
+                                             motion = c("auto", "full", "reduced", "none"),
+                                             batch_id = NULL) {
     progress <- match.arg(progress)
     motion <- match.arg(motion)
     ui <- shift_ui(progress = progress, detail = detail, motion = motion)
@@ -115,17 +135,24 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
     last_event_id <- NA_character_
     event_cursor_initialized <- FALSE
     update_dynamic <- function(snapshot) {
-        view_events <- shift_coalesce(attr(snapshot, "shift_ui_events"),
-            snapshot$events)
-        view <- shift__ui_table_view(snapshot$run, snapshot$cases,
-            view_events, detail = detail, motion = motion, frame = frame)
-        ui_state <- attr(snapshot, "shift_ui_state")
-        if (!is.null(ui_state) && length(ui_state)) {
-            view$state <- ui_state
-            view$lines <- shift__ui_status_lines(ui_state,
+        if (!is.null(snapshot$batch)) {
+            view <- shift_batch__view(snapshot, detail = detail,
                 motion = motion, frame = frame)
-            view$compact <- shift__ui_compact_line(ui_state,
-                motion = motion, frame = frame)
+        } else {
+            view_events <- shift_coalesce(attr(snapshot, "shift_ui_events"),
+                snapshot$events)
+            view <- shift__ui_table_view(snapshot$run, snapshot$cases,
+                view_events, detail = detail, motion = motion, frame = frame,
+                outputs = snapshot$outputs, diagnostics = snapshot$diagnostics)
+            ui_state <- attr(snapshot, "shift_ui_state")
+            if (!is.null(ui_state) && length(ui_state) &&
+                snapshot$run$status[[1L]] %in% c("queued", "running", "stopping")) {
+                view$state <- ui_state
+                view$lines <- shift__ui_status_lines(ui_state,
+                    motion = motion, frame = frame)
+                view$compact <- shift__ui_compact_line(ui_state,
+                    motion = motion, frame = frame)
+            }
         }
         ok <- !is.null(renderer) &&
             isTRUE(renderer$draw(view$lines, compact = view$compact))
@@ -147,7 +174,13 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
     repeat {
         i <- i + 1L
         frame <- frame + 1L
-        snapshot <- epwshiftr_cli_shift_watch_snapshot(store, run_id = run_id, event_count = event_count)
+        snapshot <- if (is.null(batch_id)) {
+            epwshiftr_cli_shift_watch_snapshot(store, run_id = run_id,
+                event_count = event_count)
+        } else {
+            shift_batch__snapshot(shift_batch_get(batch_id, store),
+                event_count = event_count, refresh = FALSE)
+        }
         active <- epwshiftr_cli_shift_watch_active(snapshot)
         if (isTRUE(quiet)) {
             # no output
@@ -194,7 +227,7 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
                 initial = !event_cursor_initialized
             )
             rows <- delta$rows
-            if (i == 1L) {
+            if (i == 1L || !isTRUE(active)) {
                 epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
             } else {
                 if (isTRUE(delta$gap)) {
@@ -228,5 +261,8 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
 
 
 epwshiftr_cli_shift_watch_active <- function(snapshot) {
+    if (!is.null(snapshot$batch)) {
+        return(any(snapshot$children$status %in% c("queued", "running", "stopping")))
+    }
     nrow(snapshot$run) && snapshot$run$status[[1L]] %in% c("queued", "running", "stopping")
 }

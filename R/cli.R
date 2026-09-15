@@ -2,7 +2,8 @@
 #'
 #' @description
 #' `epwshiftr_cli()` is the package-level entry point used by the optional
-#' `epwshiftr` launcher. It exposes a small ESGF store management interface and
+#' `epwshiftr` launcher. It exposes ESGF store operations, weather-method
+#' discovery, and persistent single-run or batch future-weather workflows, and
 #' returns status metadata when `exit = FALSE`, which makes it testable from R.
 #'
 #' @param args Command line arguments. Defaults to
@@ -24,6 +25,19 @@ epwshiftr_cli <- function(args = commandArgs(trailingOnly = TRUE), exit = FALSE)
         {
             parsed <- epwshiftr_cli_parse_globals(args)
             result <- epwshiftr_cli_dispatch(parsed)
+            # Operational failures can be returned as inspectable batch or
+            # partial-run results. Automation still needs a nonzero exit code.
+            if (length(parsed$args) >= 2L &&
+                identical(parsed$args[[1L]], "shift") &&
+                parsed$args[[2L]] %in% c("run", "resume") &&
+                is.list(result) && !is.data.frame(result) &&
+                isTRUE(result$status %in% c("failed", "blocked", "partial", "cancelled"))) {
+                status <- 1L
+            }
+            if (is.list(result) && !is.data.frame(result) &&
+                identical(result$readiness, "blocked")) {
+                status <- 1L
+            }
             epwshiftr_cli_emit_result(
                 result,
                 json = parsed$json,
@@ -175,6 +189,12 @@ epwshiftr_cli_dispatch <- function(parsed) {
             store_normalize_path(parsed$store)
         }
         return(epwshiftr_cli_shift(store_path, command, rest,
+            json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+    }
+
+    # Scientific catalog and option inspection need no writable store.
+    if (identical(group, "morph") && command %in% c("transforms", "describe", "variables")) {
+        return(epwshiftr_cli_morph(NULL, command, rest,
             json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
     }
 

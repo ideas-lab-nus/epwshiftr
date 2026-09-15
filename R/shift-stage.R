@@ -1798,6 +1798,10 @@ shift_resolve_epw <- function(x) {
 #' [EsgQuery], [EsgStore], [Downloader], and [EpwMorpher]. Each step returns a
 #' small S7 stage object that can be printed, inspected, saved, and passed to the
 #' next step without manually passing manifest IDs.
+#' Method/model batches can be reopened with [shift_batch_get()] and inspected
+#' with the same status, case, output, diagnostic, and explanation functions.
+#' [shift_watch()] follows all active children; [shift_resume()] starts saved
+#' child plans or resumes interrupted runs independently.
 #'
 #' @param provider Climate data provider. The first implementation supports
 #'   `"esgf"`.
@@ -2766,6 +2770,12 @@ shift_epw <- S7::new_generic(
 #' @rdname shift_api
 #' @export
 shift_explain <- function(x, ...) {
+    # Preserve method/model identity when explaining independent child plans
+    # or runs restored from a batch receipt.
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__inspect(x@meta$children, x@meta$manifest,
+            function(child) shift_explain(child, ...)))
+    }
     shift_assert_stage(x)
     if (S7::S7_inherits(x, ShiftPlan)) {
         return(shift__plan_explain(x))
@@ -3450,6 +3460,9 @@ shift_watch <- function(x, store = NULL, follow = TRUE, interval = 1,
     if (!S7::S7_inherits(ui, ShiftUiOptions)) {
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
     }
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        return(shift_batch__watch(x, follow, interval, events, ui))
+    }
     run <- shift__as_run(x, store = store)
     run_id <- run@ids$run_id
     store_path <- run@store_path
@@ -3944,6 +3957,32 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
     checkmate::assert_character(variables, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
     checkmate::assert_character(case_id, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
     checkmate::assert_character(columns, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+    if (S7::S7_inherits(x, ShiftBatch)) {
+        # Read independent child stores with one overall row limit. Identity
+        # columns belong to the batch manifest, not the child Parquet schema.
+        if (isTRUE(refresh)) x <- shift_batch__refresh(x)
+        identity <- c("child_key", "method", "scale", "reconstruction",
+            "model", "member", "grid")
+        child_columns <- if (is.null(columns)) NULL else setdiff(columns, identity)
+        if (!length(child_columns)) child_columns <- NULL
+        rows <- list()
+        remaining <- n
+        for (index in seq_along(x@meta$children)) {
+            if (remaining <= 0) break
+            child <- x@meta$children[[index]]
+            if (S7::S7_inherits(child, ShiftPlan)) next
+            value <- shift_data(child, n = remaining,
+                variables = variables, case_id = case_id,
+                columns = child_columns, refresh = FALSE)
+            value <- shift_batch__decorate(value, x@meta$manifest[index])
+            if (nrow(value) && !is.null(columns)) {
+                value <- value[, intersect(c(identity, columns), names(value)), with = FALSE]
+            }
+            rows[[index]] <- value
+            remaining <- remaining - nrow(value)
+        }
+        return(data.table::rbindlist(rows, use.names = TRUE, fill = TRUE))
+    }
     if (S7::S7_inherits(x, ShiftRun)) {
         if (isTRUE(refresh)) {
             x <- shift_refresh(x)
@@ -11751,8 +11790,10 @@ shift__print_run <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         error = identity
     )
     if (inherits(view, "condition")) {
+        # A failed preview must not retry the unavailable store to obtain an
+        # identifier that is already present on the cached handle.
         shift__print_stage_intro(run, "Shift Run", list(
-            "Run" = shift_ids(run)$run_id,
+            "Run" = run@ids$run_id,
             "Stage" = run@meta$run$current_stage,
             "Snapshot" = "cached metadata only"
         ))

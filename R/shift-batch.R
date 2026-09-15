@@ -161,6 +161,11 @@ shift_batch__receipt_write <- function(x) {
             } else {
                 NA_character_
             },
+            plan = if (S7::S7_inherits(child, ShiftPlan)) {
+                shift__plan_spec(child)
+            } else {
+                NULL
+            },
             status = shift_status(child, refresh = FALSE)
         )
     })
@@ -172,6 +177,8 @@ shift_batch__receipt_write <- function(x) {
         children = children,
         output_dir = x@meta$output_dir,
         status = shift_batch__status(x, refresh = FALSE),
+        climate = shift__climate_spec_value(x@meta$climate),
+        periods = data.table::copy(x@meta$periods),
         updated_at = Sys.time()
     )
     temporary <- tempfile(
@@ -187,6 +194,76 @@ shift_batch__receipt_write <- function(x) {
         cli::cli_abort("Could not publish the future-weather batch receipt.")
     }
     invisible(path)
+}
+
+#' Read a persisted future-weather batch
+#'
+#' @description
+#' Reopen a batch and its independent child plans or runs without querying
+#' climate catalogs. New dry-run batches retain their child plans; completed
+#' receipts from earlier versions remain readable through their child runs.
+#' @param batch_id Batch identifier returned by [shift_ids()].
+#' @param store Root store used for [shift_future_epw()], or the batch directory.
+#' @return A `ShiftBatch` accepted by the ordinary `shift_*()` inspectors,
+#'   [shift_run()], [shift_resume()], [shift_cancel()], and [shift_watch()].
+#' @export
+shift_batch_get <- function(batch_id, store = NULL) {
+    checkmate::assert_string(batch_id, min.chars = 1L,
+        pattern = "^[A-Za-z0-9_-]+$")
+    root <- shift_batch__store_root(store)
+    batch_root <- if (identical(basename(root), batch_id)) {
+        root
+    } else {
+        file.path(root, "batches", batch_id)
+    }
+    receipt <- shift_batch__receipt_read(batch_root, batch_id)
+    if (is.null(receipt)) {
+        cli::cli_abort("No readable batch receipt for {.val {batch_id}} in {.path {root}}.")
+    }
+    children <- lapply(receipt$children, function(child) {
+        if (!is.na(store__chr1(child$run_id))) {
+            return(shift_run_get(child$run_id, store = child$store_path))
+        }
+        if (!is.null(child$plan)) {
+            return(shift__plan_from_spec(child$plan, store = child$store_path))
+        }
+        cli::cli_abort(c(
+            "This older dry-run batch did not persist its child plans.",
+            "i" = "Create the batch again from its original configuration."
+        ))
+    })
+    names(children) <- vapply(receipt$children, `[[`, character(1L), "child_key")
+    if (!length(children)) {
+        cli::cli_abort("The batch receipt contains no children.")
+    }
+    # Earlier receipts store scientific intent in the authoritative child run.
+    # Recover it there instead of requiring a new remote discovery request.
+    first <- children[[1L]]
+    spec <- if (S7::S7_inherits(first, ShiftPlan)) {
+        shift__plan_spec(first)
+    } else {
+        jsonlite::fromJSON(first@meta$run$spec_json[[1L]], simplifyVector = TRUE)
+    }
+    manifest <- data.table::as.data.table(data.table::copy(receipt$manifest))
+    shift_stage_new(ShiftBatch, "batch", store_path = batch_root,
+        ids = list(batch_id = batch_id,
+            child_ids = lapply(children, function(child) child@ids)),
+        meta = list(
+            children = children,
+            manifest = manifest,
+            periods = shift_coalesce(receipt$periods,
+                shift__periods_from_input(spec$periods)),
+            climate = shift__climate_from_spec(shift_coalesce(
+                receipt$climate, spec$climate)),
+            discovery = receipt$discovery,
+            selected_models = receipt$discovery$identities,
+            output_dir = receipt$output_dir,
+            dry_run = all(vapply(children, function(child) {
+                S7::S7_inherits(child, ShiftPlan)
+            }, logical(1L)))
+        ),
+        diagnostics = shift_batch__diagnostics(children, manifest, refresh = FALSE)
+    )
 }
 
 # Restore one child without querying ESGF. Completed children must still own
@@ -733,6 +810,7 @@ shift_batch__future_epw <- function(
     dry_run,
     background
 ) {
+    call_started <- Sys.time()
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
         cli::cli_abort("`climate` must be created by {.fn shift_cmip6}.")
     }
@@ -790,6 +868,14 @@ shift_batch__future_epw <- function(
             if (all(statuses %in% c(
                 "completed", "queued", "running", "stopping", "waiting"
             ))) {
+                restored@meta$execution <- data.table::data.table(
+                    child_key = names(restored@meta$children),
+                    action = "reused",
+                    elapsed_seconds = NA_real_
+                )
+                restored@meta$call_elapsed_seconds <- as.numeric(difftime(
+                    Sys.time(), call_started, units = "secs"))
+                shift_batch__report(restored, ui)
                 return(restored)
             }
             return(shift_batch__resume(
@@ -1065,24 +1151,64 @@ shift_batch__run_child <- function(expr) {
 # Resume plans and interrupted runs independently, leaving active and completed
 # child runs untouched.
 shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
-    children <- lapply(x@meta$children, function(child) {
+    call_started <- Sys.time()
+    execution <- list()
+    # Update the shared matrix after each child so subsequent foreground frames
+    # show batch progress while the ordinary child reporter owns the terminal.
+    for (index in seq_along(x@meta$children)) {
+        child <- x@meta$children[[index]]
+        started <- Sys.time()
+        statuses <- vapply(x@meta$children, function(value) {
+            shift_status(value, refresh = FALSE)
+        }, character(1L))
+        child_ui <- ui
+        child_ui@batch_context <- list(id = x@ids$batch_id,
+            current = index, total = length(x@meta$children),
+            completed = sum(statuses == "completed"),
+            failed = sum(statuses %in% c("failed", "blocked")))
         status <- shift_status(child, refresh = TRUE)
+        if (identical(status, "completed")) {
+            # A completed database row alone does not prove its exported files
+            # still exist. Reuse the same artifact check as receipt restoration.
+            restored <- shift_batch__restore_child(list(
+                run_id = child@ids$run_id, store_path = child@store_path,
+                status = status))
+            if (is.null(restored)) {
+                spec <- jsonlite::fromJSON(child@meta$run$spec_json[[1L]],
+                    simplifyVector = TRUE)
+                child <- shift__plan_from_spec(spec, store = child@store_path)
+                status <- "planned"
+            }
+        }
+        action <- "reused"
         if (S7::S7_inherits(child, ShiftPlan)) {
-            return(shift_batch__run_child(
-                shift_run(child, background = background, ui = ui)
-            ))
-        }
-        if (status %in% c("completed", "queued", "running", "stopping",
+            action <- "started"
+            child <- shift_batch__run_child(
+                shift_run(child, background = background, ui = child_ui)
+            )
+        } else if (!status %in% c("completed", "queued", "running", "stopping",
             "waiting")) {
-            return(child)
+            action <- "resumed"
+            child <- shift_batch__run_child(
+                shift_resume(child, background = background, ui = child_ui)
+            )
         }
-        shift_batch__run_child(
-            shift_resume(child, background = background, ui = ui)
+        x@meta$children[[index]] <- child
+        execution[[index]] <- data.table::data.table(
+            child_key = names(x@meta$children)[[index]], action = action,
+            elapsed_seconds = as.numeric(difftime(
+                Sys.time(), started, units = "secs"))
         )
-    })
-    x@meta$children <- children
+        # Persist every completed launch so an interruption retains the latest
+        # child run IDs rather than only the original dry-run plans.
+        shift_batch__receipt_write(x)
+    }
+    x@meta$execution <- data.table::rbindlist(execution)
+    x@meta$call_elapsed_seconds <- as.numeric(difftime(
+        Sys.time(), call_started, units = "secs"))
     x <- shift_batch__refresh(x)
     shift_batch__receipt_write(x)
+    shift_batch__report(x, ui)
     x
 }
 

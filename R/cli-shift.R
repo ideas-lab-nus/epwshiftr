@@ -29,14 +29,26 @@ epwshiftr_cli_shift_run <- function(store, args, json = FALSE, jsonl = FALSE, qu
     epwshiftr_cli_assert_no_positionals(parsed)
     config_path <- epwshiftr_cli_required_option(parsed, "--config")
     config <- epwshiftr_cli_read_shift_config(config_path)
-    plan <- epwshiftr_cli_config_plan(config, store = store)
     background <- isTRUE(parsed$flags[["--background"]])
     if (isTRUE(parsed$flags[["--dry-run"]]) && background) {
         epwshiftr_cli_usage_abort("--dry-run and --background cannot be used together.")
     }
     if (isTRUE(parsed$flags[["--dry-run"]])) {
+        plan <- epwshiftr_cli_config_plan(config, store = store,
+            ui = shift_ui(progress = "none"))
+        if (S7::S7_inherits(plan, ShiftBatch)) {
+            result <- shift_batch__snapshot(plan, refresh = FALSE)
+            result$status <- "dry_run"
+            result$batch_id <- plan@ids$batch_id
+            result$config <- normalizePath(config_path, winslash = "/", mustWork = TRUE)
+            result$explain <- shift_explain(plan)
+            result$next_steps <- epwshiftr_cli_shift_next_steps(
+                plan@ids$batch_id, batch = TRUE, store = store)
+            return(result)
+        }
         return(list(
             status = "dry_run",
+            batch_id = shift_ids(plan)$batch_id,
             config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
             cases = shift_cases(plan),
             explain = shift_explain(plan)
@@ -57,41 +69,49 @@ epwshiftr_cli_shift_run <- function(store, args, json = FALSE, jsonl = FALSE, qu
         detail = epwshiftr_cli_shift_detail(parsed),
         motion = epwshiftr_cli_shift_motion(parsed)
     )
-    epwshiftr_cli_shift_stage_result(shift_run(plan, background = background, ui = ui))
+    # Execute the high-level entry point directly so a completed batch can use
+    # its receipt fast path before any catalog or child planning work.
+    epwshiftr_cli_shift_stage_result(epwshiftr_cli_config_plan(
+        config, store = store, dry_run = FALSE, background = background, ui = ui
+    ))
 }
 
 epwshiftr_cli_shift_status <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = "--run")
+    parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
     epwshiftr_cli_assert_no_positionals(parsed)
-    run <- shift_run_get(epwshiftr_cli_required_single_id(parsed, "--run"), store)
+    run <- cli_shift__target(parsed, store)
+    if (S7::S7_inherits(run, ShiftBatch)) {
+        snapshot <- shift_batch__snapshot(run, refresh = FALSE)
+        return(list(batch = snapshot$batch, children = snapshot$children))
+    }
     run@meta$run
 }
 
 
 epwshiftr_cli_shift_diagnostics <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = "--run")
+    parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
     epwshiftr_cli_assert_no_positionals(parsed)
-    shift_diagnostics(shift_run_get(epwshiftr_cli_required_single_id(parsed, "--run"), store))
+    shift_diagnostics(cli_shift__target(parsed, store))
 }
 
 
 epwshiftr_cli_shift_outputs <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = "--run")
+    parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
     epwshiftr_cli_assert_no_positionals(parsed)
-    shift_outputs(shift_run_get(epwshiftr_cli_required_single_id(parsed, "--run"), store))
+    cli_shift__output_metadata(shift_outputs(cli_shift__target(parsed, store)))
 }
 
 
 epwshiftr_cli_shift_data <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        options = c("--run", "--case", "--columns", "--limit")
+        options = c("--run", "--batch", "--case", "--columns", "--limit")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     columns <- epwshiftr_cli_csv(parsed$options[["--columns"]])
     limit <- epwshiftr_cli_count_or_default(parsed$options[["--limit"]], "--limit", 20L, positive = FALSE)
     shift_data(
-        shift_run_get(epwshiftr_cli_required_single_id(parsed, "--run"), store),
+        cli_shift__target(parsed, store),
         n = limit,
         case_id = epwshiftr_cli_csv(parsed$options[["--case"]]),
         columns = columns
@@ -105,12 +125,11 @@ epwshiftr_cli_shift_cancel <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
         flags = "--force",
-        options = "--run"
+        options = c("--run", "--batch")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     epwshiftr_cli_shift_stage_result(shift_cancel(
-        epwshiftr_cli_required_single_id(parsed, "--run"),
-        store = store,
+        cli_shift__target(parsed, store),
         force = isTRUE(parsed$flags[["--force"]])
     ))
 }
@@ -120,15 +139,14 @@ epwshiftr_cli_shift_cancel <- function(store, args) {
 epwshiftr_cli_shift_logs <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        options = c("--run", "--tail")
+        options = c("--run", "--batch", "--tail")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     tail <- epwshiftr_cli_count_or_default(
         parsed$options[["--tail"]], "--tail", 100L, positive = FALSE
     )
     shift_logs(
-        epwshiftr_cli_required_single_id(parsed, "--run"),
-        store = store,
+        cli_shift__target(parsed, store),
         tail = tail
     )
 }
@@ -141,7 +159,7 @@ epwshiftr_cli_shift_resume <- function(store, args, json = FALSE, jsonl = FALSE,
         args,
         flags = c("--background", "--no-progress", "--reduced-motion",
             "--verbose", "--debug"),
-        options = "--run"
+        options = c("--run", "--batch")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
@@ -154,8 +172,7 @@ epwshiftr_cli_shift_resume <- function(store, args, json = FALSE, jsonl = FALSE,
     }
     epwshiftr_cli_shift_stage_result(
         shift_resume(
-            epwshiftr_cli_required_single_id(parsed, "--run"),
-            store = store,
+            cli_shift__target(parsed, store),
             background = isTRUE(parsed$flags[["--background"]]),
             ui = shift_ui(
                 progress = progress,
@@ -185,6 +202,45 @@ epwshiftr_cli_shift_motion <- function(parsed) {
 
 
 # shared parsing --------------------------------------------------------------
+
+# Require an explicit, mutually exclusive identity before opening any store.
+# Batch IDs address independent child stores through the persisted receipt.
+cli_shift__target <- function(parsed, store) {
+    batch <- parsed$options[["--batch"]]
+    run <- parsed$options[["--run"]]
+    if (is.null(batch) == is.null(run)) {
+        epwshiftr_cli_usage_abort("Supply exactly one of --run or --batch.")
+    }
+    if (!is.null(batch)) {
+        return(shift_batch_get(
+            epwshiftr_cli_required_single_id(parsed, "--batch"), store = store
+        ))
+    }
+    shift_run_get(epwshiftr_cli_required_single_id(parsed, "--run"), store = store)
+}
+
+# Promote the manifest's scientific field roles to inspectable output columns.
+# These lists are descriptive provenance and do not introduce comparison scores.
+cli_shift__output_metadata <- function(outputs) {
+    outputs <- data.table::as.data.table(data.table::copy(outputs))
+    if (!nrow(outputs) || !"provenance_json" %in% names(outputs)) {
+        return(outputs)
+    }
+    roles <- lapply(outputs$provenance_json, function(value) {
+        if (is.na(value) || !nzchar(value)) {
+            return(list())
+        }
+        tryCatch(jsonlite::fromJSON(value)$weather_field_roles,
+            error = function(error) list())
+    })
+    for (name in c("transformed_fields", "derived_fields",
+        "physically_closed_fields", "inherited_fields")) {
+        data.table::set(outputs, j = name, value = lapply(roles, function(role) {
+            as.character(shift_coalesce(role[[name]], character()))
+        }))
+    }
+    outputs
+}
 
 epwshiftr_cli_required_option <- function(parsed, option) {
     value <- parsed$options[[option]]
@@ -322,12 +378,21 @@ epwshiftr_cli_validate_shift_config <- function(config) {
         cli::cli_abort("Only shift workflow config version 2 is supported.")
     }
     epwshiftr_cli_periods_from_config(config$periods, "periods")
-    cli_shift__config_transform(config$transform)
+    shift_batch__transforms(
+        methods = config$methods,
+        transform = cli_shift__config_transform(config$transform)
+    )
     cli_shift__config_reference(config$reference, "reference")
     cli_shift__config_reference(
         config$observed_reference,
         "observed_reference"
     )
+    cli_shift__config_reference(config$calibration, "calibration")
+    if (!is.null(config$calibration) && !is.null(config$observed_reference)) {
+        epwshiftr_cli_usage_abort(
+            "Supply either calibration or observed_reference, not both."
+        )
+    }
     epwshiftr_cli_config_climate(config$climate)
     epwshiftr_cli_config_control(config$control)
     invisible(config)
@@ -342,12 +407,14 @@ epwshiftr_cli_config_section <- function(config, name) {
 
 # Build the same task-level ShiftPlan used by the R API; the CLI does not own a
 # second collect/extract/morph execution path.
-epwshiftr_cli_config_plan <- function(config, store) {
+epwshiftr_cli_config_plan <- function(config, store, dry_run = TRUE,
+                                     background = FALSE, ui = shift_ui()) {
     shift_future_epw(
         epw = epwshiftr_cli_config_string(config$epw),
         climate = epwshiftr_cli_config_climate(config$climate),
         periods = config$periods,
         transform = cli_shift__config_transform(config$transform),
+        methods = config$methods,
         dir = epwshiftr_cli_config_string(config$dir),
         reference = cli_shift__config_reference(
             config$reference,
@@ -357,9 +424,12 @@ epwshiftr_cli_config_plan <- function(config, store) {
             config$observed_reference,
             "observed_reference"
         ),
+        calibration = cli_shift__config_reference(config$calibration, "calibration"),
         control = epwshiftr_cli_config_control(config$control),
         store = store,
-        dry_run = TRUE
+        dry_run = dry_run,
+        background = background,
+        ui = ui
     )
 }
 
@@ -372,8 +442,27 @@ cli_shift__config_reference <- function(reference, field) {
         return(NULL)
     }
 
+    # Reanalysis intent contains dataset settings only. The source constructor
+    # validates provider options and reads credentials only at execution time.
+    observational <- field %in% c("observed_reference", "calibration")
+    if (observational && !is.null(reference$dataset)) {
+        dataset <- epwshiftr_cli_config_choice(
+            reference$dataset, c("era5", "era6")
+        )
+        constructor <- get(paste0("shift_", dataset), mode = "function")
+        return(do.call(constructor, c(list(
+            years = epwshiftr_cli_years(as.character(reference$years)),
+            product = epwshiftr_cli_config_string(reference$product,
+                default = "single_levels"),
+            variables = epwshiftr_cli_config_character(reference$variables),
+            frequency = cli_shift__variable_spec(reference$frequency,
+                paste0(field, ".frequency")),
+            access = epwshiftr_cli_config_string(reference$access, default = "auto")
+        ), epwshiftr_cli_config_named_list(reference$options))))
+    }
+
     reference <- epwshiftr_cli_config_section(list(reference = reference), "reference")
-    modes <- if (identical(field, "observed_reference")) {
+    modes <- if (observational) {
         "plan"
     } else {
         c("historical", "plan")
@@ -400,7 +489,7 @@ cli_shift__config_reference <- function(reference, field) {
                 field
             ))
         }
-        role <- if (identical(field, "observed_reference")) {
+        role <- if (observational) {
             "observed_reference"
         } else {
             "model_historical"
@@ -425,6 +514,17 @@ cli_shift__config_reference <- function(reference, field) {
 # Construct one reusable transform from the same scale-specific public
 # constructors available to R callers.
 cli_shift__config_transform <- function(config) {
+    if (is.null(config)) {
+        return(NULL)
+    }
+    # Arrays preserve explicit scale/reconstruction choices for each method.
+    # A named object retains the established single-transform return type.
+    if (is.list(config) && is.null(names(config))) {
+        if (!length(config)) {
+            epwshiftr_cli_usage_abort("transform must not be an empty array.")
+        }
+        return(lapply(config, cli_shift__config_transform))
+    }
     config <- epwshiftr_cli_config_section(
         list(transform = config),
         "transform"
@@ -467,14 +567,14 @@ epwshiftr_cli_config_climate <- function(config) {
         epwshiftr_cli_usage_abort(sprintf("Unsupported climate provider: %s", provider))
     }
     shift_cmip6(
-        model = epwshiftr_cli_config_character(config$model),
+        model = config$model,
         scenarios = epwshiftr_cli_config_character(config$scenarios),
         member = epwshiftr_cli_config_character(config$member, default = NULL),
         grid = epwshiftr_cli_config_string(config$grid, default = NULL),
         frequency = cli_shift__variable_spec(
             config$frequency,
             "climate.frequency",
-            default = "mon"
+            default = NULL
         ),
         table = cli_shift__table_spec(config$table),
         activity = epwshiftr_cli_config_string(config$activity, default = "ScenarioMIP"),
@@ -535,6 +635,7 @@ epwshiftr_cli_config_control <- function(config) {
         download = epwshiftr_cli_config_choice(config$download, c("auto", "always", "never"), default = "auto"),
         resume = epwshiftr_cli_config_flag(config$resume, default = TRUE),
         overwrite = epwshiftr_cli_config_flag(config$overwrite, default = FALSE),
+        refresh = epwshiftr_cli_config_flag(config$refresh, default = FALSE),
         extraction_method = epwshiftr_cli_config_choice(config$extraction_method, ESG_GRID_METHOD_CHOICES, default = "nearest"),
         output_layout = epwshiftr_cli_config_choice(config$output_layout, c("nested", "flat"), default = "nested")
     )
@@ -640,7 +741,7 @@ epwshiftr_cli_config_limit <- function(value, default = FALSE) {
 
 
 epwshiftr_cli_config_named_list <- function(value) {
-    if (is.null(value)) {
+    if (is.null(value) || (is.list(value) && !length(value))) {
         return(list())
     }
     if (!is.list(value)) {
@@ -1143,12 +1244,19 @@ epwshiftr_cli_read_extracted_data <- function(store, results, n = 20L, columns =
 # compact workflow results ----------------------------------------------------
 
 epwshiftr_cli_shift_stage_result <- function(stage) {
+    if (S7::S7_inherits(stage, ShiftBatch)) {
+        snapshot <- shift_batch__snapshot(stage, refresh = FALSE)
+        return(c(list(status = snapshot$batch$status,
+            batch_id = stage@ids$batch_id), snapshot,
+            list(next_steps = epwshiftr_cli_shift_next_steps(
+                stage@ids$batch_id, batch = TRUE, store = stage@store_path))))
+    }
     if (!S7::S7_inherits(stage, ShiftRun)) {
         epwshiftr_cli_usage_abort("The unified shift runner did not return a ShiftRun.")
     }
     ids <- shift_ids(stage)
     diagnostics <- shift_diagnostics(stage)
-    outputs <- shift_outputs(stage)
+    outputs <- cli_shift__output_metadata(shift_outputs(stage))
     list(
         status = shift_status(stage),
         run_id = ids$run_id,
@@ -1159,18 +1267,19 @@ epwshiftr_cli_shift_stage_result <- function(stage) {
         cases = shift_cases(stage),
         missing = shift_missing(stage),
         outputs = outputs,
-        next_steps = epwshiftr_cli_shift_next_steps(ids$run_id)
+        next_steps = epwshiftr_cli_shift_next_steps(ids$run_id, store = stage@store_path)
     )
 }
 
 
-epwshiftr_cli_shift_next_steps <- function(run_id) {
+epwshiftr_cli_shift_next_steps <- function(run_id, batch = FALSE, store = NULL) {
     data.frame(
         step = c("watch", "status", "show", "outputs", "diagnostics", "logs", "cancel", "resume"),
         command = sprintf(
-            "epwshiftr shift %s --run %s",
+            "epwshiftr%s shift %s --%s %s",
+            if (is.null(store)) "" else paste0(" --store ", shQuote(store)),
             c("watch", "status", "show", "outputs", "diagnostics", "logs", "cancel", "resume"),
-            run_id
+            if (isTRUE(batch)) "batch" else "run", run_id
         ),
         stringsAsFactors = FALSE
     )

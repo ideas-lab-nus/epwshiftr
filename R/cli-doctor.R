@@ -2,7 +2,7 @@ epwshiftr_cli_doctor <- function(store_path = NULL, args = character()) {
     parsed <- epwshiftr_cli_parse_command(
         args,
         flags = "--network",
-        options = c("--index-node", "--timeout")
+        options = c("--index-node", "--timeout", "--config")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
 
@@ -135,6 +135,28 @@ epwshiftr_cli_doctor <- function(store_path = NULL, args = character()) {
         add("index_node", "skipped", "Network check skipped. Use --network to enable it.", index_node)
     }
 
+    # Reuse provider readiness checks without accepting credentials in JSON or
+    # printing secrets. Remote authentication is checked only with --network.
+    config_path <- parsed$options[["--config"]]
+    if (!is.null(config_path)) {
+        config <- epwshiftr_cli_read_shift_config(config_path)
+        observed <- cli_shift__config_reference(shift_coalesce(
+            config$calibration, config$observed_reference), "observed_reference")
+        if (S7::S7_inherits(observed, ShiftReanalysisSpec)) {
+            diagnostics <- shift_check(observed,
+                network = isTRUE(parsed$flags[["--network"]]))
+            if (!nrow(diagnostics)) {
+                add("reanalysis", "ok", sprintf("%s credential checks passed.",
+                    toupper(observed@dataset)))
+            } else {
+                for (index in seq_len(nrow(diagnostics))) {
+                    row <- diagnostics[index]
+                    add(row$code, if (row$severity == "error") "error" else "warning",
+                        row$message, row$action)
+                }
+            }
+        }
+    }
     checks <- do.call(rbind, checks)
     rownames(checks) <- NULL
     status <- if (any(checks$status == "error")) {

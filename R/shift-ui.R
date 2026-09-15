@@ -7,7 +7,9 @@ ShiftUiOptions <- S7::new_class(
         detail = shift_prop_string(min.chars = 1L),
         motion = shift_prop_string(min.chars = 1L),
         refresh = S7::new_property(S7::class_numeric),
-        heartbeat = S7::new_property(S7::class_numeric)
+        heartbeat = S7::new_property(S7::class_numeric),
+        # Transient batch context never participates in a scientific plan hash.
+        batch_context = S7::new_property(S7::class_list, default = list())
     )
 )
 
@@ -309,6 +311,11 @@ shift__ui_reference <- function(reference) {
     if (is.null(reference)) {
         return("no reference")
     }
+    if (S7::S7_inherits(reference, ShiftReanalysisSpec)) {
+        return(sprintf("%s %s %d\u2013%d (%s)", toupper(reference@dataset),
+            reference@product, min(reference@years), max(reference@years),
+            reference@access))
+    }
     if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
         periods_table <- data.table::as.data.table(reference@periods)
         period_names <- unique(periods_table$period)
@@ -399,6 +406,15 @@ shift__ui_plan_summary <- function(plan, run_id, background = FALSE,
             width),
         shift__ui_fit(sprintf("Output %s", shift__display_path(output_dir)), width)
     )
+    if (!is.null(plan@meta$observed_reference)) {
+        lines <- c(lines, shift__ui_labeled_lines("Observed",
+            shift__ui_reference(plan@meta$observed_reference), width))
+    }
+    if (identical(plan@meta$transform@output_type, "multi_year")) {
+        lines[[3L]] <- shift__ui_fit(sprintf(
+            "%s \u00b7 %d case(s); one EPW per weather year", transform_label,
+            nrow(plan@meta$expected_cases)), width)
+    }
     if (!identical(detail, "normal")) {
         option_summary <- shift__format_options(
             unclass(plan@meta$transform@options))
@@ -433,7 +449,13 @@ shift__ui_plan_context <- function(plan) {
             scenarios,
             shift__ui_periods(plan@meta$periods),
             sprintf("%s / %s", transform_label, reference),
-            sprintf("%d EPW%s", expected, if (expected == 1L) "" else "s")
+            if (identical(plan@meta$transform@output_type, "multi_year")) {
+                sprintf("%d cases; one EPW per weather year", expected)
+            } else {
+                sprintf("%d EPW%s", expected, if (expected == 1L) "" else "s")
+            },
+            if (!is.null(plan@meta$observed_reference)) paste("Observed",
+                shift__ui_reference(plan@meta$observed_reference))
         )
     list(
         line = paste(items, collapse = " \u00b7 "),
@@ -454,7 +476,8 @@ shift__ui_stage_label <- function(stage) {
         extract_reference = "Extract reference", coverage = "Coverage",
         morph = "Morph", write_epw = "Write EPW", export_epw = "Export EPW",
         completed = "Completed",
-        resume = "Resume"
+        resume = "Resume", reanalysis = "Reanalysis",
+        extract_observed_reference = "Observed reference", batch = "Batch"
     )
     key <- as.character(shift_coalesce(stage, "planned"))[[1L]]
     # Named atomic vectors throw on an unknown `[[` key, so extension stages
@@ -925,7 +948,34 @@ shift__ui_result_lines <- function(state, width = shift__ui_width()) {
             "", sprintf("\u2026 %d more output%s", omitted,
                 if (omitted == 1L) "" else "s"), width))
     }
+    if (!is.null(state$field_summary)) {
+        lines <- c(lines, shift__ui_labeled_lines("Fields", state$field_summary, width))
+    }
+    for (message in utils::head(state$warning_messages, 3L)) {
+        lines <- c(lines, shift__ui_labeled_lines("Warning", message, width))
+    }
     lines
+}
+
+# Derive terminal facts from persisted cases and output manifests. A method's
+# multi-year files never inflate the number of completed scientific cases.
+shift__ui_completion <- function(cases, outputs, diagnostics) {
+    warnings <- diagnostics[diagnostics$severity == "warning"]
+    roles <- if (nrow(outputs) && "provenance_json" %in% names(outputs)) {
+        tryCatch(jsonlite::fromJSON(outputs$provenance_json[[1L]])$weather_field_roles,
+            error = function(error) NULL)
+    } else {
+        NULL
+    }
+    list(
+        result_summary = sprintf("%d/%d cases completed \u00b7 %d EPW files \u00b7 %d warnings",
+            sum(cases$status == "completed"), nrow(cases), nrow(outputs), nrow(warnings)),
+        warning_messages = unique(warnings$message),
+        field_summary = if (is.null(roles)) NULL else sprintf(
+            "%d transformed \u00b7 %d derived \u00b7 %d physically closed \u00b7 %d inherited",
+            length(roles$transformed_fields), length(roles$derived_fields),
+            length(roles$physically_closed_fields), length(roles$inherited_fields))
+    )
 }
 
 # Render one compact terminal diagnosis from structured failure fields. Values
@@ -1092,6 +1142,13 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
     header <- paste(header_parts[!vapply(header_parts, is.null, logical(1L))],
         collapse = "  ")
     plan_lines <- shift__ui_plan_lines(plan_context, width = content_width)
+    batch <- shift_coalesce(state$batch_context, list())
+    if (length(batch)) {
+        plan_lines <- c(shift__ui_labeled_lines("Batch", sprintf(
+            "%s \u00b7 child %d/%d \u00b7 %d completed \u00b7 %d failed",
+            batch$id, batch$current, batch$total, batch$completed, batch$failed
+        ), content_width), plan_lines)
+    }
     details <- shift_coalesce(state$current_details, list())
     current_context <- character()
     if (!is.null(details$node) && length(details$node) && !is.na(details$node[[1L]])) {
@@ -1328,6 +1385,28 @@ shift__ui_case_table <- function(rows, width = shift__ui_width(),
     if (!nrow(rows)) {
         return(character())
     }
+    # Multi-method/model views use wrapped identity rows so terminal width
+    # cannot erase the columns that distinguish otherwise identical cases.
+    if ("method" %in% names(rows) || ("source_id" %in% names(rows) &&
+        data.table::uniqueN(rows$source_id) > 1L)) {
+        lines <- "Cases"
+        columns <- intersect(c("method", "scale", "reconstruction", "model", "source_id",
+            "experiment_id", "period", "variant_label", "status"), names(rows))
+        if ("model" %in% columns) columns <- setdiff(columns, "source_id")
+        for (index in seq_len(nrow(rows))) {
+            values <- vapply(columns, function(column) {
+                as.character(rows[[column]][[index]])
+            }, character(1L))
+            lines <- c(lines, shift__ui_prefixed_lines("  ",
+                paste(values, collapse = " \u00b7 "), width))
+            if (!identical(detail, "normal") && "missing_reason" %in% names(rows) &&
+                !is.na(rows$missing_reason[[index]]) && nzchar(rows$missing_reason[[index]])) {
+                lines <- c(lines, shift__ui_prefixed_lines("    ",
+                    rows$missing_reason[[index]], width))
+            }
+        }
+        return(lines)
+    }
     width <- shift__ui_width(width)
     scenario <- if ("experiment_id" %in% names(rows)) rows$experiment_id else rep("\u2014", nrow(rows))
     period <- if ("period" %in% names(rows)) rows$period else rep("\u2014", nrow(rows))
@@ -1473,6 +1552,11 @@ shift__ui_periods_from_spec <- function(periods) {
 shift__ui_reference_from_spec <- function(reference) {
     mode <- as.character(shift_coalesce(reference$mode, "none"))[[1L]]
     if (identical(mode, "none")) return("no reference")
+    if (identical(mode, "reanalysis")) {
+        years <- as.integer(unlist(reference$years, use.names = FALSE))
+        return(sprintf("%s %s %d\u2013%d (%s)", toupper(reference$dataset),
+            reference$product, min(years), max(years), reference$access))
+    }
     if (identical(mode, "historical")) {
         periods <- shift__ui_periods_from_spec(reference$periods)
         periods <- sub("^[^(]+ \\(", "", periods)
@@ -1521,8 +1605,10 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
         if (nzchar(scenarios)) scenarios,
         shift__ui_periods_from_spec(spec$periods),
         sprintf("%s / %s", transform, reference),
-        if (expected > 0L) sprintf("%d EPW%s", expected,
-            if (expected == 1L) "" else "s")
+        if (expected > 0L) sprintf("%d cases", expected),
+        if (!is.null(spec$observed_reference) &&
+            !identical(spec$observed_reference$mode, "none")) paste("Observed",
+                shift__ui_reference_from_spec(spec$observed_reference))
     )
     member_value <- shift_coalesce(spec$climate$member,
         spec$request$variant)
@@ -1709,8 +1795,16 @@ shift__ui_event_nodes <- function(events) {
 # stage, case, resolver, or width semantics.
 shift__ui_table_view <- function(row, cases, events,
                                  width = shift__ui_width(), detail = "normal",
-                                 motion = "none", frame = 0L) {
+                                 motion = "none", frame = 0L,
+                                 outputs = NULL, diagnostics = NULL) {
     state <- shift__ui_table_state(row, events, cases)
+    if (!is.null(outputs) && state$status %in% c("completed", "partial")) {
+        completion <- shift__ui_completion(cases, outputs,
+            shift_coalesce(diagnostics, shift_diagnostics_empty()))
+        state[names(completion)] <- completion
+        state$outputs_completed <- nrow(outputs)
+        state$output_paths <- shift_coalesce(outputs$export_path, outputs$path)
+    }
     # Normal watch output mirrors the foreground receipt's five-file cap;
     # explicit detail/debug views retain every persisted export path.
     state$output_path_limit <- if (identical(detail, "normal")) 5L else Inf
@@ -1730,6 +1824,13 @@ shift__ui_table_view <- function(row, cases, events,
 # Adapt a live ShiftRun handle to the table-based view shared with the CLI.
 shift__ui_run_view <- function(run, width = shift__ui_width(),
                                detail = "normal", motion = "none", frame = 0L) {
+    # Cached handles may have no store or morph identity. Keep their existing
+    # preview usable without opening the user's unrelated default store.
+    outputs <- if (is.null(run@store_path) || !nzchar(run@store_path)) {
+        run@meta$outputs
+    } else {
+        tryCatch(shift_outputs(run, refresh = FALSE), error = function(error) NULL)
+    }
     view <- shift__ui_table_view(
         row = run@meta$run,
         cases = shift_cases(run, refresh = FALSE),
@@ -1737,12 +1838,15 @@ shift__ui_run_view <- function(run, width = shift__ui_width(),
         width = width,
         detail = detail,
         motion = motion,
-        frame = frame
+        frame = frame,
+        outputs = outputs,
+        diagnostics = shift_diagnostics(run, refresh = FALSE)
     )
     # Active background workers publish transient transfer state beside their
     # durable events. Prefer it for the four live rows while retaining tables
     # reconstructed from persisted resolver/case data.
-    if (!is.null(run@meta$ui_state) && length(run@meta$ui_state)) {
+    if (!is.null(run@meta$ui_state) && length(run@meta$ui_state) &&
+        run@meta$run$status[[1L]] %in% c("queued", "running", "stopping")) {
         state <- run@meta$ui_state
         row <- data.table::as.data.table(run@meta$run)
         if (nrow(row) && row$status[[1L]] %in% c("queued", "running", "stopping") &&
@@ -1783,6 +1887,9 @@ shift__ui_persisted_event_line <- function(event, detail = "normal",
                                            width = NULL) {
     details <- shift__ui_event_details(event)[[1L]]
     context <- c(shift__ui_stage_label(event$stage[[1L]]))
+    if ("method" %in% names(event)) {
+        context <- c(event$method[[1L]], event$model[[1L]], context)
+    }
     if (!is.null(details$node) && length(details$node)) {
         context <- c(context, if (identical(detail, "debug")) {
             as.character(details$node[[1L]])
@@ -2312,6 +2419,12 @@ ShiftReporter <- R6::R6Class(
             elapsed <- private$elapsed(private$started_at)
             status <- shift_status(run, refresh = FALSE)
             private$status <- status
+            completion <- shift__ui_completion(shift_cases(run, refresh = FALSE),
+                outputs, shift_diagnostics(run, refresh = FALSE))
+            private$result_summary <- completion$result_summary
+            private$warning_messages <- completion$warning_messages
+            private$field_summary <- completion$field_summary
+            private$outputs_completed <- nrow(outputs)
             if (identical(status, "completed")) {
                 private$completed_stages <- private$stage_sequence
             }
@@ -2346,6 +2459,10 @@ ShiftReporter <- R6::R6Class(
                     "Future EPW run %s %s: %d output(s) in %s.",
                     private$run_id_value, status, nrow(outputs),
                     shift__format_elapsed(elapsed)))
+                private$emit("text", private$result_summary)
+                for (message in utils::head(private$warning_messages, 3L)) {
+                    private$emit("warning", message)
+                }
             }
             if (!isTRUE(committed_frame) &&
                 !identical(private$mode_value, "none") && nrow(outputs)) {
@@ -2492,6 +2609,8 @@ ShiftReporter <- R6::R6Class(
         output_path_limit = 5L,
         task_label = "Future EPW",
         result_summary = NULL,
+        warning_messages = character(),
+        field_summary = NULL,
 
         # Map reporter message kinds onto cli output while temporarily
         # releasing an active framebuffer. Console rendering failures are
@@ -2632,6 +2751,9 @@ ShiftReporter <- R6::R6Class(
                 output_paths = private$output_paths,
                 output_path_limit = private$output_path_limit,
                 result_summary = private$result_summary,
+                warning_messages = private$warning_messages,
+                field_summary = private$field_summary,
+                batch_context = private$ui_value@batch_context,
                 elapsed_seconds = private$elapsed(private$started_at)
             )
         },

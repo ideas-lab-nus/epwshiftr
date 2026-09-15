@@ -370,6 +370,13 @@ epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
 
 
 epwshiftr_cli_render_shift <- function(result, command) {
+    if (is.list(result) && !is.data.frame(result) && !is.null(result$batch)) {
+        return(cli_shift__render_batch(result))
+    }
+    if (is.data.frame(result) && "method" %in% names(result) &&
+        command %in% c("outputs", "diagnostics")) {
+        return(cli_shift__render_records(result, command))
+    }
     if (identical(command, "run")) {
         cli::cli_h1("Shift workflow")
         epwshiftr_cli_render_summary(result[intersect(c("status", "run_id", "query_id", "morph_id", "diagnostic_count"), names(result))], "Summary")
@@ -427,9 +434,12 @@ epwshiftr_cli_render_shift_config <- function(result) {
     }
     if (identical(result$action, "validate")) {
         cli::cli_h1("Shift config validation")
-        epwshiftr_cli_render_summary(result[intersect(c("status", "config"), names(result))], "Summary")
+        epwshiftr_cli_render_summary(result[intersect(c("status", "config", "validation", "readiness"), names(result))], "Summary")
         epwshiftr_cli_render_table(result$cases, "Cases")
         epwshiftr_cli_render_table(result$explain, "Plan")
+        epwshiftr_cli_render_table(result$selected_models, "Selected models")
+        epwshiftr_cli_render_table(result$diagnostics, "Readiness checks",
+            c("severity", "code", "message", "action"))
         return(invisible(NULL))
     }
     epwshiftr_cli_render_default(result, title = "Shift config")
@@ -442,6 +452,9 @@ epwshiftr_cli_render_shift_watch <- function(
     result,
     detail = shift_coalesce(attr(result, "shift_ui_detail"), "normal")
 ) {
+    if (!is.null(result$batch)) {
+        return(cli_shift__render_batch(result, detail = detail))
+    }
     cli::cli_h1("Shift activity")
     view_events <- shift_coalesce(attr(result, "shift_ui_events"),
         result$events)
@@ -450,10 +463,13 @@ epwshiftr_cli_render_shift_watch <- function(
         cases = result$cases,
         events = view_events,
         width = shift__ui_width(),
-        detail = detail
+        detail = detail,
+        outputs = result$outputs,
+        diagnostics = result$diagnostics
     )
     ui_state <- attr(result, "shift_ui_state")
-    if (!is.null(ui_state) && length(ui_state)) {
+    if (!is.null(ui_state) && length(ui_state) &&
+        result$run$status[[1L]] %in% c("queued", "running", "stopping")) {
         view$lines <- shift__ui_status_lines(ui_state,
             width = shift__ui_width())
     }
@@ -498,6 +514,39 @@ epwshiftr_cli_render_extract <- function(result, command) {
 
 
 epwshiftr_cli_render_morph <- function(result, command) {
+    if (identical(command, "transforms")) {
+        cli::cli_h1("Weather transformations")
+        for (index in seq_len(nrow(result))) {
+            row <- result[index]
+            identity <- paste(row$scale, row$method,
+                if (!is.na(row$reconstruction)) row$reconstruction else "")
+            cli::cli_text("{trimws(identity)} [{row$status}]")
+            cli::cli_text("  {row$label}")
+            cli::cli_text("  {row$evidence} \u00b7 {row$output_type}")
+        }
+        cli::cli_alert_info("Use morph describe --scale SCALE --method METHOD for inputs, options, and field roles.")
+        return(invisible(NULL))
+    }
+    if (identical(command, "describe")) {
+        cli::cli_h1("Weather transformation")
+        epwshiftr_cli_render_summary(result[intersect(c(
+            "method", "label", "scale", "status", "evidence", "references",
+            "reconstruction", "reconstruction_choices",
+            "output_type", "stochastic_variables", "validation"
+        ), names(result))], "Method")
+        cli_morph__render_inputs(result$required_inputs, "Required inputs")
+        cli_morph__render_inputs(result$optional_inputs, "Optional inputs")
+        cli::cli_h2("Options")
+        for (index in seq_len(nrow(result$options))) {
+            row <- result$options[index]
+            lines <- shift__ui_prefixed_lines("  ", sprintf(
+                "%s (%s): default %s; selected %s", row$option,
+                row$type, row$default, row$value), shift__ui_width())
+            for (line in lines) cli::cli_verbatim(line)
+        }
+        epwshiftr_cli_render_summary(result$field_roles, "EPW field roles")
+        return(invisible(NULL))
+    }
     title <- switch(
         command,
         variables = "Morph variables",
@@ -527,6 +576,92 @@ epwshiftr_cli_render_morph <- function(result, command) {
         NULL
     )
     epwshiftr_cli_render_table(result, title = title, columns = columns)
+}
+
+# Render AND/OR variable alternatives explicitly; the generic named-list
+# renderer cannot display the unnamed vectors inside input contracts.
+cli_morph__render_inputs <- function(inputs, title) {
+    cli::cli_h2(title)
+    width <- shift__ui_width()
+    if (!length(inputs)) {
+        cli::cli_text("None.")
+        return(invisible(NULL))
+    }
+    for (role in names(inputs)) {
+        input <- inputs[[role]]
+        items <- c(sprintf("%s: %s; frequency %s", role,
+            paste(input$representations, collapse = " / "),
+            paste(input$frequencies, collapse = " / ")))
+        if (length(input$variable_sets)) {
+            alternatives <- vapply(input$variable_sets, function(variables) {
+                paste0("(", paste(variables, collapse = " + "), ")")
+            }, character(1L))
+            items <- c(items, paste("Variables:", paste(alternatives, collapse = " OR ")))
+        }
+        if (length(input$variable_frequencies)) {
+            items <- c(items, paste("Variable frequencies:", paste(
+                names(input$variable_frequencies),
+                vapply(input$variable_frequencies, paste, character(1L), collapse = "/"),
+                sep = "=", collapse = ", ")))
+        }
+        if (length(input$calendars)) {
+            items <- c(items, paste("Calendars:", paste(input$calendars, collapse = ", ")))
+        }
+        for (item in items) {
+            for (line in shift__ui_prefixed_lines("  ", item, width)) {
+                cli::cli_verbatim(line)
+            }
+        }
+    }
+    invisible(NULL)
+}
+
+# Keep one batch rendering contract for run receipts, show, status, and watch.
+# Status-only results use their available summary without requiring case data.
+cli_shift__render_batch <- function(result, detail = "normal") {
+    if (all(c("cases", "outputs", "diagnostics") %in% names(result))) {
+        shift__ui_print_view(shift_batch__view(result, detail = detail))
+    } else {
+        epwshiftr_cli_render_summary(as.list(result$batch[1L]), "Future EPW Batch")
+        epwshiftr_cli_render_table(result$children, "Children",
+            c("method", "model", "scale", "status", "run_id"))
+    }
+    if (!is.null(result$outputs) && nrow(result$outputs)) {
+        cli_shift__render_records(result$outputs, "outputs")
+    }
+    epwshiftr_cli_render_table(result$next_steps, "Next steps",
+        c("step", "command"), show_types = FALSE)
+    invisible(NULL)
+}
+
+# Keep batch output and diagnostic identities attached to their payloads.
+# Wrapped records preserve full paths and actionable messages on narrow TTYs.
+cli_shift__render_records <- function(rows, command) {
+    width <- shift__ui_width()
+    cli::cli_h2(epwshiftr_cli_title(command))
+    for (index in seq_len(nrow(rows))) {
+        row <- rows[index]
+        fields <- intersect(c("method", "scale", "reconstruction", "model",
+            "member", "experiment_id", "period"), names(row))
+        identity <- unlist(row[, fields, with = FALSE], use.names = FALSE)
+        identity <- identity[!is.na(identity) & nzchar(identity)]
+        for (line in shift__ui_wrap_lines(paste(identity, collapse = " / "), width)) {
+            cli::cli_verbatim(line)
+        }
+        fields <- if (identical(command, "outputs")) {
+            c("output_type", "weather_year", "export_path", "path")
+        } else {
+            c("severity", "code", "message", "action")
+        }
+        for (field in intersect(fields, names(row))) {
+            value <- as.character(row[[field]])
+            if (!length(value) || all(is.na(value))) next
+            for (line in shift__ui_labeled_lines(epwshiftr_cli_title(field), value, width)) {
+                cli::cli_verbatim(line)
+            }
+        }
+    }
+    invisible(NULL)
 }
 
 

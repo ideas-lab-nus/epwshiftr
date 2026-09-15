@@ -54,6 +54,17 @@
 
 ## New features
 
+* Extended the CLI and terminal workflow dashboard to cover method/model
+  batches, ERA5 calibration, typed model selection, and catalog refresh.
+  `morph describe` exposes method contracts and validates candidate settings;
+  quoted JSON arrays in `--option` retain their numeric values. Added
+  `shift_batch_get()` and `--batch` inspection, watch, and recovery commands.
+  New batch receipts retain dry-run plans across sessions. Completion receipts
+  distinguish cases from EPW files, show warnings and field roles, and report
+  child reuse. Batch dashboards share the single-run box style, with separate
+  overview, workflow, and result sections. Local config validation stays offline;
+  `--network` explicitly checks provider coverage and readiness.
+
 * Added an ergonomic `shift_future_epw()` workflow for multiple weather methods
   and CMIP6 models. Method keys resolve through `weather_transforms()`, model
   discovery selects common model/member/grid identities across every method,

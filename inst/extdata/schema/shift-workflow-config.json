@@ -2,8 +2,8 @@
   "check": {"kind": "list"},
   "keys": {
     "type": "named",
-    "must.include": ["version", "epw", "climate", "periods", "transform", "reference", "dir"],
-    "subset.of": ["version", "epw", "climate", "periods", "transform", "reference", "observed_reference", "dir", "control"]
+    "must.include": ["version", "epw", "climate", "periods", "dir"],
+    "subset.of": ["version", "epw", "climate", "periods", "transform", "reference", "observed_reference", "dir", "control", "methods", "calibration"]
   },
   "fields": {
     "version": {"check": {"kind": "count", "positive": true}},
@@ -17,29 +17,28 @@
       },
       "fields": {
         "provider": {"check": {"kind": "choice", "choices": ["cmip6"]}},
-        "model": {"check": {"kind": "character", "any.missing": false}},
+        "model": {
+          "any": [
+            {"check": {"kind": "count", "positive": true}},
+            {"check": {"kind": "character", "min.len": 1, "any.missing": false, "unique": true}},
+            {"check": {"kind": "null"}}
+          ]
+        },
         "scenarios": {"check": {"kind": "character", "any.missing": false}},
         "member": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
         "grid": {"check": {"kind": "string", "null.ok": true}},
         "frequency": {
           "any": [
+            {"check": {"kind": "null"}},
             {"check": {"kind": "string"}},
-            {
-              "check": {"kind": "list"},
-              "keys": {"type": "named"},
-              "rest": {"check": {"kind": "string"}}
-            }
+            {"check": {"kind": "list"}, "keys": {"type": "named"}, "rest": {"check": {"kind": "string"}}}
           ]
         },
         "table": {
           "any": [
             {"check": {"kind": "null"}},
             {"check": {"kind": "string"}},
-            {
-              "check": {"kind": "list"},
-              "keys": {"type": "named"},
-              "rest": {"check": {"kind": "string"}}
-            }
+            {"check": {"kind": "list"}, "keys": {"type": "named"}, "rest": {"check": {"kind": "string"}}}
           ]
         },
         "activity": {"check": {"kind": "string"}},
@@ -48,23 +47,34 @@
         "filters": {"check": {"kind": "list"}, "keys": {"type": "named"}}
       }
     },
-    "periods": {
-      "check": {"kind": "list"},
-      "keys": {"type": "named"}
-    },
+    "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
     "transform": {
-      "check": {"kind": "list"},
-      "keys": {
-        "type": "named",
-        "must.include": ["scale", "method"],
-        "subset.of": ["scale", "method", "reconstruction", "options"]
-      },
-      "fields": {
-        "scale": {"check": {"kind": "choice", "choices": ["monthly", "daily", "hourly"]}},
-        "method": {"check": {"kind": "string"}},
-        "reconstruction": {"check": {"kind": "string"}},
-        "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
-      }
+      "any": [
+        {
+          "check": {"kind": "list"},
+          "keys": {"type": "named", "must.include": ["scale", "method"], "subset.of": ["scale", "method", "reconstruction", "options"]},
+          "fields": {
+            "scale": {"check": {"kind": "choice", "choices": ["monthly", "daily", "hourly"]}},
+            "method": {"check": {"kind": "string"}},
+            "reconstruction": {"check": {"kind": "string"}},
+            "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+          }
+        },
+        {
+          "check": {"kind": "list", "min.len": 1},
+          "keys": {"type": "unnamed"},
+          "rest": {
+            "check": {"kind": "list"},
+            "keys": {"type": "named", "must.include": ["scale", "method"], "subset.of": ["scale", "method", "reconstruction", "options"]},
+            "fields": {
+              "scale": {"check": {"kind": "choice", "choices": ["monthly", "daily", "hourly"]}},
+              "method": {"check": {"kind": "string"}},
+              "reconstruction": {"check": {"kind": "string"}},
+              "options": {"check": {"kind": "list"}, "keys": {"type": "named"}}
+            }
+          }
+        }
+      ]
     },
     "reference": {
       "any": [
@@ -94,15 +104,41 @@
         {"check": {"kind": "null"}},
         {
           "check": {"kind": "list"},
-          "keys": {
-            "type": "named",
-            "must.include": ["mode", "periods", "plan_id"],
-            "subset.of": ["mode", "periods", "plan_id"]
-          },
+          "keys": {"type": "named", "must.include": ["mode", "periods", "plan_id"], "subset.of": ["mode", "periods", "plan_id"]},
           "fields": {
             "mode": {"check": {"kind": "choice", "choices": ["plan"]}},
             "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
             "plan_id": {"check": {"kind": "character", "any.missing": false}}
+          }
+        },
+        {
+          "check": {"kind": "list"},
+          "keys": {
+            "type": "named",
+            "must.include": ["dataset", "years"],
+            "subset.of": ["mode", "dataset", "years", "product", "variables", "frequency", "access", "options"]
+          },
+          "fields": {
+            "mode": {"check": {"kind": "choice", "choices": ["reanalysis"]}},
+            "dataset": {"check": {"kind": "choice", "choices": ["era5", "era6"]}},
+            "years": {
+              "any": [{"check": {"kind": "string"}}, {"check": {"kind": "integerish", "any.missing": false, "min.len": 1}}]
+            },
+            "product": {"check": {"kind": "choice", "choices": ["single_levels", "land"]}},
+            "variables": {"check": {"kind": "character", "any.missing": false, "unique": true, "null.ok": true}},
+            "frequency": {
+              "any": [
+                {"check": {"kind": "null"}},
+                {"check": {"kind": "string"}},
+                {"check": {"kind": "list"}, "keys": {"type": "named"}, "rest": {"check": {"kind": "string"}}}
+              ]
+            },
+            "access": {"check": {"kind": "choice", "choices": ["auto", "arco", "cds"]}},
+            "options": {
+              "check": {"kind": "list"},
+              "keys": {"type": "named", "subset.of": ["timeout", "poll_interval"]},
+              "fields": {"timeout": {"check": {"kind": "number", "lower": 0}}, "poll_interval": {"check": {"kind": "number", "lower": 0}}}
+            }
           }
         }
       ]
@@ -110,10 +146,7 @@
     "dir": {"check": {"kind": "string"}},
     "control": {
       "check": {"kind": "list"},
-      "keys": {
-        "type": "named",
-        "subset.of": ["strict", "allow_partial", "download", "resume", "overwrite", "extraction_method", "output_layout"]
-      },
+      "keys": {"type": "named", "subset.of": ["strict", "allow_partial", "download", "resume", "overwrite", "extraction_method", "output_layout", "refresh"]},
       "fields": {
         "strict": {"check": {"kind": "flag"}},
         "allow_partial": {"check": {"kind": "flag"}},
@@ -121,8 +154,54 @@
         "resume": {"check": {"kind": "flag"}},
         "overwrite": {"check": {"kind": "flag"}},
         "extraction_method": {"check": {"kind": "choice", "choices": ["nearest", "idw", "bilinear", "mean"]}},
-        "output_layout": {"check": {"kind": "choice", "choices": ["nested", "flat"]}}
+        "output_layout": {"check": {"kind": "choice", "choices": ["nested", "flat"]}},
+        "refresh": {"check": {"kind": "flag"}}
       }
+    },
+    "methods": {"check": {"kind": "character", "min.len": 1, "any.missing": false, "unique": true}},
+    "calibration": {
+      "any": [
+        {"check": {"kind": "null"}},
+        {
+          "check": {"kind": "list"},
+          "keys": {"type": "named", "must.include": ["mode", "periods", "plan_id"], "subset.of": ["mode", "periods", "plan_id"]},
+          "fields": {
+            "mode": {"check": {"kind": "choice", "choices": ["plan"]}},
+            "periods": {"check": {"kind": "list"}, "keys": {"type": "named"}},
+            "plan_id": {"check": {"kind": "character", "any.missing": false}}
+          }
+        },
+        {
+          "check": {"kind": "list"},
+          "keys": {
+            "type": "named",
+            "must.include": ["dataset", "years"],
+            "subset.of": ["mode", "dataset", "years", "product", "variables", "frequency", "access", "options"]
+          },
+          "fields": {
+            "mode": {"check": {"kind": "choice", "choices": ["reanalysis"]}},
+            "dataset": {"check": {"kind": "choice", "choices": ["era5", "era6"]}},
+            "years": {
+              "any": [{"check": {"kind": "string"}}, {"check": {"kind": "integerish", "any.missing": false, "min.len": 1}}]
+            },
+            "product": {"check": {"kind": "choice", "choices": ["single_levels", "land"]}},
+            "variables": {"check": {"kind": "character", "any.missing": false, "unique": true, "null.ok": true}},
+            "frequency": {
+              "any": [
+                {"check": {"kind": "null"}},
+                {"check": {"kind": "string"}},
+                {"check": {"kind": "list"}, "keys": {"type": "named"}, "rest": {"check": {"kind": "string"}}}
+              ]
+            },
+            "access": {"check": {"kind": "choice", "choices": ["auto", "arco", "cds"]}},
+            "options": {
+              "check": {"kind": "list"},
+              "keys": {"type": "named", "subset.of": ["timeout", "poll_interval"]},
+              "fields": {"timeout": {"check": {"kind": "number", "lower": 0}}, "poll_interval": {"check": {"kind": "number", "lower": 0}}}
+            }
+          }
+        }
+      ]
     }
   }
 }

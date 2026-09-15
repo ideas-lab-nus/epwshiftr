@@ -694,7 +694,7 @@ test_that("dynamic completions commit one durable results dashboard", {
             run_id = "run-complete",
             status = "completed",
             output_dir = output_dir
-        ))
+        ), cases = data.table::data.table(status = c("completed", "completed")))
     )
     reporter <- shift__reporter(
         shift_ui("dynamic", motion = "none"),
@@ -715,7 +715,7 @@ test_that("dynamic completions commit one durable results dashboard", {
     expect_identical(commits, "done")
     expect_equal(closes, 0L)
     expect_true(any(grepl("Results", plain, fixed = TRUE)))
-    expect_true(any(grepl("Summary.*2/2 EPWs exported.*0 missing", plain)))
+    expect_true(any(grepl("Summary.*2/2 cases completed.*2 EPW files.*0 warnings", plain)))
     expect_true(any(grepl("Output", plain, fixed = TRUE)))
     expect_true(all(vapply(basename(paths), function(path) {
         grepl(path, paste(plain, collapse = ""), fixed = TRUE)
