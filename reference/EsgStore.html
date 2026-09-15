@@ -1678,9 +1678,10 @@ Default: <code>c("pending", "failed")</code>.</p></dd>
 
 
 <dt><code>fallback</code></dt>
-<dd><p>What to do when OPeNDAP is unavailable. <code>"auto"</code>
-downloads through HTTPServer when possible; <code>"error"</code> marks
-the plan failed without downloading. Default: <code>"auto"</code>.</p></dd>
+<dd><p>What to do when OPeNDAP open, metadata, or read
+access fails. <code>"auto"</code> downloads through HTTPServer and
+retries once when possible; <code>"error"</code> marks the plan failed
+without downloading. Default: <code>"auto"</code>.</p></dd>
 
 
 <dt><code>overwrite</code></dt>

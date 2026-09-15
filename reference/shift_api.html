@@ -125,11 +125,11 @@ next step without manually passing manifest IDs.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_cmip6</span><span class="op">(</span></span>
-<span>  <span class="va">model</span>,</span>
+<span>  model <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>  <span class="va">scenarios</span>,</span>
 <span>  member <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  grid <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  frequency <span class="op">=</span> <span class="st">"mon"</span>,</span>
+<span>  frequency <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  table <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  activity <span class="op">=</span> <span class="st">"ScenarioMIP"</span>,</span>
 <span>  index_nodes <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -143,6 +143,7 @@ next step without manually passing manifest IDs.</p>
 <span>  download <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"always"</span>, <span class="st">"never"</span><span class="op">)</span>,</span>
 <span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  refresh <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  extraction_method <span class="op">=</span> <span class="st">"nearest"</span>,</span>
 <span>  output_layout <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nested"</span>, <span class="st">"flat"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
@@ -191,7 +192,7 @@ next step without manually passing manifest IDs.</p>
 <span>  <span class="va">epw</span>,</span>
 <span>  <span class="va">climate</span>,</span>
 <span>  <span class="va">periods</span>,</span>
-<span>  <span class="va">transform</span>,</span>
+<span>  transform <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">dir</span>,</span>
 <span>  reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  observed_reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -199,7 +200,9 @@ next step without manually passing manifest IDs.</p>
 <span>  ui <span class="op">=</span> <span class="fu">shift_ui</span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  dry_run <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  background <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  background <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  methods <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  calibration <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_reference_historical</span><span class="op">(</span></span>
@@ -287,7 +290,7 @@ next step without manually passing manifest IDs.</p>
 <span>  ui <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">shift_check</span><span class="op">(</span><span class="va">x</span>, strict <span class="op">=</span> <span class="cn">FALSE</span>, <span class="va">...</span><span class="op">)</span></span>
+<span><span class="fu">shift_check</span><span class="op">(</span><span class="va">x</span>, strict <span class="op">=</span> <span class="cn">FALSE</span>, network <span class="op">=</span> <span class="cn">FALSE</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_refresh</span><span class="op">(</span><span class="va">x</span><span class="op">)</span></span>
 <span></span>
@@ -433,7 +436,12 @@ EPW export option list.</p></dd>
 
 
 <dt id="arg-model">model<a class="anchor" aria-label="anchor" href="#arg-model"></a></dt>
-<dd><p>CMIP6 source/model IDs.</p></dd>
+<dd><p>CMIP6 model selection. A positive whole number selects that
+many compatible models after complete File-year coverage is verified,
+preferring candidates that require fewer source files and then sorting by
+model/member/grid identity; a character vector selects explicit
+source/model IDs; <code>NULL</code> selects every compatible model. The default
+selects three models.</p></dd>
 
 
 <dt id="arg-scenarios">scenarios<a class="anchor" aria-label="anchor" href="#arg-scenarios"></a></dt>
@@ -490,6 +498,13 @@ outputs, morphing results, or EPW outputs.</p></dd>
 <dt id="arg-overwrite">overwrite<a class="anchor" aria-label="anchor" href="#arg-overwrite"></a></dt>
 <dd><p>Whether to overwrite existing downloads, extraction outputs,
 morphing results, or EPW outputs.</p></dd>
+
+
+<dt id="arg-refresh">refresh<a class="anchor" aria-label="anchor" href="#arg-refresh"></a></dt>
+<dd><p>In <code>shift_control()</code>, whether to refresh remote catalogs and
+service addresses instead of resuming persisted inputs. In <code>shift_ui()</code>,
+minimum seconds between visual animation frames. In <code>ShiftRun</code> inspectors,
+whether to reload persisted state first.</p></dd>
 
 
 <dt id="arg-extraction-method">extraction_method<a class="anchor" aria-label="anchor" href="#arg-extraction-method"></a></dt>
@@ -618,6 +633,17 @@ a background job. For task-level run/resume functions, whether to launch a
 detached <code>Rscript</code> worker and return a queued <code>ShiftRun</code> immediately.</p></dd>
 
 
+<dt id="arg-methods">methods<a class="anchor" aria-label="anchor" href="#arg-methods"></a></dt>
+<dd><p>One or more unambiguous method keys from
+<code><a href="weather_transforms.html">weather_transforms()</a></code>. This high-level form creates a <code>ShiftBatch</code> across
+every selected method and model.</p></dd>
+
+
+<dt id="arg-calibration">calibration<a class="anchor" aria-label="anchor" href="#arg-calibration"></a></dt>
+<dd><p>Alias for <code>observed_reference</code> in high-level multi-method
+workflows. It is routed only to methods that accept observational input.</p></dd>
+
+
 <dt id="arg-match">match<a class="anchor" aria-label="anchor" href="#arg-match"></a></dt>
 <dd><p>File metadata fields copied from the future climate stage when
 resolving an automatic historical reference.</p></dd>
@@ -682,9 +708,10 @@ plans.</p></dd>
 files should also be copied for user-facing delivery.</p></dd>
 
 
-<dt id="arg-refresh">refresh<a class="anchor" aria-label="anchor" href="#arg-refresh"></a></dt>
-<dd><p>In <code>shift_ui()</code>, minimum seconds between visual animation
-frames. In <code>ShiftRun</code> inspectors, whether to reload persisted state first.</p></dd>
+<dt id="arg-network">network<a class="anchor" aria-label="anchor" href="#arg-network"></a></dt>
+<dd><p>For a reanalysis source, whether to verify the configured
+token against the provider. The default performs local configuration
+checks only and never submits a data request.</p></dd>
 
 
 <dt id="arg-run-id">run_id<a class="anchor" aria-label="anchor" href="#arg-run-id"></a></dt>

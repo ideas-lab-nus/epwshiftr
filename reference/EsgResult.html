@@ -332,10 +332,12 @@ URL, including pagination requests. Default: <code>"first"</code>.</p></dd>
 
 </div><p></p><hr><a id="method-EsgResult-reachable"></a><div class="section">
 <h3 id="method-reachable-">Method <code>reachable()</code><a class="anchor" aria-label="anchor" href="#method-reachable-"></a></h3>
-<p>Probe whether result records are reachable through a service URL.</p>
-<p><code>$reachable()</code> performs a lightweight probe of the selected service
+<p>Check whether result records are reachable through a service URL.</p>
+<p><code>$reachable()</code> performs a lightweight check of the selected service
 URL for each record already held in the result. It returns diagnostic
-rows and does not modify result context or saved-result metadata.</p><div class="section">
+rows and does not modify result context or saved-result metadata. At
+URL level, OPeNDAP must return a valid DDS description; HTTPServer
+uses HEAD with a minimal Range fallback.</p><div class="section">
 <h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResult</span><span class="op">$</span><span class="fu">reachable</span><span class="op">(</span></span>
 <span>  service <span class="op">=</span> <span class="st">"OPENDAP"</span>,</span>
@@ -347,12 +349,12 @@ rows and does not modify result context or saved-result metadata.</p><div class=
 <div class="section">
 <h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>service</code></dt>
-<dd><p>ESGF URL service to probe. Default: <code>"OPENDAP"</code>.</p></dd>
+<dd><p>ESGF URL service to check. Default: <code>"OPENDAP"</code>.</p></dd>
 
 
 <dt><code>level</code></dt>
-<dd><p>Probe level. <code>"data_node"</code> probes the root URL of each
-data node; <code>"url"</code> probes the actual service URL for each
+<dd><p>Check level. <code>"data_node"</code> checks the root URL of each
+data node; <code>"url"</code> checks the actual service URL for each
 record. Default: <code>"data_node"</code>.</p></dd>
 
 

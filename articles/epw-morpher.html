@@ -172,7 +172,7 @@ frequencies.</p>
 is calculated or applied:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">original_morphing</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span></span>
-<span><span class="va">btws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"btws"</span><span class="op">)</span></span>
+<span><span class="va">bws_btws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"bws_btws"</span><span class="op">)</span></span>
 <span><span class="va">daily_power</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">daily_transform</a></span><span class="op">(</span></span>
 <span>    <span class="st">"epwshiftr"</span>,</span>
 <span>    reconstruction <span class="op">=</span> <span class="st">"power"</span></span>
@@ -196,7 +196,7 @@ fail before climate data are accessed.</p>
 <p>Printing a transform distinguishes five temporal concepts that are
 easy to confuse:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">btws</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">bws_btws</span><span class="op">)</span></span></code></pre></div>
 <table class="table">
 <colgroup>
 <col width="50%">
@@ -248,7 +248,7 @@ semantic roles. The role contract includes representations, variable
 alternatives, source frequencies, and calendars.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">original_morphing</span><span class="op">@</span><span class="va">required_inputs</span></span>
-<span><span class="va">btws</span><span class="op">@</span><span class="va">source_frequencies</span></span></code></pre></div>
+<span><span class="va">bws_btws</span><span class="op">@</span><span class="va">source_frequencies</span></span></code></pre></div>
 <p>The main roles are:</p>
 <table class="table">
 <thead><tr class="header">
@@ -363,6 +363,14 @@ ESGF:</p>
 <span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_explain</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span>
 <span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_run</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span></code></pre></div>
+<p>With the default <code>shift_control(resume = TRUE)</code>, repeating
+the same call with the same store and output directory returns the
+existing durable run without repeating catalog queries, service checks,
+extraction, morphing, or EPW writing. Set
+<code>control = shift_control(refresh = TRUE)</code> only when remote
+CMIP6 catalog and service information must be refreshed deliberately.
+The refreshed selection is then persisted for later ordinary
+resumes.</p>
 </div>
 <div class="section level2">
 <h2 id="use-epwmorpher-directly">Use EpwMorpher Directly<a class="anchor" aria-label="anchor" href="#use-epwmorpher-directly"></a>
