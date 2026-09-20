@@ -821,7 +821,7 @@ test_that("cache__read_json() parses long HTTP URLs through curl", {
     )
     expect_equal(seen$url, long_url)
     expect_s3_class(seen$handle, "curl_handle")
-    expect_equal(states, c("started", "completed"))
+    expect_equal(states, c("started", "completed", "parsed"))
     expect_equal(res$response$numFound, 1L)
     expect_equal(cache$size(), 1L)
 })

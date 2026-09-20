@@ -1,8 +1,53 @@
-# Reuse the deterministic README inputs while exercising production renderers.
+# Keep deterministic renderer fixtures with the tests: installed-package checks
+# cannot load the repository-only README recording script from tools/.
 ui_workflows__states <- function() {
-    env <- new.env(parent = asNamespace("epwshiftr"))
-    sys.source(testthat::test_path("..", "..", "tools", "readme-asciicast.R"), env)
-    env$readme__batch_states()
+    transforms <- list(monthly_transform("original_morphing"), daily_transform("qdm"))
+    children <- data.table::rbindlist(lapply(transforms, function(transform) {
+        record <- transform__record(transform@scale, transform@method)
+        data.table::data.table(
+            method = transform@method, scale = transform@scale,
+            reconstruction = transform@reconstruction,
+            model = c("Model-A", "Model-B"),
+            method_status = recipe__get(record$recipe)@status,
+            status = "queued", current_stage = NA_character_
+        )
+    }))
+    children[, child_key := paste0("child_ui", seq_len(.N))]
+    children[1:2, `:=`(status = "running", current_stage = "extract_future")]
+    summary <- data.table::data.table(
+        batch_id = "batch_ui", status = "running", configurations = 2L,
+        models = 2L, children = 4L, completed = 0L, active = 4L,
+        failed = 0L, partial = 0L, waiting = 0L, cancelled = 0L,
+        cases = 8L, epw_files = 0L, warnings = 0L, output_dir = "future-epw"
+    )
+    snapshot <- list(
+        batch = summary, children = children,
+        cases = data.table::data.table(), outputs = data.table::data.table(),
+        diagnostics = shift_diagnostics_empty(), execution = data.table::data.table()
+    )
+    states <- list(data.table::copy(snapshot))
+
+    # Copy each stage before further data.table mutations so earlier snapshots
+    # remain stable when a watch test advances to the next state.
+    children[1:2, `:=`(status = "completed", current_stage = "write_epw")]
+    children[3:4, `:=`(status = "running", current_stage = "morph")]
+    summary[, `:=`(completed = 2L, active = 2L, epw_files = 4L)]
+    states[[2L]] <- data.table::copy(snapshot)
+
+    children[, `:=`(status = "completed", current_stage = "write_epw")]
+    summary[, `:=`(status = "completed", completed = 4L, active = 0L,
+        epw_files = 8L, warnings = 2L)]
+    snapshot$diagnostics <- data.table::data.table(
+        severity = "warning", method = "qdm", model = c("Model-A", "Model-B"),
+        message = "Signal defaults for 'tas' are experimental."
+    )
+    snapshot$execution <- data.table::data.table(
+        child_key = children$child_key, action = "started",
+        elapsed_seconds = c(12, 14, 18, 20)
+    )
+    snapshot$call_elapsed_seconds <- 64
+    states[[3L]] <- data.table::copy(snapshot)
+    states
 }
 
 # Plan a real offline matrix with saved receipts, avoiding remote catalog work.

@@ -604,6 +604,10 @@
 
 ## Bug fixes
 
+* Made workflow UI regression fixtures self-contained for installed-package
+  checks and aligned cache progress assertions with the parsed-response event
+  (#255).
+
 * Consolidated batch model discovery into one live panel with method and input
   combination ordinals, future/historical coverage scopes, requested periods,
   and selected common models. Nested catalog queries no longer leave separate
