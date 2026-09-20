@@ -70,7 +70,7 @@
   reserve space for both failed and active children. Discovery method progress
   is also visible in log and compact modes. Standalone staged summaries recover
   method and case identity from saved results; malformed batch receipts appear
-  as unavailable without hiding other history records.
+  as unavailable without hiding other history records (#255).
 
 * Extended the CLI and terminal workflow dashboard to cover method/model
   batches, ERA5 calibration, typed model selection, and catalog refresh.
@@ -81,7 +81,7 @@
   distinguish cases from EPW files, show warnings and field roles, and report
   child reuse. Batch dashboards share the single-run box style, with separate
   overview, workflow, and result sections. Local config validation stays offline;
-  `--network` explicitly checks provider coverage and readiness.
+  `--network` explicitly checks provider coverage and readiness (#255).
 
 * Added an ergonomic `shift_future_epw()` workflow for multiple weather methods
   and CMIP6 models. Method keys resolve through `weather_transforms()`, model
@@ -610,14 +610,14 @@
   full receipts. Catalog counts explicitly describe indexed metadata, and
   request waits show timeout, received records, and cache reuse separately.
   Standalone receipts avoid duplicate results, use explicit intermediate-step
-  labels, and isolate terminal colour state between frame writes.
+  labels, and isolate terminal colour state between frame writes (#255).
 
 * Reading live workflow snapshots preserves timestamp clock times, fractional
   seconds, and UTC offsets. Cancellation status overrides stale worker progress in
   R, CLI, and batch views. Batch watch tracks observed events per child so
   interleaved failures and terminal events are not skipped or replayed.
   Single-run `shift show --verbose` prints all records with complete wrapped
-  paths and recovery actions; `--debug` also includes raw JSON payloads.
+  paths and recovery actions; `--debug` also includes raw JSON payloads (#255).
 
 * `shift_cmip6_avail(table = NULL)` now discovers one CMIP6 table per variable
   at the requested frequency instead of constraining every variable to the
