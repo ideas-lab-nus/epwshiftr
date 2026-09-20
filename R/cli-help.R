@@ -34,10 +34,12 @@ epwshiftr_cli_help_root <- function() {
 epwshiftr_cli_help_registry <- function() {
     list(
         doctor = c(
-            "Usage: epwshiftr doctor [--network] [--index-node URL] [--timeout SECONDS]",
+            "Usage: epwshiftr doctor [--config PATH] [--network] [--index-node URL] [--timeout SECONDS] [--no-progress]",
             "",
             "Check the local CLI, store, downloader, and optional ESGF network environment.",
-            "The default checks are local and read-only; use --network to probe the index node."
+            "The default checks are local and read-only; use --network to check the index node.",
+            "--config PATH also checks configured ERA5 access; credentials remain outside workflow JSON.",
+            "Network checks show human progress; --no-progress, --quiet, --json and --jsonl suppress it."
         ),
         query = c(
             "Usage: epwshiftr query <command> [options]",
@@ -155,31 +157,52 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr shift <command> [options]",
             "",
             "Commands:",
+            "  epwshiftr shift list [--type all|run|batch] [--status STATE,STATE] [--limit N]",
+            "  epwshiftr shift summary (--run RUN_ID | --batch BATCH_ID) [--weather] [--no-progress]",
             "  epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
-            "  epwshiftr shift show --run RUN_ID",
+            "  epwshiftr shift show (--run RUN_ID | --batch BATCH_ID) [--verbose | --debug]",
             "  epwshiftr shift config example [--output PATH] [--overwrite]",
-            "  epwshiftr shift config validate --config PATH",
-            "  epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
-            "  epwshiftr shift cancel --run RUN_ID [--force]",
-            "  epwshiftr shift logs --run RUN_ID [--tail N]",
-            "  epwshiftr shift status --run RUN_ID",
-            "  epwshiftr shift diagnostics --run RUN_ID",
-            "  epwshiftr shift outputs --run RUN_ID",
-            "  epwshiftr shift data --run RUN_ID [--case CASE_ID] [--columns COLS] [--limit N]",
-            "  epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--reduced-motion] [--verbose | --debug]"
+            "  epwshiftr shift config validate --config PATH [--network]",
+            "  epwshiftr shift watch (--run RUN_ID | --batch BATCH_ID) [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
+            "  epwshiftr shift cancel (--run RUN_ID | --batch BATCH_ID) [--force]",
+            "  epwshiftr shift logs (--run RUN_ID | --batch BATCH_ID) [--tail N]",
+            "  epwshiftr shift status (--run RUN_ID | --batch BATCH_ID)",
+            "  epwshiftr shift diagnostics (--run RUN_ID | --batch BATCH_ID)",
+            "  epwshiftr shift outputs (--run RUN_ID | --batch BATCH_ID)",
+            "  epwshiftr shift data (--run RUN_ID | --batch BATCH_ID) [--case CASE_ID] [--columns COLS] [--limit N]",
+            "  epwshiftr shift resume (--run RUN_ID | --batch BATCH_ID) [--background] [--no-progress] [--reduced-motion] [--verbose | --debug]"
         ),
         "shift run" = c(
             "Usage: epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "",
             "Run a JSON-configured request -> collect -> optional download -> extract -> morph -> EPW workflow.",
             "The config is validated against inst/extdata/schema/shift-workflow-config.json.",
+            "Use methods or an explicit transform array for method/model batches; calibration accepts an ERA5 specification.",
+            "climate.model accepts names, a positive model count, or null (all); null frequency lets each method select its required resolution.",
+            "--dry-run may query model coverage and saves reopenable batch plans. Completed receipts are reused unless control.refresh is true.",
+            "Returned failed, blocked, partial, or cancelled results use exit status 1; invalid command/config syntax uses 2.",
             "--reduced-motion replaces animated frames with a stable active marker.",
             "--verbose shows selection, reuse, and fallback details; --debug also shows full URLs and paths."
         ),
         "shift show" = c(
-            "Usage: epwshiftr shift show --run RUN_ID",
+            "Usage: epwshiftr shift show (--run RUN_ID | --batch BATCH_ID) [--verbose | --debug]",
             "",
-            "Show persisted intent, case state, events, diagnostics, and outputs for a workflow run."
+            "Show persisted intent, case state, events, diagnostics, and outputs for a workflow run.",
+            "Batch --verbose includes every child, live activity, full diagnostics and recovery actions."
+        ),
+        "shift list" = c(
+            "Usage: epwshiftr shift list [--type all|run|batch] [--status STATE,STATE] [--limit N]",
+            "",
+            "List saved runs, batch parents, and child runs without network access or store creation.",
+            "Rows retain their full IDs and exact store paths. The default limit is 20.",
+            "Unreadable records have status unavailable and an inspection error."
+        ),
+        "shift summary" = c(
+            "Usage: epwshiftr shift summary (--run RUN_ID | --batch BATCH_ID) [--weather] [--no-progress]",
+            "",
+            "Summarize method/model/scenario/period groups with separate case and EPW file counts.",
+            "--weather reads existing local EPWs for hourly means and valid-hour counts; missing codes are excluded.",
+            "Weather summaries preserve output type and years; they do not rank methods or establish comparability."
         ),
         "shift config" = c(
             "Usage: epwshiftr shift config <example|validate> [options]",
@@ -189,15 +212,20 @@ epwshiftr_cli_help_registry <- function() {
         "shift config example" = c(
             "Usage: epwshiftr shift config example [--output PATH] [--overwrite]",
             "",
-            "Print or write an example JSON workflow configuration."
+            "Print or write an example JSON workflow configuration.",
+            "Use --methods NAME,NAME for a batch, or --scale SCALE --method NAME [--reconstruction NAME] [--option KEY=VALUE]... for one transform.",
+            "--model accepts a positive count, comma-separated model names, or all. Required observed inputs add an ERA5 calibration example.",
+            "For ambiguous methods such as epwshiftr, use explicit transform objects; multiple objects form a JSON transform array."
         ),
         "shift config validate" = c(
-            "Usage: epwshiftr shift config validate --config PATH",
+            "Usage: epwshiftr shift config validate --config PATH [--network] [--no-progress] [--reduced-motion]",
             "",
-            "Validate a JSON workflow configuration against the packaged schema."
+            "Validate schema, method options, local EPW, and reference roles without contacting providers.",
+            "--network also checks common CMIP6 model coverage and configured reanalysis readiness.",
+            "Human checks show current activity; --no-progress, --quiet, --json and --jsonl suppress it."
         ),
         "shift watch" = c(
-            "Usage: epwshiftr shift watch --run RUN_ID [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
+            "Usage: epwshiftr shift watch (--run RUN_ID | --batch BATCH_ID) [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "",
             "Return a workflow activity snapshot with query, download, extraction, morphing, output, diagnostic, and event state.",
             "Use --follow for a continuously refreshed view; combine with global --jsonl for machine-readable streaming.",
@@ -205,37 +233,37 @@ epwshiftr_cli_help_registry <- function() {
             "Use --reduced-motion to keep the dashboard with a stable active marker."
         ),
         "shift cancel" = c(
-            "Usage: epwshiftr shift cancel --run RUN_ID [--force]",
+            "Usage: epwshiftr shift cancel (--run RUN_ID | --batch BATCH_ID) [--force]",
             "",
             "Request cancellation at the next safe workflow boundary. Use --force to terminate the recorded worker process immediately."
         ),
         "shift logs" = c(
-            "Usage: epwshiftr shift logs --run RUN_ID [--tail N]",
+            "Usage: epwshiftr shift logs (--run RUN_ID | --batch BATCH_ID) [--tail N]",
             "",
             "Return the stdout/stderr tail from the latest workflow job attempt."
         ),
         "shift status" = c(
-            "Usage: epwshiftr shift status --run RUN_ID",
+            "Usage: epwshiftr shift status (--run RUN_ID | --batch BATCH_ID)",
             "",
             "Return the persisted workflow run row."
         ),
         "shift diagnostics" = c(
-            "Usage: epwshiftr shift diagnostics --run RUN_ID",
+            "Usage: epwshiftr shift diagnostics (--run RUN_ID | --batch BATCH_ID)",
             "",
             "Return workflow diagnostics reconstructed from store manifest state."
         ),
         "shift outputs" = c(
-            "Usage: epwshiftr shift outputs --run RUN_ID",
+            "Usage: epwshiftr shift outputs (--run RUN_ID | --batch BATCH_ID)",
             "",
             "List EPW outputs recorded for a morphing plan."
         ),
         "shift data" = c(
-            "Usage: epwshiftr shift data --run RUN_ID [--case CASE_ID] [--columns COLS] [--limit N]",
+            "Usage: epwshiftr shift data (--run RUN_ID | --batch BATCH_ID) [--case CASE_ID] [--columns COLS] [--limit N]",
             "",
             "Preview final EPW data for a persisted run."
         ),
         "shift resume" = c(
-            "Usage: epwshiftr shift resume --run RUN_ID [--background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
+            "Usage: epwshiftr shift resume (--run RUN_ID | --batch BATCH_ID) [--background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
             "",
             "Resume a failed or interrupted run using its pinned resolved inputs."
         ),
@@ -278,13 +306,22 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr morph <command> [options]",
             "",
             "Commands:",
+            "  epwshiftr morph describe [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
             "  epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
-            "  epwshiftr morph transforms",
+            "  epwshiftr morph transforms [--scale SCALE] [--method NAME] [--status production|experimental]",
             "  epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]... [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--observed-plan PLAN_ID[,PLAN_ID...]] [--observed-period PERIOD=YEARS[,YEARS]...] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph epw --morph MORPH_ID [--dir DIR] [--separate true|false] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph retry [--morph MORPH_ID[,MORPH_ID...]] [--status failed] [--run] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",
             "  epwshiftr morph status [--morph MORPH_ID]",
             "  epwshiftr morph outputs [--morph MORPH_ID]"
+        ),
+        "morph describe" = c(
+            "Usage: epwshiftr morph describe [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
+            "",
+            "Inspect input roles, reconstruction choices, defaults, evidence, field roles, and output type offline.",
+            "Defaults to monthly original_morphing. Candidate options are checked by the actual method constructor.",
+            "Use repeated --option KEY=VALUE arguments; quote JSON arrays, for example --option tas.bounds=[-40,60].",
+            "--json returns the complete machine-readable contract. No store is opened."
         ),
         "morph variables" = c(
             "Usage: epwshiftr morph variables [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]...",
@@ -292,9 +329,9 @@ epwshiftr_cli_help_registry <- function() {
             "List CMIP source variables participating in a weather transformation's required alternatives."
         ),
         "morph transforms" = c(
-            "Usage: epwshiftr morph transforms",
+            "Usage: epwshiftr morph transforms [--scale SCALE] [--method NAME] [--status production|experimental]",
             "",
-            "List built-in weather transformations."
+            "List built-in transformations with input contracts, evidence, status, and output type."
         ),
         "morph run" = c(
             "Usage: epwshiftr morph run --plan PLAN_ID[,PLAN_ID...] --epw PATH --period PERIOD=YEARS[,YEARS]... [--scale monthly|daily|hourly] [--method NAME] [--reconstruction NAME] [--option KEY=VALUE]... [--reference historical|plan] [--reference-plan PLAN_ID[,PLAN_ID...]] [--reference-period PERIOD=YEARS[,YEARS]...] [--reference-filter KEY=VALUE] [--reference-option KEY=VALUE] [--observed-plan PLAN_ID[,PLAN_ID...]] [--observed-period PERIOD=YEARS[,YEARS]...] [--strict true|false] [--by COLS] [--overwrite] [--no-resume] [--no-progress] [--reduced-motion] [--verbose|--debug]",

@@ -1,10 +1,11 @@
-epwshiftr_cli_doctor <- function(store_path = NULL, args = character()) {
+epwshiftr_cli_doctor <- function(store_path = NULL, args = character(), ui = shift_ui("none")) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = "--network",
-        options = c("--index-node", "--timeout")
+        flags = c("--network", "--no-progress"),
+        options = c("--index-node", "--timeout", "--config")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
+    if (isTRUE(parsed$flags[["--no-progress"]])) ui <- shift_ui("none")
 
     timeout <- if (is.null(parsed$options[["--timeout"]])) {
         10L
@@ -129,12 +130,39 @@ epwshiftr_cli_doctor <- function(store_path = NULL, args = character()) {
     }
 
     if (isTRUE(parsed$flags[["--network"]])) {
-        network <- epwshiftr_cli_doctor_network(index_node, timeout)
+        network <- shift__ui_check(ui, "Network readiness", function(reporter) {
+            reporter$stage_started("check", paste("Checking", index_node))
+            epwshiftr_cli_doctor_network(index_node, timeout)
+        })
         add("index_node", network$status, network$message, network$detail)
     } else {
         add("index_node", "skipped", "Network check skipped. Use --network to enable it.", index_node)
     }
 
+    # Reuse provider readiness checks without accepting credentials in JSON or
+    # printing secrets. Remote authentication is checked only with --network.
+    config_path <- parsed$options[["--config"]]
+    if (!is.null(config_path)) {
+        config <- epwshiftr_cli_read_shift_config(config_path)
+        observed <- cli_shift__config_reference(shift_coalesce(
+            config$calibration, config$observed_reference), "observed_reference")
+        if (S7::S7_inherits(observed, ShiftReanalysisSpec)) {
+            diagnostics <- shift__ui_check(ui, "Calibration readiness", function(reporter) {
+                reporter$stage_started("check", "Checking CDS credentials and readiness.")
+                shift_check(observed, network = isTRUE(parsed$flags[["--network"]]))
+            })
+            if (!nrow(diagnostics)) {
+                add("reanalysis", "ok", sprintf("%s credential checks passed.",
+                    toupper(observed@dataset)))
+            } else {
+                for (index in seq_len(nrow(diagnostics))) {
+                    row <- diagnostics[index]
+                    add(row$code, if (row$severity == "error") "error" else "warning",
+                        row$message, row$action)
+                }
+            }
+        }
+    }
     checks <- do.call(rbind, checks)
     rownames(checks) <- NULL
     status <- if (any(checks$status == "error")) {

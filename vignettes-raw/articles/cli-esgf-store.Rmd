@@ -173,6 +173,143 @@ epwshiftr shift config example --output shift-workflow.json
 epwshiftr shift config validate --config shift-workflow.json
 ```
 
+# Discover Methods and Configure Batches
+
+The method catalog exposes every selectable scale and reconstruction, including
+experimental status, evidence type, input roles, and output type. These commands
+work offline without opening a store:
+
+```sh
+epwshiftr morph transforms
+epwshiftr morph transforms --scale daily --status experimental
+epwshiftr morph describe --scale hourly --method kernel_qdm
+epwshiftr --json morph describe --scale daily --method qdm \
+  --option 'tas.bounds=[-40,60]'
+```
+
+`morph describe` shows effective settings alongside constructor defaults. It
+checks candidate settings with the same validator used for execution. Quote
+JSON vectors and objects so the shell preserves them; repeat `--option` for
+different settings. Field roles distinguish transformed, derived, physically
+closed, and inherited EPW fields. Experimental status is a method support
+boundary, and does not by itself establish field validation.
+
+Generate a method/model batch and its required ERA5 calibration input:
+
+```sh
+epwshiftr shift config example --methods original_morphing,qdm \
+  --model 3 --output batch.json
+epwshiftr shift config validate --config batch.json
+epwshiftr --store ~/cmip6-store shift config validate \
+  --config batch.json --network
+epwshiftr doctor --config batch.json
+epwshiftr --store ~/cmip6-store shift run --config batch.json --dry-run
+epwshiftr --store ~/cmip6-store shift run --config batch.json --background
+```
+
+Edit the generated baseline EPW path, periods, output directory, and calibration
+years for your study. `climate.model` accepts a positive count, explicit model
+names, or `null` for all compatible models (`--model all` in the example command).
+`climate.frequency: null` lets each method select its source resolution.
+The `calibration` object accepts `dataset`, `years`, `product`, `variables`,
+`frequency`, `access`, and non-secret request `options`. ERA5 credentials stay
+in the existing CDS configuration or environment, outside workflow JSON.
+`observed_reference` remains supported as an alternative to `calibration`;
+do not supply both. ERA6 specifications currently report an explicit unavailable
+provider error.
+
+Local validation checks schema, options, local EPW readability, and reference
+roles. It does not establish remote coverage. `--network` checks common model
+coverage and reanalysis readiness; `shift run --dry-run` also resolves the
+model matrix. These operations may contact providers but do not generate EPWs.
+Their human output summarizes the baseline, requested methods and models,
+future periods, historical reference, calibration input, and destination.
+Network checks and discovery show the current method, node, and variables.
+Use `--no-progress` to retain the final report without live updates; global
+`--quiet`, `--json`, and `--jsonl` also suppress human progress output.
+
+Method keys with several possible configurations need explicit objects. For
+example, replace `methods` with this `transform` array to select both daily
+reconstructions:
+
+```json
+"transform": [
+  {"scale": "daily", "method": "epwshiftr", "reconstruction": "power"},
+  {"scale": "daily", "method": "epwshiftr", "reconstruction": "btws"}
+]
+```
+
+A batch returns a durable `batch_id`. Use exactly one of `--batch` and `--run`:
+
+```sh
+epwshiftr --store ~/cmip6-store shift show --batch <batch_id>
+epwshiftr --store ~/cmip6-store shift show --batch <batch_id> --verbose
+epwshiftr --store ~/cmip6-store shift watch --batch <batch_id> --follow
+epwshiftr --store ~/cmip6-store --jsonl shift watch --batch <batch_id> --follow
+epwshiftr --store ~/cmip6-store --json shift outputs --batch <batch_id>
+epwshiftr --store ~/cmip6-store shift diagnostics --batch <batch_id>
+epwshiftr --store ~/cmip6-store shift resume --batch <batch_id> --background
+epwshiftr --store ~/cmip6-store shift cancel --batch <batch_id>
+```
+
+New dry-run receipts persist child plans, so `resume --batch` can start them in
+a later session without repeating discovery. In R, reopen the same receipt with
+`shift_batch_get(batch_id, store)` and use the ordinary `shift_*()` inspectors.
+Older receipts containing child runs remain readable; older dry-run receipts
+without saved plans require the original configuration to be run again.
+
+The batch dashboard uses the same bordered panel as a single workflow, with
+separate overview, `Workflows`, and `Results` sections. Each child shows its
+method/model identity above its reconstruction and stage; narrow terminals
+retain these rows without borders. A failed child does not stop watching
+another active child. Completion
+summaries distinguish cases from physical EPW files: a multi-year output can
+write several files for one case. Output rows retain method/model identity,
+weather year, output type, and field provenance. Warnings remain available in
+diagnostics and appear in completion summaries.
+
+Dynamic batch views fit the terminal height, put failed and active children
+first, and show the current operation, measured progress, and last update.
+Cancelled children have their own count. Errors precede warnings and retain
+recovery actions. Use `shift show --verbose` for all children and diagnostics;
+a completed or count-limited watch leaves its final receipt in scrollback.
+For a single run, `shift show --run <run_id> --verbose` expands every case,
+output, event, and diagnostic into wrapped records with complete paths and
+recovery actions. Add `--debug` to include raw JSON payloads. These flags only
+affect human-readable output; JSON and JSONL keep their existing fields.
+Batch watch follows each child's event history independently, including late
+events from parallel workers and events received with the final snapshot.
+
+Find previous work and summarize its outputs without contacting providers:
+
+```sh
+epwshiftr --store ~/cmip6-store shift list
+epwshiftr --store ~/cmip6-store shift list --type batch --status failed,partial
+epwshiftr --store ~/cmip6-store shift summary --batch <batch_id>
+epwshiftr --store ~/cmip6-store --json shift summary --run <run_id> --weather
+```
+
+`shift list` returns the newest 20 records by default (`--limit N` changes this)
+with complete IDs and store paths. Batch children show their parent batch and
+own store; use that child store when passing its run ID to another command.
+An unreadable record remains visible as `unavailable` with an error.
+
+`shift summary` groups cases and outputs by method, model, scenario, period,
+member, and grid. It distinguishes recorded EPWs from available local files
+and retains output type, weather years, diagnostics, and field roles.
+`--weather` reads local EPWs and adds mean temperature, relative humidity,
+wind speed, and global horizontal radiation, with a valid-hour count for each
+mean and explicit file-read errors. Missing EPW sentinel values are excluded.
+Check the output type, years, and hourly coverage before comparing methods;
+the means do not rank methods or make unlike output periods equivalent.
+
+Repeated completed batch calls reuse their persisted receipts and verified
+artifacts. The human receipt reports reused versus started/resumed children and
+the elapsed time of the current call. Set `control.refresh: true` to explicitly
+refresh catalog selection. CLI execution returns status `1` for failed,
+blocked, partial, or cancelled results, and status `2` for invalid command or
+configuration syntax; inspection commands can still read those results.
+
 # Run Extraction and Morphing in Stages
 
 Use `extract` commands when a query already exists in the store and you want to

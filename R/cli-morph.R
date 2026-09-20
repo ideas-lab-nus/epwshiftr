@@ -3,6 +3,7 @@ epwshiftr_cli_morph <- function(store, command, args, json = FALSE, jsonl = FALS
         command,
         variables = epwshiftr_cli_morph_variables(args),
         transforms = cli_morph__transforms(args),
+        describe = cli_morph__describe(args),
         run = epwshiftr_cli_morph_run(store, args, json = json,
             jsonl = jsonl, quiet = quiet),
         epw = epwshiftr_cli_morph_epw(store, args, json = json,
@@ -42,21 +43,83 @@ epwshiftr_cli_morph_variables <- function(args) {
 # Return the public transform catalog through the standalone morph command
 # without exposing backend or internal recipe identifiers.
 cli_morph__transforms <- function(args) {
-    parsed <- epwshiftr_cli_parse_command(args)
+    parsed <- epwshiftr_cli_parse_command(args,
+        options = c("--scale", "--method", "--status"))
     epwshiftr_cli_assert_no_positionals(parsed)
-    columns <- c(
-        "scale",
-        "method",
-        "label",
-        "reconstruction",
-        "reconstruction_label",
-        "statistical_grouping",
-        "output_type",
-        "status"
+    catalog <- weather_transforms()
+    for (field in c("scale", "method", "status")) {
+        value <- parsed$options[[paste0("--", field)]]
+        if (!is.null(value)) {
+            catalog <- catalog[catalog[[field]] %in% epwshiftr_cli_csv(value)]
+        }
+    }
+    # JSON consumers receive role contracts as plain data rather than S7
+    # objects, retaining AND/OR variable alternatives and source frequencies.
+    for (field in c("required_inputs", "optional_inputs")) {
+        data.table::set(catalog, j = field,
+            value = lapply(catalog[[field]], transform__input_contract_value))
+    }
+    catalog
+}
+
+# List effective public settings from the constructor's canonical defaults.
+# Signal overrides use VARIABLE.SETTING keys accepted by --option; adapter
+# controls keep their existing flat names. Constraints stay in the validator.
+cli_morph__option_rows <- function(transform) {
+    options <- transform@options
+    signal <- options$signal_overrides
+    options$signal_overrides <- NULL
+    for (variable in names(signal)) {
+        for (setting in names(signal[[variable]])) {
+            options[paste(variable, setting, sep = ".")] <-
+                list(signal[[variable]][[setting]])
+        }
+    }
+    data.table::data.table(
+        option = names(options),
+        type = vapply(options, typeof, character(1L)),
+        value = vapply(options, function(value) {
+            if (is.null(value)) "NULL" else paste(
+                utils::capture.output(dput(value)), collapse = " ")
+        }, character(1L))
     )
-    # Explicit character-column selection keeps the CLI projection visible to
-    # R CMD check without changing the public catalog's data.table type.
-    weather_transforms()[, columns, with = FALSE]
+}
+
+# Describe and locally validate one method configuration without opening a
+# store or contacting a data provider. The selected options use the same
+# constructor and validation path as actual morph execution.
+cli_morph__describe <- function(args) {
+    parsed <- epwshiftr_cli_parse_command(args,
+        options = c("--scale", "--method", "--reconstruction"),
+        multi_options = "--option")
+    epwshiftr_cli_assert_no_positionals(parsed)
+    transform <- cli_morph__transform(parsed)
+    record <- transform__record(transform@scale, transform@method)
+    defaults <- transform__new(transform@scale, transform@method,
+        if (length(record$reconstructions) > 1L) transform@reconstruction else NULL)
+    options <- cli_morph__option_rows(transform)
+    default_options <- cli_morph__option_rows(defaults)
+    data.table::set(options, j = "default", value =
+        default_options$value[match(options$option, default_options$option)])
+    list(
+        method = transform@method, label = transform@label,
+        scale = transform@scale, status = transform@status,
+        evidence = transform@evidence, references = transform@references,
+        reconstruction = transform@reconstruction_label,
+        reconstruction_choices = if (length(record$reconstructions) > 1L) {
+            record$reconstructions
+        } else {
+            character()
+        },
+        required_inputs = transform__input_contract_value(transform@required_inputs),
+        optional_inputs = transform__input_contract_value(transform@optional_inputs),
+        source_frequencies = transform@source_frequencies,
+        output_type = transform@output_type,
+        stochastic_variables = transform@stochastic_variables,
+        options = options,
+        validation = "Options validated by the method constructor; use --option KEY=VALUE to check candidate settings.",
+        field_roles = morpher__weather_field_roles(transform__recipe(transform))
+    )
 }
 
 
@@ -69,11 +132,11 @@ cli_morph__option_value <- function(value) {
     if (grepl("^[[:space:]]*[\\[{]", value)) {
         parsed <- tryCatch(
             jsonlite::fromJSON(value, simplifyVector = TRUE),
-            error = function(error) NULL
+            error = function(error) epwshiftr_cli_usage_abort(sprintf(
+                "Invalid JSON transform option: %s", conditionMessage(error)
+            ))
         )
-        if (!is.null(parsed)) {
-            return(parsed)
-        }
+        return(parsed)
     }
     lowered <- tolower(value)
     if (lowered %in% c("true", "false")) {
@@ -87,6 +150,26 @@ cli_morph__option_value <- function(value) {
         return(numeric_value)
     }
     value
+}
+
+# Preserve JSON arrays and objects until their typed parser runs. Generic ESGF
+# filters use comma-separated values, but scientific options must retain JSON
+# punctuation and reject duplicate keys instead of silently overwriting them.
+cli_morph__parse_options <- function(values) {
+    out <- list()
+    for (value in values) {
+        if (!grepl("=", value, fixed = TRUE)) {
+            epwshiftr_cli_usage_abort("--option expects KEY=VALUE.")
+        }
+        key <- trimws(sub("=.*$", "", value))
+        if (!nzchar(key) || key %in% names(out)) {
+            epwshiftr_cli_usage_abort(sprintf(
+                "Empty or duplicate transform option: %s.", key
+            ))
+        }
+        out[key] <- list(cli_morph__option_value(sub("^[^=]*=", "", value)))
+    }
+    cli_morph__transform_options(out)
 }
 
 # Expand VARIABLE.SETTING CLI keys into the variable-specific lists accepted
@@ -147,12 +230,7 @@ cli_morph__transform <- function(parsed) {
         parsed$options[["--reconstruction"]],
         default = NULL
     )
-    options <- epwshiftr_cli_key_value_list(
-        parsed$options[["--option"]],
-        "--option"
-    )
-    options <- lapply(options, cli_morph__option_value)
-    options <- cli_morph__transform_options(options)
+    options <- cli_morph__parse_options(parsed$options[["--option"]])
     constructor <- get(
         paste0(scale, "_transform"),
         mode = "function",

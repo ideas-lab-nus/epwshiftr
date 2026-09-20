@@ -81,6 +81,9 @@ cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", 
 
         cached <- disk_cache$get(key)
         if (!cache__missing(cached)) {
+            if (!is.null(progress_callback)) progress_callback(list(
+                state = "cached", url = url,
+                records = NROW(cached$response$docs)))
             return(cached)
         }
 
@@ -150,6 +153,8 @@ cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", 
     # Apply normalization before schema-backed query objects or the disk cache
     # observe the response, so online and cached behavior remain identical.
     res <- query__normalize_solr_response(res)
+    if (!is.null(progress_callback)) progress_callback(list(
+        state = "parsed", url = url, records = NROW(res$response$docs)))
     if (!is.null(res$response$numFound) && res$response$numFound == 0L) {
         cache__verbose(warning(
             "No matched data. ",

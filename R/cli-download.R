@@ -185,7 +185,8 @@ epwshiftr_cli_download <- function(store, command, args, json = FALSE, jsonl = F
             session_id = parsed$options[["--session"]],
             task_id = epwshiftr_cli_csv(parsed$options[["--task"]]),
             overwrite = parsed$flags[["--overwrite"]],
-            progress = !parsed$flags[["--no-progress"]]
+            progress = !parsed$flags[["--no-progress"]] &&
+                !isTRUE(quiet) && !isTRUE(json) && !isTRUE(jsonl)
         )
         store$sync_downloads(downloader)
         return(out)

@@ -112,6 +112,9 @@ reference:
       - shift_morph
       - shift_epw
       - shift_status
+      - shift_batch_get
+      - shift_history
+      - shift_summary
       - shift_datasets
       - shift_check
       - shift_diagnostics

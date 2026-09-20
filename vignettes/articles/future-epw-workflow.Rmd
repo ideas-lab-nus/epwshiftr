@@ -182,8 +182,56 @@ while BWS transforms bounded global solar radiation and total sky cover. ERA5
 is used only by ISIMIP3BASD in this selection because that method declares an
 `observed_reference` role. Each method/model child remains independently
 resumable. Output and diagnostic tables include method, model, member, and grid
-columns for downstream analysis; the package does not calculate method-ranking
-or comparison metrics.
+columns for downstream analysis. `shift_summary()` groups output counts and
+optional local weather statistics by scientific identity; it does not rank methods.
+
+For method/model batches, save `shift_ids(run)$batch_id` to reopen the result
+in a later R session using the same store:
+
+
+``` r
+batch <- shift_batch_get(batch_id, store = store_dir())
+shift_watch(batch)
+shift_outputs(batch)
+shift_diagnostics(batch)
+shift_history(store = store_dir(), type = "batch")
+shift_summary(batch, weather = TRUE)
+```
+
+`shift_resume(batch)` continues unfinished children and reuses verified
+completed outputs. Case counts describe scientific combinations of site,
+scenario, and period within each child; physical EPW file counts can be larger
+when a method produces several weather years. The batch receipt shows method,
+reconstruction, model, maturity status, warnings, and reuse for each call.
+It shares the single-workflow box style, separating the batch overview,
+`Workflows`, and `Results` with labelled rules. Narrow terminals preserve the
+same information without borders.
+
+Dynamic batch views fit their terminal height and show failed and active children
+before completed work. `shift_watch(batch, follow = FALSE, ui = shift_ui(detail = "detail"))`
+prints every child, live activity, update time, diagnostic, and recovery action.
+Errors appear before warnings, cancelled children have a separate count, and a
+completed watch leaves its final receipt visible even when its return value is assigned.
+
+`shift_history()` lists root runs, batch parents, and child runs with exact store
+paths. Filter by `type = "run"` or `"batch"` and `status = c("failed", "partial")`.
+This inspection is local and does not create a store; unreadable records remain
+visible with status `unavailable` and an explanatory error.
+
+`shift_summary(batch)` separates completed cases, recorded EPWs, and available
+files for each method/model/scenario/period and member/grid. Add `weather = TRUE`
+to read existing local EPWs and report temperature, humidity, wind speed, and
+global horizontal radiation means. Each mean is weighted by valid hourly rows,
+excludes EPW missing codes, and reports its own valid-hour count. Unreadable
+files are counted with their errors. Compare output types, years, and valid-hour
+coverage before comparing the means; these summaries do not establish scientific
+equivalence between a representative year and a multi-year sequence.
+
+For a standalone collect/extract/morph/EPW workflow, pass its saved `ShiftRun`
+to `shift_summary()`. The summary recovers the method from the result's morphing
+stage and groups the output manifest by scientific identity. Case counts cover
+distinct cases with saved outputs, so multiple weather-year files for one case
+do not inflate the case count.
 
 With `access = "auto"`, `shift_era5()` uses the official point time-series
 service when all required variables are available there and otherwise uses the
@@ -355,11 +403,41 @@ optional `extract_reference`, `coverage`, `morph`, and `write_epw`. Within a
 stage it identifies the node, future/reference role, variable, scenario,
 period, reuse/fallback outcome, and output count.
 
-`shift_ui()` controls only presentation. `"auto"` selects a fixed four-row
-stage/current/case/last-event view in a capable terminal and scoped log lines
-elsewhere; `"none"` suppresses non-error Console output while retaining
-persisted events. The `detail` levels are `"normal"`, `"detail"`, and
-`"debug"`; only debug output includes full URLs and internal paths.
+ERA5 preparation appears as a `Calibration` operation with variable counts and
+CDS request status. Morphing counts cases, while writing/export counts physical
+EPW files. A started unit does not count as completed until its outcome arrives.
+Batch discovery identifies the current method, node, and required variables.
+
+`shift_ui()` controls only presentation. In a capable terminal, the foreground
+dashboard updates in place with plan context, a stage rail, the current
+operation, measured progress, and recent outcomes. Wide terminals group these
+rows under `Workflow` and `Activity`; narrow terminals keep the same content
+with less decoration. A final `Results` receipt stays in scrollback with
+completed cases, EPW file counts, warnings, the output directory, and filenames.
+
+Dynamic height uses `options(epwshiftr.ui_height = 24L)` when set; otherwise it
+reads native POSIX terminal dimensions, then `LINES`, with a 24-row fallback. One row is reserved for
+the prompt. Set the option for a smaller IDE pane; oversized generic frames
+fall back to a compact status row, and static detail receipts remain complete.
+
+| Setting | Use |
+| --- | --- |
+| `progress = "auto"` | Choose a live dashboard or append-only logs to match the terminal. |
+| `progress = "log"` | Use stable logs for redirected output and screen readers. |
+| `progress = "none"` | Suppress progress while retaining persisted events. |
+| `detail = "detail"` | Include selection, reuse, fallback, and all output paths. |
+| `detail = "debug"` | Also include full URLs and internal paths. |
+| `motion = "reduced"` or `"none"` | Reduce or remove animation while keeping status visible. |
+
+Resolver attempts and elapsed time are reported separately from measured
+workflow progress. On failure, `Diagnosis` summarizes repeated mirror failures,
+the cause, and any missing coverage. Transient failures can be retried;
+incomplete scientific coverage requires changing the selection or reference.
+
+`shift_ui(refresh = ...)` controls visual update frequency, while
+`shift_control(refresh = TRUE)` explicitly refreshes remote catalog and service
+information. Ordinary resume retains the resolved selection. The `heartbeat`
+setting controls durable worker liveness and is independent of animation.
 
 
 ``` r

@@ -2,7 +2,8 @@
 #'
 #' @description
 #' `epwshiftr_cli()` is the package-level entry point used by the optional
-#' `epwshiftr` launcher. It exposes a small ESGF store management interface and
+#' `epwshiftr` launcher. It exposes ESGF store operations, weather-method
+#' discovery, and persistent single-run or batch future-weather workflows, and
 #' returns status metadata when `exit = FALSE`, which makes it testable from R.
 #'
 #' @param args Command line arguments. Defaults to
@@ -24,6 +25,19 @@ epwshiftr_cli <- function(args = commandArgs(trailingOnly = TRUE), exit = FALSE)
         {
             parsed <- epwshiftr_cli_parse_globals(args)
             result <- epwshiftr_cli_dispatch(parsed)
+            # Operational failures can be returned as inspectable batch or
+            # partial-run results. Automation still needs a nonzero exit code.
+            if (length(parsed$args) >= 2L &&
+                identical(parsed$args[[1L]], "shift") &&
+                parsed$args[[2L]] %in% c("run", "resume") &&
+                is.list(result) && !is.data.frame(result) &&
+                isTRUE(result$status %in% c("failed", "blocked", "partial", "cancelled"))) {
+                status <- 1L
+            }
+            if (is.list(result) && !is.data.frame(result) &&
+                identical(result$readiness, "blocked")) {
+                status <- 1L
+            }
             epwshiftr_cli_emit_result(
                 result,
                 json = parsed$json,
@@ -122,7 +136,9 @@ epwshiftr_cli_parse_globals <- function(args) {
 # events remain durable without contaminating stdout.
 epwshiftr_cli_task_ui <- function(parsed, json = FALSE, jsonl = FALSE,
                                   quiet = FALSE) {
-    flags <- shift_coalesce(parsed$flags, list())
+    # Commands expose different flag sets. List lookup treats missing flags as
+    # disabled instead of throwing on a named atomic-vector subscript.
+    flags <- as.list(shift_coalesce(parsed$flags, list()))
     progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
         isTRUE(flags[["--no-progress"]])) {
         "none"
@@ -150,7 +166,10 @@ epwshiftr_cli_dispatch <- function(parsed) {
         return(epwshiftr_cli_help(args[-1L]))
     }
     if (length(args) && identical(args[[1L]], "doctor")) {
-        return(epwshiftr_cli_doctor(parsed$store, args[-1L]))
+        return(epwshiftr_cli_doctor(parsed$store, args[-1L],
+            ui = if (parsed$json || parsed$jsonl || parsed$quiet) {
+                shift_ui("none")
+            } else shift_ui()))
     }
     if (length(args) >= 2L && identical(args[[2L]], "help")) {
         topic <- if (length(args) > 2L) c(args[[1L]], args[-seq_len(2L)]) else args[[1L]]
@@ -165,16 +184,29 @@ epwshiftr_cli_dispatch <- function(parsed) {
     rest <- args[-seq_len(2L)]
 
     if (identical(group, "shift")) {
+        # Generating a JSON template needs neither a database nor a writable
+        # default store. History also inspects existing stores without creation.
+        if (identical(command, "config") && length(rest) &&
+            identical(rest[[1L]], "example")) {
+            return(epwshiftr_cli_shift_config(NULL, rest,
+                json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+        }
         # Shift status/watch/cancel/log commands must be able to fall back to
         # atomic live sidecars while a detached worker owns DuckDB's process
         # lock. Passing the path keeps that fallback reachable; eagerly opening
         # EsgStore here would fail before the shift command could inspect it.
         store_path <- if (is.null(parsed$store)) {
-            store_dir(init = TRUE)
+            store_dir(init = !identical(command, "list"))
         } else {
             store_normalize_path(parsed$store)
         }
         return(epwshiftr_cli_shift(store_path, command, rest,
+            json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+    }
+
+    # Scientific catalog and option inspection need no writable store.
+    if (identical(group, "morph") && command %in% c("transforms", "describe", "variables")) {
+        return(epwshiftr_cli_morph(NULL, command, rest,
             json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
     }
 

@@ -1114,7 +1114,7 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_true(nzchar(attr(datasets, "epwshiftr.run_id", exact = TRUE)))
     expect_true(nzchar(attr(datasets, "epwshiftr.step_id", exact = TRUE)))
     dataset_event <- dataset_run@meta$events[
-        message == "Collecting Dataset catalog"]
+        message == "Querying Dataset catalog"]
     dataset_details <- jsonlite::fromJSON(
         dataset_event$details_json[[1L]], simplifyVector = TRUE)
     expect_identical(dataset_details$total, 1L)
@@ -1135,7 +1135,7 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_equal(shift_status(shift_run_get(files)), "waiting")
     collect_run <- shift_run_get(files)
     collect_event <- collect_run@meta$events[
-        message == "Collecting Dataset catalog"]
+        message == "Querying Dataset catalog"]
     collect_details <- jsonlite::fromJSON(
         collect_event$details_json[[1L]], simplifyVector = TRUE)
     expect_identical(collect_details$total, 2L)
@@ -1418,6 +1418,15 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_identical(epw_run@ids$morph_id, shift_ids(morphed)$morph_id)
     expect_true(S7::S7_inherits(shift_result(epw_run),
         ShiftOutputs))
+    # Persisted standalone results retain their scientific comparison identity.
+    summary <- shift_summary(epw_run, refresh = FALSE)
+    expect_identical(unique(summary$method), transform@method)
+    expect_identical(unique(summary$scale), transform@scale)
+    expect_identical(unique(summary$reconstruction), transform@reconstruction)
+    expect_setequal(summary$model, shift_outputs(epws)$source_id)
+    expect_setequal(summary$scenario, shift_outputs(epws)$experiment_id)
+    expect_equal(sum(summary$epw_files), nrow(shift_outputs(epws)))
+    expect_equal(sum(summary$cases), data.table::uniqueN(shift_outputs(epws)$case_id))
     expect_error(shift_complete(climate), "not the latest result")
     expect_equal(shift_status(shift_complete(epws)), "completed")
 })
@@ -1958,7 +1967,7 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
     reporter$unit_started("Trying node one", current = 1L, total = 2L)
     expect_silent(reporter$heartbeat("Waiting for future catalog", force = TRUE))
     expect_equal(length(frames), 3L)
-    expect_true(all(lengths(frames) == 11L))
+    expect_true(all(lengths(frames) == 10L))
     expect_length(compacts, 3L)
     expect_true(all(nzchar(compacts)))
     expect_message(reporter$unit_completed(

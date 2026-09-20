@@ -566,4 +566,8 @@ A shift stage object.
 \link{EsgQuery}, \link{EsgStore}, \link{Downloader}, and \link{EpwMorpher}. Each step returns a
 small S7 stage object that can be printed, inspected, saved, and passed to the
 next step without manually passing manifest IDs.
+Method/model batches can be reopened with \code{\link[=shift_batch_get]{shift_batch_get()}} and inspected
+with the same status, case, output, diagnostic, and explanation functions.
+\code{\link[=shift_watch]{shift_watch()}} follows all active children; \code{\link[=shift_resume]{shift_resume()}} starts saved
+child plans or resumes interrupted runs independently.
 }
