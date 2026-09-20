@@ -271,8 +271,56 @@ and total sky cover. ERA5 is used only by ISIMIP3BASD in this selection
 because that method declares an <code>observed_reference</code> role.
 Each method/model child remains independently resumable. Output and
 diagnostic tables include method, model, member, and grid columns for
-downstream analysis; the package does not calculate method-ranking or
-comparison metrics.</p>
+downstream analysis. <code><a href="../reference/shift_summary.html">shift_summary()</a></code> groups output counts
+and optional local weather statistics by scientific identity; it does
+not rank methods.</p>
+<p>For method/model batches, save <code>shift_ids(run)$batch_id</code>
+to reopen the result in a later R session using the same store:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">batch</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_batch_get.html">shift_batch_get</a></span><span class="op">(</span><span class="va">batch_id</span>, store <span class="op">=</span> <span class="fu"><a href="../reference/store_dir.html">store_dir</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_watch</a></span><span class="op">(</span><span class="va">batch</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">batch</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">batch</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_history.html">shift_history</a></span><span class="op">(</span>store <span class="op">=</span> <span class="fu"><a href="../reference/store_dir.html">store_dir</a></span><span class="op">(</span><span class="op">)</span>, type <span class="op">=</span> <span class="st">"batch"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/shift_summary.html">shift_summary</a></span><span class="op">(</span><span class="va">batch</span>, weather <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<p><code>shift_resume(batch)</code> continues unfinished children and
+reuses verified completed outputs. Case counts describe scientific
+combinations of site, scenario, and period within each child; physical
+EPW file counts can be larger when a method produces several weather
+years. The batch receipt shows method, reconstruction, model, maturity
+status, warnings, and reuse for each call. It shares the single-workflow
+box style, separating the batch overview, <code>Workflows</code>, and
+<code>Results</code> with labelled rules. Narrow terminals preserve the
+same information without borders.</p>
+<p>Dynamic batch views fit their terminal height and show failed and
+active children before completed work.
+<code>shift_watch(batch, follow = FALSE, ui = shift_ui(detail = "detail"))</code>
+prints every child, live activity, update time, diagnostic, and recovery
+action. Errors appear before warnings, cancelled children have a
+separate count, and a completed watch leaves its final receipt visible
+even when its return value is assigned.</p>
+<p><code><a href="../reference/shift_history.html">shift_history()</a></code> lists root runs, batch parents, and
+child runs with exact store paths. Filter by <code>type = "run"</code>
+or <code>"batch"</code> and
+<code>status = c("failed", "partial")</code>. This inspection is local
+and does not create a store; unreadable records remain visible with
+status <code>unavailable</code> and an explanatory error.</p>
+<p><code>shift_summary(batch)</code> separates completed cases, recorded
+EPWs, and available files for each method/model/scenario/period and
+member/grid. Add <code>weather = TRUE</code> to read existing local EPWs
+and report temperature, humidity, wind speed, and global horizontal
+radiation means. Each mean is weighted by valid hourly rows, excludes
+EPW missing codes, and reports its own valid-hour count. Unreadable
+files are counted with their errors. Compare output types, years, and
+valid-hour coverage before comparing the means; these summaries do not
+establish scientific equivalence between a representative year and a
+multi-year sequence.</p>
+<p>For a standalone collect/extract/morph/EPW workflow, pass its saved
+<code>ShiftRun</code> to <code><a href="../reference/shift_summary.html">shift_summary()</a></code>. The summary
+recovers the method from the result’s morphing stage and groups the
+output manifest by scientific identity. Case counts cover distinct cases
+with saved outputs, so multiple weather-year files for one case do not
+inflate the case count.</p>
 <p>With <code>access = "auto"</code>, <code><a href="../reference/shift_era5.html">shift_era5()</a></code> uses the
 official point time-series service when all required variables are
 available there and otherwise uses the complete CDS subset service. CDS
@@ -302,7 +350,7 @@ guide</a>.</li>
 request. The explicit network check verifies the token through the CDS
 account endpoint without submitting or downloading a climate
 dataset:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">era5</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_era5.html">shift_era5</a></span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_check</a></span><span class="op">(</span><span class="va">era5</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/shift_api.html">shift_check</a></span><span class="op">(</span><span class="va">era5</span>, network <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
@@ -315,8 +363,8 @@ user’s behalf.</p>
 <p>Maintainers can exercise the complete remote request, download,
 NetCDF normalization, persistence, and reuse workflow after configuring
 a token:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="va">EPWSHIFTR_RUN_LIVE_ERA5</span><span class="op">=</span>true <span class="ex">Rscript</span> <span class="at">-e</span> <span class="dt">\</span></span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>    <span class="st">'devtools::test(filter = "era5-live", stop_on_failure = TRUE)'</span></span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="va">EPWSHIFTR_RUN_LIVE_ERA5</span><span class="op">=</span>true <span class="ex">Rscript</span> <span class="at">-e</span> <span class="dt">\</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>    <span class="st">'devtools::test(filter = "era5-live", stop_on_failure = TRUE)'</span></span></code></pre></div>
 <p>The repository runs the same test in its separate manual and weekly
 workflow. It requires the <code>ECMWF_DATASTORES_KEY</code> repository
 secret and is intentionally excluded from ordinary pull-request checks,
@@ -327,7 +375,7 @@ reusable monthly transformation and gives the run an explicit matching
 historical CMIP6 reference. A transform contains calculation settings
 only; the site, model, periods, reference, and output directory remain
 execution inputs.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
 <span>    <span class="st">"extdata/examples/SGP_Singapore.486980_IWEC.epw"</span>,</span>
 <span>    package <span class="op">=</span> <span class="st">"epwshiftr"</span>,</span>
@@ -358,7 +406,7 @@ method exposes backend profiles or physical-policy switches.</p>
 <p>Scientific options belong to the transform rather than the UI.
 Configure them on the package method and keep <code>table = NULL</code>
 unless a dataset requires an explicit override:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">transform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span></span>
 <span>    <span class="st">"epwshiftr"</span>,</span>
 <span>    transition_hours <span class="op">=</span> <span class="fl">72L</span>,</span>
@@ -389,7 +437,7 @@ stored rules, function environments, yearly vectors, or every ESGF node.
 Stage objects add a preview of the records that matter at that point in
 the workflow. <code>ShiftRun</code> refreshes its persisted state and
 prints the same static dashboard used by <code><a href="../reference/shift_api.html">shift_watch()</a></code>.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">climate</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>    model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
 <span>    scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
@@ -418,7 +466,7 @@ After resolution, progress and watch views report exact partitions such
 as <code>Amon=gn · LImon=gr</code> instead of collapsing them to one
 representative grid. These controls affect presentation only and do not
 change the workflow specification or its <code>spec_hash</code>.</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">plan</span>, n <span class="op">=</span> <span class="cn">Inf</span>, width <span class="op">=</span> <span class="fl">120L</span>, verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">run</span>, verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 </div>
@@ -432,14 +480,75 @@ Its shared stage vocabulary is <code>resolve</code>, optional
 <code>morph</code>, and <code>write_epw</code>. Within a stage it
 identifies the node, future/reference role, variable, scenario, period,
 reuse/fallback outcome, and output count.</p>
-<p><code><a href="../reference/shift_api.html">shift_ui()</a></code> controls only presentation.
-<code>"auto"</code> selects a fixed four-row
-stage/current/case/last-event view in a capable terminal and scoped log
-lines elsewhere; <code>"none"</code> suppresses non-error Console output
-while retaining persisted events. The <code>detail</code> levels are
-<code>"normal"</code>, <code>"detail"</code>, and <code>"debug"</code>;
-only debug output includes full URLs and internal paths.</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<p>ERA5 preparation appears as a <code>Calibration</code> operation with
+variable counts and CDS request status. Morphing counts cases, while
+writing/export counts physical EPW files. A started unit does not count
+as completed until its outcome arrives. Batch discovery identifies the
+current method, node, and required variables.</p>
+<p><code><a href="../reference/shift_api.html">shift_ui()</a></code> controls only presentation. In a capable
+terminal, the foreground dashboard updates in place with plan context, a
+stage rail, the current operation, measured progress, and recent
+outcomes. Wide terminals group these rows under <code>Workflow</code>
+and <code>Activity</code>; narrow terminals keep the same content with
+less decoration. A final <code>Results</code> receipt stays in
+scrollback with completed cases, EPW file counts, warnings, the output
+directory, and filenames.</p>
+<p>Dynamic height uses <code>options(epwshiftr.ui_height = 24L)</code>
+when set; otherwise it reads native POSIX terminal dimensions, then
+<code>LINES</code>, with a 24-row fallback. One row is reserved for the
+prompt. Set the option for a smaller IDE pane; oversized generic frames
+fall back to a compact status row, and static detail receipts remain
+complete.</p>
+<table class="table">
+<colgroup>
+<col width="50%">
+<col width="50%">
+</colgroup>
+<thead><tr class="header">
+<th>Setting</th>
+<th>Use</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><code>progress = "auto"</code></td>
+<td>Choose a live dashboard or append-only logs to match the
+terminal.</td>
+</tr>
+<tr class="even">
+<td><code>progress = "log"</code></td>
+<td>Use stable logs for redirected output and screen readers.</td>
+</tr>
+<tr class="odd">
+<td><code>progress = "none"</code></td>
+<td>Suppress progress while retaining persisted events.</td>
+</tr>
+<tr class="even">
+<td><code>detail = "detail"</code></td>
+<td>Include selection, reuse, fallback, and all output paths.</td>
+</tr>
+<tr class="odd">
+<td><code>detail = "debug"</code></td>
+<td>Also include full URLs and internal paths.</td>
+</tr>
+<tr class="even">
+<td>
+<code>motion = "reduced"</code> or <code>"none"</code>
+</td>
+<td>Reduce or remove animation while keeping status visible.</td>
+</tr>
+</tbody>
+</table>
+<p>Resolver attempts and elapsed time are reported separately from
+measured workflow progress. On failure, <code>Diagnosis</code>
+summarizes repeated mirror failures, the cause, and any missing
+coverage. Transient failures can be retried; incomplete scientific
+coverage requires changing the selection or reference.</p>
+<p><code>shift_ui(refresh = ...)</code> controls visual update
+frequency, while <code>shift_control(refresh = TRUE)</code> explicitly
+refreshes remote catalog and service information. Ordinary resume
+retains the resolved selection. The <code>heartbeat</code> setting
+controls durable worker liveness and is independent of animation.</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -454,7 +563,7 @@ outlive the current R session. The call returns a queued
 <code>ShiftRun</code> immediately. Inspectors refresh that handle from
 the store, and <code><a href="../reference/shift_api.html">shift_watch()</a></code> follows the same structured
 events shown by the foreground reporter.</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
 <span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -494,7 +603,7 @@ temporary workflow directory so the raw render is self-contained. The
 climate query and remote data reads below still use live ESGF
 services.</p>
 <p>You can provide the site metadata directly:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu">write_vignette_epw</span><span class="op">(</span></span>
 <span>    <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"baseline"</span>, <span class="st">"SGP_Singapore.486980_IWEC.epw"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
@@ -513,7 +622,7 @@ services.</p>
 <span><span class="co">#&gt; • Coordinates: 103.980000, 1.370000</span></span></code></pre></div>
 <p>Or you can read the same information directly from the EPW LOCATION
 header:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epw_site</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span><span class="va">epw</span><span class="op">)</span></span>
 <span><span class="va">epw_site</span></span>
 <span><span class="co">#&gt; ══ EPW Site ════════════════════════════════════════════════════════════════════</span></span>
@@ -529,7 +638,7 @@ staged walkthrough reads the required future-model variable set from
 that contract so the same IDs are used in the ESGF request, extraction,
 coverage check, and <code><a href="../reference/shift_api.html">shift_morph()</a></code> call. Original morphing
 requires matching historical and future model inputs.</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">transform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span></span>
 <span><span class="va">variables</span> <span class="op">&lt;-</span> <span class="va">transform</span><span class="op">@</span><span class="va">required_inputs</span><span class="op">$</span><span class="va">model_future</span><span class="op">@</span><span class="va">variable_sets</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span></span>
 <span><span class="va">variables</span></span>
@@ -555,7 +664,7 @@ expanded to that whole calendar year.</p>
 <p>Read more about the lower-level query object in <a href="esgf-query-results.html">ESGF query results</a>, and about
 request-value validation in <a href="esg-dictionaries.html">ESG
 dictionaries</a>.</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">request</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_request</a></span><span class="op">(</span></span>
 <span>    project <span class="op">=</span> <span class="st">"CMIP6"</span>,</span>
 <span>    time <span class="op">=</span> <span class="fl">2060L</span>,</span>
@@ -710,13 +819,13 @@ but not executed while the package documentation is precompiled, which
 keeps installed vignettes deterministic and avoids turning documentation
 builds into remote network jobs. Run them interactively to reproduce the
 workflow.</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">datasets</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_datasets</a></span><span class="op">(</span><span class="va">request</span><span class="op">)</span></span>
 <span><span class="va">datasets</span></span></code></pre></div>
 <p>Use <code>$to_data_table()</code> when you want row-level details for
 decisions such as whether the request matched the expected variables,
 model, variant, and data node.</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dataset_table</span> <span class="op">&lt;-</span> <span class="va">datasets</span><span class="op">$</span><span class="fu">to_data_table</span><span class="op">(</span>fields <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"id"</span>, <span class="st">"source_id"</span>, <span class="st">"experiment_id"</span>, <span class="st">"variant_label"</span>,</span>
 <span>    <span class="st">"variable_id"</span>, <span class="st">"data_node"</span>, <span class="st">"number_of_files"</span></span>
@@ -725,7 +834,7 @@ model, variant, and data node.</p>
 <span><span class="va">dataset_table</span></span></code></pre></div>
 <p>Summarise the table before moving on. In this request, each variable
 should have one matching Dataset record on the selected data node.</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dataset_table</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span></span>
 <span>    datasets <span class="op">=</span> <span class="va">.N</span>,</span>
 <span>    files <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">number_of_files</span>, na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
@@ -736,7 +845,7 @@ child File records. This is useful when a broad request intentionally
 returns several models, variants, data nodes, or variables and you want
 to inspect or keep only part of the match. The example below keeps only
 two variables so the effect is easy to see.</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">selected_datasets</span> <span class="op">&lt;-</span> <span class="va">datasets</span><span class="op">$</span><span class="fu">filter</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="op">{</span></span>
 <span>    <span class="va">x</span><span class="op">$</span><span class="va">variable_id</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tas"</span>, <span class="st">"hurs"</span><span class="op">)</span></span>
 <span><span class="op">}</span><span class="op">)</span></span>
@@ -749,7 +858,7 @@ subset directly. The staged <code><a href="../reference/shift_api.html">shift_co
 performs the same Dataset-to-File expansion for the original request and
 stores the result in an <code>EsgStore</code>, so the main workflow
 continues with <code><a href="../reference/shift_api.html">shift_collect()</a></code>.</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">selected_files</span> <span class="op">&lt;-</span> <span class="va">selected_datasets</span><span class="op">$</span><span class="fu">collect</span><span class="op">(</span></span>
 <span>    type <span class="op">=</span> <span class="st">"File"</span>,</span>
 <span>    fields <span class="op">=</span> <span class="st">"*"</span>,</span>
@@ -772,7 +881,7 @@ pass file paths or manifest IDs.</p>
 <p>For store internals such as query snapshots, file catalogs,
 artifacts, and tracked updates, see <a href="esg-store.html">ESG
 stores</a>.</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">files</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_collect</a></span><span class="op">(</span></span>
 <span>    <span class="va">request</span>,</span>
 <span>    store <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">workflow_root</span>, <span class="st">"singapore-store"</span><span class="op">)</span></span>
@@ -790,14 +899,14 @@ stores</a>.</p>
 underlying <code>EsgResultFile</code> object that was saved into the
 store. Printing it gives the same high-level summary as a direct ESGF
 File query result.</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">file_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_files</a></span><span class="op">(</span><span class="va">files</span><span class="op">)</span></span>
 <span><span class="va">file_result</span></span></code></pre></div>
 <p>Convert the File result to a table when you want to inspect exactly
 which files were found. The URL columns are long, so this view shows
 whether each file has OPeNDAP and HTTPServer access instead of printing
 the full URLs.</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">file_table</span> <span class="op">&lt;-</span> <span class="va">file_result</span><span class="op">$</span><span class="fu">to_data_table</span><span class="op">(</span>fields <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>    <span class="st">"filename"</span>, <span class="st">"variable_id"</span>, <span class="st">"data_node"</span>, <span class="st">"size"</span>,</span>
 <span>    <span class="st">"url_opendap"</span>, <span class="st">"url_download"</span></span>
@@ -850,7 +959,7 @@ history. If you run the optional chunk below, inspect the result with
 node history, see <a href="downloader.html">Downloader</a>. For the same
 operations from a terminal, see <a href="cli-esgf-store.html">CLI
 operations</a>.</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">downloads</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_download</a></span><span class="op">(</span></span>
 <span>    <span class="va">files</span>,</span>
 <span>    replica <span class="op">=</span> <span class="st">"current"</span>,</span>
@@ -878,10 +987,10 @@ one or more years. The name, such as <code>2060s</code>, becomes the
 period label in summaries, morphing cases, and output paths. The numeric
 value is the year or years used to calculate that period. This article
 uses one year so the remote extraction stays small:</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span></code></pre></div>
 <p>A wider period is also valid, for example:</p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2064</span><span class="op">)</span></span></code></pre></div>
 <p>The collected files must cover every year used by the period.</p>
 <p><code>fallback = "auto"</code> means extraction tries OPeNDAP first
@@ -890,7 +999,7 @@ unavailable. Use <code>"error"</code> when you want remote access
 failures to stop the extraction instead.</p>
 <p>Extraction is recorded in the local <code>EsgStore</code>; see <a href="esg-store.html">ESG stores</a> for the lower-level API. If
 OPeNDAP, data-node, or coverage problems appear, see <a href="esgf-troubleshooting.html">ESGF troubleshooting</a>.</p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2060L</span><span class="op">)</span></span>
 <span><span class="va">reference_periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fl">1995L</span><span class="op">)</span></span>
 <span></span>
@@ -916,21 +1025,21 @@ OPeNDAP, data-node, or coverage problems appear, see <a href="esgf-troubleshooti
 <p><code><a href="../reference/shift_api.html">shift_coverage()</a></code> checks whether every requested variable
 has extracted rows for the selected site and period. This is the main
 sanity check before morphing.</p>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">coverage</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_coverage</a></span><span class="op">(</span><span class="va">extracted</span><span class="op">)</span></span>
 <span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>The extracted values are not stored inside the small stage object.
 They are written as partitioned Parquet files under the store and
 registered in the store manifest. <code><a href="../reference/shift_api.html">shift_artifacts()</a></code> shows
 those registered files:</p>
-<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">extract_artifacts</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_artifacts</a></span><span class="op">(</span><span class="va">extracted</span><span class="op">)</span></span>
 <span><span class="va">extract_artifacts</span><span class="op">[</span><span class="va">kind</span> <span class="op">==</span> <span class="st">"extract"</span>, <span class="fu">.</span><span class="op">(</span><span class="va">kind</span>, <span class="va">role</span>, <span class="va">relative_path</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>Use <code><a href="../reference/shift_api.html">shift_data()</a></code> when you want to inspect the actual
 extracted table without manually finding or reading those Parquet files.
 By default it returns a preview instead of loading everything into
 memory.</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">extracted_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">20L</span>,</span>
@@ -957,7 +1066,7 @@ extracted historical <code>ShiftClimate</code> stage or an explicit
 reference spec such as <code>historical_reference(1995:2014)</code>. The
 same transform can be reused across sites, models, scenarios, and
 periods.</p>
-<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
 <span>    reference <span class="op">=</span> <span class="va">reference</span>,</span>
@@ -965,7 +1074,7 @@ periods.</p>
 <span>    transform <span class="op">=</span> <span class="va">transform</span>,</span>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morphed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_morph</a></span><span class="op">(</span></span>
 <span>    <span class="va">extracted</span>,</span>
 <span>    reference <span class="op">=</span> <span class="va">reference</span>,</span>
@@ -979,7 +1088,7 @@ periods.</p>
 hourly future weather data as Parquet artifacts, not EPW text files yet.
 Inspect the artifact rows when you want to see where those intermediate
 results live:</p>
-<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morph_artifacts</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_artifacts</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span>
 <span><span class="va">morph_artifacts</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">kind</span>, <span class="va">role</span>, <span class="va">relative_path</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p>Use the same <code><a href="../reference/shift_api.html">shift_data()</a></code> helper to preview the hourly
@@ -988,7 +1097,7 @@ the weather columns are the hourly EPW-style values that will be written
 to the final EPW. The preview below omits long IDs to keep the table
 readable; include <code>case_id</code> in <code>columns</code> when you
 need to join rows back to a specific morphing case.</p>
-<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">morphed_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">morphed</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">24L</span>,</span>
@@ -1008,14 +1117,14 @@ morphed hourly results. It returns a <code>ShiftOutputs</code> stage.
 The first chunk assigns the result while hiding verbose writer output;
 the second prints the stage object.</p>
 <p>For the lower-level write path and output registry, see <a href="epw-morpher.html">EpwMorpher</a>.</p>
-<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epws</span></span></code></pre></div>
 <p><code><a href="../reference/shift_api.html">shift_outputs()</a></code> lists the EPW files written by
 <code><a href="../reference/shift_api.html">shift_epw()</a></code>. These are the files you can pass directly to
 EnergyPlus.</p>
-<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">path</span>, <span class="va">source_id</span>, <span class="va">experiment_id</span>, <span class="va">variant_label</span>, <span class="va">period</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 <p><code>shift_data(epws)</code> reads the written EPW file back and
@@ -1026,7 +1135,7 @@ step. Output metadata such as <code>output_id</code>,
 <code>case_id</code>, and <code>path</code> are available in
 <code>shift_data(epws)</code>; they are omitted here so the weather
 values stay visible.</p>
-<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epw_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_data</a></span><span class="op">(</span></span>
 <span>    <span class="va">epws</span>,</span>
 <span>    n <span class="op">=</span> <span class="fl">24L</span>,</span>
@@ -1059,7 +1168,7 @@ first?</li>
 check. It returns a single status string so it can be used in scripts,
 reports, or simple guards. For a successful run, the sequence should end
 with an EPW stage marked <code>written</code>.</p>
-<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">data.table</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></span><span class="op">(</span></span>
 <span>    stage <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"request"</span>, <span class="st">"collect"</span>, <span class="st">"extract"</span>, <span class="st">"reference"</span>, <span class="st">"morph"</span>, <span class="st">"epw"</span><span class="op">)</span>,</span>
 <span>    status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
@@ -1090,7 +1199,7 @@ manifest IDs first.</p>
 <p>For common causes and the first place to look for each class of
 failure, see <a href="esgf-troubleshooting.html">ESGF
 troubleshooting</a>.</p>
-<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
@@ -1104,7 +1213,7 @@ selection, or extraction period needs to be adjusted.</p>
 <p>Coverage problems usually originate in query selection, time
 filtering, or remote access. The <a href="esgf-troubleshooting.html">ESGF troubleshooting</a> article
 collects those checks in one place.</p>
-<div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb42"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">coverage</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_coverage</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">coverage</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">variable_id</span>, <span class="va">complete</span>, <span class="va">status</span>, <span class="va">output_rows</span>, <span class="va">output_file_count</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
 </div>
@@ -1116,7 +1225,7 @@ case metadata. These are the files to pass to EnergyPlus, archive with a
 simulation run, or reopen with the package’s internal EPW reader. The
 store also keeps the intermediate Parquet artifacts so the workflow can
 be inspected or reused without repeating the remote query.</p>
-<div class="sourceCode" id="cb42"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb43"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span></span>
 <span>    file <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/basename.html" class="external-link">basename</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span>,</span>
@@ -1133,7 +1242,7 @@ be inspected or reused without repeating the remote query.</p>
 for advanced users who want to inspect the lower-level
 <code>EsgStore</code>, <code>EpwMorpher</code>, or manifest tables
 directly.</p>
-<div class="sourceCode" id="cb43"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb44"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="fu"><a href="../reference/shift_api.html">shift_ids</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>

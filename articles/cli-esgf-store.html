@@ -258,64 +258,192 @@ to that request.</p>
 <span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="ex">epwshiftr</span> shift config validate <span class="at">--config</span> shift-workflow.json</span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="discover-methods-and-configure-batches">Discover Methods and Configure Batches<a class="anchor" aria-label="anchor" href="#discover-methods-and-configure-batches"></a>
+</h2>
+<p>The method catalog exposes every selectable scale and reconstruction,
+including experimental status, evidence type, input roles, and output
+type. These commands work offline without opening a store:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="ex">epwshiftr</span> morph transforms</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="ex">epwshiftr</span> morph transforms <span class="at">--scale</span> daily <span class="at">--status</span> experimental</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a><span class="ex">epwshiftr</span> morph describe <span class="at">--scale</span> hourly <span class="at">--method</span> kernel_qdm</span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--json</span> morph describe <span class="at">--scale</span> daily <span class="at">--method</span> qdm <span class="dt">\</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="at">--option</span> <span class="st">'tas.bounds=[-40,60]'</span></span></code></pre></div>
+<p><code>morph describe</code> shows effective settings alongside
+constructor defaults. It checks candidate settings with the same
+validator used for execution. Quote JSON vectors and objects so the
+shell preserves them; repeat <code>--option</code> for different
+settings. Field roles distinguish transformed, derived, physically
+closed, and inherited EPW fields. Experimental status is a method
+support boundary, and does not by itself establish field validation.</p>
+<p>Generate a method/model batch and its required ERA5 calibration
+input:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="ex">epwshiftr</span> shift config example <span class="at">--methods</span> original_morphing,qdm <span class="dt">\</span></span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="at">--model</span> 3 <span class="at">--output</span> batch.json</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a><span class="ex">epwshiftr</span> shift config validate <span class="at">--config</span> batch.json</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift config validate <span class="dt">\</span></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a>  <span class="at">--config</span> batch.json <span class="at">--network</span></span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a><span class="ex">epwshiftr</span> doctor <span class="at">--config</span> batch.json</span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift run <span class="at">--config</span> batch.json <span class="at">--dry-run</span></span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift run <span class="at">--config</span> batch.json <span class="at">--background</span></span></code></pre></div>
+<p>Edit the generated baseline EPW path, periods, output directory, and
+calibration years for your study. <code>climate.model</code> accepts a
+positive count, explicit model names, or <code>null</code> for all
+compatible models (<code>--model all</code> in the example command).
+<code>climate.frequency: null</code> lets each method select its source
+resolution. The <code>calibration</code> object accepts
+<code>dataset</code>, <code>years</code>, <code>product</code>,
+<code>variables</code>, <code>frequency</code>, <code>access</code>, and
+non-secret request <code>options</code>. ERA5 credentials stay in the
+existing CDS configuration or environment, outside workflow JSON.
+<code>observed_reference</code> remains supported as an alternative to
+<code>calibration</code>; do not supply both. ERA6 specifications
+currently report an explicit unavailable provider error.</p>
+<p>Local validation checks schema, options, local EPW readability, and
+reference roles. It does not establish remote coverage.
+<code>--network</code> checks common model coverage and reanalysis
+readiness; <code>shift run --dry-run</code> also resolves the model
+matrix. These operations may contact providers but do not generate EPWs.
+Their human output summarizes the baseline, requested methods and
+models, future periods, historical reference, calibration input, and
+destination. Network checks and discovery show the current method, node,
+and variables. Use <code>--no-progress</code> to retain the final report
+without live updates; global <code>--quiet</code>, <code>--json</code>,
+and <code>--jsonl</code> also suppress human progress output.</p>
+<p>Method keys with several possible configurations need explicit
+objects. For example, replace <code>methods</code> with this
+<code>transform</code> array to select both daily reconstructions:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="st">"transform"</span><span class="er">:</span> <span class="ot">[</span></span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>  <span class="fu">{</span><span class="dt">"scale"</span><span class="fu">:</span> <span class="st">"daily"</span><span class="fu">,</span> <span class="dt">"method"</span><span class="fu">:</span> <span class="st">"epwshiftr"</span><span class="fu">,</span> <span class="dt">"reconstruction"</span><span class="fu">:</span> <span class="st">"power"</span><span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>  <span class="fu">{</span><span class="dt">"scale"</span><span class="fu">:</span> <span class="st">"daily"</span><span class="fu">,</span> <span class="dt">"method"</span><span class="fu">:</span> <span class="st">"epwshiftr"</span><span class="fu">,</span> <span class="dt">"reconstruction"</span><span class="fu">:</span> <span class="st">"btws"</span><span class="fu">}</span></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a><span class="ot">]</span></span></code></pre></div>
+<p>A batch returns a durable <code>batch_id</code>. Use exactly one of
+<code>--batch</code> and <code>--run</code>:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift show <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span></span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift show <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span> --verbose</span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift watch <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span> --follow</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--jsonl</span> shift watch <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span> --follow</span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> shift outputs <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span></span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift diagnostics <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span></span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift resume <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span> --background</span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift cancel <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span></span></code></pre></div>
+<p>New dry-run receipts persist child plans, so
+<code>resume --batch</code> can start them in a later session without
+repeating discovery. In R, reopen the same receipt with
+<code>shift_batch_get(batch_id, store)</code> and use the ordinary
+<code>shift_*()</code> inspectors. Older receipts containing child runs
+remain readable; older dry-run receipts without saved plans require the
+original configuration to be run again.</p>
+<p>The batch dashboard uses the same bordered panel as a single
+workflow, with separate overview, <code>Workflows</code>, and
+<code>Results</code> sections. Each child shows its method/model
+identity above its reconstruction and stage; narrow terminals retain
+these rows without borders. A failed child does not stop watching
+another active child. Completion summaries distinguish cases from
+physical EPW files: a multi-year output can write several files for one
+case. Output rows retain method/model identity, weather year, output
+type, and field provenance. Warnings remain available in diagnostics and
+appear in completion summaries.</p>
+<p>Dynamic batch views fit the terminal height, put failed and active
+children first, and show the current operation, measured progress, and
+last update. Cancelled children have their own count. Errors precede
+warnings and retain recovery actions. Use
+<code>shift show --verbose</code> for all children and diagnostics; a
+completed or count-limited watch leaves its final receipt in scrollback.
+For a single run, <code>shift show --run &lt;run_id&gt; --verbose</code>
+expands every case, output, event, and diagnostic into wrapped records
+with complete paths and recovery actions. Add <code>--debug</code> to
+include raw JSON payloads. These flags only affect human-readable
+output; JSON and JSONL keep their existing fields. Batch watch follows
+each child’s event history independently, including late events from
+parallel workers and events received with the final snapshot.</p>
+<p>Find previous work and summarize its outputs without contacting
+providers:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift list</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift list <span class="at">--type</span> batch <span class="at">--status</span> failed,partial</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store shift summary <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span></span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> shift summary <span class="at">--run</span> <span class="op">&lt;</span>run_id<span class="op">&gt;</span> --weather</span></code></pre></div>
+<p><code>shift list</code> returns the newest 20 records by default
+(<code>--limit N</code> changes this) with complete IDs and store paths.
+Batch children show their parent batch and own store; use that child
+store when passing its run ID to another command. An unreadable record
+remains visible as <code>unavailable</code> with an error.</p>
+<p><code>shift summary</code> groups cases and outputs by method, model,
+scenario, period, member, and grid. It distinguishes recorded EPWs from
+available local files and retains output type, weather years,
+diagnostics, and field roles. <code>--weather</code> reads local EPWs
+and adds mean temperature, relative humidity, wind speed, and global
+horizontal radiation, with a valid-hour count for each mean and explicit
+file-read errors. Missing EPW sentinel values are excluded. Check the
+output type, years, and hourly coverage before comparing methods; the
+means do not rank methods or make unlike output periods equivalent.</p>
+<p>Repeated completed batch calls reuse their persisted receipts and
+verified artifacts. The human receipt reports reused versus
+started/resumed children and the elapsed time of the current call. Set
+<code>control.refresh: true</code> to explicitly refresh catalog
+selection. CLI execution returns status <code>1</code> for failed,
+blocked, partial, or cancelled results, and status <code>2</code> for
+invalid command or configuration syntax; inspection commands can still
+read those results.</p>
+</div>
+<div class="section level2">
 <h2 id="run-extraction-and-morphing-in-stages">Run Extraction and Morphing in Stages<a class="anchor" aria-label="anchor" href="#run-extraction-and-morphing-in-stages"></a>
 </h2>
 <p>Use <code>extract</code> commands when a query already exists in the
 store and you want to plan, run, and inspect the climate extraction
 stage directly.</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract plan <span class="dt">\</span></span>
-<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="at">--site-id</span> SIN <span class="dt">\</span></span>
-<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="at">--lon</span> 103.98 <span class="dt">\</span></span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>  <span class="at">--lat</span> 1.37 <span class="dt">\</span></span>
-<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  <span class="at">--time</span> 2055-01-01T00:00:00Z,2064-12-31T23:59:59Z <span class="dt">\</span></span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>  <span class="at">--variable</span> tas,hurs,psl,rsds,rlds,sfcWind,clt <span class="dt">\</span></span>
-<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a>  <span class="at">--nearest</span> 1</span>
-<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a></span>
-<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract run <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> --fallback auto</span>
-<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract retry <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span></span>
-<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract retry <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> --run</span>
-<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract coverage <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span></span>
-<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract artifacts <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract plan <span class="dt">\</span></span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a>  <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a>  <span class="at">--site-id</span> SIN <span class="dt">\</span></span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a>  <span class="at">--lon</span> 103.98 <span class="dt">\</span></span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a>  <span class="at">--lat</span> 1.37 <span class="dt">\</span></span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a>  <span class="at">--time</span> 2055-01-01T00:00:00Z,2064-12-31T23:59:59Z <span class="dt">\</span></span>
+<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a>  <span class="at">--variable</span> tas,hurs,psl,rsds,rlds,sfcWind,clt <span class="dt">\</span></span>
+<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a>  <span class="at">--nearest</span> 1</span>
+<span id="cb16-9"><a href="#cb16-9" tabindex="-1"></a></span>
+<span id="cb16-10"><a href="#cb16-10" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract run <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> --fallback auto</span>
+<span id="cb16-11"><a href="#cb16-11" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract retry <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span></span>
+<span id="cb16-12"><a href="#cb16-12" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract retry <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> --run</span>
+<span id="cb16-13"><a href="#cb16-13" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract coverage <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span></span>
+<span id="cb16-14"><a href="#cb16-14" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store extract artifacts <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span></span></code></pre></div>
 <p>Use <code>morph</code> commands to inspect available transforms, run
 a transform from extracted <code>plan_id</code> values, and write EPW
 outputs later from the stored <code>morph_id</code>.</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph transforms</span>
-<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph variables <span class="dt">\</span></span>
-<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="at">--scale</span> monthly <span class="dt">\</span></span>
-<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a>  <span class="at">--method</span> original_morphing</span>
-<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a></span>
-<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph run <span class="dt">\</span></span>
-<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>  <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a>  <span class="at">--epw</span> baseline/SIN.epw <span class="dt">\</span></span>
-<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a>  <span class="at">--period</span> 2060s=2055:2064 <span class="dt">\</span></span>
-<span id="cb12-10"><a href="#cb12-10" tabindex="-1"></a>  <span class="at">--scale</span> monthly <span class="dt">\</span></span>
-<span id="cb12-11"><a href="#cb12-11" tabindex="-1"></a>  <span class="at">--method</span> original_morphing <span class="dt">\</span></span>
-<span id="cb12-12"><a href="#cb12-12" tabindex="-1"></a>  <span class="at">--reference</span> historical <span class="dt">\</span></span>
-<span id="cb12-13"><a href="#cb12-13" tabindex="-1"></a>  <span class="at">--reference-period</span> reference=1995 <span class="dt">\</span></span>
-<span id="cb12-14"><a href="#cb12-14" tabindex="-1"></a>  <span class="at">--strict</span> true</span>
-<span id="cb12-15"><a href="#cb12-15" tabindex="-1"></a></span>
-<span id="cb12-16"><a href="#cb12-16" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph epw <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span> --dir outputs/future-epw</span>
-<span id="cb12-17"><a href="#cb12-17" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph retry <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span></span>
-<span id="cb12-18"><a href="#cb12-18" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph retry <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span> --run</span>
-<span id="cb12-19"><a href="#cb12-19" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph status <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span></span>
-<span id="cb12-20"><a href="#cb12-20" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph outputs <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span></span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph transforms</span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph variables <span class="dt">\</span></span>
+<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a>  <span class="at">--scale</span> monthly <span class="dt">\</span></span>
+<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a>  <span class="at">--method</span> original_morphing</span>
+<span id="cb17-5"><a href="#cb17-5" tabindex="-1"></a></span>
+<span id="cb17-6"><a href="#cb17-6" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph run <span class="dt">\</span></span>
+<span id="cb17-7"><a href="#cb17-7" tabindex="-1"></a>  <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb17-8"><a href="#cb17-8" tabindex="-1"></a>  <span class="at">--epw</span> baseline/SIN.epw <span class="dt">\</span></span>
+<span id="cb17-9"><a href="#cb17-9" tabindex="-1"></a>  <span class="at">--period</span> 2060s=2055:2064 <span class="dt">\</span></span>
+<span id="cb17-10"><a href="#cb17-10" tabindex="-1"></a>  <span class="at">--scale</span> monthly <span class="dt">\</span></span>
+<span id="cb17-11"><a href="#cb17-11" tabindex="-1"></a>  <span class="at">--method</span> original_morphing <span class="dt">\</span></span>
+<span id="cb17-12"><a href="#cb17-12" tabindex="-1"></a>  <span class="at">--reference</span> historical <span class="dt">\</span></span>
+<span id="cb17-13"><a href="#cb17-13" tabindex="-1"></a>  <span class="at">--reference-period</span> reference=1995 <span class="dt">\</span></span>
+<span id="cb17-14"><a href="#cb17-14" tabindex="-1"></a>  <span class="at">--strict</span> true</span>
+<span id="cb17-15"><a href="#cb17-15" tabindex="-1"></a></span>
+<span id="cb17-16"><a href="#cb17-16" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph epw <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span> --dir outputs/future-epw</span>
+<span id="cb17-17"><a href="#cb17-17" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph retry <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span></span>
+<span id="cb17-18"><a href="#cb17-18" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph retry <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span> --run</span>
+<span id="cb17-19"><a href="#cb17-19" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph status <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span></span>
+<span id="cb17-20"><a href="#cb17-20" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph outputs <span class="at">--morph</span> <span class="op">&lt;</span>morph_id<span class="op">&gt;</span></span></code></pre></div>
 <p>Repeat <code>--option KEY=VALUE</code> for each scientific setting
 supported by the selected transform. Use <code>--reconstruction</code>
 only when <code>morph transforms</code> lists more than one
 reconstruction for that scale and method.</p>
 <p>Variable-specific settings use <code>VARIABLE.SETTING=VALUE</code>;
 JSON arrays preserve vector settings:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph run <span class="dt">\</span></span>
-<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>  <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>  <span class="at">--reference-plan</span> <span class="op">&lt;</span>historical_plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a>  <span class="at">--observed-plan</span> <span class="op">&lt;</span>observed_plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a>  <span class="at">--epw</span> baseline/SIN.epw <span class="dt">\</span></span>
-<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a>  <span class="at">--period</span> 2080=2080 <span class="dt">\</span></span>
-<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a>  <span class="at">--scale</span> hourly <span class="dt">\</span></span>
-<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a>  <span class="at">--method</span> kernel_qdm <span class="dt">\</span></span>
-<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a>  <span class="at">--option</span> tas.grid_points=128 <span class="dt">\</span></span>
-<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a>  <span class="at">--option</span> <span class="st">'tas.bounds=[-40,60]'</span></span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store morph run <span class="dt">\</span></span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>  <span class="at">--plan</span> <span class="op">&lt;</span>plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>  <span class="at">--reference-plan</span> <span class="op">&lt;</span>historical_plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>  <span class="at">--observed-plan</span> <span class="op">&lt;</span>observed_plan_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>  <span class="at">--epw</span> baseline/SIN.epw <span class="dt">\</span></span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>  <span class="at">--period</span> 2080=2080 <span class="dt">\</span></span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a>  <span class="at">--scale</span> hourly <span class="dt">\</span></span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>  <span class="at">--method</span> kernel_qdm <span class="dt">\</span></span>
+<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a>  <span class="at">--option</span> tas.grid_points=128 <span class="dt">\</span></span>
+<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a>  <span class="at">--option</span> <span class="st">'tas.bounds=[-40,60]'</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="search-without-saving">Search Without Saving<a class="anchor" aria-label="anchor" href="#search-without-saving"></a>
@@ -323,17 +451,17 @@ JSON arrays preserve vector settings:</p>
 <p><code>query search</code> builds an <code>EsgQuery</code> from
 <code>key=value</code> constraints. The command contacts ESGF unless you
 pass <code>--dry-run</code>.</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="at">--dry-run</span> <span class="dt">\</span></span>
-<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>  <span class="at">--index-node</span> https://esgf-data.dkrz.de <span class="dt">\</span></span>
-<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>  <span class="at">--type</span> Dataset <span class="dt">\</span></span>
-<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
-<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>  activity_id=ScenarioMIP <span class="dt">\</span></span>
-<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a>  experiment_id=ssp585 <span class="dt">\</span></span>
-<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a>  variable_id=tas,psl <span class="dt">\</span></span>
-<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a>  table_id=Amon <span class="dt">\</span></span>
-<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
-<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a>  datetime_stop=2050-12-31 <span class="dt">\</span></span>
-<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a>  latest=true</span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="at">--dry-run</span> <span class="dt">\</span></span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a>  <span class="at">--index-node</span> https://esgf-data.dkrz.de <span class="dt">\</span></span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a>  <span class="at">--type</span> Dataset <span class="dt">\</span></span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
+<span id="cb19-5"><a href="#cb19-5" tabindex="-1"></a>  activity_id=ScenarioMIP <span class="dt">\</span></span>
+<span id="cb19-6"><a href="#cb19-6" tabindex="-1"></a>  experiment_id=ssp585 <span class="dt">\</span></span>
+<span id="cb19-7"><a href="#cb19-7" tabindex="-1"></a>  variable_id=tas,psl <span class="dt">\</span></span>
+<span id="cb19-8"><a href="#cb19-8" tabindex="-1"></a>  table_id=Amon <span class="dt">\</span></span>
+<span id="cb19-9"><a href="#cb19-9" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
+<span id="cb19-10"><a href="#cb19-10" tabindex="-1"></a>  datetime_stop=2050-12-31 <span class="dt">\</span></span>
+<span id="cb19-11"><a href="#cb19-11" tabindex="-1"></a>  latest=true</span></code></pre></div>
 <p>Comma-separated values become multi-value query parameters. Boolean
 strings <code>true</code> and <code>false</code> become logical query
 values.</p>
@@ -341,29 +469,29 @@ values.</p>
 <code>--columns</code> to control the human-readable table printed by
 the CLI. If a display column is an ESGF result field, include it in
 <code>--fields</code> as well.</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="dt">\</span></span>
-<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>  <span class="at">--fields</span> source_id,experiment_id,variable_id,datetime_start,datetime_stop,size <span class="dt">\</span></span>
-<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a>  <span class="at">--columns</span> variable_id,datetime_start,datetime_stop,size <span class="dt">\</span></span>
-<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
-<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a>  variable_id=tas <span class="dt">\</span></span>
-<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
-<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a>  datetime_stop=2050-12-31</span></code></pre></div>
+<div class="sourceCode" id="cb20"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="dt">\</span></span>
+<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a>  <span class="at">--fields</span> source_id,experiment_id,variable_id,datetime_start,datetime_stop,size <span class="dt">\</span></span>
+<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a>  <span class="at">--columns</span> variable_id,datetime_start,datetime_stop,size <span class="dt">\</span></span>
+<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
+<span id="cb20-5"><a href="#cb20-5" tabindex="-1"></a>  variable_id=tas <span class="dt">\</span></span>
+<span id="cb20-6"><a href="#cb20-6" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
+<span id="cb20-7"><a href="#cb20-7" tabindex="-1"></a>  datetime_stop=2050-12-31</span></code></pre></div>
 <p>Use <code>datetime_start</code> and <code>datetime_stop</code> for
 data coverage constraints. These are mapped to
 <code>EsgQuery$datetime_range()</code>, so they are not plain ESGF
 facets. For a target year, set both boundaries:</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="at">--dry-run</span> <span class="dt">\</span></span>
-<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
-<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a>  variable_id=tas <span class="dt">\</span></span>
-<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
-<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a>  datetime_stop=2050-12-31</span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="at">--dry-run</span> <span class="dt">\</span></span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a>  variable_id=tas <span class="dt">\</span></span>
+<span id="cb21-4"><a href="#cb21-4" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
+<span id="cb21-5"><a href="#cb21-5" tabindex="-1"></a>  datetime_stop=2050-12-31</span></code></pre></div>
 <p><code>datetime_end</code> is accepted as an alias for
 <code>datetime_stop</code>.</p>
 <p>Use <code>key!=value</code> for a negated facet constraint:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="at">--dry-run</span> <span class="dt">\</span></span>
-<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
-<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a>  source_id!=BCC-CSM2-MR <span class="dt">\</span></span>
-<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a>  variable_id=tas</span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a><span class="ex">epwshiftr</span> query search <span class="at">--dry-run</span> <span class="dt">\</span></span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a>  source_id!=BCC-CSM2-MR <span class="dt">\</span></span>
+<span id="cb22-4"><a href="#cb22-4" tabindex="-1"></a>  variable_id=tas</span></code></pre></div>
 <p>A single key cannot mix positive and negated constraints in the same
 command. Use either <code>source_id=A,B</code> or
 <code>source_id!=A,B</code>, not both.</p>
@@ -374,45 +502,45 @@ command. Use either <code>source_id=A,B</code> or
 <p>Use <code>query add</code> when a search should become part of a
 persistent store. This saves the query definition in the store; it does
 not download files.</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query add <span class="dt">\</span></span>
-<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>  <span class="at">--label</span> singapore-ssp585-amon <span class="dt">\</span></span>
-<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>  <span class="at">--tag</span> cmip6 <span class="dt">\</span></span>
-<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>  <span class="at">--tag</span> future-weather <span class="dt">\</span></span>
-<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>  <span class="at">--track</span> <span class="dt">\</span></span>
-<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>  <span class="at">--index-node</span> https://esgf-data.dkrz.de <span class="dt">\</span></span>
-<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
-<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>  activity_id=ScenarioMIP <span class="dt">\</span></span>
-<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a>  experiment_id=ssp585 <span class="dt">\</span></span>
-<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a>  variable_id=tas,psl <span class="dt">\</span></span>
-<span id="cb18-11"><a href="#cb18-11" tabindex="-1"></a>  table_id=Amon <span class="dt">\</span></span>
-<span id="cb18-12"><a href="#cb18-12" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
-<span id="cb18-13"><a href="#cb18-13" tabindex="-1"></a>  datetime_stop=2050-12-31 <span class="dt">\</span></span>
-<span id="cb18-14"><a href="#cb18-14" tabindex="-1"></a>  latest=true</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query add <span class="dt">\</span></span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a>  <span class="at">--label</span> singapore-ssp585-amon <span class="dt">\</span></span>
+<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a>  <span class="at">--tag</span> cmip6 <span class="dt">\</span></span>
+<span id="cb23-4"><a href="#cb23-4" tabindex="-1"></a>  <span class="at">--tag</span> future-weather <span class="dt">\</span></span>
+<span id="cb23-5"><a href="#cb23-5" tabindex="-1"></a>  <span class="at">--track</span> <span class="dt">\</span></span>
+<span id="cb23-6"><a href="#cb23-6" tabindex="-1"></a>  <span class="at">--index-node</span> https://esgf-data.dkrz.de <span class="dt">\</span></span>
+<span id="cb23-7"><a href="#cb23-7" tabindex="-1"></a>  project=CMIP6 <span class="dt">\</span></span>
+<span id="cb23-8"><a href="#cb23-8" tabindex="-1"></a>  activity_id=ScenarioMIP <span class="dt">\</span></span>
+<span id="cb23-9"><a href="#cb23-9" tabindex="-1"></a>  experiment_id=ssp585 <span class="dt">\</span></span>
+<span id="cb23-10"><a href="#cb23-10" tabindex="-1"></a>  variable_id=tas,psl <span class="dt">\</span></span>
+<span id="cb23-11"><a href="#cb23-11" tabindex="-1"></a>  table_id=Amon <span class="dt">\</span></span>
+<span id="cb23-12"><a href="#cb23-12" tabindex="-1"></a>  datetime_start=2050-01-01 <span class="dt">\</span></span>
+<span id="cb23-13"><a href="#cb23-13" tabindex="-1"></a>  datetime_stop=2050-12-31 <span class="dt">\</span></span>
+<span id="cb23-14"><a href="#cb23-14" tabindex="-1"></a>  latest=true</span></code></pre></div>
 <p>Use <code>--dry-run</code> to inspect the query URL, label, tags, and
 tracked flag before writing to the store.</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query add <span class="at">--dry-run</span> <span class="dt">\</span></span>
-<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a>  <span class="at">--label</span> singapore-ssp585-amon <span class="dt">\</span></span>
-<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a>  project=CMIP6 variable_id=tas table_id=Amon</span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query add <span class="at">--dry-run</span> <span class="dt">\</span></span>
+<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a>  <span class="at">--label</span> singapore-ssp585-amon <span class="dt">\</span></span>
+<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a>  project=CMIP6 variable_id=tas table_id=Amon</span></code></pre></div>
 <p>You can also import a query JSON file saved from R:</p>
-<div class="sourceCode" id="cb20"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query add <span class="dt">\</span></span>
-<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a>  <span class="at">--query-file</span> query.json <span class="dt">\</span></span>
-<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a>  <span class="at">--label</span> imported-query <span class="dt">\</span></span>
-<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a>  <span class="at">--track</span></span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query add <span class="dt">\</span></span>
+<span id="cb25-2"><a href="#cb25-2" tabindex="-1"></a>  <span class="at">--query-file</span> query.json <span class="dt">\</span></span>
+<span id="cb25-3"><a href="#cb25-3" tabindex="-1"></a>  <span class="at">--label</span> imported-query <span class="dt">\</span></span>
+<span id="cb25-4"><a href="#cb25-4" tabindex="-1"></a>  <span class="at">--track</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="preview-and-record-query-updates">Preview and Record Query Updates<a class="anchor" aria-label="anchor" href="#preview-and-record-query-updates"></a>
 </h2>
 <p>Tracked queries support a two-step update path. First preview the
 diff without changing the store:</p>
-<div class="sourceCode" id="cb21"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query preview <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
-<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query preview <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --detail</span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query preview <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query preview <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --detail</span></code></pre></div>
 <p>Then persist the update when the diff is acceptable:</p>
-<div class="sourceCode" id="cb22"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query update <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span></code></pre></div>
+<div class="sourceCode" id="cb27"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query update <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span></code></pre></div>
 <p>Inspect query metadata, files, update batches, and non-current
 changes:</p>
-<div class="sourceCode" id="cb23"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query show <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --files <span class="at">--updates</span> <span class="at">--changes</span></span>
-<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query files <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
-<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query changes <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --latest</span></code></pre></div>
+<div class="sourceCode" id="cb28"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query show <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --files <span class="at">--updates</span> <span class="at">--changes</span></span>
+<span id="cb28-2"><a href="#cb28-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query files <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
+<span id="cb28-3"><a href="#cb28-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store query changes <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --latest</span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="plan-and-run-downloads">Plan and Run Downloads<a class="anchor" aria-label="anchor" href="#plan-and-run-downloads"></a>
@@ -420,67 +548,67 @@ changes:</p>
 <p><code>download preflight</code> refreshes query results, computes the
 update diff, expands replica candidates, and estimates the download set
 without enqueueing tasks or downloading data.</p>
-<div class="sourceCode" id="cb24"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download preflight <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a>  <span class="at">--replica</span> auto <span class="dt">\</span></span>
-<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a>  <span class="at">--service</span> HTTPServer <span class="dt">\</span></span>
-<span id="cb24-4"><a href="#cb24-4" tabindex="-1"></a>  <span class="at">--strategy</span> fastest</span></code></pre></div>
+<div class="sourceCode" id="cb29"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download preflight <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb29-2"><a href="#cb29-2" tabindex="-1"></a>  <span class="at">--replica</span> auto <span class="dt">\</span></span>
+<span id="cb29-3"><a href="#cb29-3" tabindex="-1"></a>  <span class="at">--service</span> HTTPServer <span class="dt">\</span></span>
+<span id="cb29-4"><a href="#cb29-4" tabindex="-1"></a>  <span class="at">--strategy</span> fastest</span></code></pre></div>
 <p>For a conservative dry check, disable network probing:</p>
-<div class="sourceCode" id="cb25"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download preflight <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --no-probe</span></code></pre></div>
+<div class="sourceCode" id="cb30"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download preflight <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --no-probe</span></code></pre></div>
 <p><code>download run</code> performs the full store-aware path:
 refresh, plan, enqueue, run, and sync completed files back into the
 store catalog.</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download run <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a>  <span class="at">--session-label</span> singapore-ssp585-amon <span class="dt">\</span></span>
-<span id="cb26-3"><a href="#cb26-3" tabindex="-1"></a>  <span class="at">--replica</span> auto <span class="dt">\</span></span>
-<span id="cb26-4"><a href="#cb26-4" tabindex="-1"></a>  <span class="at">--service</span> HTTPServer</span></code></pre></div>
+<div class="sourceCode" id="cb31"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download run <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb31-2"><a href="#cb31-2" tabindex="-1"></a>  <span class="at">--session-label</span> singapore-ssp585-amon <span class="dt">\</span></span>
+<span id="cb31-3"><a href="#cb31-3" tabindex="-1"></a>  <span class="at">--replica</span> auto <span class="dt">\</span></span>
+<span id="cb31-4"><a href="#cb31-4" tabindex="-1"></a>  <span class="at">--service</span> HTTPServer</span></code></pre></div>
 <p>For long downloads, run in the background.
 <code>--mode process</code> starts a detached R process for this job.
 <code>--mode daemon</code> submits the job to a running downloader
 daemon.</p>
-<div class="sourceCode" id="cb27"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download run <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
-<span id="cb27-2"><a href="#cb27-2" tabindex="-1"></a>  <span class="at">--session-label</span> singapore-ssp585-amon <span class="dt">\</span></span>
-<span id="cb27-3"><a href="#cb27-3" tabindex="-1"></a>  <span class="at">--background</span> <span class="dt">\</span></span>
-<span id="cb27-4"><a href="#cb27-4" tabindex="-1"></a>  <span class="at">--mode</span> process</span></code></pre></div>
+<div class="sourceCode" id="cb32"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download run <span class="op">&lt;</span>query_id<span class="op">&gt;</span> <span class="dt">\</span></span>
+<span id="cb32-2"><a href="#cb32-2" tabindex="-1"></a>  <span class="at">--session-label</span> singapore-ssp585-amon <span class="dt">\</span></span>
+<span id="cb32-3"><a href="#cb32-3" tabindex="-1"></a>  <span class="at">--background</span> <span class="dt">\</span></span>
+<span id="cb32-4"><a href="#cb32-4" tabindex="-1"></a>  <span class="at">--mode</span> process</span></code></pre></div>
 <p>The downloader keeps persistent sessions, tasks, candidate URLs,
 data-node statistics, jobs, logs, and events. You can stop R and later
 inspect or resume the same session.</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download sessions</span>
-<span id="cb28-2"><a href="#cb28-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download tasks <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span></span>
-<span id="cb28-3"><a href="#cb28-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download watch <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
-<span id="cb28-4"><a href="#cb28-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download logs <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span> --tail 50</span>
-<span id="cb28-5"><a href="#cb28-5" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download jobs</span>
-<span id="cb28-6"><a href="#cb28-6" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download logs <span class="at">--job</span> <span class="op">&lt;</span>job_id<span class="op">&gt;</span> --tail 50</span>
-<span id="cb28-7"><a href="#cb28-7" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download stop <span class="at">--job</span> <span class="op">&lt;</span>job_id<span class="op">&gt;</span></span></code></pre></div>
+<div class="sourceCode" id="cb33"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb33-1"><a href="#cb33-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download sessions</span>
+<span id="cb33-2"><a href="#cb33-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download tasks <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span></span>
+<span id="cb33-3"><a href="#cb33-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download watch <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
+<span id="cb33-4"><a href="#cb33-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download logs <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span> --tail 50</span>
+<span id="cb33-5"><a href="#cb33-5" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download jobs</span>
+<span id="cb33-6"><a href="#cb33-6" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download logs <span class="at">--job</span> <span class="op">&lt;</span>job_id<span class="op">&gt;</span> --tail 50</span>
+<span id="cb33-7"><a href="#cb33-7" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download stop <span class="at">--job</span> <span class="op">&lt;</span>job_id<span class="op">&gt;</span></span></code></pre></div>
 <p>Use daemon mode when you want one persistent process to run queued
 jobs over time:</p>
-<div class="sourceCode" id="cb29"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download daemon start</span>
-<span id="cb29-2"><a href="#cb29-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download run <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --background <span class="at">--mode</span> daemon</span>
-<span id="cb29-3"><a href="#cb29-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download daemon status</span>
-<span id="cb29-4"><a href="#cb29-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download daemon stop</span></code></pre></div>
+<div class="sourceCode" id="cb34"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download daemon start</span>
+<span id="cb34-2"><a href="#cb34-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download run <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --background <span class="at">--mode</span> daemon</span>
+<span id="cb34-3"><a href="#cb34-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download daemon status</span>
+<span id="cb34-4"><a href="#cb34-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download daemon stop</span></code></pre></div>
 <p>Retry failed or cancelled tasks:</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download retry <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
-<span id="cb30-2"><a href="#cb30-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download retry <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --run</span></code></pre></div>
+<div class="sourceCode" id="cb35"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download retry <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
+<span id="cb35-2"><a href="#cb35-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download retry <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --run</span></code></pre></div>
 <p>Resume interrupted tasks or verify completed files:</p>
-<div class="sourceCode" id="cb31"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download resume <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span></span>
-<span id="cb31-2"><a href="#cb31-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download verify <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span></span></code></pre></div>
+<div class="sourceCode" id="cb36"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download resume <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span></span>
+<span id="cb36-2"><a href="#cb36-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download verify <span class="at">--session</span> <span class="op">&lt;</span>session_id<span class="op">&gt;</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="tune-download-behaviour">Tune Download Behaviour<a class="anchor" aria-label="anchor" href="#tune-download-behaviour"></a>
 </h2>
 <p>Show the current persistent downloader configuration:</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb32-1"><a href="#cb32-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download config show</span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb37-1"><a href="#cb37-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download config show</span></code></pre></div>
 <p>Set operational limits when running large batches:</p>
-<div class="sourceCode" id="cb33"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb33-1"><a href="#cb33-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download config set <span class="dt">\</span></span>
-<span id="cb33-2"><a href="#cb33-2" tabindex="-1"></a>  <span class="at">--workers</span> 4 <span class="dt">\</span></span>
-<span id="cb33-3"><a href="#cb33-3" tabindex="-1"></a>  <span class="at">--host-concurrency</span> 2 <span class="dt">\</span></span>
-<span id="cb33-4"><a href="#cb33-4" tabindex="-1"></a>  <span class="at">--timeout</span> 120 <span class="dt">\</span></span>
-<span id="cb33-5"><a href="#cb33-5" tabindex="-1"></a>  <span class="at">--chunk-size</span> 1048576 <span class="dt">\</span></span>
-<span id="cb33-6"><a href="#cb33-6" tabindex="-1"></a>  <span class="at">--bandwidth-limit</span> none</span></code></pre></div>
+<div class="sourceCode" id="cb38"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download config set <span class="dt">\</span></span>
+<span id="cb38-2"><a href="#cb38-2" tabindex="-1"></a>  <span class="at">--workers</span> 4 <span class="dt">\</span></span>
+<span id="cb38-3"><a href="#cb38-3" tabindex="-1"></a>  <span class="at">--host-concurrency</span> 2 <span class="dt">\</span></span>
+<span id="cb38-4"><a href="#cb38-4" tabindex="-1"></a>  <span class="at">--timeout</span> 120 <span class="dt">\</span></span>
+<span id="cb38-5"><a href="#cb38-5" tabindex="-1"></a>  <span class="at">--chunk-size</span> 1048576 <span class="dt">\</span></span>
+<span id="cb38-6"><a href="#cb38-6" tabindex="-1"></a>  <span class="at">--bandwidth-limit</span> none</span></code></pre></div>
 <p>Inspect data-node performance records and reset stale node statistics
 if needed:</p>
-<div class="sourceCode" id="cb34"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download nodes</span>
-<span id="cb34-2"><a href="#cb34-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download reset-nodes <span class="at">--node</span> esgf.ceda.ac.uk</span>
-<span id="cb34-3"><a href="#cb34-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download reset-nodes <span class="at">--node</span> esgf.ceda.ac.uk <span class="at">--execute</span></span></code></pre></div>
+<div class="sourceCode" id="cb39"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download nodes</span>
+<span id="cb39-2"><a href="#cb39-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download reset-nodes <span class="at">--node</span> esgf.ceda.ac.uk</span>
+<span id="cb39-3"><a href="#cb39-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store download reset-nodes <span class="at">--node</span> esgf.ceda.ac.uk <span class="at">--execute</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="maintain-local-files">Maintain Local Files<a class="anchor" aria-label="anchor" href="#maintain-local-files"></a>
@@ -488,22 +616,22 @@ if needed:</p>
 <p>The storage commands expose the store’s file-system maintenance
 tools.</p>
 <p>Choose a download layout policy:</p>
-<div class="sourceCode" id="cb35"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb35-1"><a href="#cb35-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage layout show</span>
-<span id="cb35-2"><a href="#cb35-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage layout set <span class="at">--layout</span> drs</span></code></pre></div>
+<div class="sourceCode" id="cb40"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb40-1"><a href="#cb40-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage layout show</span>
+<span id="cb40-2"><a href="#cb40-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage layout set <span class="at">--layout</span> drs</span></code></pre></div>
 <p>Summarise disk usage and validate cataloged files:</p>
-<div class="sourceCode" id="cb36"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb36-1"><a href="#cb36-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage report</span>
-<span id="cb36-2"><a href="#cb36-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage report <span class="at">--detail</span></span>
-<span id="cb36-3"><a href="#cb36-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage validate <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span></code></pre></div>
+<div class="sourceCode" id="cb41"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb41-1"><a href="#cb41-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage report</span>
+<span id="cb41-2"><a href="#cb41-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage report <span class="at">--detail</span></span>
+<span id="cb41-3"><a href="#cb41-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage validate <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span></code></pre></div>
 <p>Checksum validation can be expensive on large NetCDF collections, so
 it is opt-in:</p>
-<div class="sourceCode" id="cb37"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb37-1"><a href="#cb37-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage validate <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --checksum</span></code></pre></div>
+<div class="sourceCode" id="cb42"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb42-1"><a href="#cb42-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage validate <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --checksum</span></code></pre></div>
 <p>Repairs and cleanup commands default to preview mode. Add
 <code>--execute</code> only after reviewing the proposed actions.</p>
-<div class="sourceCode" id="cb38"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb38-1"><a href="#cb38-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage repair</span>
-<span id="cb38-2"><a href="#cb38-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage repair <span class="at">--execute</span></span>
-<span id="cb38-3"><a href="#cb38-3" tabindex="-1"></a></span>
-<span id="cb38-4"><a href="#cb38-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage cleanup <span class="at">--scope</span> tmp <span class="at">--older-than</span> 604800</span>
-<span id="cb38-5"><a href="#cb38-5" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage cleanup <span class="at">--scope</span> tmp <span class="at">--older-than</span> 604800 <span class="at">--execute</span></span></code></pre></div>
+<div class="sourceCode" id="cb43"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb43-1"><a href="#cb43-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage repair</span>
+<span id="cb43-2"><a href="#cb43-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage repair <span class="at">--execute</span></span>
+<span id="cb43-3"><a href="#cb43-3" tabindex="-1"></a></span>
+<span id="cb43-4"><a href="#cb43-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage cleanup <span class="at">--scope</span> tmp <span class="at">--older-than</span> 604800</span>
+<span id="cb43-5"><a href="#cb43-5" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store storage cleanup <span class="at">--scope</span> tmp <span class="at">--older-than</span> 604800 <span class="at">--execute</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="use-json-and-jsonl-for-automation">Use JSON and JSONL for Automation<a class="anchor" aria-label="anchor" href="#use-json-and-jsonl-for-automation"></a>
@@ -512,10 +640,10 @@ it is opt-in:</p>
 another script should consume a complete result. Add
 <code>--jsonl</code> with <code>download watch --follow</code> when a
 script should consume streaming progress events one object per line.</p>
-<div class="sourceCode" id="cb39"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> query status <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
-<span id="cb39-2"><a href="#cb39-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> download watch <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
-<span id="cb39-3"><a href="#cb39-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> storage validate <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
-<span id="cb39-4"><a href="#cb39-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--jsonl</span> download watch <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --follow</span></code></pre></div>
+<div class="sourceCode" id="cb44"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb44-1"><a href="#cb44-1" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> query status <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
+<span id="cb44-2"><a href="#cb44-2" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> download watch <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
+<span id="cb44-3"><a href="#cb44-3" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--json</span> storage validate <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span></span>
+<span id="cb44-4"><a href="#cb44-4" tabindex="-1"></a><span class="ex">epwshiftr</span> <span class="at">--store</span> ~/cmip6-store <span class="at">--jsonl</span> download watch <span class="at">--query</span> <span class="op">&lt;</span>query_id<span class="op">&gt;</span> --follow</span></code></pre></div>
 <p>Use <code>--quiet</code> when you only need the process status. CLI
 status codes are:</p>
 <ul>
@@ -531,13 +659,13 @@ status codes are:</p>
 <h2 id="command-groups">Command Groups<a class="anchor" aria-label="anchor" href="#command-groups"></a>
 </h2>
 <p>Use built-in help for the complete command list:</p>
-<div class="sourceCode" id="cb40"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb40-1"><a href="#cb40-1" tabindex="-1"></a><span class="ex">epwshiftr</span> help</span>
-<span id="cb40-2"><a href="#cb40-2" tabindex="-1"></a><span class="ex">epwshiftr</span> help query add</span>
-<span id="cb40-3"><a href="#cb40-3" tabindex="-1"></a><span class="ex">epwshiftr</span> help download run</span>
-<span id="cb40-4"><a href="#cb40-4" tabindex="-1"></a><span class="ex">epwshiftr</span> help shift run</span>
-<span id="cb40-5"><a href="#cb40-5" tabindex="-1"></a><span class="ex">epwshiftr</span> help extract plan</span>
-<span id="cb40-6"><a href="#cb40-6" tabindex="-1"></a><span class="ex">epwshiftr</span> help morph run</span>
-<span id="cb40-7"><a href="#cb40-7" tabindex="-1"></a><span class="ex">epwshiftr</span> help storage validate</span></code></pre></div>
+<div class="sourceCode" id="cb45"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb45-1"><a href="#cb45-1" tabindex="-1"></a><span class="ex">epwshiftr</span> help</span>
+<span id="cb45-2"><a href="#cb45-2" tabindex="-1"></a><span class="ex">epwshiftr</span> help query add</span>
+<span id="cb45-3"><a href="#cb45-3" tabindex="-1"></a><span class="ex">epwshiftr</span> help download run</span>
+<span id="cb45-4"><a href="#cb45-4" tabindex="-1"></a><span class="ex">epwshiftr</span> help shift run</span>
+<span id="cb45-5"><a href="#cb45-5" tabindex="-1"></a><span class="ex">epwshiftr</span> help extract plan</span>
+<span id="cb45-6"><a href="#cb45-6" tabindex="-1"></a><span class="ex">epwshiftr</span> help morph run</span>
+<span id="cb45-7"><a href="#cb45-7" tabindex="-1"></a><span class="ex">epwshiftr</span> help storage validate</span></code></pre></div>
 <p>The command groups intentionally mirror the package boundaries:</p>
 <ul>
 <li>
