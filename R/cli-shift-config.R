@@ -1,4 +1,4 @@
-epwshiftr_cli_shift_config <- function(store, args) {
+epwshiftr_cli_shift_config <- function(store, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
     if (!length(args)) {
         epwshiftr_cli_usage_abort("Missing shift config command: example or validate.")
     }
@@ -7,7 +7,8 @@ epwshiftr_cli_shift_config <- function(store, args) {
     switch(
         action,
         example = epwshiftr_cli_shift_config_example(rest),
-        validate = epwshiftr_cli_shift_config_validate(store, rest),
+        validate = epwshiftr_cli_shift_config_validate(store, rest,
+            json = json, jsonl = jsonl, quiet = quiet),
         epwshiftr_cli_usage_abort(sprintf("Unknown shift config command: %s", action))
     )
 }
@@ -96,8 +97,10 @@ epwshiftr_cli_shift_config_example <- function(args) {
 }
 
 
-epwshiftr_cli_shift_config_validate <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = "--config", flags = "--network")
+epwshiftr_cli_shift_config_validate <- function(store, args,
+    json = FALSE, jsonl = FALSE, quiet = FALSE) {
+    parsed <- epwshiftr_cli_parse_command(args, options = "--config",
+        flags = c("--network", "--no-progress", "--reduced-motion"))
     epwshiftr_cli_assert_no_positionals(parsed)
     config_path <- epwshiftr_cli_required_option(parsed, "--config")
     config <- epwshiftr_cli_read_shift_config(config_path)
@@ -116,8 +119,14 @@ epwshiftr_cli_shift_config_validate <- function(store, args) {
     })
     shift__epw_identity(config$epw)
     network <- isTRUE(parsed$flags[["--network"]])
+    ui <- epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl, quiet = quiet)
     checks <- if (S7::S7_inherits(observed, ShiftReanalysisSpec)) {
-        shift_check(observed, network = network)
+        shift__ui_check(ui, "Calibration readiness", function(reporter) {
+            reporter$stage_started("check", if (network) {
+                "Checking CDS credentials and network access."
+            } else "Checking local calibration settings.")
+            shift_check(observed, network = network)
+        })
     } else {
         shift_diagnostics_empty()
     }
@@ -125,7 +134,7 @@ epwshiftr_cli_shift_config_validate <- function(store, args) {
         shift_batch__discover_models(climate, transforms,
             periods = shift__periods_from_input(config$periods),
             references = references, store = store,
-            ui = shift_ui(progress = "none"))$identities
+            ui = ui)$identities
     } else {
         data.table::data.table()
     }
@@ -136,6 +145,7 @@ epwshiftr_cli_shift_config_validate <- function(store, args) {
         ui = shift_ui(progress = "none")) else NULL
     list(
         action = "validate",
+        intent = cli_shift__config_intent(config),
         status = "valid",
         validation = if (network) "network" else "local",
         readiness = if (any(checks$severity == "error")) "blocked" else {
@@ -158,6 +168,32 @@ epwshiftr_cli_shift_config_validate <- function(store, args) {
         selected_models = discovery,
         diagnostics = checks
     )
+}
+
+# Summarize the user's scientific choices before execution without opening a
+# store or resolving remote models. Keep calibration separate from historical
+# model reference data so the two input roles remain unambiguous.
+cli_shift__config_intent <- function(config) {
+    transforms <- shift_batch__transforms(methods = config$methods,
+        transform = cli_shift__config_transform(config$transform))
+    climate <- epwshiftr_cli_config_climate(config$climate)
+    reference <- cli_shift__config_reference(config$reference, "reference")
+    calibration <- cli_shift__config_reference(shift_coalesce(
+        config$calibration, config$observed_reference), "observed_reference")
+    list(Baseline = config$epw,
+        Methods = paste(vapply(transforms, function(transform) {
+            sprintf("%s / %s / %s [%s]", transform@method, transform@scale,
+                transform@reconstruction, transform@status)
+        }, character(1L)), collapse = "; "),
+        Models = if (!is.null(climate@model)) paste(climate@model, collapse = ", ") else {
+            if (is.null(climate@n_models)) "all compatible models" else
+                sprintf("%d compatible models", climate@n_models)
+        },
+        Scenarios = paste(climate@scenarios, collapse = ", "),
+        Periods = shift__ui_periods(shift__periods_from_input(config$periods)),
+        Reference = shift__format_reference(reference),
+        Calibration = shift__format_reference(calibration),
+        Output = config$dir)
 }
 
 

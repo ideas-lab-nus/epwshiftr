@@ -442,6 +442,12 @@ shift_batch__available_alternative <- function(
     attempts <- list()
     errors <- character()
     for (node in climate@index_nodes) {
+        if (identical(ui@batch_context$kind, "discovery")) {
+            shift_batch__discovery_update(list(node = node,
+                node_index = match(node, climate@index_nodes),
+                node_total = length(climate@index_nodes),
+                scope = "Candidate catalog", scope_periods = NULL), reset = TRUE)
+        }
         current <- tryCatch(
             collect(
                 variables = variables,
@@ -463,6 +469,8 @@ shift_batch__available_alternative <- function(
         )
         if (inherits(current, "error")) {
             errors <- c(errors, conditionMessage(current))
+            shift_batch__discovery_notice(paste(shift__node_label(node),
+                "candidate query failed:", conditionMessage(current)), "fallback")
             next
         }
         current <- data.table::as.data.table(current)
@@ -485,6 +493,8 @@ shift_batch__available_alternative <- function(
             )
             if (inherits(current, "error")) {
                 errors <- c(errors, conditionMessage(current))
+                shift_batch__discovery_notice(paste(shift__node_label(node),
+                    "coverage query failed:", conditionMessage(current)), "fallback")
                 next
             }
             current <- data.table::as.data.table(current)
@@ -493,6 +503,8 @@ shift_batch__available_alternative <- function(
             attempts[[length(attempts) + 1L]] <- current
             break
         }
+        shift_batch__discovery_notice(paste(shift__node_label(node),
+            "has no model with complete requested coverage"), "rejected")
     }
     if (!length(attempts)) {
         if (length(errors) == length(climate@index_nodes)) {
@@ -516,7 +528,7 @@ shift_batch__available_alternative <- function(
 # Resolve every method independently across its declared variable alternatives,
 # then intersect identities so all selected methods use the same model member
 # and grid for a fair downstream comparison performed by the user.
-shift_batch__discover_models <- function(
+shift_batch__discover_candidates <- function(
     climate,
     transforms,
     periods,
@@ -532,12 +544,23 @@ shift_batch__discover_models <- function(
     }
     by_transform <- lapply(names(transforms), function(transform_key) {
         transform <- transforms[[transform_key]]
+        method_ui <- ui
+        method_ui@batch_context <- list(kind = "discovery",
+            current = match(transform_key, names(transforms)),
+            total = length(transforms), message = transform@label)
         reference <- references[[transform_key]]$reference
         requirement <- shift_batch__future_requirement(transform)
         alternatives <- lapply(
             seq_along(requirement@variable_sets),
             function(index) {
                 variables <- as.character(requirement@variable_sets[[index]])
+                shift_batch__discovery_update(list(
+                    current = match(transform_key, names(transforms)),
+                    total = length(transforms), method = transform@method,
+                    method_label = transform@label, alternative = index,
+                    alternatives = length(requirement@variable_sets),
+                    variables = variables, scope = "Candidate catalog",
+                    scope_periods = NULL), reset = TRUE)
                 result <- shift_batch__available_alternative(
                     climate,
                     transform,
@@ -545,7 +568,7 @@ shift_batch__discover_models <- function(
                     periods = periods,
                     reference = reference,
                     store = store,
-                    ui = ui
+                    ui = method_ui
                 )
                 if (nrow(result)) {
                     result[, `:=`(
@@ -553,6 +576,10 @@ shift_batch__discover_models <- function(
                         selected_variables = list(variables)
                     )]
                 }
+                shift_batch__discovery_notice(sprintf(
+                    "%s / combination %d: %d GCM(s) with complete coverage",
+                    transform@label, index, length(unique(result$source_id))),
+                    if (nrow(result)) "completed" else "rejected")
                 result
             }
         )
@@ -630,6 +657,8 @@ shift_batch__discover_models <- function(
         c("source_id", "variant_label", "grid_label")
     )
     identities <- identities[!duplicated(source_id)]
+    shift_batch__discovery_update(list(common_models = nrow(identities),
+        scope = "Selecting common GCMs"), reset = TRUE)
     if (is.null(climate@model)) {
         # A NULL internal count is the explicit public `model = NULL` request
         # for every compatible identity; a numeric count keeps batch expansion
@@ -894,7 +923,8 @@ shift_batch__future_epw <- function(
             periods = periods,
             references = references,
             store = file.path(batch_root, "discovery"),
-            ui = ui
+            ui = ui,
+            site = basename(site_identity$path)
         )
     }
     children <- list()

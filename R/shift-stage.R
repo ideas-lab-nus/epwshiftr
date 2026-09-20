@@ -907,9 +907,9 @@ shift__task_context <- function(task, x, store) {
 # callbacks in the terminal completion receipt.
 shift__task_summary <- function(task, result) {
     switch(task,
-        datasets = sprintf("%d dataset(s) collected",
+        datasets = sprintf("%d Dataset catalog records indexed",
             as.integer(shift_coalesce(result@meta$dataset_count, 0L))),
-        collect = sprintf("%d dataset(s) and %d file(s) collected",
+        collect = sprintf("%d Dataset and %d File catalog records indexed",
             as.integer(shift_coalesce(result@meta$dataset_count, 0L)),
             as.integer(shift_coalesce(result@meta$file_count, 0L))),
         download = {
@@ -3893,7 +3893,7 @@ shift_datasets <- function(x, all = TRUE, limit = FALSE, store = NULL,
         query <- shift_as_query(x)
         node <- query$index_node()
         unit_total <- shift__catalog_unit_total()
-        reporter$unit_started("Collecting Dataset catalog",
+        reporter$unit_started("Querying Dataset catalog",
             current = 1L, total = unit_total,
             details = list(unit_type = "catalog", catalog_role = "Dataset",
                 node = node))
@@ -3902,7 +3902,7 @@ shift_datasets <- function(x, all = TRUE, limit = FALSE, store = NULL,
             query$collect(type = "Dataset", all = all, limit = limit,
                 progress = FALSE)
         )
-        reporter$unit_completed(sprintf("Collected %d Dataset record(s)",
+        reporter$unit_completed(sprintf("Indexed %d Dataset catalog records",
             result$count()), current = 1L, total = unit_total,
             details = list(unit_type = "catalog", catalog_role = "Dataset",
                 node = node, records = result$count()))
@@ -4511,7 +4511,7 @@ S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*
         shift_datasets(x, all = all, limit = limit, store = store))
     node <- priv(datasets)$index_node
     if (!is.null(reporter)) {
-        reporter$unit_started("Collecting File catalog",
+        reporter$unit_started("Querying File catalog",
             current = 2L, total = 2L,
             details = list(unit_type = "catalog", catalog_role = "File",
                 node = node))
@@ -4544,7 +4544,7 @@ S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*
         } else {
             NA_real_
         }
-        reporter$unit_completed(sprintf("Collected %d File record(s)",
+        reporter$unit_completed(sprintf("Indexed %d File catalog records",
             files$count()), current = 2L, total = 2L,
             details = list(unit_type = "catalog", catalog_role = "File",
                 node = node, records = files$count(), bytes_total = size))
@@ -6795,6 +6795,28 @@ shift__live_snapshot_write <- function(store, run_id, event_limit = 200L,
     invisible(payload)
 }
 
+# Parse the ISO timestamps written by jsonlite without allowing base R to
+# accept only the date prefix. Keep fractional seconds and explicit offsets.
+shift__live_time <- function(x) {
+    if (inherits(x, "POSIXt") || inherits(x, "Date")) {
+        return(as.POSIXct(x, tz = "UTC"))
+    }
+    if (is.numeric(x) || is.logical(x)) {
+        return(as.POSIXct(x, origin = "1970-01-01", tz = "UTC"))
+    }
+    value <- gsub("T", " ", trimws(as.character(x)), fixed = TRUE)
+    value <- sub("Z$", "+0000", value)
+    value <- sub("([+-][0-9]{2}):([0-9]{2})$", "\\1\\2", value)
+    offset <- !is.na(value) & grepl("[+-][0-9]{4}$", value)
+    date_only <- !is.na(value) & grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", value)
+    out <- as.POSIXct(value, format = "%Y-%m-%d %H:%M:%OS", tz = "UTC")
+    # Parse offsets separately so mixed offset/no-offset columns stay valid.
+    out[offset] <- as.POSIXct(value[offset],
+        format = "%Y-%m-%d %H:%M:%OS%z", tz = "UTC")
+    out[date_only] <- as.POSIXct(value[date_only], format = "%Y-%m-%d", tz = "UTC")
+    out
+}
+
 # Normalize JSON rows back to data.table form and restore timestamp columns
 # needed by status age calculations and watch rendering.
 shift__live_table <- function(x) {
@@ -6808,7 +6830,7 @@ shift__live_table <- function(x) {
         names(out)
     )
     for (name in time_columns) {
-        out[[name]] <- as.POSIXct(out[[name]], tz = "UTC")
+        out[[name]] <- shift__live_time(out[[name]])
     }
     out
 }
@@ -6927,6 +6949,9 @@ shift__live_cancel_mark <- function(store_path, run_id, job_id, status) {
     }
     snapshot$run$status[[1L]] <- status
     snapshot$run$last_error[[1L]] <- "Cancellation requested by user."
+    if (length(snapshot$ui_state)) {
+        snapshot$ui_state$status <- status
+    }
     if (!is.null(snapshot$jobs) && nrow(snapshot$jobs)) {
         hit <- which(snapshot$jobs$job_id %in% job_id)
         if (length(hit)) {
@@ -7530,17 +7555,19 @@ shift__cmip6_coverage_request <- function(
 # Collect one coverage catalog and close its short-lived store connection
 # before another table group or index node is evaluated.
 shift__cmip6_coverage_catalog <- function(request, store, ui, label) {
+    # Discovery owns the reporter, so the standalone task wrapper no longer
+    # owns this connection. Close locally opened stores on every exit path.
+    file_store <- shift_store(store, create = TRUE)
+    if (!inherits(store, "EsgStore")) on.exit(file_store$close(), add = TRUE)
     files <- shift_collect(
         request,
-        store = store,
+        store = file_store,
         fields = SHIFT_WORKFLOW_FILE_FIELDS,
         all = TRUE,
         limit = FALSE,
         label = label,
         ui = ui
     )
-    file_store <- EsgStore$new(files@store_path, create = FALSE)
-    on.exit(file_store$close(), add = TRUE)
     shift_file_catalog(file_store, files@ids$query_id)
 }
 
@@ -7635,6 +7662,8 @@ shift__cmip6_period_coverage <- function(
             periods,
             node
         )
+        shift_batch__discovery_update(list(scope = "Future coverage",
+            scope_periods = shift__ui_periods(periods)), reset = TRUE)
         future_catalog <- shift__cmip6_coverage_catalog(
             future_request,
             store,
@@ -7685,6 +7714,8 @@ shift__cmip6_period_coverage <- function(
                 node,
                 reference = reference
             )
+            shift_batch__discovery_update(list(scope = "Historical coverage",
+                scope_periods = shift__ui_periods(reference@periods)), reset = TRUE)
             historical_catalog <- shift__cmip6_coverage_catalog(
                 historical_request,
                 store,
@@ -8561,14 +8592,42 @@ shift__with_query_reporter <- function(reporter, node, phase, expr) {
     if (is.null(reporter)) {
         return(force(expr))
     }
+    started <- as.numeric(Sys.time())
+    last_response <- NULL
+    responses <- 0L
+    cache_hits <- 0L
+    records <- 0L
+    # libcurl's download vector contains total bytes and bytes received. Count
+    # responses only after successful parsing, including empty count queries.
     callback <- function(progress) {
         state <- shift_coalesce(progress$state, "transfer")
+        now <- as.numeric(Sys.time())
+        if (state %in% c("started", "cached")) started <<- now
+        if (state %in% c("completed", "parsed")) last_response <<- now
+        if (identical(state, "parsed")) responses <<- responses + 1L
+        if (identical(state, "cached")) cache_hits <<- cache_hits + 1L
+        if (state %in% c("parsed", "cached")) {
+            records <<- records + shift_coalesce(progress$records, 0L)
+        }
+        bytes <- if (length(progress$download) >= 2L) progress$download[[2L]] else
+            shift_coalesce(progress$downloaded, 0)
+        message <- switch(state,
+            cached = "Reading cached catalog response",
+            completed = "Parsing catalog response",
+            parsed = "Processing catalog records",
+            if (isTRUE(bytes > 0)) "Receiving catalog response" else "Waiting for catalog response")
         reporter$heartbeat(
-            "Waiting for catalog response",
+            message,
             details = list(unit_type = "catalog", node = node,
                 phase = "query", catalog_role = phase,
                 transfer_state = state,
-                bytes_done = shift_coalesce(progress$download, progress$downloaded))
+                bytes_done = bytes, request_started_at = started,
+                request_seconds = now - started,
+                last_response_at = last_response,
+                responses = responses, cache_hits = cache_hits,
+                records_received = records,
+                query_timeout = getOption("epwshiftr.query.timeout", 300)),
+            force = state %in% c("started", "cached", "parsed")
         )
         invisible(TRUE)
     }

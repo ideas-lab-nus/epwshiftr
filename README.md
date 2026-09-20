@@ -121,21 +121,41 @@ access](https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.h
 before running it. A positive `model` count selects that many compatible
 models; a character vector names exact models, and `NULL` selects all.
 
+Model discovery uses one live panel for all methods. It identifies the
+current variable combination and future/historical coverage check.
+Catalog records, cached responses, downloaded files, and generated EPWs
+have separate counts; method numbers indicate search order, not a
+completion percentage.
+
+<details>
+<summary>Watch model discovery and coverage checks</summary>
+
+This recording uses the production UI with scripted catalog responses.
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="man/figures/README/shift-discovery-output-dark.svg">
+<img src="man/figures/README/shift-discovery-output.svg" alt="" width="100%" />
+</picture>
+
+</details>
+
 Each method/model child can be inspected and resumed independently.
 Output tables preserve method and model identity; cases and EPW files
 are counted separately because multi-year methods can write several
-files per case.
+files per case. Use `shift_history()` to find saved work and
+`shift_summary(batch, weather = TRUE)` to compare local EPW summaries
+with valid-hour counts.
 
 <details>
-<summary>Watch a multi-method batch and completed-result reuse</summary>
+<summary>Watch batch progress, reuse, and recovery diagnostics</summary>
 
-The same terminal UI shows two methods across two models: four children
-and eight cases. This recording also uses scripted states and example
-diagnostics.
+The same terminal UI shows a four-child batch, followed by a larger
+matrix with active, failed, and cancelled children. Scripted states
+illustrate progress, reuse, height limits, and recovery diagnostics.
 
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="man/figures/README/shift-batch-output-dark.svg">
-<img src="man/figures/README/shift-batch-output.svg" alt="Boxed batch terminal UI with separate overview, Workflows, and Results sections, showing two methods across two models and completed-result reuse." width="100%" />
+<img src="man/figures/README/shift-batch-output.svg" alt="Boxed batch UI showing live progress, completed-result reuse, and a height-limited large batch with failure and cancellation diagnostics." width="100%" />
 </picture>
 
 </details>
@@ -158,6 +178,8 @@ output directory, then validate and run it:
 ``` sh
 epwshiftr shift config validate --config workflow.json
 epwshiftr shift run --config workflow.json
+epwshiftr shift list --type batch
+epwshiftr shift summary --batch <batch_id> --weather
 ```
 
 For multiple methods and models, generate a config with

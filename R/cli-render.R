@@ -370,6 +370,8 @@ epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
 
 
 epwshiftr_cli_render_shift <- function(result, command) {
+    if (identical(command, "list")) return(cli_shift__render_history(result))
+    if (identical(command, "summary")) return(cli_shift__render_summary(result))
     if (is.list(result) && !is.data.frame(result) && !is.null(result$batch)) {
         return(cli_shift__render_batch(result))
     }
@@ -379,6 +381,7 @@ epwshiftr_cli_render_shift <- function(result, command) {
     }
     if (identical(command, "run")) {
         cli::cli_h1("Shift workflow")
+        if (!is.null(result$intent)) epwshiftr_cli_render_summary(result$intent, "Requested workflow")
         epwshiftr_cli_render_summary(result[intersect(c("status", "run_id", "query_id", "morph_id", "diagnostic_count"), names(result))], "Summary")
         epwshiftr_cli_render_table(result$cases, "Cases", c("status", "source_id", "experiment_id", "variant_label", "grid_label", "period", "missing_reason"))
         epwshiftr_cli_render_table(result$outputs, "Outputs", c("path", "case_id", "source_id", "experiment_id", "variant_label", "period", "morph_id"))
@@ -408,14 +411,118 @@ epwshiftr_cli_render_shift <- function(result, command) {
     epwshiftr_cli_render_default(result, title = title)
 }
 
+# Render complete run/batch identities and their exact stores so a history row
+# can always be used with show/watch, even when child stores are independent.
+cli_shift__render_history <- function(rows) {
+    cli::cli_h1("Workflow history")
+    if (!nrow(rows)) {
+        cli::cli_text("No matching saved workflows.")
+        return(invisible(NULL))
+    }
+    for (index in seq_len(nrow(rows))) {
+        row <- rows[index]
+        values <- list()
+        values[[epwshiftr_cli_title(row$type)]] <- row$id
+        status <- c(row$status, row$updated_at)
+        values$Status <- paste(status[!is.na(status) & nzchar(status)], collapse = " \u00b7 ")
+        identity <- c(row$method, row$model)
+        identity <- identity[!is.na(identity) & nzchar(identity)]
+        if (length(identity)) values$Plan <- paste(identity, collapse = " / ")
+        values$Store <- row$store
+        if (!is.na(row$error)) values$Failure <- row$error
+        for (name in names(values)) for (line in shift__ui_labeled_lines(name,
+            values[[name]], shift__ui_width())) cli::cli_verbatim(line)
+        cli::cli_verbatim("")
+    }
+    total <- shift_coalesce(attr(rows, "shift_history_total"), nrow(rows))
+    if (total > nrow(rows)) cli::cli_text("{total - nrow(rows)} more records; increase --limit or filter --type/--status.")
+    cli::cli_text("Use shift show/watch with --run or --batch and the row's --store path.")
+    invisible(NULL)
+}
 
+# Keep scientific identity, output type, denominators, and missing-file counts
+# together in each comparison record. No weather metric implies method ranking.
+cli_shift__render_summary <- function(rows) {
+    cli::cli_h1("Workflow comparison")
+    if (!nrow(rows)) {
+        cli::cli_text("No workflow cases to summarize.")
+        return(invisible(NULL))
+    }
+    for (index in seq_len(nrow(rows))) {
+        row <- rows[index]
+        identity <- unlist(row[, intersect(c("method", "scale", "reconstruction", "model",
+            "scenario", "member", "grid", "period"), names(row)), with = FALSE], use.names = FALSE)
+        identity <- identity[!is.na(identity) & nzchar(identity)]
+        output <- c(row$output_type, row$weather_years)
+        output <- output[!is.na(output) & nzchar(output)]
+        values <- list(Plan = paste(identity, collapse = " / "),
+            Status = sprintf("%s \u00b7 %d/%d cases complete \u00b7 %d EPW files (%d available)",
+                row$status, row$completed_cases, row$cases, row$epw_files, row$available_files),
+            Output = if (length(output)) paste(output, collapse = " \u00b7 ") else "Not generated",
+            Checks = sprintf("%d warnings \u00b7 %d errors", row$warnings, row$errors),
+            Fields = row$field_roles)
+        if ("weather_hours" %in% names(row)) {
+            values$Weather <- sprintf("%d hourly rows \u00b7 %d unreadable files", row$weather_hours, row$unreadable_files)
+            values$Temp <- sprintf("%.2f degC \u00b7 %d valid hours", row$mean_temperature_c, row$temperature_hours)
+            values$Humidity <- sprintf("%.2f %% \u00b7 %d valid hours", row$mean_relative_humidity_pct, row$humidity_hours)
+            values$Wind <- sprintf("%.2f m/s \u00b7 %d valid hours", row$mean_wind_speed_ms, row$wind_hours)
+            values$Solar <- sprintf("%.2f Wh/m2 per hour \u00b7 %d valid hours",
+                row$mean_global_horizontal_radiation_wh_m2, row$radiation_hours)
+            if (!is.na(row$weather_error)) values$Failure <- row$weather_error
+        }
+        for (name in names(values)) {
+            if (is.na(values[[name]]) || !nzchar(values[[name]])) next
+            for (line in shift__ui_labeled_lines(name, values[[name]], shift__ui_width())) cli::cli_verbatim(line)
+        }
+        cli::cli_verbatim("")
+    }
+    invisible(NULL)
+}
+
+
+# Keep the default overview bounded and render complete wrapped records only
+# when explicitly requested. Debug additionally exposes raw JSON payloads.
 epwshiftr_cli_render_shift_show <- function(result) {
     cli::cli_h1("Shift workflow run")
+    detail <- shift_coalesce(attr(result, "shift_ui_detail"), "normal")
+    if (!identical(detail, "normal")) {
+        for (name in c("run", "cases", "outputs", "events", "diagnostics", "explain")) {
+            cli_shift__render_detail_records(result[[name]],
+                epwshiftr_cli_title(name), debug = identical(detail, "debug"))
+        }
+        return(invisible(NULL))
+    }
     epwshiftr_cli_render_summary(result$run, "Run")
     epwshiftr_cli_render_table(result$cases, "Cases", c("status", "source_id", "experiment_id", "variant_label", "grid_label", "period", "missing_reason"), show_types = FALSE)
     epwshiftr_cli_render_table(result$outputs, "Outputs", c("path", "export_path", "source_id", "experiment_id", "variant_label", "period"), show_types = FALSE)
     epwshiftr_cli_render_table(result$events, "Events", c("created_at", "stage", "status", "message"), show_types = FALSE)
     epwshiftr_cli_render_table(result$diagnostics, "Diagnostics", c("stage", "severity", "code", "message", "action"), show_types = FALSE)
+    invisible(NULL)
+}
+
+# Print every row and every selected field without cell or row truncation.
+# Vertical records keep long paths, actions and raw payloads readable on small
+# terminals while preserving their complete text across wrapped lines.
+cli_shift__render_detail_records <- function(rows, title, debug = FALSE) {
+    rows <- data.table::as.data.table(rows)
+    width <- shift__ui_width()
+    cli::cli_h2(title)
+    if (!nrow(rows)) {
+        cli::cli_alert_info("No rows.")
+        return(invisible(NULL))
+    }
+    fields <- names(rows)
+    if (!debug) fields <- fields[!grepl("_json$", fields)]
+    for (index in seq_len(nrow(rows))) {
+        cli::cli_h3("{title} {index}/{nrow(rows)}")
+        for (field in fields) {
+            value <- paste(epwshiftr_cli_format_named_cell(rows[[field]][index],
+                field), collapse = ", ")
+            for (line in shift__ui_labeled_lines(epwshiftr_cli_title(field), value, width)) {
+                cli::cli_verbatim(line)
+            }
+        }
+    }
     invisible(NULL)
 }
 
@@ -434,6 +541,7 @@ epwshiftr_cli_render_shift_config <- function(result) {
     }
     if (identical(result$action, "validate")) {
         cli::cli_h1("Shift config validation")
+        epwshiftr_cli_render_summary(result$intent, "Requested workflow")
         epwshiftr_cli_render_summary(result[intersect(c("status", "config", "validation", "readiness"), names(result))], "Summary")
         epwshiftr_cli_render_table(result$cases, "Cases")
         epwshiftr_cli_render_table(result$explain, "Plan")
@@ -465,14 +573,9 @@ epwshiftr_cli_render_shift_watch <- function(
         width = shift__ui_width(),
         detail = detail,
         outputs = result$outputs,
-        diagnostics = result$diagnostics
+        diagnostics = result$diagnostics,
+        ui_state = attr(result, "shift_ui_state")
     )
-    ui_state <- attr(result, "shift_ui_state")
-    if (!is.null(ui_state) && length(ui_state) &&
-        result$run$status[[1L]] %in% c("queued", "running", "stopping")) {
-        view$lines <- shift__ui_status_lines(ui_state,
-            width = shift__ui_width())
-    }
     shift__ui_print_view(view, include_tables = TRUE)
     epwshiftr_cli_render_table(
         result$outputs,
@@ -618,9 +721,12 @@ cli_morph__render_inputs <- function(inputs, title) {
 
 # Keep one batch rendering contract for run receipts, show, status, and watch.
 # Status-only results use their available summary without requiring case data.
-cli_shift__render_batch <- function(result, detail = "normal") {
+cli_shift__render_batch <- function(result,
+    detail = shift_coalesce(attr(result, "shift_ui_detail"), "normal")) {
+    if (!is.null(result$intent)) epwshiftr_cli_render_summary(result$intent, "Requested workflow")
     if (all(c("cases", "outputs", "diagnostics") %in% names(result))) {
-        shift__ui_print_view(shift_batch__view(result, detail = detail))
+        shift__ui_print_view(shift_batch__view(result, detail = detail),
+            include_tables = !identical(detail, "normal"))
     } else {
         epwshiftr_cli_render_summary(as.list(result$batch[1L]), "Future EPW Batch")
         epwshiftr_cli_render_table(result$children, "Children",
@@ -628,6 +734,9 @@ cli_shift__render_batch <- function(result, detail = "normal") {
     }
     if (!is.null(result$outputs) && nrow(result$outputs)) {
         cli_shift__render_records(result$outputs, "outputs")
+    }
+    if (!identical(detail, "normal") && !is.null(result$explain)) {
+        epwshiftr_cli_render_table(result$explain, "Plan details")
     }
     epwshiftr_cli_render_table(result$next_steps, "Next steps",
         c("step", "command"), show_types = FALSE)

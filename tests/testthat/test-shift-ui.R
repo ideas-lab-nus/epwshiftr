@@ -957,7 +957,11 @@ test_that("dynamic startup is a replaceable first frame rather than a transcript
     reporter$close()
 
     expect_length(milestone_output, 0L)
-    expect_match(plain[[1L]], "run 04b318bd", fixed = TRUE)
+    expect_false(grepl("run 04b318bd", plain[[1L]], fixed = TRUE))
+    detail_state <- reporter$snapshot()
+    detail_state$detail <- "detail"
+    expect_match(cli::ansi_strip(shift__ui_status_lines(detail_state)[[1L]]),
+        "run 04b318bd", fixed = TRUE)
     expect_match(paste(plain, collapse = " "),
         "BCC-CSM2-MR.*ssp126.*Enhanced epwshiftr monthly morphing")
     expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
@@ -1435,7 +1439,7 @@ test_that("coverage, morph, and EPW stages expose distinct metrics", {
     expect_true(any(grepl("Cases.*1/2.*ready 1.*missing 1",
         cli::ansi_strip(coverage))))
     expect_true(any(grepl("Cases.*1/2", cli::ansi_strip(morph))))
-    expect_true(any(grepl("EPWs.*1/2.*exported 1/2",
+    expect_true(any(grepl("EPWs.*1/2.*exported 1 files",
         cli::ansi_strip(epw))))
 })
 

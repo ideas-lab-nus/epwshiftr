@@ -54,6 +54,24 @@
 
 ## New features
 
+* Added `shift_history()` / `shift list` to find saved runs and batches without
+  network requests or store creation, and `shift_summary()` / `shift summary`
+  to inspect outputs by method, model, scenario, period, member, and grid.
+  Optional `--weather` statistics include valid-hour counts and file-read errors.
+  Batch dashboards now fit the terminal height, prioritize failed and active
+  children, show live work and update times, and count cancellations explicitly.
+  `shift show --verbose` retains complete details. Error diagnostics appear
+  before warnings with recovery actions, watch leaves a durable final receipt,
+  and CLI batch execution prints that receipt once. Calibration variables,
+  morphing cases, and exported EPW files use separate progress units.
+  Config validation, dry-run discovery, and network checks now show their intent
+  and progress while respecting quiet and machine-readable output settings.
+  Tall foreground receipts retain all output paths, and detailed batch views
+  reserve space for both failed and active children. Discovery method progress
+  is also visible in log and compact modes. Standalone staged summaries recover
+  method and case identity from saved results; malformed batch receipts appear
+  as unavailable without hiding other history records.
+
 * Extended the CLI and terminal workflow dashboard to cover method/model
   batches, ERA5 calibration, typed model selection, and catalog refresh.
   `morph describe` exposes method contracts and validates candidate settings;
@@ -585,6 +603,21 @@
   `shift`, `extract`, `morph`, and `esgf` command groups (#114).
 
 ## Bug fixes
+
+* Consolidated batch model discovery into one live panel with method and input
+  combination ordinals, future/historical coverage scopes, requested periods,
+  and selected common models. Nested catalog queries no longer leave separate
+  full receipts. Catalog counts explicitly describe indexed metadata, and
+  request waits show timeout, received records, and cache reuse separately.
+  Standalone receipts avoid duplicate results, use explicit intermediate-step
+  labels, and isolate terminal colour state between frame writes.
+
+* Reading live workflow snapshots preserves timestamp clock times, fractional
+  seconds, and UTC offsets. Cancellation status overrides stale worker progress in
+  R, CLI, and batch views. Batch watch tracks observed events per child so
+  interleaved failures and terminal events are not skipped or replayed.
+  Single-run `shift show --verbose` prints all records with complete wrapped
+  paths and recovery actions; `--debug` also includes raw JSON payloads.
 
 * `shift_cmip6_avail(table = NULL)` now discovers one CMIP6 table per variable
   at the requested frequency instead of constraining every variable to the

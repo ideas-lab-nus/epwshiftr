@@ -9,7 +9,10 @@ ShiftUiOptions <- S7::new_class(
         refresh = S7::new_property(S7::class_numeric),
         heartbeat = S7::new_property(S7::class_numeric),
         # Transient batch context never participates in a scientific plan hash.
-        batch_context = S7::new_property(S7::class_list, default = list())
+        batch_context = S7::new_property(S7::class_list, default = list()),
+        # CLI result emitters own their final batch receipt; child progress is
+        # still rendered normally. This flag never enters persisted intent.
+        batch_receipt = S7::new_property(S7::class_logical, default = TRUE)
     )
 )
 
@@ -132,6 +135,38 @@ shift__ui_dashboard_width <- function(width = NULL) {
     max(1L, shift__ui_width(width) - 1L)
 }
 
+# Reserve one terminal row for cursor ownership and the next shell prompt.
+# Native TTY dimensions follow terminal resizes. Explicit options also support
+# IDE panes and reproducible recordings with caller-owned dimensions.
+shift__ui_height <- function(height = NULL) {
+    height <- shift_coalesce(height, getOption("epwshiftr.ui_height"))
+    if (is.null(height)) height <- shift_coalesce(shift__ui_terminal_height(),
+        Sys.getenv("LINES", "24"))
+    height <- suppressWarnings(as.integer(height[1L]))
+    if (!length(height) || is.na(height) || height < 2L) height <- 24L
+    max(1L, height - 1L)
+}
+
+# Query POSIX TTY dimensions at most twice a second. Redirected output never
+# opens /dev/tty, and other hosts retain the explicit option / LINES fallback.
+shift__ui_terminal_height <- local({
+    checked <- as.POSIXct(NA)
+    value <- NULL
+    function() {
+        if (.Platform$OS.type == "windows" || !file.exists("/bin/stty") ||
+            !isTRUE(isatty(cli::cli_output_connection()))) return(NULL)
+        now <- Sys.time()
+        if (!is.na(checked) && as.numeric(difftime(now, checked, units = "secs")) < 0.5) return(value)
+        checked <<- now
+        size <- tryCatch(suppressWarnings(system2("/bin/stty", "size",
+            stdin = "/dev/tty", stdout = TRUE, stderr = FALSE)), error = function(error) character())
+        rows <- if (length(size)) suppressWarnings(as.integer(
+            strsplit(trimws(size[[1L]]), "[[:space:]]+")[[1L]][1L])) else NA_integer_
+        value <<- if (!is.na(rows) && rows >= 2L) rows else NULL
+        value
+    }
+})
+
 # Fit plain user-facing text into one terminal row without relying on colour or
 # terminal-specific clipping for essential status information. cli performs
 # display-width-aware trimming for ANSI and wide CJK characters.
@@ -214,7 +249,7 @@ shift__ui_prefixed_lines <- function(prefix, value, width,
 # anchor in colour terminals and the plain-text anchor under NO_COLOR.
 shift__ui_labeled_lines <- function(label, value, width) {
     first_prefix <- shift__ui_labeled_line(label, "")
-    continuation <- shift__ui_labeled_line("", "")
+    continuation <- strrep(" ", cli::ansi_nchar(first_prefix, type = "width"))
     shift__ui_prefixed_lines(first_prefix, value, width, continuation)
 }
 
@@ -534,7 +569,8 @@ shift__ui_label_role <- function(label) {
 # existing fixed width. NO_COLOR and narrow terminals keep the same words and
 # alignment, so styling remains an enhancement rather than required semantics.
 shift__ui_labeled_line <- function(label, value) {
-    label <- sprintf("%-9s", label)
+    label <- paste0(label, strrep(" ", max(1L,
+        9L - cli::ansi_nchar(label, type = "width"))))
     label <- switch(shift__ui_label_role(trimws(label)),
         accent = cli::style_bold(cli::col_blue(label)),
         danger = cli::style_bold(cli::col_red(label)),
@@ -581,11 +617,13 @@ shift__ui_panel_rule <- function(label = NULL, width,
 
 # Apply colour only to semantic state. Ordinary configuration values remain in
 # the terminal's default foreground colour instead of becoming a wall of green.
-shift__ui_status_style <- function(status) {
+shift__ui_status_style <- function(status, stage = NULL) {
     state <- tolower(as.character(shift_coalesce(status, "running"))[[1L]])
-    # `waiting` is the durable state-machine term; users see READY because the
-    # command has finished and its result can be passed to the next stage.
-    label <- if (identical(state, "waiting")) "READY" else toupper(state)
+    # `waiting` is the durable state-machine term. The user-facing label names
+    # the finished intermediate artifact without implying a paused command.
+    label <- if (identical(state, "waiting")) {
+        if (isTRUE(stage %in% c("collect", "datasets"))) "CATALOG READY" else "STEP COMPLETE"
+    } else toupper(state)
     styled <- switch(state,
         completed = cli::col_green(label),
         partial = cli::col_yellow(label),
@@ -624,17 +662,36 @@ shift__ui_metric_line <- function(state, width = shift__ui_width()) {
         shift_coalesce(state$unit_current, NA_real_))
     total <- shift__ui_metric_number(details, "total",
         shift_coalesce(state$unit_total, NA_real_))
+    ordinal <- current
+    # A started unit is in progress, not completed. Older snapshots without a
+    # phase retain their historical counter semantics.
+    if (identical(details$phase, "unit") && is.null(details$outcome) &&
+        !is.na(current)) current <- max(0L, current - 1L)
     elapsed <- shift__format_elapsed(shift_coalesce(state$elapsed_seconds, 0))
     plan_context <- shift_coalesce(state$plan_context, list())
 
+    if (identical(details$unit_type, "catalog")) {
+        return(shift__ui_query_lines(state, width))
+    }
+
+    if (identical(details$unit_type, "epw_summary")) {
+        return(shift__ui_labeled_lines("EPWs",
+            shift_coalesce(shift__ui_determinate(current, total, width), "Reading local files"), width))
+    }
+    if (isTRUE(details$unit_type %in% c("reanalysis_variable", "reanalysis_request"))) {
+        return(shift__ui_labeled_lines("Variables", paste(c(
+            shift__ui_determinate(current, total, width),
+            if (!is.null(details$request_id)) paste("request", details$request_id),
+            details$status), collapse = " \u00b7 "), width))
+    }
+
     if (identical(stage, "resolve")) {
         attempt <- if (!is.na(current) && !is.na(total)) {
-            sprintf("node %d of %d", as.integer(current), as.integer(total))
+            sprintf("node %d of %d", as.integer(ordinal), as.integer(total))
         } else {
             "checking catalogs"
         }
-        value <- paste(c(attempt, plan_context$selection,
-            sprintf("%s elapsed", elapsed)), collapse = " \u00b7 ")
+        value <- paste(c(attempt, plan_context$selection), collapse = " \u00b7 ")
         return(shift__ui_labeled_lines("Status", value, width))
     }
 
@@ -695,14 +752,37 @@ shift__ui_metric_line <- function(state, width = shift__ui_width()) {
         current_case <- if (!is.na(current)) as.integer(current) else outputs
         target <- if (!is.na(total)) as.integer(total) else cases_total
         value <- paste(c(shift__ui_determinate(current_case, target, width),
-            sprintf("exported %d/%d", outputs, cases_total)),
+            sprintf("exported %d files", outputs)),
             collapse = " \u00b7 ")
         return(shift__ui_labeled_lines("EPWs", value, width))
     }
 
-    value <- paste(c(plan_context$selection, sprintf("%s elapsed", elapsed)),
-        collapse = " \u00b7 ")
+    if (is.null(plan_context$selection)) return(character())
+    value <- paste(plan_context$selection, collapse = " \u00b7 ")
     shift__ui_labeled_lines("Status", value, width)
+}
+
+# Describe actual request activity separately from total operation time. Only
+# received responses/rows are counted; no elapsed-time estimate implies server
+# health or overall completion. Cached responses are labelled separately.
+shift__ui_query_lines <- function(state, width = shift__ui_width()) {
+    details <- shift_coalesce(state$current_details, list())
+    if (is.null(details$request_started_at)) return(character())
+    now <- shift_coalesce(state$now_seconds, as.numeric(Sys.time()))
+    active <- isTRUE(details$transfer_state %in% c("started", "transfer"))
+    request_time <- if (active) now - details$request_started_at else details$request_seconds
+    parts <- c(if (active) paste("waiting", shift__format_elapsed(request_time)) else
+        paste("response in", shift__format_elapsed(shift_coalesce(request_time, 0))),
+        if (isTRUE(details$query_timeout > 0) && active)
+            paste("timeout", shift__format_elapsed(details$query_timeout)),
+        if (!is.null(details$last_response_at) && active)
+            paste("last response", shift__format_elapsed(now - details$last_response_at), "ago"))
+    counts <- c(sprintf("%d responses", shift_coalesce(details$responses, 0L)),
+        sprintf("%d cached", shift_coalesce(details$cache_hits, 0L)),
+        sprintf("%d %s catalog records received", shift_coalesce(details$records_received, 0L),
+            shift_coalesce(details$catalog_role, "")))
+    c(shift__ui_labeled_lines("Request", paste(parts, collapse = " \u00b7 "), width),
+        shift__ui_labeled_lines("Received", paste(counts, collapse = " \u00b7 "), width))
 }
 
 # Return one terminal-safe animation frame without making motion essential to
@@ -868,6 +948,10 @@ shift__ui_progress_values <- function(state) {
     if (identical(state$stage, "coverage")) {
         current <- as.numeric(shift_coalesce(state$cases_ready, 0L))
         total <- as.numeric(shift_coalesce(state$cases_total, 0L))
+    } else if (!identical(state$stage, "resolve") &&
+        identical(details$phase, "unit") && is.null(details$outcome) && !is.na(current)) {
+        # Compact backends use the same completed-unit meaning as boxed views.
+        current <- max(0L, current - 1L)
     }
     list(current = current, total = total)
 }
@@ -1120,6 +1204,10 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
                                    motion = c("none", "full", "reduced"),
                                    frame = 0L) {
     motion <- match.arg(motion)
+    if (identical(state$batch_context$kind, "discovery") &&
+        identical(state$stage, "discovery")) {
+        return(shift_batch__discovery_lines(state, width, motion, frame))
+    }
     terminal_width <- shift__ui_width(width)
     width <- shift__ui_dashboard_width(terminal_width)
     panel <- terminal_width >= 60L
@@ -1135,19 +1223,27 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
         shift_coalesce(plan_context$title, "Future EPW")))[[1L]]
     header_parts <- c(
         cli::style_bold(task_label),
-        shift__ui_status_style(status),
+        shift__ui_status_style(status, state$stage),
         cli::style_dim(elapsed),
-        if (nzchar(run_label)) cli::style_dim(paste("run", run_label))
+        if (nzchar(run_label) && !identical(state$detail, "normal"))
+            cli::style_dim(paste("run", run_label))
     )
     header <- paste(header_parts[!vapply(header_parts, is.null, logical(1L))],
         collapse = "  ")
     plan_lines <- shift__ui_plan_lines(plan_context, width = content_width)
+    # Standalone task labels and the generic input placeholder add no context
+    # beyond the title. Keep real selections and paths when they are present.
+    if (length(plan_context$items) && all(plan_context$items %in%
+        c(task_label, "input request"))) plan_lines <- character()
     batch <- shift_coalesce(state$batch_context, list())
     if (length(batch)) {
-        plan_lines <- c(shift__ui_labeled_lines("Batch", sprintf(
+        batch_line <- if (identical(batch$kind, "discovery")) {
+            shift__ui_labeled_lines("Discovery", batch$message, content_width)
+        } else shift__ui_labeled_lines("Batch", sprintf(
             "%s \u00b7 child %d/%d \u00b7 %d completed \u00b7 %d failed",
             batch$id, batch$current, batch$total, batch$completed, batch$failed
-        ), content_width), plan_lines)
+        ), content_width)
+        plan_lines <- c(batch_line, plan_lines)
     }
     details <- shift_coalesce(state$current_details, list())
     current_context <- character()
@@ -1174,6 +1270,8 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
         "Failure"
     } else if (identical(status, "cancelled")) {
         "Stopped"
+    } else if (isTRUE(details$unit_type %in% c("reanalysis_variable", "reanalysis_request"))) {
+        "Calibration"
     } else {
         "Now"
     }
@@ -1196,9 +1294,11 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
     plan_lines <- vapply(plan_lines, shift__ui_fit, character(1L),
         width = content_width)
     workflow <- vapply(c(
-        shift__ui_stage_rail(state, content_width, motion, frame),
-        current,
-        metrics
+        if (length(state$stage_sequence) > 1L)
+            shift__ui_stage_rail(state, content_width, motion, frame),
+        if (!terminal_result) current,
+        if (!terminal_result || isTRUE(state$stage %in%
+            c("coverage", "morph", "write_epw"))) metrics
     ), shift__ui_fit, character(1L), width = content_width)
     if (!isTRUE(panel)) {
         return(c(header, plan_lines, workflow, context))
@@ -1206,8 +1306,9 @@ shift__ui_status_lines <- function(state, width = shift__ui_width(),
     c(
         shift__ui_panel_rule(header, width, "top"),
         vapply(plan_lines, shift__ui_panel_line, character(1L), width = width),
-        shift__ui_panel_rule(cli::style_bold("Workflow"), width, "middle"),
-        vapply(workflow, shift__ui_panel_line, character(1L), width = width),
+        if (length(workflow)) c(
+            shift__ui_panel_rule(cli::style_bold("Workflow"), width, "middle"),
+            vapply(workflow, shift__ui_panel_line, character(1L), width = width)),
         shift__ui_panel_rule(cli::style_bold(
             if (isTRUE(terminal_problem)) {
                 "Diagnosis"
@@ -1231,6 +1332,32 @@ shift__ui_compact_line <- function(state, width = shift__ui_width(),
     width <- shift__ui_width(width)
     status <- as.character(shift_coalesce(state$status, "running"))[[1L]]
     stage <- shift__ui_stage_label(shift_coalesce(state$stage, "planned"))
+    # Lead with the method and total in compact discovery views so cropping
+    # cannot discard the batch context behind a long catalog unit label.
+    batch <- shift_coalesce(state$batch_context, list())
+    # Discovery owns a compact status contract too: scope and request liveness
+    # outrank long method names when an IDE exposes only one replaceable row.
+    if (identical(batch$kind, "discovery") && identical(state$stage, "discovery")) {
+        finished <- status %in% c("completed", "failed", "cancelled")
+        summary <- if (finished) shift_coalesce(state$result_summary, state$unit_label) else {
+            query <- shift_coalesce(state$current_details, list())
+            paste(c(if (!is.null(batch$current)) sprintf("method %d/%d", batch$current, batch$total),
+                batch$scope,
+                if (isTRUE(query$transfer_state %in% c("started", "transfer"))) paste("wait",
+                    shift__format_elapsed(as.numeric(Sys.time()) - query$request_started_at)) else
+                    if (!is.null(batch$alternative)) sprintf("inputs %d/%d", batch$alternative, batch$alternatives)),
+                collapse = " \u00b7 ")
+        }
+        return(shift__ui_fit(paste(shift__ui_state_symbol(status, motion, frame),
+            if (finished) toupper(status) else "Discovery", summary), width))
+    }
+    if (identical(batch$kind, "discovery")) {
+        stage <- if (!is.null(batch$method_label)) sprintf(
+            "Discovery %d/%d: %s / inputs %d/%d / %s",
+            batch$current, batch$total, batch$method_label,
+            batch$alternative, batch$alternatives, batch$scope) else
+            paste("Discovery", batch$message)
+    }
     values <- shift__ui_progress_values(state)
     counter <- if (!is.na(values$current) && !is.na(values$total) &&
         values$total > 0) {
@@ -1238,7 +1365,12 @@ shift__ui_compact_line <- function(state, width = shift__ui_width(),
     } else {
         NULL
     }
+    if (identical(batch$kind, "discovery")) counter <- NULL
     details <- shift_coalesce(state$current_details, list())
+    if (isTRUE(details$unit_type %in% c("reanalysis_variable", "reanalysis_request"))) {
+        stage <- "Calibration"
+        if (!is.null(counter)) counter <- paste(counter, "variables")
+    }
     context <- character()
     if (!is.null(details$node) && length(details$node) &&
         !is.na(details$node[[1L]])) {
@@ -1261,6 +1393,11 @@ shift__ui_compact_line <- function(state, width = shift__ui_width(),
     if (identical(marker, "waiting")) {
         marker <- "completed"
     }
+    # A single warning glyph cannot distinguish pending cancellation from a
+    # partial result; keep the stopping state explicit even in one-line views.
+    if (identical(status, "stopping")) stage <- paste("STOPPING", stage)
+    if (identical(status, "waiting")) stage <- paste(
+        cli::ansi_strip(shift__ui_status_style(status, state$stage)), stage)
     parts <- c(
         paste(shift__ui_state_symbol(marker, motion, frame), stage),
         counter,
@@ -1670,8 +1807,8 @@ shift__ui_table_state <- function(row, events, cases) {
         }
     }, character(1L)))
     completed_stages <- completed_stages[!is.na(completed_stages)]
-    started_at <- row$started_at[[1L]]
-    stopped_at <- row$completed_at[[1L]]
+    started_at <- shift_coalesce(row$started_at[[1L]], as.POSIXct(NA, tz = "UTC"))
+    stopped_at <- shift_coalesce(row$completed_at[[1L]], as.POSIXct(NA, tz = "UTC"))
     if (is.na(stopped_at)) {
         terminal <- row$status[[1L]] %in%
             c("waiting", "completed", "partial", "failed", "cancelled")
@@ -1714,6 +1851,16 @@ shift__ui_table_state <- function(row, events, cases) {
     } else {
         character()
     }
+    # Export outcomes count physical files even when one case spans many years.
+    # Older snapshots retain their available path evidence when no such event exists.
+    exported <- vapply(details, function(value) {
+        if (identical(value$unit_type, "epw_export") &&
+            isTRUE(value$outcome %in% c("completed", "skipped"))) {
+            as.integer(shift_coalesce(value$current, 0L))
+        } else 0L
+    }, integer(1L))
+    exported <- max(c(0L, exported,
+        length(unique(output_paths[!is.na(output_paths) & nzchar(output_paths)]))))
     list(
         run_id = row$run_id[[1L]],
         task_label = shift_coalesce(plan_context$title, "Future EPW"),
@@ -1736,7 +1883,7 @@ shift__ui_table_state <- function(row, events, cases) {
         plan_context = plan_context,
         cases_ready = sum(cases$status %in% c("ready", "morphing", "morphed", "completed")),
         cases_total = if (nrow(cases)) nrow(cases) else 0L,
-        outputs_completed = sum(cases$status %in% "completed"),
+        outputs_completed = exported,
         output_dir = plan_context$output,
         output_paths = output_paths,
         output_path_limit = 5L,
@@ -1791,13 +1938,32 @@ shift__ui_event_nodes <- function(events) {
     data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
 
+# Merge transient progress into a persisted run state. The run status remains
+# authoritative when a cancellation arrives after the worker's last frame.
+shift__ui_live_state <- function(row, state, ui_state = NULL) {
+    if (!length(ui_state) || !nrow(row) ||
+        !row$status[[1L]] %in% c("queued", "running", "stopping")) {
+        return(state)
+    }
+    state[names(ui_state)] <- ui_state
+    state$status <- row$status[[1L]]
+    if (length(row$started_at) && !is.na(row$started_at[[1L]])) {
+        # Elapsed time keeps advancing between worker heartbeat snapshots.
+        state$elapsed_seconds <- max(0, as.numeric(difftime(
+            shift__watch_now(), row$started_at[[1L]], units = "secs")))
+    }
+    state
+}
+
 # Build the complete watch view once so R and CLI renderers cannot drift in
 # stage, case, resolver, or width semantics.
 shift__ui_table_view <- function(row, cases, events,
                                  width = shift__ui_width(), detail = "normal",
                                  motion = "none", frame = 0L,
-                                 outputs = NULL, diagnostics = NULL) {
+                                 outputs = NULL, diagnostics = NULL,
+                                 ui_state = NULL) {
     state <- shift__ui_table_state(row, events, cases)
+    state <- shift__ui_live_state(row, state, ui_state)
     if (!is.null(outputs) && state$status %in% c("completed", "partial")) {
         completion <- shift__ui_completion(cases, outputs,
             shift_coalesce(diagnostics, shift_diagnostics_empty()))
@@ -1831,7 +1997,7 @@ shift__ui_run_view <- function(run, width = shift__ui_width(),
     } else {
         tryCatch(shift_outputs(run, refresh = FALSE), error = function(error) NULL)
     }
-    view <- shift__ui_table_view(
+    shift__ui_table_view(
         row = run@meta$run,
         cases = shift_cases(run, refresh = FALSE),
         events = run@meta$events,
@@ -1840,29 +2006,9 @@ shift__ui_run_view <- function(run, width = shift__ui_width(),
         motion = motion,
         frame = frame,
         outputs = outputs,
-        diagnostics = shift_diagnostics(run, refresh = FALSE)
+        diagnostics = shift_diagnostics(run, refresh = FALSE),
+        ui_state = run@meta$ui_state
     )
-    # Active background workers publish transient transfer state beside their
-    # durable events. Prefer it for the four live rows while retaining tables
-    # reconstructed from persisted resolver/case data.
-    if (!is.null(run@meta$ui_state) && length(run@meta$ui_state) &&
-        run@meta$run$status[[1L]] %in% c("queued", "running", "stopping")) {
-        state <- run@meta$ui_state
-        row <- data.table::as.data.table(run@meta$run)
-        if (nrow(row) && row$status[[1L]] %in% c("queued", "running", "stopping") &&
-            !is.na(row$started_at[[1L]])) {
-            # Watch animation advances from wall-clock elapsed time even when
-            # the worker has not emitted a new durable heartbeat frame.
-            state$elapsed_seconds <- as.numeric(difftime(
-                Sys.time(), row$started_at[[1L]], units = "secs"))
-        }
-        view$state <- state
-        view$lines <- shift__ui_status_lines(state, width = width,
-            motion = motion, frame = frame)
-        view$compact <- shift__ui_compact_line(state, width = width,
-            motion = motion, frame = frame)
-    }
-    view
 }
 
 # Render a complete persisted snapshot once. This is the non-animated fallback
@@ -2045,8 +2191,16 @@ ShiftReporter <- R6::R6Class(
             if (identical(private$mode_value, "dynamic")) {
                 private$render_dynamic(force = TRUE)
             } else if (!identical(private$mode_value, "none")) {
-                private$emit("info", sprintf("%s run %s started.",
-                    label, private$run_id_value))
+                private$emit("info", if (is.null(private$run_id_value)) {
+                    paste(label, "started.")
+                } else sprintf("%s run %s started.", label, private$run_id_value))
+                # Retain context from older standalone discovery callers. The
+                # parent discovery reporter publishes structured updates below.
+                batch <- private$ui_value@batch_context
+                if (identical(batch$kind, "discovery") && length(batch$message)) {
+                    for (line in shift__ui_labeled_lines("Discovery", batch$message,
+                        width = private$width())) private$emit("verbatim", line)
+                }
                 for (line in shift__ui_plan_lines(private$plan_context,
                     width = private$width())) {
                     private$emit("verbatim", line)
@@ -2057,6 +2211,35 @@ ShiftReporter <- R6::R6Class(
                     unit_type = "shift_operation", outcome = "running",
                     stage_sequence = private$stage_sequence,
                     next_stage = private$next_stage))
+            invisible(self)
+        },
+
+        # Replace transient discovery context without opening another reporter.
+        # Reset per-query details at scope boundaries so historical checks never
+        # display counters inherited from the preceding future catalog.
+        discovery_updated = function(context, reset = FALSE) {
+            # Use the recognizable algorithm name in presentation while the
+            # scientific transform key and registry label remain unchanged.
+            if (identical(context$method, "original_morphing")) {
+                context$method_label <- "Belcher original Morphing"
+            }
+            private$ui_value@batch_context <- utils::modifyList(
+                private$ui_value@batch_context, context, keep.null = TRUE)
+            if (reset) private$current_details <- NULL
+            batch <- private$ui_value@batch_context
+            private$stage_message <- shift_coalesce(batch$scope, "Preparing model discovery")
+            if (identical(private$mode_value, "dynamic")) {
+                private$render_dynamic(force = TRUE)
+            } else if (identical(private$mode_value, "log") &&
+                !is.null(batch$method_label) && is.null(context$selected_models)) {
+                private$emit("verbatim", paste(c(
+                    sprintf("[Discovery][method %d/%d][inputs %d/%d] %s",
+                        batch$current, batch$total, batch$alternative,
+                        batch$alternatives, batch$method_label),
+                    batch$scope, batch$scope_periods,
+                    if (!is.null(batch$node)) shift__node_label(batch$node)),
+                    collapse = " \u00b7 "))
+            }
             invisible(self)
         },
 
@@ -2226,7 +2409,11 @@ ShiftReporter <- R6::R6Class(
             )
             private$current_details <- event_details
             private$last_event <- message
-            private$add_recent(message, outcome)
+            recent <- message
+            batch <- private$ui_value@batch_context
+            if (identical(batch$kind, "discovery")) recent <- paste(
+                batch$scope, message, sep = ": ")
+            private$add_recent(recent, outcome)
             private$capture_business_result(message, event_details)
             if (identical(private$mode_value, "dynamic")) {
                 if (outcome %in% c("failed", "fallback")) {
@@ -2311,7 +2498,8 @@ ShiftReporter <- R6::R6Class(
             private$cases_total <- nrow(private$case_rows)
             private$cases_ready <- sum(private$case_rows$status %in%
                 c("ready", "morphing", "morphed", "completed"))
-            private$outputs_completed <- sum(private$case_rows$status %in% "completed")
+            # Case completion must not overwrite the independently measured
+            # export count: a single multi-year case can produce many EPWs.
             if (identical(private$mode_value, "dynamic")) {
                 private$render_dynamic(force = TRUE)
             }
@@ -2754,6 +2942,7 @@ ShiftReporter <- R6::R6Class(
                 warning_messages = private$warning_messages,
                 field_summary = private$field_summary,
                 batch_context = private$ui_value@batch_context,
+                detail = private$ui_value@detail,
                 elapsed_seconds = private$elapsed(private$started_at)
             )
         },
@@ -2991,4 +3180,20 @@ shift__format_elapsed <- function(seconds) {
         return(sprintf("%dm %02ds", minutes, secs))
     }
     sprintf("%ds", secs)
+}
+
+# Give potentially slow readiness checks a visible lifecycle without creating
+# a persisted scientific run. The caller owns the complete final check report.
+shift__ui_check <- function(ui, label, code) {
+    reporter <- shift__reporter(ui)
+    on.exit(reporter$close(), add = TRUE)
+    reporter$operation_started("check", label,
+        context = list(items = label, message = paste("Preparing", label)))
+    tryCatch(code(reporter), error = function(error) {
+        reporter$operation_failed(conditionMessage(error))
+        stop(error)
+    }, interrupt = function(error) {
+        reporter$operation_failed("Check interrupted.", cancelled = TRUE)
+        stop(error)
+    })
 }

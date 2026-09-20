@@ -140,6 +140,7 @@ Collate:
     'schema.R'
     'shift-batch-ui.R'
     'shift-batch.R'
+    'shift-inspect.R'
     'shift-path.R'
     'shift-tui.R'
     'shift-ui.R'

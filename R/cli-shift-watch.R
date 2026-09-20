@@ -1,13 +1,17 @@
+# Preserve the requested detail level as presentation metadata for both target
+# types; attributes do not change the machine-readable snapshot fields.
 epwshiftr_cli_shift_show <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
+    parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"),
+        flags = c("--verbose", "--debug"))
     epwshiftr_cli_assert_no_positionals(parsed)
     run <- cli_shift__target(parsed, store)
     if (S7::S7_inherits(run, ShiftBatch)) {
         snapshot <- shift_batch__snapshot(run, event_count = Inf, refresh = FALSE)
         snapshot$explain <- shift_explain(run)
+        attr(snapshot, "shift_ui_detail") <- epwshiftr_cli_shift_detail(parsed)
         return(snapshot)
     }
-    list(
+    snapshot <- list(
         run = run@meta$run,
         cases = shift_cases(run),
         events = run@meta$events,
@@ -15,6 +19,8 @@ epwshiftr_cli_shift_show <- function(store, args) {
         diagnostics = shift_diagnostics(run),
         explain = shift_explain(run)
     )
+    attr(snapshot, "shift_ui_detail") <- epwshiftr_cli_shift_detail(parsed)
+    snapshot
 }
 
 
@@ -114,6 +120,18 @@ epwshiftr_cli_shift_jsonl_record <- function(type, ...) {
 }
 
 
+# Select the correct event cursor for single-run and independently polled
+# batch histories before any public recent-event limit is applied.
+cli_shift__watch_event_delta <- function(snapshot, cursor, initial_limit, initial) {
+    events <- shift_coalesce(attr(snapshot, "shift_ui_events"), snapshot$events)
+    if (!is.null(snapshot$batch)) {
+        shift_batch__event_delta(events, cursor, initial_limit, initial)
+    } else {
+        shift__ui_event_delta(events, cursor, initial_limit, initial)
+    }
+}
+
+# Follow persisted snapshots with shared R/CLI views and lossless event deltas.
 epwshiftr_cli_shift_watch_follow <- function(store, run_id,
                                              event_count = 10L, interval = 1, count = Inf,
                                              jsonl = FALSE, quiet = FALSE,
@@ -132,27 +150,19 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
         progress <- "log"
         motion <- "none"
     }
-    last_event_id <- NA_character_
+    event_cursor <- if (is.null(batch_id)) NA_character_ else list()
     event_cursor_initialized <- FALSE
     update_dynamic <- function(snapshot) {
         if (!is.null(snapshot$batch)) {
             view <- shift_batch__view(snapshot, detail = detail,
-                motion = motion, frame = frame)
+                motion = motion, frame = frame, height = shift__ui_height())
         } else {
             view_events <- shift_coalesce(attr(snapshot, "shift_ui_events"),
                 snapshot$events)
             view <- shift__ui_table_view(snapshot$run, snapshot$cases,
                 view_events, detail = detail, motion = motion, frame = frame,
-                outputs = snapshot$outputs, diagnostics = snapshot$diagnostics)
-            ui_state <- attr(snapshot, "shift_ui_state")
-            if (!is.null(ui_state) && length(ui_state) &&
-                snapshot$run$status[[1L]] %in% c("queued", "running", "stopping")) {
-                view$state <- ui_state
-                view$lines <- shift__ui_status_lines(ui_state,
-                    motion = motion, frame = frame)
-                view$compact <- shift__ui_compact_line(ui_state,
-                    motion = motion, frame = frame)
-            }
+                outputs = snapshot$outputs, diagnostics = snapshot$diagnostics,
+                ui_state = attr(snapshot, "shift_ui_state"))
         }
         ok <- !is.null(renderer) &&
             isTRUE(renderer$draw(view$lines, compact = view$compact))
@@ -185,11 +195,9 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
         if (isTRUE(quiet)) {
             # no output
         } else if (isTRUE(jsonl)) {
-            all_rows <- shift_coalesce(attr(snapshot, "shift_ui_events"),
-                snapshot$events)
-            delta <- shift__ui_event_delta(
-                all_rows,
-                last_event_id = last_event_id,
+            delta <- cli_shift__watch_event_delta(
+                snapshot,
+                cursor = event_cursor,
                 initial_limit = event_count,
                 initial = !event_cursor_initialized
             )
@@ -205,7 +213,7 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
                         event = epwshiftr_cli_row_object(delta$rows, j))
                 }
             }
-            last_event_id <- delta$cursor
+            event_cursor <- delta$cursor
             event_cursor_initialized <- TRUE
             if (!isTRUE(active)) {
                 epwshiftr_cli_shift_jsonl_record("terminal", snapshot = snapshot)
@@ -218,16 +226,14 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
             # Cursor against the complete available history before applying
             # the public tail limit; otherwise a busy interval can silently
             # discard events that arrived between two watch polls.
-            all_rows <- shift_coalesce(attr(snapshot, "shift_ui_events"),
-                snapshot$events)
-            delta <- shift__ui_event_delta(
-                all_rows,
-                last_event_id = last_event_id,
+            delta <- cli_shift__watch_event_delta(
+                snapshot,
+                cursor = event_cursor,
                 initial_limit = event_count,
                 initial = !event_cursor_initialized
             )
             rows <- delta$rows
-            if (i == 1L || !isTRUE(active)) {
+            if (i == 1L) {
                 epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
             } else {
                 if (isTRUE(delta$gap)) {
@@ -239,14 +245,14 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
                 for (j in seq_len(nrow(rows))) {
                     cli::cli_text("{shift__ui_persisted_event_line(rows[j], detail = detail)}")
                 }
+                if (!isTRUE(active)) {
+                    epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
+                }
             }
-            last_event_id <- delta$cursor
+            event_cursor <- delta$cursor
             event_cursor_initialized <- TRUE
         }
-        if (!is.infinite(count) && i >= count) {
-            break
-        }
-        if (!isTRUE(active)) {
+        if ((!is.infinite(count) && i >= count) || !isTRUE(active)) {
             if (identical(progress, "dynamic") && !isTRUE(quiet) && !isTRUE(jsonl)) {
                 close_dynamic()
                 epwshiftr_cli_render_shift_watch(snapshot, detail = detail)

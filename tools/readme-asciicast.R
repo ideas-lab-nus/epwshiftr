@@ -1,3 +1,80 @@
+# Record the production discovery reporter with scripted responses, including
+# a long server wait, future/historical checks, and an alternative input set.
+# This exercises the same single framebuffer used by live catalog discovery.
+readme__discovery_demo <- function() {
+    # Recorders have no physical TTY: use the explicit frame backend, just as
+    # the other README demos do, while the reporter owns all semantic state.
+    ui <- epwshiftr::shift_ui("none", motion = "reduced")
+    ui@batch_context <- list(kind = "discovery", total = 3L,
+        target_models = 3L, site = "San Francisco International Airport",
+        scenarios = c("ssp126", "ssp245", "ssp370", "ssp585"),
+        periods = "2041-2060 + 2071-2090")
+    reporter <- epwshiftr:::shift__reporter(ui)
+    on.exit(reporter$close(), add = TRUE)
+    renderer <- epwshiftr:::ShiftFrameRenderer$new(
+        output = cli::cli_output_connection(), backend = "frame")
+    on.exit(renderer$close(), add = TRUE)
+    withr::local_options(epwshiftr.ui_height = 26L)
+    # Paint each milestone with the production formatter and terminal writer.
+    show <- function(hold = 0.25) {
+        state <- reporter$snapshot()
+        # Compress the recording while keeping its scripted forty-second
+        # request wait shorter than the displayed overall operation time.
+        state$elapsed_seconds <- state$elapsed_seconds + 60
+        renderer$draw(epwshiftr:::shift__ui_status_lines(state, width = 112L,
+            motion = "reduced"), epwshiftr:::shift__ui_compact_line(state, width = 112L))
+        Sys.sleep(hold)
+    }
+    reporter$operation_started("discovery", "Discover CMIP6 models",
+        context = list(items = "San Francisco / 3 GCMs / 4 scenarios / 3 methods"))
+    variables <- c("tas", "tasmax", "tasmin", "hurs", "psl", "rlds",
+        "rsds", "sfcWind", "clt", "pr")
+    methods <- c("original_morphing", "bws_btws", "epwshiftr")
+    # Each sample represents a real reporter milestone, not a handcrafted box.
+    for (index in seq_along(methods)) {
+        transform <- epwshiftr::monthly_transform(methods[[index]])
+        reporter$discovery_updated(list(current = index, method = methods[[index]],
+            method_label = transform@label, alternative = 1L, alternatives = 2L,
+            variables = variables, scope = "Candidate catalog", scope_periods = NULL,
+            node = "https://esgf-data.dkrz.de",
+            node_index = 1L, node_total = 3L), reset = TRUE)
+        reporter$unit_started("Querying Dataset catalog",
+            details = list(unit_type = "catalog", catalog_role = "Dataset"))
+        show()
+        reporter$unit_completed("Indexed 964 Dataset catalog records")
+        reporter$discovery_updated(list(scope = "Future coverage",
+            scope_periods = "2041-2060 + 2071-2090"), reset = TRUE)
+        reporter$unit_started("Querying File catalog",
+            details = list(unit_type = "catalog", catalog_role = "File"))
+        reporter$heartbeat("Waiting for catalog response", details = list(
+            request_started_at = as.numeric(Sys.time()) - 40,
+            last_response_at = as.numeric(Sys.time()) - 42,
+            query_timeout = 300, transfer_state = "transfer",
+            responses = 2L, cache_hits = 1L, records_received = 2400L), force = TRUE)
+        show(if (index == 1L) 1 else 0.25)
+        reporter$unit_completed("Indexed 17185 File catalog records")
+        reporter$discovery_updated(list(scope = "Historical coverage",
+            scope_periods = "1973-2005"), reset = TRUE)
+        reporter$unit_started("Querying File catalog",
+            details = list(unit_type = "catalog", catalog_role = "File"))
+        show()
+        reporter$unit_completed("Indexed 2844 File catalog records")
+        reporter$discovery_updated(list(alternative = 2L,
+            variables = c(setdiff(variables, "hurs"), "huss", "ps"),
+            scope = "Candidate catalog", scope_periods = NULL), reset = TRUE)
+        reporter$unit_started("Querying Dataset catalog",
+            details = list(unit_type = "catalog", catalog_role = "Dataset"))
+        show()
+        reporter$notice(paste(transform@label, "/ combination 2: 5 GCMs with complete coverage"),
+            outcome = "completed")
+    }
+    reporter$discovery_updated(list(common_models = 4L,
+        selected_models = c("Model-A", "Model-B", "Model-C")), reset = TRUE)
+    reporter$operation_completed("3 GCMs selected with complete coverage across all 3 methods")
+    show(0)
+    renderer$commit()
+}
+
 # Render a deterministic representative Future EPW run for the README. The
 # README must exercise the production dashboard formatter without depending on
 # live ESGF services or opening the persistent DuckDB store during a build.
@@ -263,6 +340,7 @@ readme__batch_states <- function() {
         failed = 0L,
         partial = 0L,
         waiting = 0L,
+        cancelled = 0L,
         cases = 8L,
         epw_files = 0L,
         warnings = 0L,
@@ -311,18 +389,53 @@ readme__batch_states <- function() {
     states
 }
 
+# Extend the small-batch recording with a scripted large matrix and actionable
+# failure. All frames still use the production view and framebuffer renderer.
+readme__batch_review_states <- function() {
+    states <- readme__batch_states()
+    snapshot <- data.table::copy(states[[1L]])
+    snapshot$children <- snapshot$children[rep(c(1L, 3L), each = 8L)]
+    snapshot$children[, `:=`(
+        child_key = paste0("child_large", seq_len(.N)),
+        model = rep(paste0("Model-", seq_len(8L)), 2L),
+        status = "completed", current_stage = "write_epw")]
+    snapshot$children[14:16, `:=`(status = "running", current_stage = "extract_future")]
+    snapshot$batch[, `:=`(batch_id = "batch_readme_large", models = 8L,
+        children = 16L, cases = 32L, completed = 13L, active = 3L, epw_files = 26L)]
+    snapshot$activity <- list(child_large14 = list(
+        stage = "extract_future", status = "running",
+        unit_label = "ssp585 · tas · 2055–2065", elapsed_seconds = 42,
+        updated_at = "2026-09-16 10:00:42",
+        current_details = list(unit_type = "extract_plan", phase = "unit",
+            current = 7L, total = 20L, access_method = "OPeNDAP")))
+    states[[5L]] <- data.table::copy(snapshot)
+
+    # Show a failure and a cancellation while another child remains active.
+    # This exercises priority, diagnostic actions, and the hidden-child hint.
+    snapshot$children[15L, status := "failed"]
+    snapshot$children[16L, status := "cancelled"]
+    snapshot$batch[, `:=`(status = "failed", active = 1L, failed = 1L, cancelled = 1L)]
+    snapshot$diagnostics <- data.table::data.table(severity = "error",
+        method = "qdm", model = "Model-7", message = "Calibration file is missing.",
+        action = "Restore the calibration file, then resume this batch.")
+    states[[6L]] <- data.table::copy(snapshot)
+    states
+}
+
 # Record the production batch view with the same atomic framebuffer used by
 # foreground workflows. Only the representative input states are scripted.
 readme__batch_demo <- function() {
+    old <- options(epwshiftr.ui_height = 24L)
+    on.exit(options(old), add = TRUE)
     renderer <- epwshiftr:::ShiftFrameRenderer$new(
         output = cli::cli_output_connection(),
         backend = "frame"
     )
     on.exit(renderer$close("done"), add = TRUE)
-    for (snapshot in readme__batch_states()) {
+    for (snapshot in readme__batch_review_states()) {
         for (frame in seq_len(4L)) {
             view <- epwshiftr:::shift_batch__view(snapshot, width = 112L,
-                motion = "full", frame = frame)
+                motion = "full", frame = frame, height = epwshiftr:::shift__ui_height())
             renderer$draw(view$lines, view$compact)
             Sys.sleep(0.06)
         }

@@ -335,6 +335,9 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     expect_identical(tools::md5sum(output), hash)
     expect_identical(tools::md5sum(receipt_path), receipt_hash)
     expect_equal(length(calls$types), collected)
+    human <- capture.output(epwshiftr_cli(c("--store", root, "shift", "run",
+        "--config", config_path)), type = "message")
+    expect_equal(sum(grepl("Future EPW Batch", cli::ansi_strip(human), fixed = TRUE)), 1L)
     snapshot <- shift_batch__snapshot(shift_batch_get(id, root), refresh = FALSE)
     expect_equal(snapshot$batch$completed, 1L)
     expect_equal(snapshot$batch$epw_files, 1L)
@@ -345,6 +348,14 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     expect_true(all(data$result$method == "epwshiftr"))
     expect_true(all(data$result$model == "EC-Earth3"))
     expect_true(all(is.finite(data$result$dry_bulb_temperature)))
+    summary <- epwshiftr_cli(c(base, "summary", "--batch", id, "--weather"))
+    expect_equal(summary$status, 0L, info = summary$error)
+    expect_equal(summary$result$epw_files, 1L)
+    expect_true(all(is.finite(summary$result$mean_temperature_c)))
+    expect_equal(summary$result$weather_hours, 8760L)
+    history <- epwshiftr_cli(c(base, "list", "--type", "batch"))
+    expect_equal(history$status, 0L, info = history$error)
+    expect_identical(history$result$status, "completed")
     reopened <- shift_batch_get(id, root)
     # DuckDB may emit its own first-open notice; the null UI itself must not
     # render progress or attempt to close a nonexistent frame renderer.

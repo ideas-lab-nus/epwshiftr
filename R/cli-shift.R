@@ -3,7 +3,10 @@ epwshiftr_cli_shift <- function(store, command, args, json = FALSE, jsonl = FALS
         command,
         run = epwshiftr_cli_shift_run(store, args, json = json, jsonl = jsonl, quiet = quiet),
         show = epwshiftr_cli_shift_show(store, args),
-        config = epwshiftr_cli_shift_config(store, args),
+        config = epwshiftr_cli_shift_config(store, args,
+            json = json, jsonl = jsonl, quiet = quiet),
+        list = cli_shift__history(store, args),
+        summary = cli_shift__summary(store, args, json = json, jsonl = jsonl, quiet = quiet),
         watch = epwshiftr_cli_shift_watch(store, args,
             json = json, jsonl = jsonl, quiet = quiet),
         cancel = epwshiftr_cli_shift_cancel(store, args),
@@ -33,47 +36,39 @@ epwshiftr_cli_shift_run <- function(store, args, json = FALSE, jsonl = FALSE, qu
     if (isTRUE(parsed$flags[["--dry-run"]]) && background) {
         epwshiftr_cli_usage_abort("--dry-run and --background cannot be used together.")
     }
+    ui <- epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl, quiet = quiet)
+    ui@batch_receipt <- FALSE
     if (isTRUE(parsed$flags[["--dry-run"]])) {
         plan <- epwshiftr_cli_config_plan(config, store = store,
-            ui = shift_ui(progress = "none"))
+            ui = ui)
         if (S7::S7_inherits(plan, ShiftBatch)) {
             result <- shift_batch__snapshot(plan, refresh = FALSE)
             result$status <- "dry_run"
             result$batch_id <- plan@ids$batch_id
             result$config <- normalizePath(config_path, winslash = "/", mustWork = TRUE)
+            result$intent <- cli_shift__config_intent(config)
             result$explain <- shift_explain(plan)
             result$next_steps <- epwshiftr_cli_shift_next_steps(
                 plan@ids$batch_id, batch = TRUE, store = store)
+            attr(result, "shift_ui_detail") <- ui@detail
             return(result)
         }
         return(list(
             status = "dry_run",
             batch_id = shift_ids(plan)$batch_id,
             config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
+            intent = cli_shift__config_intent(config),
             cases = shift_cases(plan),
             explain = shift_explain(plan)
         ))
     }
-    # Machine-readable and quiet modes must never mix reporter text into their
-    # stdout contract. Human TTY runs share the dynamic R dashboard.
-    progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
-        isTRUE(parsed$flags[["--no-progress"]])) {
-        "none"
-    } else if (isTRUE(cli::is_dynamic_tty())) {
-        "dynamic"
-    } else {
-        "log"
-    }
-    ui <- shift_ui(
-        progress = progress,
-        detail = epwshiftr_cli_shift_detail(parsed),
-        motion = epwshiftr_cli_shift_motion(parsed)
-    )
     # Execute the high-level entry point directly so a completed batch can use
     # its receipt fast path before any catalog or child planning work.
-    epwshiftr_cli_shift_stage_result(epwshiftr_cli_config_plan(
+    result <- epwshiftr_cli_shift_stage_result(epwshiftr_cli_config_plan(
         config, store = store, dry_run = FALSE, background = background, ui = ui
     ))
+    attr(result, "shift_ui_detail") <- ui@detail
+    result
 }
 
 epwshiftr_cli_shift_status <- function(store, args) {
@@ -162,25 +157,17 @@ epwshiftr_cli_shift_resume <- function(store, args, json = FALSE, jsonl = FALSE,
         options = c("--run", "--batch")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
-    progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
-        isTRUE(parsed$flags[["--no-progress"]])) {
-        "none"
-    } else if (isTRUE(cli::is_dynamic_tty())) {
-        "dynamic"
-    } else {
-        "log"
-    }
-    epwshiftr_cli_shift_stage_result(
+    ui <- epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl, quiet = quiet)
+    ui@batch_receipt <- FALSE
+    result <- epwshiftr_cli_shift_stage_result(
         shift_resume(
             cli_shift__target(parsed, store),
             background = isTRUE(parsed$flags[["--background"]]),
-            ui = shift_ui(
-                progress = progress,
-                detail = epwshiftr_cli_shift_detail(parsed),
-                motion = epwshiftr_cli_shift_motion(parsed)
-            )
+            ui = ui
         )
     )
+    attr(result, "shift_ui_detail") <- ui@detail
+    result
 }
 
 # Translate human CLI flags into the same ordered detail contract as the R API.
@@ -1272,13 +1259,14 @@ epwshiftr_cli_shift_stage_result <- function(stage) {
 }
 
 
+# Keep follow-up commands tied to the exact receipt and store returned to the user.
 epwshiftr_cli_shift_next_steps <- function(run_id, batch = FALSE, store = NULL) {
     data.frame(
-        step = c("watch", "status", "show", "outputs", "diagnostics", "logs", "cancel", "resume"),
+        step = c("watch", "status", "show", "outputs", "summary", "diagnostics", "logs", "cancel", "resume"),
         command = sprintf(
             "epwshiftr%s shift %s --%s %s",
             if (is.null(store)) "" else paste0(" --store ", shQuote(store)),
-            c("watch", "status", "show", "outputs", "diagnostics", "logs", "cancel", "resume"),
+            c("watch", "status", "show", "outputs", "summary", "diagnostics", "logs", "cancel", "resume"),
             if (isTRUE(batch)) "batch" else "run", run_id
         ),
         stringsAsFactors = FALSE

@@ -230,6 +230,11 @@ Local validation checks schema, options, local EPW readability, and reference
 roles. It does not establish remote coverage. `--network` checks common model
 coverage and reanalysis readiness; `shift run --dry-run` also resolves the
 model matrix. These operations may contact providers but do not generate EPWs.
+Their human output summarizes the baseline, requested methods and models,
+future periods, historical reference, calibration input, and destination.
+Network checks and discovery show the current method, node, and variables.
+Use `--no-progress` to retain the final report without live updates; global
+`--quiet`, `--json`, and `--jsonl` also suppress human progress output.
 
 Method keys with several possible configurations need explicit objects. For
 example, replace `methods` with this `transform` array to select both daily
@@ -246,6 +251,7 @@ A batch returns a durable `batch_id`. Use exactly one of `--batch` and `--run`:
 
 ```sh
 epwshiftr --store ~/cmip6-store shift show --batch <batch_id>
+epwshiftr --store ~/cmip6-store shift show --batch <batch_id> --verbose
 epwshiftr --store ~/cmip6-store shift watch --batch <batch_id> --follow
 epwshiftr --store ~/cmip6-store --jsonl shift watch --batch <batch_id> --follow
 epwshiftr --store ~/cmip6-store --json shift outputs --batch <batch_id>
@@ -269,6 +275,41 @@ summaries distinguish cases from physical EPW files: a multi-year output can
 write several files for one case. Output rows retain method/model identity,
 weather year, output type, and field provenance. Warnings remain available in
 diagnostics and appear in completion summaries.
+
+Dynamic batch views fit the terminal height, put failed and active children
+first, and show the current operation, measured progress, and last update.
+Cancelled children have their own count. Errors precede warnings and retain
+recovery actions. Use `shift show --verbose` for all children and diagnostics;
+a completed or count-limited watch leaves its final receipt in scrollback.
+For a single run, `shift show --run <run_id> --verbose` expands every case,
+output, event, and diagnostic into wrapped records with complete paths and
+recovery actions. Add `--debug` to include raw JSON payloads. These flags only
+affect human-readable output; JSON and JSONL keep their existing fields.
+Batch watch follows each child's event history independently, including late
+events from parallel workers and events received with the final snapshot.
+
+Find previous work and summarize its outputs without contacting providers:
+
+```sh
+epwshiftr --store ~/cmip6-store shift list
+epwshiftr --store ~/cmip6-store shift list --type batch --status failed,partial
+epwshiftr --store ~/cmip6-store shift summary --batch <batch_id>
+epwshiftr --store ~/cmip6-store --json shift summary --run <run_id> --weather
+```
+
+`shift list` returns the newest 20 records by default (`--limit N` changes this)
+with complete IDs and store paths. Batch children show their parent batch and
+own store; use that child store when passing its run ID to another command.
+An unreadable record remains visible as `unavailable` with an error.
+
+`shift summary` groups cases and outputs by method, model, scenario, period,
+member, and grid. It distinguishes recorded EPWs from available local files
+and retains output type, weather years, diagnostics, and field roles.
+`--weather` reads local EPWs and adds mean temperature, relative humidity,
+wind speed, and global horizontal radiation, with a valid-hour count for each
+mean and explicit file-read errors. Missing EPW sentinel values are excluded.
+Check the output type, years, and hourly coverage before comparing methods;
+the means do not rank methods or make unlike output periods equivalent.
 
 Repeated completed batch calls reuse their persisted receipts and verified
 artifacts. The human receipt reports reused versus started/resumed children and

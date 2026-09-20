@@ -38,8 +38,14 @@ ShiftFrameRenderer <- R6::R6Class(
             }
             compact <- shift__tui_normalize_lines(
                 shift_coalesce(compact, lines[[1L]]))[[1L]]
+            # A frame taller than the viewport cannot be repainted with
+            # cursor-up sequences. Semantic batch views fit their own sections;
+            # other unexpectedly tall views retain a safe compact live row.
             private$last_frame <- lines
             private$last_compact <- compact
+            private$frame_compacted <- identical(private$backend_value, "frame") &&
+                length(lines) > shift__ui_height()
+            if (private$frame_compacted) lines <- compact
             if (isTRUE(private$suspended)) {
                 return(invisible(TRUE))
             }
@@ -77,7 +83,7 @@ ShiftFrameRenderer <- R6::R6Class(
             on.exit({
                 private$suspended <- FALSE
                 if (!isTRUE(private$closed) && length(private$last_frame)) {
-                    private$draw_frame(private$last_frame)
+                    self$draw(private$last_frame, private$last_compact)
                 }
             }, add = TRUE)
             code()
@@ -98,10 +104,14 @@ ShiftFrameRenderer <- R6::R6Class(
                     "failed"
                 })
             } else {
-                # draw_frame() leaves the cursor at column zero of the final
-                # row; one newline preserves the frame and frees the next row
-                # for the durable diagnostic block without repainting it.
-                if (isTRUE(private$active_value)) {
+                # Oversized receipts are written once into scrollback after
+                # clearing the bounded live row. Keep every output path even
+                # when the terminal cannot repaint the complete receipt.
+                if (isTRUE(private$frame_compacted)) {
+                    private$clear_frame()
+                    private$write(paste0(paste(private$last_frame, collapse = "\n"), "\n"))
+                } else if (isTRUE(private$active_value)) {
+                    # A full frame is already visible; release its final row.
                     private$write("\n")
                 }
                 if (isTRUE(private$cursor_hidden)) {
@@ -157,6 +167,7 @@ ShiftFrameRenderer <- R6::R6Class(
         writer = NULL,
         painted_lines = 0L,
         last_frame = character(),
+        frame_compacted = FALSE,
         last_compact = NULL,
         compact_id = NULL,
         cursor_hidden = FALSE,
@@ -168,6 +179,12 @@ ShiftFrameRenderer <- R6::R6Class(
         # updated dashboard between individual workflow rows.
         write = function(text) {
             tryCatch({
+                # Bound every ANSI write with a reset. An interrupted coloured
+                # message outside this renderer must not tint the entire next
+                # frame, and a frame must not leak styles into the R prompt.
+                if (cli::num_ansi_colors() > 1L) {
+                    text <- paste0("\033[0m", text, "\033[0m")
+                }
                 private$writer(text)
                 TRUE
             }, error = function(e) FALSE)
@@ -185,6 +202,9 @@ ShiftFrameRenderer <- R6::R6Class(
             }
             previous <- private$painted_lines
             current <- length(lines)
+            # After a terminal shrinks, its old rows may already be in
+            # scrollback. Never walk or erase beyond the current viewport.
+            previous <- min(previous, shift__ui_height())
             output <- ""
             if (previous > 1L) {
                 output <- shift__tui_cursor_up(previous - 1L)
@@ -214,7 +234,7 @@ ShiftFrameRenderer <- R6::R6Class(
         # Clear every painted row and return the cursor to the top of the old
         # region, matching cli's behavior before emitting ordinary output.
         clear_frame = function() {
-            count <- private$painted_lines
+            count <- min(private$painted_lines, shift__ui_height())
             if (count <= 0L) {
                 private$active_value <- FALSE
                 return(invisible(NULL))

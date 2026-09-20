@@ -361,8 +361,7 @@
       │          original_morphing / historical 1995–2014 · 2 cases         │
       ├─ Workflow ──────────────────────────────────────────────────────────┤
       │ Flow     [6/6] ✔ EPW · final stage                                  │
-      │ Now      ✔ Workflow completed                                       │
-      │ EPWs     ━━━━━━━━ 2/2 · 100% · exported 2/2                         │
+      │ EPWs     ━━━━━━━━ 2/2 · 100% · exported 2 files                     │
       ├─ Results ───────────────────────────────────────────────────────────┤
       │ Summary  2/2 EPWs exported · 0 missing                              │
       │ Output   /exports                                                   │
@@ -386,8 +385,7 @@
       │          original_morphing / historical 1995–2014 · 2 cases                                     │
       ├─ Workflow ──────────────────────────────────────────────────────────────────────────────────────┤
       │ Flow     ✔ Resolve  ›  ✔ Future  ›  ✔ Reference  ›  ✔ Coverage  ›  ✔ Morph  ›  ✔ EPW            │
-      │ Now      ✔ Workflow completed                                                                   │
-      │ EPWs     ━━━━━━━━━━━━━━ 2/2 · 100% · exported 2/2                                               │
+      │ EPWs     ━━━━━━━━━━━━━━ 2/2 · 100% · exported 2 files                                           │
       ├─ Results ───────────────────────────────────────────────────────────────────────────────────────┤
       │ Summary  2/2 EPWs exported · 0 missing                                                          │
       │ Output   /exports                                                                               │

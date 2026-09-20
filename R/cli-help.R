@@ -34,11 +34,12 @@ epwshiftr_cli_help_root <- function() {
 epwshiftr_cli_help_registry <- function() {
     list(
         doctor = c(
-            "Usage: epwshiftr doctor [--config PATH] [--network] [--index-node URL] [--timeout SECONDS]",
+            "Usage: epwshiftr doctor [--config PATH] [--network] [--index-node URL] [--timeout SECONDS] [--no-progress]",
             "",
             "Check the local CLI, store, downloader, and optional ESGF network environment.",
             "The default checks are local and read-only; use --network to check the index node.",
-            "--config PATH also checks configured ERA5 access; credentials remain outside workflow JSON."
+            "--config PATH also checks configured ERA5 access; credentials remain outside workflow JSON.",
+            "Network checks show human progress; --no-progress, --quiet, --json and --jsonl suppress it."
         ),
         query = c(
             "Usage: epwshiftr query <command> [options]",
@@ -156,8 +157,10 @@ epwshiftr_cli_help_registry <- function() {
             "Usage: epwshiftr shift <command> [options]",
             "",
             "Commands:",
+            "  epwshiftr shift list [--type all|run|batch] [--status STATE,STATE] [--limit N]",
+            "  epwshiftr shift summary (--run RUN_ID | --batch BATCH_ID) [--weather] [--no-progress]",
             "  epwshiftr shift run --config PATH [--dry-run | --background] [--no-progress] [--reduced-motion] [--verbose | --debug]",
-            "  epwshiftr shift show (--run RUN_ID | --batch BATCH_ID)",
+            "  epwshiftr shift show (--run RUN_ID | --batch BATCH_ID) [--verbose | --debug]",
             "  epwshiftr shift config example [--output PATH] [--overwrite]",
             "  epwshiftr shift config validate --config PATH [--network]",
             "  epwshiftr shift watch (--run RUN_ID | --batch BATCH_ID) [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
@@ -182,9 +185,24 @@ epwshiftr_cli_help_registry <- function() {
             "--verbose shows selection, reuse, and fallback details; --debug also shows full URLs and paths."
         ),
         "shift show" = c(
-            "Usage: epwshiftr shift show (--run RUN_ID | --batch BATCH_ID)",
+            "Usage: epwshiftr shift show (--run RUN_ID | --batch BATCH_ID) [--verbose | --debug]",
             "",
-            "Show persisted intent, case state, events, diagnostics, and outputs for a workflow run."
+            "Show persisted intent, case state, events, diagnostics, and outputs for a workflow run.",
+            "Batch --verbose includes every child, live activity, full diagnostics and recovery actions."
+        ),
+        "shift list" = c(
+            "Usage: epwshiftr shift list [--type all|run|batch] [--status STATE,STATE] [--limit N]",
+            "",
+            "List saved runs, batch parents, and child runs without network access or store creation.",
+            "Rows retain their full IDs and exact store paths. The default limit is 20.",
+            "Unreadable records have status unavailable and an inspection error."
+        ),
+        "shift summary" = c(
+            "Usage: epwshiftr shift summary (--run RUN_ID | --batch BATCH_ID) [--weather] [--no-progress]",
+            "",
+            "Summarize method/model/scenario/period groups with separate case and EPW file counts.",
+            "--weather reads existing local EPWs for hourly means and valid-hour counts; missing codes are excluded.",
+            "Weather summaries preserve output type and years; they do not rank methods or establish comparability."
         ),
         "shift config" = c(
             "Usage: epwshiftr shift config <example|validate> [options]",
@@ -200,10 +218,11 @@ epwshiftr_cli_help_registry <- function() {
             "For ambiguous methods such as epwshiftr, use explicit transform objects; multiple objects form a JSON transform array."
         ),
         "shift config validate" = c(
-            "Usage: epwshiftr shift config validate --config PATH [--network]",
+            "Usage: epwshiftr shift config validate --config PATH [--network] [--no-progress] [--reduced-motion]",
             "",
             "Validate schema, method options, local EPW, and reference roles without contacting providers.",
-            "--network also checks common CMIP6 model coverage and configured reanalysis readiness."
+            "--network also checks common CMIP6 model coverage and configured reanalysis readiness.",
+            "Human checks show current activity; --no-progress, --quiet, --json and --jsonl suppress it."
         ),
         "shift watch" = c(
             "Usage: epwshiftr shift watch (--run RUN_ID | --batch BATCH_ID) [--follow] [--interval SECONDS] [--count N] [--events N] [--no-progress] [--reduced-motion] [--verbose | --debug]",
