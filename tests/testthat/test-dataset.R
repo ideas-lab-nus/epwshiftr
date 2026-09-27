@@ -680,6 +680,7 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
         expect_identical(dt$cf_day, 2:3)
         expect_identical(dt$cf_day_of_year, 2:3)
         expect_identical(dt$cf_year_days, rep.int(366L, 2L))
+        expect_identical(dt$cf_second_of_day, rep.int(43200, 2L))
         expect_equal(dt$annual_phase, c(1.5, 2.5) / 366)
         expect_equal(
             as.numeric(dt$time_bound_end - dt$time_bound_start),
@@ -764,6 +765,7 @@ test_that("EsgDataset$read_region() selects and exposes 360-day CF boundaries", 
     expect_identical(dt$cf_day, c(30L, 1L))
     expect_identical(dt$cf_day_of_year, c(360L, 1L))
     expect_identical(dt$cf_year_days, rep.int(360L, 2L))
+    expect_identical(dt$cf_second_of_day, rep.int(43200, 2L))
     expect_equal(dt$annual_phase, c(359.5 / 360, 0.5 / 360))
     expect_equal(
         as.numeric(dt$time_bound_end - dt$time_bound_start),
@@ -775,6 +777,21 @@ test_that("EsgDataset$read_region() selects and exposes 360-day CF boundaries", 
         as.integer(format(dt$time, "%Y", tz = "UTC")),
         rep.int(2060L, 2L)
     )
+})
+
+test_that("EsgDataset$read_region() retains native clock schema for empty results", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    empty <- ds$read_region("tas", lon = 103.98, lat = 1.37,
+        time = c("2061-01-01", "2061-01-02"))
+    expect_equal(nrow(empty), 0L)
+    expect_true(all(CF_TIME_COORDINATE_COLUMNS %in% names(empty)))
+    expect_identical(empty$cf_second_of_day, numeric())
 })
 
 test_that("EsgDataset$read_region() reuses recorded result time filters by default", {

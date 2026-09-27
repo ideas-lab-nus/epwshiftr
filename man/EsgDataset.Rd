@@ -848,7 +848,8 @@ read. Only supported when \code{async = TRUE}.}
 \subsection{Returns}{
 A data.table or list of data.tables with columns including
 \code{file_index}, \code{variable}, \code{time}, optional \code{time_bound_start} and
-\code{time_bound_end}, canonical \verb{cf_*} calendar coordinates,
+\code{time_bound_end}, canonical \verb{cf_*} calendar coordinates including
+\code{cf_second_of_day} (seconds since native-calendar midnight),
 \code{annual_phase}, \code{lon}, \code{lat}, \code{method}, and \code{value}.
 The \code{"grid_sources"} attribute records contributing grid coordinates
 and weights.
