@@ -2790,7 +2790,7 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
         ddb_query(conn, sprintf(
             paste(
                 "SELECT year, cf_calendar, cf_year, cf_month, cf_day,",
-                "cf_day_of_year, cf_year_days, annual_phase",
+                "cf_day_of_year, cf_year_days, cf_second_of_day, annual_phase",
                 "FROM read_parquet(%s)"
             ),
             ddb_literal(conn, parquet)
@@ -2805,6 +2805,7 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
     expect_equal(rows$cf_day, c(30L, 1L))
     expect_equal(rows$cf_day_of_year, c(360L, 1L))
     expect_equal(rows$cf_year_days, rep.int(360L, 2L))
+    expect_identical(rows$cf_second_of_day, rep.int(43200, 2L))
     expect_equal(rows$annual_phase, c(359.5 / 360, 0.5 / 360))
 })
 

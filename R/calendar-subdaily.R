@@ -80,8 +80,8 @@ temporal__daily_lattice <- function(
     )
 }
 
-# Derive an exact native-calendar second-of-day coordinate from annual phase
-# when an extracted climate table predates the explicit sub-daily field.
+# Read explicit native clock seconds, deriving them from annual phase only for
+# persisted or externally supplied tables without the separate clock field.
 temporal__second_of_day <- function(data, name) {
     if ("cf_second_of_day" %in% names(data)) {
         seconds <- as.numeric(data[["cf_second_of_day"]])

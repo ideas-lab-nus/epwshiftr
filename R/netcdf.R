@@ -196,6 +196,7 @@ CF_TIME_COORDINATE_COLUMNS <- c(
     "cf_day",
     "cf_day_of_year",
     "cf_year_days",
+    "cf_second_of_day",
     "annual_phase"
 )
 
@@ -532,9 +533,9 @@ cf_time__year_days <- function(year, calendar) {
     )
 }
 
-# Build calendar-native coordinates for persistence and daily morphing. The
-# phase includes the sub-day position, which keeps 3-hourly and 6-hourly axes
-# ordered while mapping every supported calendar onto the same [0, 1) cycle.
+# Build calendar-native coordinates for persistence and weather methods. Keep
+# clock seconds explicit for sub-daily consumers while retaining the same annual
+# phase used by daily methods across every supported calendar.
 cf_time__coordinates <- function(fields, calendar) {
     year_start <- data.frame(
         year = as.integer(fields$year),
@@ -545,11 +546,14 @@ cf_time__coordinates <- function(fields, calendar) {
         cf_time_date2offset(fields, year_start, calendar) + 1L
     )
     year_days <- cf_time__year_days(fields$year, calendar)
-    day_fraction <- (
+    # Derive clock time directly from parsed CF fields, preserving fractional
+    # seconds rather than recovering them from a rounded annual-phase value.
+    second_of_day <- (
         as.numeric(fields$hour) * 3600 +
             as.numeric(fields$minute) * 60 +
             as.numeric(fields$second)
-    ) / 86400
+    )
+    day_fraction <- second_of_day / 86400
 
     data.frame(
         cf_calendar = rep.int(calendar, nrow(fields)),
@@ -558,6 +562,7 @@ cf_time__coordinates <- function(fields, calendar) {
         cf_day = as.integer(fields$day),
         cf_day_of_year = day_of_year,
         cf_year_days = as.integer(year_days),
+        cf_second_of_day = second_of_day,
         annual_phase = (day_of_year - 1 + day_fraction) / year_days,
         stringsAsFactors = FALSE
     )

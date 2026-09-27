@@ -955,7 +955,8 @@ EsgDataset <- R6::R6Class(
         #'
         #' @return A data.table or list of data.tables with columns including
         #' `file_index`, `variable`, `time`, optional `time_bound_start` and
-        #' `time_bound_end`, canonical `cf_*` calendar coordinates,
+        #' `time_bound_end`, canonical `cf_*` calendar coordinates including
+        #' `cf_second_of_day` (seconds since native-calendar midnight),
         #' `annual_phase`, `lon`, `lat`, `method`, and `value`.
         #' The `"grid_sources"` attribute records contributing grid coordinates
         #' and weights.
@@ -1593,6 +1594,7 @@ EsgDataset <- R6::R6Class(
                 cf_day = integer(),
                 cf_day_of_year = integer(),
                 cf_year_days = integer(),
+                cf_second_of_day = numeric(),
                 annual_phase = numeric(),
                 lon = numeric(),
                 lat = numeric(),

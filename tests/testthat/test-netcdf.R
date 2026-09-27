@@ -151,6 +151,26 @@ test_that("parse_cf_time() retains calendar-native coordinates and annual phase"
     }
 })
 
+test_that("parse_cf_time() preserves native clock seconds across calendar boundaries", {
+    for (calendar in CF_TIME_CALENDARS) {
+        year_seconds <- cf_time__year_days(2000L, calendar) * 86400
+        offsets <- c(-0.25, 0, 0.125, 3661.25, 86399.75, 86400,
+            year_seconds - 0.25, year_seconds + 3661.25)
+        time <- parse_cf_time(offsets, "seconds since 2000-01-01 00:00:00", calendar)
+        coordinates <- attr(time, "cf_coordinates", exact = TRUE)
+
+        # Expected native clock values are independent of surrogate POSIX dates.
+        expect_identical(coordinates$cf_second_of_day,
+            c(86399.75, 0, 0.125, 3661.25, 86399.75, 0, 86399.75, 3661.25),
+            info = calendar)
+        expect_identical(coordinates$cf_year,
+            c(1999L, rep.int(2000L, 6L), 2001L), info = calendar)
+        expect_equal(coordinates$annual_phase,
+            (coordinates$cf_day_of_year - 1 + coordinates$cf_second_of_day / 86400) /
+                coordinates$cf_year_days, info = calendar)
+    }
+})
+
 test_that("get_nc_time() and EsgDataset$get_time_axis() share CF time parsing", {
     path <- local_nc_time_file(
         time_vals = c(0, 1.5),
@@ -176,6 +196,7 @@ test_that("get_nc_time() and EsgDataset$get_time_axis() share CF time parsing", 
     expect_equal(time_info$length, 2L)
     expect_identical(time_info$units, "days since 2000-01-01 00:00:00")
     expect_identical(time_info$calendar, "standard")
+    expect_identical(time_info$coordinates$cf_second_of_day, c(0, 43200))
     expect_equal(as.numeric(time_info$values), as.numeric(expected))
     expect_identical(attr(time_info$values, "cf_units"), time_info$units)
     expect_identical(attr(time_info$values, "cf_calendar"), time_info$calendar)
