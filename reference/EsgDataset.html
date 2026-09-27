@@ -840,7 +840,8 @@ read. Only supported when <code>async = TRUE</code>.</p></dd>
 <h4 id="returns-16">Returns<a class="anchor" aria-label="anchor" href="#returns-16"></a></h4>
 <p>A data.table or list of data.tables with columns including
 <code>file_index</code>, <code>variable</code>, <code>time</code>, optional <code>time_bound_start</code> and
-<code>time_bound_end</code>, canonical <code>cf_*</code> calendar coordinates,
+<code>time_bound_end</code>, canonical <code>cf_*</code> calendar coordinates including
+<code>cf_second_of_day</code> (seconds since native-calendar midnight),
 <code>annual_phase</code>, <code>lon</code>, <code>lat</code>, <code>method</code>, and <code>value</code>.
 The <code>"grid_sources"</code> attribute records contributing grid coordinates
 and weights.</p>
