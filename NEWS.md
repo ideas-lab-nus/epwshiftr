@@ -607,7 +607,7 @@
 * Native CF coordinates now expose `cf_second_of_day` directly from the parsed
   clock fields, including fractional seconds. Regional extraction, empty
   results, and persisted point series retain the field without reconstructing
-  it from `annual_phase`.
+  it from `annual_phase` (#257).
 
 * Made workflow UI regression fixtures self-contained for installed-package
   checks and aligned cache progress assertions with the parsed-response event
