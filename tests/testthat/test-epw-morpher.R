@@ -116,6 +116,52 @@ test_that("climate records expand across overlapping morphing periods", {
     expect_equal(assigned[year == 2040L, data.table::uniqueN(record_id)], 100L)
 })
 
+test_that("EpwMorpher$preflight() accepts overlapping climate periods", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+
+    nc <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(nc, 2060L, n_years = 2L)
+    on.exit(unlink(nc), add = TRUE)
+
+    store <- EsgStore$new(tempfile("overlapping-preflight-store-"))
+    on.exit(store$close(), add = TRUE)
+    docs <- epw_morpher_test_file_docs(
+        path = basename(nc),
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(epw_morpher_test_result(docs))
+    extraction <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01T00:00:00Z", "2061-12-31T23:59:59Z"),
+        site_id = "SIN"
+    )
+    expect_true(all(store$extract(plan_id = extraction$plan_id)$status == "done"))
+
+    morpher <- morpher__from_recipe(
+        store = store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute"))
+    )
+    periods <- epw_morph_periods(
+        early = 2060:2061,
+        late = 2061L
+    )
+
+    diagnostics <- morpher$preflight(
+        plan_id = extraction$plan_id,
+        periods = periods,
+        strict = FALSE
+    )
+
+    expect_named(diagnostics, morpher__diagnostic_columns())
+    expect_false(any(diagnostics$code == "no_period_rows"))
+})
+
 test_that("legacy fragmented mean summaries use valid record weights", {
     fragments <- data.table::data.table(
         stat = "mean",

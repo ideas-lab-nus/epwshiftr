@@ -614,6 +614,10 @@
   join is limited to period assignment and covered by a threshold-exceeding
   regression case (#263).
 
+* Extraction preflight now uses the same explicit period assignment as climate
+  summarisation, so overlapping future windows are validated without triggering
+  `data.table`'s cartesian join guard (#265).
+
 * Historical means and extrema now align with future morphing cases by
   `source_id`, `member_id`, and `month` when ESGF catalogues use different
   `institution_id` values across experiments. Raw climate records split across

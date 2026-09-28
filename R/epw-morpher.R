@@ -2192,7 +2192,7 @@ EpwMorpher <- R6::R6Class(
             climate <- morpher__resolve_calendar_columns(climate, month = TRUE)
             periods <- data.table::as.data.table(periods)
             periods[, year := as.integer(year)]
-            climate <- climate[periods, on = "year", nomatch = 0L]
+            climate <- morpher__assign_periods(climate, periods)
             if (!nrow(climate)) {
                 diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
                     stage = "extraction",
