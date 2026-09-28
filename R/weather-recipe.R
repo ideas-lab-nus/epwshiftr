@@ -1519,8 +1519,19 @@ recipe__input_errors <- function(spec, inputs) {
 
 # Abort with the complete role diagnostics so queued and foreground execution
 # enforce the same registered recipe contract.
-recipe__validate_inputs <- function(spec, inputs) {
-    errors <- recipe__input_errors(spec, inputs)
+recipe__validate_inputs <- function(
+    spec,
+    inputs,
+    required_inputs = spec@required_inputs,
+    optional_inputs = spec@optional_inputs
+) {
+    # Option-resolved contracts keep runtime validation consistent with the
+    # variables selected during discovery, extraction, and transform setup.
+    errors <- weather__input_requirement_errors(
+        required_inputs,
+        optional_inputs,
+        inputs
+    )
     if (length(errors)) {
         cli::cli_abort(c(
             "Future-weather recipe {.val {spec@name}} input requirements are not satisfied.",

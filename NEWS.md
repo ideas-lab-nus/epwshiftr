@@ -618,6 +618,10 @@
   summarisation, so overlapping future windows are validated without triggering
   `data.table`'s cartesian join guard (#265).
 
+* Registered recipe execution now validates the option-resolved input contract,
+  keeping runtime requirements consistent with discovery and extraction when
+  variables such as precipitation are disabled (#267).
+
 * Historical means and extrema now align with future morphing cases by
   `source_id`, `member_id`, and `month` when ESGF catalogues use different
   `institution_id` values across experiments. Raw climate records split across

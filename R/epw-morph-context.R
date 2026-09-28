@@ -889,7 +889,18 @@ morpher__run_context <- function(context) {
     checkmate::assert_class(context, "morpher__context")
     recipe_spec <- morpher__recipe_spec(context$recipe)
     if (!is.null(recipe_spec)) {
-        recipe__validate_inputs(recipe_spec, context$inputs)
+        # Reuse the option-resolved public transform contracts so execution
+        # does not restore variables disabled by the configured recipe.
+        input_contracts <- transform__input_contracts(
+            recipe_spec,
+            context$recipe
+        )
+        recipe__validate_inputs(
+            recipe_spec,
+            context$inputs,
+            required_inputs = input_contracts$required_inputs,
+            optional_inputs = input_contracts$optional_inputs
+        )
     }
     backend <- epw_morph_backend(context$recipe$backend)
     result <- backend$run(context)
