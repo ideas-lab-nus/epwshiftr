@@ -1,3 +1,41 @@
+test_that("summary plan IDs prefer normalized lineage and support legacy rows", {
+    skip_if_not_installed("duckdb")
+
+    store <- EsgStore$new(tempfile("summary-plan-store-"))
+    on.exit(store$close(), add = TRUE)
+    lineage <- data.frame(
+        summary_plan_id = c("source-a", "source-b"),
+        summary_id = "summary-current",
+        plan_id = c("plan-a", "plan-b"),
+        created_at = morpher__now(),
+        stringsAsFactors = FALSE
+    )
+    morpher__replace_rows(
+        store,
+        "epw_climate_summary_plan",
+        lineage,
+        "summary_plan_id"
+    )
+
+    current <- data.table::data.table(
+        summary_id = "summary-current",
+        plan_id = NA_character_
+    )
+    expect_setequal(
+        morpher__summary_plan_ids(store, current),
+        c("plan-a", "plan-b")
+    )
+
+    legacy <- data.table::data.table(
+        summary_id = "summary-legacy",
+        plan_id = c("plan-c", "plan-d")
+    )
+    expect_setequal(
+        morpher__summary_plan_ids(store, legacy),
+        c("plan-c", "plan-d")
+    )
+})
+
 test_that("shift run validates the task-oriented JSON config", {
     skip_if_not_installed("duckdb")
 

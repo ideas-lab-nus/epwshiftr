@@ -606,9 +606,12 @@
 
 * Historical means and extrema now align with future morphing cases by
   `source_id`, `member_id`, and `month` when ESGF catalogues use different
-  `institution_id` values across experiments. Climate summaries split across
-  multiple source files use `n_records`-weighted means when planning persisted
-  factors, including precipitation inputs (#259).
+  `institution_id` values across experiments. Raw climate records split across
+  multiple source files are concatenated before period/month statistics are
+  computed, with total and valid-value counts recorded separately and source
+  plan lineage stored independently. Legacy fragment-level mean summaries use
+  valid-value counts when available and retain compatible fallbacks when
+  planning persisted factors, including precipitation inputs (#259).
 
 * Native CF coordinates now expose `cf_second_of_day` directly from the parsed
   clock fields, including fractional seconds. Regional extraction, empty

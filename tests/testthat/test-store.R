@@ -421,6 +421,7 @@ test_that("EsgStore$new()", {
             "esg_query_tag", "esg_query_dependency",
             "extraction_plan", "extraction_result", "extraction_grid_source",
             "epw_source", "epw_baseline_summary", "epw_climate_summary",
+            "epw_climate_summary_plan",
             "epw_morph_plan", "epw_morph_factor",
             "epw_morph_observed_reference", "epw_morph_case",
             "epw_morph_diagnostic", "epw_morph_result",

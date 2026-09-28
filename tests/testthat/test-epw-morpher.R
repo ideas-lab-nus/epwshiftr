@@ -48,27 +48,97 @@ test_that("packaged Singapore EPW fixture is readable", {
     expect_identical(external$path(), original_path)
 })
 
-test_that("fragmented climate summaries use record-weighted means", {
+test_that("climate statistics pool raw file fragments before summarising", {
+    climate <- data.table::data.table(
+        plan_id = c("plan-a", "plan-a", "plan-b", "plan-b", "plan-b"),
+        site_id = "SIN",
+        source_id = "Model-A",
+        experiment_id = "ssp370",
+        variant_label = "r1i1p1f1",
+        frequency = "day",
+        table_id = "day",
+        variable_id = "tas",
+        period = "2040",
+        month = 1L,
+        units = "K",
+        value = c(280, NA, 300, 300, 300),
+        lon = 104,
+        lat = 29.5
+    )
+
+    summary <- morpher__stat_rows(climate)
+    expect_equal(nrow(summary), 3L)
+    expect_true(all(is.na(summary$plan_id)))
+    expect_equal(summary$n_records, rep(5L, 3L))
+    expect_equal(summary$n_valid, rep(4L, 3L))
+    expect_equal(summary[stat == "mean", value], 295)
+    expect_equal(summary[stat == "min", value], 280)
+    expect_equal(summary[stat == "max", value], 300)
+})
+
+test_that("climate statistics preserve all-missing groups as missing", {
+    climate <- data.table::data.table(
+        plan_id = c("plan-a", "plan-b"),
+        site_id = "SIN",
+        source_id = "Model-A",
+        experiment_id = "ssp370",
+        variant_label = "r1i1p1f1",
+        frequency = "day",
+        table_id = "day",
+        variable_id = "tas",
+        period = "2040",
+        month = 1L,
+        units = "K",
+        value = NA_real_
+    )
+
+    summary <- morpher__stat_rows(climate)
+    expect_true(all(is.na(summary$value)))
+    expect_equal(summary$n_records, rep(2L, 3L))
+    expect_equal(summary$n_valid, rep(0L, 3L))
+})
+
+test_that("legacy fragmented mean summaries use valid record weights", {
     fragments <- data.table::data.table(
+        stat = "mean",
         value = c(280, 300),
+        units = "K",
+        n_valid = c(1L, 3L),
         n_records = c(1L, 3L)
     )
 
     expect_equal(
-        morpher__weighted_summary_value(fragments),
+        morpher__pooled_mean(fragments),
         295
     )
 
-    # Old persisted summaries did not always include record counts. Preserve
-    # their prior equal-weight behavior instead of discarding usable values.
-    legacy <- fragments[, .(value)]
+    # Old persisted summaries lack valid-value counts, so fall back to their
+    # total record counts before using equal weights as a last resort.
+    legacy <- fragments[, .(stat, value, units, n_records)]
     expect_equal(
-        morpher__weighted_summary_value(legacy),
+        morpher__pooled_mean(legacy),
+        295
+    )
+    uncounted <- fragments[, .(stat, value, units)]
+    expect_equal(
+        morpher__pooled_mean(uncounted),
         290
+    )
+    expect_error(
+        morpher__pooled_mean(
+            data.table::copy(fragments)[, `:=`(stat = "max")]
+        ),
+        "monthly mean"
+    )
+    expect_error(
+        morpher__pooled_mean(
+            data.table::copy(fragments)[, `:=`(units = c("K", "degC"))]
+        ),
+        "different units"
     )
 })
 
-test_that("factor planning persists record-weighted fragmented summaries", {
+test_that("factor planning reads legacy record-weighted mean fragments", {
     skip_if_not_installed("duckdb")
 
     store <- EsgStore$new(tempfile("weighted-factor-store-"))
@@ -86,6 +156,7 @@ test_that("factor planning persists record-weighted fragmented summaries", {
         period = "2040",
         variable_id = "tas",
         month = 1L,
+        stat = "mean",
         value = c(280, 300),
         units = "K",
         n_records = c(1L, 3L),
@@ -98,6 +169,7 @@ test_that("factor planning persists record-weighted fragmented summaries", {
         period = "reference",
         variable_id = "tas",
         month = 1L,
+        stat = "mean",
         value = c(270, 274),
         units = "K",
         n_records = c(3L, 1L),
@@ -374,6 +446,11 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
     expect_identical(unique(climate$period), "2061")
     expect_identical(unique(climate$month), 1L)
     expect_true(all(climate$n_records == 1L))
+    expect_true(all(climate$n_valid == 1L))
+    expect_true(all(is.na(climate$plan_id)))
+    sources <- morpher__read_table(store, "epw_climate_summary_plan")
+    sources <- sources[sources$summary_id == unique(climate$summary_id)]
+    expect_identical(sources$plan_id, plan$plan_id)
 })
 
 
