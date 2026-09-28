@@ -520,7 +520,7 @@ test_that("monthly extrema share aggregation with explicit scientific identities
     # while retaining the model, member, and month identity.
     reference <- data.table::data.table(
         activity_drs = "ScenarioMIP",
-        institution_id = "Institute",
+        institution_id = "Historical Institute",
         source_id = "Model-A",
         experiment_id = c("historical", "hist-nat"),
         member_id = "r1i1p1f1",
@@ -1034,6 +1034,7 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
     )
     reference <- data.table::copy(future)
     reference[, `:=`(
+        institution_id = "historical-institution",
         experiment_id = "historical",
         value = 300,
         interval = "reference"
@@ -1046,6 +1047,34 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
         type = "shift"
     )
     expect_equal(shifted$dry_bulb_temperature, c(25, 35), tolerance = 1e-8)
+
+    # A model can be published by different ESGF institutions for the future
+    # and historical experiments. Complete extrema must still retain the
+    # combined temperature method for the same source and member.
+    future_max <- data.table::copy(future)
+    future_max[, value := 310]
+    future_min <- data.table::copy(future)
+    future_min[, value := 290]
+    reference_max <- data.table::copy(reference)
+    reference_max[, value := 305]
+    reference_min <- data.table::copy(reference)
+    reference_min[, value := 295]
+    combined_epw <- data.table::copy(data_epw)
+    combined_epw[, day := 15L]
+    combined <- original_morphing__from_monthly_change_enhanced(
+        "dry_bulb_temperature",
+        combined_epw,
+        future,
+        reference,
+        data_max = future_max,
+        data_min = future_min,
+        reference_max = reference_max,
+        reference_min = reference_min,
+        type = "combined",
+        transition_hours = 0L
+    )
+    expect_true(all(combined$method_applied == "combined"))
+    expect_true(all(combined$factor_status == "ok"))
 
     glob <- data.table::data.table(
         activity_drs = "ScenarioMIP",

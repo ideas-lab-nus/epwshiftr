@@ -137,6 +137,35 @@ morpher__read_table <- function(store, table) {
     morpher__private_store(store)$read_table(table)
 }
 
+# Recover every extraction plan contributing to a climate summary. Current
+# summaries use the normalized lineage table, while legacy summaries retain
+# their source plan IDs directly on each statistic row.
+morpher__summary_plan_ids <- function(store, summary) {
+    summary <- data.table::as.data.table(data.table::copy(summary))
+    if (!nrow(summary) || !"summary_id" %in% names(summary)) {
+        return(character())
+    }
+
+    summary_ids <- unique(as.character(summary$summary_id))
+    summary_ids <- summary_ids[!is.na(summary_ids) & nzchar(summary_ids)]
+    lineage <- morpher__read_table(store, "epw_climate_summary_plan")
+    if (nrow(lineage) && length(summary_ids)) {
+        plan_ids <- unique(as.character(
+            lineage[lineage$summary_id %in% summary_ids][["plan_id"]]
+        ))
+        plan_ids <- plan_ids[!is.na(plan_ids) & nzchar(plan_ids)]
+        if (length(plan_ids)) {
+            return(sort(plan_ids))
+        }
+    }
+
+    if (!"plan_id" %in% names(summary)) {
+        return(character())
+    }
+    plan_ids <- unique(as.character(summary$plan_id))
+    sort(plan_ids[!is.na(plan_ids) & nzchar(plan_ids)])
+}
+
 morpher__delete_by_key <- function(store, table, key, values) {
     morpher__private_store(store)$delete_by_key(table, key, values)
     invisible(NULL)
@@ -225,32 +254,96 @@ morpher__monthly_long <- function(data, id_cols, value_cols, units_map) {
     out
 }
 
+# Recover one pooled mean from legacy fragment-level summary rows. New
+# summaries aggregate raw records first and therefore normally contain one
+# monthly mean row; this helper exists for compatible reading of old stores.
+morpher__pooled_mean <- function(rows) {
+    if (is.null(rows) || !nrow(rows) || !"value" %in% names(rows)) {
+        return(NA_real_)
+    }
+    if ("stat" %in% names(rows)) {
+        stats <- unique(as.character(rows$stat))
+        stats <- stats[!is.na(stats) & nzchar(stats)]
+        if (length(stats) && !all(stats == "mean")) {
+            cli::cli_abort("Only monthly mean summary rows can be pooled.")
+        }
+    }
+    if ("units" %in% names(rows)) {
+        units <- unique(as.character(rows$units))
+        units <- units[!is.na(units) & nzchar(units)]
+        if (length(units) > 1L) {
+            cli::cli_abort("Cannot pool climate summary rows with different units.")
+        }
+    }
+
+    values <- as.numeric(rows$value)
+    valid <- is.finite(values)
+    if (!any(valid)) {
+        return(NA_real_)
+    }
+    values <- values[valid]
+    # Valid-value counts are the exact weights for fragment means. Total row
+    # counts are accepted only for stores created before `n_valid` existed.
+    for (weight_column in c("n_valid", "n_records")) {
+        if (!weight_column %in% names(rows)) {
+            next
+        }
+        weights <- as.numeric(rows[[weight_column]])[valid]
+        if (length(weights) == length(values) &&
+            all(is.finite(weights) & weights > 0)) {
+            return(stats::weighted.mean(values, weights))
+        }
+    }
+    mean(values)
+}
+
+# Calculate one statistic from finite values and preserve an empty group as a
+# missing value instead of allowing `min()` or `max()` to emit infinities.
+morpher__finite_stat_value <- function(values, fun) {
+    values <- as.numeric(values)
+    values <- values[is.finite(values)]
+    if (!length(values)) {
+        return(NA_real_)
+    }
+    as.numeric(fun(values))
+}
+
 morpher__stat_rows <- function(dt) {
-    mean_rows <- dt[, .(
-        value = mean(value, na.rm = TRUE),
-        lon = if ("lon" %in% names(.SD)) mean(lon, na.rm = TRUE) else NA_real_,
-        lat = if ("lat" %in% names(.SD)) mean(lat, na.rm = TRUE) else NA_real_,
-        n_records = .N
-    ), by = .(plan_id, site_id, source_id, experiment_id, variant_label, frequency, table_id, variable_id, period, month, units)]
-    mean_rows[, stat := "mean"]
-
-    min_rows <- dt[, .(
-        value = min(value, na.rm = TRUE),
-        lon = if ("lon" %in% names(.SD)) mean(lon, na.rm = TRUE) else NA_real_,
-        lat = if ("lat" %in% names(.SD)) mean(lat, na.rm = TRUE) else NA_real_,
-        n_records = .N
-    ), by = .(plan_id, site_id, source_id, experiment_id, variant_label, frequency, table_id, variable_id, period, month, units)]
-    min_rows[, stat := "min"]
-
-    max_rows <- dt[, .(
-        value = max(value, na.rm = TRUE),
-        lon = if ("lon" %in% names(.SD)) mean(lon, na.rm = TRUE) else NA_real_,
-        lat = if ("lat" %in% names(.SD)) mean(lat, na.rm = TRUE) else NA_real_,
-        n_records = .N
-    ), by = .(plan_id, site_id, source_id, experiment_id, variant_label, frequency, table_id, variable_id, period, month, units)]
-    max_rows[, stat := "max"]
-
-    data.table::rbindlist(list(mean_rows, min_rows, max_rows), use.names = TRUE, fill = TRUE)
+    group_columns <- c(
+        "site_id", "source_id", "experiment_id", "variant_label",
+        "frequency", "table_id", "variable_id", "period", "month", "units"
+    )
+    dt <- data.table::as.data.table(data.table::copy(dt))
+    has_lon <- "lon" %in% names(dt)
+    has_lat <- "lat" %in% names(dt)
+    # File identity is deliberately absent from the grouping columns. Compute
+    # all statistics in one pass over the concatenated raw records so neither
+    # file length nor missingness can change the scientific grouping.
+    wide <- dt[, .(
+        mean = morpher__finite_stat_value(value, mean),
+        min = morpher__finite_stat_value(value, min),
+        max = morpher__finite_stat_value(value, max),
+        lon = if (has_lon) morpher__finite_stat_value(lon, mean) else NA_real_,
+        lat = if (has_lat) morpher__finite_stat_value(lat, mean) else NA_real_,
+        n_records = .N,
+        n_valid = sum(is.finite(as.numeric(value)))
+    ), by = group_columns]
+    rows <- data.table::melt(
+        wide,
+        id.vars = c(
+            group_columns,
+            "lon", "lat", "n_records", "n_valid"
+        ),
+        measure.vars = c("mean", "min", "max"),
+        variable.name = "stat",
+        value.name = "value",
+        variable.factor = FALSE
+    )
+    # Source plan lineage belongs to the summary as a whole and is persisted
+    # separately so file fragments do not split scientific statistic rows.
+    rows[, plan_id := NA_character_]
+    data.table::setcolorder(rows, c("plan_id", setdiff(names(rows), "plan_id")))
+    rows[]
 }
 
 morpher__field_units <- function(data, fields) {
@@ -616,23 +709,65 @@ EpwMorpher <- R6::R6Class(
             if (!nrow(climate)) {
                 cli::cli_abort("No extracted climate rows matched the supplied EPW morphing periods.")
             }
+            source_plan_ids <- sort(unique(as.character(climate$plan_id)))
+            source_plan_ids <- source_plan_ids[
+                !is.na(source_plan_ids) & nzchar(source_plan_ids)
+            ]
 
             rows <- morpher__stat_rows(climate)
             rows <- period_years[rows, on = "period"]
+            created_at <- morpher__now()
             rows[, `:=`(
                 summary_id = summary_id,
                 coverage = 1,
-                created_at = morpher__now()
+                created_at = created_at
             )]
-            rows[, summary_row_id := morpher__hash_rows(summary_id, plan_id, variable_id, period, month, stat)]
+            rows[, summary_row_id := morpher__hash_rows(
+                summary_id,
+                site_id,
+                source_id,
+                experiment_id,
+                variant_label,
+                frequency,
+                table_id,
+                variable_id,
+                period,
+                month,
+                stat,
+                units
+            )]
             data.table::setcolorder(rows, c(
                 "summary_row_id", "summary_id", "plan_id", "site_id", "source_id",
                 "experiment_id", "variant_label", "frequency", "table_id",
                 "variable_id", "period", "month", "stat", "value", "units",
-                "lon", "lat", "years_json", "coverage", "n_records", "created_at"
+                "lon", "lat", "years_json", "coverage", "n_records", "n_valid",
+                "created_at"
+            ))
+            lineage <- data.table::data.table(
+                summary_id = summary_id,
+                plan_id = source_plan_ids,
+                created_at = created_at
+            )
+            lineage[, summary_plan_id := morpher__hash_rows(summary_id, plan_id)]
+            data.table::setcolorder(lineage, c(
+                "summary_plan_id", "summary_id", "plan_id", "created_at"
             ))
             morpher__delete_by_key(private$store, "epw_climate_summary", "summary_id", summary_id)
+            morpher__delete_by_key(
+                private$store,
+                "epw_climate_summary_plan",
+                "summary_id",
+                summary_id
+            )
             morpher__replace_rows(private$store, "epw_climate_summary", rows, "summary_row_id")
+            if (nrow(lineage)) {
+                morpher__replace_rows(
+                    private$store,
+                    "epw_climate_summary_plan",
+                    lineage,
+                    "summary_plan_id"
+                )
+            }
             rows[]
         },
 
@@ -1858,7 +1993,12 @@ EpwMorpher <- R6::R6Class(
             if (!nrow(climate_summary)) {
                 cli::cli_abort("No climate summary rows were found for summary ID {.val {summary_id}}.")
             }
-            plan_id <- unique(climate_summary$plan_id)
+            plan_id <- morpher__summary_plan_ids(private$store, climate_summary)
+            if (!length(plan_id)) {
+                cli::cli_abort(
+                    "Climate summary ID {.val {summary_id}} has no source extraction-plan lineage."
+                )
+            }
             result <- private$extraction_rows(plan_id)
             if (!nrow(result)) {
                 cli::cli_abort("No extraction result files were found for climate summary ID {.val {summary_id}}.")
@@ -2426,9 +2566,9 @@ EpwMorpher <- R6::R6Class(
                         }
                         is_precip <- identical(rule$epw_field[[1L]], "liquid_precip_depth") &&
                             identical(target_variable_id, "pr")
-                        future_value <- if (nrow(future)) future$value[[1L]] else NA_real_
+                        future_value <- morpher__pooled_mean(future)
                         future_units <- if (nrow(future)) store__chr1(future$units[[1L]]) else NA_character_
-                        reference_value <- if (nrow(ref)) mean(ref$value, na.rm = TRUE) else NA_real_
+                        reference_value <- morpher__pooled_mean(ref)
                         reference_units <- if (nrow(ref)) store__chr1(ref$units[[1L]]) else NA_character_
                         base_value <- if (nrow(base)) base$value[[1L]] else NA_real_
                         base_units <- if (nrow(base)) store__chr1(base$units[[1L]]) else NA_character_
@@ -2451,7 +2591,7 @@ EpwMorpher <- R6::R6Class(
                             }
                             if (identical(status, "ok") && isTRUE(external_reference)) {
                                 converted <- morpher__precip_summary_depth_checked(
-                                    ref$value[[1L]],
+                                    reference_value,
                                     reference_units,
                                     ref$years_json[[1L]],
                                     m

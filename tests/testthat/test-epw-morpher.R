@@ -48,6 +48,158 @@ test_that("packaged Singapore EPW fixture is readable", {
     expect_identical(external$path(), original_path)
 })
 
+test_that("climate statistics pool raw file fragments before summarising", {
+    climate <- data.table::data.table(
+        plan_id = c("plan-a", "plan-a", "plan-b", "plan-b", "plan-b"),
+        site_id = "SIN",
+        source_id = "Model-A",
+        experiment_id = "ssp370",
+        variant_label = "r1i1p1f1",
+        frequency = "day",
+        table_id = "day",
+        variable_id = "tas",
+        period = "2040",
+        month = 1L,
+        units = "K",
+        value = c(280, NA, 300, 300, 300),
+        lon = 104,
+        lat = 29.5
+    )
+
+    summary <- morpher__stat_rows(climate)
+    expect_equal(nrow(summary), 3L)
+    expect_true(all(is.na(summary$plan_id)))
+    expect_equal(summary$n_records, rep(5L, 3L))
+    expect_equal(summary$n_valid, rep(4L, 3L))
+    expect_equal(summary[stat == "mean", value], 295)
+    expect_equal(summary[stat == "min", value], 280)
+    expect_equal(summary[stat == "max", value], 300)
+})
+
+test_that("climate statistics preserve all-missing groups as missing", {
+    climate <- data.table::data.table(
+        plan_id = c("plan-a", "plan-b"),
+        site_id = "SIN",
+        source_id = "Model-A",
+        experiment_id = "ssp370",
+        variant_label = "r1i1p1f1",
+        frequency = "day",
+        table_id = "day",
+        variable_id = "tas",
+        period = "2040",
+        month = 1L,
+        units = "K",
+        value = NA_real_
+    )
+
+    summary <- morpher__stat_rows(climate)
+    expect_true(all(is.na(summary$value)))
+    expect_equal(summary$n_records, rep(2L, 3L))
+    expect_equal(summary$n_valid, rep(0L, 3L))
+})
+
+test_that("legacy fragmented mean summaries use valid record weights", {
+    fragments <- data.table::data.table(
+        stat = "mean",
+        value = c(280, 300),
+        units = "K",
+        n_valid = c(1L, 3L),
+        n_records = c(1L, 3L)
+    )
+
+    expect_equal(
+        morpher__pooled_mean(fragments),
+        295
+    )
+
+    # Old persisted summaries lack valid-value counts, so fall back to their
+    # total record counts before using equal weights as a last resort.
+    legacy <- fragments[, .(stat, value, units, n_records)]
+    expect_equal(
+        morpher__pooled_mean(legacy),
+        295
+    )
+    uncounted <- fragments[, .(stat, value, units)]
+    expect_equal(
+        morpher__pooled_mean(uncounted),
+        290
+    )
+    expect_error(
+        morpher__pooled_mean(
+            data.table::copy(fragments)[, `:=`(stat = "max")]
+        ),
+        "monthly mean"
+    )
+    expect_error(
+        morpher__pooled_mean(
+            data.table::copy(fragments)[, `:=`(units = c("K", "degC"))]
+        ),
+        "different units"
+    )
+})
+
+test_that("factor planning reads legacy record-weighted mean fragments", {
+    skip_if_not_installed("duckdb")
+
+    store <- EsgStore$new(tempfile("weighted-factor-store-"))
+    on.exit(store$close(), add = TRUE)
+    morpher <- morpher__from_recipe(
+        store = store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing"))
+    )
+    climate <- data.table::data.table(
+        source_id = "Model-A",
+        experiment_id = "ssp370",
+        variant_label = "r1i1p1f1",
+        period = "2040",
+        variable_id = "tas",
+        month = 1L,
+        stat = "mean",
+        value = c(280, 300),
+        units = "K",
+        n_records = c(1L, 3L),
+        years_json = "[2040]"
+    )
+    reference <- data.table::data.table(
+        source_id = "Model-A",
+        experiment_id = "historical",
+        variant_label = "r1i1p1f1",
+        period = "reference",
+        variable_id = "tas",
+        month = 1L,
+        stat = "mean",
+        value = c(270, 274),
+        units = "K",
+        n_records = c(3L, 1L),
+        years_json = "[2000]"
+    )
+    baseline <- data.table::data.table(
+        epw_field = "dry_bulb_temperature",
+        month = 1L,
+        value = 20,
+        units = "degC"
+    )
+    by <- c("source_id", "experiment_id", "variant_label", "period")
+
+    factors <- morpher$.__enclos_env__$private$factor_rows(
+        "morph-fragmented",
+        climate,
+        baseline,
+        by,
+        strict = FALSE,
+        reference = reference
+    )
+    dry_bulb <- factors[
+        epw_field == "dry_bulb_temperature" & month == 1L
+    ]
+
+    expect_equal(dry_bulb$future, 21.85, tolerance = 1e-10)
+    expect_equal(dry_bulb$reference, -2.15, tolerance = 1e-10)
+    expect_equal(dry_bulb$delta, 24, tolerance = 1e-10)
+})
+
 
 test_that("baseline summaries and preflight preserve EPW missing-value evidence", {
     skip_if_not_installed("duckdb")
@@ -294,6 +446,11 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
     expect_identical(unique(climate$period), "2061")
     expect_identical(unique(climate$month), 1L)
     expect_true(all(climate$n_records == 1L))
+    expect_true(all(climate$n_valid == 1L))
+    expect_true(all(is.na(climate$plan_id)))
+    sources <- morpher__read_table(store, "epw_climate_summary_plan")
+    sources <- sources[sources$summary_id == unique(climate$summary_id)]
+    expect_identical(sources$plan_id, plan$plan_id)
 })
 
 

@@ -3929,9 +3929,27 @@ EsgStore <- R6::R6Class(
                     years_json VARCHAR,
                     coverage DOUBLE,
                     n_records INTEGER,
+                    n_valid INTEGER,
                     created_at TIMESTAMP
                 )
             "
+            )
+            # A summary can combine several extraction files. Keep their plan
+            # lineage normalized so source fragments do not divide statistics.
+            private$exec(
+                "
+                CREATE TABLE IF NOT EXISTS epw_climate_summary_plan (
+                    summary_plan_id VARCHAR PRIMARY KEY,
+                    summary_id VARCHAR,
+                    plan_id VARCHAR,
+                    created_at TIMESTAMP
+                )
+            "
+            )
+            # Existing stores recorded total rows only. The nullable valid-row
+            # count enables exact pooling when old fragment summaries are read.
+            private$exec(
+                "ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS n_valid INTEGER"
             )
             private$exec(
                 "

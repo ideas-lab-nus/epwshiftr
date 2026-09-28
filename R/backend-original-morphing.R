@@ -1162,8 +1162,10 @@ ORIGINAL_MORPHING_PROJECTED_EXTREME_IDENTITY_COLUMNS <- c(
     "member_id", "interval", "month"
 )
 
+# Historical experiments may be catalogued under a different institution than
+# their projected counterpart, so only model, member, and month cross periods.
 ORIGINAL_MORPHING_REFERENCE_EXTREME_IDENTITY_COLUMNS <- c(
-    "institution_id", "source_id", "member_id", "month"
+    "source_id", "member_id", "month"
 )
 
 # Aggregate and attach one monthly-extreme field using an explicitly supplied
@@ -1361,11 +1363,12 @@ original_morphing__from_monthly_enhanced <- function(
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
 
-# Select the stable identity shared by future and historical rows. Activity,
-# experiment, interval, table, grid, and coordinates may legitimately differ
-# across periods or variables and therefore cannot identify a climate case.
+# Select the stable identity shared by future and historical rows. Institution,
+# activity, experiment, interval, table, grid, and coordinates may legitimately
+# differ across periods or variables and therefore cannot identify a climate
+# case.
 original_morphing__reference_join_cols <- function(target, reference) {
-    cols <- c("institution_id", "source_id", "member_id", "month")
+    cols <- c("source_id", "member_id", "month")
     cols <- intersect(cols, intersect(names(target), names(reference)))
     if (!"month" %in% cols && "month" %in% names(target) && "month" %in% names(reference)) {
         cols <- c(cols, "month")

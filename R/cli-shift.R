@@ -997,7 +997,12 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
         label = epwshiftr_cli_na_null(row$label[[1L]]),
         epw = epw
     )
-    plan_id <- unique(summary$plan_id)
+    plan_id <- morpher__summary_plan_ids(store, summary)
+    if (!length(plan_id)) {
+        cli::cli_abort(
+            "Climate summary ID {.val {row$summary_id[[1L]]}} has no source extraction-plan lineage."
+        )
+    }
     climate <- shift_stage_new(ShiftClimate, "climate",
         store_path = store$path,
         ids = list(plan_id = plan_id, summary_id = row$summary_id[[1L]]),
@@ -1014,7 +1019,12 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             shift_sql_string(row$reference_summary_id[[1L]])
         ))
         if (nrow(reference)) {
-            reference_plan_id <- unique(reference$plan_id)
+            reference_plan_id <- morpher__summary_plan_ids(store, reference)
+            if (!length(reference_plan_id)) {
+                cli::cli_abort(
+                    "Reference summary ID {.val {row$reference_summary_id[[1L]]}} has no source extraction-plan lineage."
+                )
+            }
             reference_rows <- unique(reference[, .(period, years_json)])
             reference_values <- lapply(seq_len(nrow(reference_rows)),
                 function(i) as.integer(jsonlite::fromJSON(
@@ -1033,7 +1043,12 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             shift_sql_string(row$observed_summary_id[[1L]])
         ))
         if (nrow(observed)) {
-            observed_plan_id <- unique(observed$plan_id)
+            observed_plan_id <- morpher__summary_plan_ids(store, observed)
+            if (!length(observed_plan_id)) {
+                cli::cli_abort(
+                    "Observed summary ID {.val {row$observed_summary_id[[1L]]}} has no source extraction-plan lineage."
+                )
+            }
             observed_rows <- unique(observed[, .(period, years_json)])
             observed_values <- lapply(seq_len(nrow(observed_rows)),
                 function(i) as.integer(jsonlite::fromJSON(
