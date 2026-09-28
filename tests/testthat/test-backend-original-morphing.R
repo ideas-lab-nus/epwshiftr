@@ -320,6 +320,40 @@ test_that("disabled precipitation preserves baseline EPW fields", {
     expect_equal(result$data$liquid_precip_depth, baseline$liquid_precip_depth)
     expect_equal(result$data$liquid_precip_rate, baseline$liquid_precip_rate)
     expect_false(any(result$factors$epw_field == "liquid_precip_depth"))
+
+    # Registered recipes must apply the same option-resolved contract during
+    # execution that the public transform used for discovery and extraction.
+    registered_recipe <- transform__recipe(monthly_transform(
+        "epwshiftr",
+        precipitation = "off"
+    ))
+    registered_future <- data.table::copy(future)[, frequency := "mon"]
+    registered_reference <- data.table::copy(reference)[, frequency := "mon"]
+    registered_context <- morpher__context(
+        epw,
+        registered_future,
+        recipe = registered_recipe,
+        reference_climate = registered_reference,
+        years = 2060L,
+        labels = "future",
+        reference_years = 1995L,
+        reference_labels = "reference",
+        by = c("source_id", "experiment_id", "variant_label", "period"),
+        strict = TRUE
+    )
+    registered_result <- morpher__run_context(registered_context)
+
+    expect_equal(
+        registered_result$data$liquid_precip_depth,
+        baseline$liquid_precip_depth
+    )
+    expect_equal(
+        registered_result$data$liquid_precip_rate,
+        baseline$liquid_precip_rate
+    )
+    expect_false(any(
+        registered_result$factors$epw_field == "liquid_precip_depth"
+    ))
 })
 
 
