@@ -48,6 +48,86 @@ test_that("packaged Singapore EPW fixture is readable", {
     expect_identical(external$path(), original_path)
 })
 
+test_that("fragmented climate summaries use record-weighted means", {
+    fragments <- data.table::data.table(
+        value = c(280, 300),
+        n_records = c(1L, 3L)
+    )
+
+    expect_equal(
+        morpher__weighted_summary_value(fragments),
+        295
+    )
+
+    # Old persisted summaries did not always include record counts. Preserve
+    # their prior equal-weight behavior instead of discarding usable values.
+    legacy <- fragments[, .(value)]
+    expect_equal(
+        morpher__weighted_summary_value(legacy),
+        290
+    )
+})
+
+test_that("factor planning persists record-weighted fragmented summaries", {
+    skip_if_not_installed("duckdb")
+
+    store <- EsgStore$new(tempfile("weighted-factor-store-"))
+    on.exit(store$close(), add = TRUE)
+    morpher <- morpher__from_recipe(
+        store = store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        recipe = suppressWarnings(epw_morph_recipe("original_morphing"))
+    )
+    climate <- data.table::data.table(
+        source_id = "Model-A",
+        experiment_id = "ssp370",
+        variant_label = "r1i1p1f1",
+        period = "2040",
+        variable_id = "tas",
+        month = 1L,
+        value = c(280, 300),
+        units = "K",
+        n_records = c(1L, 3L),
+        years_json = "[2040]"
+    )
+    reference <- data.table::data.table(
+        source_id = "Model-A",
+        experiment_id = "historical",
+        variant_label = "r1i1p1f1",
+        period = "reference",
+        variable_id = "tas",
+        month = 1L,
+        value = c(270, 274),
+        units = "K",
+        n_records = c(3L, 1L),
+        years_json = "[2000]"
+    )
+    baseline <- data.table::data.table(
+        epw_field = "dry_bulb_temperature",
+        month = 1L,
+        value = 20,
+        units = "degC"
+    )
+    by <- c("source_id", "experiment_id", "variant_label", "period")
+
+    factors <- morpher$.__enclos_env__$private$factor_rows(
+        "morph-fragmented",
+        climate,
+        baseline,
+        by,
+        strict = FALSE,
+        reference = reference
+    )
+    dry_bulb <- factors[
+        epw_field == "dry_bulb_temperature" & month == 1L
+    ]
+
+    expect_equal(dry_bulb$future, 21.85, tolerance = 1e-10)
+    expect_equal(dry_bulb$reference, -2.15, tolerance = 1e-10)
+    expect_equal(dry_bulb$delta, 24, tolerance = 1e-10)
+})
+
 
 test_that("baseline summaries and preflight preserve EPW missing-value evidence", {
     skip_if_not_installed("duckdb")

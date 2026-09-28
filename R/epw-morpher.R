@@ -225,6 +225,31 @@ morpher__monthly_long <- function(data, id_cols, value_cols, units_map) {
     out
 }
 
+# Combine persisted summary fragments without giving short source files the
+# same influence as long files. Legacy rows without usable counts retain the
+# previous equal-weight behavior.
+morpher__weighted_summary_value <- function(rows) {
+    if (is.null(rows) || !nrow(rows) || !"value" %in% names(rows)) {
+        return(NA_real_)
+    }
+    values <- as.numeric(rows$value)
+    valid <- is.finite(values)
+    if (!any(valid)) {
+        return(NA_real_)
+    }
+    values <- values[valid]
+    if (!"n_records" %in% names(rows)) {
+        return(mean(values))
+    }
+
+    weights <- as.numeric(rows$n_records)[valid]
+    if (length(weights) != length(values) ||
+        any(!is.finite(weights) | weights <= 0)) {
+        return(mean(values))
+    }
+    stats::weighted.mean(values, weights)
+}
+
 morpher__stat_rows <- function(dt) {
     mean_rows <- dt[, .(
         value = mean(value, na.rm = TRUE),
@@ -2426,9 +2451,9 @@ EpwMorpher <- R6::R6Class(
                         }
                         is_precip <- identical(rule$epw_field[[1L]], "liquid_precip_depth") &&
                             identical(target_variable_id, "pr")
-                        future_value <- if (nrow(future)) future$value[[1L]] else NA_real_
+                        future_value <- morpher__weighted_summary_value(future)
                         future_units <- if (nrow(future)) store__chr1(future$units[[1L]]) else NA_character_
-                        reference_value <- if (nrow(ref)) mean(ref$value, na.rm = TRUE) else NA_real_
+                        reference_value <- morpher__weighted_summary_value(ref)
                         reference_units <- if (nrow(ref)) store__chr1(ref$units[[1L]]) else NA_character_
                         base_value <- if (nrow(base)) base$value[[1L]] else NA_real_
                         base_units <- if (nrow(base)) store__chr1(base$units[[1L]]) else NA_character_
@@ -2451,7 +2476,7 @@ EpwMorpher <- R6::R6Class(
                             }
                             if (identical(status, "ok") && isTRUE(external_reference)) {
                                 converted <- morpher__precip_summary_depth_checked(
-                                    ref$value[[1L]],
+                                    reference_value,
                                     reference_units,
                                     ref$years_json[[1L]],
                                     m
