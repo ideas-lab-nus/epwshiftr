@@ -308,6 +308,18 @@ morpher__finite_stat_value <- function(values, fun) {
     as.numeric(fun(values))
 }
 
+# Assign extracted climate records to every requested period that contains
+# their year. Overlapping future windows intentionally create a one-to-many
+# mapping, so the cartesian expansion is allowed only at this explicit join.
+morpher__assign_periods <- function(climate, periods) {
+    climate[
+        periods,
+        on = "year",
+        nomatch = 0L,
+        allow.cartesian = TRUE
+    ]
+}
+
 morpher__stat_rows <- function(dt) {
     group_columns <- c(
         "site_id", "source_id", "experiment_id", "variant_label",
@@ -705,7 +717,7 @@ EpwMorpher <- R6::R6Class(
             period_years <- periods[, .(
                 years_json = morpher__json(as.integer(sort(unique(year))))
             ), by = "period"]
-            climate <- climate[periods, on = "year", nomatch = 0L]
+            climate <- morpher__assign_periods(climate, periods)
             if (!nrow(climate)) {
                 cli::cli_abort("No extracted climate rows matched the supplied EPW morphing periods.")
             }

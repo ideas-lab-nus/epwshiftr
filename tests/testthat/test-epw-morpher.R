@@ -98,6 +98,24 @@ test_that("climate statistics preserve all-missing groups as missing", {
     expect_equal(summary$n_valid, rep(0L, 3L))
 })
 
+test_that("climate records expand across overlapping morphing periods", {
+    climate <- data.table::data.table(
+        year = rep(c(2030L, 2040L, 2050L), each = 100L),
+        record_id = seq_len(300L)
+    )
+    periods <- data.table::data.table(
+        period = rep(c("2030", "2040"), each = 2L),
+        year = c(2030L, 2040L, 2040L, 2050L)
+    )
+
+    assigned <- morpher__assign_periods(climate, periods)
+
+    expect_equal(nrow(assigned), 400L)
+    expect_equal(assigned[, .N, by = period]$N, c(200L, 200L))
+    expect_equal(assigned[year == 2040L, data.table::uniqueN(period)], 2L)
+    expect_equal(assigned[year == 2040L, data.table::uniqueN(record_id)], 100L)
+})
+
 test_that("legacy fragmented mean summaries use valid record weights", {
     fragments <- data.table::data.table(
         stat = "mean",
