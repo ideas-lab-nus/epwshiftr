@@ -609,6 +609,11 @@
 
 ## Bug fixes
 
+* Climate records now expand across every requested morphing period containing
+  their year, including overlapping future windows. The intentional cartesian
+  join is limited to period assignment and covered by a threshold-exceeding
+  regression case (#263).
+
 * Historical means and extrema now align with future morphing cases by
   `source_id`, `member_id`, and `month` when ESGF catalogues use different
   `institution_id` values across experiments. Raw climate records split across
