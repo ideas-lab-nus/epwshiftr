@@ -55,6 +55,7 @@ EPW_MORPH_ORIGINAL_PROFILE_OPTIONS <- list(
         diffuse_model = "rbl_2010",
         illuminance_model = "perez_1990",
         snow_depth = "auto",
+        precipitation = "required",
         ground_temperatures = "recalculate",
         typical_extreme_periods = "recalculate",
         design_conditions = "drop"
@@ -65,6 +66,7 @@ EPW_MORPH_ORIGINAL_PROFILE_OPTIONS <- list(
         diffuse_model = "preserve_fraction",
         illuminance_model = "preserve",
         snow_depth = "off",
+        precipitation = "required",
         ground_temperatures = "preserve",
         typical_extreme_periods = "preserve",
         design_conditions = "preserve"
@@ -76,6 +78,7 @@ EPW_MORPH_ORIGINAL_OPTION_CHOICES <- list(
     diffuse_model = c("rbl_2010", "preserve_fraction"),
     illuminance_model = c("perez_1990", "preserve"),
     snow_depth = c("auto", "required", "off"),
+    precipitation = c("required", "off"),
     ground_temperatures = c("recalculate", "preserve"),
     typical_extreme_periods = c("recalculate", "preserve"),
     design_conditions = c("drop", "preserve")
@@ -209,6 +212,9 @@ original_morphing__profile_methods <- function(backend, profile) {
 #'   `"preserve_fraction"`.
 #' @param illuminance_model Illuminance model: `"perez_1990"` or `"preserve"`.
 #' @param snow_depth Snow-depth policy: `"auto"`, `"required"`, or `"off"`.
+#' @param precipitation Precipitation policy: `"required"` scales valid
+#'   baseline wet-hour timing with CMIP precipitation, while `"off"` preserves
+#'   the baseline EPW precipitation fields without requesting `pr`.
 #' @param ground_temperatures Ground-temperature header policy:
 #'   `"recalculate"` applies the Kusuda--Achenbach model to the morphed year,
 #'   while `"preserve"` retains the baseline EPW header.
@@ -239,6 +245,7 @@ original_morphing__options <- function(
     diffuse_model = "rbl_2010",
     illuminance_model = "perez_1990",
     snow_depth = "auto",
+    precipitation = "required",
     ground_temperatures = "recalculate",
     typical_extreme_periods = "recalculate",
     design_conditions = "drop"
@@ -249,6 +256,7 @@ original_morphing__options <- function(
         diffuse_model = diffuse_model,
         illuminance_model = illuminance_model,
         snow_depth = snow_depth,
+        precipitation = precipitation,
         ground_temperatures = ground_temperatures,
         typical_extreme_periods = typical_extreme_periods,
         design_conditions = design_conditions
@@ -2606,7 +2614,16 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
     } else {
         original_morphing__opaque_sky_cover(data_epw, total_cover)
     }
-    precip <- steps$precip(data_epw, context)
+    # Preserve baseline precipitation when the recipe explicitly disables the
+    # climate signal, avoiding an unnecessary CMIP `pr` dependency.
+    precip <- if (identical(
+        context$recipe$options$precipitation,
+        "off"
+    )) {
+        data.table::data.table()
+    } else {
+        steps$precip(data_epw, context)
+    }
     snow <- original_morphing__snow_depth(data_epw, context)
 
     # Keep the established part order because it controls both field overlay

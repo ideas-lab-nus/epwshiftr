@@ -54,6 +54,11 @@
 
 ## New features
 
+* Added `precipitation = "off"` to both monthly morphing methods. This keeps
+  baseline EPW precipitation fields unchanged and removes CMIP `pr` from
+  discovery and input requirements when precipitation is outside the workflow
+  scope (#261).
+
 * Added `shift_history()` / `shift list` to find saved runs and batches without
   network requests or store creation, and `shift_summary()` / `shift summary`
   to inspect outputs by method, model, scenario, period, member, and grid.

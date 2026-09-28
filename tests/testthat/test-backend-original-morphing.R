@@ -230,13 +230,14 @@ original_morphing_test__result_behavior <- function(result) {
 # Build the same single-case context boundary used by EpwMorpher after it has
 # separated model, scenario, member, and period cases.
 original_morphing_test__context <- function(epw, climate, backend, profile,
-                                  reference_climate = NULL) {
+                                  reference_climate = NULL, options = NULL) {
     morpher__context(
         epw,
         climate,
         recipe = suppressWarnings(epw_morph_recipe(
             backend,
-            profile = profile
+            profile = profile,
+            options = options
         )),
         reference_climate = reference_climate,
         years = 2060L,
@@ -291,6 +292,35 @@ enhanced_test__change_climate <- function(reference = FALSE) {
         )
     }))
 }
+
+
+test_that("disabled precipitation preserves baseline EPW fields", {
+    epw <- epw_file_read(get_cache_epw())
+    baseline <- data.table::as.data.table(epw$data())[, .(
+        liquid_precip_depth,
+        liquid_precip_rate
+    )]
+    future <- enhanced_test__change_climate()[variable_id != "pr"]
+    reference <- enhanced_test__change_climate(
+        reference = TRUE
+    )[variable_id != "pr"]
+
+    # Exercise the full enhanced backend with no precipitation rows present;
+    # the inherited EPW fields must remain byte-for-byte equivalent as values.
+    context <- original_morphing_test__context(
+        epw,
+        future,
+        "original_morphing",
+        "enhanced",
+        reference,
+        options = list(precipitation = "off")
+    )
+    result <- morpher__run_context(context)
+
+    expect_equal(result$data$liquid_precip_depth, baseline$liquid_precip_depth)
+    expect_equal(result$data$liquid_precip_rate, baseline$liquid_precip_rate)
+    expect_false(any(result$factors$epw_field == "liquid_precip_depth"))
+})
 
 
 test_that("Original morphing runner behavior is fixed across modes and profiles", {

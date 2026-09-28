@@ -29,6 +29,9 @@ epw_morph_variables <- function(level = c("recommended", "minimal", "extended"),
             if (identical(level$options$snow_depth, "off")) {
                 optional <- setdiff(optional, "snd")
             }
+            if (identical(level$options$precipitation, "off")) {
+                optional <- setdiff(optional, "pr")
+            }
         }
         return(unique(c(required, optional)))
     }
@@ -130,6 +133,9 @@ morpher__input_variables <- function(recipe) {
         }
         if (identical(recipe$options$snow_depth, "off")) {
             optional <- setdiff(optional, "snd")
+        }
+        if (identical(recipe$options$precipitation, "off")) {
+            optional <- setdiff(optional, "pr")
         }
     }
     unique(c(required_inputs, optional))
@@ -327,6 +333,11 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
     pipeline <- backend_spec$component_pipeline()
     if (is_belcher && identical(options$snow_depth, "required")) {
         rules[step == "snow_depth", required := TRUE]
+    }
+    if (is_belcher && identical(options$precipitation, "off")) {
+        # Disabled precipitation remains an inherited EPW field and must not
+        # enter discovery, coverage, baseline, or factor requirements.
+        rules[step == "precip", required := FALSE]
     }
 
     structure(
