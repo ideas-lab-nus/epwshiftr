@@ -377,6 +377,12 @@ test_that("resolved options update the public input contract", {
         "epwshiftr",
         humidity_source = "huss"
     )
+    precipitation_off <- lapply(
+        c("original_morphing", "epwshiftr"),
+        function(method) {
+            monthly_transform(method, precipitation = "off")
+        }
+    )
 
     expect_true(all(vapply(
         required_snow@required_inputs$model_future@variable_sets,
@@ -393,6 +399,24 @@ test_that("resolved options update the public input contract", {
         list(c("tas", "huss", "ps", "psl", "rlds", "rsds", "sfcWind",
             "clt", "pr"))
     )
+    for (transform in precipitation_off) {
+        expect_false(any(vapply(
+            transform@required_inputs$model_future@variable_sets,
+            function(variables) "pr" %in% variables,
+            logical(1L)
+        )))
+        recipe <- transform__recipe(transform)
+        expect_identical(recipe$options$precipitation, "off")
+        expect_false("pr" %in% epw_morph_variables(
+            recipe,
+            include_optional = TRUE
+        ))
+        expect_false(morpher__recipe_rules(
+            recipe
+        )[step == "precip", required])
+        expect_true("liquid_precip_depth" %in%
+            morpher__weather_field_roles(recipe)$inherited_fields)
+    }
 })
 
 test_that("transform specifications contain no execution-owned data", {
