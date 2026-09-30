@@ -16,3 +16,7 @@ outputs/
 *.part
 *.epw
 !inst/extdata/examples/*.epw
+
+# Local planning/research notes are not software source.
+/DEVELOPMENT.md
+/tools/tool-paper/

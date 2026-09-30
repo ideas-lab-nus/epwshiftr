@@ -19,6 +19,22 @@ make sure someone from the team agrees that it’s a problem. If you’ve found 
 bug, create an associated issue and illustrate the bug with a minimal 
 [reprex](https://www.tidyverse.org/help/#reprex).
 
+### R table processing
+
+Use `data.table` for tabular processing, intermediate tables, and returned
+catalog tables unless another format is explicitly required. Document any
+exception. Do not introduce unnecessary conversions to `data.frame` or
+row-by-row scans and binding where indexed joins and grouped operations apply.
+When accepting caller-owned `data.table` inputs, preserve their contents,
+keys, indexes, and attributes; copy the required columns before mutation.
+
+### Repository scope
+
+Keep this repository and pull requests focused on software source, tests,
+user documentation, and contributor guidance. Research plans, manuscript
+materials, and private development planning such as `DEVELOPMENT.md` belong
+outside the repository and must not be included in commits or pull requests.
+
 ### Pull request process
 
 *  We recommend that you create a Git branch for each pull request (PR).  

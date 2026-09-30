@@ -54,6 +54,14 @@
 
 ## New features
 
+* Added an internal method-driven CMIP6 catalog eligibility reducer using
+  `data.table` projections, indexed joins, and grouped coverage checks. It
+  retains rejected identities, joint input alternatives, and stable member,
+  grid, frequency, and table partitions. A separate public offline API is not
+  introduced; integration into `shift_cmip6_avail(methods = ...)` is planned
+  separately. Existing acquisition and scientific algorithms are unchanged
+  (#268, #269).
+
 * Added `precipitation = "off"` to both monthly morphing methods. This keeps
   baseline EPW precipitation fields unchanged and removes CMIP `pr` from
   discovery and input requirements when precipitation is outside the workflow
