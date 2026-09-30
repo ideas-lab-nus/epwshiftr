@@ -111,14 +111,14 @@ eligibility__catalog <- function(catalog, identities = NULL) {
     list(catalog = candidates[catalog, on = fields], candidates = candidates)
 }
 
-# Stage 2: turn resolved method contracts into small requirement tables once.
-# A path is one complete variable alternative across future and historical roles.
+# Stage 2: flatten method contracts once, then expand alternatives and scenarios
+# with table joins. Only the small method and role lists need explicit loops.
 eligibility__requirements <- function(
     transforms,
     scenarios,
     include_optional_historical
 ) {
-    pairs <- lookups <- list()
+    compiled <- vector("list", length(transforms))
     for (key in names(transforms)) {
         transform <- transforms[[key]]
         roles <- c("model_future", "model_historical")
@@ -136,8 +136,10 @@ eligibility__requirements <- function(
                 "The transform must declare a required model_future input."
             )
         }
-        # Resolve per-variable frequencies once per role, outside matching.
-        frequencies <- list()
+        role_rows <- list()
+        alternatives <- lapply(requirements, function(requirement) {
+            seq_along(requirement@variable_sets)
+        })
         for (role in names(requirements)) {
             requirement <- requirements[[role]]
             if (!length(requirement@variable_sets)) {
@@ -145,12 +147,10 @@ eligibility__requirements <- function(
                     "Input role {.val {role}} has no variable alternatives."
                 )
             }
-            variables <- unique(unlist(
-                requirement@variable_sets,
-                use.names = FALSE
-            ))
-            frequencies[[role]] <- stats::setNames(
-                lapply(variables, function(variable) {
+            variables <- unlist(requirement@variable_sets, use.names = FALSE)
+            unique_variables <- unique(variables)
+            frequencies <- stats::setNames(
+                lapply(unique_variables, function(variable) {
                     allowed <- requirement@variable_frequencies[[variable]]
                     if (is.null(allowed)) {
                         allowed <- requirement@frequencies
@@ -162,86 +162,126 @@ eligibility__requirements <- function(
                     }
                     as.character(allowed)
                 }),
-                variables
+                unique_variables
+            )
+            counts <- lengths(requirement@variable_sets)
+            role_rows[[role]] <- data.table::data.table(
+                role = role,
+                role_order = match(role, names(requirements)),
+                alternative = rep(seq_along(counts), counts),
+                variable_order = sequence(counts),
+                variable_id = variables,
+                allowed = unname(frequencies[variables]),
+                calendars = rep(list(requirement@calendars), length(variables))
             )
         }
-        alternatives <- lapply(requirements, function(requirement) {
-            seq_along(requirement@variable_sets)
-        })
-        # The first declared role varies fastest, retaining alternative priority.
+        # Preserve the declared first-role-fast ordering of complete input paths.
         paths <- do.call(
             data.table::CJ,
             c(rev(alternatives), list(sorted = FALSE))
         )
-        data.table::setcolorder(paths, names(requirements))
-        for (path_id in seq_len(nrow(paths))) {
-            path <- paths[path_id]
-            path_variables <- lapply(names(requirements), function(role) {
-                requirements[[role]]@variable_sets[[path[[role]]]]
-            })
-            names(path_variables) <- names(requirements)
-            for (variable in unique(unlist(
-                path_variables,
-                use.names = FALSE
-            ))) {
-                shared_roles <- names(requirements)[vapply(
-                    path_variables,
-                    function(variables) variable %in% variables,
-                    logical(1L)
-                )]
-                allowed <- Reduce(
-                    intersect,
-                    lapply(shared_roles, function(role) {
-                        frequencies[[role]][[variable]]
-                    })
-                )
-                experiments <- unique(unlist(
-                    lapply(shared_roles, function(role) {
-                        if (role == "model_future") scenarios else "historical"
-                    }),
-                    use.names = FALSE
-                ))
-                lookups[[length(lookups) + 1L]] <- data.table::data.table(
-                    transform_key = key,
-                    path_id = path_id,
-                    variable_id = variable,
-                    experiment_id = rep(experiments, each = length(allowed)),
-                    frequency = rep(allowed, times = length(experiments)),
-                    frequency_rank = rep(
-                        seq_along(allowed),
-                        times = length(experiments)
-                    )
-                )
-            }
-            for (role in names(requirements)) {
-                variables <- path_variables[[role]]
-                experiments <- if (role == "model_future") {
-                    scenarios
-                } else {
-                    "historical"
-                }
-                for (experiment in experiments) {
-                    pairs[[length(pairs) + 1L]] <- data.table::data.table(
-                        transform_key = key,
-                        method = transform@method,
-                        path_id = path_id,
-                        role = role,
-                        alternative = path[[role]],
-                        experiment_id = experiment,
-                        variable_id = variables,
-                        allowed = unname(frequencies[[role]][variables]),
-                        calendars = rep(
-                            list(requirements[[role]]@calendars),
-                            length(variables)
-                        )
-                    )
-                }
-            }
-        }
+        data.table::set(paths, j = "path_id", value = seq_len(nrow(paths)))
+        path_roles <- data.table::melt(
+            paths,
+            id.vars = "path_id",
+            measure.vars = names(requirements),
+            variable.name = "role",
+            value.name = "alternative",
+            variable.factor = FALSE
+        )
+        rows <- data.table::rbindlist(role_rows)[
+            path_roles,
+            on = c("role", "alternative"),
+            allow.cartesian = TRUE
+        ]
+        data.table::setorderv(
+            rows,
+            c("path_id", "role_order", "variable_order")
+        )
+
+        # Repeat future rows for the requested scenarios in one indexed expansion.
+        # Sorting restores role/scenario/variable priority without per-scenario tables.
+        future <- rows$role == "model_future"
+        counts <- ifelse(future, length(scenarios), 1L)
+        pairs <- rows[rep(seq_len(nrow(rows)), counts)]
+        experiment_order <- sequence(counts)
+        data.table::set(pairs, j = "experiment_order", value = experiment_order)
+        data.table::set(
+            pairs,
+            j = "experiment_id",
+            value = ifelse(
+                pairs$role == "model_future",
+                scenarios[experiment_order],
+                "historical"
+            )
+        )
+        data.table::setorderv(
+            pairs,
+            c("path_id", "role_order", "experiment_order", "variable_order")
+        )
+
+        # Intersect shared-role frequencies once per path/variable, attach them
+        # to the requested experiments, then unnest the frequency lists once.
+        allowed <- NULL
+        shared <- rows[,
+            list(allowed = list(Reduce(intersect, allowed))),
+            by = c("path_id", "variable_id")
+        ]
+        lookup <- shared[
+            unique(pairs[,
+                c("path_id", "variable_id", "experiment_id"),
+                with = FALSE
+            ]),
+            on = c("path_id", "variable_id"),
+            allow.cartesian = TRUE
+        ]
+        counts <- lengths(lookup$allowed)
+        choices <- lookup$allowed
+        lookup <- lookup[
+            rep(seq_len(nrow(lookup)), counts),
+            c("path_id", "variable_id", "experiment_id"),
+            with = FALSE
+        ]
+        data.table::set(
+            lookup,
+            j = "frequency",
+            value = as.character(unlist(choices, use.names = FALSE))
+        )
+        data.table::set(lookup, j = "frequency_rank", value = sequence(counts))
+        data.table::set(pairs, j = "transform_key", value = key)
+        data.table::set(pairs, j = "method", value = transform@method)
+        data.table::set(lookup, j = "transform_key", value = key)
+        compiled[[match(key, names(transforms))]] <- list(
+            pairs = pairs[,
+                c(
+                    "transform_key",
+                    "method",
+                    "path_id",
+                    "role",
+                    "alternative",
+                    "experiment_id",
+                    "variable_id",
+                    "allowed",
+                    "calendars"
+                ),
+                with = FALSE
+            ],
+            lookup = lookup[,
+                c(
+                    "transform_key",
+                    "path_id",
+                    "variable_id",
+                    "experiment_id",
+                    "frequency",
+                    "frequency_rank"
+                ),
+                with = FALSE
+            ]
+        )
     }
     list(
-        pairs = data.table::rbindlist(pairs),
-        lookup = data.table::rbindlist(lookups)
+        pairs = data.table::rbindlist(lapply(compiled, `[[`, "pairs")),
+        lookup = data.table::rbindlist(lapply(compiled, `[[`, "lookup"))
     )
 }
 
@@ -475,7 +515,8 @@ eligibility__evaluate <- function(
     scenarios,
     pool = c("per_method", "common"),
     include_optional_historical = FALSE,
-    identities = NULL
+    identities = NULL,
+    requirements = NULL
 ) {
     checkmate::assert_list(transforms, min.len = 1L, names = "unique")
     if (
@@ -504,11 +545,13 @@ eligibility__evaluate <- function(
     checkmate::assert_flag(include_optional_historical)
     # Four stages: catalog preparation, requirements, matching, and summary.
     prepared <- eligibility__catalog(catalog, identities)
-    requirements <- eligibility__requirements(
-        transforms,
-        scenarios,
-        include_optional_historical
-    )
+    if (is.null(requirements)) {
+        requirements <- eligibility__requirements(
+            transforms,
+            scenarios,
+            include_optional_historical
+        )
+    }
     if (!nrow(prepared$candidates)) {
         return(eligibility__empty())
     }

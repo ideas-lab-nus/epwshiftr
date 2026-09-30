@@ -1,9 +1,23 @@
 # Dataset fields retained by the public CMIP6 availability query.
 AVAILABILITY__DATASET_FIELDS <- c(
-    "id", "source_id", "experiment_id", "variant_label", "member_id",
-    "frequency", "table_id", "variable_id", "grid_label", "data_node",
-    "index_node", "instance_id", "master_id", "version", "latest",
-    "replica", "number_of_files", "size"
+    "id",
+    "source_id",
+    "experiment_id",
+    "variant_label",
+    "member_id",
+    "frequency",
+    "table_id",
+    "variable_id",
+    "grid_label",
+    "data_node",
+    "index_node",
+    "instance_id",
+    "master_id",
+    "version",
+    "latest",
+    "replica",
+    "number_of_files",
+    "size"
 )
 
 # Return one Dataset column as a character vector of the requested row count.
@@ -25,7 +39,8 @@ availability__coalesce_character <- function(...) {
     for (value in values[-1L]) {
         value <- as.character(value)
         replace <- (is.na(output) | !nzchar(output)) &
-            !is.na(value) & nzchar(value)
+            !is.na(value) &
+            nzchar(value)
         output[replace] <- value[replace]
     }
     output
@@ -33,32 +48,54 @@ availability__coalesce_character <- function(...) {
 
 # Normalize provider Dataset records to the identity fields used by the
 # availability reduction and reapply requested filters defensively.
-availability__normalize_datasets <- function(datasets, experiments, variables,
-                                             frequency, tables = NULL) {
+availability__normalize_datasets <- function(
+    datasets,
+    experiments,
+    variables,
+    frequency,
+    tables = NULL
+) {
     checkmate::assert_data_frame(datasets)
     catalog <- data.table::as.data.table(data.table::copy(datasets))
     frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
 
     catalog[["source_id"]] <- availability__character_column(
-        catalog, "source_id")
+        catalog,
+        "source_id"
+    )
     catalog[["experiment_id"]] <- availability__character_column(
-        catalog, "experiment_id")
+        catalog,
+        "experiment_id"
+    )
     catalog[["variant_label"]] <- availability__coalesce_character(
         availability__character_column(catalog, "variant_label"),
         availability__character_column(catalog, "member_id")
     )
     catalog[["grid_label"]] <- availability__character_column(
-        catalog, "grid_label")
+        catalog,
+        "grid_label"
+    )
     catalog[["frequency"]] <- availability__character_column(
-        catalog, "frequency")
+        catalog,
+        "frequency"
+    )
     catalog[["table_id"]] <- availability__character_column(
-        catalog, "table_id")
+        catalog,
+        "table_id"
+    )
     catalog[["variable_id"]] <- availability__character_column(
-        catalog, "variable_id")
+        catalog,
+        "variable_id"
+    )
 
     identity_fields <- c(
-        "source_id", "experiment_id", "variant_label", "grid_label",
-        "frequency", "table_id", "variable_id"
+        "source_id",
+        "experiment_id",
+        "variant_label",
+        "grid_label",
+        "frequency",
+        "table_id",
+        "variable_id"
     )
     complete_identity <- Reduce(
         `&`,
@@ -86,14 +123,21 @@ availability__normalize_datasets <- function(datasets, experiments, variables,
 # Choose one table for every variable within a stable model/member/grid
 # identity. Coverage across requested experiments is preferred, followed by
 # the frequency's conventional table and then a lexical tie-break.
-availability__select_tables <- function(catalog, variables, frequency,
-                                        tables = NULL) {
+availability__select_tables <- function(
+    catalog,
+    variables,
+    frequency,
+    tables = NULL
+) {
     if (!is.null(tables)) {
         return(tables)
     }
 
     frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-    selected <- stats::setNames(rep(NA_character_, length(variables)), variables)
+    selected <- stats::setNames(
+        rep(NA_character_, length(variables)),
+        variables
+    )
     for (target_variable in variables) {
         data <- catalog[variable_id == target_variable]
         if (!nrow(data)) {
@@ -102,8 +146,9 @@ availability__select_tables <- function(catalog, variables, frequency,
         preferred_table <- shift__cmip6_table_id(
             frequencies[[target_variable]]
         )
-        scores <- unique(data[, .(experiment_id, table_id)])[
-            , .(coverage = data.table::uniqueN(experiment_id)), by = table_id
+        scores <- unique(data[, .(experiment_id, table_id)])[,
+            .(coverage = data.table::uniqueN(experiment_id)),
+            by = table_id
         ]
         if (is.null(preferred_table)) {
             scores[["preferred"]] <- 1L
@@ -125,28 +170,33 @@ availability__select_tables <- function(catalog, variables, frequency,
 
 # Return a typed empty availability table with the public column contract.
 availability__empty <- function() {
-    data.frame(
+    data.table::data.table(
         source_id = character(),
         variant_label = character(),
         grid_label = character(),
         frequency = character(),
-        frequency_spec = I(vector("list", 0L)),
+        frequency_spec = vector("list", 0L),
         table_id = character(),
-        table = I(vector("list", 0L)),
+        table = vector("list", 0L),
         complete = logical(),
         complete_experiments = integer(),
         required_experiments = integer(),
         available_pairs = integer(),
         required_pairs = integer(),
         missing = character(),
-        index_node = character(),
-        stringsAsFactors = FALSE
+        index_node = character()
     )
 }
 
 # Reduce variable-specific Dataset records to one row per stable CMIP6 identity.
-availability__summarize <- function(datasets, experiments, variables,
-                                    frequency, table, index_node) {
+availability__summarize <- function(
+    datasets,
+    experiments,
+    variables,
+    frequency,
+    table,
+    index_node
+) {
     frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
     table <- shift__cmip6_table_spec(table)
     tables <- if (is.null(table)) {
@@ -166,7 +216,9 @@ availability__summarize <- function(datasets, experiments, variables,
     }
 
     identity_fields <- c(
-        "source_id", "variant_label", "grid_label"
+        "source_id",
+        "variant_label",
+        "grid_label"
     )
     identities <- unique(catalog[, identity_fields, with = FALSE])
     required <- data.table::CJ(
@@ -200,8 +252,10 @@ availability__summarize <- function(datasets, experiments, variables,
         coverage <- observed[required, on = c("experiment_id", "variable_id")]
         coverage[is.na(present), present := FALSE]
         missing_rows <- coverage[present == FALSE]
-        experiment_status <- coverage[, .(complete = all(present)),
-            by = experiment_id]
+        experiment_status <- coverage[,
+            .(complete = all(present)),
+            by = experiment_id
+        ]
         display_tables <- sort(unique(unname(selected_tables)))
         display_tables <- display_tables[
             !is.na(display_tables) & nzchar(display_tables)
@@ -244,7 +298,7 @@ availability__summarize <- function(datasets, experiments, variables,
         c(-1L, 1L, 1L, 1L),
         na.last = TRUE
     )
-    as.data.frame(summary, row.names = NULL)
+    summary
 }
 
 # Collect Dataset records through the existing store-native query workflow.
@@ -266,8 +320,10 @@ availability__index_node <- function(index_node) {
     }
 
     node_name <- toupper(index_node)
-    if (!grepl("://", index_node, fixed = TRUE) &&
-            node_name %in% names(INDEX_NODES)) {
+    if (
+        !grepl("://", index_node, fixed = TRUE) &&
+            node_name %in% names(INDEX_NODES)
+    ) {
         # Known names use the package node registry; ORNL and LLNL are then
         # normalized by the query layer to the shared ESGF 1.5 Bridge endpoint.
         index_node <- unname(INDEX_NODES[[node_name]])
@@ -275,66 +331,190 @@ availability__index_node <- function(index_node) {
     query__normalize_node(index_node)
 }
 
-#' Query CMIP6 variable availability
+# Attach the chosen future input specification to each public method row.
+# Full requirement diagnostics remain internal; rejected rows retain missing reasons.
+availability__method_summary <- function(
+    datasets,
+    transforms,
+    scenarios,
+    requirements,
+    pool,
+    index_node,
+    source,
+    member,
+    grid
+) {
+    fields <- c(
+        "source_id",
+        "experiment_id",
+        "grid_label",
+        "variable_id",
+        "frequency",
+        "table_id"
+    )
+    catalog <- data.table::as.data.table(stats::setNames(
+        lapply(fields, function(field) {
+            availability__character_column(datasets, field)
+        }),
+        fields
+    ))
+    data.table::set(
+        catalog,
+        j = "variant_label",
+        value = availability__coalesce_character(
+            availability__character_column(datasets, "variant_label"),
+            availability__character_column(datasets, "member_id")
+        )
+    )
+    identity <- c("source_id", "variant_label", "grid_label")
+    valid <- Reduce(
+        `&`,
+        lapply(identity, function(field) {
+            !is.na(catalog[[field]]) & nzchar(catalog[[field]])
+        })
+    )
+    # Malformed provider identities cannot be joined. Keep valid identities with
+    # missing frequencies/tables so they are reported as rejected candidates.
+    valid <- valid &
+        catalog$experiment_id %in% unique(requirements$pairs$experiment_id) &
+        catalog$variable_id %in% unique(requirements$pairs$variable_id)
+    if (!is.null(source)) {
+        valid <- valid & catalog$source_id %in% source
+    }
+    if (!is.null(member)) {
+        valid <- valid & catalog$variant_label %in% member
+    }
+    if (!is.null(grid)) {
+        valid <- valid & catalog$grid_label %in% grid
+    }
+    evaluated <- eligibility__evaluate(
+        catalog[valid],
+        transforms,
+        scenarios,
+        pool = pool,
+        requirements = requirements
+    )
+    role <- NULL
+    details <- evaluated$requirements[
+        role == "model_future",
+        c(
+            identity,
+            "transform_key",
+            "path_id",
+            "experiment_id",
+            "variables",
+            "frequency_spec",
+            "table"
+        ),
+        with = FALSE
+    ]
+    data.table::setnames(details, "experiment_id", "scenario")
+    result <- merge(
+        evaluated$matrix,
+        details,
+        by = c(identity, "transform_key", "path_id", "scenario"),
+        all.x = TRUE,
+        sort = FALSE
+    )
+    data.table::set(
+        result,
+        j = "index_node",
+        value = rep(index_node, nrow(result))
+    )
+    data.table::setcolorder(
+        result,
+        c(
+            names(evaluated$matrix),
+            "variables",
+            "frequency_spec",
+            "table",
+            "index_node"
+        )
+    )
+    data.table::setorderv(result, c(identity, "transform_key", "scenario"))
+    result
+}
+
+#' Query CMIP6 availability by variables or weather methods
 #'
-#' Query CMIP6 Dataset metadata and identify model/member/grid identities that
-#' contain every requested variable for every requested experiment. ESGF
-#' interprets multiple `variable_id` values as OR alternatives; this function
-#' applies the required AND reduction locally.
+#' Query shared CMIP6 Dataset metadata and identify model/member/grid identities
+#' that satisfy requested variables or registered weather-method inputs.
+#' ESGF treats multiple variables as OR alternatives; required AND combinations
+#' are evaluated locally with `data.table`.
 #'
-#' @param variables CMIP6 variable IDs that must all be present.
+#' @param variables CMIP6 variable IDs that must all be present. Supply these,
+#'   `methods`, or `transform`.
 #' @param scenarios Future CMIP6 experiment IDs.
-#' @param include_historical Whether the same identity must also contain the
-#'   requested variables for the `"historical"` experiment.
-#' @param source Optional CMIP6 source/model IDs. `NULL` leaves the source
-#'   unconstrained and discovers all matching models.
-#' @param member Optional CMIP6 variant labels. `NULL`, the default, discovers
-#'   every returned member and evaluates each identity independently.
+#' @param include_historical For variable queries, require the same variables
+#'   for the `"historical"` experiment. For method queries, historical inputs
+#'   come from the method contract; leave this argument unspecified.
+#' @param source Optional CMIP6 source/model IDs. `NULL` discovers all models.
+#' @param member Optional CMIP6 variant labels. `NULL` discovers all members.
 #' @param grid Optional single CMIP6 grid label.
-#' @param frequency CMIP6 frequency. An unnamed scalar applies to every
-#'   requested variable. A named character vector assigns one frequency to
-#'   every variable, for example `tas = "3hrPt"` and `rsds = "3hr"`.
-#' @param table Optional CMIP6 table selection. `NULL` discovers a table for
-#'   each variable at the requested frequency. An unnamed scalar pins every
-#'   variable to one table. A named character vector or list overrides the
-#'   named variables and leaves the remainder on their frequency defaults.
+#' @param frequency For variable queries, a scalar frequency or named vector
+#'   assigning a frequency to each variable. Method queries infer frequencies
+#'   from their contracts; leave this argument unspecified.
+#' @param table For variable queries, an optional scalar or named per-variable
+#'   table selection. `NULL` discovers tables. Method queries discover tables
+#'   at the frequencies declared by their contracts; leave this unspecified.
 #' @param activity Future CMIP6 activity ID.
 #' @param historical_activity Historical CMIP6 activity ID.
-#' @param index_node ESGF index-node name or URL. Names are matched
-#'   case-insensitively against the package node registry. `NULL` uses DKRZ;
+#' @param index_node ESGF index-node name or URL. `NULL` uses DKRZ;
 #'   `"ORNL"` and `"LLNL"` use the ORNL ESGF 1.5 Bridge endpoint.
 #' @param data_node Optional ESGF data-node filter.
-#' @param filters Additional named ESGF filters. Core availability filters take
-#'   precedence when names overlap.
-#' @param store Optional [EsgStore] or store path used by [shift_datasets()].
+#' @param filters Additional named ESGF filters. Core availability arguments
+#'   take precedence when names overlap.
+#' @param store Optional [EsgStore] or store path forwarded to [shift_datasets()].
 #' @param ui Optional shift UI configuration forwarded to [shift_datasets()].
+#' @param methods Unique weather-method keys, such as `c("qdm", "sobie_curry")`.
+#'   Ambiguous keys require an explicit `transform`.
+#' @param transform One `WeatherTransformSpec` or a list of them, created by
+#'   [monthly_transform()], [daily_transform()], or [hourly_transform()]. Use
+#'   this to specify method options, such as the variables adjusted by morphing.
+#' @param pool For method queries, `"per_method"` selects candidates separately
+#'   for each method; `"common"` requires eligibility for every selected method.
+#' @param include_optional_historical For method queries, include historical
+#'   model inputs that the method declares optional. Mandatory inputs are always
+#'   required regardless of this flag.
 #'
-#' @return A data frame with one row per model/member/grid identity.
-#'   `complete` is `TRUE` only when every requested experiment-variable pair is
-#'   present. `frequency_spec` and `table` are list-columns containing named
-#'   per-variable selections accepted by [shift_cmip6()]. Incomplete rows use
-#'   `NA` for variables with no available table. `frequency` and `table_id` are
-#'   compact display values, and `missing` lists absent pairs as
-#'   `experiment:variable`.
+#' @return A `data.table`, including when there are no matching identities.
+#'   Variable queries return one row per model/member/grid identity, retaining
+#'   the existing `complete`, coverage counts, `missing`, `frequency_spec`, and
+#'   `table` columns. Method queries return one row per identity/method/scenario:
+#'   `catalog_eligible` describes that scenario including required history;
+#'   `method_eligible` requires a single input path across all requested scenarios;
+#'   `common_eligible` requires all methods; `selected` applies `pool`.
+#'   `missing` explains rejections. List columns `variables`, `frequency_spec`,
+#'   and `table` describe the chosen future input path. `transform_key`
+#'   distinguishes method configurations. `period_coverage`, `readability`,
+#'   and `quality` remain `"not_checked"`.
 #'
 #' @details
-#' This function reports Dataset metadata availability. It does not download
-#' NetCDF data or verify year-by-year File coverage. Requested period coverage
-#' is checked later by the existing `shift_*` workflow resolver.
+#' All selected methods share one logical Dataset query for the union of their
+#' required variables, frequencies, and experiments. The existing query layer
+#' handles pagination and response caching; one logical query may require
+#' multiple HTTP requests. No File catalog or NetCDF values are downloaded.
+#' Dataset availability does not establish requested-year coverage or scientific
+#' quality. Incomplete identities found in the shared catalog remain visible.
+#' Entirely absent identities cannot be inferred from an empty catalog.
 #'
 #' @examples
 #' \dontrun{
-#' daily_models <- shift_cmip6_avail(
-#'     variables = c("tas", "hurs", "pr", "rsds", "rlds", "sfcWind"),
-#'     scenarios = c("ssp245", "ssp585"),
-#'     frequency = "day"
+#' models <- shift_cmip6_avail(
+#'     methods = c("qdm", "sobie_curry"),
+#'     scenarios = c("ssp245", "ssp585")
 #' )
-#' subset(daily_models, complete)
+#' models[selected == TRUE]
+#'
+#' temperature <- shift_cmip6_avail(
+#'     variables = "tas", scenarios = "ssp245", frequency = "day"
+#' )
+#' temperature[complete == TRUE]
 #' }
 #'
 #' @export
 shift_cmip6_avail <- function(
-    variables,
+    variables = NULL,
     scenarios = c("ssp245", "ssp585"),
     include_historical = TRUE,
     source = NULL,
@@ -348,69 +528,157 @@ shift_cmip6_avail <- function(
     data_node = NULL,
     filters = list(),
     store = NULL,
-    ui = NULL
+    ui = NULL,
+    methods = NULL,
+    transform = NULL,
+    pool = c("per_method", "common"),
+    include_optional_historical = FALSE
 ) {
     checkmate::assert_character(
-        variables, any.missing = FALSE, min.len = 1L, unique = TRUE)
+        scenarios,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE
+    )
     checkmate::assert_character(
-        scenarios, any.missing = FALSE, min.len = 1L, unique = TRUE)
-    checkmate::assert_flag(include_historical)
+        source,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE,
+        null.ok = TRUE
+    )
     checkmate::assert_character(
-        source, any.missing = FALSE, min.len = 1L, unique = TRUE,
-        null.ok = TRUE)
-    checkmate::assert_character(
-        member, any.missing = FALSE, min.len = 1L, unique = TRUE,
-        null.ok = TRUE)
+        member,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE,
+        null.ok = TRUE
+    )
     checkmate::assert_string(grid, min.chars = 1L, null.ok = TRUE)
-    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-    table <- shift__cmip6_table_spec(table)
     checkmate::assert_string(activity, min.chars = 1L)
     checkmate::assert_string(historical_activity, min.chars = 1L)
     checkmate::assert_string(index_node, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_string(data_node, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_list(filters, names = "unique")
-
-    tables <- if (is.null(table)) {
-        NULL
-    } else {
-        shift__cmip6_variable_tables(variables, frequencies, table)
-    }
     index_node <- availability__index_node(index_node)
-    experiments <- unique(c(
-        scenarios,
-        if (isTRUE(include_historical)) "historical"
-    ))
+    method_query <- !is.null(methods) || !is.null(transform)
+    if (method_query) {
+        if (!is.null(variables)) {
+            cli::cli_abort(
+                "Supply `variables`, `methods`, or `transform`, not a mixture."
+            )
+        }
+        if (
+            !missing(frequency) ||
+                !missing(table) ||
+                !missing(include_historical)
+        ) {
+            cli::cli_abort(paste(
+                "Method queries derive `frequency`, `table`, and required history",
+                "from the transform. Leave these arguments unspecified; use",
+                "`include_optional_historical` to include optional history."
+            ))
+        }
+        if (any(!nzchar(scenarios)) || "historical" %in% scenarios) {
+            cli::cli_abort("Scenarios must be non-empty future experiment IDs.")
+        }
+        pool <- match.arg(pool)
+        checkmate::assert_flag(include_optional_historical)
+        transforms <- shift_batch__transforms(methods, transform)
+        requirements <- eligibility__requirements(
+            transforms,
+            scenarios,
+            include_optional_historical
+        )
+        # Canonical union order shares cache keys even when methods are reordered.
+        query_variables <- sort(unique(requirements$pairs$variable_id))
+        query_frequencies <- sort(unique(unlist(
+            requirements$pairs$allowed,
+            use.names = FALSE
+        )))
+        experiments <- sort(unique(requirements$pairs$experiment_id))
+        tables <- NULL
+        source <- sort(source)
+        member <- sort(member)
+        filters[c(
+            "project",
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "member_id",
+            "variable_id",
+            "frequency",
+            "type"
+        )] <- NULL
+    } else {
+        if (!missing(pool) || !missing(include_optional_historical)) {
+            cli::cli_abort(
+                "`pool` and `include_optional_historical` require `methods` or `transform`."
+            )
+        }
+        checkmate::assert_character(
+            variables,
+            any.missing = FALSE,
+            min.len = 1L,
+            unique = TRUE
+        )
+        checkmate::assert_flag(include_historical)
+        frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
+        table <- shift__cmip6_table_spec(table)
+        tables <- if (is.null(table)) {
+            NULL
+        } else {
+            shift__cmip6_variable_tables(variables, frequency, table)
+        }
+        query_variables <- variables
+        query_frequencies <- unique(unname(frequencies))
+        experiments <- unique(c(
+            scenarios,
+            if (include_historical) "historical"
+        ))
+    }
     activities <- unique(c(
         activity,
-        if (isTRUE(include_historical)) historical_activity
+        if ("historical" %in% experiments) historical_activity
     ))
-
-    # `table = NULL` is the public all-table discovery form, so an additional
-    # filter cannot silently restore the former single-table behaviour.
     filters$table_id <- NULL
-    # Reapply these core constraints after user filters so the returned table
-    # always describes the function arguments printed in its rows.
-    query_filters <- utils::modifyList(filters, shift__compact_list(list(
-        activity_id = activities,
-        table_id = if (is.null(tables)) NULL else unique(unname(tables)),
-        grid_label = grid,
-        data_node = data_node,
-        latest = TRUE,
-        replica = FALSE,
-        fields = AVAILABILITY__DATASET_FIELDS
-    )))
+    query_filters <- utils::modifyList(
+        filters,
+        shift__compact_list(list(
+            activity_id = activities,
+            table_id = if (is.null(tables)) NULL else unique(unname(tables)),
+            grid_label = grid,
+            data_node = data_node,
+            latest = TRUE,
+            replica = FALSE,
+            fields = AVAILABILITY__DATASET_FIELDS
+        ))
+    )
     request <- shift_request(
         provider = "esgf",
         project = "CMIP6",
         source = source,
         experiment = experiments,
         variant = member,
-        variables = variables,
-        frequency = unique(unname(frequencies)),
+        variables = query_variables,
+        frequency = query_frequencies,
         filters = query_filters,
         options = list(index_node = index_node)
     )
     datasets <- availability__collect(request, store = store, ui = ui)
+    if (method_query) {
+        return(availability__method_summary(
+            datasets,
+            transforms,
+            scenarios,
+            requirements,
+            pool,
+            index_node,
+            source,
+            member,
+            grid
+        ))
+    }
     availability__summarize(
         datasets,
         experiments = experiments,

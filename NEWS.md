@@ -58,15 +58,14 @@
 
 ## New features
 
-* Added an internal method-driven CMIP6 catalog eligibility reducer using
-  `data.table` projections, indexed joins, and grouped coverage checks. It
-  separates catalog preparation, method requirements, bulk matching, and
-  result summaries, with selection policies handled separately. It
-  retains rejected identities, joint input alternatives, and stable member,
-  grid, frequency, and table partitions. A separate public offline API is not
-  introduced; integration into `shift_cmip6_avail(methods = ...)` is planned
-  separately. Existing acquisition and scientific algorithms are unchanged
-  (#268, #269).
+* `shift_cmip6_avail()` now accepts weather `methods` or explicit `transform`
+  configurations, derives their variable/frequency/history requirements, and
+  shares one cached Dataset query across methods. Results retain rejected
+  candidates and missing-input reasons, with separate per-method and common
+  selection pools. Catalog eligibility does not establish year coverage,
+  readability, or scientific quality. Both variable and method queries return
+  a `data.table`; existing variable-query columns are preserved. Internal
+  requirements use bulk joins for input alternatives and scenarios (#268, #269).
 
 * Added `precipitation = "off"` to both monthly morphing methods. This keeps
   baseline EPW precipitation fields unchanged and removes CMIP `pr` from
