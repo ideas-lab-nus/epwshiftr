@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Fixed manifest inspection tests for DuckDB 1.5.6 by releasing fixture write
+  connections before reopening databases read-only. Added coverage for rejected
+  writes and reopening after read-only inspection (#269).
+
 ## Breaking changes
 
 * Named future-weather registry keys, intermediate kinds, diagnostics, and
