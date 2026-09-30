@@ -77,6 +77,13 @@ test_that("method eligibility expands candidates without a universal variable li
         result$matrix$method_eligible,
         common$matrix$method_eligible
     )
+    # A different pool policy must not change matching evidence or input paths.
+    expect_identical(result$requirements, common$requirements)
+    expect_identical(
+        result$matrix$catalog_eligible,
+        common$matrix$catalog_eligible
+    )
+    expect_identical(result$matrix$path_id, common$matrix$path_id)
 })
 
 test_that("required historical roles remain required and absent identities remain visible", {

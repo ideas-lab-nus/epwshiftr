@@ -43,9 +43,9 @@ eligibility__empty <- function() {
     )
 }
 
-# Copy only needed columns, normalize provider member aliases, and deduplicate
-# Dataset replicas before matching. Caller-owned data.table keys stay intact.
-eligibility__catalog <- function(catalog) {
+# Stage 1: normalize and deduplicate catalog metadata, then assign stable
+# model/member/grid identities. Only compact copies are modified by reference.
+eligibility__catalog <- function(catalog, identities = NULL) {
     checkmate::assert_data_frame(catalog)
     fields <- c(
         "source_id",
@@ -56,193 +56,186 @@ eligibility__catalog <- function(catalog) {
         "table_id"
     )
     absent <- setdiff(fields, names(catalog))
-    if (
-        length(absent) ||
-            !any(c("variant_label", "member_id") %in% names(catalog))
-    ) {
+    if (!any(c("variant_label", "member_id") %in% names(catalog))) {
+        absent <- c(absent, "variant_label or member_id")
+    }
+    if (length(absent)) {
         cli::cli_abort(c(
             "The Dataset catalog lacks required fields.",
-            "x" = paste(
-                c(
-                    absent,
-                    if (
-                        !any(
-                            c("variant_label", "member_id") %in%
-                                names(catalog)
-                        )
-                    ) {
-                        "variant_label or member_id"
-                    }
-                ),
-                collapse = ", "
-            )
+            "x" = paste(absent, collapse = ", ")
         ))
     }
-    # Select columns with [[ rather than [ so data.table and base inputs have
-    # identical semantics; normalize only the compact metadata projection.
-    result <- data.table::as.data.table(stats::setNames(
+    member <- availability__coalesce_character(
+        availability__character_column(catalog, "variant_label"),
+        availability__character_column(catalog, "member_id")
+    )
+    catalog <- data.table::as.data.table(stats::setNames(
         lapply(fields, function(field) as.character(catalog[[field]])),
         fields
     ))
-    data.table::set(
-        result,
-        j = "variant_label",
-        value = availability__coalesce_character(
-            availability__character_column(catalog, "variant_label"),
-            availability__character_column(catalog, "member_id")
-        )
-    )
-    unique(result)
-}
-
-# Preserve explicitly requested absent identities as rejection rows.
-eligibility__identities <- function(identities) {
-    checkmate::assert_data_frame(identities)
+    data.table::set(catalog, j = "variant_label", value = member)
+    catalog <- unique(catalog)
     fields <- c("source_id", "variant_label", "grid_label")
-    if (!all(fields %in% names(identities))) {
-        cli::cli_abort(
-            "Identities require source_id, variant_label, and grid_label."
-        )
+    candidates <- unique(catalog[, fields, with = FALSE])
+    # Explicitly requested but absent identities remain visible as rejections.
+    if (!is.null(identities)) {
+        checkmate::assert_data_frame(identities)
+        if (!all(fields %in% names(identities))) {
+            cli::cli_abort(
+                "Identities require source_id, variant_label, and grid_label."
+            )
+        }
+        identities <- data.table::as.data.table(stats::setNames(
+            lapply(fields, function(field) as.character(identities[[field]])),
+            fields
+        ))
+        candidates <- unique(data.table::rbindlist(list(
+            candidates,
+            identities
+        )))
     }
-    result <- data.table::as.data.table(stats::setNames(
-        lapply(fields, function(field) as.character(identities[[field]])),
-        fields
-    ))
     for (field in fields) {
-        checkmate::assert_character(result[[field]], any.missing = FALSE)
-        if (any(!nzchar(result[[field]]))) {
+        checkmate::assert_character(candidates[[field]], any.missing = FALSE)
+        if (any(!nzchar(candidates[[field]]))) {
             cli::cli_abort(
                 "Identity field {.val {field}} contains an empty value."
             )
         }
     }
-    unique(result)
+    data.table::setorderv(candidates, fields)
+    data.table::set(
+        candidates,
+        j = "identity_id",
+        value = seq_len(nrow(candidates))
+    )
+    list(catalog = candidates[catalog, on = fields], candidates = candidates)
 }
 
-# Derive required roles from the existing registry; optional historical model
-# input affects eligibility only when the caller explicitly includes it.
-eligibility__roles <- function(transform, include_optional_historical) {
-    roles <- c("model_future", "model_historical")
-    requirements <- transform@required_inputs[
-        intersect(roles, names(transform@required_inputs))
-    ]
-    if (
-        include_optional_historical &&
-            "model_historical" %in% names(transform@optional_inputs)
-    ) {
-        requirements$model_historical <- transform@optional_inputs$model_historical
-    }
-    if (!"model_future" %in% names(requirements)) {
-        cli::cli_abort(
-            "The transform must declare a required model_future input."
-        )
-    }
-    for (role in names(requirements)) {
-        if (!length(requirements[[role]]@variable_sets)) {
-            cli::cli_abort(
-                "Input role {.val {role}} has no variable alternatives."
-            )
-        }
-    }
-    requirements
-}
-
-# Honor variable-specific frequency alternatives instead of a universal rate.
-eligibility__frequencies <- function(requirement, variable) {
-    allowed <- requirement@variable_frequencies[[variable]]
-    if (is.null(allowed)) {
-        allowed <- requirement@frequencies
-    }
-    if (!length(allowed)) {
-        cli::cli_abort("No source frequency is declared for {.val {variable}}.")
-    }
-    as.character(allowed)
-}
-
-# Compile method paths once, before touching candidate identities. Match rows
-# use intersected frequencies across roles; detail rows retain original needs.
-eligibility__compile <- function(
-    transform,
-    transform_key,
+# Stage 2: turn resolved method contracts into small requirement tables once.
+# A path is one complete variable alternative across future and historical roles.
+eligibility__requirements <- function(
+    transforms,
     scenarios,
     include_optional_historical
 ) {
-    requirements <- eligibility__roles(transform, include_optional_historical)
-    alternatives <- lapply(requirements, function(requirement) {
-        seq_along(requirement@variable_sets)
-    })
-    # Reverse CJ axes to retain the declared first-role-fast path numbering.
-    paths <- do.call(data.table::CJ, c(rev(alternatives), list(sorted = FALSE)))
-    data.table::setcolorder(paths, names(requirements))
     pairs <- lookups <- list()
-    for (path_id in seq_len(nrow(paths))) {
-        path <- paths[path_id]
-        variables <- unique(unlist(
-            lapply(names(requirements), function(role) {
-                requirements[[role]]@variable_sets[[path[[role]]]]
-            }),
-            use.names = FALSE
-        ))
-        for (variable in variables) {
-            roles <- names(requirements)[vapply(
-                names(requirements),
-                function(role) {
-                    variable %in%
-                        requirements[[role]]@variable_sets[[path[[role]]]]
-                },
-                logical(1L)
-            )]
-            allowed <- Reduce(
-                intersect,
-                lapply(roles, function(role) {
-                    eligibility__frequencies(requirements[[role]], variable)
-                })
-            )
-            experiments <- unique(unlist(
-                lapply(roles, function(role) {
-                    if (role == "model_future") scenarios else "historical"
-                }),
-                use.names = FALSE
-            ))
-            lookups[[length(lookups) + 1L]] <- data.table::data.table(
-                transform_key = transform_key,
-                path_id = path_id,
-                variable_id = variable,
-                experiment_id = rep(experiments, each = length(allowed)),
-                frequency = rep(allowed, times = length(experiments)),
-                frequency_rank = rep(
-                    seq_along(allowed),
-                    times = length(experiments)
-                )
+    for (key in names(transforms)) {
+        transform <- transforms[[key]]
+        roles <- c("model_future", "model_historical")
+        requirements <- transform@required_inputs[
+            intersect(roles, names(transform@required_inputs))
+        ]
+        if (
+            include_optional_historical &&
+                "model_historical" %in% names(transform@optional_inputs)
+        ) {
+            requirements$model_historical <- transform@optional_inputs$model_historical
+        }
+        if (!"model_future" %in% names(requirements)) {
+            cli::cli_abort(
+                "The transform must declare a required model_future input."
             )
         }
+        # Resolve per-variable frequencies once per role, outside matching.
+        frequencies <- list()
         for (role in names(requirements)) {
             requirement <- requirements[[role]]
-            alternative <- path[[role]]
-            variables <- requirement@variable_sets[[alternative]]
-            allowed <- lapply(variables, function(variable) {
-                eligibility__frequencies(requirement, variable)
-            })
-            experiments <- if (role == "model_future") {
-                scenarios
-            } else {
-                "historical"
+            if (!length(requirement@variable_sets)) {
+                cli::cli_abort(
+                    "Input role {.val {role}} has no variable alternatives."
+                )
             }
-            for (experiment in experiments) {
-                pairs[[length(pairs) + 1L]] <- data.table::data.table(
-                    transform_key = transform_key,
-                    method = transform@method,
+            variables <- unique(unlist(
+                requirement@variable_sets,
+                use.names = FALSE
+            ))
+            frequencies[[role]] <- stats::setNames(
+                lapply(variables, function(variable) {
+                    allowed <- requirement@variable_frequencies[[variable]]
+                    if (is.null(allowed)) {
+                        allowed <- requirement@frequencies
+                    }
+                    if (!length(allowed)) {
+                        cli::cli_abort(
+                            "No source frequency is declared for {.val {variable}}."
+                        )
+                    }
+                    as.character(allowed)
+                }),
+                variables
+            )
+        }
+        alternatives <- lapply(requirements, function(requirement) {
+            seq_along(requirement@variable_sets)
+        })
+        # The first declared role varies fastest, retaining alternative priority.
+        paths <- do.call(
+            data.table::CJ,
+            c(rev(alternatives), list(sorted = FALSE))
+        )
+        data.table::setcolorder(paths, names(requirements))
+        for (path_id in seq_len(nrow(paths))) {
+            path <- paths[path_id]
+            path_variables <- lapply(names(requirements), function(role) {
+                requirements[[role]]@variable_sets[[path[[role]]]]
+            })
+            names(path_variables) <- names(requirements)
+            for (variable in unique(unlist(
+                path_variables,
+                use.names = FALSE
+            ))) {
+                shared_roles <- names(requirements)[vapply(
+                    path_variables,
+                    function(variables) variable %in% variables,
+                    logical(1L)
+                )]
+                allowed <- Reduce(
+                    intersect,
+                    lapply(shared_roles, function(role) {
+                        frequencies[[role]][[variable]]
+                    })
+                )
+                experiments <- unique(unlist(
+                    lapply(shared_roles, function(role) {
+                        if (role == "model_future") scenarios else "historical"
+                    }),
+                    use.names = FALSE
+                ))
+                lookups[[length(lookups) + 1L]] <- data.table::data.table(
+                    transform_key = key,
                     path_id = path_id,
-                    role = role,
-                    alternative = alternative,
-                    experiment_id = experiment,
-                    variable_id = variables,
-                    allowed = allowed,
-                    calendars = rep(
-                        list(requirement@calendars),
-                        length(variables)
+                    variable_id = variable,
+                    experiment_id = rep(experiments, each = length(allowed)),
+                    frequency = rep(allowed, times = length(experiments)),
+                    frequency_rank = rep(
+                        seq_along(allowed),
+                        times = length(experiments)
                     )
                 )
+            }
+            for (role in names(requirements)) {
+                variables <- path_variables[[role]]
+                experiments <- if (role == "model_future") {
+                    scenarios
+                } else {
+                    "historical"
+                }
+                for (experiment in experiments) {
+                    pairs[[length(pairs) + 1L]] <- data.table::data.table(
+                        transform_key = key,
+                        method = transform@method,
+                        path_id = path_id,
+                        role = role,
+                        alternative = path[[role]],
+                        experiment_id = experiment,
+                        variable_id = variables,
+                        allowed = unname(frequencies[[role]][variables]),
+                        calendars = rep(
+                            list(requirements[[role]]@calendars),
+                            length(variables)
+                        )
+                    )
+                }
             }
         }
     }
@@ -252,11 +245,24 @@ eligibility__compile <- function(
     )
 }
 
-# Match the whole compact catalog once and choose frequency/table partitions
-# by identity, method, path, and variable. Replicas cannot inflate coverage.
-eligibility__partitions <- function(catalog, lookup) {
+# Stage 3: match all candidates in bulk, choosing one frequency/table per
+# variable across experiments, then record completeness and missing pairs.
+eligibility__match <- function(catalog, candidates, requirements) {
     experiment_id <- frequency <- frequency_rank <- table_id <- coverage <-
         preferred <- NULL
+    # Index the compact copy once for the bulk availability joins below.
+    data.table::setkeyv(
+        catalog,
+        c(
+            "variable_id",
+            "experiment_id",
+            "frequency",
+            "table_id",
+            "identity_id"
+        )
+    )
+    lookup <- requirements$lookup
+    pairs <- requirements$pairs
     matches <- catalog[
         lookup,
         on = c("variable_id", "experiment_id", "frequency"),
@@ -285,15 +291,12 @@ eligibility__partitions <- function(catalog, lookup) {
         c(group, "coverage", "preferred", "frequency_rank", "table_id"),
         c(rep(1L, length(group)), -1L, 1L, 1L, 1L)
     )
-    unique(scores, by = group)[,
+    partitions <- unique(scores, by = group)[,
         c(group, "frequency", "table_id"),
         with = FALSE
     ]
-}
 
-# Expand small compiled requirements against identities, then fill chosen
-# partitions and presence with indexed joins rather than per-row scans.
-eligibility__details <- function(catalog, candidates, pairs, partitions) {
+    # Expand only the small requirements table, never the full provider catalog.
     identity_id <- pair_id <- frequency <- table_id <- present <- variable_id <-
         allowed <- calendars <- experiment_id <- NULL
     i.frequency <- i.table_id <- NULL
@@ -356,12 +359,11 @@ eligibility__details <- function(catalog, candidates, pairs, partitions) {
     details
 }
 
-# Score complete joint paths across scenarios and preserve rejected rows.
-# Method-specific pools and a common comparison pool share the same evidence.
-eligibility__matrix <- function(details, scenarios, pool) {
-    role <- complete <- missing <- catalog_eligible <- method_eligible <-
-        common_eligible <- selected <- score <- path_id <- historical_complete <-
-            historical_missing <- NULL
+# Stage 4: summarize future and historical evidence, apply selection policies,
+# and return ordered eligibility and requirement data.tables with fixed schemas.
+eligibility__summarize <- function(details, candidates, scenarios, pool) {
+    role <- complete <- missing <- catalog_eligible <- historical_complete <-
+        historical_missing <- NULL
     group <- c("identity_id", "transform_key", "method", "path_id")
     future <- details[
         role == "model_future",
@@ -395,21 +397,48 @@ eligibility__matrix <- function(details, scenarios, pool) {
     ]
     # Keep future and historical missing pairs in their original role order.
     future[,
-        missing := vapply(
-            seq_len(.N),
-            function(index) {
-                values <- c(missing[[index]], historical_missing[[index]])
-                values <- values[!is.na(values)]
-                if (length(values)) {
-                    paste(values, collapse = "; ")
-                } else {
-                    NA_character_
-                }
-            },
-            character(1L)
+        missing := data.table::fifelse(
+            is.na(missing),
+            historical_missing,
+            data.table::fifelse(
+                is.na(historical_missing),
+                missing,
+                paste(missing, historical_missing, sep = "; ")
+            )
         )
     ]
     future[, c("historical_complete", "historical_missing") := NULL]
+    matrix <- eligibility__select(future, scenarios, pool)
+    result <- list(
+        matrix = candidates[matrix, on = "identity_id"],
+        requirements = candidates[details, on = "identity_id"]
+    )
+    schemas <- eligibility__empty()
+    fields <- c("source_id", "variant_label", "grid_label")
+    for (name in names(result)) {
+        data.table::set(result[[name]], j = "identity_id", value = NULL)
+        data.table::setcolorder(result[[name]], names(schemas[[name]]))
+        # Output order is stable even when the provider changes catalog order.
+        order <- c(
+            fields,
+            "transform_key",
+            if (name == "matrix") {
+                "scenario"
+            } else {
+                c("path_id", "role", "experiment_id")
+            }
+        )
+        data.table::setorderv(result[[name]], order)
+    }
+    result
+}
+
+# Apply selection policies separately from metadata matching. Preserve one
+# joint path across scenarios and optionally intersect the method-specific pools.
+eligibility__select <- function(future, scenarios, pool) {
+    catalog_eligible <- method_eligible <- common_eligible <- selected <- score <-
+        path_id <- missing <- NULL
+    group <- c("identity_id", "transform_key", "method", "path_id")
     scores <- future[, list(score = sum(catalog_eligible)), by = group]
     data.table::setorderv(
         scores,
@@ -473,67 +502,20 @@ eligibility__evaluate <- function(
     }
     pool <- match.arg(pool)
     checkmate::assert_flag(include_optional_historical)
-    catalog <- eligibility__catalog(catalog)
-    fields <- c("source_id", "variant_label", "grid_label")
-    candidates <- eligibility__identities(catalog[, fields, with = FALSE])
-    if (!is.null(identities)) {
-        candidates <- unique(data.table::rbindlist(list(
-            candidates,
-            eligibility__identities(identities)
-        )))
-    }
-    data.table::setorderv(candidates, fields)
-    compiled <- lapply(names(transforms), function(key) {
-        eligibility__compile(
-            transforms[[key]],
-            key,
-            scenarios,
-            include_optional_historical
-        )
-    })
-    if (!nrow(candidates)) {
+    # Four stages: catalog preparation, requirements, matching, and summary.
+    prepared <- eligibility__catalog(catalog, identities)
+    requirements <- eligibility__requirements(
+        transforms,
+        scenarios,
+        include_optional_historical
+    )
+    if (!nrow(prepared$candidates)) {
         return(eligibility__empty())
     }
-    data.table::set(
-        candidates,
-        j = "identity_id",
-        value = seq_len(nrow(candidates))
+    details <- eligibility__match(
+        prepared$catalog,
+        prepared$candidates,
+        requirements
     )
-    catalog <- candidates[catalog, on = fields]
-    data.table::setkeyv(
-        catalog,
-        c(
-            "variable_id",
-            "experiment_id",
-            "frequency",
-            "table_id",
-            "identity_id"
-        )
-    )
-    pairs <- data.table::rbindlist(lapply(compiled, `[[`, "pairs"))
-    lookup <- data.table::rbindlist(lapply(compiled, `[[`, "lookup"))
-    partitions <- eligibility__partitions(catalog, lookup)
-    details <- eligibility__details(catalog, candidates, pairs, partitions)
-    matrix <- eligibility__matrix(details, scenarios, pool)
-    result <- list(
-        matrix = candidates[matrix, on = "identity_id"],
-        requirements = candidates[details, on = "identity_id"]
-    )
-    schemas <- eligibility__empty()
-    for (name in names(result)) {
-        data.table::set(result[[name]], j = "identity_id", value = NULL)
-        data.table::setcolorder(result[[name]], names(schemas[[name]]))
-        # Stable identity/method/scenario order is independent of provider order.
-        order <- c(
-            fields,
-            "transform_key",
-            if (name == "matrix") {
-                "scenario"
-            } else {
-                c("path_id", "role", "experiment_id")
-            }
-        )
-        data.table::setorderv(result[[name]], order)
-    }
-    result
+    eligibility__summarize(details, prepared$candidates, scenarios, pool)
 }
