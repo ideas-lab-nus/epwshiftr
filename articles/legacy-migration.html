@@ -131,14 +131,14 @@ Jia</h4>
 <p>epwshiftr’s recommended workflow is now <a href="future-epw-workflow.html">Create Future EPW Files</a>, built
 around <code>shift_*()</code>, <code>EsgStore</code>,
 <code>Downloader</code>, and <code>EpwMorpher</code>.</p>
-<p>The older data.table-oriented API is available from the
-<code>legacy</code> branch or epwshiftr v0.1.4. Those functions and
-their profile switches are no longer exported by the current package.
-Current releases expose one canonical calculation contract per method
-through the scale-specific transform constructors. This article maps old
-workflow concepts to store-native concepts; projects that require exact
-legacy numerical output should retain their frozen legacy software
-environment.</p>
+<p>This guide covers migration from the published <strong>CRAN
+v0.1.4</strong> API, which is preserved on the <code>legacy</code>
+branch. Those functions and their profile switches are no longer
+exported by the current package. Current releases expose one canonical
+calculation contract per method through the scale-specific transform
+constructors. This article maps old workflow concepts to store-native
+concepts; projects that require exact legacy numerical output should
+retain their frozen legacy software environment.</p>
 <div class="section level2">
 <h2 id="concept-map">Concept Map<a class="anchor" aria-label="anchor" href="#concept-map"></a>
 </h2>
@@ -275,7 +275,7 @@ al. when matching historical model data are available. The reference
 belongs to this run and is not stored inside the reusable transform:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>        model <span class="op">=</span> <span class="st">"MPI-ESM1-2-LR"</span>,</span>
 <span>        scenarios <span class="op">=</span> <span class="st">"ssp585"</span>,</span>

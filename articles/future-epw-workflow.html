@@ -250,7 +250,7 @@ and ISIMIP3BASD.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">san_francisco_epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">san_francisco_epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>        model <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>        scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
@@ -383,7 +383,7 @@ execution inputs.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>        model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
 <span>        scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
@@ -423,10 +423,10 @@ unless a dataset requires an explicit override:</p>
 <p>See <a href="epw-morpher.html">Inspect EPW Morphing</a> for the
 complete transform and execution contracts.</p>
 <p>Use the same call with <code>dry_run = TRUE</code> to obtain a
-<code>ShiftPlan</code>, inspect it with <code><a href="../reference/shift_api.html">shift_explain()</a></code>,
-and execute it later with <code><a href="../reference/shift_api.html">shift_run()</a></code>. The persisted run ID
-supports <code><a href="../reference/shift_api.html">shift_status()</a></code>, <code><a href="../reference/shift_api.html">shift_resume()</a></code>, and
-the corresponding CLI commands.</p>
+<code>ShiftBatch</code>, inspect it with <code><a href="../reference/shift_api.html">shift_explain()</a></code>,
+and execute it later with <code><a href="../reference/shift_api.html">shift_run()</a></code>. The persisted batch
+ID supports <code><a href="../reference/shift_api.html">shift_status()</a></code>, <code><a href="../reference/shift_api.html">shift_resume()</a></code>,
+and the corresponding CLI commands.</p>
 </div>
 <div class="section level3">
 <h3 id="inspect-shift-objects">Inspect Shift Objects<a class="anchor" aria-label="anchor" href="#inspect-shift-objects"></a>
@@ -444,7 +444,7 @@ prints the same static dashboard used by <code><a href="../reference/shift_api.h
 <span><span class="op">)</span></span>
 <span><span class="va">transform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span></span>
 <span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="va">climate</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
 <span>    transform <span class="op">=</span> <span class="va">transform</span>,</span>
@@ -550,7 +550,7 @@ retains the resolved selection. The <code>heartbeat</code> setting
 controls durable worker liveness and is independent of animation.</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
 <span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span>,</span>
@@ -565,7 +565,7 @@ the store, and <code><a href="../reference/shift_api.html">shift_watch()</a></co
 events shown by the foreground reporter.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
 <span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span>,</span>

@@ -113,93 +113,93 @@
 </h1></div>
 <!-- badges: start -->
 
-<blockquote>
-<p>Generate future EnergyPlus weather files from CMIP6 climate projections.</p>
-</blockquote>
-<p>epwshiftr is an R package that combines a baseline EnergyPlus Weather (EPW) file with projected climate changes to produce future weather for building simulation. Use the R API or CLI to select methods and models, follow progress, and inspect or resume work saved in a local store.</p>
-<p><picture><source media="(prefers-color-scheme: dark)" srcset="reference/figures/README/shift-workflow-output-dark.svg"><img src="reference/figures/README/shift-workflow-output.svg" alt="Future EPW terminal dashboard progressing from CMIP6 resolution to a completed two-case, two-file receipt." width="100%"></source></picture></p>
-<p><em>Recorded with the package’s own terminal UI and scripted states; model selection, timings, and counts are illustrative.</em></p>
-<p><a href="#quick-start">Quick start</a> · <a href="#methods-and-models">Methods and models</a> · <a href="#command-line">CLI</a> · <a href="#documentation">Documentation</a></p>
+<p>epwshiftr is an R package for generating future EnergyPlus Weather (EPW) files from CMIP6 climate projections and baseline weather, for use in building simulation.</p>
+<div class="section level2">
+<h2 id="features">Features<a class="anchor" aria-label="anchor" href="#features"></a>
+</h2>
+<ul>
+<li>
+<strong>Discover climate data</strong> from ESGF for the variables, models and periods your method needs.</li>
+<li>
+<strong>Extract site data</strong> through OPeNDAP where available, without downloading whole climate files.</li>
+<li>
+<strong>Choose weather-generation methods</strong> at monthly, daily and hourly scales.</li>
+<li>
+<strong>Run batches</strong> across locations, models, scenarios and methods.</li>
+<li>
+<strong>Reuse and inspect work</strong> with local caches, resumable workflows and source tracking, through R or the CLI.</li>
+</ul>
+</div>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>This README describes the <strong>development API</strong>. Install the development build from R-universe:</p>
+<p>Install the development version used below:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span></span>
 <span>    <span class="st">"epwshiftr"</span>,</span>
 <span>    repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
-<span>        ideaslab <span class="op">=</span> <span class="st">"https://ideas-lab-nus.r-universe.dev"</span>,</span>
-<span>        cran <span class="op">=</span> <span class="st">"https://cran.r-project.org"</span></span>
+<span>        <span class="st">"https://ideas-lab-nus.r-universe.dev"</span>,</span>
+<span>        <span class="st">"https://cran.r-project.org"</span></span>
 <span>    <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>Released versions are available on <a href="https://CRAN.R-project.org/package=epwshiftr" class="external-link">CRAN</a>. For the older <code>v0.1.4</code> API, see the <a href="https://github.com/ideas-lab-nus/epwshiftr/tree/legacy" class="external-link">legacy branch</a> and <a href="https://ideas-lab-nus.github.io/epwshiftr/articles/legacy-migration.html">migration guide</a>.</p>
+<p>For CRAN v0.1.4, see the <a href="https://ideas-lab-nus.github.io/epwshiftr/articles/legacy-migration.html">migration guide</a>.</p>
 </div>
 <div class="section level2">
-<h2 id="quick-start">Quick start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
+<h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
-<p>Start with original monthly morphing, one compatible climate model, and two scenarios. This example uses a bundled Singapore EPW; an EnergyPlus installation is not required. <strong>Climate data access requires an internet connection.</strong></p>
+<p>Generate weather for Singapore and San Francisco using two monthly methods. Place your baseline EPWs in the working directory; this example uses <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/inst/extdata/examples/SGP_Singapore.486980_IWEC.epw" class="external-link">Singapore IWEC</a> and <a href="https://energyplus-weather.s3.amazonaws.com/north_and_central_america_wmo_region_4/USA/CA/USA_CA_San.Francisco.Intl.AP.724940_TMY3/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw" class="external-link">San Francisco TMY3</a>. Missing baseline precipitation is retained with <code>precipitation = "off"</code>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ideas-lab-nus.github.io/epwshiftr/">epwshiftr</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">epw</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
-<span>    <span class="st">"extdata/examples/SGP_Singapore.486980_IWEC.epw"</span>,</span>
-<span>    package <span class="op">=</span> <span class="st">"epwshiftr"</span>,</span>
-<span>    mustWork <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>    climate <span class="op">=</span> <span class="fu"><a href="reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span>model <span class="op">=</span> <span class="fl">1L</span>, scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span><span class="va">batch</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>        <span class="fu"><a href="reference/shift_api.html">shift_site</a></span><span class="op">(</span><span class="st">"Singapore"</span>, epw <span class="op">=</span> <span class="st">"Singapore.epw"</span><span class="op">)</span>,</span>
+<span>        <span class="fu"><a href="reference/shift_api.html">shift_site</a></span><span class="op">(</span><span class="st">"SanFrancisco"</span>, epw <span class="op">=</span> <span class="st">"SanFrancisco.epw"</span><span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    climate <span class="op">=</span> <span class="fu"><a href="reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span>model <span class="op">=</span> <span class="st">"IPSL-CM6A-LR"</span>, scenarios <span class="op">=</span> <span class="st">"ssp245"</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
-<span>    methods <span class="op">=</span> <span class="st">"original_morphing"</span>,</span>
-<span>    dir <span class="op">=</span> <span class="st">"future-epw"</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span>      <span class="co"># Delivered EPW paths and method/model identity</span></span>
-<span><span class="fu"><a href="reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">run</span><span class="op">)</span>  <span class="co"># Warnings and coverage issues</span></span></code></pre></div>
-<p>The workflow finds matching future and historical CMIP6 inputs, applies the chosen transform, and writes EPWs to <code>future-epw</code>. Replace <code>epw</code> with your own baseline file for a different site. Repeating the same completed request with the same store reuses its verified outputs.</p>
-<p>For longer jobs, add <code>background = TRUE</code> and follow progress with <code>shift_watch(run)</code>. See the <a href="https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html">workflow guide</a> for planning, output inspection, and recovery.</p>
-</div>
-<div class="section level2">
-<h2 id="methods-and-models">Methods and models<a class="anchor" aria-label="anchor" href="#methods-and-models"></a>
-</h2>
-<p>Use <code><a href="reference/weather_transforms.html">weather_transforms()</a></code> to browse monthly, daily, and hourly configurations, including their input requirements and <strong>production / experimental</strong> status. For method-specific settings, use <code><a href="reference/monthly_transform.html">monthly_transform()</a></code>, <code><a href="reference/monthly_transform.html">daily_transform()</a></code>, or <code><a href="reference/monthly_transform.html">hourly_transform()</a></code> through the <code>transform</code> argument.</p>
-<p>To run several methods across the same compatible models:</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">batch</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
-<span>    climate <span class="op">=</span> <span class="fu"><a href="reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span>model <span class="op">=</span> <span class="fl">2L</span>, scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
-<span>    methods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"original_morphing"</span>, <span class="st">"qdm"</span><span class="op">)</span>,</span>
-<span>    calibration <span class="op">=</span> <span class="fu"><a href="reference/shift_era5.html">shift_era5</a></span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
-<span>    dir <span class="op">=</span> <span class="st">"future-epw-batch"</span></span>
+<span>    transform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>        <span class="fu"><a href="reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span>, precipitation <span class="op">=</span> <span class="st">"off"</span><span class="op">)</span>,</span>
+<span>        <span class="fu"><a href="reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"bws_btws"</span><span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    reference <span class="op">=</span> <span class="fu"><a href="reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
+<span>    dir <span class="op">=</span> <span class="st">"future-epw-batch"</span>,</span>
+<span>    store <span class="op">=</span> <span class="st">"store"</span>,</span>
+<span>    control <span class="op">=</span> <span class="fu"><a href="reference/shift_api.html">shift_control</a></span><span class="op">(</span></span>
+<span>        download <span class="op">=</span> <span class="st">"never"</span>,</span>
+<span>        resume <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>        overwrite <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>    <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>Here, QDM uses ERA5 observations and is marked experimental. Configure <a href="https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html#configure-and-check-cds-access">CDS access</a> before running it. A positive <code>model</code> count selects that many compatible models; a character vector names exact models, and <code>NULL</code> selects all.</p>
-<p>Model discovery uses one live panel for all methods. It identifies the current variable combination and future/historical coverage check. Catalog records, cached responses, downloaded files, and generated EPWs have separate counts; method numbers indicate search order, not a completion percentage.</p>
-<details><summary>
-Watch model discovery and coverage checks
-</summary><p>This recording uses the production UI with scripted catalog responses.</p>
-<p><picture><source media="(prefers-color-scheme: dark)" srcset="reference/figures/README/shift-discovery-output-dark.svg"><img src="reference/figures/README/shift-discovery-output.svg" alt="" width="100%"></source></picture></p>
-</details><p>Each method/model child can be inspected and resumed independently. Output tables preserve method and model identity; cases and EPW files are counted separately because multi-year methods can write several files per case. Use <code><a href="reference/shift_history.html">shift_history()</a></code> to find saved work and <code>shift_summary(batch, weather = TRUE)</code> to compare local EPW summaries with valid-hour counts.</p>
-<details><summary>
-Watch batch progress, reuse, and recovery diagnostics
-</summary><p>The same terminal UI shows a four-child batch, followed by a larger matrix with active, failed, and cancelled children. Scripted states illustrate progress, reuse, height limits, and recovery diagnostics.</p>
-<p><picture><source media="(prefers-color-scheme: dark)" srcset="reference/figures/README/shift-batch-output-dark.svg"><img src="reference/figures/README/shift-batch-output.svg" alt="Boxed batch UI showing live progress, completed-result reuse, and a height-limited large batch with failure and cancellation diagnostics." width="100%"></source></picture></p>
-</details>
-</div>
-<div class="section level2">
-<h2 id="command-line">Command line<a class="anchor" aria-label="anchor" href="#command-line"></a>
-</h2>
-<p>Install the optional launcher from R with <code><a href="reference/install_cli.html">install_cli()</a></code> and put its reported directory on <code>PATH</code>. The CLI uses the same methods and workflow engine:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="ex">epwshiftr</span> morph transforms</span>
-<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="ex">epwshiftr</span> morph describe <span class="at">--scale</span> daily <span class="at">--method</span> qdm</span>
-<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="ex">epwshiftr</span> shift config example <span class="at">--output</span> workflow.json</span></code></pre></div>
-<p>Edit <code>workflow.json</code> for your baseline EPW, scenarios, periods, and output directory, then validate and run it:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="ex">epwshiftr</span> shift config validate <span class="at">--config</span> workflow.json</span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="ex">epwshiftr</span> shift run <span class="at">--config</span> workflow.json</span>
-<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="ex">epwshiftr</span> shift list <span class="at">--type</span> batch</span>
-<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="ex">epwshiftr</span> shift summary <span class="at">--batch</span> <span class="op">&lt;</span>batch_id<span class="op">&gt;</span> --weather</span></code></pre></div>
-<p>For multiple methods and models, generate a config with <code>--methods original_morphing,qdm --model 2</code>. The <a href="https://ideas-lab-nus.github.io/epwshiftr/articles/cli-esgf-store.html">CLI guide</a> covers ERA5 setup, background jobs, <code>--run</code> / <code>--batch</code> monitoring and resume, and JSON output for automation.</p>
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="reference/figures/README/example-dark.svg"><img src="reference/figures/README/example.svg" width="100%" alt="Actual terminal recording of two-city future EPW generation."></source></picture></p>
+<p><em>Actual terminal recording of <code><a href="reference/shift_api.html">shift_future_epw()</a></code>, regenerated from cached climate inputs. Playback is accelerated 4×, with long waits shortened.</em></p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">batch</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "completed"</span></span>
+<span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">batch</span><span class="op">)</span></span>
+<span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span></span>
+<span>    <span class="va">site_id</span>, <span class="va">method</span>, <span class="va">model</span>, <span class="va">period</span>,</span>
+<span>    epw_exists <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists</a></span><span class="op">(</span><span class="va">export_path</span><span class="op">)</span></span>
+<span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;         site_id            method        model period epw_exists</span></span>
+<span><span class="co">#&gt;          &lt;char&gt;            &lt;char&gt;       &lt;char&gt; &lt;char&gt;     &lt;lgcl&gt;</span></span>
+<span><span class="co">#&gt; 1: SanFrancisco original_morphing IPSL-CM6A-LR  2060s       TRUE</span></span>
+<span><span class="co">#&gt; 2: SanFrancisco          bws_btws IPSL-CM6A-LR  2060s       TRUE</span></span>
+<span><span class="co">#&gt; 3:    Singapore original_morphing IPSL-CM6A-LR  2060s       TRUE</span></span>
+<span><span class="co">#&gt; 4:    Singapore          bws_btws IPSL-CM6A-LR  2060s       TRUE</span></span>
+<span><span class="va">summary</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/shift_summary.html">shift_summary</a></span><span class="op">(</span><span class="va">batch</span>, weather <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="va">summary</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">site_id</span>, <span class="va">method</span>, <span class="va">weather_hours</span>, <span class="va">mean_temperature_c</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;         site_id            method weather_hours mean_temperature_c</span></span>
+<span><span class="co">#&gt;          &lt;char&gt;            &lt;char&gt;         &lt;int&gt;              &lt;num&gt;</span></span>
+<span><span class="co">#&gt; 1: SanFrancisco original_morphing          8760           15.42045</span></span>
+<span><span class="co">#&gt; 2: SanFrancisco          bws_btws          8760           15.42045</span></span>
+<span><span class="co">#&gt; 3:    Singapore original_morphing          8760           28.28410</span></span>
+<span><span class="co">#&gt; 4:    Singapore          bws_btws          8760           28.28410</span></span>
+<span><span class="fu"><a href="reference/shift_api.html">shift_diagnostics</a></span><span class="op">(</span><span class="va">batch</span><span class="op">)</span><span class="op">[</span>, <span class="va">.N</span>, by <span class="op">=</span> <span class="va">severity</span><span class="op">]</span></span>
+<span><span class="co">#&gt;    severity     N</span></span>
+<span><span class="co">#&gt;      &lt;char&gt; &lt;int&gt;</span></span>
+<span><span class="co">#&gt; 1:  warning     1</span></span>
+<span><span class="co">#&gt; 2:     info     2</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="documentation">Documentation<a class="anchor" aria-label="anchor" href="#documentation"></a>
@@ -246,11 +246,7 @@ Watch batch progress, reuse, and recovery diagnostics
 </h2>
 <p>Jia, H., Chong, A., and Ning, B. (2023). <em>Epwshiftr: Incorporating Open Data of Climate Change Prediction into Building Performance Simulation for Future Adaptation and Mitigation.</em> Building Simulation 2023, pp. 3201–3207. <a href="https://doi.org/10.26868/25222708.2023.1612" class="external-link">DOI: 10.26868/25222708.2023.1612</a>. Run <code>citation("epwshiftr")</code> for the full citation and BibTeX entry.</p>
 <p>Developed by Hongyuan Jia and Adrian Chong. The package is released under the <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/LICENSE.md" class="external-link">MIT license</a>. Climate data has separate terms: follow the official <a href="https://wcrp-cmip.org/cmip-data-citation-and-licenses/" class="external-link">CMIP licensing and citation guidance</a> and the terms of any calibration dataset you use.</p>
-</div>
-<div class="section level2">
-<h2 id="get-help-and-contribute">Get help and contribute<a class="anchor" aria-label="anchor" href="#get-help-and-contribute"></a>
-</h2>
-<p><a href="https://github.com/ideas-lab-nus/epwshiftr/issues" class="external-link">Report an issue</a> with a minimal reproducible example, or submit a pull request following the <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/.github/CONTRIBUTING.md" class="external-link">contributing guide</a> and <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/.github/CODE_OF_CONDUCT.md" class="external-link">Code of Conduct</a>.</p>
+<p><a href="https://github.com/ideas-lab-nus/epwshiftr/issues" class="external-link">Report an issue</a>.</p>
 </div>
 </div>
   </div>

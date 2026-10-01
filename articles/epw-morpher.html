@@ -294,10 +294,10 @@ humidity alternatives are visible in
 <code>monthly_transform("original_morphing")@required_inputs</code>.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
 <span>        <span class="st">"extdata/examples/SGP_Singapore.486980_IWEC.epw"</span>,</span>
 <span>        package <span class="op">=</span> <span class="st">"epwshiftr"</span></span>
-<span>    <span class="op">)</span>,</span>
+<span>    <span class="op">)</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>        model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
 <span>        scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
@@ -316,7 +316,7 @@ model reference when one is available and can also use the EPW
 climatology without one:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2080s` <span class="op">=</span> <span class="fl">2075</span><span class="op">:</span><span class="fl">2085</span><span class="op">)</span>,</span>
 <span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"epwshiftr"</span><span class="op">)</span>,</span>
@@ -324,35 +324,28 @@ climatology without one:</p>
 <span>    dir <span class="op">=</span> <span class="st">"future-epw"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>Daily bias-adjustment methods such as QDM and ISIMIP3BASD require
-both historical model and observed reference data. The observed role
-must point to a plan containing observations; an automatically resolved
-CMIP6 historical run cannot silently substitute for observations.</p>
+both historical model and observed reference data. Declare the
+historical model and observed calibration separately; each site resolves
+its own reference data.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">reference_periods</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/epw_morph_periods.html">epw_morph_periods</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
-<span><span class="va">historical</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_plan</a></span><span class="op">(</span></span>
-<span>    <span class="va">historical_plan_id</span>,</span>
-<span>    <span class="va">reference_periods</span></span>
-<span><span class="op">)</span></span>
-<span><span class="va">observed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_reference_plan</a></span><span class="op">(</span></span>
-<span>    <span class="va">observed_plan_id</span>,</span>
-<span>    <span class="va">reference_periods</span>,</span>
-<span>    role <span class="op">=</span> <span class="st">"observed_reference"</span></span>
-<span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="va">historical</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
+<span><span class="va">observed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_era5.html">shift_era5</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="va">future_cmip6</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span>,</span>
 <span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">daily_transform</a></span><span class="op">(</span><span class="st">"isimip3basd"</span><span class="op">)</span>,</span>
 <span>    reference <span class="op">=</span> <span class="va">historical</span>,</span>
-<span>    observed_reference <span class="op">=</span> <span class="va">observed</span>,</span>
+<span>    calibration <span class="op">=</span> <span class="va">observed</span>,</span>
 <span>    dir <span class="op">=</span> <span class="st">"future-epw"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>Use <code>dry_run = TRUE</code> to inspect the plan without accessing
-ESGF:</p>
+<p>Use <code>dry_run = TRUE</code> to discover eligible datasets and
+inspect the batch without extracting climate values or generating
+EPWs:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
-<span>    epw <span class="op">=</span> <span class="va">epw</span>,</span>
+<span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
 <span>    transform <span class="op">=</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span>,</span>
@@ -365,8 +358,8 @@ ESGF:</p>
 <span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_run</a></span><span class="op">(</span><span class="va">plan</span><span class="op">)</span></span></code></pre></div>
 <p>With the default <code>shift_control(resume = TRUE)</code>, repeating
 the same call with the same store and output directory returns the
-existing durable run without repeating catalog queries, service checks,
-extraction, morphing, or EPW writing. Set
+existing durable batch without repeating catalog queries, service
+checks, extraction, morphing, or EPW writing. Set
 <code>control = shift_control(refresh = TRUE)</code> only when remote
 CMIP6 catalog and service information must be refreshed deliberately.
 The refreshed selection is then persisted for later ordinary

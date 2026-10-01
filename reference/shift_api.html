@@ -198,7 +198,7 @@ child plans or resumes interrupted runs independently.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_future_epw</span><span class="op">(</span></span>
-<span>  <span class="va">epw</span>,</span>
+<span>  <span class="va">sites</span>,</span>
 <span>  <span class="va">climate</span>,</span>
 <span>  <span class="va">periods</span>,</span>
 <span>  transform <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -629,6 +629,17 @@ stage.</p></dd>
 cannot override task-level controls or the transform/reference inputs.</p></dd>
 
 
+<dt id="arg-sites">sites<a class="anchor" aria-label="anchor" href="#arg-sites"></a></dt>
+<dd><p>A <code>shift_site()</code> object or a non-empty list of them, each with
+a baseline EPW. The constructor derives omitted coordinates and labels
+from the EPW header. Time zone and elevation remain those of the baseline.
+Always returns a <code>ShiftBatch</code>, ordered by site ID, with separate output
+and store directories per location, method, and model. Candidate discovery
+is shared; extraction runs independently for each child. Use declarative
+historical/reanalysis references. For previously extracted site-specific
+references, use <code>shift_plan()</code> with the matching site and store.</p></dd>
+
+
 <dt id="arg-climate">climate<a class="anchor" aria-label="anchor" href="#arg-climate"></a></dt>
 <dd><p>A complete future-climate specification from <code>shift_cmip6()</code>.</p></dd>
 
@@ -644,13 +655,15 @@ are resolved under the store root.</p></dd>
 
 
 <dt id="arg-dry-run">dry_run<a class="anchor" aria-label="anchor" href="#arg-dry-run"></a></dt>
-<dd><p>If <code>TRUE</code>, return the planned workflow without running it.</p></dd>
+<dd><p>If <code>TRUE</code>, discover eligible datasets and return a planned
+batch without extracting climate values or generating EPWs.</p></dd>
 
 
 <dt id="arg-background">background<a class="anchor" aria-label="anchor" href="#arg-background"></a></dt>
 <dd><p>For <code>shift_download()</code>, whether to run queued downloads in
 a background job. For task-level run/resume functions, whether to launch a
-detached <code>Rscript</code> worker and return a queued <code>ShiftRun</code> immediately.</p></dd>
+detached <code>Rscript</code> worker. Single plans return a queued <code>ShiftRun</code>; batches
+retain their child runs in the returned <code>ShiftBatch</code>.</p></dd>
 
 
 <dt id="arg-methods">methods<a class="anchor" aria-label="anchor" href="#arg-methods"></a></dt>
