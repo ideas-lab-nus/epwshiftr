@@ -3,7 +3,7 @@
 * Batch plans now retain a shared physical File acquisition table and separate
   site/method consumer links from cached discovery metadata. Overlapping source
   intervals are planned once; native multi-point reading remains a subsequent
-  execution change.
+  execution change. (#275)
 
 * `shift_future_epw()` now takes `shift_site()` objects through its first
   argument, `sites`, and always returns a batch. Workflow configurations use
