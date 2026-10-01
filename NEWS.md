@@ -1,10 +1,13 @@
 # epwshiftr (development version)
 
 * `shift_future_epw()` now takes `shift_site()` objects through its first
-  argument, `sites`, and always returns a batch. Workflow config version 3 uses
-  a `sites` array with constructor field names; the old `epw` argument and
-  version 2 configs are no longer accepted. Site/model/method plans share
+  argument, `sites`, and always returns a batch. Workflow configurations use
+  a `sites` array with constructor field names. Site/model/method plans share
   discovery and baseline identities, with distinct output directories (#273).
+
+* Combine multiple locations and methods in the executed, locally cached README
+  example. Keep the legacy migration guide specific to CRAN v0.1.4 and remove
+  the standalone San Francisco development script (#273).
 
 * Batch recovery now distinguishes extraction methods and validation policies;
   method/period constraints are checked before discovery. Reuse model/method

@@ -60,8 +60,9 @@ guide](https://ideas-lab-nus.github.io/epwshiftr/articles/legacy-migration.html)
 
 Start with original monthly morphing, one compatible climate model, and
 two scenarios. This example uses a bundled Singapore EPW; an EnergyPlus
-installation is not required. **Climate data access requires an internet
-connection.**
+installation is not required. Missing baseline precipitation is
+preserved with `precipitation = "off"`. **Climate data access requires
+an internet connection.**
 
 ``` r
 library(epwshiftr)
@@ -76,12 +77,12 @@ run <- shift_future_epw(
     sites = shift_site(epw = epw),
     climate = shift_cmip6(model = 1L, scenarios = c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
-    methods = "original_morphing",
+    transform = monthly_transform("original_morphing", precipitation = "off"),
     dir = "future-epw"
 )
 
-shift_outputs(run)      # Delivered EPW paths and method/model identity
-shift_diagnostics(run)  # Warnings and coverage issues
+shift_outputs(run) # Delivered EPW paths and method/model identity
+shift_diagnostics(run) # Warnings and coverage issues
 ```
 
 The workflow finds matching future and historical CMIP6 inputs, applies
@@ -102,24 +103,99 @@ experimental** status. For method-specific settings, use
 `monthly_transform()`, `daily_transform()`, or `hourly_transform()`
 through the `transform` argument.
 
-To run several methods across the same compatible models:
+Run methods across several cities by passing a list of `shift_site()`
+objects. Each site has a unique ID and its own baseline EPW; coordinates
+default to the EPW header. This example uses Singapore and San
+Francisco, two monthly methods, one named GCM, and one scenario. The
+baseline files have missing precipitation observations, so this example
+preserves precipitation rather than projecting it
+(`precipitation = "off"`).
+
+<details>
+<summary>Prepare the baseline weather files</summary>
 
 ``` r
-batch <- shift_future_epw(
-    sites = shift_site(epw = epw),
-    climate = shift_cmip6(model = 2L, scenarios = c("ssp126", "ssp585")),
-    periods = list(`2060s` = 2055:2065),
-    methods = c("original_morphing", "qdm"),
-    calibration = shift_era5(years = 1995:2014),
-    dir = "future-epw-batch"
+library(epwshiftr)
+
+cache_dir <- file.path(tools::R_user_dir("epwshiftr", "cache"), "readme")
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+epw_sg <- system.file(
+    "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+    package = "epwshiftr",
+    mustWork = TRUE
 )
+epw_sf <- file.path(cache_dir, "SanFrancisco.epw")
+if (!file.exists(epw_sf)) {
+    url <- paste0(
+        "https://energyplus-weather.s3.amazonaws.com/",
+        "north_and_central_america_wmo_region_4/USA/CA/",
+        "USA_CA_San.Francisco.Intl.AP.724940_TMY3/",
+        "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw"
+    )
+    temporary <- tempfile(fileext = ".epw")
+    download.file(url, temporary, mode = "wb", quiet = TRUE)
+    invisible(file.copy(temporary, epw_sf))
+    unlink(temporary)
+}
 ```
 
-Here, QDM uses ERA5 observations and is marked experimental. Configure
-[CDS
+</details>
+
+``` r
+sites <- list(
+    shift_site("Singapore", epw = epw_sg),
+    shift_site("SanFrancisco", epw = epw_sf)
+)
+
+batch <- shift_future_epw(
+    sites = sites,
+    climate = shift_cmip6(model = "IPSL-CM6A-LR", scenarios = "ssp245"),
+    periods = list(`2060s` = 2055:2065),
+    transform = list(
+        monthly_transform("original_morphing", precipitation = "off"),
+        monthly_transform("bws_btws")
+    ),
+    reference = historical_reference(1995:2014),
+    dir = file.path(cache_dir, "future-epw-batch"),
+    store = file.path(cache_dir, "store"),
+    control = shift_control(
+        download = "never",
+        resume = FALSE,
+        overwrite = TRUE
+    ),
+    ui = shift_ui(progress = "none")
+)
+
+batch_status <- shift_status(batch)
+stopifnot(batch_status == "completed")
+outputs <- shift_outputs(batch)
+batch_status
+#> [1] "completed"
+outputs[, .(site_id, method, model, experiment_id, period)]
+#>         site_id            method        model experiment_id period
+#>          <char>            <char>       <char>        <char> <char>
+#> 1: SanFrancisco original_morphing IPSL-CM6A-LR        ssp245  2060s
+#> 2: SanFrancisco          bws_btws IPSL-CM6A-LR        ssp245  2060s
+#> 3:    Singapore original_morphing IPSL-CM6A-LR        ssp245  2060s
+#> 4:    Singapore          bws_btws IPSL-CM6A-LR        ssp245  2060s
+```
+
+The output above comes from executing this chunk, with climate inputs
+and EPWs kept in a local cache. Unchanged README builds reuse the knitr
+result. Editing the example, baseline files, or package code invalidates
+that result; `resume = FALSE` and `overwrite = TRUE` then regenerate
+this example from cached climate inputs. `download = "never"` requires
+remote point extraction and prevents a fallback to whole climate files.
+The historical period is explicit here for a compact workflow
+demonstration; choose a reference period appropriate to your baseline
+weather for analysis.
+
+A positive `model` count selects that many compatible models; a
+character vector names exact models, and `NULL` selects all. Methods
+such as QDM also require observations through
+`calibration = shift_era5(...)`; configure [CDS
 access](https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html#configure-and-check-cds-access)
-before running it. A positive `model` count selects that many compatible
-models; a character vector names exact models, and `NULL` selects all.
+before using ERA5.
 
 Model discovery uses one live panel for all methods. It identifies the
 current variable combination and future/historical coverage check.
@@ -160,46 +236,6 @@ illustrate progress, reuse, height limits, and recovery diagnostics.
 
 </details>
 
-## Multiple locations
-
-Construct each location with `shift_site()`, supplying a unique `id` and
-its baseline EPW. Omitted coordinates and labels come from the EPW
-header; `lon`, `lat`, and `label` can specify the extraction target.
-Time zone and elevation stay in the baseline EPW.
-
-``` r
-sites <- list(
-    shift_site("Harbin", epw = "weather/Harbin.epw"),
-    shift_site("Guangzhou", epw = "weather/Guangzhou.epw")
-)
-
-batch <- shift_future_epw(
-    sites = sites,
-    climate = shift_cmip6(model = 2L, scenarios = c("ssp126", "ssp585")),
-    periods = list(`2050s` = 2041:2060),
-    methods = c("original_morphing", "bws_btws"),
-    dir = "future-weather",
-    store = "weather-store",
-    dry_run = TRUE
-)
-shift_cases(batch)
-shift_batch_get(shift_ids(batch)$batch_id, store = "weather-store")
-```
-
-`shift_future_epw()` always returns a `ShiftBatch`, including for one
-site. Locations are ordered by ID. Case tables, summaries, and the batch
-display retain `site_id`; each location/method/model child has a
-separate store and output directory. Portable directory names include a
-digest of the location ID to avoid name collisions. One
-candidate-discovery result is shared by all locations; climate
-extraction currently remains independent for each child.
-
-Use declarative historical or reanalysis references for batches. An
-already extracted reference plan belongs to its location and store; use
-`shift_plan()` for that site’s advanced workflow. The `sites` API
-replaces the previous `epw` argument; workflow configurations use
-version 3 with a `sites` array.
-
 ## Command line
 
 Install the optional launcher from R with `install_cli()` and put its
@@ -232,7 +268,6 @@ the `sites` array:
 ]
 ```
 
-The top-level `epw` field and version 2 configs are no longer accepted.
 Local config validation checks all locations and method constraints
 without querying ESGF.
 

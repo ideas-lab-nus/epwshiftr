@@ -26,9 +26,9 @@ epwshiftr's recommended workflow is now
 [Create Future EPW Files](future-epw-workflow.html), built around `shift_*()`,
 `EsgStore`, `Downloader`, and `EpwMorpher`.
 
-The older data.table-oriented API is available from the `legacy` branch or
-epwshiftr v0.1.4. Those functions and their profile switches are no longer
-exported by the current package. Current releases expose one canonical
+This guide covers migration from the published **CRAN v0.1.4** API,
+which is preserved on the `legacy` branch. Those functions and their profile
+switches are no longer exported by the current package. Current releases expose one canonical
 calculation contract per method through the scale-specific transform
 constructors. This article maps old workflow concepts to store-native concepts;
 projects that require exact legacy numerical output should retain their frozen
@@ -218,13 +218,3 @@ not emulate removed profiles through compatibility wrappers.
 For new work, use the store-native API. It gives better diagnostics, durable
 metadata, resumable downloads, artifact tracking, and a clearer route from ESGF
 records to generated EPW files.
-
-## Site-based future-weather batches
-
-The development API uses `shift_future_epw(sites = shift_site(epw = path), ...)`
-and returns a `ShiftBatch` for both one and multiple locations. Construct multiple
-locations as a list of `shift_site()` objects. The previous `epw` argument and
-version 2 CLI workflow configs are no longer accepted. Version 3 configs require
-a `sites` array, for example `[{"id": "Singapore", "epw": "baseline/SIN.epw"}]`.
-Use `shift_plan()` for an advanced single-site workflow with already extracted
-reference data.
