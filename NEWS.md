@@ -5,8 +5,9 @@
   a `sites` array with constructor field names. Site/model/method plans share
   discovery and baseline identities, with distinct output directories (#273).
 
-* Combine multiple locations and methods in the executed, locally cached README
-  example. Keep the legacy migration guide specific to CRAN v0.1.4 and remove
+* Simplify the README around features and one multi-site example, recorded in
+  a real terminal with batch status, outputs, weather summaries and diagnostics.
+  Keep the legacy migration guide specific to CRAN v0.1.4 and remove
   the standalone San Francisco development script. Exclude development tools
   from package builds (#273).
 
