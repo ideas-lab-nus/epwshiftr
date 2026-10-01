@@ -142,7 +142,8 @@ child plans or resumes interrupted runs independently.</p>
 <span>  activity <span class="op">=</span> <span class="st">"ScenarioMIP"</span>,</span>
 <span>  index_nodes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  data_node <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
+<span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  common <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_control</span><span class="op">(</span></span>
@@ -482,6 +483,17 @@ overrides individual variables.</p></dd>
 
 <dt id="arg-data-node">data_node<a class="anchor" aria-label="anchor" href="#arg-data-node"></a></dt>
 <dd><p>Optional ESGF data node filter.</p></dd>
+
+
+<dt id="arg-common">common<a class="anchor" aria-label="anchor" href="#arg-common"></a></dt>
+<dd><p>A logical flag for batch candidate selection. <code>TRUE</code>
+(default) uses the same model/member/grid identities across methods.
+<code>FALSE</code> selects independently: a numeric <code>model</code> requests that many models
+per method, <code>NULL</code> keeps all compatible models, and explicit IDs limit the
+eligible pool. Every explicit model must qualify for at least one method.
+Different pools are reported in batch diagnostics; their results confound
+method differences with model selection. File-year coverage is checked
+before either selection policy is applied.</p></dd>
 
 
 <dt id="arg-strict">strict<a class="anchor" aria-label="anchor" href="#arg-strict"></a></dt>
