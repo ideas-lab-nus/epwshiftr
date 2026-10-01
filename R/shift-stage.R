@@ -7696,6 +7696,66 @@ shift__cmip6_candidate_file_count <- function(
     as.integer(nrow(unique(files[, fields, with = FALSE])))
 }
 
+# Resolve one exact File request to complete identities and file-count costs.
+# A caller-owned cache shares both catalog I/O and reduction across methods;
+# copies keep subsequent historical joins from modifying cached evidence.
+shift__cmip6_coverage_candidates <- function(
+    request,
+    years,
+    table,
+    store,
+    ui,
+    cache = NULL
+) {
+    key <- if (!is.null(cache)) {
+        store__hash(shift__spec_json(list(
+            request = request@meta,
+            years = sort(unique(years)),
+            table = table
+        )))
+    }
+    if (!is.null(cache) && !is.null(cache[[key]])) {
+        return(data.table::copy(cache[[key]]))
+    }
+    meta <- request@meta
+    catalog <- shift__cmip6_coverage_catalog(
+        request,
+        store,
+        ui,
+        "batch-file-coverage"
+    )
+    candidates <- shift__cmip6_candidates(
+        catalog,
+        models = meta$source,
+        experiments = meta$experiment,
+        variables = meta$variables,
+        years = years,
+        frequency = meta$frequency,
+        table = table,
+        requirements = stats::setNames(as.list(meta$variables), meta$variables)
+    )
+    candidates <- candidates[complete %in% TRUE]
+    counts <- vapply(
+        seq_len(nrow(candidates)),
+        function(index) {
+            shift__cmip6_candidate_file_count(
+                catalog,
+                candidates[index],
+                meta$experiment,
+                years
+            )
+        },
+        integer(1L)
+    )
+    data.table::set(candidates, j = "source_file_count", value = counts)
+    # Failed queries never become cached empty results. Successful zero-row
+    # results are reusable because the entire request and year union are keyed.
+    if (!is.null(cache)) {
+        cache[[key]] <- data.table::copy(candidates)
+    }
+    candidates
+}
+
 # Reduce Dataset-level candidates to model/member/grid identities whose File
 # records cover every required future and automatic historical calendar year.
 shift__cmip6_period_coverage <- function(
@@ -7708,20 +7768,21 @@ shift__cmip6_period_coverage <- function(
     reference,
     node,
     store,
-    ui
+    ui,
+    cache = NULL
 ) {
     candidates <- data.table::as.data.table(data.table::copy(candidates))
     if (!nrow(candidates)) {
         return(candidates)
     }
-    requirements <- stats::setNames(
-        lapply(variables, function(variable) list(variable)),
-        variables
+    # Named lists preserve singleton variable names during map matching.
+    mappings <- lapply(candidates$table, as.list)
+    distinct <- unique(mappings)
+    keys <- vapply(distinct, shift__spec_json, character(1L))
+    candidate_groups <- split(
+        seq_len(nrow(candidates)),
+        keys[match(mappings, distinct)]
     )
-    coverage_group <- vapply(candidates$table, function(value) {
-        shift__spec_json(as.list(value))
-    }, character(1L))
-    candidate_groups <- split(seq_len(nrow(candidates)), coverage_group)
     complete_rows <- rep(FALSE, nrow(candidates))
     source_file_count <- rep(NA_integer_, nrow(candidates))
 
@@ -7740,37 +7801,21 @@ shift__cmip6_period_coverage <- function(
             periods,
             node
         )
-        shift_batch__discovery_update(list(scope = "Future coverage",
-            scope_periods = shift__ui_periods(periods)), reset = TRUE)
-        future_catalog <- shift__cmip6_coverage_catalog(
+        shift_batch__discovery_update(
+            list(
+                scope = "Future coverage",
+                scope_periods = shift__ui_periods(periods)
+            ),
+            reset = TRUE
+        )
+        future <- shift__cmip6_coverage_candidates(
             future_request,
+            periods$year,
+            table,
             store,
             ui,
-            sprintf("batch-future-coverage-%d", group_index)
+            cache
         )
-        future <- shift__cmip6_candidates(
-            future_catalog,
-            models = unique(rows$source_id),
-            experiments = climate@scenarios,
-            variables = variables,
-            years = periods$year,
-            frequency = frequency,
-            table = table,
-            requirements = requirements
-        )
-        future <- future[complete %in% TRUE]
-        if (nrow(future)) {
-            future[, source_file_count := vapply(
-                seq_len(.N),
-                function(index) shift__cmip6_candidate_file_count(
-                    future_catalog,
-                    future[index],
-                    climate@scenarios,
-                    periods$year
-                ),
-                integer(1L)
-            )]
-        }
         group_keys <- paste(
             future$source_id,
             future$variant_label,
@@ -7778,8 +7823,10 @@ shift__cmip6_period_coverage <- function(
             sep = "\r"
         )
 
-        if (S7::S7_inherits(reference, ShiftReferenceSpec) &&
-            identical(reference@mode, "historical")) {
+        if (
+            S7::S7_inherits(reference, ShiftReferenceSpec) &&
+                identical(reference@mode, "historical")
+        ) {
             historical_request <- shift__cmip6_coverage_request(
                 climate,
                 transform,
@@ -7792,37 +7839,21 @@ shift__cmip6_period_coverage <- function(
                 node,
                 reference = reference
             )
-            shift_batch__discovery_update(list(scope = "Historical coverage",
-                scope_periods = shift__ui_periods(reference@periods)), reset = TRUE)
-            historical_catalog <- shift__cmip6_coverage_catalog(
+            shift_batch__discovery_update(
+                list(
+                    scope = "Historical coverage",
+                    scope_periods = shift__ui_periods(reference@periods)
+                ),
+                reset = TRUE
+            )
+            historical <- shift__cmip6_coverage_candidates(
                 historical_request,
+                reference@periods$year,
+                table,
                 store,
                 ui,
-                sprintf("batch-historical-coverage-%d", group_index)
+                cache
             )
-            historical <- shift__cmip6_candidates(
-                historical_catalog,
-                models = unique(rows$source_id),
-                experiments = reference@experiment,
-                variables = variables,
-                years = reference@periods$year,
-                frequency = frequency,
-                table = table,
-                requirements = requirements
-            )
-            historical <- historical[complete %in% TRUE]
-            if (nrow(historical)) {
-                historical[, source_file_count := vapply(
-                    seq_len(.N),
-                    function(index) shift__cmip6_candidate_file_count(
-                        historical_catalog,
-                        historical[index],
-                        reference@experiment,
-                        reference@periods$year
-                    ),
-                    integer(1L)
-                )]
-            }
             historical_keys <- paste(
                 historical$source_id,
                 historical$variant_label,
@@ -7830,9 +7861,16 @@ shift__cmip6_period_coverage <- function(
                 sep = "\r"
             )
             group_keys <- intersect(group_keys, historical_keys)
-            historical_counts <- historical[, .(
-                historical_file_count = min(source_file_count)
-            ), by = .(source_id, variant_label, grid_label)]
+            historical_counts <- historical[,
+                .(
+                    historical_file_count = if (.N) {
+                        min(source_file_count)
+                    } else {
+                        NA_integer_
+                    }
+                ),
+                by = .(source_id, variant_label, grid_label)
+            ]
             future <- merge(
                 future,
                 historical_counts,
@@ -7840,10 +7878,11 @@ shift__cmip6_period_coverage <- function(
                 all.x = TRUE,
                 sort = FALSE
             )
-            future[, source_file_count :=
-                .SD[["source_file_count"]] +
+            future[,
+                source_file_count := .SD[["source_file_count"]] +
                     .SD[["historical_file_count"]],
-                .SDcols = c("source_file_count", "historical_file_count")]
+                .SDcols = c("source_file_count", "historical_file_count")
+            ]
         }
         row_keys <- paste(
             rows$source_id,
@@ -7855,9 +7894,16 @@ shift__cmip6_period_coverage <- function(
         # candidate must not make an Amon candidate with the same model/member/
         # grid identity appear complete.
         complete_rows[candidate_rows] <- row_keys %in% group_keys
-        counts <- future[, .(
-            source_file_count = min(source_file_count)
-        ), by = .(source_id, variant_label, grid_label)]
+        counts <- future[,
+            .(
+                source_file_count = if (.N) {
+                    min(source_file_count)
+                } else {
+                    NA_integer_
+                }
+            ),
+            by = .(source_id, variant_label, grid_label)
+        ]
         count_keys <- paste(
             counts$source_id,
             counts$variant_label,
@@ -7871,12 +7917,14 @@ shift__cmip6_period_coverage <- function(
 
     candidates <- candidates[complete_rows]
     candidates[, source_file_count := source_file_count[complete_rows]]
-    candidates[, identity := paste(
-        source_id,
-        variant_label,
-        grid_label,
-        sep = "\r"
-    )]
+    candidates[,
+        identity := paste(
+            source_id,
+            variant_label,
+            grid_label,
+            sep = "\r"
+        )
+    ]
     candidates[]
 }
 

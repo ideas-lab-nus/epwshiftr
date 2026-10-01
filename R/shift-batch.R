@@ -463,16 +463,8 @@ shift_batch__candidate_reader <- function(
     requirements <- eligibility__requirements(
         transforms,
         climate@scenarios,
-        TRUE
+        historical
     )
-    # Locally supplied references do not require historical Dataset discovery.
-    history_keys <- names(historical)[historical]
-    requirements$pairs <- requirements$pairs[
-        role == "model_future" | transform_key %in% history_keys
-    ]
-    requirements$lookup <- requirements$lookup[
-        experiment_id != "historical" | transform_key %in% history_keys
-    ]
     if (!is.null(climate@frequency)) {
         # Apply an explicit execution frequency once to the compiled contract.
         frequencies <- shift__cmip6_variable_frequencies(
@@ -558,8 +550,7 @@ shift_batch__candidate_reader <- function(
                         catalog <- catalog[table_id == wanted_table]
                         catalog[, wanted_table := NULL]
                     }
-                    evaluated <- eligibility__evaluate(catalog, requirements)
-                    details <- evaluated$requirements
+                    details <- eligibility__match(catalog, requirements)
                     group <- c(
                         "source_id",
                         "variant_label",
@@ -604,7 +595,8 @@ shift_batch__available_alternative <- function(
     reference,
     store,
     ui,
-    read_candidates
+    read_candidates,
+    coverage_cache = NULL
 ) {
     frequency <- shift__transform_cmip6_frequencies(
         transform,
@@ -657,16 +649,18 @@ shift_batch__available_alternative <- function(
                 {
                     # Most methods use one frequency mapping. Explicit contracts
                     # may select different mappings for different candidates.
+                    # Nested lists preserve names in singleton-map matching.
                     groups <- if ("frequency_spec" %in% names(current)) {
+                        mappings <- lapply(current$frequency_spec, as.list)
+                        distinct <- unique(mappings)
+                        keys <- vapply(
+                            distinct,
+                            shift__spec_json,
+                            character(1L)
+                        )
                         split(
                             seq_len(nrow(current)),
-                            vapply(
-                                current$frequency_spec,
-                                function(value) {
-                                    shift__spec_json(as.list(value))
-                                },
-                                character(1L)
-                            )
+                            keys[match(mappings, distinct)]
                         )
                     } else {
                         list(seq_len(nrow(current)))
@@ -681,7 +675,7 @@ shift_batch__available_alternative <- function(
                             } else {
                                 frequency
                             }
-                            coverage(
+                            args <- list(
                                 candidates = candidates,
                                 climate = climate,
                                 transform = transform,
@@ -693,6 +687,15 @@ shift_batch__available_alternative <- function(
                                 store = store,
                                 ui = ui
                             )
+                            if (
+                                identical(
+                                    coverage,
+                                    shift__cmip6_period_coverage
+                                )
+                            ) {
+                                args$cache <- coverage_cache
+                            }
+                            do.call(coverage, args)
                         }),
                         use.names = TRUE,
                         fill = TRUE
@@ -765,6 +768,9 @@ shift_batch__discover_candidates <- function(
         store,
         ui
     )
+    # Reuse exact File requests and their coverage reductions across methods.
+    # The cache exists only for this discovery call, never across stores/runs.
+    coverage_cache <- new.env(parent = emptyenv())
     by_transform <- lapply(names(transforms), function(transform_key) {
         transform <- transforms[[transform_key]]
         method_ui <- ui
@@ -804,7 +810,8 @@ shift_batch__discover_candidates <- function(
                     ui = method_ui,
                     read_candidates = function(node) {
                         read_candidates(transform_key, index, node)
-                    }
+                    },
+                    coverage_cache = coverage_cache
                 )
                 if (nrow(result)) {
                     result[, `:=`(

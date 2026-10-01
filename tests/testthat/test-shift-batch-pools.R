@@ -384,7 +384,7 @@ test_that("workflow configuration requires a boolean common flag", {
 test_that("all batch alternatives share one normalized and matched catalog", {
     catalog <- batch_pool_test__catalog()
     normalize <- eligibility__catalog
-    evaluate <- eligibility__evaluate
+    match <- eligibility__match
     normalizations <- matches <- collections <- 0L
     local_mocked_bindings(
         availability__collect = function(...) {
@@ -395,9 +395,9 @@ test_that("all batch alternatives share one normalized and matched catalog", {
             normalizations <<- normalizations + 1L
             normalize(datasets)
         },
-        eligibility__evaluate = function(...) {
+        eligibility__match = function(...) {
             matches <<- matches + 1L
-            evaluate(...)
+            match(...)
         },
         .package = "epwshiftr"
     )
@@ -719,4 +719,265 @@ test_that("native batch discovery respects explicit frequency and table pins", {
         ),
         "No complete"
     )
+})
+
+# Unused historical contracts must not eliminate future variable paths or
+# frequencies before the batch's actual reference policy has been applied.
+test_that("unused optional history cannot constrain batch Dataset matching", {
+    transform <- monthly_transform("epwshiftr")
+    catalog <- data.table::data.table(
+        source_id = "Model-A",
+        variant_label = "r1i1p1f1",
+        grid_label = "gn",
+        variable_id = unique(unlist(
+            transform@required_inputs$model_future@variable_sets
+        )),
+        experiment_id = "ssp245",
+        frequency = "mon",
+        table_id = "Amon"
+    )
+    requests <- list()
+    local_mocked_bindings(
+        availability__collect = function(request, ...) {
+            requests[[length(requests) + 1L]] <<- request
+            catalog
+        },
+        .package = "epwshiftr"
+    )
+    withr::local_options(list(epwshiftr.cmip6.availability = NULL))
+    for (conflict in c("frequency", "variables")) {
+        optional <- transform@optional_inputs
+        if (conflict == "frequency") {
+            optional$model_historical@frequencies <- "day"
+        } else {
+            optional$model_historical@variable_sets <- list("pr")
+        }
+        transform@optional_inputs <- optional
+        transforms <- shift_batch__transforms(transform = transform)
+        public <- shift_cmip6_avail(transform = transform, scenarios = "ssp245")
+        expect_true(public$selected)
+        for (reference in list(
+            NULL,
+            shift_reference_plan(
+                "local-plan",
+                data.table::data.table(period = "reference", year = 1995L)
+            )
+        )) {
+            references <- stats::setNames(
+                list(list(reference = reference)),
+                names(transforms)
+            )
+            reader <- shift_batch__candidate_reader(
+                shift_cmip6(model = "Model-A", scenarios = "ssp245"),
+                transforms,
+                references,
+                tempfile(),
+                shift_ui(progress = "none")
+            )
+            candidates <- reader(
+                names(transforms)[[1L]],
+                1L,
+                "https://example.org"
+            )
+            expect_true(all(candidates$complete))
+            expect_equal(nrow(candidates), 1L)
+            expect_identical(tail(requests, 1L)[[1L]]@meta$experiment, "ssp245")
+            expect_identical(tail(requests, 1L)[[1L]]@meta$frequency, "mon")
+        }
+    }
+})
+
+# Matching is shared without building public presentation rows. Identical
+# future/history File checks are reused only within the current discovery call.
+test_that("batch methods share File coverage and skip public summaries", {
+    file_requests <- reductions <- 0L
+    candidates <- shift__cmip6_candidates
+    local_mocked_bindings(
+        availability__collect = function(...) batch_pool_test__catalog(),
+        eligibility__summarize = function(...) {
+            stop("Unexpected public summary")
+        },
+        shift__cmip6_coverage_catalog = function(request, ...) {
+            file_requests <<- file_requests + 1L
+            rows <- data.table::CJ(
+                source_id = request@meta$source,
+                experiment_id = request@meta$experiment,
+                variable_id = request@meta$variables
+            )
+            rows[, `:=`(
+                variant_label = "r1i1p1f1",
+                grid_label = "gn",
+                frequency = "day",
+                table_id = "day",
+                latest = TRUE,
+                datetime_start = "1900-01-01T00:00:00Z",
+                datetime_end = "2100-12-31T23:59:59Z"
+            )]
+            rows
+        },
+        shift__cmip6_candidates = function(...) {
+            reductions <<- reductions + 1L
+            candidates(...)
+        },
+        .package = "epwshiftr"
+    )
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = NULL,
+        epwshiftr.cmip6.period_coverage = shift__cmip6_period_coverage
+    ))
+    first <- batch_pool_test__plan(methods = c("qdm", "isimip3basd"))
+    expect_equal(nrow(first@meta$manifest), 4L)
+    expect_identical(file_requests, 2L)
+    expect_identical(reductions, 2L)
+    second <- batch_pool_test__plan(methods = c("qdm", "isimip3basd"))
+    expect_identical(
+        second@meta$discovery$selection,
+        first@meta$discovery$selection
+    )
+    expect_identical(file_requests, 4L)
+    expect_identical(reductions, 4L)
+})
+
+# Repeated candidate maps should be serialized once per distinct mapping;
+# keeping their original JSON keys preserves deterministic group ordering.
+test_that("candidate frequency grouping serializes distinct maps only", {
+    mappings <- list(c(tas = "mon"), c(tas = "day"), c(huss = "mon"))
+    rows <- data.table::data.table(
+        source_id = paste0("Model-", 1:99),
+        variant_label = "r1i1p1f1",
+        grid_label = "gn",
+        complete = TRUE,
+        frequency_spec = rep(mappings, 33L)
+    )
+    before <- data.table::copy(rows)
+    serialize <- shift__spec_json
+    serialized <- list()
+    checked <- list()
+    local_mocked_bindings(
+        shift__spec_json = function(spec) {
+            serialized[[length(serialized) + 1L]] <<- spec
+            serialize(spec)
+        },
+        .package = "epwshiftr"
+    )
+    withr::local_options(list(epwshiftr.cmip6.period_coverage = function(
+        candidates,
+        climate,
+        transform,
+        variables,
+        frequency,
+        periods,
+        reference,
+        node,
+        store,
+        ui
+    ) {
+        checked[[length(checked) + 1L]] <<- frequency
+        candidates
+    }))
+    result <- shift_batch__available_alternative(
+        shift_cmip6(scenarios = "ssp245", index_nodes = "https://example.org"),
+        daily_transform("qdm"),
+        "tas",
+        shift__periods_from_years(2050L),
+        NULL,
+        tempfile(),
+        shift_ui(progress = "none"),
+        function(node) rows
+    )
+    expect_length(serialized, 3L)
+    expect_identical(checked, rev(mappings))
+    expect_identical(
+        result$source_id,
+        rows$source_id[c(seq(3L, 99L, 3L), seq(2L, 99L, 3L), seq(1L, 99L, 3L))]
+    )
+    expect_identical(rows, before)
+})
+
+# Coverage keys include the request, exact core years, and per-variable table
+# mapping. Returned data.tables must never expose the cached object by reference.
+test_that("File coverage reuse respects identity and protects cached evidence", {
+    calls <- 0L
+    fail <- FALSE
+    empty <- FALSE
+    local_mocked_bindings(
+        shift__cmip6_coverage_catalog = function(...) {
+            calls <<- calls + 1L
+            if (fail) {
+                stop("File service unavailable")
+            }
+            data.table::data.table()
+        },
+        shift__cmip6_candidates = function(...) {
+            result <- data.table::data.table(
+                source_id = "A",
+                variant_label = "r1i1p1f1",
+                grid_label = "gn",
+                complete = TRUE
+            )
+            if (empty) result[0L] else result
+        },
+        shift__cmip6_candidate_file_count = function(...) 1L,
+        .package = "epwshiftr"
+    )
+    cache <- new.env(parent = emptyenv())
+    request <- shift_request(
+        project = "CMIP6",
+        source = "A",
+        experiment = "ssp245",
+        variant = "r1i1p1f1",
+        variables = "tas",
+        frequency = c(tas = "day"),
+        options = list(index_node = "https://example.org")
+    )
+    read <- function(
+        value = request,
+        years = 2041:2060,
+        table = c(tas = "day")
+    ) {
+        shift__cmip6_coverage_candidates(
+            value,
+            years,
+            table,
+            NULL,
+            shift_ui(progress = "none"),
+            cache
+        )
+    }
+    first <- read()
+    expected <- data.table::copy(first)
+    data.table::set(first, j = "source_file_count", value = 999L)
+    expect_identical(read(years = 2060:2041), expected)
+    expect_identical(calls, 1L)
+    read(years = 2041:2050)
+    read(table = c(tas = "Eday"))
+    variants <- list(
+        source = "B",
+        experiment = "historical",
+        variant = "r2i1p1f1",
+        variables = "pr",
+        frequency = c(tas = "mon"),
+        time = c("2041", "2050"),
+        filters = list(grid_label = "gr"),
+        options = list(index_node = "https://other.example.org")
+    )
+    for (field in names(variants)) {
+        changed <- request
+        meta <- changed@meta
+        meta[[field]] <- variants[[field]]
+        changed@meta <- meta
+        read(changed)
+    }
+    expect_identical(calls, 11L)
+    empty <- TRUE
+    result <- read(years = 2071L)
+    expect_equal(nrow(result), 0L)
+    expect_type(result$source_file_count, "integer")
+    expect_identical(read(years = 2071L), result)
+    expect_identical(calls, 12L)
+    fail <- TRUE
+    expect_error(read(years = 2080L), "File service unavailable")
+    fail <- FALSE
+    expect_equal(nrow(read(years = 2080L)), 0L)
+    expect_identical(calls, 14L)
 })

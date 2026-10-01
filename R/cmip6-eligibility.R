@@ -97,7 +97,7 @@ eligibility__catalog <- function(datasets) {
 eligibility__requirements <- function(
     transforms,
     scenarios,
-    include_optional_historical
+    historical
 ) {
     checkmate::assert_character(
         scenarios,
@@ -108,16 +108,27 @@ eligibility__requirements <- function(
     if (any(!nzchar(scenarios)) || "historical" %in% scenarios) {
         cli::cli_abort("Scenarios must be non-empty future experiment IDs.")
     }
-    checkmate::assert_flag(include_optional_historical)
+    checkmate::assert_logical(
+        historical,
+        any.missing = FALSE,
+        len = length(transforms)
+    )
+    checkmate::assert_names(names(historical), identical.to = names(transforms))
     compiled <- vector("list", length(transforms))
     for (key in names(transforms)) {
         transform <- transforms[[key]]
-        roles <- c("model_future", "model_historical")
+        # Select actual catalog roles before intersecting variable alternatives
+        # and frequencies; unused local/optional history must not constrain them.
+        roles <- if (historical[[key]]) {
+            c("model_future", "model_historical")
+        } else {
+            "model_future"
+        }
         requirements <- transform@required_inputs[
             intersect(roles, names(transform@required_inputs))
         ]
         if (
-            include_optional_historical &&
+            historical[[key]] &&
                 "model_historical" %in% names(transform@optional_inputs)
         ) {
             requirements$model_historical <- transform@optional_inputs$model_historical
@@ -216,14 +227,14 @@ eligibility__requirements <- function(
         # Repeat future rows for the requested scenarios in one indexed expansion.
         # Sorting restores role/scenario/variable priority without per-scenario tables.
         future <- rows$role == "model_future"
-        counts <- ifelse(future, length(scenarios), 1L)
+        counts <- data.table::fifelse(future, length(scenarios), 1L)
         pairs <- rows[rep(seq_len(nrow(rows)), counts)]
         experiment_order <- sequence(counts)
         data.table::set(pairs, j = "experiment_order", value = experiment_order)
         data.table::set(
             pairs,
             j = "experiment_id",
-            value = ifelse(
+            value = data.table::fifelse(
                 pairs$role == "model_future",
                 scenarios[experiment_order],
                 "historical"
@@ -301,7 +312,26 @@ eligibility__requirements <- function(
 
 # Stage 3: match all candidates in bulk, choosing one frequency/table per
 # variable across experiments, then record completeness and missing pairs.
-eligibility__match <- function(catalog, candidates, requirements) {
+eligibility__match <- function(catalog, requirements) {
+    pairs <- requirements$pairs
+    catalog <- catalog[
+        experiment_id %in%
+            pairs$experiment_id &
+            variable_id %in% pairs$variable_id
+    ]
+    fields <- c("source_id", "variant_label", "grid_label")
+    candidates <- unique(catalog[, fields, with = FALSE])
+    if (!nrow(candidates)) {
+        return(eligibility__empty()$requirements)
+    }
+    data.table::setorderv(candidates, fields)
+    data.table::set(
+        candidates,
+        j = "identity_id",
+        value = seq_len(nrow(candidates))
+    )
+    catalog <- candidates[catalog, on = fields]
+
     experiment_id <- frequency <- frequency_rank <- table_id <- coverage <-
         preferred <- NULL
     # Index the compact copy once for the bulk availability joins below.
@@ -325,8 +355,11 @@ eligibility__match <- function(catalog, candidates, requirements) {
     ]
     matches <- matches[!is.na(table_id) & nzchar(table_id)]
     group <- c("identity_id", "transform_key", "path_id", "variable_id")
+    # Catalog rows are unique by identity/variable/experiment/partition, and
+    # compiled lookups are unique by path/variable/experiment/frequency. Their
+    # join therefore has exactly one row per experiment in each score group.
     scores <- matches[,
-        list(coverage = data.table::uniqueN(experiment_id)),
+        list(coverage = .N),
         by = c(group, "frequency", "frequency_rank", "table_id")
     ]
     # Map the small frequency vocabulary once, then index all score rows.
@@ -413,17 +446,36 @@ eligibility__match <- function(catalog, candidates, requirements) {
             "experiment_id"
         )
     ]
+    details <- candidates[details, on = "identity_id"]
+    data.table::set(details, j = "identity_id", value = NULL)
+    data.table::setcolorder(details, names(eligibility__empty()$requirements))
+    data.table::setorderv(
+        details,
+        c(fields, "transform_key", "path_id", "role", "experiment_id")
+    )
     details
 }
 
 # Stage 4: summarize future and historical evidence, apply selection policies,
 # and return ordered eligibility and requirement data.tables with fixed schemas.
-eligibility__summarize <- function(details, candidates, scenarios, common) {
+eligibility__summarize <- function(details, scenarios, common) {
+    checkmate::assert_flag(common)
+    if (!nrow(details)) {
+        return(eligibility__empty())
+    }
     role <- complete <- missing <- catalog_eligible <- historical_complete <-
         historical_missing <- NULL
-    group <- c("identity_id", "transform_key", "method", "path_id")
+    group <- c(
+        "source_id",
+        "variant_label",
+        "grid_label",
+        "transform_key",
+        "method",
+        "path_id"
+    )
+    # Explicit row positions avoid adding automatic indexes to caller-owned evidence.
     future <- details[
-        role == "model_future",
+        which(details$role == "model_future"),
         c(group, "experiment_id", "complete", "missing"),
         with = FALSE
     ]
@@ -433,7 +485,7 @@ eligibility__summarize <- function(details, candidates, scenarios, common) {
         c("scenario", "catalog_eligible")
     )
     historical <- details[
-        role == "model_historical",
+        which(details$role == "model_historical"),
         list(
             historical_complete = all(complete),
             historical_missing = if (all(complete)) {
@@ -466,28 +518,18 @@ eligibility__summarize <- function(details, candidates, scenarios, common) {
     ]
     future[, c("historical_complete", "historical_missing") := NULL]
     matrix <- eligibility__select(future, scenarios, common)
-    result <- list(
-        matrix = candidates[matrix, on = "identity_id"],
-        requirements = candidates[details, on = "identity_id"]
-    )
-    schemas <- eligibility__empty()
-    fields <- c("source_id", "variant_label", "grid_label")
-    for (name in names(result)) {
-        data.table::set(result[[name]], j = "identity_id", value = NULL)
-        data.table::setcolorder(result[[name]], names(schemas[[name]]))
-        # Output order is stable even when the provider changes catalog order.
-        order <- c(
-            fields,
+    data.table::setcolorder(matrix, names(eligibility__empty()$matrix))
+    data.table::setorderv(
+        matrix,
+        c(
+            "source_id",
+            "variant_label",
+            "grid_label",
             "transform_key",
-            if (name == "matrix") {
-                "scenario"
-            } else {
-                c("path_id", "role", "experiment_id")
-            }
+            "scenario"
         )
-        data.table::setorderv(result[[name]], order)
-    }
-    result
+    )
+    list(matrix = matrix, requirements = details)
 }
 
 # Apply selection policies separately from metadata matching. Preserve one
@@ -495,21 +537,41 @@ eligibility__summarize <- function(details, candidates, scenarios, common) {
 eligibility__select <- function(future, scenarios, common) {
     catalog_eligible <- method_eligible <- common_eligible <- selected <- score <-
         path_id <- missing <- NULL
-    group <- c("identity_id", "transform_key", "method", "path_id")
+    group <- c(
+        "source_id",
+        "variant_label",
+        "grid_label",
+        "transform_key",
+        "method",
+        "path_id"
+    )
     scores <- future[, list(score = sum(catalog_eligible)), by = group]
     data.table::setorderv(
         scores,
-        c("identity_id", "transform_key", "score", "path_id"),
-        c(1L, 1L, -1L, 1L)
+        c(
+            "source_id",
+            "variant_label",
+            "grid_label",
+            "transform_key",
+            "score",
+            "path_id"
+        ),
+        c(1L, 1L, 1L, 1L, -1L, 1L)
     )
-    chosen <- unique(scores, by = c("identity_id", "transform_key"))
+    chosen <- unique(
+        scores,
+        by = c("source_id", "variant_label", "grid_label", "transform_key")
+    )
     matrix <- future[chosen, on = group, nomatch = 0L]
     matrix[, method_eligible := score == length(scenarios)]
     matrix[
         is.na(missing) & !method_eligible,
         missing := "No single input path covers all requested scenarios."
     ]
-    matrix[, common_eligible := all(method_eligible), by = "identity_id"]
+    matrix[,
+        common_eligible := all(method_eligible),
+        by = c("source_id", "variant_label", "grid_label")
+    ]
     matrix[,
         selected := if (common) common_eligible else method_eligible
     ]
@@ -521,35 +583,4 @@ eligibility__select <- function(future, scenarios, common) {
         quality = "not_checked"
     )]
     matrix
-}
-
-# Match a normalized catalog against already compiled requirements. Both
-# discovery entry points reuse this reducer; it never fetches metadata or values.
-eligibility__evaluate <- function(catalog, requirements, common = FALSE) {
-    checkmate::assert_flag(common)
-    experiment_id <- variable_id <- role <- NULL
-    pairs <- requirements$pairs
-    catalog <- catalog[
-        experiment_id %in%
-            pairs$experiment_id &
-            variable_id %in% pairs$variable_id
-    ]
-    fields <- c("source_id", "variant_label", "grid_label")
-    candidates <- unique(catalog[, fields, with = FALSE])
-    if (!nrow(candidates)) {
-        return(eligibility__empty())
-    }
-    data.table::setorderv(candidates, fields)
-    data.table::set(
-        candidates,
-        j = "identity_id",
-        value = seq_len(nrow(candidates))
-    )
-    details <- eligibility__match(
-        candidates[catalog, on = fields],
-        candidates,
-        requirements
-    )
-    scenarios <- unique(pairs[role == "model_future", experiment_id])
-    eligibility__summarize(details, candidates, scenarios, common)
 }

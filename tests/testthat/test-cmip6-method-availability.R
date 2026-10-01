@@ -219,7 +219,11 @@ test_that("invalid method combinations fail before querying", {
 test_that("method queries derive mixed frequencies and reject missing catalog fields", {
     transform <- hourly_transform("kernel_qdm")
     contracts <- shift_batch__transforms(transform = transform)
-    requirements <- eligibility__requirements(contracts, "ssp245", FALSE)
+    requirements <- eligibility__requirements(
+        contracts,
+        "ssp245",
+        stats::setNames(TRUE, names(contracts))
+    )
     response <- unique(requirements$lookup[,
         c("experiment_id", "variable_id", "frequency"),
         with = FALSE

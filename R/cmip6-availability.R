@@ -439,10 +439,20 @@ shift_cmip6_avail <- function(
         checkmate::assert_flag(common)
         checkmate::assert_flag(include_optional_historical)
         transforms <- shift_batch__transforms(methods, transform)
+        historical <- vapply(
+            transforms,
+            function(value) {
+                "model_historical" %in%
+                    names(value@required_inputs) ||
+                    (include_optional_historical &&
+                        "model_historical" %in% names(value@optional_inputs))
+            },
+            logical(1L)
+        )
         requirements <- eligibility__requirements(
             transforms,
             scenarios,
-            include_optional_historical
+            historical
         )
         # Canonical union order shares cache keys even when methods are reordered.
         query_variables <- sort(unique(requirements$pairs$variable_id))
@@ -516,7 +526,11 @@ shift_cmip6_avail <- function(
         if (!is.null(grid)) {
             catalog <- catalog[grid_label == grid]
         }
-        evaluated <- eligibility__evaluate(catalog, requirements, common)
+        evaluated <- eligibility__summarize(
+            eligibility__match(catalog, requirements),
+            scenarios,
+            common
+        )
         return(availability__method_summary(evaluated, index_node))
     }
     availability__summarize(

@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Apply historical catalog requirements only when needed by the batch reference,
+  share File coverage results across methods, and avoid repeated eligibility
+  summaries, group counts, and input-map serialization (#269).
+
 * Shared narrow catalog normalization between variable and method availability
   queries, and grouped table selection without repeated full catalog scans (#269).
 

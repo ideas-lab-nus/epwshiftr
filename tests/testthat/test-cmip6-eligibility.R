@@ -7,12 +7,23 @@ eligibility_test__evaluate <- function(
     common = FALSE,
     include_optional_historical = FALSE
 ) {
-    requirements <- eligibility__requirements(
-        shift_batch__transforms(methods, transform),
-        scenarios,
-        include_optional_historical
+    transforms <- shift_batch__transforms(methods, transform)
+    historical <- vapply(
+        transforms,
+        function(value) {
+            "model_historical" %in%
+                names(value@required_inputs) ||
+                (include_optional_historical &&
+                    "model_historical" %in% names(value@optional_inputs))
+        },
+        logical(1L)
     )
-    eligibility__evaluate(eligibility__catalog(catalog), requirements, common)
+    requirements <- eligibility__requirements(transforms, scenarios, historical)
+    eligibility__summarize(
+        eligibility__match(eligibility__catalog(catalog), requirements),
+        scenarios,
+        common
+    )
 }
 
 # Build self-contained Dataset rows without querying any external service.
@@ -595,4 +606,25 @@ test_that("catalog normalization retains incomplete partitions for diagnostics",
             stats::setNames(rep("character", 7L), names(result))
         )
     }
+})
+
+# Public presentation must not change the matched evidence object or its
+# attributes; batch discovery consumes that same matching contract directly.
+test_that("eligibility summaries preserve matched evidence by reference", {
+    transforms <- shift_batch__transforms(methods = "qdm")
+    requirements <- eligibility__requirements(
+        transforms,
+        "ssp245",
+        stats::setNames(TRUE, names(transforms))
+    )
+    details <- eligibility__match(
+        eligibility__catalog(eligibility_test__catalog()),
+        requirements
+    )
+    before <- data.table::copy(details)
+    result <- eligibility__summarize(details, "ssp245", FALSE)
+    expect_identical(details, before)
+    expect_identical(result$requirements, before)
+    expect_null(data.table::indices(details))
+    expect_true(result$matrix$selected)
 })
