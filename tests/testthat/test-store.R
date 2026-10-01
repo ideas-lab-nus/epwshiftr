@@ -646,6 +646,9 @@ test_that("EsgStore$downloader()", {
     expect_equal(dl$tmp_dir, normalizePath(file.path(dir, "tmp", "downloads"), mustWork = TRUE, winslash = "/"))
     expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))
     expect_true(file.exists(dl$manifest))
+    on.exit(priv(dl)$disconnect_manifest(), add = TRUE)
+    # Inspect the persisted configuration only after releasing its writer.
+    priv(dl)$disconnect_manifest()
     dl_conn <- ddb_connect(dl$manifest, read_only = TRUE)
     on.exit(ddb_disconnect(dl_conn, shutdown = TRUE), add = TRUE)
     expect_true("download_config" %in% ddb_list_tables(dl_conn))

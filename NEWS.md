@@ -1,5 +1,23 @@
 # epwshiftr (development version)
 
+* Apply historical catalog requirements only when needed by the batch reference,
+  share File coverage results across methods, and avoid repeated eligibility
+  summaries, group counts, and input-map serialization (#269).
+
+* Shared narrow catalog normalization between variable and method availability
+  queries, and grouped table selection without repeated full catalog scans (#269).
+
+* Reused method eligibility and normalized catalogs across batch alternatives,
+  ranked source-file costs before choosing a model's member/grid, and simplified
+  request construction while retaining shared catalog filter rules (#271).
+
+* Aligned method availability with executable historical/future variable
+  combinations and reused compiled requirements for catalog matching (#269).
+
+* Fixed manifest inspection tests for DuckDB 1.5.6 by releasing fixture write
+  connections before reopening databases read-only. Added coverage for rejected
+  writes through read-only connections (#269).
+
 ## Breaking changes
 
 * Named future-weather registry keys, intermediate kinds, diagnostics, and
@@ -53,6 +71,23 @@
   `mirai`, S7, and store-managed manifests.
 
 ## New features
+
+* Added `common = FALSE` to `shift_cmip6()` for independent method-specific
+  model selection in future-weather batches. The default `common = TRUE`
+  preserves shared model/member/grid identities. Batch discovery shares Dataset
+  queries across methods and alternatives, checks File-year coverage before
+  selection, persists the chosen matrix, and reports differing method pools
+  (#271).
+
+* `shift_cmip6_avail()` now accepts weather `methods` or explicit `transform`
+  configurations, derives their variable/frequency/history requirements, and
+  shares one cached Dataset query across methods. Results retain rejected
+  candidates and missing-input reasons, with separate per-method and common
+  selection pools controlled by the logical `common` flag (default `FALSE`).
+  Catalog eligibility does not establish year coverage,
+  readability, or scientific quality. Both variable and method queries return
+  a `data.table`; existing variable-query columns are preserved. Internal
+  requirements use bulk joins for input alternatives and scenarios (#268, #269).
 
 * Added `precipitation = "off"` to both monthly morphing methods. This keeps
   baseline EPW precipitation fields unchanged and removes CMIP `pr` from

@@ -81,7 +81,8 @@ shift_cmip6(
   activity = "ScenarioMIP",
   index_nodes = NULL,
   data_node = NULL,
-  filters = list()
+  filters = list(),
+  common = TRUE
 )
 
 shift_control(
@@ -374,6 +375,15 @@ overrides individual variables.}
 \item{index_nodes}{Ordered ESGF index nodes used for failover.}
 
 \item{data_node}{Optional ESGF data node filter.}
+
+\item{common}{A logical flag for batch candidate selection. \code{TRUE}
+(default) uses the same model/member/grid identities across methods.
+\code{FALSE} selects independently: a numeric \code{model} requests that many models
+per method, \code{NULL} keeps all compatible models, and explicit IDs limit the
+eligible pool. Every explicit model must qualify for at least one method.
+Different pools are reported in batch diagnostics; their results confound
+method differences with model selection. File-year coverage is checked
+before either selection policy is applied.}
 
 \item{strict}{If \code{TRUE}, abort when diagnostics contain errors.}
 

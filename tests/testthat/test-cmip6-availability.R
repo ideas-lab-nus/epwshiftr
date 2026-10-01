@@ -1,35 +1,49 @@
 # Build variable-specific Dataset rows for deterministic availability tests.
-availability_test__datasets <- function(source, experiment, variables,
-                                        member = "r1i1p1f1", grid = "gn",
-                                        frequency = "day", table = "day") {
-    data.table::rbindlist(lapply(variables, function(variable) {
-        variable_frequency <- if (!is.null(names(frequency))) {
-            unname(frequency[[variable]])
-        } else {
-            frequency[[1L]]
-        }
-        variable_table <- if (!is.null(names(table))) {
-            unname(table[[variable]])
-        } else {
-            table[[1L]]
-        }
-        data.table::data.table(
-            id = sprintf(
-                "CMIP6.%s.%s.%s.%s.%s",
-                source, experiment, member, variable, grid
-            ),
-            source_id = source,
-            experiment_id = experiment,
-            member_id = member,
-            frequency = variable_frequency,
-            table_id = variable_table,
-            variable_id = variable,
-            grid_label = grid,
-            latest = TRUE,
-            replica = FALSE,
-            size = 1
-        )
-    }), use.names = TRUE, fill = TRUE)
+availability_test__datasets <- function(
+    source,
+    experiment,
+    variables,
+    member = "r1i1p1f1",
+    grid = "gn",
+    frequency = "day",
+    table = "day"
+) {
+    data.table::rbindlist(
+        lapply(variables, function(variable) {
+            variable_frequency <- if (!is.null(names(frequency))) {
+                unname(frequency[[variable]])
+            } else {
+                frequency[[1L]]
+            }
+            variable_table <- if (!is.null(names(table))) {
+                unname(table[[variable]])
+            } else {
+                table[[1L]]
+            }
+            data.table::data.table(
+                id = sprintf(
+                    "CMIP6.%s.%s.%s.%s.%s",
+                    source,
+                    experiment,
+                    member,
+                    variable,
+                    grid
+                ),
+                source_id = source,
+                experiment_id = experiment,
+                member_id = member,
+                frequency = variable_frequency,
+                table_id = variable_table,
+                variable_id = variable,
+                grid_label = grid,
+                latest = TRUE,
+                replica = FALSE,
+                size = 1
+            )
+        }),
+        use.names = TRUE,
+        fill = TRUE
+    )
 }
 
 test_that("availability reduction requires every experiment-variable pair", {
@@ -43,7 +57,10 @@ test_that("availability reduction requires every experiment-variable pair", {
     incomplete <- data.table::rbindlist(list(
         availability_test__datasets("Model-B", "ssp245", variables),
         availability_test__datasets(
-            "Model-B", "ssp585", c("tas", "hurs")),
+            "Model-B",
+            "ssp585",
+            c("tas", "hurs")
+        ),
         availability_test__datasets("Model-B", "historical", variables)
     ))
     summary <- availability__summarize(
@@ -109,20 +126,32 @@ test_that("availability discovers one table per variable", {
     experiments <- c("ssp585", "historical")
     datasets <- data.table::rbindlist(list(
         availability_test__datasets(
-            "Model-A", experiments[[1L]], "tas",
-            frequency = "3hr", table = "3hr"
+            "Model-A",
+            experiments[[1L]],
+            "tas",
+            frequency = "3hr",
+            table = "3hr"
         ),
         availability_test__datasets(
-            "Model-A", experiments[[2L]], "tas",
-            frequency = "3hr", table = "3hr"
+            "Model-A",
+            experiments[[2L]],
+            "tas",
+            frequency = "3hr",
+            table = "3hr"
         ),
         availability_test__datasets(
-            "Model-A", experiments[[1L]], "uas",
-            frequency = "3hr", table = "E3hr"
+            "Model-A",
+            experiments[[1L]],
+            "uas",
+            frequency = "3hr",
+            table = "E3hr"
         ),
         availability_test__datasets(
-            "Model-A", experiments[[2L]], "uas",
-            frequency = "3hr", table = "E3hr"
+            "Model-A",
+            experiments[[2L]],
+            "uas",
+            frequency = "3hr",
+            table = "E3hr"
         )
     ))
     summary <- availability__summarize(
@@ -152,12 +181,18 @@ test_that("availability discovers one table per variable", {
 test_that("availability does not combine one variable across tables", {
     datasets <- data.table::rbindlist(list(
         availability_test__datasets(
-            "Model-A", "historical", "tas",
-            frequency = "3hr", table = "3hr"
+            "Model-A",
+            "historical",
+            "tas",
+            frequency = "3hr",
+            table = "3hr"
         ),
         availability_test__datasets(
-            "Model-A", "ssp585", "tas",
-            frequency = "3hr", table = "E3hr"
+            "Model-A",
+            "ssp585",
+            "tas",
+            frequency = "3hr",
+            table = "E3hr"
         )
     ))
     summary <- availability__summarize(
@@ -178,15 +213,31 @@ test_that("availability identities do not combine members or grids", {
     variables <- c("tas", "pr")
     split_grid <- data.table::rbindlist(list(
         availability_test__datasets(
-            "Model-A", "ssp245", "tas", grid = "gn"),
+            "Model-A",
+            "ssp245",
+            "tas",
+            grid = "gn"
+        ),
         availability_test__datasets(
-            "Model-A", "ssp245", "pr", grid = "gr")
+            "Model-A",
+            "ssp245",
+            "pr",
+            grid = "gr"
+        )
     ))
     split_member <- data.table::rbindlist(list(
         availability_test__datasets(
-            "Model-B", "ssp245", "tas", member = "r1i1p1f1"),
+            "Model-B",
+            "ssp245",
+            "tas",
+            member = "r1i1p1f1"
+        ),
         availability_test__datasets(
-            "Model-B", "ssp245", "pr", member = "r2i1p1f1")
+            "Model-B",
+            "ssp245",
+            "pr",
+            member = "r2i1p1f1"
+        )
     ))
     summary <- availability__summarize(
         data.table::rbindlist(list(split_grid, split_member)),
@@ -211,7 +262,10 @@ test_that("shift_cmip6_avail builds an unconstrained Dataset query", {
         c("ssp245", "historical"),
         function(experiment) {
             availability_test__datasets(
-                "Model-A", experiment, c("tas", "pr"))
+                "Model-A",
+                experiment,
+                c("tas", "pr")
+            )
         }
     ))
     local_mocked_bindings(
@@ -255,10 +309,16 @@ test_that("availability discovers every member without a preferred label", {
     calls <- new.env(parent = emptyenv())
     datasets <- data.table::rbindlist(list(
         availability_test__datasets(
-            "Model-A", "ssp585", "tas", member = "r1i1p1f1"
+            "Model-A",
+            "ssp585",
+            "tas",
+            member = "r1i1p1f1"
         ),
         availability_test__datasets(
-            "Model-A", "ssp585", c("tas", "pr"), member = "r2i1p1f1"
+            "Model-A",
+            "ssp585",
+            c("tas", "pr"),
+            member = "r2i1p1f1"
         )
     ))
     local_mocked_bindings(
@@ -285,12 +345,18 @@ test_that("availability accepts named table overrides", {
     calls <- new.env(parent = emptyenv())
     datasets <- data.table::rbindlist(list(
         availability_test__datasets(
-            "Model-A", "ssp585", "tas",
-            frequency = "3hr", table = "3hr"
+            "Model-A",
+            "ssp585",
+            "tas",
+            frequency = "3hr",
+            table = "3hr"
         ),
         availability_test__datasets(
-            "Model-A", "ssp585", "uas",
-            frequency = "3hr", table = "E3hr"
+            "Model-A",
+            "ssp585",
+            "uas",
+            frequency = "3hr",
+            table = "E3hr"
         )
     ))
     local_mocked_bindings(
@@ -324,7 +390,10 @@ test_that("shift_cmip6_avail supports the named ORNL Bridge endpoint", {
 
     calls <- new.env(parent = emptyenv())
     datasets <- availability_test__datasets(
-        "Model-A", "ssp245", c("tas", "pr"))
+        "Model-A",
+        "ssp245",
+        c("tas", "pr")
+    )
     local_mocked_bindings(
         availability__collect = function(request, store, ui) {
             calls$request <- request
@@ -353,7 +422,10 @@ test_that("shift_cmip6_avail supports the named ORNL Bridge endpoint", {
         "https://esgf-node.ornl.gov/esgf-1-5-bridge?"
     ))
     expect_true(grepl(
-        "variable_id=tas,pr", decoded_url, fixed = TRUE))
+        "variable_id=tas,pr",
+        decoded_url,
+        fixed = TRUE
+    ))
     expect_false(grepl("fields=", decoded_url, fixed = TRUE))
 })
 
@@ -387,8 +459,11 @@ test_that("availability can discover tables for frequencies without defaults", {
         availability__collect = function(request, store, ui) {
             calls$request <- request
             availability_test__datasets(
-                "Model-A", "ssp585", "orog",
-                frequency = "fx", table = "fx"
+                "Model-A",
+                "ssp585",
+                "orog",
+                frequency = "fx",
+                table = "fx"
             )
         },
         .package = "epwshiftr"
@@ -404,4 +479,130 @@ test_that("availability can discover tables for frequencies without defaults", {
     expect_true(result$complete[[1L]])
     expect_null(calls$request@meta$filters$table_id)
     expect_identical(result$table[[1L]], c(orog = "fx"))
+})
+
+test_that("availability ranks coverage before default and lexical table choices", {
+    datasets <- data.table::rbindlist(list(
+        availability_test__datasets("Coverage", "ssp245", "tas"),
+        availability_test__datasets(
+            "Coverage",
+            c("historical", "ssp245"),
+            "tas",
+            table = "Eday"
+        ),
+        availability_test__datasets(
+            "Default",
+            c("historical", "ssp245"),
+            "tas",
+            table = "Aday"
+        ),
+        availability_test__datasets(
+            "Default",
+            c("historical", "ssp245"),
+            "tas"
+        ),
+        availability_test__datasets("Lexical", "ssp245", "tas", table = "Zday"),
+        availability_test__datasets("Lexical", "ssp245", "tas", table = "Eday")
+    ))
+    # Repeated replica records must not inflate experiment coverage.
+    datasets <- data.table::rbindlist(list(
+        datasets,
+        datasets[1L],
+        datasets[1L]
+    ))
+    result <- availability__summarize(
+        datasets,
+        c("ssp245", "historical"),
+        c("tas", "pr"),
+        "day",
+        NULL,
+        "local"
+    )
+    expect_identical(result$source_id, c("Coverage", "Default", "Lexical"))
+    expect_identical(
+        result$table,
+        list(
+            c(tas = "Eday", pr = NA_character_),
+            c(tas = "day", pr = NA_character_),
+            c(tas = "Eday", pr = NA_character_)
+        )
+    )
+    expect_identical(result$available_pairs, c(2L, 2L, 1L))
+    expect_identical(
+        result$missing,
+        c(
+            "historical:pr; ssp245:pr",
+            "historical:pr; ssp245:pr",
+            "historical:pr; historical:tas; ssp245:pr"
+        )
+    )
+})
+
+test_that("availability keeps variable-specific frequency and table matches", {
+    datasets <- availability_test__datasets(
+        "Model-A",
+        "ssp245",
+        c("tas", "tasmax"),
+        frequency = c(tas = "3hr", tasmax = "day"),
+        table = c(tas = "3hr", tasmax = "day")
+    )
+    # These rows use valid requested frequencies or tables for the wrong variable.
+    wrong_frequency <- data.table::copy(datasets)
+    data.table::set(wrong_frequency, j = "experiment_id", value = "historical")
+    data.table::set(wrong_frequency, j = "frequency", value = c("day", "3hr"))
+    wrong_table <- data.table::copy(datasets)
+    data.table::set(wrong_table, j = "experiment_id", value = "historical")
+    data.table::set(wrong_table, j = "table_id", value = c("day", "3hr"))
+    result <- availability__summarize(
+        data.table::rbindlist(list(datasets, wrong_frequency, wrong_table)),
+        c("ssp245", "historical"),
+        c("tasmax", "tas"),
+        c(tasmax = "day", tas = "3hr"),
+        c(tasmax = "day", tas = "3hr"),
+        "local"
+    )
+    expect_identical(result$available_pairs, 2L)
+    expect_identical(result$complete_experiments, 1L)
+    expect_identical(result$missing, "historical:tas; historical:tasmax")
+    expect_identical(result$table[[1L]], c(tasmax = "day", tas = "3hr"))
+    expect_identical(
+        result$frequency_spec[[1L]],
+        c(tasmax = "day", tas = "3hr")
+    )
+})
+
+test_that("availability ignores invalid partitions and preserves empty types", {
+    valid <- availability_test__datasets("Model-A", "ssp245", "tas")
+    incomplete <- data.table::copy(valid)
+    data.table::set(incomplete, j = "source_id", value = "Incomplete")
+    data.table::set(incomplete, j = "table_id", value = NA_character_)
+    result <- availability__summarize(
+        data.table::rbindlist(list(valid, incomplete)),
+        "ssp245",
+        "tas",
+        "day",
+        NULL,
+        "local"
+    )
+    expect_identical(result$source_id, "Model-A")
+    expect_true(result$complete)
+    all_missing <- data.table::as.data.table(lapply(valid, function(x) {
+        rep(NA, length(x))
+    }))
+    for (datasets in list(
+        valid[0L],
+        data.table::data.table(),
+        all_missing,
+        incomplete
+    )) {
+        result <- availability__summarize(
+            datasets,
+            "ssp245",
+            "tas",
+            "day",
+            NULL,
+            "local"
+        )
+        expect_identical(result, availability__empty())
+    }
 })

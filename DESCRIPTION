@@ -105,6 +105,7 @@ Collate:
     'cli-storage.R'
     'cli.R'
     'cmip6-availability.R'
+    'cmip6-eligibility.R'
     'component-btws.R'
     'component-bws-btws.R'
     'component-hourly-calendar-grouping.R'

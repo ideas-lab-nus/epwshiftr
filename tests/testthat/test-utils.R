@@ -370,3 +370,31 @@ test_that("store_write_json_atomic() writes valid JSON", {
     )
     expect_identical(jsonlite::read_json(path, simplifyVector = TRUE)$a, 1L)
 })
+
+# Exercise the file-backed connection lifecycle without changing an open
+# database instance's access mode.
+test_that("ddb_connect() opens persisted databases read-only after closing writers", {
+    skip_if_not_installed("duckdb")
+
+    path <- tempfile(fileext = ".duckdb")
+    conn <- ddb_connect(path)
+    on.exit(
+        {
+            if (ddb_is_valid(conn)) {
+                ddb_disconnect(conn)
+            }
+            unlink(path)
+        },
+        add = TRUE
+    )
+    ddb_exec(conn, "CREATE TABLE lifecycle (value INTEGER)")
+    ddb_exec(conn, "INSERT INTO lifecycle VALUES (1)")
+    ddb_disconnect(conn)
+
+    conn <- ddb_connect(path, read_only = TRUE)
+    expect_equal(ddb_read_table(conn, "lifecycle")$value, 1L)
+    expect_error(
+        ddb_exec(conn, "INSERT INTO lifecycle VALUES (2)"),
+        "[Rr]ead.only"
+    )
+})

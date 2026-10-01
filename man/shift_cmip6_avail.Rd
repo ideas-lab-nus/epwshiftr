@@ -2,10 +2,10 @@
 % Please edit documentation in R/cmip6-availability.R
 \name{shift_cmip6_avail}
 \alias{shift_cmip6_avail}
-\title{Query CMIP6 variable availability}
+\title{Query CMIP6 availability by variables or weather methods}
 \usage{
 shift_cmip6_avail(
-  variables,
+  variables = NULL,
   scenarios = c("ssp245", "ssp585"),
   include_historical = TRUE,
   source = NULL,
@@ -19,79 +19,110 @@ shift_cmip6_avail(
   data_node = NULL,
   filters = list(),
   store = NULL,
-  ui = NULL
+  ui = NULL,
+  methods = NULL,
+  transform = NULL,
+  common = FALSE,
+  include_optional_historical = FALSE
 )
 }
 \arguments{
-\item{variables}{CMIP6 variable IDs that must all be present.}
+\item{variables}{CMIP6 variable IDs that must all be present. Supply these,
+\code{methods}, or \code{transform}.}
 
 \item{scenarios}{Future CMIP6 experiment IDs.}
 
-\item{include_historical}{Whether the same identity must also contain the
-requested variables for the \code{"historical"} experiment.}
+\item{include_historical}{For variable queries, require the same variables
+for the \code{"historical"} experiment. For method queries, historical inputs
+come from the method contract; leave this argument unspecified.}
 
-\item{source}{Optional CMIP6 source/model IDs. \code{NULL} leaves the source
-unconstrained and discovers all matching models.}
+\item{source}{Optional CMIP6 source/model IDs. \code{NULL} discovers all models.}
 
-\item{member}{Optional CMIP6 variant labels. \code{NULL}, the default, discovers
-every returned member and evaluates each identity independently.}
+\item{member}{Optional CMIP6 variant labels. \code{NULL} discovers all members.}
 
 \item{grid}{Optional single CMIP6 grid label.}
 
-\item{frequency}{CMIP6 frequency. An unnamed scalar applies to every
-requested variable. A named character vector assigns one frequency to
-every variable, for example \code{tas = "3hrPt"} and \code{rsds = "3hr"}.}
+\item{frequency}{For variable queries, a scalar frequency or named vector
+assigning a frequency to each variable. Method queries infer frequencies
+from their contracts; leave this argument unspecified.}
 
-\item{table}{Optional CMIP6 table selection. \code{NULL} discovers a table for
-each variable at the requested frequency. An unnamed scalar pins every
-variable to one table. A named character vector or list overrides the
-named variables and leaves the remainder on their frequency defaults.}
+\item{table}{For variable queries, an optional scalar or named per-variable
+table selection. \code{NULL} discovers tables. Method queries discover tables
+at the frequencies declared by their contracts; leave this unspecified.}
 
 \item{activity}{Future CMIP6 activity ID.}
 
 \item{historical_activity}{Historical CMIP6 activity ID.}
 
-\item{index_node}{ESGF index-node name or URL. Names are matched
-case-insensitively against the package node registry. \code{NULL} uses DKRZ;
+\item{index_node}{ESGF index-node name or URL. \code{NULL} uses DKRZ;
 \code{"ORNL"} and \code{"LLNL"} use the ORNL ESGF 1.5 Bridge endpoint.}
 
 \item{data_node}{Optional ESGF data-node filter.}
 
-\item{filters}{Additional named ESGF filters. Core availability filters take
-precedence when names overlap.}
+\item{filters}{Additional named ESGF filters. Core availability arguments
+take precedence when names overlap.}
 
-\item{store}{Optional \link{EsgStore} or store path used by \code{\link[=shift_datasets]{shift_datasets()}}.}
+\item{store}{Optional \link{EsgStore} or store path forwarded to \code{\link[=shift_datasets]{shift_datasets()}}.}
 
 \item{ui}{Optional shift UI configuration forwarded to \code{\link[=shift_datasets]{shift_datasets()}}.}
+
+\item{methods}{Unique weather-method keys, such as \code{c("qdm", "sobie_curry")}.
+Ambiguous keys require an explicit \code{transform}.}
+
+\item{transform}{One \code{WeatherTransformSpec} or a list of them, created by
+\code{\link[=monthly_transform]{monthly_transform()}}, \code{\link[=daily_transform]{daily_transform()}}, or \code{\link[=hourly_transform]{hourly_transform()}}. Use
+this to specify method options, such as the variables adjusted by morphing.}
+
+\item{common}{For method queries, a logical flag. \code{FALSE} (default)
+selects candidates separately for each method; \code{TRUE} requires eligibility
+for every selected method.}
+
+\item{include_optional_historical}{For method queries, include historical
+model inputs that the method declares optional. Mandatory inputs are always
+required regardless of this flag.}
 }
 \value{
-A data frame with one row per model/member/grid identity.
-\code{complete} is \code{TRUE} only when every requested experiment-variable pair is
-present. \code{frequency_spec} and \code{table} are list-columns containing named
-per-variable selections accepted by \code{\link[=shift_cmip6]{shift_cmip6()}}. Incomplete rows use
-\code{NA} for variables with no available table. \code{frequency} and \code{table_id} are
-compact display values, and \code{missing} lists absent pairs as
-\code{experiment:variable}.
+A \code{data.table}, including when there are no matching identities.
+Variable queries return one row per model/member/grid identity, retaining
+the existing \code{complete}, coverage counts, \code{missing}, \code{frequency_spec}, and
+\code{table} columns. Method queries return one row per identity/method/scenario:
+\code{catalog_eligible} describes that scenario including required history;
+\code{method_eligible} requires a single input path across all requested scenarios;
+\code{common_eligible} requires all methods; \code{selected} applies \code{common}.
+\code{missing} explains rejections. List columns \code{variables}, \code{frequency_spec},
+and \code{table} describe the chosen future input path. \code{transform_key}
+distinguishes method configurations. \code{period_coverage}, \code{readability},
+and \code{quality} remain \code{"not_checked"}.
 }
 \description{
-Query CMIP6 Dataset metadata and identify model/member/grid identities that
-contain every requested variable for every requested experiment. ESGF
-interprets multiple \code{variable_id} values as OR alternatives; this function
-applies the required AND reduction locally.
+Query shared CMIP6 Dataset metadata and identify model/member/grid identities
+that satisfy requested variables or registered weather-method inputs.
+ESGF treats multiple variables as OR alternatives; required AND combinations
+are evaluated locally with \code{data.table}.
 }
 \details{
-This function reports Dataset metadata availability. It does not download
-NetCDF data or verify year-by-year File coverage. Requested period coverage
-is checked later by the existing \verb{shift_*} workflow resolver.
+All selected methods share one logical Dataset query for the union of their
+required variables, frequencies, and experiments. The existing query layer
+handles pagination and response caching; one logical query may require
+multiple HTTP requests. No File catalog or NetCDF values are downloaded.
+Dataset availability does not establish requested-year coverage or scientific
+quality. Incomplete identities found in the shared catalog remain visible.
+Entirely absent identities cannot be inferred from an empty catalog.
+Future and historical model inputs must share a variable combination,
+matching the requirements of the execution resolver.
 }
 \examples{
 \dontrun{
-daily_models <- shift_cmip6_avail(
-    variables = c("tas", "hurs", "pr", "rsds", "rlds", "sfcWind"),
-    scenarios = c("ssp245", "ssp585"),
-    frequency = "day"
+models <- shift_cmip6_avail(
+    methods = c("qdm", "sobie_curry"),
+    scenarios = c("ssp245", "ssp585")
 )
-subset(daily_models, complete)
+models[selected == TRUE]
+
+temperature <- shift_cmip6_avail(
+    variables = "tas", scenarios = "ssp245", frequency = "day"
+)
+temperature[complete == TRUE]
 }
 
 }

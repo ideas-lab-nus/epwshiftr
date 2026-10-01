@@ -23,7 +23,13 @@ test_that("epwshiftr_cli_doctor() reports missing and valid stores", {
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
-    store$downloader(n_workers = 0L)
+    dl <- store$downloader(n_workers = 0L)
+    on.exit(priv(dl)$disconnect_manifest(), add = TRUE)
+
+    # Doctor opens persisted manifests read-only, after fixture writers release
+    # their instances. DuckDB 1.5.6 rejects changing a live instance's mode.
+    priv(dl)$disconnect_manifest()
+    store$close()
 
     doctor <- epwshiftr_cli(c("--quiet", "--store", dir, "doctor"))
     expect_equal(doctor$status, 0L)

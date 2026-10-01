@@ -3,34 +3,91 @@
 # Own a single live region for the complete model-discovery operation. Nested
 # public catalog calls inherit this reporter and therefore do not create or
 # commit separate standalone operation panels.
-shift_batch__discover_models <- function(climate, transforms, periods,
-                                        references, store, ui, site = NULL) {
-    target <- if (length(climate@model)) length(climate@model) else climate@n_models
-    ui@batch_context <- list(kind = "discovery", total = length(transforms),
-        target_models = target, site = site, scenarios = climate@scenarios,
-        periods = shift__ui_periods(periods))
+shift_batch__discover_models <- function(
+    climate,
+    transforms,
+    periods,
+    references,
+    store,
+    ui,
+    site = NULL
+) {
+    target <- if (length(climate@model)) {
+        length(climate@model)
+    } else {
+        climate@n_models
+    }
+    ui@batch_context <- list(
+        kind = "discovery",
+        total = length(transforms),
+        target_models = target,
+        common = climate@common,
+        site = site,
+        scenarios = climate@scenarios,
+        periods = shift__ui_periods(periods)
+    )
     reporter <- shift__reporter(ui)
     on.exit(reporter$close(), add = TRUE)
-    reporter$operation_started("discovery", "Discover CMIP6 models",
-        context = list(items = c(site,
-            if (is.null(target)) "all compatible GCMs" else paste(target, "GCMs requested"),
-            paste(climate@scenarios, collapse = " + "), shift__ui_periods(periods))))
-    tryCatch({
-        result <- shift__with_reporter(reporter,
-            shift_batch__discover_candidates(climate, transforms, periods,
-                references, store, ui))
-        reporter$discovery_updated(list(selected_models = result$identities$source_id))
-        reporter$operation_completed(sprintf(
-            "%d GCM(s) selected with complete coverage across all %d method(s)",
-            nrow(result$identities), length(transforms)))
-        result
-    }, error = function(error) {
-        reporter$operation_failed(conditionMessage(error))
-        stop(error)
-    }, interrupt = function(error) {
-        reporter$operation_failed("Model discovery interrupted.", cancelled = TRUE)
-        stop(error)
-    })
+    reporter$operation_started(
+        "discovery",
+        "Discover CMIP6 models",
+        context = list(
+            items = c(
+                site,
+                if (is.null(target)) {
+                    "all compatible GCMs"
+                } else {
+                    paste(target, "GCMs requested")
+                },
+                paste(climate@scenarios, collapse = " + "),
+                shift__ui_periods(periods)
+            )
+        )
+    )
+    tryCatch(
+        {
+            result <- shift__with_reporter(
+                reporter,
+                shift_batch__discover_candidates(
+                    climate,
+                    transforms,
+                    periods,
+                    references,
+                    store,
+                    ui
+                )
+            )
+            reporter$discovery_updated(list(
+                selected_models = result$identities$source_id
+            ))
+            reporter$operation_completed(
+                if (climate@common) {
+                    sprintf(
+                        "%d GCM(s) selected with complete coverage across all %d method(s)",
+                        nrow(result$identities),
+                        length(transforms)
+                    )
+                } else {
+                    sprintf(
+                        "%d method/model selections with complete coverage in separate pools",
+                        nrow(result$selection)
+                    )
+                }
+            )
+            result
+        },
+        error = function(error) {
+            reporter$operation_failed(conditionMessage(error))
+            stop(error)
+        },
+        interrupt = function(error) {
+            reporter$operation_failed(
+                "Model discovery interrupted.",
+                cancelled = TRUE
+            )
+            stop(error)
+        }
+    )
 }
 
 # Update only a discovery-owned reporter, leaving ordinary single-run resolver
@@ -79,66 +136,165 @@ shift_batch__discovery_lines <- function(state, width, motion, frame) {
     inner <- if (panel) outer - 4L else outer
     # Wrap facts with the shared display-width-aware label formatter.
     row <- function(label, value) {
-        if (!length(value)) return(character())
-        shift__ui_labeled_lines(label, paste(value, collapse = " \u00b7 "), inner)
+        if (!length(value)) {
+            return(character())
+        }
+        shift__ui_labeled_lines(
+            label,
+            paste(value, collapse = " \u00b7 "),
+            inner
+        )
     }
-    title <- paste(cli::style_bold("Discover CMIP6 models"),
+    title <- paste(
+        cli::style_bold("Discover CMIP6 models"),
         shift__ui_status_style(status),
-        cli::style_dim(shift__format_elapsed(state$elapsed_seconds)))
-    plan <- c(row("Site", batch$site), row("Target", c(
-        if (is.null(batch$target_models)) "all compatible GCMs" else
-            paste(batch$target_models, "GCMs"),
-        paste(length(batch$scenarios), "scenarios"),
-        paste(batch$total, "methods"))),
-        row("Scenarios", batch$scenarios), row("Periods", batch$periods))
+        cli::style_dim(shift__format_elapsed(state$elapsed_seconds))
+    )
+    plan <- c(
+        row("Site", batch$site),
+        row(
+            "Target",
+            c(
+                if (is.null(batch$target_models)) {
+                    "all compatible GCMs"
+                } else {
+                    paste(batch$target_models, "GCMs")
+                },
+                paste(length(batch$scenarios), "scenarios"),
+                paste(batch$total, "methods")
+            )
+        ),
+        row("Scenarios", batch$scenarios),
+        row("Periods", batch$periods)
+    )
     current <- character()
     if (!terminal) {
-        current <- c(row("Method", if (!is.null(batch$current)) sprintf(
-            "%d/%d: %s", batch$current, batch$total, batch$method_label)),
-            row("Inputs", c(if (!is.null(batch$alternative)) sprintf(
-                "combination %d/%d", batch$alternative, batch$alternatives),
-                shift_batch__discovery_variables(batch$variables,
-                    shift_coalesce(state$detail, "normal")))),
+        current <- c(
+            row(
+                "Method",
+                if (!is.null(batch$current)) {
+                    sprintf(
+                        "%d/%d: %s",
+                        batch$current,
+                        batch$total,
+                        batch$method_label
+                    )
+                }
+            ),
+            row(
+                "Inputs",
+                c(
+                    if (!is.null(batch$alternative)) {
+                        sprintf(
+                            "combination %d/%d",
+                            batch$alternative,
+                            batch$alternatives
+                        )
+                    },
+                    shift_batch__discovery_variables(
+                        batch$variables,
+                        shift_coalesce(state$detail, "normal")
+                    )
+                )
+            ),
             row("Check", c(batch$scope, batch$scope_periods)),
-            row("Node", if (!is.null(batch$node)) c(shift__node_label(batch$node),
-                if (isTRUE(batch$node_index > 1L)) sprintf(
-                    "fallback node %d/%d", batch$node_index, batch$node_total))),
-            row("Now", c(shift__ui_state_symbol("running", motion, frame),
-                shift_coalesce(state$unit_label, state$stage_message))),
+            row(
+                "Node",
+                if (!is.null(batch$node)) {
+                    c(
+                        shift__node_label(batch$node),
+                        if (isTRUE(batch$node_index > 1L)) {
+                            sprintf(
+                                "fallback node %d/%d",
+                                batch$node_index,
+                                batch$node_total
+                            )
+                        }
+                    )
+                }
+            ),
+            row(
+                "Now",
+                c(
+                    shift__ui_state_symbol("running", motion, frame),
+                    shift_coalesce(state$unit_label, state$stage_message)
+                )
+            ),
             shift__ui_query_lines(state, inner),
-            row("Cancel", if (interactive()) "Interrupt R to cancel" else "Ctrl+C to cancel"))
+            row(
+                "Cancel",
+                if (interactive()) {
+                    "Interrupt R to cancel"
+                } else {
+                    "Ctrl+C to cancel"
+                }
+            )
+        )
+    }
+    pool_status <- if (identical(batch$common, FALSE)) {
+        row("Pool", "Independent selection for each method")
+    } else {
+        row(
+            "Common",
+            if (is.null(batch$common_models)) {
+                "Pending checks across all methods"
+            } else {
+                paste(batch$common_models, "compatible GCMs")
+            }
+        )
     }
     result <- if (identical(status, "completed")) {
-        c(row("Summary", state$result_summary),
-            row("Models", batch$selected_models))
+        c(
+            row("Summary", state$result_summary),
+            row("Models", batch$selected_models)
+        )
     } else if (terminal) {
         shift__ui_failure_lines(state, inner)
     } else {
-        c(row("Common", if (is.null(batch$common_models))
-            "Pending checks across all methods" else paste(batch$common_models, "compatible GCMs")),
-            shift__ui_recent_lines(state, inner))
+        c(pool_status, shift__ui_recent_lines(state, inner))
     }
     # On small consoles reserve the viewport for the live query. Older
     # milestones yield to the newest check; failure receipts remain complete.
     chrome <- if (panel) 4L else 1L
-    if (!terminal && length(plan) + length(current) + length(result) + chrome > shift__ui_height()) {
+    if (
+        !terminal &&
+            length(plan) + length(current) + length(result) + chrome >
+                shift__ui_height()
+    ) {
         recent <- state
         recent$recent_events <- utils::tail(state$recent_events, 1L)
         recent$recent_outcomes <- utils::tail(state$recent_outcomes, 1L)
-        result <- c(row("Common", if (is.null(batch$common_models))
-            "Pending checks across all methods" else paste(batch$common_models, "compatible GCMs")),
-            shift__ui_recent_lines(recent, inner))
+        result <- c(pool_status, shift__ui_recent_lines(recent, inner))
     }
-    if (!panel) return(c(shift__ui_fit(title, outer), plan, current, result))
-    c(shift__ui_panel_rule(title, outer, "top"),
+    if (!panel) {
+        return(c(shift__ui_fit(title, outer), plan, current, result))
+    }
+    c(
+        shift__ui_panel_rule(title, outer, "top"),
         vapply(plan, shift__ui_panel_line, character(1L), width = outer),
-        if (length(current)) c(
-            shift__ui_panel_rule(cli::style_bold("Current search"), outer, "middle"),
-            vapply(current, shift__ui_panel_line, character(1L), width = outer)),
-        shift__ui_panel_rule(cli::style_bold(if (terminal) "Results" else "Recent checks"),
-            outer, "middle"),
+        if (length(current)) {
+            c(
+                shift__ui_panel_rule(
+                    cli::style_bold("Current search"),
+                    outer,
+                    "middle"
+                ),
+                vapply(
+                    current,
+                    shift__ui_panel_line,
+                    character(1L),
+                    width = outer
+                )
+            )
+        },
+        shift__ui_panel_rule(
+            cli::style_bold(if (terminal) "Results" else "Recent checks"),
+            outer,
+            "middle"
+        ),
         vapply(result, shift__ui_panel_line, character(1L), width = outer),
-        shift__ui_panel_rule(width = outer, kind = "bottom"))
+        shift__ui_panel_rule(width = outer, kind = "bottom")
+    )
 }
 
 # Read each child once per snapshot and retain its identity in every table.

@@ -174,26 +174,53 @@ epwshiftr_cli_shift_config_validate <- function(store, args,
 # store or resolving remote models. Keep calibration separate from historical
 # model reference data so the two input roles remain unambiguous.
 cli_shift__config_intent <- function(config) {
-    transforms <- shift_batch__transforms(methods = config$methods,
-        transform = cli_shift__config_transform(config$transform))
+    transforms <- shift_batch__transforms(
+        methods = config$methods,
+        transform = cli_shift__config_transform(config$transform)
+    )
     climate <- epwshiftr_cli_config_climate(config$climate)
     reference <- cli_shift__config_reference(config$reference, "reference")
-    calibration <- cli_shift__config_reference(shift_coalesce(
-        config$calibration, config$observed_reference), "observed_reference")
-    list(Baseline = config$epw,
-        Methods = paste(vapply(transforms, function(transform) {
-            sprintf("%s / %s / %s [%s]", transform@method, transform@scale,
-                transform@reconstruction, transform@status)
-        }, character(1L)), collapse = "; "),
-        Models = if (!is.null(climate@model)) paste(climate@model, collapse = ", ") else {
-            if (is.null(climate@n_models)) "all compatible models" else
+    calibration <- cli_shift__config_reference(
+        shift_coalesce(
+            config$calibration,
+            config$observed_reference
+        ),
+        "observed_reference"
+    )
+    list(
+        Baseline = config$epw,
+        Methods = paste(
+            vapply(
+                transforms,
+                function(transform) {
+                    sprintf(
+                        "%s / %s / %s [%s]",
+                        transform@method,
+                        transform@scale,
+                        transform@reconstruction,
+                        transform@status
+                    )
+                },
+                character(1L)
+            ),
+            collapse = "; "
+        ),
+        Models = if (!is.null(climate@model)) {
+            paste(climate@model, collapse = ", ")
+        } else {
+            if (is.null(climate@n_models)) {
+                "all compatible models"
+            } else {
                 sprintf("%d compatible models", climate@n_models)
+            }
         },
+        `Common models` = climate@common,
         Scenarios = paste(climate@scenarios, collapse = ", "),
         Periods = shift__ui_periods(shift__periods_from_input(config$periods)),
         Reference = shift__format_reference(reference),
         Calibration = shift__format_reference(calibration),
-        Output = config$dir)
+        Output = config$dir
+    )
 }
 
 
