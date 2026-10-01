@@ -361,8 +361,18 @@ epwshiftr_cli_years <- function(value) {
 # config coercion -------------------------------------------------------------
 
 epwshiftr_cli_validate_shift_config <- function(config) {
-    if (!identical(as.integer(config$version), 2L)) {
-        cli::cli_abort("Only shift workflow config version 2 is supported.")
+    if (!config$version %in% c(2L, 3L)) {
+        cli::cli_abort(
+            "Only shift workflow config versions 2 and 3 are supported."
+        )
+    }
+    if (
+        config$version == 2L && (!is.null(config$sites) || is.null(config$epw))
+    ) {
+        cli::cli_abort("Version 2 requires `epw`; use version 3 for `sites`.")
+    }
+    if (is.null(config$epw) == is.null(config$sites)) {
+        cli::cli_abort("Supply exactly one of `epw` or `sites`.")
     }
     epwshiftr_cli_periods_from_config(config$periods, "periods")
     shift_batch__transforms(
@@ -394,10 +404,24 @@ epwshiftr_cli_config_section <- function(config, name) {
 
 # Build the same task-level ShiftPlan used by the R API; the CLI does not own a
 # second collect/extract/morph execution path.
-epwshiftr_cli_config_plan <- function(config, store, dry_run = TRUE,
-                                     background = FALSE, ui = shift_ui()) {
+epwshiftr_cli_config_plan <- function(
+    config,
+    store,
+    dry_run = TRUE,
+    background = FALSE,
+    ui = shift_ui()
+) {
     shift_future_epw(
         epw = epwshiftr_cli_config_string(config$epw),
+        sites = if (is.null(config$sites)) {
+            NULL
+        } else {
+            data.table::rbindlist(
+                config$sites,
+                use.names = TRUE,
+                fill = TRUE
+            )
+        },
         climate = epwshiftr_cli_config_climate(config$climate),
         periods = config$periods,
         transform = cli_shift__config_transform(config$transform),
@@ -411,7 +435,10 @@ epwshiftr_cli_config_plan <- function(config, store, dry_run = TRUE,
             config$observed_reference,
             "observed_reference"
         ),
-        calibration = cli_shift__config_reference(config$calibration, "calibration"),
+        calibration = cli_shift__config_reference(
+            config$calibration,
+            "calibration"
+        ),
         control = epwshiftr_cli_config_control(config$control),
         store = store,
         dry_run = dry_run,

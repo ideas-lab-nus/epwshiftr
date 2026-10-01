@@ -26,7 +26,7 @@ codes are excluded, and every mean includes its valid-hour denominator.}
 \item{ui}{Presentation options from \code{\link[=shift_ui]{shift_ui()}} for optional EPW reads.}
 }
 \value{
-A data.table with one row per method, model, scenario and period
+A data.table with one row per site (when supplied), method, model, scenario and period
 (and member/grid where applicable), counts, field roles and optional means.
 }
 \description{

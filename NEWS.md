@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+* Added `sites` to `shift_future_epw()` for location tables and `shift_site()`
+  lists, with shared candidate discovery, distinct child outputs, and persisted
+  site identities. Workflow config version 3 accepts location arrays while
+  existing single-EPW calls and version 2 configs remain supported (PR_PENDING).
+
 * Apply historical catalog requirements only when needed by the batch reference,
   share File coverage results across methods, and avoid repeated eligibility
   summaries, group counts, and input-map serialization (#269).

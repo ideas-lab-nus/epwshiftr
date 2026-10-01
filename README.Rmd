@@ -221,6 +221,45 @@ readme__batch_demo()
 </details>
 ```
 
+## Multiple locations
+
+Pass `sites` instead of `epw` to plan several locations together. Each location
+has a unique `site_id` and its own baseline EPW. Omitted coordinates and labels
+come from the EPW header; optional `lon`, `lat`, and `label` columns can specify
+the extraction target. Time zone and elevation stay in the baseline EPW.
+A list of `shift_site()` objects is also accepted.
+
+```{r multi-location-batch, eval = FALSE}
+sites <- data.table::data.table(
+    site_id = c("Harbin", "Guangzhou"),
+    epw = c("weather/Harbin.epw", "weather/Guangzhou.epw")
+)
+
+batch <- shift_future_epw(
+    sites = sites,
+    climate = shift_cmip6(model = 2L, scenarios = c("ssp126", "ssp585")),
+    periods = list(`2050s` = 2041:2060),
+    methods = c("original_morphing", "bws_btws"),
+    dir = "future-weather",
+    store = "weather-store",
+    dry_run = TRUE
+)
+shift_cases(batch)
+shift_batch_get(shift_ids(batch)$batch_id, store = "weather-store")
+```
+
+Explicit `sites` always returns a `ShiftBatch`, even for one row. Locations are
+ordered by ID. Case tables, summaries, and the batch display retain `site_id`;
+each location/method/model child has a separate store and output directory.
+Portable directory names include a digest of the location ID to avoid name
+collisions. One candidate-discovery result is shared by all locations;
+climate extraction currently remains independent for each child.
+
+Use automatic historical or reanalysis references with multiple sites. An
+already extracted reference plan belongs to its location and store, so it
+requires a separate call for that location. Existing single-`epw` calls keep
+their return type, paths, and saved batch identities.
+
 ## Command line
 
 Install the optional launcher from R with `install_cli()` and put its reported
@@ -241,6 +280,21 @@ epwshiftr shift run --config workflow.json
 epwshiftr shift list --type batch
 epwshiftr shift summary --batch <batch_id> --weather
 ```
+
+For multiple locations, use configuration `version: 3` and replace the
+top-level `epw` with a `sites` array:
+
+```json
+"sites": [
+  {"site_id": "Harbin", "epw": "weather/Harbin.epw"},
+  {"site_id": "Guangzhou", "epw": "weather/Guangzhou.epw"}
+]
+```
+
+The remaining fields and CLI commands are unchanged. Do not include both
+`epw` and `sites`. Version 2 single-location configurations remain supported
+without rewriting their files; version 3 also accepts the single-`epw` form.
+Local config validation checks all locations without querying ESGF.
 
 For multiple methods and models, generate a config with
 `--methods original_morphing,qdm --model 2`. The

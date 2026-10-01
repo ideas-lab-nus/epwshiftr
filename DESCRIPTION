@@ -41,7 +41,6 @@ URL: https://ideas-lab-nus.github.io/epwshiftr/,
     https://github.com/ideas-lab-nus/epwshiftr
 BugReports: https://github.com/ideas-lab-nus/epwshiftr/issues
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 Collate:
     'weather-input.R'
     'weather-component.R'
@@ -150,3 +149,4 @@ Collate:
     'zzz.R'
 Config/testthat/edition: 3
 Config/Needs/website: r-lib/asciicast, r-lib/pkgload
+Config/roxygen2/version: 8.1.0

@@ -137,7 +137,7 @@ shift_plan(
 )
 
 shift_future_epw(
-  epw,
+  epw = NULL,
   climate,
   periods,
   transform = NULL,
@@ -150,7 +150,8 @@ shift_future_epw(
   dry_run = FALSE,
   background = FALSE,
   methods = NULL,
-  calibration = NULL
+  calibration = NULL,
+  sites = NULL
 )
 
 shift_reference_historical(
@@ -484,6 +485,17 @@ every selected method and model.}
 
 \item{calibration}{Alias for \code{observed_reference} in high-level multi-method
 workflows. It is routed only to methods that accept observational input.}
+
+\item{sites}{Alternative to \code{epw}: a non-empty data.table/data.frame with
+unique \code{site_id} and baseline \code{epw} path columns, and optional \code{lon}, \code{lat},
+and \code{label} columns; or a list of \code{\link[=shift_site]{shift_site()}} objects containing baselines.
+Missing coordinates and labels are read from each EPW. Time zone and
+elevation remain those of the baseline EPW. Explicit \code{sites} always returns
+a \code{ShiftBatch}, ordered by site ID, with separate output/store directories
+per location, method, and model. Candidate discovery is shared; climate
+extraction still runs independently for each child. For multiple sites,
+use automatic historical/reanalysis references; existing extracted
+reference plans require separate calls for their respective locations.}
 
 \item{match}{File metadata fields copied from the future climate stage when
 resolving an automatic historical reference.}

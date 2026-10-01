@@ -299,38 +299,84 @@ shift_inspect__summary_child <- function(child, identity, weather) {
 #'   Missing files and read errors are counted explicitly. Missing EPW sentinel
 #'   codes are excluded, and every mean includes its valid-hour denominator.
 #' @param ui Presentation options from [shift_ui()] for optional EPW reads.
-#' @return A data.table with one row per method, model, scenario and period
+#' @return A data.table with one row per site (when supplied), method, model, scenario and period
 #'   (and member/grid where applicable), counts, field roles and optional means.
 #' @export
-shift_summary <- function(x, store = NULL, refresh = TRUE, weather = FALSE, ui = shift_ui()) {
+shift_summary <- function(
+    x,
+    store = NULL,
+    refresh = TRUE,
+    weather = FALSE,
+    ui = shift_ui()
+) {
     checkmate::assert_flag(refresh)
     checkmate::assert_flag(weather)
-    if (is.character(x)) x <- shift_run_get(x, store)
-    if (!S7::S7_inherits(x, ShiftBatch) && !S7::S7_inherits(x, ShiftRun) &&
-        !S7::S7_inherits(x, ShiftPlan)) cli::cli_abort(
-            "`x` must be a ShiftBatch, ShiftRun, ShiftPlan, or saved run ID.")
-    if (refresh && !S7::S7_inherits(x, ShiftPlan)) x <- shift_refresh(x)
+    if (is.character(x)) {
+        x <- shift_run_get(x, store)
+    }
+    if (
+        !S7::S7_inherits(x, ShiftBatch) &&
+            !S7::S7_inherits(x, ShiftRun) &&
+            !S7::S7_inherits(x, ShiftPlan)
+    ) {
+        cli::cli_abort(
+            "`x` must be a ShiftBatch, ShiftRun, ShiftPlan, or saved run ID."
+        )
+    }
+    if (refresh && !S7::S7_inherits(x, ShiftPlan)) {
+        x <- shift_refresh(x)
+    }
     if (weather && is.null(shift__current_reporter())) {
         return(shift__ui_check(ui, "Summarize EPWs", function(reporter) {
-            shift__with_reporter(reporter,
-                shift_summary(x, refresh = FALSE, weather = TRUE, ui = ui))
+            shift__with_reporter(
+                reporter,
+                shift_summary(x, refresh = FALSE, weather = TRUE, ui = ui)
+            )
         }))
     }
     if (S7::S7_inherits(x, ShiftBatch)) {
         rows <- lapply(seq_along(x@meta$children), function(index) {
-            identity <- as.list(x@meta$manifest[index,
-                c("child_key", "method", "scale", "reconstruction", "model"), with = FALSE])
+            identity <- as.list(x@meta$manifest[
+                index,
+                intersect(
+                    c(
+                        "site_id",
+                        "child_key",
+                        "method",
+                        "scale",
+                        "reconstruction",
+                        "model"
+                    ),
+                    names(x@meta$manifest)
+                ),
+                with = FALSE
+            ])
             identity$batch_id <- x@ids$batch_id
-            shift_inspect__summary_child(x@meta$children[[index]], identity, weather)
+            shift_inspect__summary_child(
+                x@meta$children[[index]],
+                identity,
+                weather
+            )
         })
         return(data.table::rbindlist(rows, fill = TRUE))
     }
-    spec <- if (S7::S7_inherits(x, ShiftPlan)) shift__plan_spec(x) else
+    spec <- if (S7::S7_inherits(x, ShiftPlan)) {
+        shift__plan_spec(x)
+    } else {
         jsonlite::fromJSON(x@meta$run$spec_json[[1L]], simplifyVector = TRUE)
+    }
     transform <- spec$transform
-    shift_inspect__summary_child(x, list(method = store__chr1(transform$method),
-        scale = store__chr1(transform$scale), reconstruction = store__chr1(transform$reconstruction),
-        model = NA_character_, run_id = store__chr1(x@ids$run_id)), weather)
+    shift_inspect__summary_child(
+        x,
+        list(
+            method = store__chr1(transform$method),
+            scale = store__chr1(transform$scale),
+            reconstruction = store__chr1(transform$reconstruction),
+            model = NA_character_,
+            run_id = store__chr1(x@ids$run_id)
+        ),
+        weather
+    )
 }
 
 # Parse read-only history filters without opening or initializing a database.

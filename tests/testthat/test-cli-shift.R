@@ -44,34 +44,81 @@ test_that("shift run validates the task-oriented JSON config", {
     cli_shift_test_config(config)
 
     dry_run <- suppressWarnings(epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", config, "--dry-run"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        config,
+        "--dry-run"
     )))
     expect_equal(dry_run$status, 0L)
     expect_equal(dry_run$result$status, "dry_run")
     expect_equal(nrow(dry_run$result$cases), 1L)
-    expect_true(all(c("transform", "reference", "cases", "output") %in% dry_run$result$explain$step))
+    expect_true(all(
+        c("transform", "reference", "cases", "output") %in%
+            dry_run$result$explain$step
+    ))
 
     validate <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "config", "validate", "--config", config
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "config",
+        "validate",
+        "--config",
+        config
     ))
     expect_equal(validate$status, 0L)
     expect_equal(validate$result$status, "valid")
 
     example <- tempfile(fileext = ".json")
     written <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "config", "example", "--output", example
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "config",
+        "example",
+        "--output",
+        example
     ))
     expect_equal(written$status, 0L)
     expect_true(file.exists(example))
     expect_equal(
-        epwshiftr_cli(c("--quiet", "--store", store, "shift", "config", "validate", "--config", example))$status,
+        epwshiftr_cli(c(
+            "--quiet",
+            "--store",
+            store,
+            "shift",
+            "config",
+            "validate",
+            "--config",
+            example
+        ))$status,
         0L
     )
 
     missing_epw <- tempfile(fileext = ".json")
-    jsonlite::write_json(list(version = 2L), missing_epw, auto_unbox = TRUE)
+    missing_baseline <- jsonlite::read_json(config, simplifyVector = TRUE)
+    missing_baseline$epw <- NULL
+    jsonlite::write_json(
+        missing_baseline,
+        missing_epw,
+        auto_unbox = TRUE,
+        null = "null"
+    )
     invalid <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", missing_epw, "--dry-run"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        missing_epw,
+        "--dry-run"
     ))
     expect_equal(invalid$status, 2L)
     expect_match(invalid$error, "epw")
@@ -86,7 +133,14 @@ test_that("shift run validates the task-oriented JSON config", {
         null = "null"
     )
     invalid <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", unknown_field, "--dry-run"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        unknown_field,
+        "--dry-run"
     ))
     expect_equal(invalid$status, 2L)
     expect_match(invalid$error, "surprise")
@@ -96,11 +150,26 @@ test_that("shift run validates the task-oriented JSON config", {
     payload <- jsonlite::read_json(config, simplifyVector = TRUE)
     payload$model <- payload$climate$model
     payload$scenarios <- payload$climate$scenarios
-    payload$cmip6 <- payload$climate[setdiff(names(payload$climate), c("provider", "model", "scenarios"))]
+    payload$cmip6 <- payload$climate[setdiff(
+        names(payload$climate),
+        c("provider", "model", "scenarios")
+    )]
     payload$climate <- NULL
-    jsonlite::write_json(payload, legacy_climate, auto_unbox = TRUE, null = "null")
+    jsonlite::write_json(
+        payload,
+        legacy_climate,
+        auto_unbox = TRUE,
+        null = "null"
+    )
     invalid <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", legacy_climate, "--dry-run"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        legacy_climate,
+        "--dry-run"
     ))
     expect_equal(invalid$status, 2L)
     expect_match(invalid$error, "climate")
@@ -115,7 +184,14 @@ test_that("shift run validates the task-oriented JSON config", {
         null = "null"
     )
     invalid <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", invalid_period, "--dry-run"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        invalid_period,
+        "--dry-run"
     ))
     expect_equal(invalid$status, 2L)
     expect_match(invalid$error, "Invalid year")
@@ -125,9 +201,21 @@ test_that("shift run validates the task-oriented JSON config", {
     missing_reference <- tempfile(fileext = ".json")
     payload <- jsonlite::read_json(config, simplifyVector = TRUE)
     payload["reference"] <- list(NULL)
-    jsonlite::write_json(payload, missing_reference, auto_unbox = TRUE, null = "null")
+    jsonlite::write_json(
+        payload,
+        missing_reference,
+        auto_unbox = TRUE,
+        null = "null"
+    )
     baseline_reference <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", missing_reference, "--dry-run"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        missing_reference,
+        "--dry-run"
     ))
     expect_equal(baseline_reference$status, 0L)
     expect_equal(
@@ -141,9 +229,19 @@ test_that("shift run validates the task-oriented JSON config", {
         periods = list(reference = "1995:2014")
     )
     jsonlite::write_json(payload, historical, auto_unbox = TRUE)
-    expect_equal(epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", historical, "--dry-run"
-    ))$status, 0L)
+    expect_equal(
+        epwshiftr_cli(c(
+            "--quiet",
+            "--store",
+            store,
+            "shift",
+            "run",
+            "--config",
+            historical,
+            "--dry-run"
+        ))$status,
+        0L
+    )
 
     observed_historical <- tempfile(fileext = ".json")
     payload$observed_reference <- list(
@@ -156,8 +254,14 @@ test_that("shift run validates the task-oriented JSON config", {
         auto_unbox = TRUE
     )
     invalid <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "config", "validate",
-        "--config", observed_historical
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "config",
+        "validate",
+        "--config",
+        observed_historical
     ))
     expect_equal(invalid$status, 2L)
     expect_match(invalid$error, "observed_reference")
@@ -170,15 +274,36 @@ test_that("shift run validates the task-oriented JSON config", {
         periods = list(reference = 1995L)
     )
     jsonlite::write_json(payload, manual, auto_unbox = TRUE)
-    expect_equal(epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", manual, "--dry-run"
-    ))$status, 0L)
+    expect_equal(
+        epwshiftr_cli(c(
+            "--quiet",
+            "--store",
+            store,
+            "shift",
+            "run",
+            "--config",
+            manual,
+            "--dry-run"
+        ))$status,
+        0L
+    )
 
     # Removed request/site/stage-list configs are intentionally rejected.
     legacy <- tempfile(fileext = ".json")
-    jsonlite::write_json(list(request = list(), site = list()), legacy, auto_unbox = TRUE)
+    jsonlite::write_json(
+        list(request = list(), site = list()),
+        legacy,
+        auto_unbox = TRUE
+    )
     invalid <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", legacy, "--dry-run"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        legacy,
+        "--dry-run"
     ))
     expect_equal(invalid$status, 2L)
 })

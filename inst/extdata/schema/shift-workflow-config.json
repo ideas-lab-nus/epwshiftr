@@ -2,12 +2,74 @@
   "check": {"kind": "list"},
   "keys": {
     "type": "named",
-    "must.include": ["version", "epw", "climate", "periods", "dir"],
-    "subset.of": ["version", "epw", "climate", "periods", "transform", "reference", "observed_reference", "dir", "control", "methods", "calibration"]
+    "must.include": ["version", "climate", "periods", "dir"],
+    "subset.of": ["version", "epw", "climate", "periods", "transform", "reference", "observed_reference", "dir", "control", "methods", "calibration", "sites"]
   },
   "fields": {
     "version": {"check": {"kind": "count", "positive": true}},
     "epw": {"check": {"kind": "string"}},
+    "sites": {
+      "check": {
+        "kind": "list",
+        "min.len": 1
+      },
+      "keys": {
+        "type": "unnamed"
+      },
+      "rest": {
+        "check": {
+          "kind": "list"
+        },
+        "keys": {
+          "type": "named",
+          "must.include": [
+            "site_id",
+            "epw"
+          ],
+          "subset.of": [
+            "site_id",
+            "epw",
+            "lon",
+            "lat",
+            "label"
+          ]
+        },
+        "fields": {
+          "site_id": {
+            "check": {
+              "kind": "string",
+              "min.chars": 1
+            }
+          },
+          "epw": {
+            "check": {
+              "kind": "string",
+              "min.chars": 1
+            }
+          },
+          "lon": {
+            "check": {
+              "kind": "number",
+              "lower": -180,
+              "upper": 360
+            }
+          },
+          "lat": {
+            "check": {
+              "kind": "number",
+              "lower": -90,
+              "upper": 90
+            }
+          },
+          "label": {
+            "check": {
+              "kind": "string",
+              "min.chars": 1
+            }
+          }
+        }
+      }
+    },
     "climate": {
       "check": {"kind": "list"},
       "keys": {

@@ -97,74 +97,162 @@ epwshiftr_cli_shift_config_example <- function(args) {
 }
 
 
-epwshiftr_cli_shift_config_validate <- function(store, args,
-    json = FALSE, jsonl = FALSE, quiet = FALSE) {
-    parsed <- epwshiftr_cli_parse_command(args, options = "--config",
-        flags = c("--network", "--no-progress", "--reduced-motion"))
+epwshiftr_cli_shift_config_validate <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = "--config",
+        flags = c("--network", "--no-progress", "--reduced-motion")
+    )
     epwshiftr_cli_assert_no_positionals(parsed)
     config_path <- epwshiftr_cli_required_option(parsed, "--config")
     config <- epwshiftr_cli_read_shift_config(config_path)
-    transforms <- shift_batch__transforms(methods = config$methods,
-        transform = cli_shift__config_transform(config$transform))
+    transforms <- shift_batch__transforms(
+        methods = config$methods,
+        transform = cli_shift__config_transform(config$transform)
+    )
     climate <- epwshiftr_cli_config_climate(config$climate)
     reference <- cli_shift__config_reference(config$reference, "reference")
-    observed <- cli_shift__config_reference(shift_coalesce(
-        config$calibration, config$observed_reference), "observed_reference")
-    batch <- !is.null(config$methods) || length(transforms) > 1L ||
+    observed <- cli_shift__config_reference(
+        shift_coalesce(
+            config$calibration,
+            config$observed_reference
+        ),
+        "observed_reference"
+    )
+    batch <- !is.null(config$sites) ||
+        !is.null(config$methods) ||
+        length(transforms) > 1L ||
         is.null(climate@model)
     references <- lapply(transforms, function(transform) {
-        if (batch) return(shift_batch__references(transform, reference, observed))
+        if (batch) {
+            return(shift_batch__references(
+                transform,
+                reference,
+                observed,
+                multiple_sites = length(config$sites) > 1L
+            ))
+        }
         transform__validate_execution_inputs(transform, reference, observed)
         list(reference = reference, observed_reference = observed)
     })
-    shift__epw_identity(config$epw)
+    locations <- shift_batch__sites(
+        config$epw,
+        if (is.null(config$sites)) {
+            NULL
+        } else {
+            data.table::rbindlist(
+                config$sites,
+                use.names = TRUE,
+                fill = TRUE
+            )
+        }
+    )
     network <- isTRUE(parsed$flags[["--network"]])
-    ui <- epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl, quiet = quiet)
+    ui <- epwshiftr_cli_task_ui(
+        parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
+    )
     checks <- if (S7::S7_inherits(observed, ShiftReanalysisSpec)) {
         shift__ui_check(ui, "Calibration readiness", function(reporter) {
-            reporter$stage_started("check", if (network) {
-                "Checking CDS credentials and network access."
-            } else "Checking local calibration settings.")
+            reporter$stage_started(
+                "check",
+                if (network) {
+                    "Checking CDS credentials and network access."
+                } else {
+                    "Checking local calibration settings."
+                }
+            )
             shift_check(observed, network = network)
         })
     } else {
         shift_diagnostics_empty()
     }
     discovery <- if (network) {
-        shift_batch__discover_models(climate, transforms,
+        shift_batch__discover_models(
+            climate,
+            transforms,
             periods = shift__periods_from_input(config$periods),
-            references = references, store = store,
-            ui = ui)$identities
+            references = references,
+            store = store,
+            ui = ui
+        )$identities
     } else {
         data.table::data.table()
     }
     # Single-transform local plans preserve their existing case preview. A
     # batch's common model matrix is resolved only with explicit --network or
     # shift run --dry-run; ordinary validation never queries ESGF.
-    plan <- if (!batch) epwshiftr_cli_config_plan(config, store = store,
-        ui = shift_ui(progress = "none")) else NULL
+    plan <- if (!batch) {
+        epwshiftr_cli_config_plan(
+            config,
+            store = store,
+            ui = shift_ui(progress = "none")
+        )
+    } else {
+        NULL
+    }
     list(
         action = "validate",
         intent = cli_shift__config_intent(config),
         status = "valid",
         validation = if (network) "network" else "local",
-        readiness = if (any(checks$severity == "error")) "blocked" else {
+        readiness = if (any(checks$severity == "error")) {
+            "blocked"
+        } else {
             if (network) "network_checks_passed" else "local_checks_passed"
         },
         config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
-        cases = if (is.null(plan)) data.table::data.table() else shift_cases(plan),
-        explain = if (is.null(plan)) data.table::data.table(
-            step = c("methods", "models", "discovery"),
-            detail = c(paste(vapply(transforms, function(transform) {
-                paste(transform@scale, transform@method, transform@reconstruction)
-            }, character(1L)), collapse = "; "),
-            if (!is.null(climate@model)) paste(climate@model, collapse = ", ") else {
-                if (is.null(climate@n_models)) "all compatible models" else
-                    sprintf("%d compatible models", climate@n_models)
-            },
-            if (network) "Network coverage checked" else
-                "Not checked locally; use --network or shift run --dry-run")
-        ) else shift_explain(plan),
+        cases = if (is.null(plan)) {
+            data.table::data.table()
+        } else {
+            shift_cases(plan)
+        },
+        explain = if (is.null(plan)) {
+            data.table::data.table(
+                step = c("methods", "models", "discovery"),
+                detail = c(
+                    paste(
+                        vapply(
+                            transforms,
+                            function(transform) {
+                                paste(
+                                    transform@scale,
+                                    transform@method,
+                                    transform@reconstruction
+                                )
+                            },
+                            character(1L)
+                        ),
+                        collapse = "; "
+                    ),
+                    if (!is.null(climate@model)) {
+                        paste(climate@model, collapse = ", ")
+                    } else {
+                        if (is.null(climate@n_models)) {
+                            "all compatible models"
+                        } else {
+                            sprintf("%d compatible models", climate@n_models)
+                        }
+                    },
+                    if (network) {
+                        "Network coverage checked"
+                    } else {
+                        "Not checked locally; use --network or shift run --dry-run"
+                    }
+                )
+            )
+        } else {
+            shift_explain(plan)
+        },
+        sites = locations[, c("site_id", "epw"), with = FALSE],
         selected_models = discovery,
         diagnostics = checks
     )
@@ -188,7 +276,20 @@ cli_shift__config_intent <- function(config) {
         "observed_reference"
     )
     list(
-        Baseline = config$epw,
+        Baseline = if (is.null(config$sites)) {
+            config$epw
+        } else {
+            paste(
+                vapply(
+                    config$sites,
+                    function(site) {
+                        paste0(site$site_id, ": ", site$epw)
+                    },
+                    character(1L)
+                ),
+                collapse = "; "
+            )
+        },
         Methods = paste(
             vapply(
                 transforms,

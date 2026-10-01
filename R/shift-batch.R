@@ -1058,20 +1058,26 @@ shift_batch__child_climate <- function(
 shift_batch__references <- function(
     transform,
     reference,
-    calibration
+    calibration,
+    multiple_sites = FALSE
 ) {
-    model_reference <- if (transform__accepts_input(
-        transform,
-        "model_historical"
-    )) {
+    model_reference <- if (
+        transform__accepts_input(
+            transform,
+            "model_historical"
+        )
+    ) {
         reference
     } else {
         NULL
     }
-    if (is.null(model_reference) && transform__requires_input(
-        transform,
-        "model_historical"
-    )) {
+    if (
+        is.null(model_reference) &&
+            transform__requires_input(
+                transform,
+                "model_historical"
+            )
+    ) {
         years <- if (S7::S7_inherits(calibration, ShiftReanalysisSpec)) {
             calibration@years
         } else {
@@ -1079,10 +1085,12 @@ shift_batch__references <- function(
         }
         model_reference <- historical_reference(years)
     }
-    observed_reference <- if (transform__accepts_input(
-        transform,
-        "observed_reference"
-    )) {
+    observed_reference <- if (
+        transform__accepts_input(
+            transform,
+            "observed_reference"
+        )
+    ) {
         calibration
     } else {
         NULL
@@ -1092,49 +1100,155 @@ shift_batch__references <- function(
         model_reference,
         observed_reference
     )
+    if (multiple_sites) {
+        # Existing extraction IDs belong to a location/store. Reusing one
+        # across locations would silently substitute another site's climate.
+        for (value in list(model_reference, observed_reference)) {
+            if (
+                S7::S7_inherits(value, ShiftClimate) ||
+                    (S7::S7_inherits(value, ShiftReferenceSpec) &&
+                        identical(value@mode, "plan"))
+            ) {
+                cli::cli_abort(c(
+                    "Multiple sites cannot share an extracted reference plan.",
+                    "i" = "Use automatic historical/reanalysis references or separate calls for site-specific extracted references."
+                ))
+            }
+        }
+    }
     list(
         reference = model_reference,
         observed_reference = observed_reference
     )
 }
 
-# Build or execute one child through the existing single-method workflow. This
-# function is intentionally a thin adapter so scientific computation continues
-# to have one implementation in shift__future_epw_one().
-shift_batch__child <- function(
-    epw,
-    climate,
-    periods,
-    transform,
-    dir,
-    reference,
-    observed_reference,
-    control,
-    ui,
-    store,
-    dry_run,
-    background
-) {
-    shift__future_epw_one(
-        epw = epw,
-        climate = climate,
-        periods = periods,
-        transform = transform,
-        dir = dir,
-        reference = reference,
-        observed_reference = observed_reference,
-        control = control,
-        ui = ui,
-        store = store,
-        dry_run = dry_run,
-        background = background
+# Normalize task locations once before discovery. EPW reading is per location
+# because each baseline owns its header and checksum; tabular identities and
+# ordering stay in data.table and never modify the caller's table.
+shift_batch__sites <- function(epw = NULL, sites = NULL) {
+    if (is.null(epw) == is.null(sites)) {
+        cli::cli_abort("Supply exactly one of `epw` or `sites`.")
+    }
+    legacy <- is.null(sites)
+    if (!is.null(epw)) {
+        sites <- list(shift_site(epw = epw))
+    } else if (is.data.frame(sites)) {
+        checkmate::assert_names(
+            names(sites),
+            type = "unique",
+            must.include = c("site_id", "epw"),
+            subset.of = c("site_id", "epw", "lon", "lat", "label")
+        )
+        checkmate::assert_character(
+            sites[["site_id"]],
+            any.missing = FALSE,
+            min.len = 1L,
+            unique = TRUE,
+            min.chars = 1L
+        )
+        checkmate::assert_character(
+            sites[["epw"]],
+            any.missing = FALSE,
+            min.len = 1L,
+            min.chars = 1L
+        )
+        for (name in intersect(c("lon", "lat"), names(sites))) {
+            checkmate::assert_numeric(sites[[name]], any.missing = TRUE)
+        }
+        if ("label" %in% names(sites)) {
+            checkmate::assert_character(sites[["label"]], any.missing = TRUE)
+        }
+        # Each row becomes the existing site object, retaining its constructor's
+        # coordinate validation and EPW-header defaults.
+        sites <- lapply(seq_len(nrow(sites)), function(index) {
+            location <- shift_epw_location(sites[["epw"]][[index]])
+            optional <- lapply(c("lon", "lat", "label"), function(name) {
+                value <- sites[[name]][index]
+                if (is.null(value) || is.na(value)) NULL else value
+            })
+            shift_site(
+                id = sites[["site_id"]][[index]],
+                epw = sites[["epw"]][[index]],
+                lon = shift_coalesce(optional[[1L]], location$longitude),
+                lat = shift_coalesce(optional[[2L]], location$latitude),
+                label = shift_coalesce(optional[[3L]], location$city)
+            )
+        })
+    } else if (S7::S7_inherits(sites, ShiftSite)) {
+        sites <- list(sites)
+    }
+    if (
+        !is.list(sites) ||
+            !length(sites) ||
+            !all(vapply(sites, S7::S7_inherits, logical(1L), class = ShiftSite))
+    ) {
+        cli::cli_abort(
+            "`sites` must be a non-empty site table or a list of `shift_site()` objects."
+        )
+    }
+    ids <- vapply(sites, function(site) site@id, character(1L))
+    checkmate::assert_character(
+        ids,
+        any.missing = FALSE,
+        unique = TRUE,
+        min.chars = 1L
     )
+    if (any(!nzchar(trimws(ids)))) {
+        cli::cli_abort(
+            "Every `site_id` must contain a non-whitespace character."
+        )
+    }
+    identities <- lapply(sites, function(site) {
+        if (is.null(site@epw)) {
+            cli::cli_abort(
+                "Site {.val {site@id}} needs a baseline EPW for future-weather generation."
+            )
+        }
+        identity <- shift__epw_identity(site@epw)
+        if (!legacy) {
+            # EPW generation uses these header fields even when extraction
+            # coordinates were supplied explicitly. Inspect only the header.
+            location <- epw_file_location(readLines(identity$path, n = 1L))
+            checkmate::assert_number(
+                location$time_zone,
+                lower = -12,
+                upper = 14,
+                finite = TRUE,
+                .var.name = paste0("EPW time zone for ", site@id)
+            )
+            checkmate::assert_number(
+                location$elevation,
+                finite = TRUE,
+                .var.name = paste0("EPW elevation for ", site@id)
+            )
+        }
+        identity
+    })
+    result <- data.table::data.table(
+        site_id = ids,
+        epw = vapply(identities, `[[`, character(1L), "path"),
+        checksum = vapply(identities, `[[`, character(1L), "checksum"),
+        site = unname(sites)
+    )
+    # A digest suffix prevents collisions after sanitizing Unicode, punctuation,
+    # or case-sensitive IDs for portable directories. IDs themselves are kept.
+    data.table::set(
+        result,
+        j = "component",
+        value = paste0(
+            shift_batch__path_component(ids),
+            "-",
+            substr(vapply(ids, store__hash, character(1L)), 1L, 12L)
+        )
+    )
+    data.table::setorderv(result, "site_id")
+    result
 }
 
 # Create the high-level method-by-model matrix and keep all child plans/runs
 # addressable without adding package-owned method comparison calculations.
 shift_batch__future_epw <- function(
-    epw,
+    sites,
     climate,
     periods,
     transforms,
@@ -1145,7 +1259,8 @@ shift_batch__future_epw <- function(
     ui,
     store,
     dry_run,
-    background
+    background,
+    legacy = FALSE
 ) {
     call_started <- Sys.time()
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
@@ -1158,9 +1273,13 @@ shift_batch__future_epw <- function(
         mustWork = FALSE
     )
     store_root <- shift_batch__store_root(store)
-    site_identity <- shift__epw_identity(epw)
     references <- lapply(transforms, function(transform) {
-        shift_batch__references(transform, reference, calibration)
+        shift_batch__references(
+            transform,
+            reference,
+            calibration,
+            multiple_sites = nrow(sites) > 1L
+        )
     })
     reference_intent <- lapply(references, function(value) {
         list(
@@ -1174,9 +1293,20 @@ shift_batch__future_epw <- function(
             )
         )
     })
+    # Preserve existing single-EPW batch identities. Explicit site inputs also
+    # include location IDs, coordinates, and metadata in the reusable identity.
+    site_identity <- if (legacy) {
+        sites$checksum[[1L]]
+    } else {
+        lapply(seq_len(nrow(sites)), function(index) {
+            value <- shift__site_ref(sites$site[[index]])
+            value$epw <- sites$checksum[[index]]
+            value
+        })
+    }
     batch_id <- store__hash(
-        "shift-batch-v1",
-        site_identity$checksum,
+        if (legacy) "shift-batch-v1" else "shift-batch-sites-v1",
+        site_identity,
         shift__climate_spec_value(climate),
         lapply(transforms, transform__spec_value),
         split(periods$year, periods$period),
@@ -1249,11 +1379,9 @@ shift_batch__future_epw <- function(
             references = references,
             store = file.path(batch_root, "discovery"),
             ui = ui,
-            site = basename(site_identity$path)
+            site = paste(sites$site_id, collapse = ", ")
         )
     }
-    children <- list()
-    manifest <- list()
     # Older receipts contain a common matrix. New receipts explicitly retain
     # each selected child, so separate pools need no Cartesian expansion.
     if (is.null(discovery$selection)) {
@@ -1275,7 +1403,22 @@ shift_batch__future_epw <- function(
         )
         data.table::setorderv(selection, c("model_index", "method_index"))
     }
+    selection <- selection[rep(seq_len(.N), times = nrow(sites))]
+    data.table::set(
+        selection,
+        j = "site_index",
+        value = rep(
+            seq_len(nrow(sites)),
+            each = nrow(selection) / nrow(sites)
+        )
+    )
+    children <- vector("list", nrow(selection))
+    manifest <- vector("list", nrow(selection))
+    child_keys <- character(nrow(selection))
+    # Planning each durable child involves store and EPW I/O; preallocate the
+    # child list while the method/model/site matrix is expanded in one step.
     for (index in seq_len(nrow(selection))) {
+        location <- sites[selection$site_index[[index]]]
         identity <- discovery$identities[selection$model_index[[index]]]
         transform_key <- names(transforms)[[selection$method_index[[index]]]]
         transform <- transforms[[transform_key]]
@@ -1296,8 +1439,12 @@ shift_batch__future_epw <- function(
             sep = "--"
         )
         child_component <- shift_batch__path_component(child_key)
-        child <- shift_batch__child(
-            epw = epw,
+        if (!legacy) {
+            child_key <- paste(location$component, child_key, sep = "--")
+            child_component <- file.path(location$component, child_component)
+        }
+        child <- shift__future_epw_one(
+            site = location$site[[1L]],
             climate = child_climate,
             periods = periods,
             transform = transform,
@@ -1313,7 +1460,8 @@ shift_batch__future_epw <- function(
             dry_run = TRUE,
             background = FALSE
         )
-        children[[child_key]] <- child
+        children[[index]] <- child
+        child_keys[[index]] <- child_key
         manifest[[index]] <- data.table::data.table(
             child_key = child_key,
             method = transform@method,
@@ -1328,7 +1476,15 @@ shift_batch__future_epw <- function(
             store = child@store_path,
             output_dir = file.path(output_root, child_component)
         )
+        if (!legacy) {
+            data.table::set(
+                manifest[[index]],
+                j = "site_id",
+                value = location$site_id
+            )
+        }
     }
+    names(children) <- child_keys
     manifest <- data.table::rbindlist(
         manifest,
         use.names = TRUE,
@@ -1381,9 +1537,18 @@ shift_batch__decorate <- function(data, row) {
         member = row$member[[1L]],
         grid = row$grid[[1L]]
     )]
+    if ("site_id" %in% names(row)) {
+        data.table::set(data, j = "site_id", value = row$site_id[[1L]])
+    }
     front <- c(
-        "child_key", "method", "scale", "reconstruction", "model",
-        "member", "grid"
+        intersect("site_id", names(row)),
+        "child_key",
+        "method",
+        "scale",
+        "reconstruction",
+        "model",
+        "member",
+        "grid"
     )
     data.table::setcolorder(data, c(front, setdiff(names(data), front)))
     data[]

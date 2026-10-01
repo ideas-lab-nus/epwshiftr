@@ -417,44 +417,86 @@ shift_batch__diagnostic_lines <- function(snapshot, width, limit = 3L, compact =
 
 # Build a child's identity and activity from the same live state as single-run
 # watch. Full detail includes its latest event, timestamps, and durable run ID.
-shift_batch__child_lines <- function(child, index, state, width, detail,
-                                     compact, motion, frame) {
+shift_batch__child_lines <- function(
+    child,
+    index,
+    state,
+    width,
+    detail,
+    compact,
+    motion,
+    frame
+) {
     # Compact fields do not wrap beyond the dynamic viewport budget.
     field <- function(label, value) {
-        if (compact) shift__ui_fit(shift__ui_labeled_line(label, value), width) else
+        if (compact) {
+            shift__ui_fit(shift__ui_labeled_line(label, value), width)
+        } else {
             shift__ui_labeled_lines(label, value, width)
+        }
     }
-    identity <- c(child$method, child$model)
+    identity <- c(child$site_id, child$method, child$model)
     identity <- identity[!is.na(identity) & nzchar(identity)]
-    label <- sprintf("%s %s [%s] \u00b7 %s",
+    label <- sprintf(
+        "%s %s [%s] \u00b7 %s",
         shift__ui_state_symbol(child$status, motion, frame),
         cli::style_bold(paste(identity, collapse = " / ")),
-        child$method_status, child$status)
+        child$method_status,
+        child$status
+    )
     configuration <- c(child$scale, child$reconstruction)
-    if (!is.na(child$current_stage)) configuration <- c(configuration,
-        shift__ui_stage_label(child$current_stage))
-    configuration <- configuration[!is.na(configuration) & nzchar(configuration)]
-    lines <- c(field(sprintf("#%d", index), label),
-        field("", cli::style_dim(paste(configuration, collapse = " \u00b7 "))))
+    if (!is.na(child$current_stage)) {
+        configuration <- c(
+            configuration,
+            shift__ui_stage_label(child$current_stage)
+        )
+    }
+    configuration <- configuration[
+        !is.na(configuration) & nzchar(configuration)
+    ]
+    lines <- c(
+        field(sprintf("#%d", index), label),
+        field("", cli::style_dim(paste(configuration, collapse = " \u00b7 ")))
+    )
     active <- child$status %in% c("queued", "running", "stopping")
     if (length(state) && (active || !identical(detail, "normal"))) {
         current <- shift_coalesce(state$unit_label, state$stage_message)
-        if (!is.null(current)) lines <- c(lines, field(if (active) "Now" else "Last", current))
+        if (!is.null(current)) {
+            lines <- c(lines, field(if (active) "Now" else "Last", current))
+        }
         metric <- shift__ui_metric_line(state, width)
         lines <- c(lines, if (compact) utils::head(metric, 1L) else metric)
         if (!is.null(state$last_event) && !identical(detail, "normal")) {
             lines <- c(lines, field("Event", state$last_event))
         }
         updated <- store__chr1(state$updated_at)
-        lines <- c(lines, field("Updated", paste(c(
-            if (!is.na(updated)) updated,
-            paste(shift__format_elapsed(shift_coalesce(state$elapsed_seconds, 0)),
-                "elapsed")), collapse = " \u00b7 ")))
+        lines <- c(
+            lines,
+            field(
+                "Updated",
+                paste(
+                    c(
+                        if (!is.na(updated)) updated,
+                        paste(
+                            shift__format_elapsed(shift_coalesce(
+                                state$elapsed_seconds,
+                                0
+                            )),
+                            "elapsed"
+                        )
+                    ),
+                    collapse = " \u00b7 "
+                )
+            )
+        )
     }
     if (!identical(detail, "normal")) {
         values <- c(child$member, child$grid, child$run_id)
         values <- values[!is.na(values) & nzchar(values)]
-        lines <- c(lines, field("Identity", paste(values, collapse = " \u00b7 ")))
+        lines <- c(
+            lines,
+            field("Identity", paste(values, collapse = " \u00b7 "))
+        )
     }
     lines
 }

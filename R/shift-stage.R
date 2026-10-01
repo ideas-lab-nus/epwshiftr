@@ -2429,6 +2429,16 @@ shift_plan <- function(request, site, periods, store, transform,
 #' @param climate A complete future-climate specification from [shift_cmip6()].
 #' @param transform A reusable specification from [monthly_transform()],
 #'   [daily_transform()], or [hourly_transform()].
+#' @param sites Alternative to `epw`: a non-empty data.table/data.frame with
+#'   unique `site_id` and baseline `epw` path columns, and optional `lon`, `lat`,
+#'   and `label` columns; or a list of [shift_site()] objects containing baselines.
+#'   Missing coordinates and labels are read from each EPW. Time zone and
+#'   elevation remain those of the baseline EPW. Explicit `sites` always returns
+#'   a `ShiftBatch`, ordered by site ID, with separate output/store directories
+#'   per location, method, and model. Candidate discovery is shared; climate
+#'   extraction still runs independently for each child. For multiple sites,
+#'   use automatic historical/reanalysis references; existing extracted
+#'   reference plans require separate calls for their respective locations.
 #' @param methods One or more unambiguous method keys from
 #'   [weather_transforms()]. This high-level form creates a `ShiftBatch` across
 #'   every selected method and model.
@@ -2444,17 +2454,30 @@ shift_plan <- function(request, site, periods, store, transform,
 #' @param ui Runtime presentation options from [shift_ui()]. These options are
 #'   excluded from persisted scientific intent and `spec_hash`.
 #' @export
-shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
-                             reference = NULL, observed_reference = NULL,
-                             control = shift_control(), ui = shift_ui(),
-                             store = NULL, dry_run = FALSE,
-                             background = FALSE, methods = NULL,
-                             calibration = NULL) {
+shift_future_epw <- function(
+    epw = NULL,
+    climate,
+    periods,
+    transform = NULL,
+    dir,
+    reference = NULL,
+    observed_reference = NULL,
+    control = shift_control(),
+    ui = shift_ui(),
+    store = NULL,
+    dry_run = FALSE,
+    background = FALSE,
+    methods = NULL,
+    calibration = NULL,
+    sites = NULL
+) {
     checkmate::assert_string(dir, min.chars = 1L)
     checkmate::assert_flag(dry_run)
     checkmate::assert_flag(background)
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
-        cli::cli_abort("`climate` must be a complete {.cls ShiftCmip6Spec} created by {.fn shift_cmip6}.")
+        cli::cli_abort(
+            "`climate` must be a complete {.cls ShiftCmip6Spec} created by {.fn shift_cmip6}."
+        )
     }
     if (!S7::S7_inherits(control, ShiftControl)) {
         cli::cli_abort("`control` must be created by {.fn shift_control}.")
@@ -2463,7 +2486,9 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
     }
     if (isTRUE(dry_run) && isTRUE(background)) {
-        cli::cli_abort("`dry_run = TRUE` cannot be combined with `background = TRUE`.")
+        cli::cli_abort(
+            "`dry_run = TRUE` cannot be combined with `background = TRUE`."
+        )
     }
     if (!is.null(observed_reference) && !is.null(calibration)) {
         cli::cli_abort(
@@ -2475,12 +2500,17 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
         methods = methods,
         transform = transform
     )
+    locations <- shift_batch__sites(epw, sites)
     # Preserve the established single-transform return type and store layout
     # when the caller uses the advanced explicit-transform interface.
-    if (is.null(methods) && length(transforms) == 1L &&
-        !is.null(climate@model)) {
+    if (
+        is.null(sites) &&
+            is.null(methods) &&
+            length(transforms) == 1L &&
+            !is.null(climate@model)
+    ) {
         return(shift__future_epw_one(
-            epw = epw,
+            site = locations$site[[1L]],
             climate = climate,
             periods = periods,
             transform = transforms[[1L]],
@@ -2495,7 +2525,7 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
         ))
     }
     shift_batch__future_epw(
-        epw = epw,
+        sites = locations,
         climate = climate,
         periods = periods,
         transforms = transforms,
@@ -2506,7 +2536,8 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
         ui = ui,
         store = store,
         dry_run = dry_run,
-        background = background
+        background = background,
+        legacy = is.null(sites)
     )
 }
 
@@ -2514,7 +2545,7 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
 # high-level batch interface calls this same function for every child, keeping
 # planning, persistence, extraction, physical closure, and EPW writing shared.
 shift__future_epw_one <- function(
-    epw,
+    site,
     climate,
     periods,
     transform,
@@ -2535,14 +2566,16 @@ shift__future_epw_one <- function(
 
     periods <- shift__periods_from_input(periods)
     store <- shift_coalesce(store, store_dir(init = FALSE))
-    output_dir <- normalizePath(path.expand(dir), winslash = "/", mustWork = FALSE)
+    output_dir <- normalizePath(
+        path.expand(dir),
+        winslash = "/",
+        mustWork = FALSE
+    )
     # Keep delivery files outside the persistent workflow store. Besides
     # preserving the public directory contract, this prevents export cleanup
     # and store lifecycle operations from ever sharing a directory tree.
     shift__validate_delivery_store_paths(output_dir, store)
     request <- shift__request_from_cmip6(climate, periods, transform)
-    site <- shift_site(epw = epw)
-
     plan <- shift_plan(
         request = request,
         site = site,
