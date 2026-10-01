@@ -123,11 +123,6 @@ batch <- shift_batch_get(receipt$batch_id, store = file.path(cache, "store"))
 stopifnot(identical(shift_status(batch), "completed"))
 ```
 
-Inspect the same batch directly in R. These tables show only the key columns
-for the README; `shift_outputs()`, `shift_summary()` and `shift_diagnostics()`
-return the full `data.table` results. `epw_exists` checks the exported file
-at `outputs$export_path`; temperatures are in °C.
-
 ```{r inspect-example, message = FALSE}
 shift_status(batch)
 outputs <- shift_outputs(batch)

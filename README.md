@@ -92,12 +92,6 @@ batch <- shift_future_epw(
 cached climate inputs. Playback is accelerated 4×, with long waits
 shortened.*
 
-Inspect the same batch directly in R. These tables show only the key
-columns for the README; `shift_outputs()`, `shift_summary()` and
-`shift_diagnostics()` return the full `data.table` results. `epw_exists`
-checks the exported file at `outputs$export_path`; temperatures are in
-°C.
-
 ``` r
 shift_status(batch)
 #> [1] "completed"
