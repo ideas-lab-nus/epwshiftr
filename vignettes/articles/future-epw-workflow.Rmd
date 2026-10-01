@@ -160,7 +160,7 @@ san_francisco_epw <- eplusr::path_eplus_weather(
 )
 
 run <- shift_future_epw(
-    epw = san_francisco_epw,
+    sites = shift_site(epw = san_francisco_epw),
     climate = shift_cmip6(
         model = 3L,
         scenarios = c("ssp126", "ssp585"),
@@ -297,7 +297,7 @@ epw <- system.file(
 )
 
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6(
         model = "BCC-CSM2-MR",
         scenarios = c("ssp126", "ssp585")
@@ -344,8 +344,8 @@ climate <- shift_cmip6(
 See [Inspect EPW Morphing](epw-morpher.html) for the complete transform and
 execution contracts.
 
-Use the same call with `dry_run = TRUE` to obtain a `ShiftPlan`, inspect it with
-`shift_explain()`, and execute it later with `shift_run()`. The persisted run ID
+Use the same call with `dry_run = TRUE` to obtain a `ShiftBatch`, inspect it with
+`shift_explain()`, and execute it later with `shift_run()`. The persisted batch ID
 supports `shift_status()`, `shift_resume()`, and the corresponding CLI commands.
 
 ## Inspect Shift Objects
@@ -365,7 +365,7 @@ climate <- shift_cmip6(
 )
 transform <- monthly_transform("original_morphing")
 plan <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = climate,
     periods = list(`2060s` = 2055:2065),
     transform = transform,
@@ -442,7 +442,7 @@ setting controls durable worker liveness and is independent of animation.
 
 ``` r
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
     transform = monthly_transform("original_morphing"),
@@ -460,7 +460,7 @@ events shown by the foreground reporter.
 
 ``` r
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
     transform = monthly_transform("original_morphing"),

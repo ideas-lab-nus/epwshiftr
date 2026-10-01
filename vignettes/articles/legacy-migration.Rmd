@@ -26,9 +26,9 @@ epwshiftr's recommended workflow is now
 [Create Future EPW Files](future-epw-workflow.html), built around `shift_*()`,
 `EsgStore`, `Downloader`, and `EpwMorpher`.
 
-The older data.table-oriented API is available from the `legacy` branch or
-epwshiftr v0.1.4. Those functions and their profile switches are no longer
-exported by the current package. Current releases expose one canonical
+This guide covers migration from the published **CRAN v0.1.4** API,
+which is preserved on the `legacy` branch. Those functions and their profile
+switches are no longer exported by the current package. Current releases expose one canonical
 calculation contract per method through the scale-specific transform
 constructors. This article maps old workflow concepts to store-native concepts;
 projects that require exact legacy numerical output should retain their frozen
@@ -117,7 +117,7 @@ reusable transform:
 
 ```r
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6(
         model = "MPI-ESM1-2-LR",
         scenarios = "ssp585",

@@ -16,6 +16,7 @@
 ^vignettes-raw$
 ^inst/extdata/vignettes($|/)
 ^data-raw$
+^tools$
 ^cache$
 ^reports$
 ^outputs$

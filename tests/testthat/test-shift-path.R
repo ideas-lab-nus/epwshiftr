@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 test_that("delivery and store paths may be distinct siblings", {
     root <- withr::local_tempdir()
     paths <- shift__validate_delivery_store_paths(
@@ -100,7 +106,7 @@ test_that("shift_future_epw rejects an overlapping delivery and store tree", {
     common <- file.path(root, "workflow")
     make_plan <- function(dir, store) {
         shift_future_epw(
-            epw = get_cache_epw(),
+            sites = shift_site(epw = get_cache_epw()),
             climate = shift_cmip6("BCC-CSM2-MR", "ssp126"),
             periods = list(`2060s` = 2060L),
             transform = monthly_transform("epwshiftr"),
@@ -121,6 +127,6 @@ test_that("shift_future_epw rejects an overlapping delivery and store tree", {
     )
     expect_s7_class(
         make_plan(file.path(root, "delivery"), file.path(root, "store")),
-        ShiftPlan
+        ShiftBatch
     )
 })

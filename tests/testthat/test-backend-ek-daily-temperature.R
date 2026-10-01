@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 # Build deterministic native-calendar daily extrema for the Ek factor tests.
 ek_test__climate <- function(
     years,
@@ -414,7 +420,7 @@ test_that("Ek public transform survives dry-run plan reconstruction", {
         table = "day"
     )
     plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = climate,
         periods = list(`2060s` = 2061L),
         transform = transform,
@@ -422,7 +428,7 @@ test_that("Ek public transform survives dry-run plan reconstruction", {
         dir = tempfile("ek-daily-output-"),
         store = tempfile("ek-daily-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_identical(

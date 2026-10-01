@@ -1,5 +1,20 @@
 # epwshiftr (development version)
 
+* `shift_future_epw()` now takes `shift_site()` objects through its first
+  argument, `sites`, and always returns a batch. Workflow configurations use
+  a `sites` array with constructor field names. Site/model/method plans share
+  discovery and baseline identities, with distinct output directories (#273).
+
+* Simplify the README around features and one multi-site example, recorded in
+  a real terminal with batch status, outputs, weather summaries and diagnostics.
+  Keep the legacy migration guide specific to CRAN v0.1.4 and remove
+  the standalone San Francisco development script. Exclude development tools
+  from package builds (#273).
+
+* Batch recovery now distinguishes extraction methods and validation policies;
+  method/period constraints are checked before discovery. Reuse model/method
+  requests and hash each unique baseline once during batch planning (#273).
+
 * Apply historical catalog requirements only when needed by the batch reference,
   share File coverage results across methods, and avoid repeated eligibility
   summaries, group counts, and input-map serialization (#269).

@@ -137,7 +137,7 @@ shift_plan(
 )
 
 shift_future_epw(
-  epw,
+  sites,
   climate,
   periods,
   transform = NULL,
@@ -464,6 +464,15 @@ stage.}
 \item{morph}{Named morph-stage options. Stage option lists are validated and
 cannot override task-level controls or the transform/reference inputs.}
 
+\item{sites}{A \code{\link[=shift_site]{shift_site()}} object or a non-empty list of them, each with
+a baseline EPW. The constructor derives omitted coordinates and labels
+from the EPW header. Time zone and elevation remain those of the baseline.
+Always returns a \code{ShiftBatch}, ordered by site ID, with separate output
+and store directories per location, method, and model. Candidate discovery
+is shared; extraction runs independently for each child. Use declarative
+historical/reanalysis references. For previously extracted site-specific
+references, use \code{\link[=shift_plan]{shift_plan()}} with the matching site and store.}
+
 \item{climate}{A complete future-climate specification from \code{\link[=shift_cmip6]{shift_cmip6()}}.}
 
 \item{dir}{In \code{\link[=shift_future_epw]{shift_future_epw()}}, the user-facing delivery directory. In
@@ -472,11 +481,13 @@ are resolved under the store root.}
 
 \item{ui}{Runtime presentation options from \code{\link[=shift_ui]{shift_ui()}}.}
 
-\item{dry_run}{If \code{TRUE}, return the planned workflow without running it.}
+\item{dry_run}{If \code{TRUE}, discover eligible datasets and return a planned
+batch without extracting climate values or generating EPWs.}
 
 \item{background}{For \code{\link[=shift_download]{shift_download()}}, whether to run queued downloads in
 a background job. For task-level run/resume functions, whether to launch a
-detached \code{Rscript} worker and return a queued \code{ShiftRun} immediately.}
+detached \code{Rscript} worker. Single plans return a queued \code{ShiftRun}; batches
+retain their child runs in the returned \code{ShiftBatch}.}
 
 \item{methods}{One or more unambiguous method keys from
 \code{\link[=weather_transforms]{weather_transforms()}}. This high-level form creates a \code{ShiftBatch} across

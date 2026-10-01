@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 # Build deterministic daily CMIP temperature rows with complete canonical
 # context columns for backend and workflow tests.
 daily_backend_test__climate <- function(
@@ -321,7 +327,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         table = "day"
     )
     plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = daily_climate,
         periods = list(`2060s` = 2061L),
         transform = transform,
@@ -329,7 +335,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         dir = tempfile("daily-temperature-output-"),
         store = tempfile("daily-temperature-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_true(S7::S7_inherits(plan, ShiftPlan))
@@ -356,7 +362,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
     )
     expect_silent(shift__validate_background_plan(plan))
     inferred <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("EC-Earth3", "ssp585"),
         periods = list(`2060s` = 2061L),
         transform = transform,
@@ -364,7 +370,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         dir = tempfile("daily-temperature-output-"),
         store = tempfile("daily-temperature-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     expect_identical(
         unique(unname(inferred@meta$request@meta$frequency)),
         "day"

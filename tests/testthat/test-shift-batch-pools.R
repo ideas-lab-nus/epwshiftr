@@ -38,7 +38,7 @@ batch_pool_test__plan <- function(
     methods = c("original_morphing", "isimip3basd")
 ) {
     shift_future_epw(
-        get_cache_epw(),
+        shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = model,
             scenarios = "ssp585",
@@ -283,7 +283,7 @@ test_that("batch alternatives remain available after File coverage rejects the f
     )
 })
 
-test_that("default climate serialization keeps old identities and accepts old receipts", {
+test_that("climate serialization and current batch receipts round-trip", {
     climate <- shift_cmip6(model = NULL, scenarios = "ssp585")
     value <- shift__climate_spec_value(climate)
     expect_false("common" %in% names(value))
@@ -314,7 +314,6 @@ test_that("default climate serialization keeps old identities and accepts old re
     batch <- batch_pool_test__plan(model = 1L, store = store)
     path <- shift_batch__receipt_path(batch@store_path)
     receipt <- readRDS(path)
-    receipt$discovery$selection <- NULL
     saveRDS(receipt, path)
     withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
         stop("Unexpected discovery")

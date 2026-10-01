@@ -22,11 +22,23 @@ epwshiftr_cli_shift <- function(store, command, args, json = FALSE, jsonl = FALS
 
 # shift -----------------------------------------------------------------------
 
-epwshiftr_cli_shift_run <- function(store, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
+epwshiftr_cli_shift_run <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--dry-run", "--background", "--no-progress",
-            "--reduced-motion", "--verbose", "--debug"),
+        flags = c(
+            "--dry-run",
+            "--background",
+            "--no-progress",
+            "--reduced-motion",
+            "--verbose",
+            "--debug"
+        ),
         options = c("--config")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -34,38 +46,45 @@ epwshiftr_cli_shift_run <- function(store, args, json = FALSE, jsonl = FALSE, qu
     config <- epwshiftr_cli_read_shift_config(config_path)
     background <- isTRUE(parsed$flags[["--background"]])
     if (isTRUE(parsed$flags[["--dry-run"]]) && background) {
-        epwshiftr_cli_usage_abort("--dry-run and --background cannot be used together.")
+        epwshiftr_cli_usage_abort(
+            "--dry-run and --background cannot be used together."
+        )
     }
-    ui <- epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl, quiet = quiet)
+    ui <- epwshiftr_cli_task_ui(
+        parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
+    )
     ui@batch_receipt <- FALSE
     if (isTRUE(parsed$flags[["--dry-run"]])) {
-        plan <- epwshiftr_cli_config_plan(config, store = store,
-            ui = ui)
-        if (S7::S7_inherits(plan, ShiftBatch)) {
-            result <- shift_batch__snapshot(plan, refresh = FALSE)
-            result$status <- "dry_run"
-            result$batch_id <- plan@ids$batch_id
-            result$config <- normalizePath(config_path, winslash = "/", mustWork = TRUE)
-            result$intent <- cli_shift__config_intent(config)
-            result$explain <- shift_explain(plan)
-            result$next_steps <- epwshiftr_cli_shift_next_steps(
-                plan@ids$batch_id, batch = TRUE, store = store)
-            attr(result, "shift_ui_detail") <- ui@detail
-            return(result)
-        }
-        return(list(
-            status = "dry_run",
-            batch_id = shift_ids(plan)$batch_id,
-            config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
-            intent = cli_shift__config_intent(config),
-            cases = shift_cases(plan),
-            explain = shift_explain(plan)
-        ))
+        plan <- epwshiftr_cli_config_plan(config, store = store, ui = ui)
+        result <- shift_batch__snapshot(plan, refresh = FALSE)
+        result$status <- "dry_run"
+        result$batch_id <- plan@ids$batch_id
+        result$config <- normalizePath(
+            config_path,
+            winslash = "/",
+            mustWork = TRUE
+        )
+        result$intent <- cli_shift__config_intent(config)
+        result$explain <- shift_explain(plan)
+        result$next_steps <- epwshiftr_cli_shift_next_steps(
+            plan@ids$batch_id,
+            batch = TRUE,
+            store = store
+        )
+        attr(result, "shift_ui_detail") <- ui@detail
+        return(result)
     }
     # Execute the high-level entry point directly so a completed batch can use
     # its receipt fast path before any catalog or child planning work.
     result <- epwshiftr_cli_shift_stage_result(epwshiftr_cli_config_plan(
-        config, store = store, dry_run = FALSE, background = background, ui = ui
+        config,
+        store = store,
+        dry_run = FALSE,
+        background = background,
+        ui = ui
     ))
     attr(result, "shift_ui_detail") <- ui@detail
     result
@@ -361,8 +380,8 @@ epwshiftr_cli_years <- function(value) {
 # config coercion -------------------------------------------------------------
 
 epwshiftr_cli_validate_shift_config <- function(config) {
-    if (!identical(as.integer(config$version), 2L)) {
-        cli::cli_abort("Only shift workflow config version 2 is supported.")
+    if (!identical(config$version, 3L)) {
+        cli::cli_abort("Only shift workflow config version 3 is supported.")
     }
     epwshiftr_cli_periods_from_config(config$periods, "periods")
     shift_batch__transforms(
@@ -394,10 +413,15 @@ epwshiftr_cli_config_section <- function(config, name) {
 
 # Build the same task-level ShiftPlan used by the R API; the CLI does not own a
 # second collect/extract/morph execution path.
-epwshiftr_cli_config_plan <- function(config, store, dry_run = TRUE,
-                                     background = FALSE, ui = shift_ui()) {
+epwshiftr_cli_config_plan <- function(
+    config,
+    store,
+    dry_run = TRUE,
+    background = FALSE,
+    ui = shift_ui()
+) {
     shift_future_epw(
-        epw = epwshiftr_cli_config_string(config$epw),
+        sites = lapply(config$sites, function(site) do.call(shift_site, site)),
         climate = epwshiftr_cli_config_climate(config$climate),
         periods = config$periods,
         transform = cli_shift__config_transform(config$transform),
@@ -411,7 +435,10 @@ epwshiftr_cli_config_plan <- function(config, store, dry_run = TRUE,
             config$observed_reference,
             "observed_reference"
         ),
-        calibration = cli_shift__config_reference(config$calibration, "calibration"),
+        calibration = cli_shift__config_reference(
+            config$calibration,
+            "calibration"
+        ),
         control = epwshiftr_cli_config_control(config$control),
         store = store,
         dry_run = dry_run,

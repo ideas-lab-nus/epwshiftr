@@ -17,6 +17,6 @@ A \code{ShiftBatch} accepted by the ordinary \verb{shift_*()} inspectors,
 }
 \description{
 Reopen a batch and its independent child plans or runs without querying
-climate catalogs. New dry-run batches retain their child plans; completed
-receipts from earlier versions remain readable through their child runs.
+climate catalogs. Dry-run batches retain their child plans; executed batches
+retain their durable child run identifiers.
 }

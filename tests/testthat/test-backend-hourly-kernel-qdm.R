@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 # Construct one complete hourly variable over one or more native-calendar years
 # so the integration fixture can exercise every post-interpolation component.
 hourly_kqdm_test__series <- function(
@@ -202,7 +208,7 @@ hourly_kqdm_test__overrides <- function() {
     )
 }
 
-test_that("hourly kernel QDM configures a complete high-level shift plan", {
+test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
     reference <- historical_reference(1995:2014)
     observed <- shift_reference_plan(
         "observed-hourly-plan",
@@ -223,16 +229,15 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
         grid = "gr",
         frequency = HOURLY_KQDM_MODEL_FREQUENCIES
     )
-    plan <- shift_future_epw(
-        epw = get_cache_epw(),
-        climate = climate,
-        periods = list(`2060s` = 2061:2062),
+    periods <- epw_morph_periods(`2060s` = 2061:2062)
+    plan <- shift_plan(
+        request = shift__request_from_cmip6(climate, periods, transform),
+        site = shift_site(epw = get_cache_epw()),
+        periods = periods,
         transform = transform,
         reference = reference,
         observed_reference = observed,
-        dir = tempfile("hourly-kqdm-output-"),
-        store = tempfile("hourly-kqdm-store-"),
-        dry_run = TRUE
+        store = tempfile("method-reference-store-")
     )
     recipe <- plan@meta$recipe
     spec <- shift__plan_spec(plan)
@@ -249,14 +254,21 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     expect_identical(
         morpher__input_variables(recipe),
         c(
-            "tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff",
-            "tasmin", "tasmax"
+            "tas",
+            "ps",
+            "huss",
+            "uas",
+            "vas",
+            "rsds",
+            "rsdsdiff",
+            "tasmin",
+            "tasmax"
         )
     )
     expect_true(transform__requires_input(transform, "model_historical"))
     expect_true(transform__requires_input(transform, "observed_reference"))
     expect_identical(
-        plan@meta$climate@frequency,
+        plan@meta$request@meta$frequency,
         HOURLY_KQDM_MODEL_FREQUENCIES
     )
     expect_identical(
@@ -313,7 +325,7 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
     )
     expect_error(
         shift_future_epw(
-            epw = get_cache_epw(),
+            sites = shift_site(epw = get_cache_epw()),
             climate = shift_cmip6(
                 "EC-Earth3",
                 "ssp585",
@@ -327,12 +339,12 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
             dir = tempfile("hourly-kqdm-invalid-output-"),
             store = tempfile("hourly-kqdm-invalid-store-"),
             dry_run = TRUE
-        ),
+        )@meta$children[[1L]],
         "requires CMIP frequencies"
     )
     expect_error(
         shift_future_epw(
-            epw = get_cache_epw(),
+            sites = shift_site(epw = get_cache_epw()),
             climate = climate,
             periods = list(`2060s` = 2061L),
             transform = transform,
@@ -341,7 +353,7 @@ test_that("hourly kernel QDM configures a complete high-level shift plan", {
             dir = tempfile("hourly-kqdm-one-year-output-"),
             store = tempfile("hourly-kqdm-one-year-store-"),
             dry_run = TRUE
-        ),
+        )@meta$children[[1L]],
         "requires at least two weather years"
     )
 })

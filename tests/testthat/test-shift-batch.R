@@ -259,7 +259,7 @@ test_that("high-level workflows select common models and retain child plans", {
     store <- tempfile("batch-store-")
 
     batch <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
             scenarios = c("ssp126", "ssp585")
@@ -290,8 +290,10 @@ test_that("high-level workflows select common models and retain child plans", {
     manifest <- batch@meta$manifest
     expect_true(all(manifest[method == "isimip3basd", calibration_used]))
     expect_false(any(manifest[method != "isimip3basd", calibration_used]))
-    expect_true(all(file.path(shift_batch__store_root(store), "batches") ==
-        dirname(dirname(manifest$store))))
+    expect_true(all(
+        file.path(shift_batch__store_root(store), "batches") ==
+            dirname(dirname(dirname(manifest$store)))
+    ))
     expect_silent(shift_logs(batch))
     first_discovery_calls <- availability_calls
     expect_gt(first_discovery_calls, 0L)
@@ -299,7 +301,7 @@ test_that("high-level workflows select common models and retain child plans", {
     # Delivery paths do not change the scientific batch identity or reusable
     # store root selected for the same EPW, climate, periods, and methods.
     second <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
             scenarios = c("ssp126", "ssp585")
@@ -318,7 +320,7 @@ test_that("high-level workflows select common models and retain child plans", {
     # Explicit refresh bypasses the persisted batch selection without changing
     # the scientific batch identity.
     refreshed <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
             scenarios = c("ssp126", "ssp585")
@@ -336,7 +338,7 @@ test_that("high-level workflows select common models and retain child plans", {
     expect_gt(availability_calls, first_discovery_calls)
 
     changed_calibration <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
             scenarios = c("ssp126", "ssp585")
@@ -370,7 +372,7 @@ test_that("direct high-level execution builds the whole batch before running", {
     )
 
     result <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(model = 1L, scenarios = "ssp585"),
         periods = list(`2050` = 2049:2050),
         transform = monthly_transform("epwshiftr"),
@@ -382,9 +384,13 @@ test_that("direct high-level execution builds the whole batch before running", {
 
     expect_identical(result, "executed")
     expect_true(S7::S7_inherits(received, ShiftBatch))
-    expect_true(all(vapply(received@meta$children, function(child) {
-        S7::S7_inherits(child, ShiftPlan)
-    }, logical(1L))))
+    expect_true(all(vapply(
+        received@meta$children,
+        function(child) {
+            S7::S7_inherits(child, ShiftPlan)
+        },
+        logical(1L)
+    )))
 })
 
 test_that("batch discovery keeps r1i1p1f1 as a hard default", {
@@ -549,7 +555,7 @@ test_that("batch discovery applies period coverage before model counts", {
     ))
 
     batch <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
             scenarios = c("ssp126", "ssp585")
@@ -790,29 +796,4 @@ test_that("File coverage applies the same year kernel to historical reference", 
     )
 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
-})
-
-test_that("single explicit transforms preserve the established plan API", {
-    climate <- shift_cmip6(
-        model = "Model-A",
-        scenarios = "ssp585"
-    )
-    plan <- shift_future_epw(
-        epw = get_cache_epw(),
-        climate = climate,
-        periods = list(`2050` = 2049:2050),
-        transform = daily_transform("isimip3basd"),
-        observed_reference = shift_reference_plan(
-            "observed-plan",
-            shift__periods_from_years(1995:2014),
-            role = "observed_reference"
-        ),
-        reference = historical_reference(1995:2014),
-        dir = tempfile("single-output-"),
-        store = tempfile("single-store-"),
-        dry_run = TRUE
-    )
-
-    expect_true(S7::S7_inherits(plan, ShiftPlan))
-    expect_identical(unique(plan@meta$request@meta$frequency), "day")
 })

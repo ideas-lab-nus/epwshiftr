@@ -15,178 +15,111 @@ coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badg
 Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/package=epwshiftr)
 <!-- badges: end -->
 
-> Generate future EnergyPlus weather files from CMIP6 climate
-> projections.
+epwshiftr is an R package for generating future EnergyPlus Weather (EPW)
+files from CMIP6 climate projections and baseline weather, for use in
+building simulation.
 
-epwshiftr is an R package that combines a baseline EnergyPlus Weather
-(EPW) file with projected climate changes to produce future weather for
-building simulation. Use the R API or CLI to select methods and models,
-follow progress, and inspect or resume work saved in a local store.
+## Features
 
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="man/figures/README/shift-workflow-output-dark.svg">
-<img src="man/figures/README/shift-workflow-output.svg" alt="Future EPW terminal dashboard progressing from CMIP6 resolution to a completed two-case, two-file receipt." width="100%" />
-</picture>
-
-*Recorded with the package’s own terminal UI and scripted states; model
-selection, timings, and counts are illustrative.*
-
-[Quick start](#quick-start) · [Methods and models](#methods-and-models)
-· [CLI](#command-line) · [Documentation](#documentation)
+- **Discover climate data** from ESGF for the variables, models and
+  periods your method needs.
+- **Extract site data** through OPeNDAP where available, without
+  downloading whole climate files.
+- **Choose weather-generation methods** at monthly, daily and hourly
+  scales.
+- **Run batches** across locations, models, scenarios and methods.
+- **Reuse and inspect work** with local caches, resumable workflows and
+  source tracking, through R or the CLI.
 
 ## Installation
 
-This README describes the **development API**. Install the development
-build from R-universe:
+Install the development version used below:
 
 ``` r
 install.packages(
     "epwshiftr",
     repos = c(
-        ideaslab = "https://ideas-lab-nus.r-universe.dev",
-        cran = "https://cran.r-project.org"
+        "https://ideas-lab-nus.r-universe.dev",
+        "https://cran.r-project.org"
     )
 )
 ```
 
-Released versions are available on
-[CRAN](https://CRAN.R-project.org/package=epwshiftr). For the older
-`v0.1.4` API, see the [legacy
-branch](https://github.com/ideas-lab-nus/epwshiftr/tree/legacy) and
-[migration
+For CRAN v0.1.4, see the [migration
 guide](https://ideas-lab-nus.github.io/epwshiftr/articles/legacy-migration.html).
 
-## Quick start
+## Example
 
-Start with original monthly morphing, one compatible climate model, and
-two scenarios. This example uses a bundled Singapore EPW; an EnergyPlus
-installation is not required. **Climate data access requires an internet
-connection.**
+Generate weather for Singapore and San Francisco using two monthly
+methods. Place your baseline EPWs in the working directory; this example
+uses [Singapore
+IWEC](https://github.com/ideas-lab-nus/epwshiftr/blob/master/inst/extdata/examples/SGP_Singapore.486980_IWEC.epw)
+and [San Francisco
+TMY3](https://energyplus-weather.s3.amazonaws.com/north_and_central_america_wmo_region_4/USA/CA/USA_CA_San.Francisco.Intl.AP.724940_TMY3/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw).
+Missing baseline precipitation is retained with `precipitation = "off"`.
 
 ``` r
 library(epwshiftr)
 
-epw <- system.file(
-    "extdata/examples/SGP_Singapore.486980_IWEC.epw",
-    package = "epwshiftr",
-    mustWork = TRUE
-)
-
-run <- shift_future_epw(
-    epw = epw,
-    climate = shift_cmip6(model = 1L, scenarios = c("ssp126", "ssp585")),
+batch <- shift_future_epw(
+    sites = list(
+        shift_site("Singapore", epw = "Singapore.epw"),
+        shift_site("SanFrancisco", epw = "SanFrancisco.epw")
+    ),
+    climate = shift_cmip6(model = "IPSL-CM6A-LR", scenarios = "ssp245"),
     periods = list(`2060s` = 2055:2065),
-    methods = "original_morphing",
-    dir = "future-epw"
+    transform = list(
+        monthly_transform("original_morphing", precipitation = "off"),
+        monthly_transform("bws_btws")
+    ),
+    reference = historical_reference(1995:2014),
+    dir = "future-epw-batch",
+    store = "store",
+    control = shift_control(
+        download = "never",
+        resume = FALSE,
+        overwrite = TRUE
+    )
 )
-
-shift_outputs(run)      # Delivered EPW paths and method/model identity
-shift_diagnostics(run)  # Warnings and coverage issues
 ```
 
-The workflow finds matching future and historical CMIP6 inputs, applies
-the chosen transform, and writes EPWs to `future-epw`. Replace `epw`
-with your own baseline file for a different site. Repeating the same
-completed request with the same store reuses its verified outputs.
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="man/figures/README/example-dark.svg">
+<img src="man/figures/README/example.svg" width="100%" alt="Actual terminal recording of two-city future EPW generation.">
+</picture>
 
-For longer jobs, add `background = TRUE` and follow progress with
-`shift_watch(run)`. See the [workflow
-guide](https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html)
-for planning, output inspection, and recovery.
-
-## Methods and models
-
-Use `weather_transforms()` to browse monthly, daily, and hourly
-configurations, including their input requirements and **production /
-experimental** status. For method-specific settings, use
-`monthly_transform()`, `daily_transform()`, or `hourly_transform()`
-through the `transform` argument.
-
-To run several methods across the same compatible models:
+*Actual terminal recording of `shift_future_epw()`, regenerated from
+cached climate inputs. Playback is accelerated 4×, with long waits
+shortened.*
 
 ``` r
-batch <- shift_future_epw(
-    epw = epw,
-    climate = shift_cmip6(model = 2L, scenarios = c("ssp126", "ssp585")),
-    periods = list(`2060s` = 2055:2065),
-    methods = c("original_morphing", "qdm"),
-    calibration = shift_era5(years = 1995:2014),
-    dir = "future-epw-batch"
-)
+shift_status(batch)
+#> [1] "completed"
+outputs <- shift_outputs(batch)
+outputs[, .(
+    site_id, method, model, period,
+    epw_exists = file.exists(export_path)
+)]
+#>         site_id            method        model period epw_exists
+#>          <char>            <char>       <char> <char>     <lgcl>
+#> 1: SanFrancisco original_morphing IPSL-CM6A-LR  2060s       TRUE
+#> 2: SanFrancisco          bws_btws IPSL-CM6A-LR  2060s       TRUE
+#> 3:    Singapore original_morphing IPSL-CM6A-LR  2060s       TRUE
+#> 4:    Singapore          bws_btws IPSL-CM6A-LR  2060s       TRUE
+summary <- shift_summary(batch, weather = TRUE)
+summary[, .(site_id, method, weather_hours, mean_temperature_c)]
+#>         site_id            method weather_hours mean_temperature_c
+#>          <char>            <char>         <int>              <num>
+#> 1: SanFrancisco original_morphing          8760           15.42045
+#> 2: SanFrancisco          bws_btws          8760           15.42045
+#> 3:    Singapore original_morphing          8760           28.28410
+#> 4:    Singapore          bws_btws          8760           28.28410
+shift_diagnostics(batch)[, .N, by = severity]
+#>    severity     N
+#>      <char> <int>
+#> 1:  warning     1
+#> 2:     info     2
 ```
-
-Here, QDM uses ERA5 observations and is marked experimental. Configure
-[CDS
-access](https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html#configure-and-check-cds-access)
-before running it. A positive `model` count selects that many compatible
-models; a character vector names exact models, and `NULL` selects all.
-
-Model discovery uses one live panel for all methods. It identifies the
-current variable combination and future/historical coverage check.
-Catalog records, cached responses, downloaded files, and generated EPWs
-have separate counts; method numbers indicate search order, not a
-completion percentage.
-
-<details>
-<summary>Watch model discovery and coverage checks</summary>
-
-This recording uses the production UI with scripted catalog responses.
-
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="man/figures/README/shift-discovery-output-dark.svg">
-<img src="man/figures/README/shift-discovery-output.svg" alt="" width="100%" />
-</picture>
-
-</details>
-
-Each method/model child can be inspected and resumed independently.
-Output tables preserve method and model identity; cases and EPW files
-are counted separately because multi-year methods can write several
-files per case. Use `shift_history()` to find saved work and
-`shift_summary(batch, weather = TRUE)` to compare local EPW summaries
-with valid-hour counts.
-
-<details>
-<summary>Watch batch progress, reuse, and recovery diagnostics</summary>
-
-The same terminal UI shows a four-child batch, followed by a larger
-matrix with active, failed, and cancelled children. Scripted states
-illustrate progress, reuse, height limits, and recovery diagnostics.
-
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="man/figures/README/shift-batch-output-dark.svg">
-<img src="man/figures/README/shift-batch-output.svg" alt="Boxed batch UI showing live progress, completed-result reuse, and a height-limited large batch with failure and cancellation diagnostics." width="100%" />
-</picture>
-
-</details>
-
-## Command line
-
-Install the optional launcher from R with `install_cli()` and put its
-reported directory on `PATH`. The CLI uses the same methods and workflow
-engine:
-
-``` sh
-epwshiftr morph transforms
-epwshiftr morph describe --scale daily --method qdm
-epwshiftr shift config example --output workflow.json
-```
-
-Edit `workflow.json` for your baseline EPW, scenarios, periods, and
-output directory, then validate and run it:
-
-``` sh
-epwshiftr shift config validate --config workflow.json
-epwshiftr shift run --config workflow.json
-epwshiftr shift list --type batch
-epwshiftr shift summary --batch <batch_id> --weather
-```
-
-For multiple methods and models, generate a config with
-`--methods original_morphing,qdm --model 2`. The [CLI
-guide](https://ideas-lab-nus.github.io/epwshiftr/articles/cli-esgf-store.html)
-covers ERA5 setup, background jobs, `--run` / `--batch` monitoring and
-resume, and JSON output for automation.
 
 ## Documentation
 
@@ -216,11 +149,4 @@ citation
 guidance](https://wcrp-cmip.org/cmip-data-citation-and-licenses/) and
 the terms of any calibration dataset you use.
 
-## Get help and contribute
-
-[Report an issue](https://github.com/ideas-lab-nus/epwshiftr/issues)
-with a minimal reproducible example, or submit a pull request following
-the [contributing
-guide](https://github.com/ideas-lab-nus/epwshiftr/blob/master/.github/CONTRIBUTING.md)
-and [Code of
-Conduct](https://github.com/ideas-lab-nus/epwshiftr/blob/master/.github/CODE_OF_CONDUCT.md).
+[Report an issue](https://github.com/ideas-lab-nus/epwshiftr/issues).

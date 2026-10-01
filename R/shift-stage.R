@@ -1764,7 +1764,9 @@ shift_location_value <- function(location, names) {
     NULL
 }
 
-shift_epw_location <- function(epw) {
+# Read only the LOCATION header for path-backed site defaults; weather data
+# remain unopened until extraction or generation actually needs them.
+shift__epw_location <- function(epw) {
     if (is.null(epw)) {
         return(NULL)
     }
@@ -1772,11 +1774,13 @@ shift_epw_location <- function(epw) {
         if (!file.exists(epw)) {
             cli::cli_abort("EPW file does not exist: {.path {epw}}.")
         }
-        epw_file_read(epw)
+        return(epw_file_location(readLines(epw, n = 1L, warn = FALSE)))
     } else if (shift_is_epw_object(epw)) {
         epw_file_coerce(epw)
     } else {
-        cli::cli_abort("`epw` must be an EPW file path or an object inheriting from {.cls Epw} or {.cls EpwFile}.")
+        cli::cli_abort(
+            "`epw` must be an EPW file path or an object inheriting from {.cls Epw} or {.cls EpwFile}."
+        )
     }
     epw_obj$location()
 }
@@ -1906,7 +1910,14 @@ shift_request <- function(provider = "esgf", project = NULL, source = NULL, expe
 
 #' @rdname shift_api
 #' @export
-shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NULL, metadata = list()) {
+shift_site <- function(
+    id = NULL,
+    lon = NULL,
+    lat = NULL,
+    label = NULL,
+    epw = NULL,
+    metadata = list()
+) {
     if (is.null(epw) && (shift_is_epw_path(id) || shift_is_epw_object(id))) {
         epw <- id
         id <- NULL
@@ -1917,8 +1928,11 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
         epw <- epw_file_coerce(epw)
     }
 
-    needs_location <- is.null(id) || is.null(lon) || is.null(lat)
-    location <- if (needs_location) shift_epw_location(epw) else NULL
+    needs_location <- is.null(id) ||
+        is.null(lon) ||
+        is.null(lat) ||
+        is.null(label)
+    location <- if (needs_location) shift__epw_location(epw) else NULL
     if (is.null(lon)) {
         lon <- shift_location_value(location, c("longitude", "lon"))
     }
@@ -2429,6 +2443,14 @@ shift_plan <- function(request, site, periods, store, transform,
 #' @param climate A complete future-climate specification from [shift_cmip6()].
 #' @param transform A reusable specification from [monthly_transform()],
 #'   [daily_transform()], or [hourly_transform()].
+#' @param sites A [shift_site()] object or a non-empty list of them, each with
+#'   a baseline EPW. The constructor derives omitted coordinates and labels
+#'   from the EPW header. Time zone and elevation remain those of the baseline.
+#'   Always returns a `ShiftBatch`, ordered by site ID, with separate output
+#'   and store directories per location, method, and model. Candidate discovery
+#'   is shared; extraction runs independently for each child. Use declarative
+#'   historical/reanalysis references. For previously extracted site-specific
+#'   references, use [shift_plan()] with the matching site and store.
 #' @param methods One or more unambiguous method keys from
 #'   [weather_transforms()]. This high-level form creates a `ShiftBatch` across
 #'   every selected method and model.
@@ -2440,21 +2462,34 @@ shift_plan <- function(request, site, periods, store, transform,
 #'   workflows. It is routed only to methods that accept observational input.
 #' @param dir User-facing directory that receives only exported EPW files.
 #' @param control Workflow controls from [shift_control()].
-#' @param dry_run If `TRUE`, return the planned workflow without running it.
+#' @param dry_run If `TRUE`, discover eligible datasets and return a planned
+#'   batch without extracting climate values or generating EPWs.
 #' @param ui Runtime presentation options from [shift_ui()]. These options are
 #'   excluded from persisted scientific intent and `spec_hash`.
 #' @export
-shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
-                             reference = NULL, observed_reference = NULL,
-                             control = shift_control(), ui = shift_ui(),
-                             store = NULL, dry_run = FALSE,
-                             background = FALSE, methods = NULL,
-                             calibration = NULL) {
+shift_future_epw <- function(
+    sites,
+    climate,
+    periods,
+    transform = NULL,
+    dir,
+    reference = NULL,
+    observed_reference = NULL,
+    control = shift_control(),
+    ui = shift_ui(),
+    store = NULL,
+    dry_run = FALSE,
+    background = FALSE,
+    methods = NULL,
+    calibration = NULL
+) {
     checkmate::assert_string(dir, min.chars = 1L)
     checkmate::assert_flag(dry_run)
     checkmate::assert_flag(background)
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
-        cli::cli_abort("`climate` must be a complete {.cls ShiftCmip6Spec} created by {.fn shift_cmip6}.")
+        cli::cli_abort(
+            "`climate` must be a complete {.cls ShiftCmip6Spec} created by {.fn shift_cmip6}."
+        )
     }
     if (!S7::S7_inherits(control, ShiftControl)) {
         cli::cli_abort("`control` must be created by {.fn shift_control}.")
@@ -2463,7 +2498,9 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
     }
     if (isTRUE(dry_run) && isTRUE(background)) {
-        cli::cli_abort("`dry_run = TRUE` cannot be combined with `background = TRUE`.")
+        cli::cli_abort(
+            "`dry_run = TRUE` cannot be combined with `background = TRUE`."
+        )
     }
     if (!is.null(observed_reference) && !is.null(calibration)) {
         cli::cli_abort(
@@ -2475,27 +2512,9 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
         methods = methods,
         transform = transform
     )
-    # Preserve the established single-transform return type and store layout
-    # when the caller uses the advanced explicit-transform interface.
-    if (is.null(methods) && length(transforms) == 1L &&
-        !is.null(climate@model)) {
-        return(shift__future_epw_one(
-            epw = epw,
-            climate = climate,
-            periods = periods,
-            transform = transforms[[1L]],
-            dir = dir,
-            reference = reference,
-            observed_reference = calibration,
-            control = control,
-            ui = ui,
-            store = store,
-            dry_run = dry_run,
-            background = background
-        ))
-    }
+    locations <- shift_batch__sites(sites)
     shift_batch__future_epw(
-        epw = epw,
+        sites = locations,
         climate = climate,
         periods = periods,
         transforms = transforms,
@@ -2508,64 +2527,6 @@ shift_future_epw <- function(epw, climate, periods, transform = NULL, dir,
         dry_run = dry_run,
         background = background
     )
-}
-
-# Execute one explicit method through the original staged workflow. The
-# high-level batch interface calls this same function for every child, keeping
-# planning, persistence, extraction, physical closure, and EPW writing shared.
-shift__future_epw_one <- function(
-    epw,
-    climate,
-    periods,
-    transform,
-    dir,
-    reference = NULL,
-    observed_reference = NULL,
-    control = shift_control(),
-    ui = shift_ui(),
-    store = NULL,
-    dry_run = FALSE,
-    background = FALSE
-) {
-    transform__validate_execution_inputs(
-        transform,
-        reference,
-        observed_reference
-    )
-
-    periods <- shift__periods_from_input(periods)
-    store <- shift_coalesce(store, store_dir(init = FALSE))
-    output_dir <- normalizePath(path.expand(dir), winslash = "/", mustWork = FALSE)
-    # Keep delivery files outside the persistent workflow store. Besides
-    # preserving the public directory contract, this prevents export cleanup
-    # and store lifecycle operations from ever sharing a directory tree.
-    shift__validate_delivery_store_paths(output_dir, store)
-    request <- shift__request_from_cmip6(climate, periods, transform)
-    site <- shift_site(epw = epw)
-
-    plan <- shift_plan(
-        request = request,
-        site = site,
-        periods = periods,
-        store = store,
-        transform = transform,
-        reference = reference,
-        observed_reference = observed_reference,
-        control = control,
-        epw = list(
-            dir = "outputs/future-epw",
-            separate = identical(control@output_layout, "nested"),
-            export_dir = output_dir
-        )
-    )
-    # Store task intent and immutable EPW identity on the plan so persisted
-    # runs can be explained and resumed without reinterpreting call arguments.
-    plan@meta$climate <- climate
-    plan@meta$epw_identity <- shift__epw_identity(plan@meta$site@epw)
-    if (isTRUE(dry_run)) {
-        return(plan)
-    }
-    shift_run(plan, background = background, ui = ui)
 }
 
 #' @rdname shift_api
@@ -2667,7 +2628,8 @@ shift_collect <- S7::new_generic(
 #'   can use OPeNDAP first and only download as a fallback when requested.
 #' @param background For [shift_download()], whether to run queued downloads in
 #'   a background job. For task-level run/resume functions, whether to launch a
-#'   detached `Rscript` worker and return a queued `ShiftRun` immediately.
+#'   detached `Rscript` worker. Single plans return a queued `ShiftRun`; batches
+#'   retain their child runs in the returned `ShiftBatch`.
 #' @param resume Whether to reuse complete existing downloads, extraction
 #'   outputs, morphing results, or EPW outputs.
 #' @param overwrite Whether to overwrite existing downloads, extraction outputs,
@@ -4022,33 +3984,83 @@ shift_files <- function(x) {
 #'   minimum seconds between visual animation frames. In `ShiftRun` inspectors,
 #'   whether to reload persisted state first.
 #' @export
-shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
-                       columns = NULL, refresh = TRUE) {
+shift_data <- function(
+    x,
+    n = 100L,
+    variables = NULL,
+    case_id = NULL,
+    columns = NULL,
+    refresh = TRUE
+) {
     shift_assert_stage(x)
     n <- shift_data_limit(n)
-    checkmate::assert_character(variables, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
-    checkmate::assert_character(case_id, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
-    checkmate::assert_character(columns, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+    checkmate::assert_character(
+        variables,
+        any.missing = FALSE,
+        min.len = 1L,
+        null.ok = TRUE
+    )
+    checkmate::assert_character(
+        case_id,
+        any.missing = FALSE,
+        min.len = 1L,
+        null.ok = TRUE
+    )
+    checkmate::assert_character(
+        columns,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE,
+        null.ok = TRUE
+    )
     if (S7::S7_inherits(x, ShiftBatch)) {
         # Read independent child stores with one overall row limit. Identity
         # columns belong to the batch manifest, not the child Parquet schema.
-        if (isTRUE(refresh)) x <- shift_batch__refresh(x)
-        identity <- c("child_key", "method", "scale", "reconstruction",
-            "model", "member", "grid")
-        child_columns <- if (is.null(columns)) NULL else setdiff(columns, identity)
-        if (!length(child_columns)) child_columns <- NULL
+        if (isTRUE(refresh)) {
+            x <- shift_batch__refresh(x)
+        }
+        identity <- c(
+            "site_id",
+            "child_key",
+            "method",
+            "scale",
+            "reconstruction",
+            "model",
+            "member",
+            "grid"
+        )
+        child_columns <- if (is.null(columns)) {
+            NULL
+        } else {
+            setdiff(columns, identity)
+        }
+        if (!length(child_columns)) {
+            child_columns <- NULL
+        }
         rows <- list()
         remaining <- n
         for (index in seq_along(x@meta$children)) {
-            if (remaining <= 0) break
+            if (remaining <= 0) {
+                break
+            }
             child <- x@meta$children[[index]]
-            if (S7::S7_inherits(child, ShiftPlan)) next
-            value <- shift_data(child, n = remaining,
-                variables = variables, case_id = case_id,
-                columns = child_columns, refresh = FALSE)
+            if (S7::S7_inherits(child, ShiftPlan)) {
+                next
+            }
+            value <- shift_data(
+                child,
+                n = remaining,
+                variables = variables,
+                case_id = case_id,
+                columns = child_columns,
+                refresh = FALSE
+            )
             value <- shift_batch__decorate(value, x@meta$manifest[index])
             if (nrow(value) && !is.null(columns)) {
-                value <- value[, intersect(c(identity, columns), names(value)), with = FALSE]
+                value <- value[,
+                    intersect(c(identity, columns), names(value)),
+                    with = FALSE
+                ]
             }
             rows[[index]] <- value
             remaining <- remaining - nrow(value)
@@ -4059,20 +4071,32 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
         if (isTRUE(refresh)) {
             x <- shift_refresh(x)
         }
-        if (isTRUE(x@meta$live) && shift_status(x, refresh = FALSE) %in%
-            c("queued", "running", "stopping")) {
+        if (
+            isTRUE(x@meta$live) &&
+                shift_status(x, refresh = FALSE) %in%
+                    c("queued", "running", "stopping")
+        ) {
             return(data.table::data.table())
         }
         if (!identical(as.character(x@meta$run$task[[1L]]), "future_epw")) {
             stage <- tryCatch(shift_result(x), error = function(e) NULL)
-            supported <- !is.null(stage) && any(vapply(
-                list(ShiftClimate, ShiftMorphed, ShiftOutputs),
-                function(class) S7::S7_inherits(stage, class), logical(1L)))
+            supported <- !is.null(stage) &&
+                any(vapply(
+                    list(ShiftClimate, ShiftMorphed, ShiftOutputs),
+                    function(class) S7::S7_inherits(stage, class),
+                    logical(1L)
+                ))
             if (!isTRUE(supported)) {
                 return(data.table::data.table())
             }
-            return(shift_data(stage, n = n, variables = variables,
-                case_id = case_id, columns = columns, refresh = FALSE))
+            return(shift_data(
+                stage,
+                n = n,
+                variables = variables,
+                case_id = case_id,
+                columns = columns,
+                refresh = FALSE
+            ))
         }
         stage <- x@meta$output_stage
         if (!S7::S7_inherits(stage, ShiftOutputs)) {
@@ -4088,13 +4112,23 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
                 meta = list(outputs = shift_outputs(x))
             )
         }
-        return(shift_data(stage, n = n, variables = variables,
-            case_id = case_id, columns = columns, refresh = FALSE))
+        return(shift_data(
+            stage,
+            n = n,
+            variables = variables,
+            case_id = case_id,
+            columns = columns,
+            refresh = FALSE
+        ))
     }
-    if (!S7::S7_inherits(x, ShiftClimate) &&
-        !S7::S7_inherits(x, ShiftMorphed) &&
-        !S7::S7_inherits(x, ShiftOutputs)) {
-        cli::cli_abort("{.fn shift_data} reads data from {.cls ShiftClimate}, {.cls ShiftMorphed}, or {.cls ShiftOutputs} stages.")
+    if (
+        !S7::S7_inherits(x, ShiftClimate) &&
+            !S7::S7_inherits(x, ShiftMorphed) &&
+            !S7::S7_inherits(x, ShiftOutputs)
+    ) {
+        cli::cli_abort(
+            "{.fn shift_data} reads data from {.cls ShiftClimate}, {.cls ShiftMorphed}, or {.cls ShiftOutputs} stages."
+        )
     }
     if (identical(n, 0L)) {
         return(data.table::data.table())
@@ -4105,7 +4139,9 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
 
     if (S7::S7_inherits(x, ShiftClimate)) {
         if (!is.null(case_id)) {
-            cli::cli_abort("`case_id` is only supported for morphed and EPW output stages.")
+            cli::cli_abort(
+                "`case_id` is only supported for morphed and EPW output stages."
+            )
         }
         if (is.null(ids$plan_id) || !length(ids$plan_id)) {
             return(data.table::data.table())
@@ -4144,14 +4180,20 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
     }
 
     if (!is.null(variables)) {
-        cli::cli_abort("`variables` is only supported for extracted climate stages.")
+        cli::cli_abort(
+            "`variables` is only supported for extracted climate stages."
+        )
     }
 
     if (S7::S7_inherits(x, ShiftMorphed)) {
         if (is.null(ids$morph_id) || !length(ids$morph_id)) {
             return(data.table::data.table())
         }
-        results <- shift_morph_result_rows(store, ids$morph_id, case_id = case_id)
+        results <- shift_morph_result_rows(
+            store,
+            ids$morph_id,
+            case_id = case_id
+        )
         if (!nrow(results)) {
             return(data.table::data.table())
         }
@@ -4167,7 +4209,11 @@ shift_data <- function(x, n = 100L, variables = NULL, case_id = NULL,
         if (is.null(ids$morph_id) || !length(ids$morph_id)) {
             return(data.table::data.table())
         }
-        outputs <- shift_epw_output_rows_for_cases(store, ids$morph_id, case_id = case_id)
+        outputs <- shift_epw_output_rows_for_cases(
+            store,
+            ids$morph_id,
+            case_id = case_id
+        )
         if (!nrow(outputs)) {
             return(data.table::data.table())
         }
