@@ -62,7 +62,8 @@
   configurations, derives their variable/frequency/history requirements, and
   shares one cached Dataset query across methods. Results retain rejected
   candidates and missing-input reasons, with separate per-method and common
-  selection pools. Catalog eligibility does not establish year coverage,
+  selection pools controlled by the logical `common` flag (default `FALSE`).
+  Catalog eligibility does not establish year coverage,
   readability, or scientific quality. Both variable and method queries return
   a `data.table`; existing variable-query columns are preserved. Internal
   requirements use bulk joins for input alternatives and scenarios (#268, #269).

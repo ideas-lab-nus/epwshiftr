@@ -338,7 +338,7 @@ availability__method_summary <- function(
     transforms,
     scenarios,
     requirements,
-    pool,
+    common,
     index_node,
     source,
     member,
@@ -391,7 +391,7 @@ availability__method_summary <- function(
         catalog[valid],
         transforms,
         scenarios,
-        pool = pool,
+        common = common,
         requirements = requirements
     )
     role <- NULL
@@ -471,8 +471,9 @@ availability__method_summary <- function(
 #' @param transform One `WeatherTransformSpec` or a list of them, created by
 #'   [monthly_transform()], [daily_transform()], or [hourly_transform()]. Use
 #'   this to specify method options, such as the variables adjusted by morphing.
-#' @param pool For method queries, `"per_method"` selects candidates separately
-#'   for each method; `"common"` requires eligibility for every selected method.
+#' @param common For method queries, a logical flag. `FALSE` (default)
+#'   selects candidates separately for each method; `TRUE` requires eligibility
+#'   for every selected method.
 #' @param include_optional_historical For method queries, include historical
 #'   model inputs that the method declares optional. Mandatory inputs are always
 #'   required regardless of this flag.
@@ -483,7 +484,7 @@ availability__method_summary <- function(
 #'   `table` columns. Method queries return one row per identity/method/scenario:
 #'   `catalog_eligible` describes that scenario including required history;
 #'   `method_eligible` requires a single input path across all requested scenarios;
-#'   `common_eligible` requires all methods; `selected` applies `pool`.
+#'   `common_eligible` requires all methods; `selected` applies `common`.
 #'   `missing` explains rejections. List columns `variables`, `frequency_spec`,
 #'   and `table` describe the chosen future input path. `transform_key`
 #'   distinguishes method configurations. `period_coverage`, `readability`,
@@ -531,7 +532,7 @@ shift_cmip6_avail <- function(
     ui = NULL,
     methods = NULL,
     transform = NULL,
-    pool = c("per_method", "common"),
+    common = FALSE,
     include_optional_historical = FALSE
 ) {
     checkmate::assert_character(
@@ -582,7 +583,7 @@ shift_cmip6_avail <- function(
         if (any(!nzchar(scenarios)) || "historical" %in% scenarios) {
             cli::cli_abort("Scenarios must be non-empty future experiment IDs.")
         }
-        pool <- match.arg(pool)
+        checkmate::assert_flag(common)
         checkmate::assert_flag(include_optional_historical)
         transforms <- shift_batch__transforms(methods, transform)
         requirements <- eligibility__requirements(
@@ -611,9 +612,9 @@ shift_cmip6_avail <- function(
             "type"
         )] <- NULL
     } else {
-        if (!missing(pool) || !missing(include_optional_historical)) {
+        if (!missing(common) || !missing(include_optional_historical)) {
             cli::cli_abort(
-                "`pool` and `include_optional_historical` require `methods` or `transform`."
+                "`common` and `include_optional_historical` require `methods` or `transform`."
             )
         }
         checkmate::assert_character(
@@ -672,7 +673,7 @@ shift_cmip6_avail <- function(
             transforms,
             scenarios,
             requirements,
-            pool,
+            common,
             index_node,
             source,
             member,

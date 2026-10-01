@@ -66,7 +66,7 @@ test_that("method eligibility expands candidates without a universal variable li
         catalog,
         methods = c("qdm", "sobie_curry"),
         scenarios = "ssp245",
-        pool = "common"
+        common = TRUE
     )
     expect_equal(sum(common$matrix$selected), 2L)
     expect_identical(
@@ -373,7 +373,7 @@ test_that("empty catalogs and malformed inputs have explicit contracts", {
     expect_error(eligibility_test__evaluate(
         catalog,
         methods = "qdm",
-        pool = "unknown"
+        common = "unknown"
     ))
     expect_error(
         eligibility_test__evaluate(

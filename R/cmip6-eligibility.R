@@ -16,7 +16,7 @@ eligibility__empty <- function() {
             method_eligible = logical(),
             common_eligible = logical(),
             selected = logical(),
-            pool = character(),
+            common = logical(),
             missing = character(),
             period_coverage = character(),
             readability = character(),
@@ -401,7 +401,7 @@ eligibility__match <- function(catalog, candidates, requirements) {
 
 # Stage 4: summarize future and historical evidence, apply selection policies,
 # and return ordered eligibility and requirement data.tables with fixed schemas.
-eligibility__summarize <- function(details, candidates, scenarios, pool) {
+eligibility__summarize <- function(details, candidates, scenarios, common) {
     role <- complete <- missing <- catalog_eligible <- historical_complete <-
         historical_missing <- NULL
     group <- c("identity_id", "transform_key", "method", "path_id")
@@ -448,7 +448,7 @@ eligibility__summarize <- function(details, candidates, scenarios, pool) {
         )
     ]
     future[, c("historical_complete", "historical_missing") := NULL]
-    matrix <- eligibility__select(future, scenarios, pool)
+    matrix <- eligibility__select(future, scenarios, common)
     result <- list(
         matrix = candidates[matrix, on = "identity_id"],
         requirements = candidates[details, on = "identity_id"]
@@ -475,7 +475,7 @@ eligibility__summarize <- function(details, candidates, scenarios, pool) {
 
 # Apply selection policies separately from metadata matching. Preserve one
 # joint path across scenarios and optionally intersect the method-specific pools.
-eligibility__select <- function(future, scenarios, pool) {
+eligibility__select <- function(future, scenarios, common) {
     catalog_eligible <- method_eligible <- common_eligible <- selected <- score <-
         path_id <- missing <- NULL
     group <- c("identity_id", "transform_key", "method", "path_id")
@@ -494,10 +494,10 @@ eligibility__select <- function(future, scenarios, pool) {
     ]
     matrix[, common_eligible := all(method_eligible), by = "identity_id"]
     matrix[,
-        selected := if (pool == "common") common_eligible else method_eligible
+        selected := if (common) common_eligible else method_eligible
     ]
     matrix[, `:=`(
-        pool = pool,
+        common = common,
         score = NULL,
         period_coverage = "not_checked",
         readability = "not_checked",
@@ -513,7 +513,7 @@ eligibility__evaluate <- function(
     catalog,
     transforms,
     scenarios,
-    pool = c("per_method", "common"),
+    common = FALSE,
     include_optional_historical = FALSE,
     identities = NULL,
     requirements = NULL
@@ -541,7 +541,7 @@ eligibility__evaluate <- function(
     if (any(!nzchar(scenarios)) || "historical" %in% scenarios) {
         cli::cli_abort("Scenarios must be non-empty future experiment IDs.")
     }
-    pool <- match.arg(pool)
+    checkmate::assert_flag(common)
     checkmate::assert_flag(include_optional_historical)
     # Four stages: catalog preparation, requirements, matching, and summary.
     prepared <- eligibility__catalog(catalog, identities)
@@ -560,5 +560,5 @@ eligibility__evaluate <- function(
         prepared$candidates,
         requirements
     )
-    eligibility__summarize(details, prepared$candidates, scenarios, pool)
+    eligibility__summarize(details, prepared$candidates, scenarios, common)
 }
