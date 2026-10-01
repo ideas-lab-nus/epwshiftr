@@ -7,7 +7,8 @@
 
 * Combine multiple locations and methods in the executed, locally cached README
   example. Keep the legacy migration guide specific to CRAN v0.1.4 and remove
-  the standalone San Francisco development script (#273).
+  the standalone San Francisco development script. Exclude development tools
+  from package builds (#273).
 
 * Batch recovery now distinguishes extraction methods and validation policies;
   method/period constraints are checked before discovery. Reuse model/method
