@@ -32,7 +32,7 @@ batch_pool_test__catalog <- function() {
 
 # Plan a small batch through the public entry point without any data transfer.
 batch_pool_test__plan <- function(
-    pool = "common",
+    common = TRUE,
     model = NULL,
     store = tempfile(),
     methods = c("original_morphing", "isimip3basd")
@@ -42,7 +42,7 @@ batch_pool_test__plan <- function(
         climate = shift_cmip6(
             model = model,
             scenarios = "ssp585",
-            pool = pool,
+            common = common,
             index_nodes = "https://example.org/esg-search"
         ),
         periods = list(mid = 2050L),
@@ -88,7 +88,7 @@ test_that("batch methods share Dataset discovery while keeping separate pools", 
     )
 
     store <- tempfile("per-method-receipt-")
-    batch <- batch_pool_test__plan("per_method", store = store)
+    batch <- batch_pool_test__plan(FALSE, store = store)
     expect_length(calls, 2L)
     expect_length(batch@meta$children, 4L)
     expect_identical(
@@ -111,9 +111,9 @@ test_that("batch methods share Dataset discovery while keeping separate pools", 
     # Receipt restoration and repeat planning reuse exactly the selected matrix.
     calls_before <- length(calls)
     restored <- shift_batch_get(batch@ids$batch_id, store = store)
-    repeated <- batch_pool_test__plan("per_method", store = store)
+    repeated <- batch_pool_test__plan(FALSE, store = store)
     expect_identical(restored@meta$manifest, batch@meta$manifest)
-    expect_identical(restored@meta$climate@pool, "per_method")
+    expect_identical(restored@meta$climate@common, FALSE)
     expect_identical(
         repeated@meta$discovery$selection,
         batch@meta$discovery$selection
@@ -140,17 +140,17 @@ test_that("per-method selection applies counts and explicit allowlists after cov
         availability__collect = function(...) catalog,
         .package = "epwshiftr"
     )
-    bounded <- batch_pool_test__plan("per_method", model = 1L)
+    bounded <- batch_pool_test__plan(FALSE, model = 1L)
     expect_setequal(bounded@meta$manifest$model, c("A", "C"))
     expect_equal(nrow(bounded@meta$manifest), 2L)
-    named <- batch_pool_test__plan("per_method", model = c("A", "C"))
+    named <- batch_pool_test__plan(FALSE, model = c("A", "C"))
     expect_identical(named@meta$manifest$model, c("A", "C"))
     expect_error(
-        batch_pool_test__plan("common", model = c("A", "C")),
+        batch_pool_test__plan(TRUE, model = c("A", "C")),
         "No common"
     )
     expect_error(
-        batch_pool_test__plan("per_method", model = c("A", "B", "missing")),
+        batch_pool_test__plan(FALSE, model = c("A", "B", "missing")),
         "lack complete coverage for any method"
     )
 
@@ -161,13 +161,13 @@ test_that("per-method selection applies counts and explicit allowlists after cov
     ) {
         candidates[source_id != "B"]
     }))
-    expect_error(batch_pool_test__plan("common"), "No common")
+    expect_error(batch_pool_test__plan(TRUE), "No common")
     expect_error(
-        batch_pool_test__plan("per_method", model = 2L),
+        batch_pool_test__plan(FALSE, model = 2L),
         "Only 1 complete"
     )
     expect_setequal(
-        batch_pool_test__plan("per_method")@meta$manifest$model,
+        batch_pool_test__plan(FALSE)@meta$manifest$model,
         c("A", "C")
     )
 })
@@ -213,7 +213,7 @@ test_that("shared catalog failover does not repeat failed nodes or mix identity 
             "https://first.example/esg-search",
             "https://second.example/esg-search"
         ),
-        pool = "per_method"
+        common = FALSE
     )
     selected <- shift_batch__discover_models(
         climate,
@@ -286,21 +286,25 @@ test_that("batch alternatives remain available after File coverage rejects the f
 test_that("default climate serialization keeps old identities and accepts old receipts", {
     climate <- shift_cmip6(model = NULL, scenarios = "ssp585")
     value <- shift__climate_spec_value(climate)
-    expect_false("pool" %in% names(value))
+    expect_false("common" %in% names(value))
     expect_identical(
         shift__climate_spec_value(shift__climate_from_spec(value)),
         value
     )
-    expect_identical(shift__climate_from_spec(value)@pool, "common")
-    climate@pool <- "per_method"
+    expect_identical(shift__climate_from_spec(value)@common, TRUE)
+    climate@common <- FALSE
     value <- shift__climate_spec_value(climate)
     roundtrip <- jsonlite::fromJSON(jsonlite::toJSON(
         value,
         auto_unbox = TRUE,
         null = "null"
     ))
-    expect_identical(shift__climate_from_spec(roundtrip)@pool, "per_method")
-    expect_error(shift_cmip6(scenarios = "ssp585", pool = "union"), "arg")
+    expect_identical(shift__climate_from_spec(roundtrip)@common, FALSE)
+    # A flag must reject strings, coercion, missing values, and vectors.
+    for (flag in list("common", 1, NA, NULL, c(TRUE, FALSE))) {
+        expect_error(shift_cmip6(scenarios = "ssp585", common = flag), "common")
+    }
+    expect_error(climate@common <- NA, "common")
 
     withr::local_options(list(
         epwshiftr.cmip6.availability = test_cmip6_availability,
@@ -324,8 +328,17 @@ test_that("default climate serialization keeps old identities and accepts old re
 })
 
 test_that("workflow configuration accepts and displays a per-method pool locally", {
+    # Calibration readiness is outside this configuration test; keep it
+    # independent of the developer's CDS credentials and remote service.
+    local_mocked_bindings(
+        shift_check = function(x, network = FALSE, ...) {
+            expect_false(network)
+            shift_diagnostics_empty()
+        },
+        .package = "epwshiftr"
+    )
     config <- epwshiftr_cli_shift_example_config()
-    config$climate$pool <- "per_method"
+    config$climate$common <- FALSE
     config$climate$model <- 1L
     config$methods <- c("original_morphing", "isimip3basd")
     config$transform <- NULL
@@ -345,6 +358,24 @@ test_that("workflow configuration accepts and displays a per-method pool locally
         "--config",
         path
     ))
+    expect_identical(result$status, 0L, info = result$error)
     expect_identical(result$result$status, "valid")
-    expect_identical(result$result$intent$Pool, "per_method")
+    expect_identical(result$result$intent$`Common models`, FALSE)
+})
+
+test_that("workflow configuration requires a boolean common flag", {
+    config <- epwshiftr_cli_shift_example_config()
+    for (value in list("common", "false", 1L, NA, c(TRUE, FALSE))) {
+        config$climate$common <- value
+        expect_error(
+            schema_validate(
+                SCHEMA_SHIFT_WORKFLOW_CONFIG,
+                config,
+                name = "config"
+            ),
+            "common"
+        )
+    }
+    config$climate$common <- NULL
+    expect_true(epwshiftr_cli_config_climate(config$climate)@common)
 })

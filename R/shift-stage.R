@@ -218,13 +218,11 @@ ShiftCmip6Spec <- S7::new_class(
         index_nodes = S7::new_property(S7::class_character),
         data_node = S7::new_property(S7::class_any, default = NULL),
         filters = S7::new_property(S7::class_list, default = list()),
-        pool = S7::new_property(S7::class_character, default = "common")
+        common = S7::new_property(S7::class_logical, default = TRUE)
     ),
     validator = function(self) {
-        if (
-            length(self@pool) != 1L || !self@pool %in% c("common", "per_method")
-        ) {
-            return("`pool` must be 'common' or 'per_method'.")
+        if (!checkmate::test_flag(self@common)) {
+            return("`common` must be TRUE or FALSE.")
         }
         if (
             !is.null(self@model) &&
@@ -1962,9 +1960,9 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 #'   model/member/grid identity; a character vector selects explicit
 #'   source/model IDs; `NULL` selects every compatible model. The default
 #'   selects three models.
-#' @param pool Batch candidate selection. `"common"` (default) uses the same
-#'   model/member/grid identities across methods. `"per_method"` selects
-#'   independently for each method: a numeric `model` requests that many models
+#' @param common A logical flag for batch candidate selection. `TRUE`
+#'   (default) uses the same model/member/grid identities across methods.
+#'   `FALSE` selects independently: a numeric `model` requests that many models
 #'   per method, `NULL` keeps all compatible models, and explicit IDs limit the
 #'   eligible pool. Every explicit model must qualify for at least one method.
 #'   Different pools are reported in batch diagnostics; their results confound
@@ -1993,9 +1991,9 @@ shift_cmip6 <- function(
     index_nodes = NULL,
     data_node = NULL,
     filters = list(),
-    pool = c("common", "per_method")
+    common = TRUE
 ) {
-    pool <- match.arg(pool)
+    checkmate::assert_flag(common)
     # Numeric model input is a bounded automatic selection request. Internally
     # it remains distinct from explicit model IDs so persistence and discovery
     # do not confuse a count with a CMIP6 source identifier.
@@ -2074,7 +2072,7 @@ shift_cmip6 <- function(
         index_nodes = index_nodes,
         data_node = data_node,
         filters = filters,
-        pool = pool
+        common = common
     )
 }
 
@@ -5496,8 +5494,8 @@ shift__climate_spec_value <- function(climate) {
     )
     # Omit the historical default so existing common-pool task hashes and
     # receipts remain valid. Only a different selection policy changes intent.
-    if (!identical(climate@pool, "common")) {
-        spec$pool <- climate@pool
+    if (!climate@common) {
+        spec$common <- climate@common
     }
     spec
 }

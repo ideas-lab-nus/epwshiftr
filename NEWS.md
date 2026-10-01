@@ -58,8 +58,8 @@
 
 ## New features
 
-* Added `pool = "per_method"` to `shift_cmip6()` for independent method-specific
-  model selection in future-weather batches. The default `"common"` policy
+* Added `common = FALSE` to `shift_cmip6()` for independent method-specific
+  model selection in future-weather batches. The default `common = TRUE`
   preserves shared model/member/grid identities. Batch discovery shares Dataset
   queries across methods and alternatives, checks File-year coverage before
   selection, persists the chosen matrix, and reports differing method pools

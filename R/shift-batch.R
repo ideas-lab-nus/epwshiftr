@@ -789,11 +789,11 @@ shift_batch__discover_candidates <- function(
         )
     }
     common <- Reduce(intersect, lapply(by_transform, `[[`, "identity"))
-    if (identical(climate@pool, "common")) {
+    if (climate@common) {
         if (!length(common)) {
             cli::cli_abort(c(
                 "No common CMIP6 model/member/grid identity satisfies every selected weather method.",
-                "i" = "Inspect method requirements or explicitly choose `pool = 'per_method'`."
+                "i" = "Inspect method requirements or explicitly choose `common = FALSE`."
             ))
         }
         identities <- data.table::copy(by_transform[[1L]][identity %in% common])
@@ -907,7 +907,7 @@ shift_batch__select_models <- function(identities, climate, label) {
         }
     } else {
         missing <- setdiff(climate@model, identities$source_id)
-        if (length(missing) && identical(climate@pool, "common")) {
+        if (length(missing) && climate@common) {
             cli::cli_abort(
                 "Explicit CMIP6 model(s) lack a common complete identity: {.val {missing}}."
             )
@@ -1359,7 +1359,7 @@ shift_batch__diagnostics <- function(
                 "warning",
                 "batch_method_pools_differ",
                 "Methods use different CMIP6 model/member/grid pools.",
-                action = "Inspect shift_cases() before comparing methods, or use pool = 'common'."
+                action = "Inspect shift_cases() before comparing methods, or use common = TRUE."
             )
             data.table::set(warning, j = "method", value = "")
             data.table::set(warning, j = "model", value = "")

@@ -13,7 +13,7 @@
       "keys": {
         "type": "named",
         "must.include": ["provider", "model", "scenarios"],
-        "subset.of": ["provider", "model", "scenarios", "member", "grid", "frequency", "table", "activity", "index_nodes", "data_node", "filters", "pool"]
+        "subset.of": ["provider", "model", "scenarios", "member", "grid", "frequency", "table", "activity", "index_nodes", "data_node", "filters", "common"]
       },
       "fields": {
         "provider": {"check": {"kind": "choice", "choices": ["cmip6"]}},
@@ -41,7 +41,7 @@
             {"check": {"kind": "list"}, "keys": {"type": "named"}, "rest": {"check": {"kind": "string"}}}
           ]
         },
-        "pool": {"check": {"kind": "choice", "choices": ["common", "per_method"]}},
+        "common": {"check": {"kind": "flag"}},
         "activity": {"check": {"kind": "string"}},
         "index_nodes": {"check": {"kind": "character", "any.missing": false, "null.ok": true}},
         "data_node": {"check": {"kind": "string", "null.ok": true}},

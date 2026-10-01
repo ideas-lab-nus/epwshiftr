@@ -214,7 +214,7 @@ cli_shift__config_intent <- function(config) {
                 sprintf("%d compatible models", climate@n_models)
             }
         },
-        Pool = climate@pool,
+        `Common models` = climate@common,
         Scenarios = paste(climate@scenarios, collapse = ", "),
         Periods = shift__ui_periods(shift__periods_from_input(config$periods)),
         Reference = shift__format_reference(reference),

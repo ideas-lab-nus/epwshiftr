@@ -21,7 +21,7 @@ shift_batch__discover_models <- function(
         kind = "discovery",
         total = length(transforms),
         target_models = target,
-        pool = climate@pool,
+        common = climate@common,
         site = site,
         scenarios = climate@scenarios,
         periods = shift__ui_periods(periods)
@@ -61,7 +61,7 @@ shift_batch__discover_models <- function(
                 selected_models = result$identities$source_id
             ))
             reporter$operation_completed(
-                if (identical(climate@pool, "common")) {
+                if (climate@common) {
                     sprintf(
                         "%d GCM(s) selected with complete coverage across all %d method(s)",
                         nrow(result$identities),
@@ -231,7 +231,7 @@ shift_batch__discovery_lines <- function(state, width, motion, frame) {
             )
         )
     }
-    pool_status <- if (identical(batch$pool, "per_method")) {
+    pool_status <- if (identical(batch$common, FALSE)) {
         row("Pool", "Independent selection for each method")
     } else {
         row(

@@ -580,7 +580,7 @@ epwshiftr_cli_config_climate <- function(config) {
             default = NULL
         ),
         filters = epwshiftr_cli_config_named_list(config$filters),
-        pool = epwshiftr_cli_config_string(config$pool, default = "common")
+        common = epwshiftr_cli_config_flag(config$common, default = TRUE)
     )
 }
 
