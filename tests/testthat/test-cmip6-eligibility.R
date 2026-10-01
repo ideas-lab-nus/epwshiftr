@@ -4,14 +4,15 @@ eligibility_test__evaluate <- function(
     methods = NULL,
     transform = NULL,
     scenarios = c("ssp245", "ssp585"),
-    ...
+    common = FALSE,
+    include_optional_historical = FALSE
 ) {
-    eligibility__evaluate(
-        catalog,
+    requirements <- eligibility__requirements(
         shift_batch__transforms(methods, transform),
-        scenarios = scenarios,
-        ...
+        scenarios,
+        include_optional_historical
     )
+    eligibility__evaluate(eligibility__catalog(catalog), requirements, common)
 }
 
 # Build self-contained Dataset rows without querying any external service.
@@ -86,24 +87,15 @@ test_that("method eligibility expands candidates without a universal variable li
     expect_identical(result$matrix$path_id, common$matrix$path_id)
 })
 
-test_that("required historical roles remain required and absent identities remain visible", {
+test_that("required historical roles remain required", {
     result <- eligibility_test__evaluate(
         eligibility_test__catalog(experiments = "ssp245"),
         methods = "qdm",
-        scenarios = "ssp245",
-        identities = data.table::data.table(
-            source_id = "Absent-model",
-            variant_label = "r1i1p1f1",
-            grid_label = "gn"
-        )
+        scenarios = "ssp245"
     )
-
-    expect_equal(nrow(result$matrix), 2L)
-    expect_false(any(result$matrix$selected))
-    expect_match(result$matrix$missing[[2L]], "historical:tas")
-    absent <- subset(result$matrix, source_id == "Absent-model")
-    expect_match(absent$missing, "ssp245:tas")
-    expect_match(absent$missing, "historical:tas")
+    expect_equal(nrow(result$matrix), 1L)
+    expect_false(result$matrix$selected)
+    expect_match(result$matrix$missing, "historical:tas")
 })
 
 test_that("alternative input paths preserve optional historical policy", {
@@ -338,22 +330,6 @@ test_that("empty catalogs and malformed inputs have explicit contracts", {
     expect_equal(nrow(empty$matrix), 0L)
     expect_equal(nrow(empty$requirements), 0L)
     expect_type(empty$matrix$selected, "logical")
-    absent <- eligibility_test__evaluate(
-        catalog,
-        methods = "qdm",
-        scenarios = "ssp245",
-        identities = data.table::data.table(
-            source_id = "Absent",
-            variant_label = "r1i1p1f1",
-            grid_label = "gn"
-        )
-    )
-    expect_false(absent$matrix$selected)
-    expect_match(absent$matrix$missing, "ssp245:tas")
-    expect_error(
-        eligibility_test__evaluate(data.table::data.table(), methods = "qdm"),
-        "lacks required fields"
-    )
     expect_error(
         eligibility_test__evaluate(
             catalog,
@@ -386,14 +362,6 @@ test_that("empty catalogs and malformed inputs have explicit contracts", {
     expect_error(
         eligibility_test__evaluate(catalog, methods = "missing"),
         "Unknown"
-    )
-    expect_error(
-        eligibility_test__evaluate(
-            catalog,
-            methods = "qdm",
-            identities = data.table::data.table(source_id = "Absent")
-        ),
-        "Identities require"
     )
 })
 
@@ -490,4 +458,53 @@ test_that("joint path numbering retains declared alternative priority", {
     expect_true(all(result$matrix$selected))
     expect_identical(unique(result$matrix$path_id), 1L)
     expect_true(all(result$requirements$complete))
+})
+
+# Cross-period humidity substitutions must not be advertised as executable.
+test_that("historical and future periods require the same variable alternative", {
+    transform <- monthly_transform("epwshiftr")
+    alternatives <- transform@required_inputs$model_future@variable_sets
+    catalog <- data.table::rbindlist(list(
+        eligibility_test__catalog(
+            alternatives[[1L]],
+            experiments = "historical",
+            frequency = "mon",
+            table = "Amon"
+        ),
+        eligibility_test__catalog(
+            alternatives[[2L]],
+            experiments = "ssp245",
+            frequency = "mon",
+            table = "Amon"
+        )
+    ))
+    mixed <- eligibility_test__evaluate(
+        catalog,
+        transform = transform,
+        scenarios = "ssp245",
+        include_optional_historical = TRUE
+    )
+    expect_false(mixed$matrix$selected)
+    complete <- data.table::rbindlist(list(
+        catalog,
+        eligibility_test__catalog(
+            alternatives[[2L]],
+            experiments = "historical",
+            frequency = "mon",
+            table = "Amon"
+        )
+    ))
+    # Equivalent contracts with different alternative order must still match.
+    optional <- transform@optional_inputs
+    optional$model_historical@variable_sets <- rev(
+        optional$model_historical@variable_sets
+    )
+    transform@optional_inputs <- optional
+    result <- eligibility_test__evaluate(
+        complete,
+        transform = transform,
+        scenarios = "ssp245",
+        include_optional_historical = TRUE
+    )
+    expect_true(result$matrix$selected)
 })

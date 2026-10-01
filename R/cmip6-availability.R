@@ -333,67 +333,8 @@ availability__index_node <- function(index_node) {
 
 # Attach the chosen future input specification to each public method row.
 # Full requirement diagnostics remain internal; rejected rows retain missing reasons.
-availability__method_summary <- function(
-    datasets,
-    transforms,
-    scenarios,
-    requirements,
-    common,
-    index_node,
-    source,
-    member,
-    grid
-) {
-    fields <- c(
-        "source_id",
-        "experiment_id",
-        "grid_label",
-        "variable_id",
-        "frequency",
-        "table_id"
-    )
-    catalog <- data.table::as.data.table(stats::setNames(
-        lapply(fields, function(field) {
-            availability__character_column(datasets, field)
-        }),
-        fields
-    ))
-    data.table::set(
-        catalog,
-        j = "variant_label",
-        value = availability__coalesce_character(
-            availability__character_column(datasets, "variant_label"),
-            availability__character_column(datasets, "member_id")
-        )
-    )
+availability__method_summary <- function(evaluated, index_node) {
     identity <- c("source_id", "variant_label", "grid_label")
-    valid <- Reduce(
-        `&`,
-        lapply(identity, function(field) {
-            !is.na(catalog[[field]]) & nzchar(catalog[[field]])
-        })
-    )
-    # Malformed provider identities cannot be joined. Keep valid identities with
-    # missing frequencies/tables so they are reported as rejected candidates.
-    valid <- valid &
-        catalog$experiment_id %in% unique(requirements$pairs$experiment_id) &
-        catalog$variable_id %in% unique(requirements$pairs$variable_id)
-    if (!is.null(source)) {
-        valid <- valid & catalog$source_id %in% source
-    }
-    if (!is.null(member)) {
-        valid <- valid & catalog$variant_label %in% member
-    }
-    if (!is.null(grid)) {
-        valid <- valid & catalog$grid_label %in% grid
-    }
-    evaluated <- eligibility__evaluate(
-        catalog[valid],
-        transforms,
-        scenarios,
-        common = common,
-        requirements = requirements
-    )
     role <- NULL
     details <- evaluated$requirements[
         role == "model_future",
@@ -498,6 +439,8 @@ availability__method_summary <- function(
 #' Dataset availability does not establish requested-year coverage or scientific
 #' quality. Incomplete identities found in the shared catalog remain visible.
 #' Entirely absent identities cannot be inferred from an empty catalog.
+#' Future and historical model inputs must share a variable combination,
+#' matching the requirements of the execution resolver.
 #'
 #' @examples
 #' \dontrun{
@@ -668,17 +611,18 @@ shift_cmip6_avail <- function(
     )
     datasets <- availability__collect(request, store = store, ui = ui)
     if (method_query) {
-        return(availability__method_summary(
-            datasets,
-            transforms,
-            scenarios,
-            requirements,
-            common,
-            index_node,
-            source,
-            member,
-            grid
-        ))
+        catalog <- eligibility__catalog(datasets)
+        if (!is.null(source)) {
+            catalog <- catalog[source_id %in% source]
+        }
+        if (!is.null(member)) {
+            catalog <- catalog[variant_label %in% member]
+        }
+        if (!is.null(grid)) {
+            catalog <- catalog[grid_label == grid]
+        }
+        evaluated <- eligibility__evaluate(catalog, requirements, common)
+        return(availability__method_summary(evaluated, index_node))
     }
     availability__summarize(
         datasets,
