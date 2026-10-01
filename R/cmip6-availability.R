@@ -1,23 +1,6 @@
-# Build the shared Dataset request used by public discovery and batch plans.
-# Variable-specific frequency and table checks remain in the local reduction.
-availability__request <- function(
-    variables,
-    frequency,
-    experiments,
-    source,
-    member,
-    grid,
-    tables,
-    activity,
-    historical_activity,
-    index_node,
-    data_node,
-    filters
-) {
-    activities <- unique(c(
-        activity,
-        if ("historical" %in% experiments) historical_activity
-    ))
+# Apply Dataset filter precedence shared by public and batch discovery.
+# Request identity is supplied directly to shift_request() by each caller.
+availability__filters <- function(filters, selections) {
     # Core selections have one owner in both discovery entry points.
     filters[c(
         "project",
@@ -30,28 +13,16 @@ availability__request <- function(
         "type",
         "table_id"
     )] <- NULL
-    query_filters <- utils::modifyList(
+    utils::modifyList(
         filters,
-        shift__compact_list(list(
-            activity_id = activities,
-            table_id = if (is.null(tables)) NULL else unique(unname(tables)),
-            grid_label = grid,
-            data_node = data_node,
-            latest = TRUE,
-            replica = FALSE,
-            fields = AVAILABILITY__DATASET_FIELDS
-        ))
-    )
-    shift_request(
-        provider = "esgf",
-        project = "CMIP6",
-        source = source,
-        experiment = experiments,
-        variant = member,
-        variables = variables,
-        frequency = frequency,
-        filters = query_filters,
-        options = list(index_node = index_node)
+        c(
+            shift__compact_list(selections),
+            list(
+                latest = TRUE,
+                replica = FALSE,
+                fields = AVAILABILITY__DATASET_FIELDS
+            )
+        )
     )
 }
 
@@ -628,19 +599,28 @@ shift_cmip6_avail <- function(
             if (include_historical) "historical"
         ))
     }
-    request <- availability__request(
+    query_filters <- availability__filters(
+        filters,
+        list(
+            activity_id = unique(c(
+                activity,
+                if ("historical" %in% experiments) historical_activity
+            )),
+            table_id = if (is.null(tables)) NULL else unique(unname(tables)),
+            grid_label = grid,
+            data_node = data_node
+        )
+    )
+    request <- shift_request(
+        provider = "esgf",
+        project = "CMIP6",
+        source = source,
+        experiment = experiments,
+        variant = member,
         variables = query_variables,
         frequency = query_frequencies,
-        experiments = experiments,
-        source = source,
-        member = member,
-        grid = grid,
-        tables = tables,
-        activity = activity,
-        historical_activity = historical_activity,
-        index_node = index_node,
-        data_node = data_node,
-        filters = filters
+        filters = query_filters,
+        options = list(index_node = index_node)
     )
     datasets <- availability__collect(request, store = store, ui = ui)
     if (method_query) {

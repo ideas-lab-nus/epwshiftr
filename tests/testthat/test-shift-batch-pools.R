@@ -524,6 +524,93 @@ test_that("public and batch discovery agree on cross-period variable alternative
     )
 })
 
+test_that("public and batch discovery apply the same Dataset filter precedence", {
+    requests <- list()
+    local_mocked_bindings(
+        availability__collect = function(request, ...) {
+            requests[[length(requests) + 1L]] <<- request
+            batch_pool_test__catalog()
+        },
+        .package = "epwshiftr"
+    )
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = NULL,
+        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    ))
+    # Explicit selections override conflicting filters without dropping extras.
+    filters <- list(
+        project = "CMIP5",
+        source_id = "Other",
+        experiment_id = "ssp126",
+        variant_label = "r2i1p1f1",
+        member_id = "r2i1p1f1",
+        variable_id = "pr",
+        frequency = "mon",
+        table_id = "Amon",
+        type = "File",
+        activity_id = "Other",
+        grid_label = "gr",
+        data_node = "other.example",
+        latest = FALSE,
+        replica = TRUE,
+        fields = "id",
+        institution_id = "Example"
+    )
+    original <- filters
+    node <- "https://example.org/esg-search"
+    shift_cmip6_avail(
+        methods = "qdm",
+        scenarios = "ssp585",
+        source = "B",
+        member = "r1i1p1f1",
+        grid = "gn",
+        data_node = "data.example",
+        index_node = node,
+        filters = filters
+    )
+    transforms <- shift_batch__transforms(methods = "qdm")
+    references <- lapply(
+        transforms,
+        shift_batch__references,
+        reference = historical_reference(1995:2014),
+        calibration = shift_era5(1995:2014)
+    )
+    shift_batch__discover_candidates(
+        shift_cmip6(
+            model = "B",
+            scenarios = "ssp585",
+            member = "r1i1p1f1",
+            grid = "gn",
+            data_node = "data.example",
+            index_nodes = node,
+            filters = filters
+        ),
+        transforms,
+        shift__periods_from_years(2050L),
+        references,
+        tempfile(),
+        shift_ui(progress = "none")
+    )
+    expect_length(requests, 2L)
+    expect_identical(requests[[1L]]@meta, requests[[2L]]@meta)
+    expect_identical(filters, original)
+    expect_identical(requests[[1L]]@meta$source, "B")
+    expect_identical(requests[[1L]]@meta$variables, "tas")
+    expect_identical(requests[[1L]]@meta$frequency, "day")
+    expect_identical(
+        requests[[1L]]@meta$filters,
+        list(
+            activity_id = c("ScenarioMIP", "CMIP"),
+            grid_label = "gn",
+            data_node = "data.example",
+            latest = TRUE,
+            replica = FALSE,
+            fields = AVAILABILITY__DATASET_FIELDS,
+            institution_id = "Example"
+        )
+    )
+})
+
 test_that("cost ranking retains the least fragmented grid before selecting models", {
     catalog <- data.table::CJ(
         source_id = c("A", "B"),

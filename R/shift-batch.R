@@ -491,28 +491,38 @@ shift_batch__candidate_reader <- function(
             frequency_rank = 1L
         )]
     }
+    # All nodes receive the same selection; only the endpoint changes on failover.
+    variables <- sort(unique(requirements$pairs$variable_id))
+    frequencies <- sort(unique(requirements$lookup$frequency))
+    experiments <- sort(unique(requirements$pairs$experiment_id))
+    source <- sort(climate@model)
+    member <- sort(member)
+    filters <- availability__filters(
+        climate@filters,
+        list(
+            activity_id = unique(c(
+                climate@activity,
+                if ("historical" %in% experiments) "CMIP"
+            )),
+            grid_label = climate@grid,
+            data_node = climate@data_node
+        )
+    )
     cache <- list()
     function(transform_key, alternative, index_node) {
         if (is.null(cache[[index_node]])) {
             cache[[index_node]] <<- tryCatch(
                 {
-                    request <- availability__request(
-                        variables = sort(unique(
-                            requirements$pairs$variable_id
-                        )),
-                        frequency = sort(unique(requirements$lookup$frequency)),
-                        experiments = sort(unique(
-                            requirements$pairs$experiment_id
-                        )),
-                        source = sort(climate@model),
-                        member = sort(member),
-                        grid = climate@grid,
-                        tables = NULL,
-                        activity = climate@activity,
-                        historical_activity = "CMIP",
-                        index_node = index_node,
-                        data_node = climate@data_node,
-                        filters = climate@filters
+                    request <- shift_request(
+                        provider = "esgf",
+                        project = "CMIP6",
+                        source = source,
+                        experiment = experiments,
+                        variant = member,
+                        variables = variables,
+                        frequency = frequencies,
+                        filters = filters,
+                        options = list(index_node = index_node)
                     )
                     catalog <- eligibility__catalog(
                         availability__collect(request, store = store, ui = ui)

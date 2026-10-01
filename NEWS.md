@@ -1,7 +1,8 @@
 # epwshiftr (development version)
 
 * Reused method eligibility and normalized catalogs across batch alternatives,
-  and ranked source-file costs before choosing a model's member/grid (#271).
+  ranked source-file costs before choosing a model's member/grid, and simplified
+  request construction while retaining shared catalog filter rules (#271).
 
 * Aligned method availability with executable historical/future variable
   combinations and reused compiled requirements for catalog matching (#269).
