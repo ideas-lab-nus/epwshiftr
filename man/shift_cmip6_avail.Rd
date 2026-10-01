@@ -22,7 +22,7 @@ shift_cmip6_avail(
   ui = NULL,
   methods = NULL,
   transform = NULL,
-  pool = c("per_method", "common"),
+  common = FALSE,
   include_optional_historical = FALSE
 )
 }
@@ -73,8 +73,9 @@ Ambiguous keys require an explicit \code{transform}.}
 \code{\link[=monthly_transform]{monthly_transform()}}, \code{\link[=daily_transform]{daily_transform()}}, or \code{\link[=hourly_transform]{hourly_transform()}}. Use
 this to specify method options, such as the variables adjusted by morphing.}
 
-\item{pool}{For method queries, \code{"per_method"} selects candidates separately
-for each method; \code{"common"} requires eligibility for every selected method.}
+\item{common}{For method queries, a logical flag. \code{FALSE} (default)
+selects candidates separately for each method; \code{TRUE} requires eligibility
+for every selected method.}
 
 \item{include_optional_historical}{For method queries, include historical
 model inputs that the method declares optional. Mandatory inputs are always
@@ -87,7 +88,7 @@ the existing \code{complete}, coverage counts, \code{missing}, \code{frequency_s
 \code{table} columns. Method queries return one row per identity/method/scenario:
 \code{catalog_eligible} describes that scenario including required history;
 \code{method_eligible} requires a single input path across all requested scenarios;
-\code{common_eligible} requires all methods; \code{selected} applies \code{pool}.
+\code{common_eligible} requires all methods; \code{selected} applies \code{common}.
 \code{missing} explains rejections. List columns \code{variables}, \code{frequency_spec},
 and \code{table} describe the chosen future input path. \code{transform_key}
 distinguishes method configurations. \code{period_coverage}, \code{readability},

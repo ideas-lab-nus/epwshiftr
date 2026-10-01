@@ -72,6 +72,7 @@ test_that("method queries share a union catalog and keep rejected identities", {
     expect_s3_class(result, "data.table")
     expect_equal(nrow(result), 4L)
     expect_equal(sum(result$selected), 3L)
+    expect_identical(unique(result$common), FALSE)
     rejected <- result[
         source_id == "Temperature-only" & method == "sobie_curry"
     ]
@@ -86,9 +87,10 @@ test_that("method queries share a union catalog and keep rejected identities", {
     common <- shift_cmip6_avail(
         methods = c("qdm", "sobie_curry"),
         scenarios = "ssp245",
-        pool = "common"
+        common = TRUE
     )
     expect_equal(sum(common$selected), 2L)
+    expect_identical(unique(common$common), TRUE)
     expect_identical(result$method_eligible, common$method_eligible)
     expect_identical(unique(result$period_coverage), "not_checked")
     expect_identical(unique(result$readability), "not_checked")
@@ -201,8 +203,15 @@ test_that("invalid method combinations fail before querying", {
         "Unknown weather method"
     )
     expect_error(shift_cmip6_avail(methods = c("qdm", "qdm")), "unique")
+    # Reject coercion, missing values, and multiple choices before any query.
+    for (value in list(NA, NULL, 1, "common", c(TRUE, FALSE))) {
+        expect_error(
+            shift_cmip6_avail(methods = "qdm", common = value),
+            "common"
+        )
+    }
     expect_error(
-        shift_cmip6_avail(variables = "tas", pool = "common"),
+        shift_cmip6_avail(variables = "tas", common = TRUE),
         "require"
     )
 })
@@ -299,7 +308,7 @@ test_that("shared method discovery reuses the existing HTTP cache across order a
     common <- shift_cmip6_avail(
         methods = c("sobie_curry", "qdm"),
         scenarios = c("ssp585", "ssp245"),
-        pool = "common",
+        common = TRUE,
         index_node = "https://example.org",
         store = tempfile("method-common-"),
         ui = shift_ui(progress = "none")
