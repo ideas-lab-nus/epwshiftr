@@ -43,10 +43,9 @@ eligibility__empty <- function() {
     )
 }
 
-# Stage 1: normalize and deduplicate catalog metadata, then assign stable
-# model/member/grid identities. Only compact copies are modified by reference.
-eligibility__catalog <- function(catalog, identities = NULL) {
-    checkmate::assert_data_frame(catalog)
+# Normalize one provider catalog without copying unrelated Dataset columns.
+# Keep incomplete partitions as rejections, but discard unusable identities.
+eligibility__catalog <- function(datasets) {
     fields <- c(
         "source_id",
         "experiment_id",
@@ -55,60 +54,28 @@ eligibility__catalog <- function(catalog, identities = NULL) {
         "frequency",
         "table_id"
     )
-    absent <- setdiff(fields, names(catalog))
-    if (!any(c("variant_label", "member_id") %in% names(catalog))) {
-        absent <- c(absent, "variant_label or member_id")
-    }
-    if (length(absent)) {
-        cli::cli_abort(c(
-            "The Dataset catalog lacks required fields.",
-            "x" = paste(absent, collapse = ", ")
-        ))
-    }
-    member <- availability__coalesce_character(
-        availability__character_column(catalog, "variant_label"),
-        availability__character_column(catalog, "member_id")
-    )
     catalog <- data.table::as.data.table(stats::setNames(
-        lapply(fields, function(field) as.character(catalog[[field]])),
+        lapply(fields, function(field) {
+            availability__character_column(datasets, field)
+        }),
         fields
     ))
-    data.table::set(catalog, j = "variant_label", value = member)
-    catalog <- unique(catalog)
-    fields <- c("source_id", "variant_label", "grid_label")
-    candidates <- unique(catalog[, fields, with = FALSE])
-    # Explicitly requested but absent identities remain visible as rejections.
-    if (!is.null(identities)) {
-        checkmate::assert_data_frame(identities)
-        if (!all(fields %in% names(identities))) {
-            cli::cli_abort(
-                "Identities require source_id, variant_label, and grid_label."
-            )
-        }
-        identities <- data.table::as.data.table(stats::setNames(
-            lapply(fields, function(field) as.character(identities[[field]])),
-            fields
-        ))
-        candidates <- unique(data.table::rbindlist(list(
-            candidates,
-            identities
-        )))
-    }
-    for (field in fields) {
-        checkmate::assert_character(candidates[[field]], any.missing = FALSE)
-        if (any(!nzchar(candidates[[field]]))) {
-            cli::cli_abort(
-                "Identity field {.val {field}} contains an empty value."
-            )
-        }
-    }
-    data.table::setorderv(candidates, fields)
     data.table::set(
-        candidates,
-        j = "identity_id",
-        value = seq_len(nrow(candidates))
+        catalog,
+        j = "variant_label",
+        value = availability__coalesce_character(
+            availability__character_column(datasets, "variant_label"),
+            availability__character_column(datasets, "member_id")
+        )
     )
-    list(catalog = candidates[catalog, on = fields], candidates = candidates)
+    identity <- c("source_id", "variant_label", "grid_label")
+    valid <- Reduce(
+        `&`,
+        lapply(identity, function(field) {
+            !is.na(catalog[[field]]) & nzchar(catalog[[field]])
+        })
+    )
+    unique(catalog[valid])
 }
 
 # Stage 2: flatten method contracts once, then expand alternatives and scenarios
@@ -118,6 +85,16 @@ eligibility__requirements <- function(
     scenarios,
     include_optional_historical
 ) {
+    checkmate::assert_character(
+        scenarios,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE
+    )
+    if (any(!nzchar(scenarios)) || "historical" %in% scenarios) {
+        cli::cli_abort("Scenarios must be non-empty future experiment IDs.")
+    }
+    checkmate::assert_flag(include_optional_historical)
     compiled <- vector("list", length(transforms))
     for (key in names(transforms)) {
         transform <- transforms[[key]]
@@ -137,8 +114,16 @@ eligibility__requirements <- function(
             )
         }
         role_rows <- list()
+        # The execution resolver pins one variable combination across model
+        # periods. Match alternatives by variables, not their declaration order.
         alternatives <- lapply(requirements, function(requirement) {
-            seq_along(requirement@variable_sets)
+            vapply(
+                requirement@variable_sets,
+                function(variables) {
+                    paste(sort(as.character(variables)), collapse = "\r")
+                },
+                character(1L)
+            )
         })
         for (role in names(requirements)) {
             requirement <- requirements[[role]]
@@ -175,11 +160,26 @@ eligibility__requirements <- function(
                 calendars = rep(list(requirement@calendars), length(variables))
             )
         }
-        # Preserve the declared first-role-fast ordering of complete input paths.
-        paths <- do.call(
-            data.table::CJ,
-            c(rev(alternatives), list(sorted = FALSE))
+        paths <- data.table::data.table(
+            model_future = seq_along(alternatives$model_future)
         )
+        for (role in setdiff(names(alternatives), "model_future")) {
+            data.table::set(
+                paths,
+                j = role,
+                value = match(
+                    alternatives$model_future,
+                    alternatives[[role]]
+                )
+            )
+        }
+        paths <- paths[stats::complete.cases(paths)]
+        if (!nrow(paths)) {
+            cli::cli_abort(paste(
+                "Future and historical inputs must share",
+                "a variable combination supported by the execution resolver."
+            ))
+        }
         data.table::set(paths, j = "path_id", value = seq_len(nrow(paths)))
         path_roles <- data.table::melt(
             paths,
@@ -315,14 +315,17 @@ eligibility__match <- function(catalog, candidates, requirements) {
         list(coverage = data.table::uniqueN(experiment_id)),
         by = c(group, "frequency", "frequency_rank", "table_id")
     ]
+    # Map the small frequency vocabulary once, then index all score rows.
+    frequencies <- unique(scores$frequency)
     conventional <- vapply(
-        scores$frequency,
+        frequencies,
         function(value) {
             table <- shift__cmip6_table_id(value)
             if (is.null(table)) NA_character_ else table
         },
         character(1L)
     )
+    conventional <- conventional[match(scores$frequency, frequencies)]
     scores[,
         preferred := as.integer(is.na(conventional) | table_id != conventional)
     ]
@@ -506,59 +509,33 @@ eligibility__select <- function(future, scenarios, common) {
     matrix
 }
 
-# Internal catalog reducer for online discovery and cached-result reuse. The
-# caller resolves registered transforms; this layer never searches or reads
-# weather values and deliberately exposes no separate public offline API.
-eligibility__evaluate <- function(
-    catalog,
-    transforms,
-    scenarios,
-    common = FALSE,
-    include_optional_historical = FALSE,
-    identities = NULL,
-    requirements = NULL
-) {
-    checkmate::assert_list(transforms, min.len = 1L, names = "unique")
-    if (
-        !all(vapply(
-            transforms,
-            function(transform) {
-                S7::S7_inherits(transform, WeatherTransformSpec)
-            },
-            logical(1L)
-        ))
-    ) {
-        cli::cli_abort(
-            "Transforms must contain resolved WeatherTransformSpec objects."
-        )
-    }
-    checkmate::assert_character(
-        scenarios,
-        any.missing = FALSE,
-        min.len = 1L,
-        unique = TRUE
-    )
-    if (any(!nzchar(scenarios)) || "historical" %in% scenarios) {
-        cli::cli_abort("Scenarios must be non-empty future experiment IDs.")
-    }
+# Match a normalized catalog against already compiled requirements. Both
+# discovery entry points reuse this reducer; it never fetches metadata or values.
+eligibility__evaluate <- function(catalog, requirements, common = FALSE) {
     checkmate::assert_flag(common)
-    checkmate::assert_flag(include_optional_historical)
-    # Four stages: catalog preparation, requirements, matching, and summary.
-    prepared <- eligibility__catalog(catalog, identities)
-    if (is.null(requirements)) {
-        requirements <- eligibility__requirements(
-            transforms,
-            scenarios,
-            include_optional_historical
-        )
-    }
-    if (!nrow(prepared$candidates)) {
+    experiment_id <- variable_id <- role <- NULL
+    pairs <- requirements$pairs
+    catalog <- catalog[
+        experiment_id %in%
+            pairs$experiment_id &
+            variable_id %in% pairs$variable_id
+    ]
+    fields <- c("source_id", "variant_label", "grid_label")
+    candidates <- unique(catalog[, fields, with = FALSE])
+    if (!nrow(candidates)) {
         return(eligibility__empty())
     }
+    data.table::setorderv(candidates, fields)
+    data.table::set(
+        candidates,
+        j = "identity_id",
+        value = seq_len(nrow(candidates))
+    )
     details <- eligibility__match(
-        prepared$catalog,
-        prepared$candidates,
+        candidates[catalog, on = fields],
+        candidates,
         requirements
     )
-    eligibility__summarize(details, prepared$candidates, scenarios, common)
+    scenarios <- unique(pairs[role == "model_future", experiment_id])
+    eligibility__summarize(details, candidates, scenarios, common)
 }

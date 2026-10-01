@@ -108,6 +108,8 @@ multiple HTTP requests. No File catalog or NetCDF values are downloaded.
 Dataset availability does not establish requested-year coverage or scientific
 quality. Incomplete identities found in the shared catalog remain visible.
 Entirely absent identities cannot be inferred from an empty catalog.
+Future and historical model inputs must share a variable combination,
+matching the requirements of the execution resolver.
 }
 \examples{
 \dontrun{

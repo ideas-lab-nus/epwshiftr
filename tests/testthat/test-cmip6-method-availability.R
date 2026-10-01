@@ -317,3 +317,53 @@ test_that("shared method discovery reuses the existing HTTP cache across order a
     expect_length(calls, cold_requests)
     expect_false(any(grepl("type=File", calls, fixed = TRUE)))
 })
+
+test_that("public method discovery rejects incompatible cross-period alternatives", {
+    transform <- monthly_transform("epwshiftr")
+    alternatives <- transform@required_inputs$model_future@variable_sets
+    catalog <- data.table::rbindlist(list(
+        method_availability_test__datasets(
+            alternatives[[1L]],
+            experiments = "historical",
+            frequency = "mon",
+            table = "Amon"
+        ),
+        method_availability_test__datasets(
+            alternatives[[2L]],
+            experiments = "ssp245",
+            frequency = "mon",
+            table = "Amon"
+        )
+    ))
+    local_mocked_bindings(
+        availability__collect = function(...) catalog,
+        .package = "epwshiftr"
+    )
+    result <- shift_cmip6_avail(
+        transform = transform,
+        scenarios = "ssp245",
+        include_optional_historical = TRUE
+    )
+    expect_false(result$selected)
+    expect_match(result$missing, "historical:|ssp245:")
+})
+
+test_that("frequency table defaults are resolved once per unique frequency", {
+    original <- shift__cmip6_table_id
+    calls <- character()
+    catalog <- method_availability_test__datasets(
+        source = paste0("Model-", 1:100)
+    )
+    local_mocked_bindings(
+        availability__collect = function(...) catalog,
+        shift__cmip6_table_id = function(frequency) {
+            calls <<- c(calls, frequency)
+            original(frequency)
+        },
+        .package = "epwshiftr"
+    )
+    result <- shift_cmip6_avail(methods = "qdm", scenarios = "ssp245")
+    expect_equal(nrow(result), 100L)
+    expect_true(all(result$selected))
+    expect_identical(calls, "day")
+})

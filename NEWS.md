@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Aligned method availability with executable historical/future variable
+  combinations and reused compiled requirements for catalog matching (#269).
+
 * Fixed manifest inspection tests for DuckDB 1.5.6 by releasing fixture write
   connections before reopening databases read-only. Added coverage for rejected
   writes through read-only connections (#269).
