@@ -18,7 +18,18 @@ availability__request <- function(
         activity,
         if ("historical" %in% experiments) historical_activity
     ))
-    filters$table_id <- NULL
+    # Core selections have one owner in both discovery entry points.
+    filters[c(
+        "project",
+        "source_id",
+        "experiment_id",
+        "variant_label",
+        "member_id",
+        "variable_id",
+        "frequency",
+        "type",
+        "table_id"
+    )] <- NULL
     query_filters <- utils::modifyList(
         filters,
         shift__compact_list(list(
@@ -590,16 +601,6 @@ shift_cmip6_avail <- function(
         tables <- NULL
         source <- sort(source)
         member <- sort(member)
-        filters[c(
-            "project",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "member_id",
-            "variable_id",
-            "frequency",
-            "type"
-        )] <- NULL
     } else {
         if (!missing(common) || !missing(include_optional_historical)) {
             cli::cli_abort(
@@ -628,18 +629,18 @@ shift_cmip6_avail <- function(
         ))
     }
     request <- availability__request(
-        query_variables,
-        query_frequencies,
-        experiments,
-        source,
-        member,
-        grid,
-        tables,
-        activity,
-        historical_activity,
-        index_node,
-        data_node,
-        filters
+        variables = query_variables,
+        frequency = query_frequencies,
+        experiments = experiments,
+        source = source,
+        member = member,
+        grid = grid,
+        tables = tables,
+        activity = activity,
+        historical_activity = historical_activity,
+        index_node = index_node,
+        data_node = data_node,
+        filters = filters
     )
     datasets <- availability__collect(request, store = store, ui = ui)
     if (method_query) {

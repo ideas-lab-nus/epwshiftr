@@ -399,9 +399,10 @@ shift_batch__table_spec <- function(table, variables) {
     table[intersect(names(table), variables)]
 }
 
-# Share one Dataset collection per visited index node across every method and
-# variable alternative. Keep the existing adapter option for custom providers.
-shift_batch__availability <- function(
+# Build a call-scoped reader of method/alternative candidates. Each native
+# node is collected, normalized and matched once; custom adapters retain their
+# existing variable-query interface.
+shift_batch__candidate_reader <- function(
     climate,
     transforms,
     references,
@@ -409,119 +410,177 @@ shift_batch__availability <- function(
     ui
 ) {
     adapter <- getOption("epwshiftr.cmip6.availability")
-    if (!is.null(adapter)) {
-        if (!is.function(adapter)) {
-            cli::cli_abort(
-                "Configured CMIP6 availability adapter must be a function."
-            )
-        }
-        return(adapter)
+    member <- shift_coalesce(climate@member, "r1i1p1f1")
+    if (
+        is.null(climate@model) && !identical(as.character(member), "r1i1p1f1")
+    ) {
+        cli::cli_abort("Automatic model discovery requires member `r1i1p1f1`.")
     }
-    # Compile exact recipe frequencies once; a variable may have a different
-    # frequency in another method, so union pairs rather than named vectors.
-    inputs <- data.table::rbindlist(lapply(transforms, function(transform) {
-        variables <- unique(unlist(
-            shift_batch__future_requirement(transform)@variable_sets
-        ))
-        frequencies <- shift__transform_cmip6_frequencies(
-            transform,
-            variables,
-            climate@frequency
-        )
-        data.table::data.table(
-            variable = variables,
-            frequency = unname(frequencies)
-        )
-    }))
-    historical <- any(vapply(
+    historical <- vapply(
         references,
         function(value) {
             S7::S7_inherits(value$reference, ShiftReferenceSpec) &&
                 identical(value$reference@mode, "historical")
         },
         logical(1L)
-    ))
-    experiments <- sort(unique(c(
+    )
+    names(historical) <- names(transforms)
+    if (!is.null(adapter)) {
+        if (!is.function(adapter)) {
+            cli::cli_abort(
+                "Configured CMIP6 availability adapter must be a function."
+            )
+        }
+        return(function(transform_key, alternative, index_node) {
+            transform <- transforms[[transform_key]]
+            variables <- as.character(shift_batch__future_requirement(
+                transform
+            )@variable_sets[[alternative]])
+            adapter(
+                variables = variables,
+                scenarios = climate@scenarios,
+                include_historical = historical[[transform_key]],
+                source = climate@model,
+                member = member,
+                grid = climate@grid,
+                frequency = shift__transform_cmip6_frequencies(
+                    transform,
+                    variables,
+                    climate@frequency
+                ),
+                table = shift_batch__table_spec(climate@table, variables),
+                activity = climate@activity,
+                index_node = index_node,
+                data_node = climate@data_node,
+                filters = climate@filters,
+                store = store,
+                ui = ui
+            )
+        })
+    }
+    role <- transform_key <- experiment_id <- variable_id <- frequency <-
+        frequency_rank <- allowed <- wanted_table <- table_id <- complete <- NULL
+    requirements <- eligibility__requirements(
+        transforms,
         climate@scenarios,
-        if (historical) "historical"
-    )))
-    member <- shift_coalesce(climate@member, "r1i1p1f1")
-    filters <- climate@filters
-    # Selection fields belong to the climate spec; stale low-level filters
-    # must not narrow the shared union needed by another method.
-    filters[c(
-        "project",
-        "source_id",
-        "experiment_id",
-        "variant_label",
-        "member_id",
-        "variable_id",
-        "frequency",
-        "type"
-    )] <- NULL
-    catalogs <- list()
-
-    # Cache errors as well as successes for this discovery call. Index failover
-    # remains ordered, but another alternative never repeats a failed query.
-    function(
-        variables,
-        scenarios,
-        include_historical,
-        frequency,
-        table,
-        index_node,
-        ...
-    ) {
-        if (is.null(catalogs[[index_node]])) {
-            catalogs[[index_node]] <<- tryCatch(
+        TRUE
+    )
+    # Locally supplied references do not require historical Dataset discovery.
+    history_keys <- names(historical)[historical]
+    requirements$pairs <- requirements$pairs[
+        role == "model_future" | transform_key %in% history_keys
+    ]
+    requirements$lookup <- requirements$lookup[
+        experiment_id != "historical" | transform_key %in% history_keys
+    ]
+    if (!is.null(climate@frequency)) {
+        # Apply an explicit execution frequency once to the compiled contract.
+        frequencies <- shift__cmip6_variable_frequencies(
+            unique(requirements$pairs$variable_id),
+            climate@frequency
+        )
+        requirements$pairs[,
+            allowed := unname(as.list(frequencies[variable_id]))
+        ]
+        requirements$lookup <- unique(requirements$lookup[,
+            c("transform_key", "path_id", "variable_id", "experiment_id"),
+            with = FALSE
+        ])
+        requirements$lookup[, `:=`(
+            frequency = unname(frequencies[variable_id]),
+            frequency_rank = 1L
+        )]
+    }
+    cache <- list()
+    function(transform_key, alternative, index_node) {
+        if (is.null(cache[[index_node]])) {
+            cache[[index_node]] <<- tryCatch(
                 {
                     request <- availability__request(
-                        sort(unique(inputs$variable)),
-                        sort(unique(inputs$frequency)),
-                        experiments,
-                        sort(climate@model),
-                        sort(member),
-                        climate@grid,
-                        NULL,
-                        climate@activity,
-                        "CMIP",
-                        index_node,
-                        climate@data_node,
-                        filters
+                        variables = sort(unique(
+                            requirements$pairs$variable_id
+                        )),
+                        frequency = sort(unique(requirements$lookup$frequency)),
+                        experiments = sort(unique(
+                            requirements$pairs$experiment_id
+                        )),
+                        source = sort(climate@model),
+                        member = sort(member),
+                        grid = climate@grid,
+                        tables = NULL,
+                        activity = climate@activity,
+                        historical_activity = "CMIP",
+                        index_node = index_node,
+                        data_node = climate@data_node,
+                        filters = climate@filters
                     )
-                    availability__collect(request, store = store, ui = ui)
+                    catalog <- eligibility__catalog(
+                        availability__collect(request, store = store, ui = ui)
+                    )
+                    catalog <- catalog[variant_label %in% member]
+                    if (!is.null(climate@model)) {
+                        catalog <- catalog[source_id %in% climate@model]
+                    }
+                    if (!is.null(climate@grid)) {
+                        catalog <- catalog[grid_label == climate@grid]
+                    }
+                    if (!is.null(climate@table) && nrow(catalog)) {
+                        partitions <- unique(requirements$lookup[, .(
+                            variable_id,
+                            frequency
+                        )])
+                        partitions[,
+                            wanted_table := unname(shift__cmip6_variable_tables(
+                                variable_id,
+                                .BY$frequency,
+                                shift_batch__table_spec(
+                                    climate@table,
+                                    variable_id
+                                )
+                            )),
+                            by = "frequency"
+                        ]
+                        catalog <- catalog[
+                            partitions,
+                            on = c("variable_id", "frequency"),
+                            nomatch = 0L
+                        ]
+                        catalog <- catalog[table_id == wanted_table]
+                        catalog[, wanted_table := NULL]
+                    }
+                    evaluated <- eligibility__evaluate(catalog, requirements)
+                    details <- evaluated$requirements
+                    group <- c(
+                        "source_id",
+                        "variant_label",
+                        "grid_label",
+                        "transform_key",
+                        "path_id"
+                    )
+                    status <- details[,
+                        list(complete = all(complete)),
+                        by = group
+                    ]
+                    # Retain every metadata-complete alternative so File coverage
+                    # can reject one combination without hiding another valid one.
+                    future <- details[
+                        role == "model_future" &
+                            experiment_id == climate@scenarios[[1L]],
+                        c(group, "alternative", "frequency_spec", "table"),
+                        with = FALSE
+                    ]
+                    future[status, on = group]
                 },
                 error = identity
             )
         }
-        catalog <- catalogs[[index_node]]
-        if (inherits(catalog, "error")) {
-            stop(catalog)
+        result <- cache[[index_node]]
+        if (inherits(result, "error")) {
+            stop(result)
         }
-        catalog <- data.table::as.data.table(catalog)
-        if (!nrow(catalog)) {
-            return(availability__empty())
-        }
-        # Provider results must not widen the caller's explicit identity pins.
-        variants <- availability__coalesce_character(
-            availability__character_column(catalog, "variant_label"),
-            availability__character_column(catalog, "member_id")
-        )
-        catalog <- catalog[variants %in% member]
-        if (!is.null(climate@model)) {
-            catalog <- catalog[source_id %in% climate@model]
-        }
-        if (!is.null(climate@grid)) {
-            catalog <- catalog[grid_label == climate@grid]
-        }
-        availability__summarize(
-            catalog,
-            unique(c(scenarios, if (include_historical) "historical")),
-            variables,
-            frequency,
-            table,
-            index_node
-        )
+        key <- transform_key
+        choice <- alternative
+        result[transform_key == key & alternative == choice]
     }
 }
 
@@ -535,23 +594,13 @@ shift_batch__available_alternative <- function(
     reference,
     store,
     ui,
-    collect
+    read_candidates
 ) {
     frequency <- shift__transform_cmip6_frequencies(
         transform,
         variables,
         climate@frequency
     )
-    table <- shift_batch__table_spec(climate@table, variables)
-    member <- if (is.null(climate@member)) "r1i1p1f1" else climate@member
-    if (
-        is.null(climate@model) &&
-            !identical(as.character(member), "r1i1p1f1")
-    ) {
-        cli::cli_abort(
-            "Automatic model discovery requires member `r1i1p1f1`."
-        )
-    }
     coverage <- getOption(
         "epwshiftr.cmip6.period_coverage",
         shift__cmip6_period_coverage
@@ -561,9 +610,6 @@ shift_batch__available_alternative <- function(
             "Configured CMIP6 period-coverage adapter must be a function."
         )
     }
-    include_historical <- S7::S7_inherits(reference, ShiftReferenceSpec) &&
-        identical(reference@mode, "historical")
-    attempts <- list()
     errors <- character()
     for (node in climate@index_nodes) {
         if (identical(ui@batch_context$kind, "discovery")) {
@@ -579,22 +625,7 @@ shift_batch__available_alternative <- function(
             )
         }
         current <- tryCatch(
-            collect(
-                variables = variables,
-                scenarios = climate@scenarios,
-                include_historical = include_historical,
-                source = climate@model,
-                member = member,
-                grid = climate@grid,
-                frequency = frequency,
-                table = table,
-                activity = climate@activity,
-                index_node = node,
-                data_node = climate@data_node,
-                filters = climate@filters,
-                store = store,
-                ui = ui
-            ),
+            read_candidates(node),
             error = function(error) error
         )
         if (inherits(current, "error")) {
@@ -613,18 +644,50 @@ shift_batch__available_alternative <- function(
         current <- current[complete %in% TRUE]
         if (nrow(current)) {
             current <- tryCatch(
-                coverage(
-                    candidates = current,
-                    climate = climate,
-                    transform = transform,
-                    variables = variables,
-                    frequency = frequency,
-                    periods = periods,
-                    reference = reference,
-                    node = node,
-                    store = store,
-                    ui = ui
-                ),
+                {
+                    # Most methods use one frequency mapping. Explicit contracts
+                    # may select different mappings for different candidates.
+                    groups <- if ("frequency_spec" %in% names(current)) {
+                        split(
+                            seq_len(nrow(current)),
+                            vapply(
+                                current$frequency_spec,
+                                function(value) {
+                                    shift__spec_json(as.list(value))
+                                },
+                                character(1L)
+                            )
+                        )
+                    } else {
+                        list(seq_len(nrow(current)))
+                    }
+                    data.table::rbindlist(
+                        lapply(groups, function(rows) {
+                            candidates <- current[rows]
+                            selected_frequency <- if (
+                                "frequency_spec" %in% names(candidates)
+                            ) {
+                                candidates$frequency_spec[[1L]]
+                            } else {
+                                frequency
+                            }
+                            coverage(
+                                candidates = candidates,
+                                climate = climate,
+                                transform = transform,
+                                variables = variables,
+                                frequency = selected_frequency,
+                                periods = periods,
+                                reference = reference,
+                                node = node,
+                                store = store,
+                                ui = ui
+                            )
+                        }),
+                        use.names = TRUE,
+                        fill = TRUE
+                    )
+                },
                 error = function(error) error
             )
             if (inherits(current, "error")) {
@@ -642,8 +705,15 @@ shift_batch__available_alternative <- function(
             current <- data.table::as.data.table(current)
         }
         if (nrow(current)) {
-            attempts[[length(attempts) + 1L]] <- current
-            break
+            current[,
+                identity := paste(
+                    source_id,
+                    variant_label,
+                    grid_label,
+                    sep = "\r"
+                )
+            ]
+            return(current[])
         }
         shift_batch__discovery_notice(
             paste(
@@ -653,25 +723,13 @@ shift_batch__available_alternative <- function(
             "rejected"
         )
     }
-    if (!length(attempts)) {
-        if (length(errors) == length(climate@index_nodes)) {
-            cli::cli_abort(c(
-                "CMIP6 availability discovery failed at every configured index node.",
-                "x" = unique(errors)
-            ))
-        }
-        return(data.table::data.table())
+    if (length(errors) == length(climate@index_nodes)) {
+        cli::cli_abort(c(
+            "CMIP6 availability discovery failed at every configured index node.",
+            "x" = unique(errors)
+        ))
     }
-    result <- attempts[[1L]]
-    result[,
-        identity := paste(
-            source_id,
-            variant_label,
-            grid_label,
-            sep = "\r"
-        )
-    ]
-    result[]
+    data.table::data.table()
 }
 
 # Resolve alternatives against one shared catalog, checking actual File-year
@@ -690,7 +748,7 @@ shift_batch__discover_candidates <- function(
             names(transforms)
         )
     }
-    collect <- shift_batch__availability(
+    read_candidates <- shift_batch__candidate_reader(
         climate,
         transforms,
         references,
@@ -734,7 +792,9 @@ shift_batch__discover_candidates <- function(
                     reference = reference,
                     store = store,
                     ui = method_ui,
-                    collect = collect
+                    read_candidates = function(node) {
+                        read_candidates(transform_key, index, node)
+                    }
                 )
                 if (nrow(result)) {
                     result[, `:=`(
@@ -877,27 +937,24 @@ shift_batch__select_models <- function(identities, climate, label) {
         j = "source_file_count",
         value = Inf
     )
+    # Rank complete identities before retaining one representative per model.
+    # Otherwise lexical grid order can discard the least fragmented source.
     data.table::setorderv(
         identities,
-        c("source_id", "variant_label", "grid_label")
+        c("source_file_count", "source_id", "variant_label", "grid_label")
     )
     identities <- identities[!duplicated(source_id)]
+    if (is.null(climate@n_models)) {
+        data.table::setorderv(
+            identities,
+            c("source_id", "variant_label", "grid_label")
+        )
+    }
     if (is.null(climate@model)) {
         # A NULL internal count is the explicit public `model = NULL` request
         # for every compatible identity; a numeric count keeps batch expansion
         # bounded and fails instead of silently returning fewer models.
         if (!is.null(climate@n_models)) {
-            # Prefer complete candidates with fewer physical source files so a
-            # numeric model request avoids needlessly fragmented archives.
-            data.table::setorderv(
-                identities,
-                c(
-                    "source_file_count",
-                    "source_id",
-                    "variant_label",
-                    "grid_label"
-                )
-            )
             if (nrow(identities) < climate@n_models) {
                 cli::cli_abort(
                     "Only {nrow(identities)} complete CMIP6 model(s) for {label} are available; {climate@n_models} were requested."
@@ -949,22 +1006,29 @@ shift_batch__store_root <- function(store) {
 # selected for that method. Table mappings remain method-specific.
 shift_batch__child_climate <- function(
     climate,
-    transform_key,
+    transform,
     identity,
-    candidates
+    candidate
 ) {
-    target_identity <- identity[["identity"]]
-    candidate <- candidates[[transform_key]][
-        identity == target_identity
-    ][1L]
-    table <- candidate$table[[1L]]
+    frequency <- climate@frequency
+    selected <- candidate$frequency_spec[[1L]]
+    if (is.null(frequency) && !is.null(selected)) {
+        # Preserve default task identities. Only an alternative source frequency
+        # needs an explicit mapping, including the recipe's optional variables.
+        variables <- morpher__input_variables(transform__recipe(transform))
+        defaults <- shift__transform_cmip6_frequencies(transform, variables)
+        if (!identical(unname(defaults[names(selected)]), unname(selected))) {
+            defaults[names(selected)] <- selected
+            frequency <- defaults
+        }
+    }
     shift_cmip6(
         model = identity$source_id[[1L]],
         scenarios = climate@scenarios,
         member = identity$variant_label[[1L]],
         grid = identity$grid_label[[1L]],
-        frequency = climate@frequency,
-        table = table,
+        frequency = frequency,
+        table = candidate$table[[1L]],
         activity = climate@activity,
         index_nodes = climate@index_nodes,
         data_node = climate@data_node,
@@ -1198,11 +1262,15 @@ shift_batch__future_epw <- function(
         identity <- discovery$identities[selection$model_index[[index]]]
         transform_key <- names(transforms)[[selection$method_index[[index]]]]
         transform <- transforms[[transform_key]]
+        target_identity <- identity[["identity"]]
+        candidate <- discovery$candidates[[transform_key]][
+            identity == target_identity
+        ][1L]
         child_climate <- shift_batch__child_climate(
             climate,
-            transform_key,
+            transform,
             identity,
-            discovery$candidates
+            candidate
         )
         child_references <- references[[transform_key]]
         child_key <- paste(

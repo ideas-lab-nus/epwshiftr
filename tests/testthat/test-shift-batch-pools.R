@@ -379,3 +379,257 @@ test_that("workflow configuration requires a boolean common flag", {
     config$climate$common <- NULL
     expect_true(epwshiftr_cli_config_climate(config$climate)@common)
 })
+
+# Dataset normalization and matching must scale by node, not by method/alternative.
+test_that("all batch alternatives share one normalized and matched catalog", {
+    catalog <- batch_pool_test__catalog()
+    normalize <- eligibility__catalog
+    evaluate <- eligibility__evaluate
+    normalizations <- matches <- collections <- 0L
+    local_mocked_bindings(
+        availability__collect = function(...) {
+            collections <<- collections + 1L
+            catalog
+        },
+        eligibility__catalog = function(datasets) {
+            normalizations <<- normalizations + 1L
+            normalize(datasets)
+        },
+        eligibility__evaluate = function(...) {
+            matches <<- matches + 1L
+            evaluate(...)
+        },
+        .package = "epwshiftr"
+    )
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = NULL,
+        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    ))
+    transforms <- shift_batch__transforms(
+        transform = list(
+            monthly_transform("original_morphing"),
+            monthly_transform("epwshiftr"),
+            daily_transform("qdm")
+        )
+    )
+    references <- lapply(
+        transforms,
+        shift_batch__references,
+        reference = historical_reference(1995:2014),
+        calibration = shift_era5(1995:2014)
+    )
+    result <- shift_batch__discover_candidates(
+        shift_cmip6(
+            model = NULL,
+            scenarios = "ssp585",
+            common = FALSE,
+            index_nodes = "https://example.org/esg-search"
+        ),
+        transforms,
+        shift__periods_from_years(2050L),
+        references,
+        tempfile(),
+        shift_ui(progress = "none")
+    )
+    expect_equal(nrow(result$selection), 6L)
+    expect_identical(collections, 1L)
+    expect_identical(normalizations, 1L)
+    expect_identical(matches, 1L)
+})
+
+test_that("public and batch discovery agree on cross-period variable alternatives", {
+    transform <- monthly_transform("epwshiftr")
+    alternatives <- transform@required_inputs$model_future@variable_sets
+    catalog <- data.table::rbindlist(list(
+        data.table::data.table(
+            experiment_id = "historical",
+            variable_id = alternatives[[1L]]
+        ),
+        data.table::data.table(
+            experiment_id = "ssp245",
+            variable_id = alternatives[[2L]]
+        )
+    ))
+    catalog[, `:=`(
+        source_id = "Model-A",
+        member_id = "r1i1p1f1",
+        grid_label = "gn",
+        frequency = "mon",
+        table_id = "Amon"
+    )]
+    local_mocked_bindings(
+        availability__collect = function(...) catalog,
+        .package = "epwshiftr"
+    )
+    coverage_calls <- 0L
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = NULL,
+        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
+            coverage_calls <<- coverage_calls + 1L
+            candidates
+        }
+    ))
+    public <- shift_cmip6_avail(
+        transform = transform,
+        scenarios = "ssp245",
+        include_optional_historical = TRUE
+    )
+    expect_false(public$selected)
+    transforms <- shift_batch__transforms(transform = transform)
+    references <- lapply(
+        transforms,
+        shift_batch__references,
+        reference = historical_reference(1995:2014),
+        calibration = NULL
+    )
+    climate <- shift_cmip6(
+        model = "Model-A",
+        scenarios = "ssp245",
+        index_nodes = "https://example.org/esg-search"
+    )
+    expect_error(
+        shift_batch__discover_candidates(
+            climate,
+            transforms,
+            shift__periods_from_years(2050L),
+            references,
+            tempfile(),
+            shift_ui(progress = "none")
+        ),
+        "No complete"
+    )
+    expect_identical(coverage_calls, 0L)
+    # Adding the matching historical alternative makes both entry points agree.
+    historical <- data.table::copy(catalog[experiment_id == "ssp245"])
+    historical[, experiment_id := "historical"]
+    catalog <- data.table::rbindlist(list(catalog, historical))
+    public <- shift_cmip6_avail(
+        transform = transform,
+        scenarios = "ssp245",
+        include_optional_historical = TRUE
+    )
+    batch <- shift_batch__discover_candidates(
+        climate,
+        transforms,
+        shift__periods_from_years(2050L),
+        references,
+        tempfile(),
+        shift_ui(progress = "none")
+    )
+    expect_true(public$selected)
+    expect_identical(batch$selection$source_id, public$source_id)
+    expect_identical(
+        batch$candidates[[1L]]$selected_variables[[1L]],
+        public$variables[[1L]]
+    )
+})
+
+test_that("cost ranking retains the least fragmented grid before selecting models", {
+    catalog <- data.table::CJ(
+        source_id = c("A", "B"),
+        grid_label = c("gn", "gr"),
+        experiment_id = c("historical", "ssp245")
+    )
+    catalog[, `:=`(
+        member_id = "r1i1p1f1",
+        variable_id = "tas",
+        frequency = "day",
+        table_id = "day"
+    )]
+    local_mocked_bindings(
+        availability__collect = function(...) catalog,
+        .package = "epwshiftr"
+    )
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = NULL,
+        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
+            candidates[,
+                source_file_count := data.table::fifelse(
+                    source_id == "B",
+                    2,
+                    data.table::fifelse(grid_label == "gr", 1, 100)
+                )
+            ]
+            candidates
+        }
+    ))
+    result <- shift_batch__discover_candidates(
+        shift_cmip6(
+            model = 1L,
+            scenarios = "ssp245",
+            common = FALSE,
+            index_nodes = "https://example.org/esg-search"
+        ),
+        shift_batch__transforms(methods = "qdm"),
+        shift__periods_from_years(2050L),
+        NULL,
+        tempfile(),
+        shift_ui(progress = "none")
+    )
+    expect_identical(result$identities$source_id, "A")
+    expect_identical(result$identities$grid_label, "gr")
+    expect_equal(result$identities$source_file_count, 1)
+})
+
+test_that("native batch discovery respects explicit frequency and table pins", {
+    catalog <- data.table::CJ(
+        source_id = "A",
+        experiment_id = c("historical", "ssp245"),
+        frequency = c("day", "mon", NA_character_),
+        table_id = c("Amon", "Eday", "day")
+    )
+    catalog[, `:=`(
+        member_id = "r1i1p1f1",
+        grid_label = "gn",
+        variable_id = "tas"
+    )]
+    requests <- list()
+    local_mocked_bindings(
+        availability__collect = function(request, ...) {
+            requests[[length(requests) + 1L]] <<- request
+            catalog
+        },
+        .package = "epwshiftr"
+    )
+    checked <- NULL
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = NULL,
+        epwshiftr.cmip6.period_coverage = function(candidates, frequency, ...) {
+            checked <<- frequency
+            candidates
+        }
+    ))
+    result <- shift_batch__discover_candidates(
+        shift_cmip6(
+            model = 1L,
+            scenarios = "ssp245",
+            frequency = "day",
+            table = "Eday",
+            index_nodes = "https://example.org/esg-search"
+        ),
+        shift_batch__transforms(methods = "qdm"),
+        shift__periods_from_years(2050L),
+        NULL,
+        tempfile(),
+        shift_ui(progress = "none")
+    )
+    expect_identical(checked, c(tas = "day"))
+    expect_identical(result$candidates[[1L]]$table[[1L]], c(tas = "Eday"))
+    expect_identical(requests[[1L]]@meta$frequency, "day")
+    catalog <- catalog[0L]
+    expect_error(
+        shift_batch__discover_candidates(
+            shift_cmip6(
+                model = 1L,
+                scenarios = "ssp245",
+                index_nodes = "https://example.org/esg-search"
+            ),
+            shift_batch__transforms(methods = "qdm"),
+            shift__periods_from_years(2050L),
+            NULL,
+            tempfile(),
+            shift_ui(progress = "none")
+        ),
+        "No complete"
+    )
+})
