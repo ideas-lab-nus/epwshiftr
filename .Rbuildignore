@@ -20,3 +20,4 @@
 ^reports$
 ^outputs$
 ^OPENDAP_IMPLEMENTATION\.md$
+^air\.toml$

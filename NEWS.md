@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Shared narrow catalog normalization between variable and method availability
+  queries, and grouped table selection without repeated full catalog scans (#269).
+
 * Reused method eligibility and normalized catalogs across batch alternatives,
   ranked source-file costs before choosing a model's member/grid, and simplified
   request construction while retaining shared catalog filter rules (#271).

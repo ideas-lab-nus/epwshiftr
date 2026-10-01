@@ -508,3 +508,91 @@ test_that("historical and future periods require the same variable alternative",
     )
     expect_true(result$matrix$selected)
 })
+
+test_that("catalog normalization preserves inputs and resolves member aliases", {
+    datasets <- data.table::data.table(
+        source_id = factor(c("B", "A", "C", "D", "E", "F", "G")),
+        experiment_id = "ssp245",
+        grid_label = "gn",
+        variable_id = "tas",
+        frequency = "day",
+        table_id = "day",
+        variant_label = factor(c("r2i1p1f1", "", NA, "", NA, "", NA)),
+        member_id = factor(c(
+            "r1i1p1f1",
+            "r1i1p1f1",
+            "r1i1p1f1",
+            "",
+            NA,
+            NA,
+            ""
+        )),
+        unrelated = list(1:3, 4:6, 7:9, 10:12, 13:15, 16:18, 19:21)
+    )
+    datasets <- data.table::rbindlist(list(datasets, datasets[1L]))
+    data.table::setkeyv(datasets, "source_id")
+    data.table::setattr(datasets, "catalog_origin", "fixture")
+    before <- data.table::copy(datasets)
+    result <- eligibility__catalog(datasets)
+
+    expect_identical(datasets, before)
+    expect_identical(data.table::key(datasets), "source_id")
+    expect_identical(attr(datasets, "catalog_origin"), "fixture")
+    expect_identical(result$source_id, c("A", "B", "C"))
+    expect_identical(
+        result$variant_label,
+        c("r1i1p1f1", "r2i1p1f1", "r1i1p1f1")
+    )
+    expect_named(
+        result,
+        c(
+            "source_id",
+            "experiment_id",
+            "grid_label",
+            "variable_id",
+            "frequency",
+            "table_id",
+            "variant_label"
+        )
+    )
+    expect_true(all(vapply(result, is.character, logical(1L))))
+})
+
+test_that("catalog normalization retains incomplete partitions for diagnostics", {
+    datasets <- data.table::data.table(
+        source_id = "Model-A",
+        member_id = "r1i1p1f1",
+        grid_label = "gn"
+    )
+    result <- eligibility__catalog(datasets)
+    expect_equal(nrow(result), 1L)
+    expect_identical(result$variant_label, "r1i1p1f1")
+    expect_true(all(is.na(result$experiment_id)))
+    expect_true(all(is.na(result$frequency)))
+    expect_true(all(is.na(result$table_id)))
+    expect_true(all(is.na(result$variable_id)))
+    # A relevant variable/experiment with missing partition metadata remains
+    # visible as a rejected candidate in the method query.
+    data.table::set(datasets, j = "experiment_id", value = "ssp245")
+    data.table::set(datasets, j = "variable_id", value = "tas")
+    rejected <- eligibility_test__evaluate(
+        datasets,
+        methods = "qdm",
+        scenarios = "ssp245"
+    )
+    expect_identical(rejected$matrix$selected, FALSE)
+    expect_match(rejected$matrix$missing, "ssp245:tas")
+    expect_match(rejected$matrix$missing, "historical:tas")
+    for (empty in list(
+        data.table::data.table(),
+        datasets[0L],
+        data.table::data.table(source_id = NA)
+    )) {
+        normalized <- eligibility__catalog(empty)
+        expect_equal(nrow(normalized), 0L)
+        expect_identical(
+            vapply(normalized, typeof, character(1L)),
+            stats::setNames(rep("character", 7L), names(result))
+        )
+    }
+})

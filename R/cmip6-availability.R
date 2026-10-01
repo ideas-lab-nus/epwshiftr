@@ -48,154 +48,6 @@ AVAILABILITY__DATASET_FIELDS <- c(
     "size"
 )
 
-# Return one Dataset column as a character vector of the requested row count.
-availability__character_column <- function(catalog, name) {
-    value <- catalog[[name]]
-    if (is.null(value)) {
-        return(rep(NA_character_, nrow(catalog)))
-    }
-    as.character(value)
-}
-
-# Fill missing or empty values in the first vector from later alternatives.
-availability__coalesce_character <- function(...) {
-    values <- list(...)
-    if (!length(values)) {
-        return(character())
-    }
-    output <- as.character(values[[1L]])
-    for (value in values[-1L]) {
-        value <- as.character(value)
-        replace <- (is.na(output) | !nzchar(output)) &
-            !is.na(value) &
-            nzchar(value)
-        output[replace] <- value[replace]
-    }
-    output
-}
-
-# Normalize provider Dataset records to the identity fields used by the
-# availability reduction and reapply requested filters defensively.
-availability__normalize_datasets <- function(
-    datasets,
-    experiments,
-    variables,
-    frequency,
-    tables = NULL
-) {
-    checkmate::assert_data_frame(datasets)
-    catalog <- data.table::as.data.table(data.table::copy(datasets))
-    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-
-    catalog[["source_id"]] <- availability__character_column(
-        catalog,
-        "source_id"
-    )
-    catalog[["experiment_id"]] <- availability__character_column(
-        catalog,
-        "experiment_id"
-    )
-    catalog[["variant_label"]] <- availability__coalesce_character(
-        availability__character_column(catalog, "variant_label"),
-        availability__character_column(catalog, "member_id")
-    )
-    catalog[["grid_label"]] <- availability__character_column(
-        catalog,
-        "grid_label"
-    )
-    catalog[["frequency"]] <- availability__character_column(
-        catalog,
-        "frequency"
-    )
-    catalog[["table_id"]] <- availability__character_column(
-        catalog,
-        "table_id"
-    )
-    catalog[["variable_id"]] <- availability__character_column(
-        catalog,
-        "variable_id"
-    )
-
-    identity_fields <- c(
-        "source_id",
-        "experiment_id",
-        "variant_label",
-        "grid_label",
-        "frequency",
-        "table_id",
-        "variable_id"
-    )
-    complete_identity <- Reduce(
-        `&`,
-        lapply(identity_fields, function(name) {
-            !is.na(catalog[[name]]) & nzchar(catalog[[name]])
-        })
-    )
-    wanted_frequency <- unname(frequencies[catalog$variable_id])
-    catalog <- catalog[
-        complete_identity &
-            experiment_id %in% experiments &
-            variable_id %in% variables &
-            frequency == wanted_frequency
-    ]
-    if (!is.null(tables) && nrow(catalog)) {
-        # An explicit table specification is variable-specific. Compare each
-        # row with its variable's resolved table instead of accepting any of
-        # the tables used elsewhere in the request.
-        selected_tables <- unname(tables[catalog$variable_id])
-        catalog <- catalog[catalog$table_id == selected_tables]
-    }
-    unique(catalog[, identity_fields, with = FALSE])
-}
-
-# Choose one table for every variable within a stable model/member/grid
-# identity. Coverage across requested experiments is preferred, followed by
-# the frequency's conventional table and then a lexical tie-break.
-availability__select_tables <- function(
-    catalog,
-    variables,
-    frequency,
-    tables = NULL
-) {
-    if (!is.null(tables)) {
-        return(tables)
-    }
-
-    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-    selected <- stats::setNames(
-        rep(NA_character_, length(variables)),
-        variables
-    )
-    for (target_variable in variables) {
-        data <- catalog[variable_id == target_variable]
-        if (!nrow(data)) {
-            next
-        }
-        preferred_table <- shift__cmip6_table_id(
-            frequencies[[target_variable]]
-        )
-        scores <- unique(data[, .(experiment_id, table_id)])[,
-            .(coverage = data.table::uniqueN(experiment_id)),
-            by = table_id
-        ]
-        if (is.null(preferred_table)) {
-            scores[["preferred"]] <- 1L
-        } else {
-            scores[["preferred"]] <- as.integer(
-                scores$table_id != preferred_table
-            )
-        }
-        data.table::setorderv(
-            scores,
-            c("coverage", "preferred", "table_id"),
-            c(-1L, 1L, 1L),
-            na.last = TRUE
-        )
-        selected[[target_variable]] <- scores$table_id[[1L]]
-    }
-    selected
-}
-
 # Return a typed empty availability table with the public column contract.
 availability__empty <- function() {
     data.table::data.table(
@@ -232,94 +84,124 @@ availability__summarize <- function(
     } else {
         shift__cmip6_variable_tables(variables, frequency, table)
     }
-    catalog <- availability__normalize_datasets(
-        datasets,
-        experiments = experiments,
-        variables = variables,
-        frequency = frequencies,
-        tables = tables
+    # Share the narrow catalog with method discovery. Variable queries require
+    # usable partitions; method queries retain them to explain rejections.
+    catalog <- eligibility__catalog(datasets)
+    catalog <- catalog[
+        experiment_id %in% experiments & !is.na(table_id) & nzchar(table_id)
+    ]
+    requested <- data.table::data.table(
+        variable_id = variables,
+        frequency = unname(frequencies)
     )
+    match_fields <- c("variable_id", "frequency")
+    if (!is.null(tables)) {
+        data.table::set(requested, j = "table_id", value = unname(tables))
+        match_fields <- c(match_fields, "table_id")
+    }
+    catalog <- catalog[requested, on = match_fields, nomatch = 0L]
     if (!nrow(catalog)) {
         return(availability__empty())
     }
 
-    identity_fields <- c(
-        "source_id",
-        "variant_label",
-        "grid_label"
-    )
-    identities <- unique(catalog[, identity_fields, with = FALSE])
+    identity_fields <- c("source_id", "variant_label", "grid_label")
+    if (is.null(tables)) {
+        # Rank tables across all identities together: experiment coverage,
+        # conventional frequency table, then lexical order. A variable must
+        # keep the same table across experiments; never stitch tables together.
+        scores <- catalog[,
+            .(coverage = data.table::uniqueN(experiment_id)),
+            by = c(identity_fields, "variable_id", "table_id", "frequency")
+        ]
+        defaults <- vapply(
+            unique(unname(frequencies)),
+            function(value) {
+                shift_coalesce(shift__cmip6_table_id(value), NA_character_)
+            },
+            character(1L)
+        )
+        preferred <- unname(defaults[scores$frequency])
+        data.table::set(
+            scores,
+            j = "preferred",
+            value = as.integer(
+                is.na(preferred) | scores$table_id != preferred
+            )
+        )
+        data.table::setorderv(
+            scores,
+            c("coverage", "preferred", "table_id"),
+            c(-1L, 1L, 1L)
+        )
+        selected <- unique(scores, by = c(identity_fields, "variable_id"))
+        selection_fields <- c(identity_fields, "variable_id", "table_id")
+        catalog <- catalog[
+            selected[, selection_fields, with = FALSE],
+            on = selection_fields,
+            nomatch = 0L
+        ]
+    }
     required <- data.table::CJ(
         experiment_id = as.character(experiments),
         variable_id = as.character(variables),
         unique = TRUE
     )
+    frequency_label <- paste(unique(unname(frequencies)), collapse = "+")
+    required_experiments <- data.table::uniqueN(required$experiment_id)
 
-    rows <- vector("list", nrow(identities))
-    for (identity_index in seq_len(nrow(identities))) {
-        identity <- identities[identity_index]
-        identity_catalog <- catalog[
-            source_id == identity$source_id[[1L]] &
-                variant_label == identity$variant_label[[1L]] &
-                grid_label == identity$grid_label[[1L]]
-        ]
-        selected_tables <- availability__select_tables(
-            identity_catalog,
-            variables = variables,
-            frequency = frequency,
-            tables = tables
-        )
-        # A variable must use the same selected table in every experiment;
-        # records split across tables cannot be combined into false coverage.
-        wanted_tables <- unname(selected_tables[identity_catalog$variable_id])
-        observed <- unique(identity_catalog[
-            table_id == wanted_tables,
-            .(experiment_id, variable_id)
-        ])
-        observed[, present := TRUE]
-        coverage <- observed[required, on = c("experiment_id", "variable_id")]
-        coverage[is.na(present), present := FALSE]
-        missing_rows <- coverage[present == FALSE]
-        experiment_status <- coverage[,
-            .(complete = all(present)),
-            by = experiment_id
-        ]
-        display_tables <- sort(unique(unname(selected_tables)))
-        display_tables <- display_tables[
-            !is.na(display_tables) & nzchar(display_tables)
-        ]
-
-        rows[[identity_index]] <- data.table::data.table(
-            source_id = identity$source_id[[1L]],
-            variant_label = identity$variant_label[[1L]],
-            grid_label = identity$grid_label[[1L]],
-            frequency = paste(unique(unname(frequencies)), collapse = "+"),
-            frequency_spec = list(frequencies),
-            table_id = paste(display_tables, collapse = "+"),
-            table = list(selected_tables),
-            complete = all(coverage$present),
-            complete_experiments = sum(experiment_status$complete),
-            required_experiments = data.table::uniqueN(
-                coverage$experiment_id
-            ),
-            available_pairs = sum(coverage$present),
-            required_pairs = nrow(coverage),
-            missing = if (nrow(missing_rows)) {
-                paste(
-                    sprintf(
-                        "%s:%s",
-                        missing_rows$experiment_id,
-                        missing_rows$variable_id
-                    ),
-                    collapse = "; "
+    # Each group receives only its own rows, avoiding a full catalog scan for
+    # every model/member/grid. The small required grid preserves missing order.
+    summary <- catalog[,
+        {
+            selected_tables <- if (is.null(tables)) {
+                stats::setNames(
+                    table_id[match(variables, variable_id)],
+                    variables
                 )
             } else {
-                NA_character_
+                tables
             }
-        )
-    }
-    summary <- data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
-    summary[, index_node := rep(index_node, .N)]
+            observed <- unique(.SD[, .(experiment_id, variable_id)])
+            missing_rows <- required[
+                !observed,
+                on = c("experiment_id", "variable_id")
+            ]
+            display_tables <- sort(unique(unname(selected_tables)))
+            display_tables <- display_tables[
+                !is.na(display_tables) & nzchar(display_tables)
+            ]
+            list(
+                frequency = frequency_label,
+                frequency_spec = list(frequencies),
+                table_id = paste(display_tables, collapse = "+"),
+                table = list(selected_tables),
+                complete = !nrow(missing_rows),
+                complete_experiments = required_experiments -
+                    data.table::uniqueN(missing_rows$experiment_id),
+                required_experiments = required_experiments,
+                available_pairs = nrow(observed),
+                required_pairs = nrow(required),
+                missing = if (nrow(missing_rows)) {
+                    paste(
+                        sprintf(
+                            "%s:%s",
+                            missing_rows$experiment_id,
+                            missing_rows$variable_id
+                        ),
+                        collapse = "; "
+                    )
+                } else {
+                    NA_character_
+                }
+            )
+        },
+        by = identity_fields
+    ]
+    data.table::set(
+        summary,
+        j = "index_node",
+        value = rep(index_node, nrow(summary))
+    )
     data.table::setorderv(
         summary,
         c("complete", "source_id", "variant_label", "grid_label"),

@@ -46,36 +46,50 @@ eligibility__empty <- function() {
 # Normalize one provider catalog without copying unrelated Dataset columns.
 # Keep incomplete partitions as rejections, but discard unusable identities.
 eligibility__catalog <- function(datasets) {
+    checkmate::assert_data_frame(datasets)
     fields <- c(
         "source_id",
         "experiment_id",
         "grid_label",
         "variable_id",
         "frequency",
-        "table_id"
+        "table_id",
+        "variant_label",
+        "member_id"
     )
+    # Build only these eight columns, with consistent types, then discard the
+    # member alias. The input and its unrelated metadata remain untouched.
     catalog <- data.table::as.data.table(stats::setNames(
         lapply(fields, function(field) {
-            availability__character_column(datasets, field)
+            value <- datasets[[field]]
+            if (is.null(value)) {
+                rep(NA_character_, nrow(datasets))
+            } else {
+                as.character(value)
+            }
         }),
         fields
     ))
+    fallback <- which(
+        (is.na(catalog$variant_label) | !nzchar(catalog$variant_label)) &
+            !is.na(catalog$member_id) &
+            nzchar(catalog$member_id)
+    )
     data.table::set(
         catalog,
+        i = fallback,
         j = "variant_label",
-        value = availability__coalesce_character(
-            availability__character_column(datasets, "variant_label"),
-            availability__character_column(datasets, "member_id")
-        )
+        value = catalog$member_id[fallback]
     )
-    identity <- c("source_id", "variant_label", "grid_label")
-    valid <- Reduce(
-        `&`,
-        lapply(identity, function(field) {
-            !is.na(catalog[[field]]) & nzchar(catalog[[field]])
-        })
-    )
-    unique(catalog[valid])
+    data.table::set(catalog, j = "member_id", value = NULL)
+    unique(catalog[
+        !is.na(source_id) &
+            nzchar(source_id) &
+            !is.na(variant_label) &
+            nzchar(variant_label) &
+            !is.na(grid_label) &
+            nzchar(grid_label)
+    ])
 }
 
 # Stage 2: flatten method contracts once, then expand alternatives and scenarios
