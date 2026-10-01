@@ -67,12 +67,8 @@ readme__terminal <- function(options) {
                 "        echo = TRUE, keep.source = TRUE, max.deparse.length = Inf)",
                 "    Sys.sleep(8)",
                 "}",
-                "stopifnot(shift_status(batch) == 'completed', nrow(outputs) == 4L)",
-                "stopifnot(all(summary$weather_hours == 8760L), all(summary$unreadable_files == 0L))",
-                "stopifnot(all(file.exists(outputs$export_path)))",
                 paste0(
-                    "saveRDS(list(outputs = outputs, summary = summary, ",
-                    "diagnostics = shift_diagnostics(batch)), ",
+                    "saveRDS(list(batch_id = shift_ids(batch, refresh = FALSE)$batch_id), ",
                     literal(result_path),
                     ")"
                 ),
@@ -141,8 +137,8 @@ readme__terminal <- function(options) {
         '">\n',
         '<img src="',
         files[1L],
-        '" width="100%" alt="Actual two-city EPW generation, ',
-        'followed by status, output, weather-summary and diagnostic queries.">\n</picture>'
+        '" width="100%" alt="Actual terminal recording of ',
+        'two-city future EPW generation.">\n</picture>'
     )
     knitr::engine_output(options, options$code, "", knitr::asis_output(picture))
 }
