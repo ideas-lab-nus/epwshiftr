@@ -217,26 +217,45 @@ ShiftCmip6Spec <- S7::new_class(
         activity = shift_prop_string(min.chars = 1L),
         index_nodes = S7::new_property(S7::class_character),
         data_node = S7::new_property(S7::class_any, default = NULL),
-        filters = S7::new_property(S7::class_list, default = list())
+        filters = S7::new_property(S7::class_list, default = list()),
+        common = S7::new_property(S7::class_logical, default = TRUE)
     ),
     validator = function(self) {
-        if (!is.null(self@model) &&
-            (!is.character(self@model) || !length(self@model) ||
-                anyNA(self@model) || any(!nzchar(self@model)) ||
-                anyDuplicated(self@model))) {
+        if (!checkmate::test_flag(self@common)) {
+            return("`common` must be TRUE or FALSE.")
+        }
+        if (
+            !is.null(self@model) &&
+                (!is.character(self@model) ||
+                    !length(self@model) ||
+                    anyNA(self@model) ||
+                    any(!nzchar(self@model)) ||
+                    anyDuplicated(self@model))
+        ) {
             return("`model` must be NULL or unique, non-empty model IDs.")
         }
-        if (!is.null(self@n_models) &&
-            (length(self@n_models) != 1L ||
-                !is.integer(self@n_models) || is.na(self@n_models) ||
-                self@n_models < 1L)) {
-            return("The internal model count must be NULL or one positive integer.")
+        if (
+            !is.null(self@n_models) &&
+                (length(self@n_models) != 1L ||
+                    !is.integer(self@n_models) ||
+                    is.na(self@n_models) ||
+                    self@n_models < 1L)
+        ) {
+            return(
+                "The internal model count must be NULL or one positive integer."
+            )
         }
         if (!is.null(self@model) && !is.null(self@n_models)) {
-            return("Explicit model IDs and an automatic model count cannot be combined.")
+            return(
+                "Explicit model IDs and an automatic model count cannot be combined."
+            )
         }
-        if (anyNA(self@scenarios) || !length(self@scenarios) ||
-            any(!nzchar(self@scenarios)) || anyDuplicated(self@scenarios)) {
+        if (
+            anyNA(self@scenarios) ||
+                !length(self@scenarios) ||
+                any(!nzchar(self@scenarios)) ||
+                anyDuplicated(self@scenarios)
+        ) {
             return("`scenarios` must contain unique, non-empty experiment IDs.")
         }
         NULL
@@ -1941,6 +1960,14 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 #'   model/member/grid identity; a character vector selects explicit
 #'   source/model IDs; `NULL` selects every compatible model. The default
 #'   selects three models.
+#' @param common A logical flag for batch candidate selection. `TRUE`
+#'   (default) uses the same model/member/grid identities across methods.
+#'   `FALSE` selects independently: a numeric `model` requests that many models
+#'   per method, `NULL` keeps all compatible models, and explicit IDs limit the
+#'   eligible pool. Every explicit model must qualify for at least one method.
+#'   Different pools are reported in batch diagnostics; their results confound
+#'   method differences with model selection. File-year coverage is checked
+#'   before either selection policy is applied.
 #' @param scenarios CMIP6 future scenario experiment IDs.
 #' @param member Optional CMIP6 variant labels. In high-level automatic model
 #'   discovery, `NULL` uses the required default `"r1i1p1f1"`.
@@ -1953,10 +1980,20 @@ shift_site <- function(id = NULL, lon = NULL, lat = NULL, label = NULL, epw = NU
 #' @param index_nodes Ordered ESGF index nodes used for failover.
 #' @param data_node Optional ESGF data-node filter.
 #' @export
-shift_cmip6 <- function(model = 3L, scenarios, member = NULL, grid = NULL,
-                        frequency = NULL, table = NULL,
-                        activity = "ScenarioMIP", index_nodes = NULL,
-                        data_node = NULL, filters = list()) {
+shift_cmip6 <- function(
+    model = 3L,
+    scenarios,
+    member = NULL,
+    grid = NULL,
+    frequency = NULL,
+    table = NULL,
+    activity = "ScenarioMIP",
+    index_nodes = NULL,
+    data_node = NULL,
+    filters = list(),
+    common = TRUE
+) {
+    checkmate::assert_flag(common)
     # Numeric model input is a bounded automatic selection request. Internally
     # it remains distinct from explicit model IDs so persistence and discovery
     # do not confuse a count with a CMIP6 source identifier.
@@ -1964,31 +2001,65 @@ shift_cmip6 <- function(model = 3L, scenarios, member = NULL, grid = NULL,
         checkmate::assert_count(model, positive = TRUE)
         as.integer(model)
     } else {
-        checkmate::assert_character(model, any.missing = FALSE, min.len = 1L,
-            unique = TRUE, null.ok = TRUE)
+        checkmate::assert_character(
+            model,
+            any.missing = FALSE,
+            min.len = 1L,
+            unique = TRUE,
+            null.ok = TRUE
+        )
         NULL
     }
     if (is.numeric(model)) {
         model <- NULL
     }
-    checkmate::assert_character(scenarios, any.missing = FALSE, min.len = 1L, unique = TRUE)
-    checkmate::assert_character(member, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+    checkmate::assert_character(
+        scenarios,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE
+    )
+    checkmate::assert_character(
+        member,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE,
+        null.ok = TRUE
+    )
     checkmate::assert_string(grid, min.chars = 1L, null.ok = TRUE)
     if (!is.null(frequency)) {
         frequency <- shift__cmip6_frequency_spec(frequency)
     }
     table <- shift__cmip6_table_spec(table)
     checkmate::assert_string(activity, min.chars = 1L)
-    checkmate::assert_character(index_nodes, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+    checkmate::assert_character(
+        index_nodes,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE,
+        null.ok = TRUE
+    )
     checkmate::assert_string(data_node, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_list(filters, names = "unique")
 
     if (is.null(index_nodes)) {
-        index_nodes <- unname(INDEX_NODES[c("DKRZ", "CEDA", "ORNL", "LLNL", "NCI", "IPSL", "LIU")])
+        index_nodes <- unname(INDEX_NODES[c(
+            "DKRZ",
+            "CEDA",
+            "ORNL",
+            "LLNL",
+            "NCI",
+            "IPSL",
+            "LIU"
+        )])
     }
     # Normalize before de-duplication because the legacy LLNL endpoint resolves
     # to the same operational ORNL bridge and must not create a second attempt.
-    index_nodes <- unique(vapply(index_nodes, query__normalize_node, character(1L)))
+    index_nodes <- unique(vapply(
+        index_nodes,
+        query__normalize_node,
+        character(1L)
+    ))
     ShiftCmip6Spec(
         model = model,
         n_models = n_models,
@@ -2000,7 +2071,8 @@ shift_cmip6 <- function(model = 3L, scenarios, member = NULL, grid = NULL,
         activity = activity,
         index_nodes = index_nodes,
         data_node = data_node,
-        filters = filters
+        filters = filters,
+        common = common
     )
 }
 
@@ -5394,7 +5466,7 @@ shift__climate_spec_value <- function(climate) {
     if (is.null(climate)) {
         return(NULL)
     }
-    list(
+    spec <- list(
         provider = "cmip6",
         model = climate@model,
         n_models = if (is.null(climate@model)) climate@n_models else NULL,
@@ -5420,6 +5492,12 @@ shift__climate_spec_value <- function(climate) {
         data_node = climate@data_node,
         filters = climate@filters
     )
+    # Omit the historical default so existing common-pool task hashes and
+    # receipts remain valid. Only a different selection policy changes intent.
+    if (!climate@common) {
+        spec$common <- climate@common
+    }
+    spec
 }
 
 # Rebuild only explicitly supported climate specifications from persisted task

@@ -1,3 +1,31 @@
+# Apply Dataset filter precedence shared by public and batch discovery.
+# Request identity is supplied directly to shift_request() by each caller.
+availability__filters <- function(filters, selections) {
+    # Core selections have one owner in both discovery entry points.
+    filters[c(
+        "project",
+        "source_id",
+        "experiment_id",
+        "variant_label",
+        "member_id",
+        "variable_id",
+        "frequency",
+        "type",
+        "table_id"
+    )] <- NULL
+    utils::modifyList(
+        filters,
+        c(
+            shift__compact_list(selections),
+            list(
+                latest = TRUE,
+                replica = FALSE,
+                fields = AVAILABILITY__DATASET_FIELDS
+            )
+        )
+    )
+}
+
 # Dataset fields retained by the public CMIP6 availability query.
 AVAILABILITY__DATASET_FIELDS <- c(
     "id",
@@ -544,16 +572,6 @@ shift_cmip6_avail <- function(
         tables <- NULL
         source <- sort(source)
         member <- sort(member)
-        filters[c(
-            "project",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "member_id",
-            "variable_id",
-            "frequency",
-            "type"
-        )] <- NULL
     } else {
         if (!missing(common) || !missing(include_optional_historical)) {
             cli::cli_abort(
@@ -581,22 +599,17 @@ shift_cmip6_avail <- function(
             if (include_historical) "historical"
         ))
     }
-    activities <- unique(c(
-        activity,
-        if ("historical" %in% experiments) historical_activity
-    ))
-    filters$table_id <- NULL
-    query_filters <- utils::modifyList(
+    query_filters <- availability__filters(
         filters,
-        shift__compact_list(list(
-            activity_id = activities,
+        list(
+            activity_id = unique(c(
+                activity,
+                if ("historical" %in% experiments) historical_activity
+            )),
             table_id = if (is.null(tables)) NULL else unique(unname(tables)),
             grid_label = grid,
-            data_node = data_node,
-            latest = TRUE,
-            replica = FALSE,
-            fields = AVAILABILITY__DATASET_FIELDS
-        ))
+            data_node = data_node
+        )
     )
     request <- shift_request(
         provider = "esgf",

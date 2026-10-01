@@ -551,7 +551,10 @@ epwshiftr_cli_config_climate <- function(config) {
     config <- epwshiftr_cli_config_section(list(climate = config), "climate")
     provider <- epwshiftr_cli_config_string(config$provider)
     if (!identical(tolower(provider), "cmip6")) {
-        epwshiftr_cli_usage_abort(sprintf("Unsupported climate provider: %s", provider))
+        epwshiftr_cli_usage_abort(sprintf(
+            "Unsupported climate provider: %s",
+            provider
+        ))
     }
     shift_cmip6(
         model = config$model,
@@ -564,10 +567,20 @@ epwshiftr_cli_config_climate <- function(config) {
             default = NULL
         ),
         table = cli_shift__table_spec(config$table),
-        activity = epwshiftr_cli_config_string(config$activity, default = "ScenarioMIP"),
-        index_nodes = epwshiftr_cli_config_character(config$index_nodes, default = NULL),
-        data_node = epwshiftr_cli_config_string(config$data_node, default = NULL),
-        filters = epwshiftr_cli_config_named_list(config$filters)
+        activity = epwshiftr_cli_config_string(
+            config$activity,
+            default = "ScenarioMIP"
+        ),
+        index_nodes = epwshiftr_cli_config_character(
+            config$index_nodes,
+            default = NULL
+        ),
+        data_node = epwshiftr_cli_config_string(
+            config$data_node,
+            default = NULL
+        ),
+        filters = epwshiftr_cli_config_named_list(config$filters),
+        common = epwshiftr_cli_config_flag(config$common, default = TRUE)
     )
 }
 
