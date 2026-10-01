@@ -154,10 +154,10 @@ contract and its humidity alternatives are visible in
 
 ```r
 run <- shift_future_epw(
-    epw = system.file(
+    sites = shift_site(epw = system.file(
         "extdata/examples/SGP_Singapore.486980_IWEC.epw",
         package = "epwshiftr"
-    ),
+    )),
     climate = shift_cmip6(
         model = "BCC-CSM2-MR",
         scenarios = c("ssp126", "ssp585")
@@ -179,7 +179,7 @@ one:
 
 ```r
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
     periods = list(`2080s` = 2075:2085),
     transform = monthly_transform("epwshiftr"),
@@ -189,38 +189,30 @@ run <- shift_future_epw(
 ```
 
 Daily bias-adjustment methods such as QDM and ISIMIP3BASD require both
-historical model and observed reference data. The observed role must point to a
-plan containing observations; an automatically resolved CMIP6 historical run
-cannot silently substitute for observations.
+historical model and observed reference data. Declare the historical model and observed calibration separately; each site
+resolves its own reference data.
 
 ```r
-reference_periods <- epw_morph_periods(reference = 1995:2014)
-historical <- shift_reference_plan(
-    historical_plan_id,
-    reference_periods
-)
-observed <- shift_reference_plan(
-    observed_plan_id,
-    reference_periods,
-    role = "observed_reference"
-)
+historical <- historical_reference(1995:2014)
+observed <- shift_era5(1995:2014)
 
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = future_cmip6,
     periods = c(2050, 2080),
     transform = daily_transform("isimip3basd"),
     reference = historical,
-    observed_reference = observed,
+    calibration = observed,
     dir = "future-epw"
 )
 ```
 
-Use `dry_run = TRUE` to inspect the plan without accessing ESGF:
+Use `dry_run = TRUE` to discover eligible datasets and inspect the batch without
+extracting climate values or generating EPWs:
 
 ```r
 plan <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
     periods = list(`2060s` = 2055:2065),
     transform = monthly_transform("original_morphing"),
@@ -234,7 +226,7 @@ run <- shift_run(plan)
 ```
 
 With the default `shift_control(resume = TRUE)`, repeating the same call with
-the same store and output directory returns the existing durable run without
+the same store and output directory returns the existing durable batch without
 repeating catalog queries, service checks, extraction, morphing, or EPW
 writing. Set `control = shift_control(refresh = TRUE)` only when remote CMIP6
 catalog and service information must be refreshed deliberately. The refreshed

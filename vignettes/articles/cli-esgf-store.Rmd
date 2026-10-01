@@ -91,8 +91,8 @@ model reference.
 
 ```json
 {
-  "version": 2,
-  "epw": "baseline/SIN.epw",
+  "version": 3,
+  "sites": [{"id": "Singapore", "epw": "baseline/SIN.epw"}],
   "climate": {
     "provider": "cmip6",
     "model": "BCC-CSM2-MR",

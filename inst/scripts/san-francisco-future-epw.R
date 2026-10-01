@@ -125,8 +125,12 @@ if (check_config) {
     # ---- 共同准备：锁定三种方法都能使用的 3 个 GCM -------------------------
     # 这里会联网查询完整的 File/年份覆盖，不会用缺少变量或情景的模型凑数。
     comparison_plan <- shift_future_epw(
-        epw = epw,
-        climate = shift_cmip6(model = gcm_count, scenarios = scenarios, member = "r1i1p1f1"),
+        sites = shift_site(epw = epw),
+        climate = shift_cmip6(
+            model = gcm_count,
+            scenarios = scenarios,
+            member = "r1i1p1f1"
+        ),
         periods = future_periods,
         transform = transforms,
         reference = reference,
@@ -136,7 +140,10 @@ if (check_config) {
         ui = ui,
         dry_run = TRUE
     )
-    selected <- unique(shift_cases(comparison_plan)[, c("model", "member", "grid"), with = FALSE])
+    selected <- unique(shift_cases(comparison_plan)[,
+        c("model", "member", "grid"),
+        with = FALSE
+    ])
     models <- unique(selected$model)
     stopifnot(length(models) == gcm_count)
     print(selected)
@@ -145,8 +152,12 @@ if (check_config) {
     # ---- 1. Belcher 原始 Morphing：3 GCM × 4 SSP × 2 时段 = 24 EPW -----------
     # 显式复用前面选定的三个 GCM；methods 保证返回可恢复的 ShiftBatch。
     belcher_plan <- shift_future_epw(
-        epw = epw,
-        climate = shift_cmip6(model = models, scenarios = scenarios, member = "r1i1p1f1"),
+        sites = shift_site(epw = epw),
+        climate = shift_cmip6(
+            model = models,
+            scenarios = scenarios,
+            member = "r1i1p1f1"
+        ),
         periods = future_periods,
         methods = "original_morphing",
         reference = reference,
@@ -169,7 +180,10 @@ if (check_config) {
         selected_gcms = selected
     )
     saveRDS(batches, file.path(output_root, "batches.rds"))
-    writeLines(capture.output(sessionInfo()), file.path(output_root, "session-info.txt"))
+    writeLines(
+        capture.output(sessionInfo()),
+        file.path(output_root, "session-info.txt")
+    )
 
     if (plan_only) {
         print(belcher_plan)
@@ -178,16 +192,27 @@ if (check_config) {
     } else {
         # 从解析/提取历史与未来数据到 Morphing、EPW 写出均由任务 API 执行。
         belcher <- shift_run(belcher_plan, ui = ui)
-        belcher_ok <- sf__save_results(belcher, file.path(output_root, "reports-belcher"))
+        belcher_ok <- sf__save_results(
+            belcher,
+            file.path(output_root, "reports-belcher")
+        )
 
         # ---- 2. 三方法批量：3 方法 × 3 GCM × 4 SSP × 2 时段 = 72 EPW ---------
         # 使用已完成共同模型筛选的计划，三种方法共享模型/member/grid 身份。
         comparison <- shift_run(comparison_plan, ui = ui)
-        comparison_ok <- sf__save_results(comparison, file.path(output_root, "reports-three-methods"))
+        comparison_ok <- sf__save_results(
+            comparison,
+            file.path(output_root, "reports-three-methods")
+        )
         if (!belcher_ok || !comparison_ok) {
-            stop("存在未完成子任务，请查看 diagnostics.csv 并使用下方恢复步骤。", call. = FALSE)
+            stop(
+                "存在未完成子任务，请查看 diagnostics.csv 并使用下方恢复步骤。",
+                call. = FALSE
+            )
         }
-        cat("\n两部分均已完成。请查看各 reports 目录的 outputs.csv 和 summary.csv。\n")
+        cat(
+            "\n两部分均已完成。请查看各 reports 目录的 outputs.csv 和 summary.csv。\n"
+        )
     }
 }
 

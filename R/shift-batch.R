@@ -111,7 +111,7 @@ shift_batch__transform_key <- function(transform) {
 shift_batch__path_component <- function(value) {
     value <- gsub("[^A-Za-z0-9._-]+", "-", as.character(value))
     value <- gsub("^-+|-+$", "", value)
-    ifelse(nzchar(value), value, "item")
+    data.table::fifelse(nzchar(value), value, "item")
 }
 
 # Keep batch selection and child-run identities in one small durable receipt.
@@ -122,7 +122,7 @@ shift_batch__receipt_path <- function(batch_root) {
 }
 
 # Read only receipts created for the requested stable batch identity. A stale,
-# interrupted, or older-format sidecar is a cache miss rather than a workflow
+# interrupted, or malformed sidecar is a cache miss rather than a workflow
 # failure because child stores still contain the durable run records.
 shift_batch__receipt_read <- function(batch_root, batch_id) {
     path <- shift_batch__receipt_path(batch_root)
@@ -131,15 +131,28 @@ shift_batch__receipt_read <- function(batch_root, batch_id) {
     }
     receipt <- tryCatch(readRDS(path), error = identity)
     required <- c(
-        "version", "batch_id", "discovery", "manifest", "children",
-        "output_dir", "status"
+        "version",
+        "batch_id",
+        "discovery",
+        "manifest",
+        "children",
+        "output_dir",
+        "status",
+        "climate",
+        "periods"
     )
-    if (inherits(receipt, "error") || !is.list(receipt) ||
-        !all(required %in% names(receipt)) ||
-        !identical(receipt$version, 1L) ||
-        !identical(receipt$batch_id, batch_id) ||
-        !is.list(receipt$discovery) ||
-        !all(c("identities", "candidates") %in% names(receipt$discovery))) {
+    if (
+        inherits(receipt, "error") ||
+            !is.list(receipt) ||
+            !all(required %in% names(receipt)) ||
+            !identical(receipt$version, 1L) ||
+            !identical(receipt$batch_id, batch_id) ||
+            !is.list(receipt$discovery) ||
+            !all(
+                c("identities", "candidates", "selection") %in%
+                    names(receipt$discovery)
+            )
+    ) {
         return(NULL)
     }
     receipt
@@ -200,16 +213,19 @@ shift_batch__receipt_write <- function(x) {
 #'
 #' @description
 #' Reopen a batch and its independent child plans or runs without querying
-#' climate catalogs. New dry-run batches retain their child plans; completed
-#' receipts from earlier versions remain readable through their child runs.
+#' climate catalogs. Dry-run batches retain their child plans; executed batches
+#' retain their durable child run identifiers.
 #' @param batch_id Batch identifier returned by [shift_ids()].
 #' @param store Root store used for [shift_future_epw()], or the batch directory.
 #' @return A `ShiftBatch` accepted by the ordinary `shift_*()` inspectors,
 #'   [shift_run()], [shift_resume()], [shift_cancel()], and [shift_watch()].
 #' @export
 shift_batch_get <- function(batch_id, store = NULL) {
-    checkmate::assert_string(batch_id, min.chars = 1L,
-        pattern = "^[A-Za-z0-9_-]+$")
+    checkmate::assert_string(
+        batch_id,
+        min.chars = 1L,
+        pattern = "^[A-Za-z0-9_-]+$"
+    )
     root <- shift_batch__store_root(store)
     batch_root <- if (identical(basename(root), batch_id)) {
         root
@@ -218,7 +234,9 @@ shift_batch_get <- function(batch_id, store = NULL) {
     }
     receipt <- shift_batch__receipt_read(batch_root, batch_id)
     if (is.null(receipt)) {
-        cli::cli_abort("No readable batch receipt for {.val {batch_id}} in {.path {root}}.")
+        cli::cli_abort(
+            "No readable batch receipt for {.val {batch_id}} in {.path {root}}."
+        )
     }
     children <- lapply(receipt$children, function(child) {
         if (!is.na(store__chr1(child$run_id))) {
@@ -227,42 +245,49 @@ shift_batch_get <- function(batch_id, store = NULL) {
         if (!is.null(child$plan)) {
             return(shift__plan_from_spec(child$plan, store = child$store_path))
         }
-        cli::cli_abort(c(
-            "This older dry-run batch did not persist its child plans.",
-            "i" = "Create the batch again from its original configuration."
-        ))
+        cli::cli_abort(
+            "The batch receipt contains a child without a plan or run ID."
+        )
     })
-    names(children) <- vapply(receipt$children, `[[`, character(1L), "child_key")
+    names(children) <- vapply(
+        receipt$children,
+        `[[`,
+        character(1L),
+        "child_key"
+    )
     if (!length(children)) {
         cli::cli_abort("The batch receipt contains no children.")
     }
-    # Earlier receipts store scientific intent in the authoritative child run.
-    # Recover it there instead of requiring a new remote discovery request.
-    first <- children[[1L]]
-    spec <- if (S7::S7_inherits(first, ShiftPlan)) {
-        shift__plan_spec(first)
-    } else {
-        jsonlite::fromJSON(first@meta$run$spec_json[[1L]], simplifyVector = TRUE)
-    }
     manifest <- data.table::as.data.table(data.table::copy(receipt$manifest))
-    shift_stage_new(ShiftBatch, "batch", store_path = batch_root,
-        ids = list(batch_id = batch_id,
-            child_ids = lapply(children, function(child) child@ids)),
+    shift_stage_new(
+        ShiftBatch,
+        "batch",
+        store_path = batch_root,
+        ids = list(
+            batch_id = batch_id,
+            child_ids = lapply(children, function(child) child@ids)
+        ),
         meta = list(
             children = children,
             manifest = manifest,
-            periods = shift_coalesce(receipt$periods,
-                shift__periods_from_input(spec$periods)),
-            climate = shift__climate_from_spec(shift_coalesce(
-                receipt$climate, spec$climate)),
+            periods = data.table::copy(receipt$periods),
+            climate = shift__climate_from_spec(receipt$climate),
             discovery = receipt$discovery,
             selected_models = receipt$discovery$identities,
             output_dir = receipt$output_dir,
-            dry_run = all(vapply(children, function(child) {
-                S7::S7_inherits(child, ShiftPlan)
-            }, logical(1L)))
+            dry_run = all(vapply(
+                children,
+                function(child) {
+                    S7::S7_inherits(child, ShiftPlan)
+                },
+                logical(1L)
+            ))
         ),
-        diagnostics = shift_batch__diagnostics(children, manifest, refresh = FALSE)
+        diagnostics = shift_batch__diagnostics(
+            children,
+            manifest,
+            refresh = FALSE
+        )
     )
 }
 
@@ -1058,8 +1083,7 @@ shift_batch__child_climate <- function(
 shift_batch__references <- function(
     transform,
     reference,
-    calibration,
-    multiple_sites = FALSE
+    calibration
 ) {
     model_reference <- if (
         transform__accepts_input(
@@ -1100,20 +1124,18 @@ shift_batch__references <- function(
         model_reference,
         observed_reference
     )
-    if (multiple_sites) {
-        # Existing extraction IDs belong to a location/store. Reusing one
-        # across locations would silently substitute another site's climate.
-        for (value in list(model_reference, observed_reference)) {
-            if (
-                S7::S7_inherits(value, ShiftClimate) ||
-                    (S7::S7_inherits(value, ShiftReferenceSpec) &&
-                        identical(value@mode, "plan"))
-            ) {
-                cli::cli_abort(c(
-                    "Multiple sites cannot share an extracted reference plan.",
-                    "i" = "Use automatic historical/reanalysis references or separate calls for site-specific extracted references."
-                ))
-            }
+    # Extracted references are bound to a site/store. This high-level entry
+    # accepts only declarations that each child can resolve for its own site.
+    for (value in list(model_reference, observed_reference)) {
+        if (
+            S7::S7_inherits(value, ShiftClimate) ||
+                (S7::S7_inherits(value, ShiftReferenceSpec) &&
+                    identical(value@mode, "plan"))
+        ) {
+            cli::cli_abort(c(
+                "Batches cannot share an extracted reference plan.",
+                "i" = "Use historical/reanalysis references, or shift_plan() for a site-specific extracted reference."
+            ))
         }
     }
     list(
@@ -1122,59 +1144,10 @@ shift_batch__references <- function(
     )
 }
 
-# Normalize task locations once before discovery. EPW reading is per location
-# because each baseline owns its header and checksum; tabular identities and
-# ordering stay in data.table and never modify the caller's table.
-shift_batch__sites <- function(epw = NULL, sites = NULL) {
-    if (is.null(epw) == is.null(sites)) {
-        cli::cli_abort("Supply exactly one of `epw` or `sites`.")
-    }
-    legacy <- is.null(sites)
-    if (!is.null(epw)) {
-        sites <- list(shift_site(epw = epw))
-    } else if (is.data.frame(sites)) {
-        checkmate::assert_names(
-            names(sites),
-            type = "unique",
-            must.include = c("site_id", "epw"),
-            subset.of = c("site_id", "epw", "lon", "lat", "label")
-        )
-        checkmate::assert_character(
-            sites[["site_id"]],
-            any.missing = FALSE,
-            min.len = 1L,
-            unique = TRUE,
-            min.chars = 1L
-        )
-        checkmate::assert_character(
-            sites[["epw"]],
-            any.missing = FALSE,
-            min.len = 1L,
-            min.chars = 1L
-        )
-        for (name in intersect(c("lon", "lat"), names(sites))) {
-            checkmate::assert_numeric(sites[[name]], any.missing = TRUE)
-        }
-        if ("label" %in% names(sites)) {
-            checkmate::assert_character(sites[["label"]], any.missing = TRUE)
-        }
-        # Each row becomes the existing site object, retaining its constructor's
-        # coordinate validation and EPW-header defaults.
-        sites <- lapply(seq_len(nrow(sites)), function(index) {
-            location <- shift_epw_location(sites[["epw"]][[index]])
-            optional <- lapply(c("lon", "lat", "label"), function(name) {
-                value <- sites[[name]][index]
-                if (is.null(value) || is.na(value)) NULL else value
-            })
-            shift_site(
-                id = sites[["site_id"]][[index]],
-                epw = sites[["epw"]][[index]],
-                lon = shift_coalesce(optional[[1L]], location$longitude),
-                lat = shift_coalesce(optional[[2L]], location$latitude),
-                label = shift_coalesce(optional[[3L]], location$city)
-            )
-        })
-    } else if (S7::S7_inherits(sites, ShiftSite)) {
+# Validate the site collection and hash each unique baseline once per call.
+# Defaults belong to shift_site(); this layer owns ordering and durable identity.
+shift_batch__sites <- function(sites) {
+    if (S7::S7_inherits(sites, ShiftSite)) {
         sites <- list(sites)
     }
     if (
@@ -1183,7 +1156,7 @@ shift_batch__sites <- function(epw = NULL, sites = NULL) {
             !all(vapply(sites, S7::S7_inherits, logical(1L), class = ShiftSite))
     ) {
         cli::cli_abort(
-            "`sites` must be a non-empty site table or a list of `shift_site()` objects."
+            "`sites` must be a shift_site() object or a non-empty list of shift_site() objects."
         )
     }
     ids <- vapply(sites, function(site) site@id, character(1L))
@@ -1194,53 +1167,59 @@ shift_batch__sites <- function(epw = NULL, sites = NULL) {
         min.chars = 1L
     )
     if (any(!nzchar(trimws(ids)))) {
-        cli::cli_abort(
-            "Every `site_id` must contain a non-whitespace character."
-        )
+        cli::cli_abort("Every site ID must contain a non-whitespace character.")
     }
-    identities <- lapply(sites, function(site) {
-        if (is.null(site@epw)) {
-            cli::cli_abort(
-                "Site {.val {site@id}} needs a baseline EPW for future-weather generation."
-            )
-        }
-        identity <- shift__epw_identity(site@epw)
-        if (!legacy) {
-            # EPW generation uses these header fields even when extraction
-            # coordinates were supplied explicitly. Inspect only the header.
-            location <- epw_file_location(readLines(identity$path, n = 1L))
+    paths <- vapply(
+        sites,
+        function(site) {
+            if (is.null(site@epw)) {
+                cli::cli_abort(
+                    "Site {.val {site@id}} needs a baseline EPW for future-weather generation."
+                )
+            }
+            path <- if (shift_is_epw_object(site@epw)) {
+                epw_file_coerce(site@epw)$path()
+            } else {
+                site@epw
+            }
+            normalizePath(path.expand(path), winslash = "/", mustWork = TRUE)
+        },
+        character(1L)
+    )
+    unique_paths <- unique(paths)
+    # This is bounded file I/O, not a per-model or per-method operation.
+    checksums <- vapply(
+        unique_paths,
+        function(path) {
+            location <- epw_file_location(readLines(path, n = 1L, warn = FALSE))
             checkmate::assert_number(
                 location$time_zone,
                 lower = -12,
                 upper = 14,
                 finite = TRUE,
-                .var.name = paste0("EPW time zone for ", site@id)
+                .var.name = paste0("EPW time zone for ", path)
             )
             checkmate::assert_number(
                 location$elevation,
                 finite = TRUE,
-                .var.name = paste0("EPW elevation for ", site@id)
+                .var.name = paste0("EPW elevation for ", path)
             )
-        }
-        identity
-    })
+            store_hash_file(path, "sha256")
+        },
+        character(1L)
+    )
     result <- data.table::data.table(
         site_id = ids,
-        epw = vapply(identities, `[[`, character(1L), "path"),
-        checksum = vapply(identities, `[[`, character(1L), "checksum"),
-        site = unname(sites)
-    )
-    # A digest suffix prevents collisions after sanitizing Unicode, punctuation,
-    # or case-sensitive IDs for portable directories. IDs themselves are kept.
-    data.table::set(
-        result,
-        j = "component",
-        value = paste0(
+        epw = paths,
+        checksum = unname(checksums[match(paths, unique_paths)]),
+        site = unname(sites),
+        component = paste0(
             shift_batch__path_component(ids),
             "-",
             substr(vapply(ids, store__hash, character(1L)), 1L, 12L)
         )
     )
+    # Digest suffixes prevent collisions when site IDs are sanitized for paths.
     data.table::setorderv(result, "site_id")
     result
 }
@@ -1259,8 +1238,7 @@ shift_batch__future_epw <- function(
     ui,
     store,
     dry_run,
-    background,
-    legacy = FALSE
+    background
 ) {
     call_started <- Sys.time()
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
@@ -1273,13 +1251,13 @@ shift_batch__future_epw <- function(
         mustWork = FALSE
     )
     store_root <- shift_batch__store_root(store)
+    shift__validate_delivery_store_paths(output_root, store_root)
     references <- lapply(transforms, function(transform) {
-        shift_batch__references(
-            transform,
-            reference,
-            calibration,
-            multiple_sites = nrow(sites) > 1L
-        )
+        shift__validate_transform_periods(transform, periods)
+        if (!is.null(climate@frequency)) {
+            shift__validate_transform_frequency(transform, climate@frequency)
+        }
+        shift_batch__references(transform, reference, calibration)
     })
     reference_intent <- lapply(references, function(value) {
         list(
@@ -1293,24 +1271,27 @@ shift_batch__future_epw <- function(
             )
         )
     })
-    # Preserve existing single-EPW batch identities. Explicit site inputs also
-    # include location IDs, coordinates, and metadata in the reusable identity.
-    site_identity <- if (legacy) {
-        sites$checksum[[1L]]
-    } else {
-        lapply(seq_len(nrow(sites)), function(index) {
-            value <- shift__site_ref(sites$site[[index]])
-            value$epw <- sites$checksum[[index]]
-            value
-        })
-    }
+    site_identity <- lapply(seq_len(nrow(sites)), function(index) {
+        value <- shift__site_ref(sites$site[[index]])
+        value$epw <- sites$checksum[[index]]
+        value
+    })
+    # Result-affecting controls and acceptance/delivery policies must not reuse
+    # an older, differently configured batch. Runtime/UI switches stay outside.
     batch_id <- store__hash(
-        if (legacy) "shift-batch-v1" else "shift-batch-sites-v1",
+        "shift-batch-sites-v2",
         site_identity,
         shift__climate_spec_value(climate),
         lapply(transforms, transform__spec_value),
         split(periods$year, periods$period),
-        reference_intent
+        reference_intent,
+        list(
+            strict = control@strict,
+            allow_partial = control@allow_partial,
+            extraction_method = control@extraction_method,
+            output_layout = control@output_layout,
+            download = control@download
+        )
     )
     batch_root <- file.path(store_root, "batches", batch_id)
     reuse_persisted <- isTRUE(control@resume) &&
@@ -1382,114 +1363,139 @@ shift_batch__future_epw <- function(
             site = paste(sites$site_id, collapse = ", ")
         )
     }
-    # Older receipts contain a common matrix. New receipts explicitly retain
-    # each selected child, so separate pools need no Cartesian expansion.
-    if (is.null(discovery$selection)) {
-        selection <- data.table::CJ(
-            model_index = seq_len(nrow(discovery$identities)),
-            method_index = seq_along(transforms)
-        )
-    } else {
-        selection <- data.table::copy(discovery$selection)
-        data.table::set(
-            selection,
-            j = "model_index",
-            value = match(selection$identity, discovery$identities$identity)
-        )
-        data.table::set(
-            selection,
-            j = "method_index",
-            value = match(selection$transform_key, names(transforms))
-        )
-        data.table::setorderv(selection, c("model_index", "method_index"))
-    }
-    selection <- selection[rep(seq_len(.N), times = nrow(sites))]
+    selection <- data.table::copy(discovery$selection)
     data.table::set(
         selection,
-        j = "site_index",
-        value = rep(
-            seq_len(nrow(sites)),
-            each = nrow(selection) / nrow(sites)
-        )
+        j = "model_index",
+        value = match(selection$identity, discovery$identities$identity)
     )
-    children <- vector("list", nrow(selection))
-    manifest <- vector("list", nrow(selection))
-    child_keys <- character(nrow(selection))
-    # Planning each durable child involves store and EPW I/O; preallocate the
-    # child list while the method/model/site matrix is expanded in one step.
+    data.table::set(
+        selection,
+        j = "method_index",
+        value = match(selection$transform_key, names(transforms))
+    )
+    data.table::setorderv(selection, c("model_index", "method_index"))
+    identities <- discovery$identities[selection$model_index]
+    selected_transforms <- transforms[selection$method_index]
+    selected_references <- references[selection$method_index]
+    # A request and climate specification depend on model/method, not site.
+    # Construct their S7 objects once, then expand ordinary columns in one step.
+    climates <- requests <- vector("list", nrow(selection))
     for (index in seq_len(nrow(selection))) {
-        location <- sites[selection$site_index[[index]]]
-        identity <- discovery$identities[selection$model_index[[index]]]
-        transform_key <- names(transforms)[[selection$method_index[[index]]]]
-        transform <- transforms[[transform_key]]
-        target_identity <- identity[["identity"]]
-        candidate <- discovery$candidates[[transform_key]][
-            identity == target_identity
-        ][1L]
-        child_climate <- shift_batch__child_climate(
+        candidates <- discovery$candidates[[selection$transform_key[[index]]]]
+        candidate <- candidates[match(
+            selection$identity[[index]],
+            candidates$identity
+        )]
+        climates[[index]] <- shift_batch__child_climate(
             climate,
-            transform,
-            identity,
+            selected_transforms[[index]],
+            identities[index],
             candidate
         )
-        child_references <- references[[transform_key]]
-        child_key <- paste(
-            transform_key,
-            identity$source_id[[1L]],
-            sep = "--"
+        requests[[index]] <- shift__request_from_cmip6(
+            climates[[index]],
+            periods,
+            selected_transforms[[index]]
         )
-        child_component <- shift_batch__path_component(child_key)
-        if (!legacy) {
-            child_key <- paste(location$component, child_key, sep = "--")
-            child_component <- file.path(location$component, child_component)
-        }
-        child <- shift__future_epw_one(
-            site = location$site[[1L]],
-            climate = child_climate,
-            periods = periods,
-            transform = transform,
-            dir = file.path(output_root, child_component),
-            reference = child_references$reference,
-            observed_reference = child_references$observed_reference,
+    }
+    manifest <- data.table::data.table(
+        method = vapply(
+            selected_transforms,
+            function(x) x@method,
+            character(1L)
+        ),
+        scale = vapply(selected_transforms, function(x) x@scale, character(1L)),
+        reconstruction = vapply(
+            selected_transforms,
+            function(x) x@reconstruction,
+            character(1L)
+        ),
+        model = identities$source_id,
+        member = identities$variant_label,
+        grid = identities$grid_label,
+        calibration_used = vapply(
+            selected_references,
+            function(x) !is.null(x$observed_reference),
+            logical(1L)
+        )
+    )
+    spec_index <- rep(seq_len(nrow(selection)), times = nrow(sites))
+    site_index <- rep(seq_len(nrow(sites)), each = nrow(selection))
+    keys <- paste(selection$transform_key, identities$source_id, sep = "--")
+    components <- file.path(
+        sites$component[site_index],
+        shift_batch__path_component(keys)[spec_index]
+    )
+    manifest <- manifest[spec_index]
+    data.table::set(manifest, j = "site_id", value = sites$site_id[site_index])
+    data.table::set(
+        manifest,
+        j = "child_key",
+        value = paste(sites$component[site_index], keys[spec_index], sep = "--")
+    )
+    data.table::set(
+        manifest,
+        j = "store",
+        value = file.path(batch_root, components)
+    )
+    data.table::set(
+        manifest,
+        j = "output_dir",
+        value = file.path(output_root, components)
+    )
+    data.table::setcolorder(
+        manifest,
+        c(
+            "site_id",
+            "child_key",
+            "method",
+            "scale",
+            "reconstruction",
+            "model",
+            "member",
+            "grid",
+            "calibration_used",
+            "store",
+            "output_dir"
+        )
+    )
+    children <- vector("list", nrow(manifest))
+    # Each child owns a durable plan and output directory; only site-specific
+    # planning remains in this loop. The baseline SHA is shared within the call.
+    for (index in seq_len(nrow(manifest))) {
+        si <- site_index[[index]]
+        mi <- spec_index[[index]]
+        output_dir <- manifest$output_dir[[index]]
+        child_store <- manifest$store[[index]]
+        child <- shift_plan(
+            requests[[mi]],
+            sites$site[[si]],
+            periods,
+            store = child_store,
+            transform = selected_transforms[[mi]],
+            reference = selected_references[[mi]]$reference,
+            observed_reference = selected_references[[mi]]$observed_reference,
             control = control,
-            ui = ui,
-            store = file.path(batch_root, child_component),
-            # Build the complete matrix before starting any child. This
-            # makes direct execution use the same isolated batch runner as
-            # a dry-run plan passed later to shift_run().
-            dry_run = TRUE,
-            background = FALSE
+            epw = list(
+                dir = "outputs/future-epw",
+                separate = identical(control@output_layout, "nested"),
+                export_dir = output_dir
+            )
+        )
+        child@meta$climate <- climates[[mi]]
+        child@meta$epw_identity <- list(
+            path = if (shift_is_epw_object(child@meta$site@epw)) {
+                child@meta$site@epw$path()
+            } else {
+                sites$epw[[si]]
+            },
+            checksum = sites$checksum[[si]],
+            checksum_type = "sha256"
         )
         children[[index]] <- child
-        child_keys[[index]] <- child_key
-        manifest[[index]] <- data.table::data.table(
-            child_key = child_key,
-            method = transform@method,
-            scale = transform@scale,
-            reconstruction = transform@reconstruction,
-            model = identity$source_id[[1L]],
-            member = identity$variant_label[[1L]],
-            grid = identity$grid_label[[1L]],
-            calibration_used = !is.null(
-                child_references$observed_reference
-            ),
-            store = child@store_path,
-            output_dir = file.path(output_root, child_component)
-        )
-        if (!legacy) {
-            data.table::set(
-                manifest[[index]],
-                j = "site_id",
-                value = location$site_id
-            )
-        }
     }
-    names(children) <- child_keys
-    manifest <- data.table::rbindlist(
-        manifest,
-        use.names = TRUE,
-        fill = TRUE
-    )
+    names(children) <- manifest$child_key
     batch <- shift_stage_new(
         ShiftBatch,
         "batch",
@@ -1537,11 +1543,9 @@ shift_batch__decorate <- function(data, row) {
         member = row$member[[1L]],
         grid = row$grid[[1L]]
     )]
-    if ("site_id" %in% names(row)) {
-        data.table::set(data, j = "site_id", value = row$site_id[[1L]])
-    }
+    data.table::set(data, j = "site_id", value = row$site_id[[1L]])
     front <- c(
-        intersect("site_id", names(row)),
+        "site_id",
         "child_key",
         "method",
         "scale",

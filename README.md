@@ -73,7 +73,7 @@ epw <- system.file(
 )
 
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6(model = 1L, scenarios = c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
     methods = "original_morphing",
@@ -106,7 +106,7 @@ To run several methods across the same compatible models:
 
 ``` r
 batch <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6(model = 2L, scenarios = c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
     methods = c("original_morphing", "qdm"),
@@ -162,17 +162,15 @@ illustrate progress, reuse, height limits, and recovery diagnostics.
 
 ## Multiple locations
 
-Pass `sites` instead of `epw` to plan several locations together. Each
-location has a unique `site_id` and its own baseline EPW. Omitted
-coordinates and labels come from the EPW header; optional `lon`, `lat`,
-and `label` columns can specify the extraction target. Time zone and
-elevation stay in the baseline EPW. A list of `shift_site()` objects is
-also accepted.
+Construct each location with `shift_site()`, supplying a unique `id` and
+its baseline EPW. Omitted coordinates and labels come from the EPW
+header; `lon`, `lat`, and `label` can specify the extraction target.
+Time zone and elevation stay in the baseline EPW.
 
 ``` r
-sites <- data.table::data.table(
-    site_id = c("Harbin", "Guangzhou"),
-    epw = c("weather/Harbin.epw", "weather/Guangzhou.epw")
+sites <- list(
+    shift_site("Harbin", epw = "weather/Harbin.epw"),
+    shift_site("Guangzhou", epw = "weather/Guangzhou.epw")
 )
 
 batch <- shift_future_epw(
@@ -188,18 +186,19 @@ shift_cases(batch)
 shift_batch_get(shift_ids(batch)$batch_id, store = "weather-store")
 ```
 
-Explicit `sites` always returns a `ShiftBatch`, even for one row.
-Locations are ordered by ID. Case tables, summaries, and the batch
+`shift_future_epw()` always returns a `ShiftBatch`, including for one
+site. Locations are ordered by ID. Case tables, summaries, and the batch
 display retain `site_id`; each location/method/model child has a
 separate store and output directory. Portable directory names include a
 digest of the location ID to avoid name collisions. One
 candidate-discovery result is shared by all locations; climate
 extraction currently remains independent for each child.
 
-Use automatic historical or reanalysis references with multiple sites.
-An already extracted reference plan belongs to its location and store,
-so it requires a separate call for that location. Existing single-`epw`
-calls keep their return type, paths, and saved batch identities.
+Use declarative historical or reanalysis references for batches. An
+already extracted reference plan belongs to its location and store; use
+`shift_plan()` for that site’s advanced workflow. The `sites` API
+replaces the previous `epw` argument; workflow configurations use
+version 3 with a `sites` array.
 
 ## Command line
 
@@ -223,21 +222,19 @@ epwshiftr shift list --type batch
 epwshiftr shift summary --batch <batch_id> --weather
 ```
 
-For multiple locations, use configuration `version: 3` and replace the
-top-level `epw` with a `sites` array:
+Workflow configurations use `version: 3`. List one or more locations in
+the `sites` array:
 
 ``` json
 "sites": [
-  {"site_id": "Harbin", "epw": "weather/Harbin.epw"},
-  {"site_id": "Guangzhou", "epw": "weather/Guangzhou.epw"}
+  {"id": "Harbin", "epw": "weather/Harbin.epw"},
+  {"id": "Guangzhou", "epw": "weather/Guangzhou.epw"}
 ]
 ```
 
-The remaining fields and CLI commands are unchanged. Do not include both
-`epw` and `sites`. Version 2 single-location configurations remain
-supported without rewriting their files; version 3 also accepts the
-single-`epw` form. Local config validation checks all locations without
-querying ESGF.
+The top-level `epw` field and version 2 configs are no longer accepted.
+Local config validation checks all locations and method constraints
+without querying ESGF.
 
 For multiple methods and models, generate a config with
 `--methods original_morphing,qdm --model 2`. The [CLI

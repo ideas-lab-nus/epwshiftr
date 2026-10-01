@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 test_that("summary plan IDs prefer normalized lineage and support legacy rows", {
     skip_if_not_installed("duckdb")
 
@@ -102,8 +108,12 @@ test_that("shift run validates the task-oriented JSON config", {
     )
 
     missing_epw <- tempfile(fileext = ".json")
-    missing_baseline <- jsonlite::read_json(config, simplifyVector = TRUE)
-    missing_baseline$epw <- NULL
+    missing_baseline <- jsonlite::read_json(
+        config,
+        simplifyVector = TRUE,
+        simplifyDataFrame = FALSE
+    )
+    missing_baseline$sites[[1L]]$epw <- NULL
     jsonlite::write_json(
         missing_baseline,
         missing_epw,
@@ -124,7 +134,11 @@ test_that("shift run validates the task-oriented JSON config", {
     expect_match(invalid$error, "epw")
 
     unknown_field <- tempfile(fileext = ".json")
-    payload <- jsonlite::read_json(config, simplifyVector = TRUE)
+    payload <- jsonlite::read_json(
+        config,
+        simplifyVector = TRUE,
+        simplifyDataFrame = FALSE
+    )
     payload$surprise <- TRUE
     jsonlite::write_json(
         payload,
@@ -147,7 +161,11 @@ test_that("shift run validates the task-oriented JSON config", {
 
     # The previous split model/scenarios/cmip6 shape is not accepted.
     legacy_climate <- tempfile(fileext = ".json")
-    payload <- jsonlite::read_json(config, simplifyVector = TRUE)
+    payload <- jsonlite::read_json(
+        config,
+        simplifyVector = TRUE,
+        simplifyDataFrame = FALSE
+    )
     payload$model <- payload$climate$model
     payload$scenarios <- payload$climate$scenarios
     payload$cmip6 <- payload$climate[setdiff(
@@ -175,7 +193,11 @@ test_that("shift run validates the task-oriented JSON config", {
     expect_match(invalid$error, "climate")
 
     invalid_period <- tempfile(fileext = ".json")
-    payload <- jsonlite::read_json(config, simplifyVector = TRUE)
+    payload <- jsonlite::read_json(
+        config,
+        simplifyVector = TRUE,
+        simplifyDataFrame = FALSE
+    )
     payload$periods <- list(`2060s` = "not-a-year")
     jsonlite::write_json(
         payload,
@@ -199,7 +221,11 @@ test_that("shift run validates the task-oriented JSON config", {
     # A null optional model reference stays null and never receives a
     # parser-supplied historical default.
     missing_reference <- tempfile(fileext = ".json")
-    payload <- jsonlite::read_json(config, simplifyVector = TRUE)
+    payload <- jsonlite::read_json(
+        config,
+        simplifyVector = TRUE,
+        simplifyDataFrame = FALSE
+    )
     payload["reference"] <- list(NULL)
     jsonlite::write_json(
         payload,
@@ -285,7 +311,7 @@ test_that("shift run validates the task-oriented JSON config", {
             manual,
             "--dry-run"
         ))$status,
-        0L
+        1L
     )
 
     # Removed request/site/stage-list configs are intentionally rejected.
@@ -379,36 +405,73 @@ test_that("shift CLI registers, inspects, and cancels background jobs", {
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
     launched <- new.env(parent = emptyenv())
-    withr::local_options(list(epwshiftr.shift.launcher = function(store_path, run_id, job_id, log_path) {
-        launched$args <- list(store_path = store_path, run_id = run_id,
-            job_id = job_id, log_path = log_path)
+    withr::local_options(list(epwshiftr.shift.launcher = function(
+        store_path,
+        run_id,
+        job_id,
+        log_path
+    ) {
+        launched$args <- list(
+            store_path = store_path,
+            run_id = run_id,
+            job_id = job_id,
+            log_path = log_path
+        )
         invisible(0L)
     }))
 
     queued <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", config,
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        config,
         "--background"
     ))
     expect_equal(queued$status, 0L)
     expect_equal(queued$result$status, "queued")
-    expect_equal(launched$args$run_id, queued$result$run_id)
-    expect_true(all(c("watch", "cancel", "logs") %in% queued$result$next_steps$step))
+    expect_equal(launched$args$run_id, queued$result$children$run_id)
+    store <- launched$args$store_path
+    expect_true(all(
+        c("watch", "cancel", "logs") %in% queued$result$next_steps$step
+    ))
 
     logs <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "logs", "--run", queued$result$run_id
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "logs",
+        "--run",
+        queued$result$children$run_id
     ))
     expect_equal(logs$status, 0L)
     expect_equal(nrow(logs$result), 0L)
 
     cancelled <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "cancel", "--run", queued$result$run_id
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "cancel",
+        "--run",
+        queued$result$children$run_id
     ))
     expect_equal(cancelled$status, 0L)
     expect_equal(cancelled$result$status, "cancelled")
 
     conflict <- epwshiftr_cli(c(
-        "--quiet", "--store", tempfile("esg-background-conflict-"),
-        "shift", "run", "--config", config, "--dry-run", "--background"
+        "--quiet",
+        "--store",
+        tempfile("esg-background-conflict-"),
+        "shift",
+        "run",
+        "--config",
+        config,
+        "--dry-run",
+        "--background"
     ))
     expect_equal(conflict$status, 2L)
     expect_match(conflict$error, "cannot be used together")
@@ -426,10 +489,17 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
         epwshiftr.shift.launcher = function(...) invisible(0L)
     ))
     queued <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "run", "--config", config,
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        config,
         "--background"
     ))
-    run_id <- queued$result$run_id
+    run_id <- queued$result$children$run_id
+    store <- queued$result$children$store
 
     ready <- tempfile("cli-shift-lock-ready-")
     done <- tempfile("cli-shift-lock-done-")
@@ -447,35 +517,63 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
     )
     system2(
         file.path(R.home("bin"), "Rscript"),
-        c("-e", shQuote(child_code),
-          shQuote(file.path(store, "manifest.duckdb")),
-          shQuote(ready), shQuote(done)),
-        wait = FALSE, stdout = FALSE, stderr = FALSE
+        c(
+            "-e",
+            shQuote(child_code),
+            shQuote(file.path(store, "manifest.duckdb")),
+            shQuote(ready),
+            shQuote(done)
+        ),
+        wait = FALSE,
+        stdout = FALSE,
+        stderr = FALSE
     )
     for (i in seq_len(50L)) {
-        if (file.exists(ready)) break
+        if (file.exists(ready)) {
+            break
+        }
         Sys.sleep(0.05)
     }
     expect_true(file.exists(ready))
 
     status <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "status", "--run", run_id
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "status",
+        "--run",
+        run_id
     ))
     expect_equal(status$status, 0L)
     expect_equal(status$result$status, "queued")
     watch <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "watch", "--run", run_id
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "watch",
+        "--run",
+        run_id
     ))
     expect_equal(watch$status, 0L)
     expect_equal(watch$result$run$run_id, run_id)
 
     for (i in seq_len(50L)) {
-        if (file.exists(done)) break
+        if (file.exists(done)) {
+            break
+        }
         Sys.sleep(0.05)
     }
     expect_true(file.exists(done))
     cancelled <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "cancel", "--run", run_id
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "cancel",
+        "--run",
+        run_id
     ))
     expect_equal(cancelled$result$status, "cancelled")
 })
@@ -488,23 +586,38 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     variables <- epw_morph_variables(
         transform__recipe(monthly_transform("epwshiftr"))
     )
-    nc <- stats::setNames(vapply(variables, function(variable_id) {
-        path <- tempfile(fileext = ".nc")
-        write_local_cmip6_netcdf_fixture(path, 2060L, variable_id = variable_id)
-        path
-    }, character(1L)), variables)
+    nc <- stats::setNames(
+        vapply(
+            variables,
+            function(variable_id) {
+                path <- tempfile(fileext = ".nc")
+                write_local_cmip6_netcdf_fixture(
+                    path,
+                    2060L,
+                    variable_id = variable_id,
+                    frequency = "mon"
+                )
+                path
+            },
+            character(1L)
+        ),
+        variables
+    )
     on.exit(unlink(nc), add = TRUE)
 
-    docs <- data.table::rbindlist(lapply(variables, function(variable_id) {
-        cli_shift_test_file_docs(
-            basename(nc[[variable_id]]),
-            opendap_url = nc[[variable_id]],
-            download_url = nc[[variable_id]],
-            variable_id = variable_id,
-            frequency = "mon",
-            table_id = "Amon"
-        )
-    }), fill = TRUE)
+    docs <- data.table::rbindlist(
+        lapply(variables, function(variable_id) {
+            cli_shift_test_file_docs(
+                basename(nc[[variable_id]]),
+                opendap_url = nc[[variable_id]],
+                download_url = nc[[variable_id]],
+                variable_id = variable_id,
+                frequency = "mon",
+                table_id = "Amon"
+            )
+        }),
+        fill = TRUE
+    )
     # Each synthetic variable represents a separate CMIP6 File identity.
     docs[, `:=`(
         dataset_id = paste0("future-", variable_id),
@@ -519,7 +632,11 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
     export_dir <- tempfile("cli-shift-export-")
-    payload <- jsonlite::read_json(config, simplifyVector = TRUE)
+    payload <- jsonlite::read_json(
+        config,
+        simplifyVector = TRUE,
+        simplifyDataFrame = FALSE
+    )
     payload$dir <- export_dir
     jsonlite::write_json(
         payload,
@@ -529,49 +646,111 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         null = "null"
     )
 
-    result <- epwshiftr_cli(c("--quiet", "--store", store, "shift", "run", "--config", config))
+    result <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "run",
+        "--config",
+        config
+    ))
     expect_equal(result$status, 0L)
     expect_equal(result$result$status, "completed")
-    expect_length(result$result$run_id, 1L)
-    expect_length(result$result$query_id, 1L)
-    expect_length(result$result$morph_id, 1L)
+    expect_length(result$result$batch_id, 1L)
+    expect_length(result$result$children$run_id, 1L)
     expect_equal(nrow(result$result$outputs), 1L)
     expect_true(all(file.exists(result$result$outputs$export_path)))
-    expect_equal(nrow(result$result$missing), 0L)
+    expect_true(all(result$result$cases$status == "completed"))
     expect_true("File" %in% calls$types)
 
-    run_id <- result$result$run_id
-    status <- epwshiftr_cli(c("--quiet", "--store", store, "shift", "status", "--run", run_id))
+    run_id <- result$result$children$run_id
+    store <- result$result$children$store
+    status <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "status",
+        "--run",
+        run_id
+    ))
     expect_equal(status$status, 0L)
     expect_equal(status$result$run_id, run_id)
     expect_equal(status$result$status, "completed")
 
-    show <- epwshiftr_cli(c("--quiet", "--store", store, "shift", "show", "--run", run_id))
+    show <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "show",
+        "--run",
+        run_id
+    ))
     expect_equal(show$status, 0L)
-    expect_named(show$result, c("run", "cases", "events", "outputs", "diagnostics", "explain"))
+    expect_named(
+        show$result,
+        c("run", "cases", "events", "outputs", "diagnostics", "explain")
+    )
     expect_equal(show$result$run$run_id, run_id)
     expect_equal(nrow(show$result$outputs), 1L)
 
-    watch <- epwshiftr_cli(c("--quiet", "--store", store, "shift", "watch", "--run", run_id, "--events", "2"))
+    watch <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "watch",
+        "--run",
+        run_id,
+        "--events",
+        "2"
+    ))
     expect_equal(watch$status, 0L)
-    expect_named(watch$result, c("run", "cases", "outputs", "diagnostics", "events"))
+    expect_named(
+        watch$result,
+        c("run", "cases", "outputs", "diagnostics", "events")
+    )
 
     jsonl_text <- capture.output(
         jsonl_watch <- epwshiftr_cli(c(
-            "--store", store, "--jsonl", "shift", "watch", "--run", run_id,
-            "--follow", "--count", "1", "--events", "1"
+            "--store",
+            store,
+            "--jsonl",
+            "shift",
+            "watch",
+            "--run",
+            run_id,
+            "--follow",
+            "--count",
+            "1",
+            "--events",
+            "1"
         ))
     )
     expect_equal(jsonl_watch$status, 0L)
     jsonl_records <- lapply(jsonl_text, jsonlite::fromJSON)
-    expect_equal(vapply(jsonl_records, `[[`, character(1L), "type"),
-        c("snapshot", "terminal"))
+    expect_equal(
+        vapply(jsonl_records, `[[`, character(1L), "type"),
+        c("snapshot", "terminal")
+    )
     expect_equal(jsonl_records[[1L]]$snapshot$run$run_id, run_id)
 
     json_text <- capture.output(
         json_watch <- epwshiftr_cli(c(
-            "--store", store, "--json", "shift", "watch", "--run", run_id,
-            "--follow", "--count", "1", "--events", "1"
+            "--store",
+            store,
+            "--json",
+            "shift",
+            "watch",
+            "--run",
+            run_id,
+            "--follow",
+            "--count",
+            "1",
+            "--events",
+            "1"
         ))
     )
     expect_equal(json_watch$status, 0L)
@@ -581,29 +760,67 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     expect_equal(json_snapshot$run$run_id, run_id)
 
     diagnostics <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "diagnostics", "--run", run_id
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "diagnostics",
+        "--run",
+        run_id
     ))
     expect_equal(diagnostics$status, 0L)
     expect_named(diagnostics$result, shift_diagnostic_columns())
 
-    outputs <- epwshiftr_cli(c("--quiet", "--store", store, "shift", "outputs", "--run", run_id))
+    outputs <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "outputs",
+        "--run",
+        run_id
+    ))
     expect_equal(outputs$status, 0L)
     expect_equal(nrow(outputs$result), 1L)
 
     data <- epwshiftr_cli(c(
-        "--quiet", "--store", store, "shift", "data", "--run", run_id,
-        "--columns", "case_id,period,dry_bulb_temperature", "--limit", "2"
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "data",
+        "--run",
+        run_id,
+        "--columns",
+        "case_id,period,dry_bulb_temperature",
+        "--limit",
+        "2"
     ))
     expect_equal(data$status, 0L)
     expect_equal(nrow(data$result), 2L)
 
-    resumed <- epwshiftr_cli(c("--quiet", "--store", store, "shift", "resume", "--run", run_id))
+    resumed <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "resume",
+        "--run",
+        run_id
+    ))
     expect_equal(resumed$status, 0L)
     expect_equal(resumed$result$status, "completed")
     expect_equal(resumed$result$run_id, run_id)
 
     rendered <- capture.output(
-        rendered_show <- epwshiftr_cli(c("--store", store, "shift", "show", "--run", run_id)),
+        rendered_show <- epwshiftr_cli(c(
+            "--store",
+            store,
+            "shift",
+            "show",
+            "--run",
+            run_id
+        )),
         type = "message"
     )
     expect_equal(rendered_show$status, 0L)

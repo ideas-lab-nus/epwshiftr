@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 # Build deterministic monthly CMIP6 rows whose future changes vary by calendar
 # month and whose temperature extrema retain their monthly CMIP definitions.
 bws_btws_monthly_test__climate <- function(
@@ -470,7 +476,7 @@ test_that("BWS/BTWS public transform survives dry-run plan reconstruction", {
         table = "Amon"
     )
     plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = climate,
         periods = list(`2060s` = 2061L),
         transform = transform,
@@ -478,7 +484,7 @@ test_that("BWS/BTWS public transform survives dry-run plan reconstruction", {
         dir = tempfile("bws_btws-monthly-output-"),
         store = tempfile("bws_btws-monthly-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
 
     expect_identical(

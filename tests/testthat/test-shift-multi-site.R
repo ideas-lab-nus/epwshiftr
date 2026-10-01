@@ -50,12 +50,11 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
         },
         epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
     ))
-    sites <- data.table::data.table(
-        site_id = c("South", "North"),
-        epw = c(get_cache_epw(), multi_site__epw())
+    sites <- list(
+        shift_site("South", epw = get_cache_epw()),
+        shift_site("North", epw = multi_site__epw())
     )
-    data.table::setkeyv(sites, "epw")
-    original <- data.table::copy(sites)
+    original <- sites
     root <- tempfile("multi-site-persistence-")
     batch <- multi_site__plan(sites, root)
     expect_identical(sites, original)
@@ -81,13 +80,15 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
     single <- multi_site__plan(sites[1L])
     expect_identical(calls, first_calls * 2L)
     expect_length(single@meta$children, 2L)
-    # Ordering and table implementation do not invalidate the saved discovery.
+    # Input ordering does not invalidate the saved discovery.
     calls <- 0L
-    reordered <- multi_site__plan(as.data.frame(sites[2:1]), root)
+    reordered <- multi_site__plan(sites[2:1], root)
     expect_identical(reordered@ids$batch_id, batch@ids$batch_id)
     expect_identical(calls, 0L)
     reopened <- shift_batch_get(batch@ids$batch_id, root)
     expect_identical(reopened@meta$manifest, reordered@meta$manifest)
+    expect_identical(reopened@meta$periods, reordered@meta$periods)
+    expect_identical(reopened@meta$climate, reordered@meta$climate)
     expect_identical(
         lapply(reopened@meta$children, shift__plan_spec),
         lapply(reordered@meta$children, shift__plan_spec)
@@ -137,117 +138,61 @@ test_that("site objects preserve coordinates, metadata and EPW identities", {
     expect_false(identical(multi_site__plan(sites)@ids$batch_id, original))
 })
 
-test_that("invalid locations fail before catalog access", {
+test_that("site constructors and collections reject invalid inputs before discovery", {
     withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
         stop("Unexpected catalog access")
     }))
     epw <- get_cache_epw()
-    sites <- data.table::data.table(site_id = c("A", "B"), epw = epw)
-    expect_error(multi_site__plan(sites, epw = epw), "exactly one")
-    expect_error(multi_site__plan(sites[0]), "length|non-empty")
-    expect_error(multi_site__plan(sites[, .(epw)]), "site_id")
-    expect_error(multi_site__plan(sites[, .(site_id)]), "epw")
-    expect_error(multi_site__plan(list()), "non-empty")
-    expect_error(multi_site__plan(list(sites)), "site table")
+    site <- shift_site("A", epw = epw)
+    expect_error(multi_site__plan(epw), "shift_site")
     expect_error(
-        multi_site__plan(list(shift_site("A", 110, 30))),
-        "baseline EPW"
+        multi_site__plan(data.table::data.table(id = "A", epw = epw)),
+        "shift_site"
     )
-    for (ids in list(c("A", "A"), c("A", NA_character_), c("A", " "))) {
-        invalid <- data.table::copy(sites)
-        data.table::set(invalid, j = "site_id", value = ids)
-        expect_error(multi_site__plan(invalid), "duplicated|missing|whitespace")
-    }
-    for (coords in list(c(NA_real_, Inf), c(0, 91))) {
-        invalid <- data.table::copy(sites)
-        data.table::set(invalid, j = "lat", value = coords)
-        expect_error(multi_site__plan(invalid), "finite|<= 90")
-    }
-    data.table::set(sites, i = 2L, j = "epw", value = "/missing/baseline.epw")
-    expect_error(multi_site__plan(sites), "does not exist|No such file")
+    expect_error(multi_site__plan(list()), "non-empty")
+    expect_error(multi_site__plan(list(site, site)), "duplicated")
+    expect_error(multi_site__plan(shift_site(" ", epw = epw)), "whitespace")
+    expect_error(shift_site(NA_character_, epw = epw), "NA|missing")
+    expect_error(
+        shift_site("A", lon = NA_real_, lat = NA_real_, epw = epw),
+        "NA|missing"
+    )
+    expect_error(shift_site("A", lat = 91, epw = epw), "<= 90")
+    expect_error(multi_site__plan(shift_site("A", 110, 30)), "baseline EPW")
+    expect_error(
+        shift_site("A", epw = "/missing/baseline.epw"),
+        "does not exist"
+    )
 })
 
-test_that("partial optional site fields use the baseline header", {
+test_that("site defaults are independent of explicitly supplied coordinates", {
     epw <- get_cache_epw()
-    sites <- data.table::data.table(
-        site_id = c("A", "B"),
-        epw = epw,
-        lon = c(NA_real_, 110),
-        lat = c(NA_real_, 30),
-        label = c(NA_character_, "B")
-    )
-    result <- shift_batch__sites(sites = sites)
-    expected <- shift_site(epw = epw)
-    expect_s3_class(result, "data.table")
-    expect_identical(result$site[[1L]]@lon, expected@lon)
-    expect_identical(result$site[[1L]]@lat, expected@lat)
-    expect_identical(result$site[[1L]]@label, expected@label)
-    expect_equal(result$site[[2L]]@lon, 110)
-    expect_identical(result$site[[2L]]@label, "B")
-    data.table::set(sites, j = "label", value = NA_character_)
-    result <- shift_batch__sites(sites = sites)
-    expect_identical(result$site[[2L]]@label, expected@label)
+    derived <- shift_site("A", epw = epw)
+    explicit <- shift_site("A", derived@lon, derived@lat, epw = epw)
+    expect_identical(explicit, derived)
+    sites <- shift_batch__sites(list(
+        explicit,
+        shift_site("B", 110, 30, epw = epw)
+    ))
+    expect_s3_class(sites, "data.table")
+    expect_identical(sites$site[[2L]]@label, derived@label)
+    expect_equal(sites$site[[2L]]@lon, 110)
 })
 
-test_that("old single-site calls retain their original plan and batch identities", {
+test_that("single and multiple site calls use one batch contract", {
     withr::local_options(list(
         epwshiftr.cmip6.availability = test_cmip6_availability,
         epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
     ))
-    epw <- get_cache_epw()
-    climate <- shift_cmip6(model = "Model-A", scenarios = "ssp585")
-    transform <- monthly_transform("epwshiftr")
-    plan <- shift_future_epw(
-        epw,
-        climate,
-        2050,
-        transform,
-        tempfile("single-output-"),
-        store = tempfile("single-store-"),
-        dry_run = TRUE
-    )
-    expect_s7_class(plan, ShiftPlan)
-    expect_identical(plan@meta$site, shift_site(epw = epw))
-    batch <- shift_future_epw(
-        epw,
-        climate,
-        2050,
-        transform = list(transform),
-        methods = NULL,
-        dir = tempfile("single-output-"),
-        dry_run = TRUE
-    )
-    expect_s7_class(batch, ShiftPlan)
-    climate <- shift_cmip6(model = 1L, scenarios = "ssp585")
-    batch <- shift_future_epw(
-        epw,
-        climate,
-        2050,
-        methods = "original_morphing",
-        dir = tempfile("single-output-"),
-        store = tempfile("single-store-"),
-        dry_run = TRUE,
-        ui = shift_ui(progress = "none")
-    )
-    transform <- monthly_transform("original_morphing")
-    references <- list(list(
-        model_historical = shift__reference_spec_value(
-            historical_reference(1995:2014),
-            "model_historical"
-        ),
-        observed_reference = NULL
-    ))
-    names(references) <- "monthly-original_morphing"
-    expected <- store__hash(
-        "shift-batch-v1",
-        shift__epw_identity(epw)$checksum,
-        shift__climate_spec_value(climate),
-        list(`monthly-original_morphing` = transform__spec_value(transform)),
-        split(2050L, "2050"),
-        references
-    )
-    expect_identical(batch@ids$batch_id, expected)
-    expect_false("site_id" %in% names(batch@meta$manifest))
+    site <- shift_site("A", epw = get_cache_epw())
+    root <- tempfile()
+    single <- multi_site__plan(site, root)
+    wrapped <- multi_site__plan(list(site), root)
+    expect_s7_class(single, ShiftBatch)
+    expect_identical(single@ids$batch_id, wrapped@ids$batch_id)
+    expect_identical(single@meta$manifest$site_id, c("A", "A"))
+    expect_false("epw" %in% names(formals(shift_future_epw)))
+    expect_identical(names(formals(shift_future_epw))[[1L]], "sites")
 })
 
 test_that("version 3 location arrays plan and restore through the CLI", {
@@ -258,10 +203,9 @@ test_that("version 3 location arrays plan and restore through the CLI", {
     config <- epwshiftr_cli_shift_example_config()
     config$version <- 3L
     config$sites <- list(
-        list(site_id = "South", epw = config$epw),
-        list(site_id = "North", epw = multi_site__epw(), label = "North")
+        list(id = "South", epw = config$sites[[1L]]$epw),
+        list(id = "North", epw = multi_site__epw(), label = "North")
     )
-    config$epw <- NULL
     config$climate$model <- 1L
     config$dir <- tempfile("cli-multi-output-")
     path <- multi_site__write_config(config)
@@ -285,7 +229,7 @@ test_that("version 3 location arrays plan and restore through the CLI", {
     config$epw <- get_cache_epw()
     expect_error(
         epwshiftr_cli_read_shift_config(multi_site__write_config(config)),
-        "exactly one"
+        "epw"
     )
     config$epw <- NULL
     config$version <- 2L
@@ -296,7 +240,7 @@ test_that("version 3 location arrays plan and restore through the CLI", {
     config$version <- 1L
     expect_error(
         epwshiftr_cli_read_shift_config(multi_site__write_config(config)),
-        "versions 2 and 3"
+        "version 3"
     )
 })
 
@@ -306,9 +250,9 @@ test_that("multi-site references are resolved for each location", {
         epwshiftr.cmip6.availability = test_cmip6_availability,
         epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
     ))
-    sites <- data.table::data.table(
-        site_id = c("A", "B"),
-        epw = c(get_cache_epw(), multi_site__epw())
+    sites <- list(
+        shift_site("A", epw = get_cache_epw()),
+        shift_site("B", epw = multi_site__epw())
     )
     plan <- shift_future_epw(
         sites = sites,
@@ -355,16 +299,19 @@ test_that("new site inputs validate EPW generation metadata before discovery", {
     withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
         stop("Unexpected catalog access")
     }))
-    sites <- data.table::data.table(site_id = "A", epw = path)
-    expect_error(multi_site__plan(sites), "EPW time zone for A")
+    sites <- shift_site("A", epw = path)
+    expect_error(multi_site__plan(sites), "EPW time zone")
     header[[9L]] <- "8"
     header[[10L]] <- "unknown"
     lines[[1L]] <- paste(header, collapse = ",")
     writeLines(lines, path)
-    expect_error(multi_site__plan(sites), "EPW elevation for A")
+    expect_error(multi_site__plan(sites), "EPW elevation")
 })
 
 test_that("multi-site batches execute locally and reuse each site's outputs", {
+    # Fixture catalog identities must not reuse another test's disk cache.
+    local_test_cache()
+    withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
     withr::local_options(list(
@@ -385,7 +332,8 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
                 write_local_cmip6_netcdf_fixture(
                     path,
                     2060L,
-                    variable_id = variable
+                    variable_id = variable,
+                    frequency = "mon"
                 )
                 path
             },
@@ -458,6 +406,61 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     expect_equal(data.table::uniqueN(output$site_id), 2L)
     expect_equal(data.table::uniqueN(output$export_path), 2L)
     expect_true(all(file.exists(output$export_path)))
+    # Compare the actual extracted cells and native monthly axis against the
+    # NetCDF source, independently of successful execution and file existence.
+    nc <- RNetCDF::open.nc(files[["tas"]])
+    source_values <- RNetCDF::var.get.nc(nc, "tas")
+    source_time <- RNetCDF::var.get.nc(nc, "time")
+    source_units <- RNetCDF::att.get.nc(nc, "time", "units")
+    expect_identical(RNetCDF::att.get.nc(nc, "NC_GLOBAL", "frequency"), "mon")
+    expect_identical(RNetCDF::att.get.nc(nc, "NC_GLOBAL", "table_id"), "Amon")
+    RNetCDF::close.nc(nc)
+    for (i in seq_along(completed@meta$children)) {
+        child <- completed@meta$children[[i]]
+        climate <- shift_stage_new(
+            ShiftClimate,
+            "climate",
+            store_path = child@store_path,
+            ids = list(
+                plan_id = jsonlite::fromJSON(child@meta$run$plan_ids_json[[1L]])
+            )
+        )
+        raw <- shift_data(climate, n = Inf, variables = "tas")
+        expect_equal(nrow(raw), 12L)
+        expect_equal(raw$lon, rep(sites[[i]]@lon, 12L))
+        expect_equal(raw$lat, rep(sites[[i]]@lat, 12L))
+        store <- shift_store(child)
+        grid <- morpher__private_store(store)$read_table(
+            "extraction_grid_source"
+        )
+        grid <- grid[grid$variable_id == "tas"]
+        expect_equal(unique(grid$grid_lon), c(104, 104.5)[[i]])
+        expect_equal(unique(grid$grid_lat), c(1, 2)[[i]])
+        expect_true(all(grid$weight == 1))
+        store$close()
+        expect_equal(
+            raw$value,
+            source_values[c(2L, 3L)[[i]], c(1L, 2L)[[i]], ],
+            tolerance = 1e-7
+        )
+        expect_identical(unique(raw$units), "K")
+        expect_identical(as.integer(format(raw$time, "%m")), seq_len(12L))
+        expect_true(all(raw$year == 2060L))
+        # The serialized EPW must expose a complete chronological hourly year.
+        weather <- epw_file_read(output$export_path[[i]])$data()
+        expect_equal(nrow(weather), 8760L)
+        expect_true(all(is.finite(weather$dry_bulb_temperature)))
+    }
+    expect_length(source_time, 12L)
+    expect_match(source_units, "days since 2060-01-01")
+    expect_equal(
+        nrow(shift_data(
+            completed,
+            n = 2L,
+            columns = c("site_id", "dry_bulb_temperature")
+        )),
+        2L
+    )
     hashes <- tools::md5sum(output$export_path)
     collected <- length(calls$types)
     reopened <- shift_batch_get(plan@ids$batch_id, plan@store_path)
@@ -467,4 +470,79 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     expect_identical(tools::md5sum(shift_outputs(resumed)$export_path), hashes)
     expect_identical(length(calls$types), collected)
     expect_setequal(shift_summary(resumed)$site_id, c("A", "B"))
+    restored <- shift_future_epw(
+        sites,
+        plan@meta$climate,
+        2060,
+        transform = transform,
+        dir = plan@meta$output_dir,
+        store = dirname(dirname(plan@store_path)),
+        control = shift_control(strict = FALSE),
+        ui = shift_ui("none")
+    )
+    expect_identical(restored@meta$execution$action, c("reused", "reused"))
+    for (control in list(
+        shift_control(strict = TRUE),
+        shift_control(strict = FALSE, extraction_method = "idw")
+    )) {
+        changed <- shift_future_epw(
+            sites,
+            plan@meta$climate,
+            2060,
+            transform = transform,
+            dir = plan@meta$output_dir,
+            store = dirname(dirname(plan@store_path)),
+            control = control,
+            dry_run = TRUE,
+            ui = shift_ui("none")
+        )
+        expect_false(identical(changed@ids$batch_id, plan@ids$batch_id))
+        expect_true(all(vapply(
+            changed@meta$children,
+            function(x) S7::S7_inherits(x, ShiftPlan),
+            logical(1L)
+        )))
+        expect_identical(changed@meta$children[[1L]]@meta$control, control)
+    }
+    expect_identical(tools::md5sum(output$export_path), hashes)
+})
+
+
+test_that("R and CLI reject invalid method periods before discovery", {
+    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+        stop("Unexpected catalog access")
+    }))
+    config <- epwshiftr_cli_shift_example_config()
+    config$transform <- list(scale = "hourly", method = "kernel_qdm")
+    config$periods <- list(mid = 2050L)
+    config$calibration <- list(dataset = "era5", years = "1995:2014")
+    path <- multi_site__write_config(config)
+    root <- tempfile()
+    for (command in list(c("config", "validate"), c("run", "--dry-run"))) {
+        result <- epwshiftr_cli(c(
+            "--quiet",
+            "--store",
+            root,
+            "shift",
+            command,
+            "--config",
+            path
+        ))
+        expect_equal(result$status, 1L)
+        expect_match(result$error, "at least two weather years")
+    }
+    expect_error(
+        shift_future_epw(
+            shift_site(epw = get_cache_epw()),
+            shift_cmip6("Model-A", "ssp585"),
+            2050L,
+            transform = hourly_transform("kernel_qdm"),
+            calibration = shift_era5(1995:2014),
+            dir = tempfile(),
+            store = root,
+            dry_run = TRUE
+        ),
+        "at least two weather years"
+    )
+    expect_false(dir.exists(root))
 })

@@ -1,9 +1,14 @@
 # epwshiftr (development version)
 
-* Added `sites` to `shift_future_epw()` for location tables and `shift_site()`
-  lists, with shared candidate discovery, distinct child outputs, and persisted
-  site identities. Workflow config version 3 accepts location arrays while
-  existing single-EPW calls and version 2 configs remain supported (#273).
+* `shift_future_epw()` now takes `shift_site()` objects through its first
+  argument, `sites`, and always returns a batch. Workflow config version 3 uses
+  a `sites` array with constructor field names; the old `epw` argument and
+  version 2 configs are no longer accepted. Site/model/method plans share
+  discovery and baseline identities, with distinct output directories (#273).
+
+* Batch recovery now distinguishes extraction methods and validation policies;
+  method/period constraints are checked before discovery. Reuse model/method
+  requests and hash each unique baseline once during batch planning (#273).
 
 * Apply historical catalog requirements only when needed by the batch reference,
   share File coverage results across methods, and avoid repeated eligibility

@@ -2,12 +2,11 @@
   "check": {"kind": "list"},
   "keys": {
     "type": "named",
-    "must.include": ["version", "climate", "periods", "dir"],
-    "subset.of": ["version", "epw", "climate", "periods", "transform", "reference", "observed_reference", "dir", "control", "methods", "calibration", "sites"]
+    "must.include": ["version", "sites", "climate", "periods", "dir"],
+    "subset.of": ["version", "climate", "periods", "transform", "reference", "observed_reference", "dir", "control", "methods", "calibration", "sites"]
   },
   "fields": {
     "version": {"check": {"kind": "count", "positive": true}},
-    "epw": {"check": {"kind": "string"}},
     "sites": {
       "check": {
         "kind": "list",
@@ -23,11 +22,11 @@
         "keys": {
           "type": "named",
           "must.include": [
-            "site_id",
+            "id",
             "epw"
           ],
           "subset.of": [
-            "site_id",
+            "id",
             "epw",
             "lon",
             "lat",
@@ -35,7 +34,7 @@
           ]
         },
         "fields": {
-          "site_id": {
+          "id": {
             "check": {
               "kind": "string",
               "min.chars": 1

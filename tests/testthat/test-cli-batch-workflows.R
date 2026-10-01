@@ -158,29 +158,60 @@ test_that("network validation and doctor share reanalysis readiness checks", {
 
 test_that("dry-run batch receipts reopen offline through CLI and R", {
     withr::local_options(cli_batch__local_catalog())
-    config <- epwshiftr_cli_shift_config_example(c("--methods",
-        "original_morphing,bws_btws", "--model", "2"))$config
-    config$epw <- get_cache_epw()
+    config <- epwshiftr_cli_shift_config_example(c(
+        "--methods",
+        "original_morphing,bws_btws",
+        "--model",
+        "2"
+    ))$config
+    config$sites[[1L]]$epw <- get_cache_epw()
     config$dir <- tempfile("cli-batch-output-")
     config$periods <- list(future = 2049:2050)
     root <- tempfile("cli-batch-store-")
     path <- cli_batch__write_config(config)
-    text <- capture.output(result <- epwshiftr_cli(c("--json", "--store", root,
-        "shift", "run", "--config", path, "--dry-run")))
+    text <- capture.output(
+        result <- epwshiftr_cli(c(
+            "--json",
+            "--store",
+            root,
+            "shift",
+            "run",
+            "--config",
+            path,
+            "--dry-run"
+        ))
+    )
     expect_equal(result$status, 0L)
     expect_true(jsonlite::validate(paste(text, collapse = "\n")))
     id <- result$result$batch_id
     # Reopening uses persisted child plans, even if discovery is unavailable.
     testthat::local_mocked_bindings(
-        shift_batch__discover_models = function(...) stop("Unexpected discovery"),
+        shift_batch__discover_models = function(...) {
+            stop("Unexpected discovery")
+        },
         .package = "epwshiftr"
     )
     batch <- shift_batch_get(id, root)
     expect_equal(nrow(shift_cases(batch)), 8L)
     expect_identical(shift_status(batch), "planned")
-    for (command in c("show", "status", "diagnostics", "outputs", "logs", "data", "cancel")) {
-        out <- epwshiftr_cli(c("--quiet", "--store", root,
-            "shift", command, "--batch", id))
+    for (command in c(
+        "show",
+        "status",
+        "diagnostics",
+        "outputs",
+        "logs",
+        "data",
+        "cancel"
+    )) {
+        out <- epwshiftr_cli(c(
+            "--quiet",
+            "--store",
+            root,
+            "shift",
+            command,
+            "--batch",
+            id
+        ))
         expect_equal(out$status, 0L, info = command)
     }
     expect_silent(shift_watch(batch, follow = FALSE, ui = shift_ui("none")))
@@ -196,7 +227,9 @@ test_that("dry-run batch receipts reopen offline through CLI and R", {
             expect_true(any(grepl("^├─ Workflows", plain)))
             expect_true(any(grepl("^├─ Results", plain)))
             expect_match(utils::tail(plain, 1L), "^╰─")
-            expect_true(all(cli::ansi_nchar(view$lines, type = "width") == width - 1L))
+            expect_true(all(
+                cli::ansi_nchar(view$lines, type = "width") == width - 1L
+            ))
         } else {
             expect_false(any(grepl("^[╭├╰│]", plain)))
         }
@@ -206,22 +239,40 @@ test_that("dry-run batch receipts reopen offline through CLI and R", {
     snapshot$batch$batch_id <- paste0("batch_", strrep("abcdef", 18L))
     snapshot$batch$output_dir <- paste0("/天气/", strrep("future-output/", 12L))
     snapshot$diagnostics <- data.table::data.table(
-        method = "original_morphing", model = "Model-A", severity = "warning",
+        method = "original_morphing",
+        model = "Model-A",
+        severity = "warning",
         message = paste0("Check input ", strrep("reference-variable-", 8L))
     )
     for (width in c(48L, 60L, 80L)) {
         view <- shift_batch__view(snapshot, width = width, detail = "detail")
-        expect_true(all(cli::ansi_nchar(view$lines, type = "width") <= width - 1L))
-        content <- paste(gsub("^│ | │$", "", cli::ansi_strip(view$lines)), collapse = "")
+        expect_true(all(
+            cli::ansi_nchar(view$lines, type = "width") <= width - 1L
+        ))
+        content <- paste(
+            gsub("^│ | │$", "", cli::ansi_strip(view$lines)),
+            collapse = ""
+        )
         content <- gsub("[[:space:]]", "", content)
         expect_match(content, snapshot$batch$batch_id, fixed = TRUE)
         expect_match(content, snapshot$batch$output_dir, fixed = TRUE)
-        expect_match(content, gsub("[[:space:]]", "", snapshot$diagnostics$message), fixed = TRUE)
+        expect_match(
+            content,
+            gsub("[[:space:]]", "", snapshot$diagnostics$message),
+            fixed = TRUE
+        )
         expect_match(content, "original_morphing_field_equations", fixed = TRUE)
     }
-    expect_error(cli_shift__target(epwshiftr_cli_parse_command(
-        c("--run", "a", "--batch", "b"), options = c("--run", "--batch")), root),
-        "exactly one")
+    expect_error(
+        cli_shift__target(
+            epwshiftr_cli_parse_command(
+                c("--run", "a", "--batch", "b"),
+                options = c("--run", "--batch")
+            ),
+            root
+        ),
+        "exactly one"
+    )
 })
 
 test_that("batch watch follows remaining children after an independent failure", {

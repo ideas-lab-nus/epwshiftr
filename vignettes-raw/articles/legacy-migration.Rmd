@@ -109,7 +109,7 @@ reusable transform:
 
 ```r
 run <- shift_future_epw(
-    epw = epw,
+    sites = shift_site(epw = epw),
     climate = shift_cmip6(
         model = "MPI-ESM1-2-LR",
         scenarios = "ssp585",
@@ -210,3 +210,13 @@ not emulate removed profiles through compatibility wrappers.
 For new work, use the store-native API. It gives better diagnostics, durable
 metadata, resumable downloads, artifact tracking, and a clearer route from ESGF
 records to generated EPW files.
+
+## Site-based future-weather batches
+
+The development API uses `shift_future_epw(sites = shift_site(epw = path), ...)`
+and returns a `ShiftBatch` for both one and multiple locations. Construct multiple
+locations as a list of `shift_site()` objects. The previous `epw` argument and
+version 2 CLI workflow configs are no longer accepted. Version 3 configs require
+a `sites` array, for example `[{"id": "Singapore", "epw": "baseline/SIN.epw"}]`.
+Use `shift_plan()` for an advanced single-site workflow with already extracted
+reference data.

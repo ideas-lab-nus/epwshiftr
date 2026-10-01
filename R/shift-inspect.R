@@ -335,22 +335,17 @@ shift_summary <- function(
         }))
     }
     if (S7::S7_inherits(x, ShiftBatch)) {
+        columns <- c(
+            "site_id",
+            "child_key",
+            "method",
+            "scale",
+            "reconstruction",
+            "model"
+        )
+        manifest <- x@meta$manifest[, columns, with = FALSE]
         rows <- lapply(seq_along(x@meta$children), function(index) {
-            identity <- as.list(x@meta$manifest[
-                index,
-                intersect(
-                    c(
-                        "site_id",
-                        "child_key",
-                        "method",
-                        "scale",
-                        "reconstruction",
-                        "model"
-                    ),
-                    names(x@meta$manifest)
-                ),
-                with = FALSE
-            ])
+            identity <- lapply(manifest, `[[`, index)
             identity$batch_id <- x@ids$batch_id
             shift_inspect__summary_child(
                 x@meta$children[[index]],

@@ -125,34 +125,18 @@ epwshiftr_cli_shift_config_validate <- function(
         ),
         "observed_reference"
     )
-    batch <- !is.null(config$sites) ||
-        !is.null(config$methods) ||
-        length(transforms) > 1L ||
-        is.null(climate@model)
+    periods <- shift__periods_from_input(config$periods)
     references <- lapply(transforms, function(transform) {
-        if (batch) {
-            return(shift_batch__references(
-                transform,
-                reference,
-                observed,
-                multiple_sites = length(config$sites) > 1L
-            ))
+        shift__validate_transform_periods(transform, periods)
+        if (!is.null(climate@frequency)) {
+            shift__validate_transform_frequency(transform, climate@frequency)
         }
-        transform__validate_execution_inputs(transform, reference, observed)
-        list(reference = reference, observed_reference = observed)
+        shift_batch__references(transform, reference, observed)
     })
-    locations <- shift_batch__sites(
-        config$epw,
-        if (is.null(config$sites)) {
-            NULL
-        } else {
-            data.table::rbindlist(
-                config$sites,
-                use.names = TRUE,
-                fill = TRUE
-            )
-        }
-    )
+    locations <- shift_batch__sites(lapply(config$sites, function(site) {
+        do.call(shift_site, site)
+    }))
+    shift__validate_delivery_store_paths(config$dir, store)
     network <- isTRUE(parsed$flags[["--network"]])
     ui <- epwshiftr_cli_task_ui(
         parsed,
@@ -187,18 +171,6 @@ epwshiftr_cli_shift_config_validate <- function(
     } else {
         data.table::data.table()
     }
-    # Single-transform local plans preserve their existing case preview. A
-    # batch's common model matrix is resolved only with explicit --network or
-    # shift run --dry-run; ordinary validation never queries ESGF.
-    plan <- if (!batch) {
-        epwshiftr_cli_config_plan(
-            config,
-            store = store,
-            ui = shift_ui(progress = "none")
-        )
-    } else {
-        NULL
-    }
     list(
         action = "validate",
         intent = cli_shift__config_intent(config),
@@ -210,48 +182,40 @@ epwshiftr_cli_shift_config_validate <- function(
             if (network) "network_checks_passed" else "local_checks_passed"
         },
         config = normalizePath(config_path, winslash = "/", mustWork = TRUE),
-        cases = if (is.null(plan)) {
-            data.table::data.table()
-        } else {
-            shift_cases(plan)
-        },
-        explain = if (is.null(plan)) {
-            data.table::data.table(
-                step = c("methods", "models", "discovery"),
-                detail = c(
-                    paste(
-                        vapply(
-                            transforms,
-                            function(transform) {
-                                paste(
-                                    transform@scale,
-                                    transform@method,
-                                    transform@reconstruction
-                                )
-                            },
-                            character(1L)
-                        ),
-                        collapse = "; "
+        cases = data.table::data.table(),
+        explain = data.table::data.table(
+            step = c("methods", "models", "discovery"),
+            detail = c(
+                paste(
+                    vapply(
+                        transforms,
+                        function(transform) {
+                            paste(
+                                transform@scale,
+                                transform@method,
+                                transform@reconstruction
+                            )
+                        },
+                        character(1L)
                     ),
-                    if (!is.null(climate@model)) {
-                        paste(climate@model, collapse = ", ")
+                    collapse = "; "
+                ),
+                if (!is.null(climate@model)) {
+                    paste(climate@model, collapse = ", ")
+                } else {
+                    if (is.null(climate@n_models)) {
+                        "all compatible models"
                     } else {
-                        if (is.null(climate@n_models)) {
-                            "all compatible models"
-                        } else {
-                            sprintf("%d compatible models", climate@n_models)
-                        }
-                    },
-                    if (network) {
-                        "Network coverage checked"
-                    } else {
-                        "Not checked locally; use --network or shift run --dry-run"
+                        sprintf("%d compatible models", climate@n_models)
                     }
-                )
+                },
+                if (network) {
+                    "Network coverage checked"
+                } else {
+                    "Not checked locally; use --network or shift run --dry-run"
+                }
             )
-        } else {
-            shift_explain(plan)
-        },
+        ),
         sites = locations[, c("site_id", "epw"), with = FALSE],
         selected_models = discovery,
         diagnostics = checks
@@ -276,20 +240,16 @@ cli_shift__config_intent <- function(config) {
         "observed_reference"
     )
     list(
-        Baseline = if (is.null(config$sites)) {
-            config$epw
-        } else {
-            paste(
-                vapply(
-                    config$sites,
-                    function(site) {
-                        paste0(site$site_id, ": ", site$epw)
-                    },
-                    character(1L)
-                ),
-                collapse = "; "
-            )
-        },
+        Baseline = paste(
+            vapply(
+                config$sites,
+                function(site) {
+                    paste0(site$id, ": ", site$epw)
+                },
+                character(1L)
+            ),
+            collapse = "; "
+        ),
         Methods = paste(
             vapply(
                 transforms,
@@ -327,12 +287,15 @@ cli_shift__config_intent <- function(config) {
 
 epwshiftr_cli_shift_example_config <- function() {
     list(
-        version = 2L,
-        epw = system.file(
-            "extdata/examples/SGP_Singapore.486980_IWEC.epw",
-            package = "epwshiftr",
-            mustWork = TRUE
-        ),
+        version = 3L,
+        sites = list(list(
+            id = "Singapore",
+            epw = system.file(
+                "extdata/examples/SGP_Singapore.486980_IWEC.epw",
+                package = "epwshiftr",
+                mustWork = TRUE
+            )
+        )),
         climate = list(
             provider = "cmip6",
             model = "BCC-CSM2-MR",

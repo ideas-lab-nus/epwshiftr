@@ -111,8 +111,8 @@ cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = empt
 
 cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
     config <- list(
-        version = 2L,
-        epw = epw,
+        version = 3L,
+        sites = list(list(id = "Singapore", epw = epw)),
         climate = list(
             provider = "cmip6",
             model = "EC-Earth3",

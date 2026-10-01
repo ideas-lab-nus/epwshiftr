@@ -52,12 +52,24 @@ ui_workflows__states <- function() {
 
 # Plan a real offline matrix with saved receipts, avoiding remote catalog work.
 ui_workflows__batch <- function(root) {
-    withr::local_options(list(epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage))
-    shift_future_epw(get_cache_epw(), shift_cmip6(model = 2L, scenarios = "ssp585"),
-        periods = list(mid = 2049:2050), methods = c("original_morphing", "bws_btws"),
-        reference = shift_reference_historical(data.frame(period = "reference", year = 1995:2014)),
-        dir = file.path(root, "exports"), store = root, dry_run = TRUE, ui = shift_ui("none"))
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = test_cmip6_availability,
+        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    ))
+    shift_future_epw(
+        shift_site(epw = get_cache_epw()),
+        shift_cmip6(model = 2L, scenarios = "ssp585"),
+        periods = list(mid = 2049:2050),
+        methods = c("original_morphing", "bws_btws"),
+        reference = shift_reference_historical(data.frame(
+            period = "reference",
+            year = 1995:2014
+        )),
+        dir = paste0(root, "-exports"),
+        store = root,
+        dry_run = TRUE,
+        ui = shift_ui("none")
+    )
 }
 
 test_that("calibration, started cases and multi-year exports have honest units", {

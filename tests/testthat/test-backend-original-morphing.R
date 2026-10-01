@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 enhanced_test__hourly_year <- function() {
     dates <- seq(as.Date("2001-01-01"), as.Date("2001-12-31"), by = "day")
     data.table::CJ(date = dates, hour = 1:24)[, `:=`(
@@ -830,21 +836,26 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     transform <- monthly_transform("epwshiftr")
     reference <- historical_reference(1995:2014)
     variables <- morpher__input_variables(transform__recipe(transform))
-    plan <- shift_future_epw(
-        epw = get_cache_epw(),
-        climate = shift_cmip6("Model-A", "ssp585"),
-        periods = list(`2060s` = 2055:2065),
+    climate <- shift_cmip6("Model-A", "ssp585")
+    periods <- epw_morph_periods(`2060s` = 2055:2065)
+    plan <- shift_plan(
+        request = shift__request_from_cmip6(climate, periods, transform),
+        site = shift_site(epw = get_cache_epw()),
+        periods = periods,
         transform = transform,
         reference = reference,
-        dir = tempfile("enhanced-multitable-output-"),
-        store = tempfile("enhanced-multitable-store-"),
-        dry_run = TRUE
+        store = tempfile("enhanced-multitable-store-")
     )
+    plan@meta$climate <- climate
     future <- enhanced_test__catalog(
-        "ssp585", variables, 2055:2065
+        "ssp585",
+        variables,
+        2055:2065
     )
     reference_catalog <- enhanced_test__catalog(
-        "historical", variables, 1995:2014
+        "historical",
+        variables,
+        1995:2014
     )
     selection <- shift__resolve_cmip6_selection(
         plan,
@@ -854,28 +865,43 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     partitions <- shift__selection_partition_rows(selection, "future")
 
     expect_identical(selection$grid_label, "gn")
-    expect_true(any(partitions$variable_id == "snd" &
-        partitions$table_id == "LImon" & partitions$grid_label == "gr"))
-    expect_true(any(partitions$variable_id == "tas" &
-        partitions$table_id == "Amon" & partitions$grid_label == "gn"))
+    expect_true(any(
+        partitions$variable_id == "snd" &
+            partitions$table_id == "LImon" &
+            partitions$grid_label == "gr"
+    ))
+    expect_true(any(
+        partitions$variable_id == "tas" &
+            partitions$table_id == "Amon" &
+            partitions$grid_label == "gn"
+    ))
     expect_false("hurs" %in% partitions$variable_id)
     expect_true(all(c("huss", "tas", "ps") %in% partitions$variable_id))
 
     without_reference_snd <- shift__resolve_cmip6_selection(
-        plan, future,
-        enhanced_test__catalog("historical", variables, 1995:2014,
-            include_snd = FALSE)
+        plan,
+        future,
+        enhanced_test__catalog(
+            "historical",
+            variables,
+            1995:2014,
+            include_snd = FALSE
+        )
     )
-    expect_false("snd" %in% shift__selection_partition_rows(
-        without_reference_snd, "future"
-    )$variable_id)
+    expect_false(
+        "snd" %in%
+            shift__selection_partition_rows(
+                without_reference_snd,
+                "future"
+            )$variable_id
+    )
 
     required_transform <- monthly_transform(
         "epwshiftr",
         snow_depth = "required"
     )
     required_plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("Model-A", "ssp585"),
         periods = list(`2060s` = 2055:2065),
         transform = required_transform,
@@ -883,12 +909,17 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
         dir = tempfile("required-snd-output-"),
         store = tempfile("required-snd-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     expect_error(
         shift__resolve_cmip6_selection(
-            required_plan, future,
-            enhanced_test__catalog("historical", variables, 1995:2014,
-                include_snd = FALSE)
+            required_plan,
+            future,
+            enhanced_test__catalog(
+                "historical",
+                variables,
+                1995:2014,
+                include_snd = FALSE
+            )
         ),
         class = "epwshiftr_shift_resolution_error"
     )

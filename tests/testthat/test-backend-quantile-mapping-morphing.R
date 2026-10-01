@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 # Build deterministic daily tas rows for quantile-mapping morphing inputs.
 quantile_mapping_morphing_test__climate <- function(
     years,
@@ -272,16 +278,16 @@ test_that("Quantile-mapping morphing public method persists both reference roles
         frequency = "day",
         table = "day"
     )
-    plan <- shift_future_epw(
-        epw = get_cache_epw(),
-        climate = climate,
-        periods = list(`2060s` = 2061L),
+    periods <- epw_morph_periods(`2060s` = 2061L)
+    plan <- shift_plan(
+        request = shift__request_from_cmip6(climate, periods, transform),
+        site = shift_site(epw = get_cache_epw()),
+        periods = periods,
         transform = transform,
         reference = historical,
         observed_reference = observed,
-        dir = tempfile("qm_morphing-output-"),
-        store = tempfile("qm_morphing-store-"),
-        dry_run = TRUE
+        store = tempfile("method-reference-store-"),
+        epw = list(export_dir = tempfile("method-reference-output-"))
     )
     rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
     explanation <- shift__plan_explain(plan)

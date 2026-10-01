@@ -1,3 +1,9 @@
+# Keep high-level planning tests independent of live ESGF catalogs.
+withr::local_options(list(
+    epwshiftr.cmip6.availability = test_cmip6_availability,
+    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+))
+
 test_that("shared status views are stage-adaptive and remain within the terminal width", {
     state <- list(
         status = "running",
@@ -857,10 +863,12 @@ test_that("startup plan summaries include output and selection without a full du
     skip_if_not_installed("duckdb")
 
     plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
-            "BCC-CSM2-MR", c("ssp126", "ssp585"),
-            member = "r1i1p1f1", grid = "gn",
+            "BCC-CSM2-MR",
+            c("ssp126", "ssp585"),
+            member = "r1i1p1f1",
+            grid = "gn",
             table = c(snd = "LImon")
         ),
         periods = list(`2060s` = 2055:2065),
@@ -868,20 +876,27 @@ test_that("startup plan summaries include output and selection without a full du
         dir = tempfile("shift-ui-output-"),
         store = tempfile("shift-ui-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     lines <- unname(shift__ui_plan_summary(plan, "run-test", width = 80L))
     expect_gte(length(lines), 5L)
     expect_true(all(nchar(lines, type = "width") <= 80L))
     expect_match(lines[[1L]], "Future EPW.*run-test.*STARTING")
     expect_match(lines[[2L]], "BCC-CSM2-MR.*ssp126.*2060s")
-    expect_match(lines[[3L]],
-        "Enhanced epwshiftr monthly morphing.*no reference.*2 expected")
-    expect_match(paste(lines, collapse = " "),
-        "Selection.*member r1i1p1f1.*grid gn.*tables auto by variable.*snd=LImon")
+    expect_match(
+        lines[[3L]],
+        "Enhanced epwshiftr monthly morphing.*no reference.*2 expected"
+    )
+    expect_match(
+        paste(lines, collapse = " "),
+        "Selection.*member r1i1p1f1.*grid gn.*tables auto by variable.*tas=Amon"
+    )
     expect_true(any(grepl("Output", lines, fixed = TRUE)))
 
     detail_lines <- unname(shift__ui_plan_summary(
-        plan, "run-test", width = 80L, detail = "detail"
+        plan,
+        "run-test",
+        width = 80L,
+        detail = "detail"
     ))
     detail_text <- paste(detail_lines, collapse = " ")
     expect_match(detail_text, "Options.*transition_hours=72")
@@ -917,28 +932,30 @@ test_that("dynamic startup is a replaceable first frame rather than a transcript
     skip_if_not_installed("duckdb")
 
     plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
         periods = list(`2060s` = 2055:2065),
         transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-ui-output-"),
         store = tempfile("shift-ui-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     frames <- list()
     closed <- 0L
     testthat::local_mocked_bindings(
-        shift__ui_renderer = function(...) list(
-            draw = function(lines, compact = NULL) {
-                frames[[length(frames) + 1L]] <<- lines
-                TRUE
-            },
-            suspend = function(code) code(),
-            close = function(...) {
-                closed <<- closed + 1L
-                invisible(NULL)
-            }
-        ),
+        shift__ui_renderer = function(...) {
+            list(
+                draw = function(lines, compact = NULL) {
+                    frames[[length(frames) + 1L]] <<- lines
+                    TRUE
+                },
+                suspend = function(code) code(),
+                close = function(...) {
+                    closed <<- closed + 1L
+                    invisible(NULL)
+                }
+            )
+        },
         .package = "epwshiftr"
     )
     reporter <- shift__reporter(shift_ui("dynamic", motion = "none"))
@@ -950,20 +967,28 @@ test_that("dynamic startup is a replaceable first frame rather than a transcript
     expect_length(frames, 1L)
     plain <- cli::ansi_strip(frames[[1L]])
 
-    milestone_output <- capture.output({
-        reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
-        reporter$stage_completed("Resolved inputs.")
-    }, type = "message")
+    milestone_output <- capture.output(
+        {
+            reporter$stage_started("resolve", "Resolving inputs.", 1L, 6L)
+            reporter$stage_completed("Resolved inputs.")
+        },
+        type = "message"
+    )
     reporter$close()
 
     expect_length(milestone_output, 0L)
     expect_false(grepl("run 04b318bd", plain[[1L]], fixed = TRUE))
     detail_state <- reporter$snapshot()
     detail_state$detail <- "detail"
-    expect_match(cli::ansi_strip(shift__ui_status_lines(detail_state)[[1L]]),
-        "run 04b318bd", fixed = TRUE)
-    expect_match(paste(plain, collapse = " "),
-        "BCC-CSM2-MR.*ssp126.*Enhanced epwshiftr monthly morphing")
+    expect_match(
+        cli::ansi_strip(shift__ui_status_lines(detail_state)[[1L]]),
+        "run 04b318bd",
+        fixed = TRUE
+    )
+    expect_match(
+        paste(plain, collapse = " "),
+        "BCC-CSM2-MR.*ssp126.*Enhanced epwshiftr monthly morphing"
+    )
     expect_true(any(grepl("Workflow", plain, fixed = TRUE)))
     expect_true(any(grepl("Resolve", plain, fixed = TRUE)))
     expect_equal(closed, 1L)
@@ -1095,17 +1120,19 @@ test_that("shift_watch() renders the shared status view instead of one long stri
 
     store <- tempfile("shift-watch-view-store-")
     plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
-            "BCC-CSM2-MR", c("ssp126", "ssp585"),
-            member = "r1i1p1f1", grid = "gn"
+            "BCC-CSM2-MR",
+            c("ssp126", "ssp585"),
+            member = "r1i1p1f1",
+            grid = "gn"
         ),
         periods = list(`2060s` = 2055:2065),
         transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-watch-view-output-"),
         store = store,
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     withr::local_options(list(
         epwshiftr.shift.launcher = function(...) invisible(0L)
     ))
@@ -1205,14 +1232,14 @@ test_that("dynamic watch animates cached state between store polls", {
     skip_if_not_installed("duckdb")
 
     plan <- shift_future_epw(
-        epw = get_cache_epw(),
+        sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
         periods = list(`2060s` = 2060L),
         transform = monthly_transform("epwshiftr"),
         dir = tempfile("shift-watch-animation-output-"),
         store = tempfile("shift-watch-animation-store-"),
         dry_run = TRUE
-    )
+    )@meta$children[[1L]]
     run_id <- shift__run_register(plan)
     store <- shift_store(plan)
     on.exit(store$close(), add = TRUE)
@@ -1248,22 +1275,26 @@ test_that("dynamic watch animates cached state between store polls", {
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
-        shift__ui_renderer = function(...) list(
-            draw = function(...) {
-                updates <<- updates + 1L
-                TRUE
-            },
-            close = function(...) {
-                closes <<- closes + 1L
-                invisible(NULL)
-            }
-        ),
+        shift__ui_renderer = function(...) {
+            list(
+                draw = function(...) {
+                    updates <<- updates + 1L
+                    TRUE
+                },
+                close = function(...) {
+                    closes <<- closes + 1L
+                    invisible(NULL)
+                }
+            )
+        },
         .package = "epwshiftr"
     )
 
     capture.output(
         result <- shift_watch(
-            running, follow = TRUE, interval = 0.5,
+            running,
+            follow = TRUE,
+            interval = 0.5,
             ui = shift_ui("dynamic", refresh = 0.125)
         ),
         type = "message"
