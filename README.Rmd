@@ -125,12 +125,16 @@ stopifnot(identical(shift_status(batch), "completed"))
 
 Inspect the same batch directly in R. These tables show only the key columns
 for the README; `shift_outputs()`, `shift_summary()` and `shift_diagnostics()`
-return the full `data.table` results. Temperatures are in °C.
+return the full `data.table` results. `epw_exists` checks the exported file
+at `outputs$export_path`; temperatures are in °C.
 
 ```{r inspect-example, message = FALSE}
 shift_status(batch)
 outputs <- shift_outputs(batch)
-outputs[, .(site_id, method, model, period)]
+outputs[, .(
+    site_id, method, model, period,
+    epw_exists = file.exists(export_path)
+)]
 summary <- shift_summary(batch, weather = TRUE)
 summary[, .(site_id, method, weather_hours, mean_temperature_c)]
 shift_diagnostics(batch)[, .N, by = severity]

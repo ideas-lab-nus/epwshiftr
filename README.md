@@ -94,20 +94,24 @@ shortened.*
 
 Inspect the same batch directly in R. These tables show only the key
 columns for the README; `shift_outputs()`, `shift_summary()` and
-`shift_diagnostics()` return the full `data.table` results. Temperatures
-are in °C.
+`shift_diagnostics()` return the full `data.table` results. `epw_exists`
+checks the exported file at `outputs$export_path`; temperatures are in
+°C.
 
 ``` r
 shift_status(batch)
 #> [1] "completed"
 outputs <- shift_outputs(batch)
-outputs[, .(site_id, method, model, period)]
-#>         site_id            method        model period
-#>          <char>            <char>       <char> <char>
-#> 1: SanFrancisco original_morphing IPSL-CM6A-LR  2060s
-#> 2: SanFrancisco          bws_btws IPSL-CM6A-LR  2060s
-#> 3:    Singapore original_morphing IPSL-CM6A-LR  2060s
-#> 4:    Singapore          bws_btws IPSL-CM6A-LR  2060s
+outputs[, .(
+    site_id, method, model, period,
+    epw_exists = file.exists(export_path)
+)]
+#>         site_id            method        model period epw_exists
+#>          <char>            <char>       <char> <char>     <lgcl>
+#> 1: SanFrancisco original_morphing IPSL-CM6A-LR  2060s       TRUE
+#> 2: SanFrancisco          bws_btws IPSL-CM6A-LR  2060s       TRUE
+#> 3:    Singapore original_morphing IPSL-CM6A-LR  2060s       TRUE
+#> 4:    Singapore          bws_btws IPSL-CM6A-LR  2060s       TRUE
 summary <- shift_summary(batch, weather = TRUE)
 summary[, .(site_id, method, weather_hours, mean_temperature_c)]
 #>         site_id            method weather_hours mean_temperature_c
