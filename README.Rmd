@@ -123,21 +123,18 @@ batch <- shift_batch_get(receipt$batch_id, store = file.path(cache, "store"))
 stopifnot(identical(shift_status(batch), "completed"))
 ```
 
-Inspect the same batch directly in R. The output and summary are `data.table`
-results; temperatures in the weather summary are in °C.
-
-<details>
-<summary>Show the inspection code and results</summary>
-
+Inspect the same batch directly in R. These tables show only the key columns
+for the README; `shift_outputs()`, `shift_summary()` and `shift_diagnostics()`
+return the full `data.table` results. Temperatures are in °C.
 
 ```{r inspect-example, message = FALSE}
 shift_status(batch)
-shift_outputs(batch)
-shift_summary(batch, weather = TRUE)
-shift_diagnostics(batch)
+outputs <- shift_outputs(batch)
+outputs[, .(site_id, method, model, period)]
+summary <- shift_summary(batch, weather = TRUE)
+summary[, .(site_id, method, weather_hours, mean_temperature_c)]
+shift_diagnostics(batch)[, .N, by = severity]
 ```
-
-</details>
 
 ## Documentation
 
