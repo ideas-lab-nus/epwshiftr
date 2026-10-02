@@ -125,17 +125,12 @@ test_that("multi-site reads fetch only selected CF bounds", {
     expect_length(bounds_counts, 3L)
 })
 
-# File metadata is independent of consumer demands, but must fail closed when
-# either its stored hash or the currently opened source metadata changes.
-test_that("file coordinates are reused with validated identity and hashes", {
+# Coordinate reuse belongs to the opened dataset object. A separate object
+# reads its own native coordinates without publishing a cross-batch cache.
+test_that("native coordinates are reused only within a dataset object", {
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
     withr::defer(unlink(path))
-    acquisition <- data.table::data.table(
-        physical_file_id = "fixture",
-        checksum = store_hash_file(path, "sha256"),
-        checksum_type = "sha256"
-    )
     root <- withr::local_tempdir()
     withr::local_options(list(epwshiftr.dir_cache = root))
     original <- RNetCDF::var.get.nc
@@ -150,56 +145,29 @@ test_that("file coordinates are reused with validated identity and hashes", {
     ds <- EsgDataset$new(path)
     ds$open()
     withr::defer(ds$close())
-    first <- shift_batch__file_metadata(ds, acquisition, "tas")
+    axis <- dataset__time_axis(ds)
+    grid <- ds$get_spatial_grid()
     expect_equal(reads, c("time", "lat", "lon"))
-    ds$close()
-    ds$open()
+    expect_null(axis$bounds)
     reads <- character()
-    second <- shift_batch__file_metadata(ds, acquisition, "tas")
-    expect_identical(second, first)
-    expect_identical(dataset__time_axis(ds), first$axis)
-    expect_identical(ds$get_spatial_grid(), first$grid)
+    expect_identical(dataset__time_axis(ds), axis)
+    expect_identical(ds$get_spatial_grid(), grid)
     expect_length(reads, 0L)
-    # A fresh source attribute differs even though the same cache key is supplied.
-    ds$close()
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "360_day")
-    RNetCDF::close.nc(nc)
-    ds$open()
-    expect_error(
-        shift_batch__file_metadata(ds, acquisition, "tas"),
-        class = "epwshiftr_shared_cache_error"
-    )
-    ds$close()
-    nc <- RNetCDF::open.nc(path, write = TRUE)
-    RNetCDF::att.put.nc(
-        nc,
-        "time",
-        "calendar",
-        "NC_CHAR",
-        "proleptic_gregorian"
-    )
-    RNetCDF::close.nc(nc)
-    ds$open()
-    record_path <- list.files(
-        root,
-        pattern = "metadata[.]rds$",
-        recursive = TRUE,
-        full.names = TRUE
-    )
-    record <- readRDS(record_path)
-    record$data$grid$lat[[1L]] <- 99
-    saveRDS(record, record_path)
-    expect_error(
-        shift_batch__file_metadata(ds, acquisition, "tas"),
-        class = "epwshiftr_shared_cache_error"
-    )
+
+    other <- EsgDataset$new(path)
+    other$open()
+    withr::defer(other$close())
+    expect_identical(dataset__time_axis(other), axis)
+    expect_identical(other$get_spatial_grid(), grid)
+    expect_equal(reads, c("time", "lat", "lon"))
+    expect_false(dir.exists(file.path(root, "source-metadata")))
 })
 
 # Bound metadata is shared across the acquisition's value windows, so a long
 # period does not add one metadata round trip per window.
 test_that("batch prefetch shares selected bounds across value windows", {
-    withr::local_options(list(epwshiftr.dir_cache = withr::local_tempdir()))
+    cache <- withr::local_tempdir()
+    withr::local_options(list(epwshiftr.dir_cache = cache))
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(
         path,
@@ -263,4 +231,5 @@ test_that("batch prefetch shares selected bounds across value windows", {
         2L
     )
     expect_equal(bounds_counts, list(c(2L, 2190L)))
+    expect_false(dir.exists(file.path(cache, "source-metadata")))
 })
