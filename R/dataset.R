@@ -217,8 +217,25 @@ dataset__time_bounds <- function(
     index,
     units,
     calendar,
-    time_length
+    time_length,
+    indices = NULL
 ) {
+    full_axis <- is.null(indices)
+    if (full_axis) {
+        indices <- seq_len(time_length)
+    }
+    if (!length(indices)) {
+        return(NULL)
+    }
+    checkmate::assert_integerish(
+        indices,
+        lower = 1L,
+        upper = time_length,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE
+    )
+    indices <- as.integer(indices)
     bounds_name <- tryCatch(
         dataset$att_get("time", "bounds", index),
         error = function(error) NULL
@@ -234,11 +251,14 @@ dataset__time_bounds <- function(
     info <- tryCatch(
         dataset$var_inq(bounds_name, index),
         error = function(error) {
-            stop(sprintf(
-                "The CF time bounds variable '%s' cannot be read: %s",
-                bounds_name,
-                conditionMessage(error)
-            ), call. = FALSE)
+            stop(
+                sprintf(
+                    "The CF time bounds variable '%s' cannot be read: %s",
+                    bounds_name,
+                    conditionMessage(error)
+                ),
+                call. = FALSE
+            )
         }
     )
     dimension_info <- lapply(info$dimids, function(id) {
@@ -256,43 +276,71 @@ dataset__time_bounds <- function(
     )
     time_dimension <- match("time", dimension_names)
     bound_dimension <- setdiff(seq_along(dimension_names), time_dimension)
-    if (length(dimension_names) != 2L ||
-        is.na(time_dimension) ||
-        length(bound_dimension) != 1L ||
-        dimension_lengths[[time_dimension]] != time_length ||
-        dimension_lengths[[bound_dimension]] != 2L) {
-        stop(sprintf(
-            "The CF time bounds variable '%s' must have one time dimension of length %d and one bounds dimension of length 2.",
+    if (
+        length(dimension_names) != 2L ||
+            is.na(time_dimension) ||
+            length(bound_dimension) != 1L ||
+            dimension_lengths[[time_dimension]] != time_length ||
+            dimension_lengths[[bound_dimension]] != 2L
+    ) {
+        stop(
+            sprintf(
+                "The CF time bounds variable '%s' must have one time dimension of length %d and one bounds dimension of length 2.",
+                bounds_name,
+                time_length
+            ),
+            call. = FALSE
+        )
+    }
+
+    # Read only contiguous requested native positions. Each bounded I/O run
+    # retains the original dimension order, including bounds-first files.
+    runs <- if (full_axis) {
+        list(indices)
+    } else {
+        # Two bounds per time position keep each subset below 8192 values.
+        dataset__region_runs(indices, max_time = 4096L)
+    }
+    ordered <- matrix(NA_real_, nrow = length(indices), ncol = 2L)
+    offset <- 0L
+    for (run in runs) {
+        start <- rep.int(1L, 2L)
+        count <- dimension_lengths
+        start[[time_dimension]] <- run[[1L]]
+        count[[time_dimension]] <- length(run)
+        raw <- dataset$var_get(
             bounds_name,
-            time_length
-        ), call. = FALSE)
+            start = start,
+            count = count,
+            index = index,
+            collapse = FALSE
+        )
+        if (!identical(as.integer(dim(raw)), as.integer(count))) {
+            cli::cli_abort(
+                "The CF time bounds variable '{bounds_name}' has dimensions inconsistent with its metadata.",
+                call = NULL
+            )
+        }
+        rows <- seq.int(offset + 1L, length.out = length(run))
+        ordered[rows, ] <- matrix(
+            aperm(raw, c(time_dimension, bound_dimension)),
+            nrow = length(run),
+            ncol = 2L
+        )
+        offset <- offset + length(run)
     }
 
-    raw <- dataset$var_get(
-        bounds_name,
-        index = index,
-        collapse = FALSE
-    )
-    raw_dimensions <- dim(raw)
-    if (is.null(raw_dimensions) ||
-        !identical(as.integer(raw_dimensions), dimension_lengths)) {
-        stop(sprintf(
-            "The CF time bounds variable '%s' has dimensions inconsistent with its metadata.",
-            bounds_name
-        ), call. = FALSE)
-    }
-
-    # Reorder the raw array to time-by-bound form before parsing each endpoint
-    # with the same units and calendar as the parent coordinate.
-    ordered <- aperm(raw, c(time_dimension, bound_dimension))
-    dim(ordered) <- c(time_length, 2L)
+    # Parse both endpoints with the parent's native units and calendar.
     start <- parse_cf_time(ordered[, 1L], units, calendar)
     end <- parse_cf_time(ordered[, 2L], units, calendar)
     if (any(as.numeric(end) <= as.numeric(start))) {
-        stop(sprintf(
-            "The CF time bounds variable '%s' must contain increasing intervals.",
-            bounds_name
-        ), call. = FALSE)
+        stop(
+            sprintf(
+                "The CF time bounds variable '%s' must contain increasing intervals.",
+                bounds_name
+            ),
+            call. = FALSE
+        )
     }
 
     list(
@@ -302,6 +350,44 @@ dataset__time_bounds <- function(
         start_coordinates = attr(start, "cf_coordinates", exact = TRUE),
         end_coordinates = attr(end, "cf_coordinates", exact = TRUE)
     )
+}
+
+# Cache the complete native time coordinates independently of interval bounds.
+# Shared readers can select indices before fetching bounds; get_time_axis()
+# still returns the full bounds required by its existing public contract.
+dataset__time_axis <- function(dataset, index = 1L) {
+    private <- dataset__private(dataset)
+    private$check_open()
+    private$check_index(index)
+    full <- private$metadata_cache[[sprintf("time_axis_%d", index)]]
+    if (!is.null(full)) {
+        return(full)
+    }
+    key <- sprintf("time_coordinates_%d", index)
+    cached <- private$metadata_cache[[key]]
+    if (!is.null(cached)) {
+        return(cached)
+    }
+    units <- dataset$att_get("time", "units", index)
+    calendar <- tryCatch(
+        dataset$att_get("time", "calendar", index),
+        error = function(error) "standard"
+    )
+    values <- parse_cf_time(
+        dataset$var_get("time", index = index),
+        units,
+        calendar
+    )
+    result <- list(
+        values = values,
+        units = units,
+        calendar = normalize_cf_calendar(calendar),
+        coordinates = attr(values, "cf_coordinates", exact = TRUE),
+        bounds = NULL,
+        length = dataset$dim_inq("time", index)$length
+    )
+    private$metadata_cache[[key]] <- result
+    result
 }
 
 #' Remote NetCDF Dataset Access via OPeNDAP
@@ -730,45 +816,17 @@ EsgDataset <- R6::R6Class(
             private$check_open()
             private$check_index(index)
 
-            # Check if already cached
             cache_key <- sprintf("time_axis_%d", index)
             if (!is.null(private$metadata_cache[[cache_key]])) {
                 return(private$metadata_cache[[cache_key]])
             }
-
-            # Get time dimension info
-            time_dim <- self$dim_inq("time", index)
-
-            # Get time attributes
-            time_units <- self$att_get("time", "units", index)
-
-            time_calendar <- tryCatch(
-                self$att_get("time", "calendar", index),
-                error = function(e) "standard"
-            )
-
-            # Get and parse time variable data
-            time_vals <- parse_cf_time(
-                self$var_get("time", index = index),
-                time_units,
-                time_calendar
-            )
-            time_coordinates <- attr(time_vals, "cf_coordinates", exact = TRUE)
-            time_bounds <- dataset__time_bounds(
+            result <- dataset__time_axis(self, index)
+            result$bounds <- dataset__time_bounds(
                 self,
-                index = index,
-                units = time_units,
-                calendar = time_calendar,
-                time_length = time_dim$length
-            )
-
-            result <- list(
-                values = time_vals,
-                units = time_units,
-                calendar = normalize_cf_calendar(time_calendar),
-                coordinates = time_coordinates,
-                bounds = time_bounds,
-                length = time_dim$length
+                index,
+                result$units,
+                result$calendar,
+                result$length
             )
 
             # Cache the result

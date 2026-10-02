@@ -355,6 +355,89 @@ shift_batch__metadata_write <- function(path, identity, data) {
     invisible(path)
 }
 
+# Persist file-wide coordinates in the common cache, independently of batch
+# directories and consumer-specific windows.
+# Catalog identity and endpoint bind the cache; fresh source metadata must still
+# match before coordinates are reused. This does not verify a remote file hash.
+shift_batch__file_metadata <- function(
+    dataset,
+    acquisition,
+    variable
+) {
+    identity <- store__hash(
+        "shared-file-metadata-v1",
+        acquisition$physical_file_id[[1L]],
+        acquisition$checksum,
+        acquisition$checksum_type,
+        variable,
+        dataset$url
+    )
+    directory <- file.path(
+        cache__option("dir_cache", cache__default_dir()),
+        "source-metadata",
+        identity
+    )
+    dir.create(dirname(directory), recursive = TRUE, showWarnings = FALSE)
+    path <- file.path(directory, "metadata.rds")
+    units <- tryCatch(
+        as.character(dataset$att_get(variable, "units", index = 1L))[[1L]],
+        error = function(error) NA_character_
+    )
+    # These inquiries use the opened source's metadata, not cached coordinate
+    # arrays. Reject changed native dimensions, units or calendar before reuse.
+    signature <- list(
+        tracking_id = tryCatch(
+            dataset$att_get("NC_GLOBAL", "tracking_id"),
+            error = function(error) NULL
+        ),
+        time_length = dataset$dim_inq("time")$length,
+        time_units = dataset$att_get("time", "units"),
+        calendar = normalize_cf_calendar(tryCatch(
+            dataset$att_get("time", "calendar"),
+            error = function(error) "standard"
+        )),
+        lat_length = dataset$dim_inq("lat")$length,
+        lon_length = dataset$dim_inq("lon")$length,
+        units = units
+    )
+    metadata <- manifest_with_lock(
+        directory,
+        {
+            if (file.exists(path)) {
+                record <- tryCatch(readRDS(path), error = base::identity)
+                if (
+                    inherits(record, "error") ||
+                        !is.list(record) ||
+                        !identical(record$identity, identity) ||
+                        !is.list(record$data) ||
+                        !identical(record$sha256, store__hash(record$data)) ||
+                        !identical(record$data$signature, signature)
+                ) {
+                    cli::cli_abort(
+                        "A shared file has invalid or changed native metadata.",
+                        class = "epwshiftr_shared_cache_error"
+                    )
+                }
+                record$data
+            } else {
+                data <- list(
+                    signature = signature,
+                    axis = dataset__time_axis(dataset),
+                    grid = dataset$get_spatial_grid(),
+                    units = units
+                )
+                shift_batch__metadata_write(path, identity, data)
+                data
+            }
+        },
+        timeout = 86400
+    )
+    private <- dataset__private(dataset)
+    private$metadata_cache$time_coordinates_1 <- metadata$axis
+    private$metadata_cache$spatial_grid_1 <- metadata$grid
+    metadata
+}
+
 # Materialize one consumer in the existing site-extraction cache format. Child
 # stores can then use their ordinary extraction task, provenance and resume
 # logic without knowing that another site shared the source read.
@@ -674,14 +757,32 @@ shift_batch__prefetch_acquisition <- function(
             stop(opened)
         }
         source$dataset <- dataset
-        source$axis <- source$dataset$get_time_axis(index = 1L)
-        source$units <- tryCatch(
-            as.character(source$dataset$att_get(
-                consumers$variable_id[[1L]],
-                "units",
-                index = 1L
-            ))[[1L]],
-            error = function(error) NA_character_
+        file_metadata <- shift_batch__file_metadata(
+            dataset,
+            acquisition,
+            consumers$variable_id[[1L]]
+        )
+        source$axis <- file_metadata$axis
+        source$units <- file_metadata$units
+        # Resolve this acquisition's bounds once, then subset them in each
+        # value window. This avoids extra network round trips for long periods
+        # while keeping each bounds request to at most 8192 native values.
+        selected <- cf_time__range_indices(
+            source$axis$values,
+            source$axis$coordinates,
+            c(acquisition$time_start[[1L]], acquisition$time_stop[[1L]])
+        )
+        private <- dataset__private(dataset)
+        private$metadata_cache$time_bounds_1 <- list(
+            indices = selected,
+            bounds = dataset__time_bounds(
+                dataset,
+                1L,
+                source$axis$units,
+                source$axis$calendar,
+                source$axis$length,
+                selected
+            )
         )
     }
     dataset <- source$dataset

@@ -137,8 +137,9 @@ dataset__region_cell_groups <- function(points) {
     groups[seq_len(count)]
 }
 
-# Keep every native request to at most 2048 time positions and four source
-# cells (8192 numeric values). Gaps remain separate native requests.
+# Partition contiguous native positions into bounded runs. Spatial reads use
+# at most 2048 times and four cells; interval bounds use 4096 times and two
+# endpoints. Both subset paths stay within 8192 values per request.
 dataset__region_runs <- function(indices, max_time = 2048L) {
     if (!length(indices)) {
         return(list())
@@ -192,7 +193,7 @@ dataset__read_regions_one <- function(
         )
     }
 
-    time_info <- dataset$get_time_axis(index = index)
+    time_info <- dataset__time_axis(dataset, index)
     base_selected <- cf_time__range_indices(
         time_info$values,
         time_info$coordinates,
@@ -329,22 +330,48 @@ dataset__read_regions_one <- function(
     time_position <- match("time", meta$names)
     lat_position <- match("lat", meta$names)
     lon_position <- match("lon", meta$names)
+    cached_bounds <- private$metadata_cache[[sprintf("time_bounds_%d", index)]]
+    position <- match(selected, cached_bounds$indices)
+    bounds <- if (!is.null(cached_bounds) && !anyNA(position)) {
+        if (is.null(cached_bounds$bounds)) {
+            NULL
+        } else {
+            list(
+                start = cached_bounds$bounds$start[position],
+                end = cached_bounds$bounds$end[position]
+            )
+        }
+    } else if (is.null(time_info$bounds)) {
+        dataset__time_bounds(
+            dataset,
+            index,
+            time_info$units,
+            time_info$calendar,
+            time_info$length,
+            selected
+        )
+    } else {
+        list(
+            start = time_info$bounds$start[selected],
+            end = time_info$bounds$end[selected]
+        )
+    }
     clock <- data.table::as.data.table(time_info$coordinates[
         selected,
         CF_TIME_COORDINATE_COLUMNS,
         drop = FALSE
     ])
     data.table::set(clock, j = "time", value = time_info$values[selected])
-    if (!is.null(time_info$bounds)) {
+    if (!is.null(bounds)) {
         data.table::set(
             clock,
             j = "time_bound_start",
-            value = time_info$bounds$start[selected]
+            value = bounds$start[seq_along(selected)]
         )
         data.table::set(
             clock,
             j = "time_bound_end",
-            value = time_info$bounds$end[selected]
+            value = bounds$end[seq_along(selected)]
         )
     }
     for (block_index in seq_along(blocks)) {
