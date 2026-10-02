@@ -21,30 +21,37 @@ dataset__empty_regions <- function() {
         method = character(),
         value = numeric()
     )
-    attr(values, "grid_sources") <- data.table::data.table()
-    attr(values, "read_slices") <- data.table::data.table()
+    attr(values, "grid_sources") <- data.table::data.table(
+        site_id = character(),
+        source_index = integer(),
+        role = character(),
+        grid_lon = numeric(),
+        grid_lat = numeric(),
+        grid_dist_km = numeric(),
+        weight = numeric(),
+        file_index = integer(),
+        variable = character(),
+        method = character()
+    )
+    attr(values, "read_slices") <- data.table::data.table(
+        file_index = integer(),
+        variable = character(),
+        ind_lat = integer(),
+        ind_lon = integer(),
+        lat_count = integer(),
+        lon_count = integer(),
+        time_start_index = integer(),
+        time_count = integer()
+    )
     values
 }
 
 # Validate one site table before opening any NetCDF variable. The site ID is
 # retained in both values and source-cell provenance to keep consumers apart.
 dataset__region_sites <- function(sites) {
-    if (!data.table::is.data.table(sites)) {
-        stop(
-            "`sites` must be a data.table created from site specifications.",
-            call. = FALSE
-        )
-    }
+    checkmate::assert_data_table(sites, min.rows = 1L)
     required <- c("site_id", "lon", "lat", "method")
-    if (!all(required %in% names(sites))) {
-        stop(
-            "`sites` must contain site_id, lon, lat, and method columns.",
-            call. = FALSE
-        )
-    }
-    if (!nrow(sites)) {
-        stop("`sites` must contain at least one site.", call. = FALSE)
-    }
+    checkmate::assert_names(names(sites), must.include = required)
     has_windows <- all(c("time_start", "time_stop") %in% names(sites))
     if (xor("time_start" %in% names(sites), "time_stop" %in% names(sites))) {
         stop(
@@ -79,12 +86,7 @@ dataset__region_sites <- function(sites) {
         any.missing = FALSE
     )
     checkmate::assert_character(sites$method, any.missing = FALSE)
-    if (!all(sites$method %in% ESG_GRID_METHOD_CHOICES)) {
-        stop(
-            "`sites$method` contains an unsupported grid extraction method.",
-            call. = FALSE
-        )
-    }
+    checkmate::assert_subset(sites$method, ESG_GRID_METHOD_CHOICES)
     if (has_windows) {
         start <- as.POSIXct(sites$time_start, tz = "UTC")
         stop <- as.POSIXct(sites$time_stop, tz = "UTC")
@@ -113,13 +115,9 @@ dataset__read_regions_one <- function(
     timeout
 ) {
     private <- dataset__private(dataset)
-    meta <- tryCatch(
-        private$get_var_dim_meta(variable, index),
-        error = function(error) NULL
-    )
-    if (is.null(meta)) {
-        return(NULL)
-    }
+    # Variable presence is checked by the caller; metadata or transport errors
+    # must reach the caller instead of being reported as an absent variable.
+    meta <- private$get_var_dim_meta(variable, index)
     required_dims <- c("time", "lat", "lon")
     if (!all(required_dims %in% meta$names)) {
         stop(
@@ -192,6 +190,13 @@ dataset__read_regions_one <- function(
     }
     grid_lat <- as.vector(grid$lat)
     grid_lon <- as.vector(grid$lon)
+    # Nearest and IDW sites reuse one coordinate table. Cell methods use only
+    # their four surrounding coordinates and need no full-grid expansion.
+    nearest_coords <- if (any(sites$method %in% c("nearest", "idw"))) {
+        private$make_region_grid_coords(grid_lat, grid_lon)
+    } else {
+        NULL
+    }
     sources <- vector("list", nrow(sites))
     for (site_index in seq_len(nrow(sites))) {
         site <- sites[site_index]
@@ -201,7 +206,8 @@ dataset__read_regions_one <- function(
             grid_lat,
             grid_lon,
             site$lat[[1L]],
-            target_lon
+            target_lon,
+            coords = nearest_coords
         )
         data.table::set(source, j = "site_id", value = site$site_id[[1L]])
         sources[[site_index]] <- source
@@ -379,10 +385,15 @@ dataset__read_regions <- function(
     private$validate_async_request(async, timeout)
     private$check_open()
     time <- private$normalize_region_time(time)
-    pieces <- list()
+    pieces <- vector("list", length(private$urls) * length(variable))
+    piece_index <- 0L
     found <- stats::setNames(rep.int(FALSE, length(variable)), variable)
     for (index in seq_along(private$urls)) {
+        available <- dataset$get_variables(index = index)
         for (name in variable) {
+            if (!name %in% available) {
+                next
+            }
             piece <- dataset__read_regions_one(
                 dataset,
                 name,
@@ -392,13 +403,12 @@ dataset__read_regions <- function(
                 async,
                 timeout
             )
-            if (is.null(piece)) {
-                next
-            }
             found[[name]] <- TRUE
-            pieces[[length(pieces) + 1L]] <- piece
+            piece_index <- piece_index + 1L
+            pieces[[piece_index]] <- piece
         }
     }
+    pieces <- pieces[seq_len(piece_index)]
     missing <- names(found)[!found]
     if (length(missing) == length(found)) {
         stop(

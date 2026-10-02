@@ -621,6 +621,38 @@ test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like 
 })
 # }}}
 # EsgDataset$read_region() {{{
+test_that("nearest and IDW source cells preserve full-grid ranking", {
+    ds <- EsgDataset$new("unused")
+    private <- dataset__private(ds)
+    grid_lat <- c(-80, -40, 0, 40, 80)
+    grid_lon <- c(0, 60, 120, 180, 240, 300)
+    coords <- private$make_region_grid_coords(grid_lat, grid_lon)
+
+    for (target in list(c(22, 75), c(79, 359), c(-78, 181))) {
+        distances <- tunnel_dist(
+            coords$grid_lat,
+            coords$grid_lon,
+            target[[1L]],
+            target[[2L]]
+        )
+        expected <- coords[order(distances)]
+        for (method in c("nearest", "idw")) {
+            actual <- private$region_grid_sources(
+                method,
+                grid_lat,
+                grid_lon,
+                target[[1L]],
+                target[[2L]],
+                coords = coords
+            )
+            count <- if (identical(method, "nearest")) 1L else 4L
+            expect_identical(actual$ind_lat, expected$ind_lat[seq_len(count)])
+            expect_identical(actual$ind_lon, expected$ind_lon[seq_len(count)])
+            expect_equal(sum(actual$weight), 1)
+        }
+    }
+})
+
 test_that("the internal multi-site reader shares sparse cells across distant sites", {
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
@@ -750,7 +782,7 @@ test_that("the internal multi-site reader rejects ambiguous sites and empty inpu
     )
     expect_error(
         dataset__read_regions(ds, "tas", sites[0L]),
-        "at least one site"
+        "at least 1 rows"
     )
     expect_error(
         dataset__read_regions(ds, "tas", sites[c(1L, 1L)]),
@@ -759,6 +791,18 @@ test_that("the internal multi-site reader rejects ambiguous sites and empty inpu
     expect_error(
         dataset__read_regions(ds, "missing", sites),
         "None of the requested variable"
+    )
+    expect_error(
+        dataset__read_regions_one(
+            ds,
+            "tas",
+            sites,
+            time = NULL,
+            index = 2L,
+            async = FALSE,
+            timeout = NULL
+        ),
+        "index"
     )
     empty <- dataset__read_regions(
         ds,
@@ -769,6 +813,34 @@ test_that("the internal multi-site reader rejects ambiguous sites and empty inpu
     expect_equal(nrow(empty), 0L)
     expect_s3_class(attr(empty, "grid_sources"), "data.table")
     expect_s3_class(attr(empty, "read_slices"), "data.table")
+    expect_named(
+        attr(empty, "grid_sources"),
+        c(
+            "site_id",
+            "source_index",
+            "role",
+            "grid_lon",
+            "grid_lat",
+            "grid_dist_km",
+            "weight",
+            "file_index",
+            "variable",
+            "method"
+        )
+    )
+    expect_named(
+        attr(empty, "read_slices"),
+        c(
+            "file_index",
+            "variable",
+            "ind_lat",
+            "ind_lon",
+            "lat_count",
+            "lon_count",
+            "time_start_index",
+            "time_count"
+        )
+    )
 })
 
 test_that("the internal multi-site reader preserves missing source values", {

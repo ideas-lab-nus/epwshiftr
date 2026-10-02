@@ -1645,29 +1645,67 @@ EsgDataset <- R6::R6Class(
         # }}}
 
         # make_region_grid_coords {{{
-        # Builds a rectilinear coordinate table used by nearest-neighbour methods.
-        make_region_grid_coords = function(grid_lat, grid_lon, lat, target_lon) {
+        # Build grid coordinates once per file; site distances are computed only
+        # when selecting the few source cells required by a particular site.
+        make_region_grid_coords = function(grid_lat, grid_lon) {
             coords <- data.table::CJ(
                 ind_lat = seq_along(grid_lat),
                 ind_lon = seq_along(grid_lon)
             )
-            coords[, `:=`(
-                grid_lat = grid_lat[ind_lat],
-                grid_lon = grid_lon[ind_lon],
-                grid_dist_km = tunnel_dist(grid_lat[ind_lat], grid_lon[ind_lon], lat, target_lon)
-            )]
+            data.table::set(
+                coords,
+                j = "grid_lat",
+                value = grid_lat[coords$ind_lat]
+            )
+            data.table::set(
+                coords,
+                j = "grid_lon",
+                value = grid_lon[coords$ind_lon]
+            )
             coords
         },
         # }}}
 
         # select_nearest_grid_sources {{{
-        # Selects nearest source cells and assigns either nearest or IDW weights.
-        select_nearest_grid_sources = function(coords, method) {
+        # Select up to four nearest cells without copying and sorting the full
+        # grid for every site. which.min() keeps the original grid tie order.
+        select_nearest_grid_sources = function(
+            coords,
+            method,
+            lat,
+            target_lon
+        ) {
             count <- if (identical(method, "nearest")) 1L else 4L
-            sources <- data.table::copy(coords)
-            data.table::setorder(sources, grid_dist_km)
-            sources <- sources[seq_len(min(count, .N))]
-            sources[, source_index := seq_len(.N)]
+            distances <- tunnel_dist(
+                coords$grid_lat,
+                coords$grid_lon,
+                lat,
+                target_lon
+            )
+            count <- min(count, sum(is.finite(distances)))
+            if (!count) {
+                stop(
+                    "The spatial grid has no finite source coordinates.",
+                    call. = FALSE
+                )
+            }
+            selected <- integer(count)
+            for (index in seq_len(count)) {
+                selected[[index]] <- which.min(distances)
+                distances[[selected[[index]]]] <- Inf
+            }
+            sources <- data.table::copy(coords[selected])
+            data.table::set(
+                sources,
+                j = "grid_dist_km",
+                value = tunnel_dist(
+                    sources$grid_lat,
+                    sources$grid_lon,
+                    lat,
+                    target_lon
+                )
+            )
+            data.table::set(sources, j = "source_index", value = seq_len(count))
 
             if (identical(method, "nearest")) {
                 sources[, `:=`(role = "nearest", weight = 1)]
@@ -1680,7 +1718,7 @@ EsgDataset <- R6::R6Class(
                 weights <- rep(0, nrow(sources))
                 weights[[exact[[1L]]]] <- 1
             } else {
-                raw <- 1 / (sources$grid_dist_km ^ 2)
+                raw <- 1 / (sources$grid_dist_km^2)
                 weights <- raw / sum(raw)
             }
             sources[, `:=`(
@@ -1816,12 +1854,35 @@ EsgDataset <- R6::R6Class(
 
         # region_grid_sources {{{
         # Dispatches method-specific source-cell selection for point extraction.
-        region_grid_sources = function(method, grid_lat, grid_lon, lat, target_lon) {
-            coords <- private$make_region_grid_coords(grid_lat, grid_lon, lat, target_lon)
+        region_grid_sources = function(
+            method,
+            grid_lat,
+            grid_lon,
+            lat,
+            target_lon,
+            coords = NULL
+        ) {
             if (method %in% c("nearest", "idw")) {
-                return(private$select_nearest_grid_sources(coords, method))
+                if (is.null(coords)) {
+                    coords <- private$make_region_grid_coords(
+                        grid_lat,
+                        grid_lon
+                    )
+                }
+                return(private$select_nearest_grid_sources(
+                    coords,
+                    method,
+                    lat,
+                    target_lon
+                ))
             }
-            private$select_cell_grid_sources(grid_lat, grid_lon, lat, target_lon, method)
+            private$select_cell_grid_sources(
+                grid_lat,
+                grid_lon,
+                lat,
+                target_lon,
+                method
+            )
         },
         # }}}
 

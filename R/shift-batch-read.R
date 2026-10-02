@@ -1,19 +1,9 @@
-# Read one D03 acquisition for all linked consumers from a single open
-# dataset. Consumer IDs remain distinct when methods reuse the same site;
-# the reader deduplicates only native source cells and time slices.
+# Read one planned file for all linked consumers from a single open dataset.
+# Consumer IDs remain distinct when methods reuse a site, while source cells
+# and native time slices are shared.
 shift_batch__read_acquisition <- function(dataset, acquisition, consumers) {
-    if (!data.table::is.data.table(acquisition) || nrow(acquisition) != 1L) {
-        stop(
-            "`acquisition` must be one row of the shared file plan.",
-            call. = FALSE
-        )
-    }
-    if (!data.table::is.data.table(consumers) || !nrow(consumers)) {
-        stop(
-            "`consumers` must contain linked rows of the shared file plan.",
-            call. = FALSE
-        )
-    }
+    checkmate::assert_data_table(acquisition, nrows = 1L)
+    checkmate::assert_data_table(consumers, min.rows = 1L)
     required <- c(
         "acquisition_id",
         "demand_id",
@@ -27,15 +17,28 @@ shift_batch__read_acquisition <- function(dataset, acquisition, consumers) {
         "time_start",
         "time_stop"
     )
-    if (
-        !all(required %in% names(consumers)) ||
-            !all(
-                c("acquisition_id", "time_start", "time_stop") %in%
-                    names(acquisition)
-            )
-    ) {
+    checkmate::assert_names(names(consumers), must.include = required)
+    checkmate::assert_names(
+        names(acquisition),
+        must.include = c(
+            "acquisition_id",
+            "time_start",
+            "time_stop",
+            "url_opendap",
+            "url_download"
+        )
+    )
+    # An acquisition represents one physical file. Refuse to label values from
+    # another open dataset with this file's consumer and source provenance.
+    checkmate::assert_character(dataset$url, len = 1L, any.missing = FALSE)
+    endpoints <- unlist(
+        acquisition[1L, c("url_opendap", "url_download"), with = FALSE],
+        use.names = FALSE
+    )
+    endpoints <- endpoints[!is.na(endpoints) & nzchar(endpoints)]
+    if (!dataset$url[[1L]] %in% endpoints) {
         stop(
-            "The shared file plan is missing acquisition or consumer fields.",
+            "The open dataset does not match the acquisition source URL.",
             call. = FALSE
         )
     }
@@ -71,46 +74,22 @@ shift_batch__read_acquisition <- function(dataset, acquisition, consumers) {
     )
     sources <- attr(values, "grid_sources", exact = TRUE)
     slices <- attr(values, "read_slices", exact = TRUE)
-    if (nrow(values)) {
-        position <- match(values$site_id, read_id)
-        data.table::setnames(values, "site_id", "consumer_id")
-        data.table::set(
-            values,
-            j = "site_id",
-            value = consumers$site_id[position]
-        )
-        data.table::set(
-            values,
-            j = "demand_id",
-            value = consumers$demand_id[position]
-        )
-        data.table::set(
-            values,
-            j = "child_key",
-            value = consumers$child_key[position]
-        )
-        data.table::set(values, j = "role", value = consumers$role[position])
+    # The positional IDs are internal to this read; both value and provenance
+    # tables must restore the same consumer columns, including on empty reads.
+    restore_consumers <- function(table) {
+        position <- match(table$site_id, read_id)
+        data.table::setnames(table, "site_id", "consumer_id")
+        for (column in c("site_id", "demand_id", "child_key", "role")) {
+            data.table::set(
+                table,
+                j = column,
+                value = consumers[[column]][position]
+            )
+        }
+        table
     }
-    if (nrow(sources)) {
-        position <- match(sources$site_id, read_id)
-        data.table::setnames(sources, "site_id", "consumer_id")
-        data.table::set(
-            sources,
-            j = "site_id",
-            value = consumers$site_id[position]
-        )
-        data.table::set(
-            sources,
-            j = "demand_id",
-            value = consumers$demand_id[position]
-        )
-        data.table::set(
-            sources,
-            j = "child_key",
-            value = consumers$child_key[position]
-        )
-        data.table::set(sources, j = "role", value = consumers$role[position])
-    }
+    values <- restore_consumers(values)
+    sources <- restore_consumers(sources)
     attr(values, "grid_sources") <- sources
     attr(values, "read_slices") <- slices
     values

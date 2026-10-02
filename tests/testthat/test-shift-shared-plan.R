@@ -9,7 +9,9 @@ test_that("one acquisition reads linked sites and methods from sparse cells", {
     acquisition <- data.table::data.table(
         acquisition_id = "source-window",
         time_start = as.POSIXct("2060-01-02", tz = "UTC"),
-        time_stop = as.POSIXct("2060-01-03 23:59:59", tz = "UTC")
+        time_stop = as.POSIXct("2060-01-03 23:59:59", tz = "UTC"),
+        url_opendap = path,
+        url_download = path
     )
     consumers <- data.table::data.table(
         acquisition_id = rep.int("source-window", 3L),
@@ -34,6 +36,41 @@ test_that("one acquisition reads linked sites and methods from sparse cells", {
     expect_true(all(slices$time_count == 2L))
     expect_equal(nrow(sources), 6L)
     expect_identical(unique(actual$cf_calendar), "360_day")
+    other_path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(other_path, 2060L, calendar = "360_day")
+    on.exit(unlink(other_path), add = TRUE)
+    other <- EsgDataset$new(other_path)
+    other$open()
+    on.exit(other$close(), add = TRUE)
+    expect_error(
+        shift_batch__read_acquisition(other, acquisition, consumers),
+        "does not match the acquisition source"
+    )
+    empty_acquisition <- data.table::copy(acquisition)
+    data.table::set(
+        empty_acquisition,
+        j = "time_start",
+        value = as.POSIXct("2062-01-01", tz = "UTC")
+    )
+    data.table::set(
+        empty_acquisition,
+        j = "time_stop",
+        value = as.POSIXct("2062-01-02", tz = "UTC")
+    )
+    empty <- shift_batch__read_acquisition(
+        dataset,
+        empty_acquisition,
+        consumers
+    )
+    expect_equal(nrow(empty), 0L)
+    expect_true(all(
+        c("consumer_id", "site_id", "demand_id", "child_key", "role") %in%
+            names(empty)
+    ))
+    expect_true(all(
+        c("consumer_id", "site_id", "demand_id", "child_key", "role") %in%
+            names(attr(empty, "grid_sources"))
+    ))
     for (index in seq_len(nrow(consumers))) {
         consumer <- consumers[index]
         expected <- dataset$read_region(
