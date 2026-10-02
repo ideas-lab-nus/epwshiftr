@@ -621,6 +621,303 @@ test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like 
 })
 # }}}
 # EsgDataset$read_region() {{{
+test_that("nearest and IDW source cells preserve full-grid ranking", {
+    ds <- EsgDataset$new("unused")
+    private <- dataset__private(ds)
+    grid_lat <- c(-80, -40, 0, 40, 80)
+    grid_lon <- c(0, 60, 120, 180, 240, 300)
+    coords <- private$make_region_grid_coords(grid_lat, grid_lon)
+
+    for (target in list(c(22, 75), c(79, 359), c(-78, 181))) {
+        distances <- tunnel_dist(
+            coords$grid_lat,
+            coords$grid_lon,
+            target[[1L]],
+            target[[2L]]
+        )
+        expected <- coords[order(distances)]
+        for (method in c("nearest", "idw")) {
+            actual <- private$region_grid_sources(
+                method,
+                grid_lat,
+                grid_lon,
+                target[[1L]],
+                target[[2L]],
+                coords = coords
+            )
+            count <- if (identical(method, "nearest")) 1L else 4L
+            expect_identical(actual$ind_lat, expected$ind_lat[seq_len(count)])
+            expect_identical(actual$ind_lon, expected$ind_lon[seq_len(count)])
+            expect_equal(sum(actual$weight), 1)
+        }
+    }
+})
+
+test_that("the internal multi-site reader shares sparse cells across distant sites", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    sites <- data.table::data.table(
+        site_id = c("Singapore", "Singapore-copy", "Western-point"),
+        lon = c(103.98, 103.98, -106),
+        lat = c(1.37, 1.37, 41),
+        method = rep.int("nearest", 3L)
+    )
+    window <- c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+    actual <- dataset__read_regions(ds, "tas", sites, time = window)
+    slices <- attr(actual, "read_slices")
+    sources <- attr(actual, "grid_sources")
+
+    expect_equal(nrow(actual), 6L)
+    expect_equal(nrow(slices), 2L)
+    expect_true(all(slices$lat_count == 1L & slices$lon_count == 1L))
+    expect_true(all(slices$time_count == 2L))
+    expect_equal(nrow(sources), 3L)
+    expect_true(all(sources$weight == 1))
+    expect_identical(unique(actual$cf_calendar), "360_day")
+    for (index in seq_len(nrow(sites))) {
+        site <- sites[index]
+        expected <- ds$read_region(
+            "tas",
+            lon = site$lon[[1L]],
+            lat = site$lat[[1L]],
+            time = window,
+            method = site$method[[1L]]
+        )
+        observed <- actual[actual$site_id == site$site_id[[1L]]]
+        expect_equal(observed$value, expected$value)
+        expect_equal(observed$cf_day, expected$cf_day)
+        expect_equal(observed$time_bound_start, expected$time_bound_start)
+        expect_equal(observed$time_bound_end, expected$time_bound_end)
+    }
+})
+
+test_that("the internal multi-site reader keeps method weights per site", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    sites <- data.table::data.table(
+        site_id = ESG_GRID_METHOD_CHOICES,
+        lon = rep.int(103.98, 4L),
+        lat = rep.int(1.37, 4L),
+        method = ESG_GRID_METHOD_CHOICES
+    )
+    window <- c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
+    actual <- dataset__read_regions(ds, "tas", sites, time = window)
+    sources <- attr(actual, "grid_sources")
+    for (method in ESG_GRID_METHOD_CHOICES) {
+        target_method <- method
+        expected <- ds$read_region(
+            "tas",
+            lon = 103.98,
+            lat = 1.37,
+            time = window,
+            method = method
+        )
+        observed <- actual[actual$site_id == target_method]
+        expect_equal(observed$value, expected$value, tolerance = 1e-5)
+        expect_equal(sum(sources$weight[sources$site_id == method]), 1)
+    }
+    slices <- attr(actual, "read_slices")
+    expect_lt(
+        nrow(slices),
+        data.table::uniqueN(sources, by = c("grid_lat", "grid_lon"))
+    )
+    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
+    expect_true(any(slices$lat_count * slices$lon_count == 4L))
+})
+
+test_that("multi-site native reads split long time runs into bounded blocks", {
+    path <- local_dataset_table_file(
+        time_vals = 0:2399,
+        time_units = "days since 2060-01-01 00:00:00",
+        tas_vals = seq_len(2400L)
+    )
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    sites <- data.table::data.table(
+        site_id = "first",
+        lon = 2,
+        lat = 1,
+        method = "nearest"
+    )
+
+    actual <- dataset__read_regions(ds, "tas", sites)
+    slices <- attr(actual, "read_slices")
+    expect_equal(actual$value, as.numeric(seq_len(2400L)))
+    expect_equal(slices$time_count, c(2048L, 352L))
+    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
+
+    many_sites <- data.table::data.table(
+        site_id = sprintf("site-%03d", seq_len(105L)),
+        lon = rep.int(2, 105L),
+        lat = rep.int(1, 105L),
+        method = rep.int("nearest", 105L)
+    )
+    expect_error(
+        dataset__read_regions(ds, "tas", many_sites),
+        "exceeds 250000 output rows"
+    )
+})
+
+test_that("the internal multi-site reader respects native site windows", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(
+        path,
+        2060L,
+        calendar = "360_day",
+        n_years = 2L
+    )
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    sites <- data.table::data.table(
+        site_id = c("first", "second"),
+        lon = c(103.98, -106),
+        lat = c(1.37, 41),
+        method = c("nearest", "nearest"),
+        time_start = as.POSIXct(c("2060-12-30", "2061-01-01"), tz = "UTC"),
+        time_stop = as.POSIXct(
+            c("2060-12-30 23:59:59", "2061-01-01 23:59:59"),
+            tz = "UTC"
+        )
+    )
+    actual <- dataset__read_regions(ds, "tas", sites)
+    expect_equal(nrow(actual), 2L)
+    expect_identical(actual$site_id, c("first", "second"))
+    expect_identical(actual$cf_year, c(2060L, 2061L))
+    expect_identical(actual$cf_month, c(12L, 1L))
+    expect_identical(actual$cf_day, c(30L, 1L))
+    expect_equal(nrow(attr(actual, "read_slices")), 2L)
+    expect_true(all(attr(actual, "read_slices")$time_count == 1L))
+})
+
+test_that("the internal multi-site reader rejects ambiguous sites and empty input", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    sites <- data.table::data.table(
+        site_id = "first",
+        lon = 103.98,
+        lat = 1.37,
+        method = "nearest"
+    )
+    expect_error(
+        dataset__read_regions(ds, "tas", sites[0L]),
+        "at least 1 rows"
+    )
+    expect_error(
+        dataset__read_regions(ds, "tas", sites[c(1L, 1L)]),
+        "duplicated"
+    )
+    expect_error(
+        dataset__read_regions(ds, "missing", sites),
+        "None of the requested variable"
+    )
+    expect_error(
+        dataset__read_regions_one(
+            ds,
+            "tas",
+            sites,
+            time = NULL,
+            index = 2L,
+            async = FALSE,
+            timeout = NULL
+        ),
+        "index"
+    )
+    empty <- dataset__read_regions(
+        ds,
+        "tas",
+        sites,
+        time = c("2061-01-01", "2061-01-02")
+    )
+    expect_equal(nrow(empty), 0L)
+    expect_s3_class(attr(empty, "grid_sources"), "data.table")
+    expect_s3_class(attr(empty, "read_slices"), "data.table")
+    expect_named(
+        attr(empty, "grid_sources"),
+        c(
+            "site_id",
+            "source_index",
+            "role",
+            "grid_lon",
+            "grid_lat",
+            "grid_dist_km",
+            "weight",
+            "file_index",
+            "variable",
+            "method"
+        )
+    )
+    expect_named(
+        attr(empty, "read_slices"),
+        c(
+            "file_index",
+            "variable",
+            "ind_lat",
+            "ind_lon",
+            "lat_count",
+            "lon_count",
+            "time_start_index",
+            "time_count"
+        )
+    )
+})
+
+test_that("the internal multi-site reader preserves missing source values", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    on.exit(unlink(path), add = TRUE)
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::var.put.nc(
+        nc,
+        "tas",
+        NA_real_,
+        start = c(2L, 1L, 2L),
+        count = c(1L, 1L, 1L)
+    )
+    RNetCDF::close.nc(nc)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+
+    sites <- data.table::data.table(
+        site_id = c("nearest", "mean"),
+        lon = c(103.98, 103.98),
+        lat = c(1.37, 1.37),
+        method = c("nearest", "mean")
+    )
+    actual <- dataset__read_regions(
+        ds,
+        "tas",
+        sites,
+        time = c("2060-01-02", "2060-01-03 23:59:59")
+    )
+    for (method in sites$method) {
+        target_method <- method
+        observed <- actual[actual$site_id == target_method]
+        expect_true(is.na(observed$value[[1L]]))
+        expect_true(is.finite(observed$value[[2L]]))
+    }
+})
+
 test_that("EsgDataset$read_region() reads grid-method values and time windows", {
     path1 <- tempfile(fileext = ".nc")
     path2 <- tempfile(fileext = ".nc")
