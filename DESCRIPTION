@@ -32,6 +32,7 @@ Imports:
     RNetCDF,
     S7
 Suggests:
+    pkgload,
     testthat (>= 3.0.0),
     webfakes,
     withr
@@ -71,6 +72,7 @@ Collate:
     'epw-morph-recipe.R'
     'weather-transform.R'
     'backend-original-morphing.R'
+    'source-read.R'
     'store.R'
     'epw-morpher.R'
     'query-result.R'

@@ -2544,8 +2544,13 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
         store_test__mock_private(
             store,
             "open_plan_dataset",
-            function(file, fallback = "auto", overwrite = FALSE,
-                     reporter = NULL) {
+            function(
+                file,
+                fallback = "auto",
+                overwrite = FALSE,
+                reporter = NULL,
+                remote_error = NULL
+            ) {
                 list(
                     dataset = remote,
                     target = file$url_opendap[[1L]],
@@ -2569,7 +2574,11 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
             reporter = reporter
         )
         expect_identical(result$status, "done", info = phase)
-        expect_identical(attr(result, "access_method"), "HTTPServer", info = phase)
+        expect_identical(
+            attr(result, "access_method"),
+            "HTTPServer",
+            info = phase
+        )
         expect_identical(download_calls, 1L, info = phase)
         expect_false(remote$is_open, info = phase)
         persisted <- ddb_read_table(
@@ -2585,7 +2594,11 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
         expect_identical(event$details$access_method, "OPeNDAP", info = phase)
         expect_identical(event$details$access_phase, phase, info = phase)
         expect_identical(event$details$attempt, 1L, info = phase)
-        expect_match(event$details$target, "remote\\.example\\.org", info = phase)
+        expect_match(
+            event$details$target,
+            "remote\\.example\\.org",
+            info = phase
+        )
         expect_true(is.numeric(event$details$elapsed_seconds), info = phase)
         expect_true(nzchar(event$details$error_class), info = phase)
         expect_true(nzchar(event$details$error), info = phase)
@@ -2604,18 +2617,12 @@ test_that("EsgStore fallback errors retain both attempts in last_error", {
     on.exit(unlink(fixture$nc), add = TRUE)
     remote <- store_test__failing_dataset("metadata")
     download_calls <- 0L
-    store_test__mock_private(
-        store,
-        "open_plan_dataset",
-        function(file, fallback = "auto", overwrite = FALSE,
-                 reporter = NULL) {
-            list(
-                dataset = remote,
-                target = file$url_opendap[[1L]],
-                access_method = "OPeNDAP"
-            )
-        }
-    )
+    testthat::local_mocked_bindings(store__open_dataset = function(
+        target,
+        service
+    ) {
+        list(dataset = remote, target = target, access_method = service)
+    })
     store_test__mock_private(
         store,
         "download_plan_file",
@@ -2654,8 +2661,13 @@ test_that("EsgStore fallback error mode does not download after read failure", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
-        function(file, fallback = "auto", overwrite = FALSE,
-                 reporter = NULL) {
+        function(
+            file,
+            fallback = "auto",
+            overwrite = FALSE,
+            reporter = NULL,
+            remote_error = NULL
+        ) {
             list(
                 dataset = remote,
                 target = file$url_opendap[[1L]],
@@ -2699,8 +2711,13 @@ test_that("EsgStore classifies persistence failures without another read", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
-        function(file, fallback = "auto", overwrite = FALSE,
-                 reporter = NULL) {
+        function(
+            file,
+            fallback = "auto",
+            overwrite = FALSE,
+            reporter = NULL,
+            remote_error = NULL
+        ) {
             list(
                 dataset = dataset,
                 target = fixture$nc,
@@ -2973,3 +2990,94 @@ test_that("EsgStore$query()", {
     expect_equal(sql$n, 1)
 })
 # }}}
+
+# A failed worker read must enter HTTP recovery without opening OPeNDAP again.
+test_that("worker access failures preserve fallback without remote resubmission", {
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    withr::local_options(epwshiftr.cache = FALSE)
+    original <- store__open_dataset
+    testthat::local_mocked_bindings(store__open_dataset = function(
+        target,
+        service
+    ) {
+        if (identical(service, "OPeNDAP")) {
+            stop("Unexpected second OPeNDAP attempt")
+        }
+        original(target, service)
+    })
+    store_test__mock_private(store, "download_plan_file", function(...) {
+        fixture$nc
+    })
+    error <- store__access_error(
+        simpleError("source disconnected"),
+        "read",
+        "OPeNDAP",
+        fixture$file$url_opendap[[1L]],
+        proc.time()[["elapsed"]]
+    )
+    expect_error(
+        priv(store)$extract_one(
+            fixture$plan,
+            fixture$file,
+            fallback = "error",
+            resolved = error
+        ),
+        "source disconnected"
+    )
+    result <- priv(store)$extract_one(
+        fixture$plan,
+        fixture$file,
+        fallback = "auto",
+        resolved = error
+    )
+    expect_identical(result$status, "done")
+    expect_identical(attr(result, "access_method"), "HTTPServer")
+})
+
+# Disabling disk caching must not collect every site's weather array in one worker.
+test_that("uncached source tasks return one site plan at a time", {
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    withr::local_options(epwshiftr.cache = FALSE)
+    store$plan_region(
+        query_id = fixture$plan$query_id[[1L]],
+        lon = -106,
+        lat = 41,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        site_id = "USA"
+    )
+    task_count <- 0L
+    testthat::local_mocked_bindings(source__apply = function(
+        jobs,
+        read,
+        collect,
+        reporter = NULL
+    ) {
+        task_count <<- length(jobs)
+        for (job in rev(jobs)) {
+            expect_equal(nrow(job$plans), 1L)
+            data.table::set(job$file, j = "url_opendap", value = fixture$nc)
+            collect(job, read(job))
+        }
+    })
+    reporter <- store_test__access_reporter()
+    progress <- integer(2L)
+    count <- 0L
+    reporter$check_cancel <- function(...) invisible(NULL)
+    reporter$unit_started <- function(...) invisible(NULL)
+    reporter$unit_completed <- function(message, current, ...) {
+        count <<- count + 1L
+        progress[[count]] <<- current
+    }
+    expected_order <- store$query("SELECT plan_id FROM extraction_plan")$plan_id
+    result <- store$extract(fallback = "error", reporter = reporter)
+    expect_identical(progress, 1:2)
+    expect_identical(result$plan_id, expected_order)
+    expect_identical(task_count, 2L)
+    expect_true(all(result$status == "done"))
+    expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 2L)
+})

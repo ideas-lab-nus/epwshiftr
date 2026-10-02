@@ -2494,6 +2494,17 @@ EsgStore <- R6::R6Class(
         #' @description
         #' Execute pending or failed regional extraction plans.
         #'
+        #' Independent remote reads run concurrently, with at most
+        #' `getOption("epwshiftr.mirai_workers", 4L)` source tasks per call.
+        #' Set `options(epwshiftr.mirai_workers = 1L)` for serial reads. The same
+        #' limit applies to shared batch acquisition; separate R sessions have
+        #' separate limits. The calling process owns manifest and Parquet writes.
+        #' With shared caching enabled, pending plans for one physical file
+        #' reuse its connection. With caching disabled, workers return one plan
+        #' at a time to bound memory. Complete ordinary extraction caches are
+        #' consumed directly without starting workers. Speedup depends on the
+        #' number of independent tasks and the remote service.
+        #'
         #' @param plan_id Optional plan IDs to run.
         #' @param status Plan statuses to run when `plan_id` is `NULL`.
         #'        Default: `c("pending", "failed")`.
@@ -2516,14 +2527,26 @@ EsgStore <- R6::R6Class(
             resume = TRUE,
             reporter = NULL
         ) {
-            checkmate::assert_character(plan_id, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
-            checkmate::assert_subset(status, c("pending", "failed", "empty", "done"))
+            checkmate::assert_character(
+                plan_id,
+                any.missing = FALSE,
+                min.len = 1L,
+                unique = TRUE,
+                null.ok = TRUE
+            )
+            checkmate::assert_subset(
+                status,
+                c("pending", "failed", "empty", "done")
+            )
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
             fallback <- match.arg(fallback)
             private$check_open()
 
-            plans <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_plan"))
+            plans <- data.table::as.data.table(ddb_read_table(
+                private$conn,
+                "extraction_plan"
+            ))
             if (is.null(plan_id)) {
                 plans <- plans[plans$status %in% status]
             } else {
@@ -2537,11 +2560,23 @@ EsgStore <- R6::R6Class(
                 return(plans)
             }
 
-            catalog <- data.table::as.data.table(ddb_read_table(private$conn, "file_catalog"))
+            catalog <- data.table::as.data.table(ddb_read_table(
+                private$conn,
+                "file_catalog"
+            ))
             processed <- vector("list", nrow(plans))
-            for (i in seq_len(nrow(plans))) {
+            resumed_outputs <- vector("list", nrow(plans))
+            file_rows <- match(plans$file_key, catalog$file_key)
+            # Persist and report each result only in the manifest-owning process.
+            finished <- 0L
+            process <- function(i, resolved = NULL) {
+                # Source files can finish out of order; UI counts follow actual
+                # processing, while result rows retain their original indices.
+                finished <<- finished + 1L
                 plan <- plans[i]
-                file <- catalog[catalog$file_key == plan$file_key[[1L]]]
+                file <- catalog[
+                    if (is.na(file_rows[[i]])) integer() else file_rows[[i]]
+                ]
                 scenario <- if (nrow(file)) {
                     store__chr1(file$experiment_id[[1L]])
                 } else {
@@ -2549,53 +2584,84 @@ EsgStore <- R6::R6Class(
                 }
                 if (!is.null(reporter)) {
                     reporter$check_cancel()
-                    label <- sprintf("%s \u00b7 %s \u00b7 %s to %s",
+                    label <- sprintf(
+                        "%s \u00b7 %s \u00b7 %s to %s",
                         scenario,
                         plan$variable_id[[1L]],
                         format(plan$time_start[[1L]], "%Y-%m-%d"),
-                        format(plan$time_stop[[1L]], "%Y-%m-%d"))
-                    reporter$unit_started(label, current = i, total = nrow(plans),
+                        format(plan$time_stop[[1L]], "%Y-%m-%d")
+                    )
+                    reporter$unit_started(
+                        label,
+                        current = finished,
+                        total = nrow(plans),
                         details = list(
                             unit_type = "extraction_plan",
                             scenario = scenario,
                             variable = plan$variable_id[[1L]],
-                            period = sprintf("%s/%s",
+                            period = sprintf(
+                                "%s/%s",
                                 format(plan$time_start[[1L]], "%Y"),
-                                format(plan$time_stop[[1L]], "%Y")),
+                                format(plan$time_stop[[1L]], "%Y")
+                            ),
                             access_method = "OPeNDAP"
-                        ))
+                        )
+                    )
                     if (nrow(file)) {
-                        source_location <- if (!is.na(file$local_path[[1L]]) &&
-                            nzchar(file$local_path[[1L]])) {
+                        source_location <- if (
+                            !is.na(file$local_path[[1L]]) &&
+                                nzchar(file$local_path[[1L]])
+                        ) {
                             file$local_path[[1L]]
                         } else {
                             file$url_opendap[[1L]]
                         }
-                        reporter$detail(sprintf("  source: %s", source_location),
-                            level = "debug")
+                        reporter$detail(
+                            sprintf("  source: %s", source_location),
+                            level = "debug"
+                        )
                     }
                 }
-                resumed <- if (!isTRUE(overwrite) && isTRUE(resume)) private$resume_extract_plan(plan) else NULL
+                resumed <- resumed_outputs[[i]]
                 if (!is.null(resumed)) {
-                    processed[[i]] <- resumed
+                    processed[[i]] <<- resumed
                     if (!is.null(reporter)) {
-                        reporter$unit_skipped(sprintf("Reused %s", plan$variable_id[[1L]]),
-                            current = i, total = nrow(plans))
+                        reporter$unit_skipped(
+                            sprintf("Reused %s", plan$variable_id[[1L]]),
+                            current = finished,
+                            total = nrow(plans)
+                        )
                     }
-                    next
+                    return(invisible(NULL))
                 }
                 if (!nrow(file)) {
-                    processed[[i]] <- private$mark_plan_failed(plan, "The cataloged file record no longer exists.")
+                    processed[[i]] <<- private$mark_plan_failed(
+                        plan,
+                        "The cataloged file record no longer exists."
+                    )
                     if (!is.null(reporter)) {
-                        reporter$unit_completed(sprintf("Failed %s: catalog record missing", plan$variable_id[[1L]]),
-                            current = i, total = nrow(plans), outcome = "failed")
+                        reporter$unit_completed(
+                            sprintf(
+                                "Failed %s: catalog record missing",
+                                plan$variable_id[[1L]]
+                            ),
+                            current = finished,
+                            total = nrow(plans),
+                            outcome = "failed"
+                        )
                     }
-                    next
+                    return(invisible(NULL))
                 }
 
-                processed[[i]] <- tryCatch(
-                    private$extract_one(plan, file[1L], fallback = fallback,
-                        overwrite = overwrite, reporter = reporter),
+                processed[[i]] <<- tryCatch(
+                    private$extract_one(
+                        plan,
+                        file[1L],
+                        fallback = fallback,
+                        overwrite = overwrite,
+                        reporter = reporter,
+                        resolved = resolved
+                    ),
                     error = function(e) {
                         if (inherits(e, "epwshiftr_store_extract_conflict")) {
                             stop(e)
@@ -2605,27 +2671,162 @@ EsgStore <- R6::R6Class(
                 )
                 if (!is.null(reporter)) {
                     result_status <- processed[[i]]$status[[1L]]
-                    used_access <- attr(processed[[i]], "access_method", exact = TRUE)
+                    used_access <- attr(
+                        processed[[i]],
+                        "access_method",
+                        exact = TRUE
+                    )
                     if (is.null(used_access)) {
-                        used_access <- if (!is.na(file$local_path[[1L]]) &&
-                            nzchar(file$local_path[[1L]])) "local" else "OPeNDAP"
+                        used_access <- if (
+                            !is.na(file$local_path[[1L]]) &&
+                                nzchar(file$local_path[[1L]])
+                        ) {
+                            "local"
+                        } else {
+                            "OPeNDAP"
+                        }
                     }
                     reporter$unit_completed(
                         sprintf("%s %s", result_status, plan$variable_id[[1L]]),
-                        current = i,
+                        current = finished,
                         total = nrow(plans),
-                        outcome = if (result_status %in% c("done", "empty")) "completed" else "failed",
+                        outcome = if (result_status %in% c("done", "empty")) {
+                            "completed"
+                        } else {
+                            "failed"
+                        },
                         details = list(
                             unit_type = "extraction_plan",
                             scenario = store__chr1(file$experiment_id[[1L]]),
                             variable = plan$variable_id[[1L]],
-                            period = sprintf("%s/%s",
+                            period = sprintf(
+                                "%s/%s",
                                 format(plan$time_start[[1L]], "%Y"),
-                                format(plan$time_stop[[1L]], "%Y")),
+                                format(plan$time_stop[[1L]], "%Y")
+                            ),
                             access_method = used_access
                         )
                     )
                 }
+            }
+
+            # Only uncached remote work enters the pool. Local reads, complete
+            # plans and cached payloads keep their inexpensive synchronous path.
+            jobs <- vector("list", nrow(plans))
+            for (i in seq_len(nrow(plans))) {
+                plan <- plans[i]
+                resumed_outputs[i] <- list(
+                    if (!overwrite && resume) {
+                        private$resume_extract_plan(plan)
+                    } else {
+                        NULL
+                    }
+                )
+                if (!is.null(resumed_outputs[[i]]) || is.na(file_rows[[i]])) {
+                    process(i)
+                    next
+                }
+                file <- catalog[file_rows[[i]]]
+                endpoint <- store__chr1(file$url_opendap)
+                local <- store__chr1(file$local_path)
+                has_local <- !is.na(local) &&
+                    nzchar(local) &&
+                    file.exists(store_abs_path(
+                        local,
+                        root = private$store_path
+                    ))
+                cached <- if (!identical(cache__mode(), "off")) {
+                    store__extract_cache_read(store__extract_cache_path(
+                        plan,
+                        file
+                    ))
+                } else {
+                    NULL
+                }
+                if (!is.null(cached)) {
+                    process(
+                        i,
+                        list(
+                            payload = cached,
+                            opened = list(
+                                access_method = "shared_cache",
+                                target = store__extract_cache_path(plan, file)
+                            ),
+                            recovery_error = NULL,
+                            cache_reused = TRUE
+                        )
+                    )
+                } else if (
+                    has_local ||
+                        is.na(endpoint) ||
+                        !grepl("^https?://", endpoint) ||
+                        identical(cache__mode(), "offline")
+                ) {
+                    process(i)
+                } else {
+                    jobs[[i]] <- list(index = i, plan = plan, file = file)
+                }
+            }
+            failures <- vector("list", nrow(plans))
+            jobs <- Filter(Negate(is.null), jobs)
+            if (length(jobs)) {
+                # Without disk caching, return one plan per task so a file's
+                # entire city collection is never accumulated in worker memory.
+                group <- if (identical(cache__mode(), "off")) {
+                    seq_along(jobs)
+                } else {
+                    vapply(
+                        jobs,
+                        function(job) job$file$file_key[[1L]],
+                        character(1L)
+                    )
+                }
+                groups <- split(seq_along(jobs), group)
+                jobs <- lapply(groups, function(rows) {
+                    list(
+                        indices = vapply(
+                            jobs[rows],
+                            function(job) job$index,
+                            integer(1L)
+                        ),
+                        plans = data.table::rbindlist(lapply(
+                            jobs[rows],
+                            function(job) job$plan
+                        )),
+                        file = jobs[[rows[[1L]]]]$file
+                    )
+                })
+            }
+            source__apply(
+                jobs,
+                store__read_task,
+                collect = function(job, value) {
+                    for (index in seq_along(job$indices)) {
+                        row <- job$indices[[index]]
+                        resolved <- value$results[[index]]
+                        if (inherits(resolved, "error")) {
+                            failures[[row]] <<- resolved
+                        } else {
+                            if (!is.null(resolved$cache_path)) {
+                                resolved$payload <- store__extract_cache_read(
+                                    resolved$cache_path
+                                )
+                                if (is.null(resolved$payload)) {
+                                    cli::cli_abort(
+                                        "A completed source payload is missing from the shared cache."
+                                    )
+                                }
+                            }
+                            process(row, resolved)
+                        }
+                    }
+                },
+                reporter = reporter
+            )
+            # HTTP fallback owns the store manifest and starts only after the
+            # source pool has drained, so it cannot exceed the read limit.
+            for (i in which(!vapply(failures, is.null, logical(1L)))) {
+                process(i, failures[[i]])
             }
 
             data.table::rbindlist(processed, use.names = TRUE, fill = TRUE)
@@ -6164,29 +6365,53 @@ EsgStore <- R6::R6Class(
             if (!identical(plan$status[[1L]], "done")) {
                 return(NULL)
             }
-            results <- data.table::as.data.table(ddb_read_table(private$conn, "extraction_result"))
+            results <- data.table::as.data.table(ddb_read_table(
+                private$conn,
+                "extraction_result"
+            ))
             target_plan_id <- plan$plan_id[[1L]]
             results <- results[results[["plan_id"]] == target_plan_id]
             if (!nrow(results)) {
                 return(NULL)
             }
-            paths <- vapply(results$output_path, store_abs_path, character(1L), root = private$store_path)
+            paths <- vapply(
+                results$output_path,
+                store_abs_path,
+                character(1L),
+                root = private$store_path
+            )
             if (!all(file.exists(paths))) {
                 return(NULL)
             }
             plan
         },
 
-        extract_one = function(plan, file, fallback = "auto", overwrite = FALSE,
-                               reporter = NULL) {
+        extract_one = function(
+            plan,
+            file,
+            fallback = "auto",
+            overwrite = FALSE,
+            reporter = NULL,
+            resolved = NULL
+        ) {
             # Keep the complete service and fallback sequence inside the cache
             # generator so concurrent method children wait for one source read.
+            source_error <- if (inherits(resolved, "error")) resolved else NULL
+            if (
+                !is.null(source_error) &&
+                    (!inherits(source_error, "epwshiftr_store_access_error") ||
+                        !identical(source_error$service, "OPeNDAP") ||
+                        identical(fallback, "error"))
+            ) {
+                stop(source_error)
+            }
             generate <- function() {
                 opened <- private$open_plan_dataset(
                     file,
                     fallback = fallback,
                     overwrite = overwrite,
-                    reporter = reporter
+                    reporter = reporter,
+                    remote_error = source_error
                 )
                 ds <- opened$dataset
                 on.exit(if (isTRUE(ds$is_open)) ds$close(), add = TRUE)
@@ -6202,17 +6427,22 @@ EsgStore <- R6::R6Class(
                     ),
                     error = identity
                 )
-                remote_error <- if (inherits(
-                    payload,
-                    "epwshiftr_store_access_error"
-                ) && identical(opened$access_method, "OPeNDAP")) {
+                remote_error <- if (
+                    inherits(
+                        payload,
+                        "epwshiftr_store_access_error"
+                    ) &&
+                        identical(opened$access_method, "OPeNDAP")
+                ) {
                     payload
                 } else {
                     NULL
                 }
-                if (!is.null(remote_error) &&
-                    identical(opened$access_method, "OPeNDAP") &&
-                    identical(fallback, "auto")) {
+                if (
+                    !is.null(remote_error) &&
+                        identical(opened$access_method, "OPeNDAP") &&
+                        identical(fallback, "auto")
+                ) {
                     recovery_error <- remote_error
                     store__report_access_failure(
                         reporter,
@@ -6241,10 +6471,12 @@ EsgStore <- R6::R6Class(
                             )
                         }
                     )
-                    if (inherits(
-                        local_path,
-                        "epwshiftr_store_access_error"
-                    )) {
+                    if (
+                        inherits(
+                            local_path,
+                            "epwshiftr_store_access_error"
+                        )
+                    ) {
                         store__report_access_failure(
                             reporter,
                             file,
@@ -6291,10 +6523,12 @@ EsgStore <- R6::R6Class(
                         error = identity
                     )
                     if (inherits(payload, "error")) {
-                        local_error <- if (inherits(
-                            payload,
-                            "epwshiftr_store_access_error"
-                        )) {
+                        local_error <- if (
+                            inherits(
+                                payload,
+                                "epwshiftr_store_access_error"
+                            )
+                        ) {
                             payload
                         } else {
                             store__access_error(
@@ -6319,10 +6553,12 @@ EsgStore <- R6::R6Class(
                     }
                 } else if (inherits(payload, "error")) {
                     if (!is.null(recovery_error)) {
-                        local_error <- if (inherits(
-                            payload,
-                            "epwshiftr_store_access_error"
-                        )) {
+                        local_error <- if (
+                            inherits(
+                                payload,
+                                "epwshiftr_store_access_error"
+                            )
+                        ) {
                             payload
                         } else {
                             store__access_error(
@@ -6354,11 +6590,9 @@ EsgStore <- R6::R6Class(
                     recovery_error = recovery_error
                 )
             }
-            resolved <- store__extract_cache_resolve(
-                plan,
-                file,
-                generate
-            )
+            if (is.null(resolved) || !is.null(source_error)) {
+                resolved <- store__extract_cache_resolve(plan, file, generate)
+            }
             payload <- resolved$payload
             opened <- resolved$opened
             recovery_error <- resolved$recovery_error
@@ -6373,10 +6607,15 @@ EsgStore <- R6::R6Class(
                     overwrite = overwrite
                 ),
                 error = function(error) {
-                    if (inherits(error, c(
-                        "epwshiftr_store_access_error",
-                        "epwshiftr_store_extract_conflict"
-                    ))) {
+                    if (
+                        inherits(
+                            error,
+                            c(
+                                "epwshiftr_store_access_error",
+                                "epwshiftr_store_extract_conflict"
+                            )
+                        )
+                    ) {
                         stop(error)
                     }
                     classified <- store__access_error(
@@ -6392,8 +6631,12 @@ EsgStore <- R6::R6Class(
                         classified,
                         attempt = if (
                             identical(opened$access_method, "HTTPServer") &&
-                            !is.null(recovery_error)
-                        ) 2L else 1L,
+                                !is.null(recovery_error)
+                        ) {
+                            2L
+                        } else {
+                            1L
+                        },
                         outcome = "failed"
                     )
                     if (!is.null(recovery_error)) {
@@ -6409,121 +6652,14 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # read_extract_dataset {{{
-        read_extract_dataset = function(ds, plan, file, opened,
-                                        reporter = NULL) {
-            metadata_started <- proc.time()[["elapsed"]]
-            time_info <- tryCatch(
-                {
-                    value <- ds$get_time_axis(index = 1L)
-                    valid <- value$values[!is.na(value$values)]
-                    if (!length(valid)) {
-                        stop(
-                            "The NetCDF time axis is empty or unavailable.",
-                            call. = FALSE
-                        )
-                    }
-                    list(info = value, valid = valid)
-                },
-                error = function(error) {
-                    stop(store__access_error(
-                        error,
-                        phase = "metadata",
-                        service = opened$access_method,
-                        target = opened$target,
-                        started_at = metadata_started
-                    ))
-                }
-            )
-            requested_time <- c(plan$time_start[[1L]], plan$time_stop[[1L]])
-            # Count the same calendar-native indices that read_region() will
-            # extract; surrogate POSIXct years are wrong at 360-day boundaries.
-            available_time_count <- length(cf_time__range_indices(
-                time_info$info$values,
-                time_info$info$coordinates,
-                requested_time
-            ))
-
-            # Remote reads run in the existing one-shot dataset worker so the
-            # main R process can refresh elapsed time and observe cancellation.
-            callback <- if (is.null(reporter)) NULL else function(progress) {
-                reporter$heartbeat(details = list(
-                    unit_type = "extraction_plan",
-                    scenario = store__chr1(file$experiment_id[[1L]]),
-                    variable = plan$variable_id[[1L]],
-                    period = sprintf("%s/%s",
-                        format(plan$time_start[[1L]], "%Y"),
-                        format(plan$time_stop[[1L]], "%Y")),
-                    access_method = opened$access_method,
-                    transfer_state = shift_coalesce(progress$state, "waiting")
-                ))
-                invisible(TRUE)
-            }
-            old <- options(epwshiftr.dataset.progress_callback = callback)
-            on.exit(options(old), add = TRUE)
-            read_args <- list(
-                variable = plan$variable_id[[1L]],
-                lon = plan$lon[[1L]],
-                lat = plan$lat[[1L]],
-                time = requested_time,
-                method = plan$method[[1L]]
-            )
-            use_async <- !is.null(reporter) &&
-                identical(opened$access_method, "OPeNDAP")
-            read_started <- proc.time()[["elapsed"]]
-            dt <- tryCatch(
-                tryCatch(
-                    do.call(ds$read_region,
-                        c(read_args, list(async = use_async))),
-                    epwshiftr_async_unavailable = function(error) {
-                        # A worker launch failure changes liveness only; the
-                        # same OPeNDAP read remains valid synchronously.
-                        reporter$notice(
-                            paste(
-                                "Worker unavailable; continuing with",
-                                "synchronous OPeNDAP read"
-                            ),
-                            outcome = "fallback",
-                            details = list(
-                                unit_type = "extraction_plan",
-                                scenario = store__chr1(
-                                    file$experiment_id[[1L]]
-                                ),
-                                variable = plan$variable_id[[1L]],
-                                access_method = opened$access_method,
-                                reason = conditionMessage(error)
-                            )
-                        )
-                        do.call(ds$read_region,
-                            c(read_args, list(async = FALSE)))
-                    }
-                ),
-                error = function(error) {
-                    stop(store__access_error(
-                        error,
-                        phase = "read",
-                        service = opened$access_method,
-                        target = opened$target,
-                        started_at = read_started
-                    ))
-                }
-            )
-            grid_sources <- attr(dt, "grid_sources", exact = TRUE)
-            units <- tryCatch(
-                as.character(ds$att_get(
-                    plan$variable_id[[1L]],
-                    "units",
-                    index = 1L
-                ))[[1L]],
-                error = function(error) NA_character_
-            )
-            dt[, units := units]
-            list(
-                data = dt,
-                grid_sources = grid_sources,
-                available_time_count = available_time_count,
-                actual_start = min(time_info$valid),
-                actual_end = max(time_info$valid)
-            )
+        read_extract_dataset = function(
+            ds,
+            plan,
+            file,
+            opened,
+            reporter = NULL
+        ) {
+            store__read_extract_dataset(ds, plan, file, opened, reporter)
         },
         # }}}
 
@@ -6605,37 +6741,18 @@ EsgStore <- R6::R6Class(
         # constructor failures and NetCDF open failures follow the same recovery
         # path and retain the exact service and target in diagnostics.
         open_dataset = function(target, service) {
-            started_at <- proc.time()[["elapsed"]]
-            ds <- NULL
-            tryCatch(
-                {
-                    ds <- EsgDataset$new(target)
-                    ds$open()
-                    list(
-                        dataset = ds,
-                        target = target,
-                        access_method = service
-                    )
-                },
-                error = function(error) {
-                    if (!is.null(ds) && isTRUE(ds$is_open)) {
-                        ds$close()
-                    }
-                    stop(store__access_error(
-                        error,
-                        phase = "open",
-                        service = service,
-                        target = target,
-                        started_at = started_at
-                    ))
-                }
-            )
+            store__open_dataset(target, service)
         },
         # }}}
 
         # open_plan_dataset {{{
-        open_plan_dataset = function(file, fallback = "auto", overwrite = FALSE,
-                                     reporter = NULL) {
+        open_plan_dataset = function(
+            file,
+            fallback = "auto",
+            overwrite = FALSE,
+            reporter = NULL,
+            remote_error = NULL
+        ) {
             local <- store__chr1(file$local_path)
             if (!is.na(local) && nzchar(local)) {
                 local <- store_abs_path(local, root = private$store_path)
@@ -6644,8 +6761,15 @@ EsgStore <- R6::R6Class(
                 }
             }
             opendap <- store__chr1(file$url_opendap)
-            remote_error <- NULL
-            if (!is.na(opendap) && nzchar(opendap)) {
+            if (!is.null(remote_error)) {
+                store__report_access_failure(
+                    reporter,
+                    file,
+                    remote_error,
+                    attempt = 1L
+                )
+            }
+            if (is.null(remote_error) && !is.na(opendap) && nzchar(opendap)) {
                 opened <- tryCatch(
                     private$open_dataset(opendap, service = "OPeNDAP"),
                     error = identity
@@ -6669,7 +6793,10 @@ EsgStore <- R6::R6Class(
             }
 
             if (identical(fallback, "error")) {
-                stop("OPeNDAP is not available for this file record.", call. = FALSE)
+                stop(
+                    "OPeNDAP is not available for this file record.",
+                    call. = FALSE
+                )
             }
 
             download_started <- proc.time()[["elapsed"]]

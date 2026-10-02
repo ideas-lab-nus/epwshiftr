@@ -14,6 +14,13 @@
   bounds are read only for selected native times. Time slices now use the
   actual spatial group size within the unchanged 8192-value request limit;
   single-cell reads can include up to 8192 native steps (#278).
+  Ordinary extraction and shared batch reads now use a bounded source-file
+  worker pool, controlled by `options(epwshiftr.mirai_workers = 4L)`. Workers
+  reuse each file connection when caching is enabled, while the caller writes
+  manifest and Parquet records. Cached ordinary extraction avoids starting
+  workers; failed remote reads enter the existing fallback without repeating
+  the OPeNDAP attempt
+  (#278).
 
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each

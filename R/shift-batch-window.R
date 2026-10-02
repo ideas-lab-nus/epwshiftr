@@ -865,35 +865,34 @@ shift_batch__prefetch <- function(batch) {
         by = "acquisition_id",
         keep.by = TRUE
     )
-    for (index in seq_len(nrow(shared$acquisitions))) {
+    jobs <- lapply(seq_len(nrow(shared$acquisitions)), function(index) {
         acquisition <- shared$acquisitions[index]
         consumers <- links[[acquisition$acquisition_id[[1L]]]]
         if (is.null(consumers) || !nrow(consumers)) {
-            next
+            return(NULL)
         }
-        outcome <- tryCatch(
-            shift_batch__prefetch_acquisition(
-                batch@store_path,
-                acquisition,
-                consumers
-            ),
-            error = base::identity
+        list(
+            root = batch@store_path,
+            acquisition = acquisition,
+            consumers = consumers
         )
-        if (inherits(outcome, "error")) {
-            if (!inherits(outcome, "epwshiftr_shared_unavailable")) {
-                attr(outcome, "shared_file") <- acquisition$filename[[1L]]
-                stop(outcome)
+    })
+    source__apply(
+        Filter(Negate(is.null), jobs),
+        source__read_acquisition,
+        collect = function(job, outcome) {
+            if (is.list(outcome) && !is.null(outcome$unavailable)) {
+                skip_count <<- skip_count + 1L
+                skipped[[skip_count]] <<- sprintf(
+                    "%s: %s",
+                    job$acquisition$filename[[1L]],
+                    conditionMessage(outcome$unavailable)
+                )
+            } else {
+                completed <<- completed + 1L
             }
-            skip_count <- skip_count + 1L
-            skipped[[skip_count]] <- sprintf(
-                "%s: %s",
-                acquisition$filename[[1L]],
-                conditionMessage(outcome)
-            )
-        } else {
-            completed <- completed + 1L
         }
-    }
+    )
     if (skip_count) {
         cli::cli_warn(c(
             "Shared reads are unavailable for {skip_count} source file(s); their children will use ordinary extraction.",
