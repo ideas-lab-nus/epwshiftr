@@ -3,8 +3,11 @@
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each
   consumer retains its site, method, CF time, actual grid cells and weights
-  (#277). Grid coordinates are reused across sites; metadata failures and
-  mismatched acquisition URLs stop the read.
+  (#277). Adjacent cells share at most 2-by-2 spatial slices; native time
+  reads are capped at 8192 native values, with explicit output-row and request
+  limits.
+  Grid coordinates are reused across sites; metadata failures and mismatched
+  acquisition URLs stop the read.
 
 * Batch plans now retain a shared physical File acquisition table and separate
   site/method consumer links from cached discovery metadata. Overlapping source

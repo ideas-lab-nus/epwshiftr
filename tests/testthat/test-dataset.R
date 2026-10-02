@@ -726,9 +726,47 @@ test_that("the internal multi-site reader keeps method weights per site", {
         expect_equal(observed$value, expected$value, tolerance = 1e-5)
         expect_equal(sum(sources$weight[sources$site_id == method]), 1)
     }
-    expect_equal(
-        nrow(attr(actual, "read_slices")),
+    slices <- attr(actual, "read_slices")
+    expect_lt(
+        nrow(slices),
         data.table::uniqueN(sources, by = c("grid_lat", "grid_lon"))
+    )
+    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
+    expect_true(any(slices$lat_count * slices$lon_count == 4L))
+})
+
+test_that("multi-site native reads split long time runs into bounded blocks", {
+    path <- local_dataset_table_file(
+        time_vals = 0:2399,
+        time_units = "days since 2060-01-01 00:00:00",
+        tas_vals = seq_len(2400L)
+    )
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    sites <- data.table::data.table(
+        site_id = "first",
+        lon = 2,
+        lat = 1,
+        method = "nearest"
+    )
+
+    actual <- dataset__read_regions(ds, "tas", sites)
+    slices <- attr(actual, "read_slices")
+    expect_equal(actual$value, as.numeric(seq_len(2400L)))
+    expect_equal(slices$time_count, c(2048L, 352L))
+    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
+
+    many_sites <- data.table::data.table(
+        site_id = sprintf("site-%03d", seq_len(105L)),
+        lon = rep.int(2, 105L),
+        lat = rep.int(1, 105L),
+        method = rep.int("nearest", 105L)
+    )
+    expect_error(
+        dataset__read_regions(ds, "tas", many_sites),
+        "exceeds 250000 output rows"
     )
 })
 

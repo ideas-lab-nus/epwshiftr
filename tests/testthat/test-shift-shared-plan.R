@@ -32,7 +32,8 @@ test_that("one acquisition reads linked sites and methods from sparse cells", {
 
     expect_equal(data.table::uniqueN(actual$consumer_id), 3L)
     expect_equal(nrow(actual), 6L)
-    expect_equal(nrow(slices), 5L)
+    expect_equal(nrow(slices), 2L)
+    expect_true(any(slices$lat_count * slices$lon_count == 4L))
     expect_true(all(slices$time_count == 2L))
     expect_equal(nrow(sources), 6L)
     expect_identical(unique(actual$cf_calendar), "360_day")
