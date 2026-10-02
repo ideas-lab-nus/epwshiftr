@@ -5,6 +5,10 @@
   child workflows reuse the same site-extraction cache keys without changing
   their output and provenance contracts. Shared remote failures stop the batch
   before per-site retries (#278).
+  Recovery now records a blocked batch with its source error and can assemble
+  complete window receipts without reopening an unavailable source. Partial
+  cache recovery reads only missing site keys; duplicate method demands share
+  one extraction, and large site groups reuse one source connection (#278).
 
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each

@@ -200,6 +200,8 @@ shift_batch__receipt_write <- function(x) {
         batch_id = x@ids$batch_id,
         discovery = x@meta$discovery,
         shared_plan = x@meta$shared_plan,
+        shared_failure = x@meta$shared_failure,
+        shared_failure_history = x@meta$shared_failure_history,
         manifest = data.table::copy(x@meta$manifest),
         children = children,
         output_dir = x@meta$output_dir,
@@ -288,6 +290,8 @@ shift_batch_get <- function(batch_id, store = NULL) {
             climate = shift__climate_from_spec(receipt$climate),
             discovery = receipt$discovery,
             shared_plan = receipt$shared_plan,
+            shared_failure = receipt$shared_failure,
+            shared_failure_history = receipt$shared_failure_history,
             selected_models = receipt$discovery$identities,
             output_dir = receipt$output_dir,
             dry_run = all(vapply(
@@ -411,6 +415,8 @@ shift_batch__restore <- function(
             climate = climate,
             discovery = receipt$discovery,
             shared_plan = receipt$shared_plan,
+            shared_failure = receipt$shared_failure,
+            shared_failure_history = receipt$shared_failure_history,
             selected_models = data.table::as.data.table(
                 data.table::copy(receipt$discovery$identities)
             ),
@@ -1603,7 +1609,8 @@ shift_batch__diagnostics <- function(
     children,
     manifest,
     severity = NULL,
-    refresh = TRUE
+    refresh = TRUE,
+    shared_failure = NULL
 ) {
     rows <- lapply(seq_along(children), function(index) {
         diagnostics <- tryCatch(
@@ -1655,6 +1662,24 @@ shift_batch__diagnostics <- function(
             )
         }
     }
+    if (!is.null(shared_failure)) {
+        failure <- shift_diagnostic(
+            "batch",
+            "error",
+            "batch_shared_read_failed",
+            sprintf(
+                "Shared read of %s failed: %s",
+                shared_failure$file,
+                shared_failure$message
+            ),
+            action = "Resume the batch after the source or transport is available."
+        )
+        diagnostics <- data.table::rbindlist(
+            list(diagnostics, failure),
+            use.names = TRUE,
+            fill = TRUE
+        )
+    }
     if (!is.null(severity) && nrow(diagnostics)) {
         keep <- diagnostics$severity %in% severity
         diagnostics <- diagnostics[keep]
@@ -1693,7 +1718,8 @@ shift_batch__refresh <- function(x) {
     x@diagnostics <- shift_batch__diagnostics(
         children,
         x@meta$manifest,
-        refresh = FALSE
+        refresh = FALSE,
+        shared_failure = x@meta$shared_failure
     )
     x@ids$child_ids <- lapply(children, function(child) child@ids)
     x
@@ -1703,6 +1729,9 @@ shift_batch__refresh <- function(x) {
 shift_batch__status <- function(x, refresh = TRUE) {
     if (isTRUE(refresh)) {
         x <- shift_batch__refresh(x)
+    }
+    if (!is.null(x@meta$shared_failure)) {
+        return("blocked")
     }
     statuses <- vapply(
         x@meta$children,
@@ -1781,7 +1810,34 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
     # multi-site reads. An unavailable shared endpoint leaves child workflows
     # free to use their existing remote/HTTP fallback and durable recovery.
     if (!isTRUE(background)) {
-        shift_batch__prefetch(x)
+        failure <- tryCatch(
+            {
+                shift_batch__prefetch(x)
+                NULL
+            },
+            error = base::identity
+        )
+        if (inherits(failure, "error")) {
+            record <- list(
+                file = shift_coalesce(
+                    attr(failure, "shared_file"),
+                    "unknown source"
+                ),
+                message = conditionMessage(failure),
+                occurred_at = Sys.time()
+            )
+            x@meta$shared_failure <- record
+            x@meta$shared_failure_history <- c(
+                x@meta$shared_failure_history,
+                list(record)
+            )
+            shift_batch__receipt_write(x)
+            stop(failure)
+        }
+        if (!is.null(x@meta$shared_failure)) {
+            x@meta$shared_failure <- NULL
+            shift_batch__receipt_write(x)
+        }
     }
     # Update the shared matrix after each child so subsequent foreground frames
     # show batch progress while the ordinary child reporter owns the terminal.
@@ -1925,7 +1981,8 @@ S7::method(shift_check, ShiftBatch) <- function(
     diagnostics <- shift_batch__diagnostics(
         x@meta$children,
         x@meta$manifest,
-        refresh = FALSE
+        refresh = FALSE,
+        shared_failure = x@meta$shared_failure
     )
     if (isTRUE(strict) && any(diagnostics$severity %in% "error")) {
         shift_abort_diagnostics(diagnostics)

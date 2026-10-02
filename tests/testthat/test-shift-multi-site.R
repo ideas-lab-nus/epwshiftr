@@ -41,6 +41,31 @@ multi_site__plan <- function(
     )
 }
 
+# Keep a failed shared source read visible in the saved batch even when no
+# child run was started, so the user can inspect and resume that batch.
+test_that("shared prefetch failure persists as a blocked batch", {
+    withr::local_options(list(
+        epwshiftr.cmip6.availability = test_cmip6_availability,
+        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    ))
+    root <- tempfile("blocked-shared-batch-")
+    batch <- multi_site__plan(
+        list(shift_site("South", epw = get_cache_epw())),
+        store = root
+    )
+    testthat::local_mocked_bindings(
+        shift_batch__prefetch = function(...) stop("source connection closed")
+    )
+    expect_error(shift_batch__resume(batch), "source connection closed")
+    restored <- shift_batch_get(batch@ids$batch_id, root)
+    expect_identical(shift_status(restored), "blocked")
+    expect_true(
+        "batch_shared_read_failed" %in%
+            shift_diagnostics(restored)$code
+    )
+    expect_length(restored@meta$shared_failure_history, 1L)
+})
+
 test_that("multiple sites share discovery and retain distinct durable plans", {
     calls <- 0L
     withr::local_options(list(

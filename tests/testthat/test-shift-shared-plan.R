@@ -514,6 +514,23 @@ test_that("batch windows seed child caches and resume verified native reads", {
         cache_plan,
         acquisition
     )))
+    # A complete receipt and its native-axis summary also rebuild a missing
+    # site cache while the original source is unavailable.
+    unlink(store__extract_cache_path(cache_plan, acquisition))
+    unavailable <- data.table::copy(acquisition)
+    data.table::set(
+        unavailable,
+        j = "url_opendap",
+        value = "https://unavailable.example/source.nc"
+    )
+    expect_gt(
+        shift_batch__prefetch_acquisition(batch_root, unavailable, consumers),
+        1L
+    )
+    expect_true(file.exists(store__extract_cache_path(
+        cache_plan,
+        acquisition
+    )))
     # A readable but altered RDS must fail its receipt check instead of being
     # accepted as an interrupted or reusable window.
     unlink(store__extract_cache_path(cache_plan, acquisition))
@@ -532,6 +549,110 @@ test_that("batch windows seed child caches and resume verified native reads", {
         ),
         "checksum"
     )
+})
+
+# A partial recovery reads source values only for missing site cache keys and
+# retains an earlier completed receipt when that window must be extended.
+test_that("partial site recovery excludes cached consumers", {
+    withr::local_options(list(epwshiftr.dir_cache = withr::local_tempdir()))
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
+    on.exit(unlink(path), add = TRUE)
+    acquisition <- data.table::data.table(
+        acquisition_id = "partial-sites",
+        physical_file_id = "partial-source",
+        filename = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601230.nc",
+        variable_id = "tas",
+        checksum = store_hash_file(path, "sha256"),
+        checksum_type = "sha256",
+        time_start = as.POSIXct("2060-01-01", tz = "UTC"),
+        time_stop = as.POSIXct("2060-01-30 23:59:59", tz = "UTC"),
+        url_opendap = path,
+        url_download = path
+    )
+    consumers <- data.table::data.table(
+        acquisition_id = "partial-sites",
+        demand_id = 1:2,
+        child_key = c("first", "second"),
+        site_id = c("first", "second"),
+        role = "future",
+        variable_id = "tas",
+        lon = c(-106, 103.98),
+        lat = c(41, 1.37),
+        spatial_method = "nearest",
+        time_start = rep(acquisition$time_start, 2L),
+        time_stop = rep(acquisition$time_stop, 2L),
+        requested_start = rep(acquisition$time_start, 2L),
+        requested_stop = rep(acquisition$time_stop, 2L)
+    )
+    root <- withr::local_tempdir()
+    expect_equal(
+        shift_batch__prefetch_acquisition(root, acquisition, consumers),
+        1L
+    )
+    plan <- data.table::data.table(
+        variable_id = "tas",
+        lon = consumers$lon[[1L]],
+        lat = consumers$lat[[1L]],
+        method = "nearest",
+        time_start = acquisition$time_start,
+        time_stop = acquisition$time_stop
+    )
+    unlink(store__extract_cache_path(plan, acquisition))
+    receipt <- list.files(
+        file.path(root, "shared-acquisitions"),
+        pattern = "[.]json$",
+        recursive = TRUE,
+        full.names = TRUE
+    )[[1L]]
+    unlink(receipt)
+    original_read <- shift_batch__read_acquisition
+    counts <- integer()
+    testthat::local_mocked_bindings(
+        shift_batch__read_acquisition = function(
+            dataset,
+            acquisition,
+            consumers
+        ) {
+            counts <<- c(counts, nrow(consumers))
+            original_read(dataset, acquisition, consumers)
+        }
+    )
+    expect_equal(
+        shift_batch__prefetch_acquisition(root, acquisition, consumers),
+        1L
+    )
+    expect_identical(counts, 1L)
+    expect_true(file.exists(store__extract_cache_path(plan, acquisition)))
+    expect_true(any(grepl(
+        "-interrupted-",
+        list.files(
+            dirname(sub("[.]json$", "", receipt)),
+            all.files = TRUE
+        )
+    )))
+    # Distinct method children with the same native source demand share one
+    # method-neutral cache entry and one recoverable window chunk.
+    withr::local_options(list(epwshiftr.dir_cache = withr::local_tempdir()))
+    duplicate <- consumers[1L][rep(1L, 2L)]
+    data.table::set(duplicate, j = "demand_id", value = 3:4)
+    data.table::set(
+        duplicate,
+        j = "child_key",
+        value = c("method-a", "method-b")
+    )
+    other_root <- withr::local_tempdir()
+    expect_equal(
+        shift_batch__prefetch_acquisition(other_root, acquisition, duplicate),
+        1L
+    )
+    other_receipt <- list.files(
+        file.path(other_root, "shared-acquisitions"),
+        pattern = "[.]json$",
+        recursive = TRUE,
+        full.names = TRUE
+    )[[1L]]
+    expect_length(jsonlite::read_json(other_receipt)$chunks, 1L)
 })
 
 test_that("shared acquisition partitions large site collections", {
@@ -577,10 +698,19 @@ test_that("shared acquisition partitions large site collections", {
         requested_stop = rep(acquisition$time_stop, site_count)
     )
     batch_root <- withr::local_tempdir()
+    original_dataset <- EsgDataset
+    opens <- 0L
+    testthat::local_mocked_bindings(
+        EsgDataset = list(new = function(...) {
+            opens <<- opens + 1L
+            original_dataset$new(...)
+        })
+    )
     expect_equal(
         shift_batch__prefetch_acquisition(batch_root, acquisition, consumers),
         2L
     )
+    expect_identical(opens, 1L)
     receipts <- list.files(
         file.path(batch_root, "shared-acquisitions"),
         pattern = "[.]json$",
@@ -606,4 +736,5 @@ test_that("shared acquisition partitions large site collections", {
         shift_batch__prefetch_acquisition(batch_root, acquisition, consumers),
         0L
     )
+    expect_identical(opens, 1L)
 })

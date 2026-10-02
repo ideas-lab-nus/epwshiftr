@@ -4240,7 +4240,8 @@ shift_diagnostics <- function(x, severity = NULL, refresh = TRUE) {
             x@meta$children,
             x@meta$manifest,
             severity = severity,
-            refresh = refresh
+            refresh = refresh,
+            shared_failure = x@meta$shared_failure
         ))
     }
     if (isTRUE(refresh) && S7::S7_inherits(x, ShiftRun)) {
