@@ -11,7 +11,9 @@
   one extraction, and large site groups reuse one source connection (#278).
   Shared reads preserve spatial roles in grid-source provenance. Native time
   coordinates and grids are reused within each source connection; interval
-  bounds are read only for selected native times (#278).
+  bounds are read only for selected native times. Time slices now use the
+  actual spatial group size within the unchanged 8192-value request limit;
+  single-cell reads can include up to 8192 native steps (#278).
 
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each

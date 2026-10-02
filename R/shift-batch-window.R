@@ -30,7 +30,9 @@ shift_batch__windows <- function(axis, acquisition, consumer_count) {
     max_steps <- max(
         1L,
         min(
-            2048L,
+            # The reader applies the 8192-value cap to each actual spatial
+            # group. Do not limit single-cell reads to four-cell time lengths.
+            8192L,
             200000L %/% consumer_count,
             max(1L, 250000L %/% worst_points) *
                 max(1L, 4096L %/% worst_points)
@@ -581,8 +583,10 @@ shift_batch__prefetch_acquisition <- function(
         }
         return(invisible(sum(windows)))
     }
+    # A different time-window policy must not overwrite earlier window
+    # receipts. Final site caches keep their unchanged extraction identities.
     source_identity <- store__hash(
-        "shared-window-v1",
+        "shared-window-v2",
         acquisition$physical_file_id[[1L]],
         as.list(consumers)
     )

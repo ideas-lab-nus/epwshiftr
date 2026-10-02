@@ -138,8 +138,8 @@ dataset__region_cell_groups <- function(points) {
 }
 
 # Partition contiguous native positions into bounded runs. Spatial reads use
-# at most 2048 times and four cells; interval bounds use 4096 times and two
-# endpoints. Both subset paths stay within 8192 values per request.
+# a time limit based on their spatial area; interval bounds use 4096 times
+# and two endpoints. Both subset paths stay within 8192 values per request.
 dataset__region_runs <- function(indices, max_time = 2048L) {
     if (!length(indices)) {
         return(list())
@@ -304,11 +304,23 @@ dataset__read_regions_one <- function(
     group_times <- lapply(groups, function(group) {
         sort(unique(unlist(point_times[group$members], use.names = FALSE)))
     })
-    block_time <- min(2048L, max(1L, 250000L %/% nrow(points)))
+    # Single-cell groups can use the full native-value allowance. The working
+    # matrix has its own limit; each spatial group splits runs independently.
+    max_times <- vapply(
+        groups,
+        function(group) {
+            8192L %/% (group$lat_count * group$lon_count)
+        },
+        integer(1L)
+    )
+    block_time <- min(max(max_times), max(1L, 250000L %/% nrow(points)))
     blocks <- split(selected, ceiling(seq_along(selected) / block_time))
     requests <- lapply(blocks, function(block) {
-        lapply(group_times, function(needed) {
-            dataset__region_runs(intersect(block, needed))
+        lapply(seq_along(groups), function(index) {
+            dataset__region_runs(
+                intersect(block, group_times[[index]]),
+                max_time = max_times[[index]]
+            )
         })
     })
     request_count <- sum(vapply(

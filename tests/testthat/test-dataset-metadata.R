@@ -173,12 +173,12 @@ test_that("batch prefetch shares selected bounds across value windows", {
         path,
         2060L,
         calendar = "365_day",
-        n_years = 6L
+        n_years = 24L
     )
     withr::defer(unlink(path))
     acquisition <- data.table::data.table(
-        acquisition_id = "six-years",
-        physical_file_id = "six-years",
+        acquisition_id = "twenty-four-years",
+        physical_file_id = "twenty-four-years",
         filename = basename(path),
         variable_id = "tas",
         source_id = "EC-Earth3",
@@ -194,10 +194,10 @@ test_that("batch prefetch shares selected bounds across value windows", {
         url_opendap = path,
         url_download = path,
         time_start = as.POSIXct("2060-01-01", tz = "UTC"),
-        time_stop = as.POSIXct("2065-12-31 23:59:59", tz = "UTC")
+        time_stop = as.POSIXct("2083-12-31 23:59:59", tz = "UTC")
     )
     consumer <- data.table::data.table(
-        acquisition_id = "six-years",
+        acquisition_id = "twenty-four-years",
         demand_id = "site",
         child_key = "site",
         site_id = "site",
@@ -230,6 +230,6 @@ test_that("batch prefetch shares selected bounds across value windows", {
         ),
         2L
     )
-    expect_equal(bounds_counts, list(c(2L, 2190L)))
+    expect_equal(bounds_counts, list(c(2L, 4096L), c(2L, 4096L), c(2L, 568L)))
     expect_false(dir.exists(file.path(cache, "source-metadata")))
 })

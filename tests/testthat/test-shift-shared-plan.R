@@ -370,13 +370,13 @@ test_that("batch windows seed child caches and resume verified native reads", {
         path,
         2060L,
         calendar = "360_day",
-        n_years = 6L
+        n_years = 24L
     )
     on.exit(unlink(path), add = TRUE)
     acquisition <- data.table::data.table(
-        acquisition_id = "six-year-window",
+        acquisition_id = "twenty-four-year-window",
         physical_file_id = "local-source",
-        filename = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20651230.nc",
+        filename = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20831230.nc",
         source_id = "EC-Earth3",
         experiment_id = "ssp585",
         variant_label = "r1i1p1f1",
@@ -390,12 +390,12 @@ test_that("batch windows seed child caches and resume verified native reads", {
         checksum_type = "sha256",
         size = file.info(path)$size,
         time_start = as.POSIXct("2060-01-01", tz = "UTC"),
-        time_stop = as.POSIXct("2065-12-31 23:59:59", tz = "UTC"),
+        time_stop = as.POSIXct("2083-12-31 23:59:59", tz = "UTC"),
         url_opendap = path,
         url_download = path
     )
     consumers <- data.table::data.table(
-        acquisition_id = "six-year-window",
+        acquisition_id = "twenty-four-year-window",
         demand_id = 1:2,
         child_key = c("first", "second"),
         site_id = c("Harbin", "Guangzhou"),
@@ -462,7 +462,7 @@ test_that("batch windows seed child caches and resume verified native reads", {
             time = c(cache_plan$time_start, cache_plan$time_stop)
         )
         expect_equal(cache$data$value, expected$value)
-        expect_equal(cache$available_time_count, 2160L)
+        expect_equal(cache$available_time_count, 8640L)
         expect_identical(unique(cache$data$cf_calendar), "360_day")
         expect_equal(
             cache$grid_sources$grid_lon,
