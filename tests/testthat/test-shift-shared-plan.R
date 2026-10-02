@@ -1,3 +1,55 @@
+test_that("one acquisition reads linked sites and methods from sparse cells", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
+    on.exit(unlink(path), add = TRUE)
+    dataset <- EsgDataset$new(path)
+    dataset$open()
+    on.exit(dataset$close(), add = TRUE)
+
+    acquisition <- data.table::data.table(
+        acquisition_id = "source-window",
+        time_start = as.POSIXct("2060-01-02", tz = "UTC"),
+        time_stop = as.POSIXct("2060-01-03 23:59:59", tz = "UTC")
+    )
+    consumers <- data.table::data.table(
+        acquisition_id = rep.int("source-window", 3L),
+        demand_id = 1:3,
+        child_key = c("site-a-nearest", "site-a-mean", "site-b-nearest"),
+        site_id = c("site-a", "site-a", "site-b"),
+        role = rep.int("future", 3L),
+        variable_id = rep.int("tas", 3L),
+        lon = c(103.98, 103.98, -106),
+        lat = c(1.37, 1.37, 41),
+        spatial_method = c("nearest", "mean", "nearest"),
+        time_start = rep(acquisition$time_start, 3L),
+        time_stop = rep(acquisition$time_stop, 3L)
+    )
+    actual <- shift_batch__read_acquisition(dataset, acquisition, consumers)
+    sources <- attr(actual, "grid_sources")
+    slices <- attr(actual, "read_slices")
+
+    expect_equal(data.table::uniqueN(actual$consumer_id), 3L)
+    expect_equal(nrow(actual), 6L)
+    expect_equal(nrow(slices), 5L)
+    expect_true(all(slices$time_count == 2L))
+    expect_equal(nrow(sources), 6L)
+    expect_identical(unique(actual$cf_calendar), "360_day")
+    for (index in seq_len(nrow(consumers))) {
+        consumer <- consumers[index]
+        expected <- dataset$read_region(
+            "tas",
+            lon = consumer$lon[[1L]],
+            lat = consumer$lat[[1L]],
+            time = c(consumer$time_start[[1L]], consumer$time_stop[[1L]]),
+            method = consumer$spatial_method[[1L]]
+        )
+        observed <- actual[actual$consumer_id == as.character(index)]
+        expect_equal(observed$value, expected$value)
+        expect_identical(unique(observed$site_id), consumer$site_id[[1L]])
+        expect_identical(unique(observed$child_key), consumer$child_key[[1L]])
+    }
+})
+
 test_that("shared File planning retains four consumers for one source interval", {
     catalog <- data.table::data.table(
         file_key = "file-a",
