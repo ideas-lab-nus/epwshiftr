@@ -4,7 +4,7 @@
   native-time windows. Verified window receipts resume interrupted reads, and
   child workflows reuse the same site-extraction cache keys without changing
   their output and provenance contracts. Shared remote failures stop the batch
-  before per-site retries.
+  before per-site retries (#278).
 
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each
