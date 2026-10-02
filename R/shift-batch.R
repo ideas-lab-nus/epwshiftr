@@ -51,10 +51,17 @@ shift_batch__transforms <- function(methods = NULL, transform = NULL) {
     if (!is.null(transform)) {
         explicit <- if (S7::S7_inherits(transform, WeatherTransformSpec)) {
             list(transform)
-        } else if (is.list(transform) && length(transform) &&
-            all(vapply(transform, function(value) {
-                S7::S7_inherits(value, WeatherTransformSpec)
-            }, logical(1L)))) {
+        } else if (
+            is.list(transform) &&
+                length(transform) &&
+                all(vapply(
+                    transform,
+                    function(value) {
+                        S7::S7_inherits(value, WeatherTransformSpec)
+                    },
+                    logical(1L)
+                ))
+        ) {
             transform
         } else {
             cli::cli_abort(
@@ -74,8 +81,12 @@ shift_batch__transforms <- function(methods = NULL, transform = NULL) {
         )
     }
     if (is.character(values)) {
-        if (!length(values) || anyNA(values) || any(!nzchar(values)) ||
-            anyDuplicated(values)) {
+        if (
+            !length(values) ||
+                anyNA(values) ||
+                any(!nzchar(values)) ||
+                anyDuplicated(values)
+        ) {
             cli::cli_abort(
                 "`methods` must contain unique, non-empty method keys."
             )
@@ -100,8 +111,10 @@ shift_batch__transforms <- function(methods = NULL, transform = NULL) {
 # reconstruction while retaining the concise published method key in outputs.
 shift_batch__transform_key <- function(transform) {
     parts <- c(transform@scale, transform@method)
-    if (!is.na(transform@reconstruction) &&
-        nzchar(transform@reconstruction)) {
+    if (
+        !is.na(transform@reconstruction) &&
+            nzchar(transform@reconstruction)
+    ) {
         parts <- c(parts, transform@reconstruction)
     }
     paste(parts, collapse = "-")
@@ -299,8 +312,12 @@ shift_batch_get <- function(batch_id, store = NULL) {
 shift_batch__restore_child <- function(reference) {
     run_id <- store__chr1(reference$run_id)
     store_path <- store__chr1(reference$store_path)
-    if (is.na(run_id) || !nzchar(run_id) || is.na(store_path) ||
-        !nzchar(store_path)) {
+    if (
+        is.na(run_id) ||
+            !nzchar(run_id) ||
+            is.na(store_path) ||
+            !nzchar(store_path)
+    ) {
         return(NULL)
     }
 
@@ -321,8 +338,10 @@ shift_batch__restore_child <- function(reference) {
             if (is.null(run)) {
                 return(NULL)
             }
-            if (identical(shift_status(run, refresh = FALSE), "completed") &&
-                !shift__run_artifacts_complete(child_store, run_id)) {
+            if (
+                identical(shift_status(run, refresh = FALSE), "completed") &&
+                    !shift__run_artifacts_complete(child_store, run_id)
+            ) {
                 return(NULL)
             }
             return(run)
@@ -357,10 +376,13 @@ shift_batch__restore <- function(
     periods,
     output_dir
 ) {
-    if (!identical(
-        normalizePath(receipt$output_dir, winslash = "/", mustWork = FALSE),
-        output_dir
-    ) || !length(receipt$children)) {
+    if (
+        !identical(
+            normalizePath(receipt$output_dir, winslash = "/", mustWork = FALSE),
+            output_dir
+        ) ||
+            !length(receipt$children)
+    ) {
         return(NULL)
     }
     children <- lapply(receipt$children, shift_batch__restore_child)
@@ -1500,7 +1522,9 @@ shift_batch__future_epw <- function(
     }
     names(children) <- manifest$child_key
     shared_plan <- shift_batch__plan_from_discovery(
-        children, manifest, file.path(batch_root, "discovery")
+        children,
+        manifest,
+        file.path(batch_root, "discovery")
     )
     batch <- shift_stage_new(
         ShiftBatch,
@@ -1680,9 +1704,13 @@ shift_batch__status <- function(x, refresh = TRUE) {
     if (isTRUE(refresh)) {
         x <- shift_batch__refresh(x)
     }
-    statuses <- vapply(x@meta$children, function(child) {
-        shift_status(child, refresh = FALSE)
-    }, character(1L))
+    statuses <- vapply(
+        x@meta$children,
+        function(child) {
+            shift_status(child, refresh = FALSE)
+        },
+        character(1L)
+    )
     if (!length(statuses)) {
         return("empty")
     }
@@ -1690,8 +1718,16 @@ shift_batch__status <- function(x, refresh = TRUE) {
         return(statuses[[1L]])
     }
     precedence <- c(
-        "failed", "blocked", "stopping", "running", "queued", "waiting",
-        "planned", "partial", "cancelled", "completed"
+        "failed",
+        "blocked",
+        "stopping",
+        "running",
+        "queued",
+        "waiting",
+        "planned",
+        "partial",
+        "cancelled",
+        "completed"
     )
     selected <- precedence[precedence %in% statuses]
     if (length(selected)) selected[[1L]] else "partial"
@@ -1704,9 +1740,13 @@ shift_batch__run <- function(x, background = FALSE, ui = shift_ui()) {
     if (!S7::S7_inherits(ui, ShiftUiOptions)) {
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
     }
-    plans <- vapply(x@meta$children, function(child) {
-        S7::S7_inherits(child, ShiftPlan)
-    }, logical(1L))
+    plans <- vapply(
+        x@meta$children,
+        function(child) {
+            S7::S7_inherits(child, ShiftPlan)
+        },
+        logical(1L)
+    )
     if (!all(plans)) {
         cli::cli_abort(c(
             "{.fn shift_run} can start only a dry-run {.cls ShiftBatch} whose children are all planned.",
@@ -1737,29 +1777,46 @@ shift_batch__run_child <- function(expr) {
 shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
     call_started <- Sys.time()
     execution <- list()
+    # Foreground batches warm the ordinary extraction cache from bounded
+    # multi-site reads. An unavailable shared endpoint leaves child workflows
+    # free to use their existing remote/HTTP fallback and durable recovery.
+    if (!isTRUE(background)) {
+        shift_batch__prefetch(x)
+    }
     # Update the shared matrix after each child so subsequent foreground frames
     # show batch progress while the ordinary child reporter owns the terminal.
     for (index in seq_along(x@meta$children)) {
         child <- x@meta$children[[index]]
         started <- Sys.time()
-        statuses <- vapply(x@meta$children, function(value) {
-            shift_status(value, refresh = FALSE)
-        }, character(1L))
+        statuses <- vapply(
+            x@meta$children,
+            function(value) {
+                shift_status(value, refresh = FALSE)
+            },
+            character(1L)
+        )
         child_ui <- ui
-        child_ui@batch_context <- list(id = x@ids$batch_id,
-            current = index, total = length(x@meta$children),
+        child_ui@batch_context <- list(
+            id = x@ids$batch_id,
+            current = index,
+            total = length(x@meta$children),
             completed = sum(statuses == "completed"),
-            failed = sum(statuses %in% c("failed", "blocked")))
+            failed = sum(statuses %in% c("failed", "blocked"))
+        )
         status <- shift_status(child, refresh = TRUE)
         if (identical(status, "completed")) {
             # A completed database row alone does not prove its exported files
             # still exist. Reuse the same artifact check as receipt restoration.
             restored <- shift_batch__restore_child(list(
-                run_id = child@ids$run_id, store_path = child@store_path,
-                status = status))
+                run_id = child@ids$run_id,
+                store_path = child@store_path,
+                status = status
+            ))
             if (is.null(restored)) {
-                spec <- jsonlite::fromJSON(child@meta$run$spec_json[[1L]],
-                    simplifyVector = TRUE)
+                spec <- jsonlite::fromJSON(
+                    child@meta$run$spec_json[[1L]],
+                    simplifyVector = TRUE
+                )
                 child <- shift__plan_from_spec(spec, store = child@store_path)
                 status <- "planned"
             }
@@ -1770,8 +1827,10 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
             child <- shift_batch__run_child(
                 shift_run(child, background = background, ui = child_ui)
             )
-        } else if (!status %in% c("completed", "queued", "running", "stopping",
-            "waiting")) {
+        } else if (
+            !status %in%
+                c("completed", "queued", "running", "stopping", "waiting")
+        ) {
             action <- "resumed"
             child <- shift_batch__run_child(
                 shift_resume(child, background = background, ui = child_ui)
@@ -1779,9 +1838,13 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
         }
         x@meta$children[[index]] <- child
         execution[[index]] <- data.table::data.table(
-            child_key = names(x@meta$children)[[index]], action = action,
+            child_key = names(x@meta$children)[[index]],
+            action = action,
             elapsed_seconds = as.numeric(difftime(
-                Sys.time(), started, units = "secs"))
+                Sys.time(),
+                started,
+                units = "secs"
+            ))
         )
         # Persist every completed launch so an interruption retains the latest
         # child run IDs rather than only the original dry-run plans.
@@ -1789,7 +1852,10 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
     }
     x@meta$execution <- data.table::rbindlist(execution)
     x@meta$call_elapsed_seconds <- as.numeric(difftime(
-        Sys.time(), call_started, units = "secs"))
+        Sys.time(),
+        call_started,
+        units = "secs"
+    ))
     x <- shift_batch__refresh(x)
     shift_batch__receipt_write(x)
     shift_batch__report(x, ui)
@@ -1817,16 +1883,26 @@ S7::method(print, ShiftBatch) <- function(x, ...) {
     opts <- shift__print_options(list(...))
     shift__print_use_width(opts$width)
     manifest <- data.table::copy(x@meta$manifest)
-    manifest[, status := vapply(x@meta$children, function(child) {
-        shift_status(child, refresh = FALSE)
-    }, character(1L))]
-    shift__print_stage_intro(x, "Future EPW Batch", list(
-        "Batch" = x@ids$batch_id,
-        "Methods" = data.table::uniqueN(manifest$method),
-        "Models" = data.table::uniqueN(manifest$model),
-        "Children" = nrow(manifest),
-        "Output directory" = shift__display_path(x@meta$output_dir)
-    ))
+    manifest[,
+        status := vapply(
+            x@meta$children,
+            function(child) {
+                shift_status(child, refresh = FALSE)
+            },
+            character(1L)
+        )
+    ]
+    shift__print_stage_intro(
+        x,
+        "Future EPW Batch",
+        list(
+            "Batch" = x@ids$batch_id,
+            "Methods" = data.table::uniqueN(manifest$method),
+            "Models" = data.table::uniqueN(manifest$model),
+            "Children" = nrow(manifest),
+            "Output directory" = shift__display_path(x@meta$output_dir)
+        )
+    )
     shift__print_table(
         manifest,
         "Method and model runs",

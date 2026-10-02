@@ -1,5 +1,11 @@
 # epwshiftr (development version)
 
+* Foreground multi-site batches now read shared physical files in bounded
+  native-time windows. Verified window receipts resume interrupted reads, and
+  child workflows reuse the same site-extraction cache keys without changing
+  their output and provenance contracts. Shared remote failures stop the batch
+  before per-site retries.
+
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each
   consumer retains its site, method, CF time, actual grid cells and weights

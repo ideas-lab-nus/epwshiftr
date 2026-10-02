@@ -142,6 +142,7 @@ Collate:
     'shift-batch-ui.R'
     'shift-batch-plan.R'
     'shift-batch-read.R'
+    'shift-batch-window.R'
     'shift-batch.R'
     'shift-inspect.R'
     'shift-path.R'

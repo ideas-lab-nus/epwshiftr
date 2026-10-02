@@ -40,53 +40,44 @@ shift_batch__consumers <- function(children, manifest) {
             )
         }
         demands <- lapply(roles, function(role) {
-            periods <- split(role$periods$year, role$periods$period)
-            data.table::rbindlist(
-                lapply(periods, function(years) {
-                    window <- shift__method_time_window(
-                        data.table::data.table(
-                            period = "requested",
-                            year = years
-                        ),
-                        meta$recipe
-                    )
-                    grid <- data.table::CJ(
-                        experiment_id = role$experiments,
-                        variable_id = variables,
-                        sorted = FALSE
-                    )
-                    data.table::set(
-                        grid,
-                        j = "frequency",
-                        value = unname(frequencies[grid$variable_id])
-                    )
-                    data.table::set(
-                        grid,
-                        j = "table_id",
-                        value = unname(tables[grid$variable_id])
-                    )
-                    data.table::set(
-                        grid,
-                        j = "time_start",
-                        value = as.POSIXct(
-                            window[[1L]],
-                            format = "%Y-%m-%dT%H:%M:%SZ",
-                            tz = "UTC"
-                        )
-                    )
-                    data.table::set(
-                        grid,
-                        j = "time_stop",
-                        value = as.POSIXct(
-                            window[[2L]],
-                            format = "%Y-%m-%dT%H:%M:%SZ",
-                            tz = "UTC"
-                        )
-                    )
-                    grid
-                }),
-                use.names = TRUE
+            # Child extraction uses one continuous time window for all named
+            # periods. Match that exact window so the shared read can populate
+            # the child store's existing content-addressed extraction cache.
+            window <- shift__method_time_window(role$periods, meta$recipe)
+            grid <- data.table::CJ(
+                experiment_id = role$experiments,
+                variable_id = variables,
+                sorted = FALSE
             )
+            data.table::set(
+                grid,
+                j = "frequency",
+                value = unname(frequencies[grid$variable_id])
+            )
+            data.table::set(
+                grid,
+                j = "table_id",
+                value = unname(tables[grid$variable_id])
+            )
+            data.table::set(
+                grid,
+                j = "time_start",
+                value = as.POSIXct(
+                    window[[1L]],
+                    format = "%Y-%m-%dT%H:%M:%SZ",
+                    tz = "UTC"
+                )
+            )
+            data.table::set(
+                grid,
+                j = "time_stop",
+                value = as.POSIXct(
+                    window[[2L]],
+                    format = "%Y-%m-%dT%H:%M:%SZ",
+                    tz = "UTC"
+                )
+            )
+            grid
         })
         demand <- data.table::rbindlist(demands, idcol = "role")
         data.table::set(demand, j = "source_id", value = climate@model)
@@ -132,6 +123,9 @@ shift_batch__shared_plan <- function(catalog, consumers) {
         return(empty)
     }
     catalog <- shift__catalog_current(catalog)
+    if (!"master_id" %in% names(catalog)) {
+        data.table::set(catalog, j = "master_id", value = NA_character_)
+    }
     keys <- c(
         "source_id",
         "experiment_id",
@@ -146,6 +140,7 @@ shift_batch__shared_plan <- function(catalog, consumers) {
             keys,
             "file_key",
             "filename",
+            "master_id",
             "version",
             "tracking_id",
             "checksum",
@@ -275,6 +270,16 @@ shift_batch__shared_plan <- function(catalog, consumers) {
         "logical_file_id",
         "file_key",
         "filename",
+        "master_id",
+        "source_id",
+        "experiment_id",
+        "variant_label",
+        "grid_label",
+        "variable_id",
+        "frequency",
+        "table_id",
+        "version",
+        "tracking_id",
         "checksum",
         "checksum_type",
         "size",
@@ -323,14 +328,16 @@ shift_batch__shared_plan <- function(catalog, consumers) {
         "lon",
         "lat",
         "spatial_method",
+        "time_start",
+        "time_stop",
         "start",
         "stop"
     )
     links <- data.table::copy(matched[, link_columns, with = FALSE])
     data.table::setnames(
         links,
-        c("start", "stop"),
-        c("time_start", "time_stop")
+        c("time_start", "time_stop", "start", "stop"),
+        c("requested_start", "requested_stop", "time_start", "time_stop")
     )
     data.table::set(
         links,

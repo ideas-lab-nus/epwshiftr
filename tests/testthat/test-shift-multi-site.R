@@ -381,6 +381,15 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         j = "id",
         value = paste0(docs$title, "|future-", docs$variable_id)
     )
+    data.table::set(
+        docs,
+        j = "checksum",
+        value = vapply(
+            docs$variable_id,
+            function(variable) store_hash_file(files[[variable]], "sha256"),
+            character(1L)
+        )
+    )
     calls <- cli_shift_test_mock_collect(docs)
     sites <- list(
         shift_site("A", lon = 103.98, lat = 1.37, epw = get_cache_epw()),
@@ -404,8 +413,28 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         control = shift_control(strict = FALSE),
         ui = shift_ui(progress = "none")
     )
+    discovery_store <- EsgStore$new(file.path(
+        plan@store_path,
+        "discovery"
+    ))
+    discovery_store$add_files(cli_shift_test_file_result(docs))
+    discovery_store$close()
+    plan@meta$shared_plan <- shift_batch__plan_from_discovery(
+        plan@meta$children,
+        plan@meta$manifest,
+        file.path(plan@store_path, "discovery")
+    )
+    expect_gt(nrow(plan@meta$shared_plan$acquisitions), 0L)
+    shift_batch__receipt_write(plan)
     completed <- shift_run(plan, ui = shift_ui(progress = "none"))
     expect_identical(shift_status(completed), "completed")
+    shared_receipts <- list.files(
+        file.path(plan@store_path, "shared-acquisitions"),
+        pattern = "[.]json$",
+        recursive = TRUE,
+        full.names = TRUE
+    )
+    expect_gt(length(shared_receipts), 0L)
     output <- shift_outputs(completed)
     expect_equal(data.table::uniqueN(output$site_id), 2L)
     expect_equal(data.table::uniqueN(output$export_path), 2L)
@@ -434,6 +463,11 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         expect_equal(raw$lon, rep(sites[[i]]@lon, 12L))
         expect_equal(raw$lat, rep(sites[[i]]@lat, 12L))
         store <- shift_store(child)
+        shared_events <- store$query(paste(
+            "SELECT details_json FROM shift_run_event",
+            "WHERE details_json LIKE '%shared_cache%'"
+        ))
+        expect_gt(nrow(shared_events), 0L)
         grid <- morpher__private_store(store)$read_table(
             "extraction_grid_source"
         )
