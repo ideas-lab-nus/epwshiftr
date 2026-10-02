@@ -139,6 +139,7 @@ Collate:
     'print-truncation.R'
     'schema.R'
     'shift-batch-ui.R'
+    'shift-batch-plan.R'
     'shift-batch.R'
     'shift-inspect.R'
     'shift-path.R'

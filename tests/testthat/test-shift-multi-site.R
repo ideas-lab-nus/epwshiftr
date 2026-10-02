@@ -67,6 +67,9 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
     )
     expect_equal(data.table::uniqueN(manifest$store), 4L)
     expect_equal(data.table::uniqueN(manifest$output_dir), 4L)
+    expect_s3_class(batch@meta$shared_plan$acquisitions, "data.table")
+    expect_s3_class(batch@meta$shared_plan$consumers, "data.table")
+    expect_s3_class(batch@meta$shared_plan$unmatched, "data.table")
     expect_equal(nrow(shift_cases(batch)), 8L)
     expect_identical(unique(shift_cases(batch)$site_id), c("North", "South"))
     child_sites <- lapply(batch@meta$children, function(child) child@meta$site)
@@ -89,6 +92,7 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
     expect_identical(reopened@meta$manifest, reordered@meta$manifest)
     expect_identical(reopened@meta$periods, reordered@meta$periods)
     expect_identical(reopened@meta$climate, reordered@meta$climate)
+    expect_identical(reopened@meta$shared_plan, reordered@meta$shared_plan)
     expect_identical(
         lapply(reopened@meta$children, shift__plan_spec),
         lapply(reordered@meta$children, shift__plan_spec)

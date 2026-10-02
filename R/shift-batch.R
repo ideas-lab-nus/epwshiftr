@@ -186,6 +186,7 @@ shift_batch__receipt_write <- function(x) {
         version = 1L,
         batch_id = x@ids$batch_id,
         discovery = x@meta$discovery,
+        shared_plan = x@meta$shared_plan,
         manifest = data.table::copy(x@meta$manifest),
         children = children,
         output_dir = x@meta$output_dir,
@@ -273,6 +274,7 @@ shift_batch_get <- function(batch_id, store = NULL) {
             periods = data.table::copy(receipt$periods),
             climate = shift__climate_from_spec(receipt$climate),
             discovery = receipt$discovery,
+            shared_plan = receipt$shared_plan,
             selected_models = receipt$discovery$identities,
             output_dir = receipt$output_dir,
             dry_run = all(vapply(
@@ -386,6 +388,7 @@ shift_batch__restore <- function(
             periods = periods,
             climate = climate,
             discovery = receipt$discovery,
+            shared_plan = receipt$shared_plan,
             selected_models = data.table::as.data.table(
                 data.table::copy(receipt$discovery$identities)
             ),
@@ -1496,6 +1499,9 @@ shift_batch__future_epw <- function(
         children[[index]] <- child
     }
     names(children) <- manifest$child_key
+    shared_plan <- shift_batch__plan_from_discovery(
+        children, manifest, file.path(batch_root, "discovery")
+    )
     batch <- shift_stage_new(
         ShiftBatch,
         "batch",
@@ -1510,6 +1516,7 @@ shift_batch__future_epw <- function(
             periods = periods,
             climate = climate,
             discovery = discovery,
+            shared_plan = shared_plan,
             selected_models = discovery$identities,
             output_dir = output_root,
             dry_run = dry_run
