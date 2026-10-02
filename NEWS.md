@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+* Added an internal bounded multi-site NetCDF reader for shared file plans.
+  Distinct native grid/time slices are read once per acquisition while each
+  consumer retains its site, method, CF time, actual grid cells and weights
+  (#277).
+
 * Batch plans now retain a shared physical File acquisition table and separate
   site/method consumer links from cached discovery metadata. Overlapping source
   intervals are planned once; native multi-point reading remains a subsequent
