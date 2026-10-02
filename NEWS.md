@@ -9,6 +9,7 @@
   complete window receipts without reopening an unavailable source. Partial
   cache recovery reads only missing site keys; duplicate method demands share
   one extraction, and large site groups reuse one source connection (#278).
+  Shared reads preserve spatial roles in grid-source provenance.
 
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each

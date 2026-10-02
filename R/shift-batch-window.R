@@ -22,9 +22,9 @@ shift_batch__windows <- function(axis, acquisition, consumer_count) {
     # method. Bound both output rows and the reader's 4096 source requests.
     worst_points <- 4L * consumer_count
     if (worst_points > 4096L) {
-        stop(
+        cli::cli_abort(
             "The acquisition exceeds the bounded source-cell limit; split the site collection.",
-            call. = FALSE
+            call = NULL
         )
     }
     max_steps <- max(
@@ -37,9 +37,9 @@ shift_batch__windows <- function(axis, acquisition, consumer_count) {
         )
     )
     if (any(last - first + 1L > max_steps)) {
-        stop(
+        cli::cli_abort(
             "One native month exceeds the bounded multi-site read; split the site collection.",
-            call. = FALSE
+            call = NULL
         )
     }
     group <- integer(length(first))
@@ -196,9 +196,9 @@ shift_batch__window_write <- function(path, identity, values, demand_ids) {
             tmpdir = dirname(path)
         )
         if (!file.rename(path, interrupted)) {
-            stop(
+            cli::cli_abort(
                 "Could not preserve an interrupted shared window.",
-                call. = FALSE
+                call = NULL
             )
         }
         receipt_path <- paste0(path, ".json")
@@ -206,9 +206,9 @@ shift_batch__window_write <- function(path, identity, values, demand_ids) {
             file.exists(receipt_path) &&
                 !file.rename(receipt_path, paste0(interrupted, ".json"))
         ) {
-            stop(
+            cli::cli_abort(
                 "Could not preserve the previous shared receipt.",
-                call. = FALSE
+                call = NULL
             )
         }
     }
@@ -238,7 +238,10 @@ shift_batch__window_write <- function(path, identity, values, demand_ids) {
         saveRDS(payload, temporary, version = 3L, compress = "gzip")
         sha <- store_hash_file(temporary, "sha256")
         if (!file.rename(temporary, target)) {
-            stop("Could not publish a shared consumer chunk.", call. = FALSE)
+            cli::cli_abort(
+                "Could not publish a shared consumer chunk.",
+                call = NULL
+            )
         }
         list(demand_id = demand_id, file = filename, sha256 = sha)
     })
@@ -251,7 +254,10 @@ shift_batch__window_write <- function(path, identity, values, demand_ids) {
         auto_unbox = TRUE
     )
     if (!file.rename(receipt_tmp, receipt_path)) {
-        stop("Could not publish the shared acquisition receipt.", call. = FALSE)
+        cli::cli_abort(
+            "Could not publish the shared acquisition receipt.",
+            call = NULL
+        )
     }
     stats::setNames(
         file.path(path, vapply(chunks, `[[`, character(1L), "file")),
@@ -344,7 +350,7 @@ shift_batch__metadata_write <- function(path, identity, data) {
         compress = "gzip"
     )
     if (!file.rename(temporary, path)) {
-        stop("Could not publish shared source metadata.", call. = FALSE)
+        cli::cli_abort("Could not publish shared source metadata.", call = NULL)
     }
     invisible(path)
 }
@@ -366,9 +372,9 @@ shift_batch__seed_consumer <- function(
         pieces
     )
     if (!length(pieces)) {
-        stop(
+        cli::cli_abort(
             "No shared windows cover the consumer's requested time.",
-            call. = FALSE
+            call = NULL
         )
     }
     chunks <- lapply(pieces, function(piece) {

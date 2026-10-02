@@ -468,6 +468,10 @@ test_that("batch windows seed child caches and resume verified native reads", {
             cache$grid_sources$grid_lon,
             attr(expected, "grid_sources")$grid_lon
         )
+        expect_identical(
+            cache$grid_sources$role,
+            attr(expected, "grid_sources")$role
+        )
     }
     # Complete child caches skip even the source metadata open.
     expect_identical(
