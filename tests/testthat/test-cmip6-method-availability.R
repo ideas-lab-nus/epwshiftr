@@ -371,3 +371,35 @@ test_that("frequency table defaults are resolved once per unique frequency", {
     expect_true(all(result$selected))
     expect_identical(calls, "day")
 })
+
+# Public variable and method discovery must preserve explicit replica policies.
+test_that("availability preserves explicit replica filters", {
+    requested <- NULL
+    local_mocked_bindings(availability__collect = function(request, store, ui) {
+        requested <<- request@meta$filters
+        method_availability_test__datasets()
+    })
+    for (method in list(NULL, "qdm")) {
+        for (filters in list(
+            list(),
+            list(replica = TRUE),
+            list(replica = NULL)
+        )) {
+            original <- filters
+            arguments <- list(scenarios = "ssp245", filters = filters)
+            if (is.null(method)) {
+                arguments$variables <- "tas"
+            } else {
+                arguments$methods <- method
+            }
+            do.call(shift_cmip6_avail, arguments)
+            expected <- if ("replica" %in% names(filters)) {
+                filters$replica
+            } else {
+                FALSE
+            }
+            expect_identical(requested$replica, expected)
+            expect_identical(filters, original)
+        }
+    }
+})

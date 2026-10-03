@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Dataset asynchronous operations use separate compute profiles across dataset
+  objects (#278).
+
 * Foreground multi-site batches now read shared physical files in bounded
   native-time windows. Verified window receipts resume interrupted reads, and
   child workflows reuse the same site-extraction cache keys without changing
@@ -19,8 +22,15 @@
   reuse each file connection when caching is enabled, while the caller writes
   manifest and Parquet records. Cached ordinary extraction avoids starting
   workers; failed remote reads enter the existing fallback without repeating
-  the OPeNDAP attempt
-  (#278).
+  the OPeNDAP attempt (#278).
+  Ordinary point extraction now reads actual CF interval bounds only for the
+  requested native times and reuses them across sites. Closing a dataset clears
+  its metadata cache so reopening cannot reuse stale source metadata; the public
+  full-axis accessor continues to return all bounds (#278).
+  Explicit `filters = list(replica = TRUE)` now survives availability discovery,
+  allowing callers to select cataloged replicas through the existing API (#278).
+  Per-site extraction manifests are committed atomically; Parquet export scans
+  R columns directly instead of copying them through a temporary table (#278).
 
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each

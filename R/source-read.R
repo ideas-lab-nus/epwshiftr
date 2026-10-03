@@ -84,7 +84,7 @@ store__read_extract_dataset <- function(
     metadata_started <- proc.time()[["elapsed"]]
     time_info <- tryCatch(
         {
-            value <- ds$get_time_axis(index = 1L)
+            value <- dataset__time_axis(ds, index = 1L)
             valid <- value$values[!is.na(value$values)]
             if (!length(valid)) {
                 stop(

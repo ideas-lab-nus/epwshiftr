@@ -133,12 +133,17 @@ store_test__failing_dataset <- function(phase, time_info = NULL) {
         ds$is_open <- FALSE
         invisible(NULL)
     }
-    ds$get_time_axis <- function(index = 1L) {
+    private <- new.env(parent = emptyenv())
+    private$nc_handles <- list()
+    private$opened <- TRUE
+    private$check_open <- function() {
         if (identical(phase, "metadata")) {
             stop("remote metadata timed out", call. = FALSE)
         }
-        time_info
     }
+    private$check_index <- function(index) invisible(NULL)
+    private$metadata_cache <- list(time_coordinates_1 = time_info)
+    ds$.__enclos_env__ <- list(private = private)
     ds$read_region <- function(...) {
         stop("remote read timed out", call. = FALSE)
     }
@@ -3080,4 +3085,57 @@ test_that("uncached source tasks return one site plan at a time", {
     expect_identical(task_count, 2L)
     expect_true(all(result$status == "done"))
     expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 2L)
+})
+
+# A late manifest error must roll back every plan record while preserving the
+# already-written Parquet evidence for explicit recovery/conflict handling.
+test_that("extraction persistence rolls back manifest changes on failure", {
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    dataset <- EsgDataset$new(fixture$nc)
+    dataset$open()
+    on.exit(dataset$close(), add = TRUE)
+    opened <- list(
+        dataset = dataset,
+        access_method = "local",
+        target = fixture$nc
+    )
+    payload <- store__read_extract_dataset(
+        dataset,
+        fixture$plan,
+        fixture$file,
+        opened
+    )
+    original <- store$query("SELECT * FROM file_catalog")
+    store_test__mock_private(store, "mark_plan_status", function(...) {
+        stop("injected late manifest failure", call. = FALSE)
+    })
+    expect_error(
+        priv(store)$persist_extract_payload(
+            payload,
+            fixture$plan,
+            fixture$file,
+            opened
+        ),
+        "injected late manifest failure"
+    )
+    expect_equal(store$query("SELECT * FROM file_catalog"), original)
+    expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 0L)
+    expect_equal(nrow(store$query("SELECT * FROM extraction_grid_source")), 0L)
+    expect_equal(
+        nrow(store$query("SELECT * FROM artifact WHERE kind = 'extract'")),
+        0L
+    )
+    expect_gt(
+        length(list.files(
+            fixture$dir,
+            pattern = "\\.parquet$",
+            recursive = TRUE
+        )),
+        0L
+    )
+    # The transaction is closed even when persistence throws.
+    expect_equal(store$query("SELECT 1 AS value")$value, 1L)
 })

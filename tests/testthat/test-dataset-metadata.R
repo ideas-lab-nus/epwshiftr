@@ -233,3 +233,112 @@ test_that("batch prefetch shares selected bounds across value windows", {
     expect_equal(bounds_counts, list(c(2L, 4096L), c(2L, 4096L), c(2L, 568L)))
     expect_false(dir.exists(file.path(cache, "source-metadata")))
 })
+
+# Ordinary point reads must retain real, irregular intervals while avoiding
+# bounds outside the requested window. Repeated cities reuse the same subset.
+test_that("point reads reuse selected actual bounds without loading the full axis", {
+    for (calendar in c("365_day", "360_day", "proleptic_gregorian")) {
+        path <- tempfile(fileext = ".nc")
+        write_local_cmip6_netcdf_fixture(path, 2060L, calendar = calendar)
+        withr::defer(unlink(path))
+        nc <- RNetCDF::open.nc(path, write = TRUE)
+        raw <- RNetCDF::var.get.nc(nc, "time_bnds", collapse = FALSE)
+        # Deliberately nonuniform intervals rule out reconstruction from spacing.
+        raw[1L, 2:3] <- raw[1L, 2:3] + c(0.1, 0.2)
+        RNetCDF::var.put.nc(nc, "time_bnds", raw)
+        RNetCDF::close.nc(nc)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        withr::defer(ds$close())
+        original <- RNetCDF::var.get.nc
+        counts <- list()
+        testthat::local_mocked_bindings(
+            .package = "RNetCDF",
+            var.get.nc = function(ncfile, variable, ...) {
+                if (identical(variable, "time_bnds")) {
+                    counts[[length(counts) + 1L]] <<- list(...)$count
+                }
+                original(ncfile, variable, ...)
+            }
+        )
+        window <- c("2060-01-02", "2060-01-03 23:59:59")
+        actual <- ds$read_region("tas", lon = 104, lat = 1, time = window)
+        expect_equal(counts, list(c(2L, 2L)))
+        expect_equal(nrow(actual), 2L)
+        again <- ds$read_region("tas", lon = 254, lat = 41, time = window)
+        expect_equal(again$time_bound_start, actual$time_bound_start)
+        expect_length(counts, 1L)
+        ds$read_region(
+            "tas",
+            lon = 104,
+            lat = 1,
+            time = c("2060-01-03", "2060-01-03 23:59:59")
+        )
+        expect_length(counts, 1L)
+        empty <- ds$read_region(
+            "tas",
+            lon = 104,
+            lat = 1,
+            time = c("2059-01-01", "2059-01-02")
+        )
+        expect_equal(nrow(empty), 0L)
+        expect_length(counts, 1L)
+        full <- ds$get_time_axis()
+        expect_equal(tail(counts, 1L), list(c(2L, ncol(raw))))
+        expected <- ds$read_region("tas", lon = 104, lat = 1, time = window)
+        expect_identical(actual, expected)
+        expect_equal(actual$time_bound_start, full$bounds$start[2:3])
+        expect_length(counts, 2L)
+        ds$close()
+        nc <- RNetCDF::open.nc(path, write = TRUE)
+        raw[1L, 2L] <- raw[1L, 2L] + 0.1
+        RNetCDF::var.put.nc(nc, "time_bnds", raw)
+        RNetCDF::close.nc(nc)
+        ds$open()
+        reopened <- ds$read_region("tas", lon = 104, lat = 1, time = window)
+        expect_false(identical(
+            reopened$time_bound_start,
+            actual$time_bound_start
+        ))
+        expect_equal(tail(counts, 1L), list(c(2L, 2L)))
+        expect_length(counts, 3L)
+        ds$close()
+        # Restore between calendars; do not stack wrappers through loop bindings.
+        testthat::local_mocked_bindings(
+            .package = "RNetCDF",
+            var.get.nc = original
+        )
+    }
+})
+
+# Independent Dataset objects must not reset each other's compute profiles.
+test_that("concurrent dataset tasks in one process retain separate backends", {
+    skip_if_not_installed("mirai")
+    datasets <- lapply(seq_len(2L), function(index) EsgDataset$new("unused.nc"))
+    on.exit(lapply(datasets, function(dataset) dataset$close()), add = TRUE)
+    tasks <- lapply(seq_along(datasets), function(index) {
+        private <- datasets[[index]]$.__enclos_env__$private
+        # No remote I/O is needed to exercise the task ownership boundary.
+        private$urls <- character()
+        private$start_async_operation(
+            "return task identity",
+            function(urls, nc_handles, value) {
+                Sys.sleep(0.1)
+                value
+            },
+            handler_args = list(value = index),
+            timeout = 10
+        )
+    })
+    expect_false(identical(
+        tasks[[1L]]$compute_profile,
+        tasks[[2L]]$compute_profile
+    ))
+    expect_identical(tasks[[2L]]$collect(), 2L)
+    expect_identical(tasks[[1L]]$collect(), 1L)
+    expect_true(all(vapply(
+        tasks,
+        function(task) task$backend_released,
+        logical(1L)
+    )))
+})

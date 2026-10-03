@@ -6599,13 +6599,15 @@ EsgStore <- R6::R6Class(
 
             persist_started <- proc.time()[["elapsed"]]
             tryCatch(
-                private$persist_extract_payload(
+                # Hold the manifest lock before starting the transaction;
+                # artifact registration reuses this same reentrant lock.
+                private$with_store_lock(private$persist_extract_payload(
                     payload,
                     plan,
                     file,
                     opened,
                     overwrite = overwrite
-                ),
+                )),
                 error = function(error) {
                     if (
                         inherits(
@@ -6667,8 +6669,13 @@ EsgStore <- R6::R6Class(
         # Commit one successfully read payload exactly once. Keeping this after
         # the recovery boundary prevents a failed OPeNDAP attempt from creating
         # duplicate Parquet partitions or time-coverage updates.
-        persist_extract_payload = function(payload, plan, file, opened,
-                                           overwrite = FALSE) {
+        persist_extract_payload = function(
+            payload,
+            plan,
+            file,
+            opened,
+            overwrite = FALSE
+        ) {
             # A payload restored from the shared RDS cache is guaranteed to be
             # a data frame, but it need not retain data.table's by-reference
             # class. Materialize a private data.table copy before attaching
@@ -6676,6 +6683,19 @@ EsgStore <- R6::R6Class(
             dt <- data.table::as.data.table(data.table::copy(payload$data))
             grid_sources <- payload$grid_sources
             available_time_count <- payload$available_time_count
+            # Publish this plan's manifest changes together. Parquet files are
+            # still atomically renamed first; a failed manifest commit leaves
+            # their evidence intact for the existing conflict/recovery checks.
+            ddb_exec(private$conn, "BEGIN TRANSACTION")
+            committed <- FALSE
+            on.exit(
+                {
+                    if (!committed) {
+                        ddb_exec(private$conn, "ROLLBACK")
+                    }
+                },
+                add = TRUE
+            )
             private$update_file_actual_time(
                 file,
                 payload$actual_start,
@@ -6688,6 +6708,8 @@ EsgStore <- R6::R6Class(
                     available_time_count = available_time_count,
                     last_error = NA_character_
                 )
+                ddb_exec(private$conn, "COMMIT")
+                committed <- TRUE
                 attr(result, "access_method") <- opened$access_method
                 return(result)
             }
@@ -6731,6 +6753,8 @@ EsgStore <- R6::R6Class(
                 available_time_count = available_time_count,
                 last_error = NA_character_
             )
+            ddb_exec(private$conn, "COMMIT")
+            committed <- TRUE
             attr(result, "access_method") <- opened$access_method
             result
         },
@@ -7181,11 +7205,14 @@ EsgStore <- R6::R6Class(
             }
             dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
             tmp_file <- tempfile(tmpdir = dirname(path), fileext = ".parquet")
-            tmp_table <- sprintf("tmp_extract_%s", substr(store__hash(path, Sys.time(), runif(1L)), 1L, 16L))
+            tmp_table <- sprintf(
+                "tmp_extract_%s",
+                substr(store__hash(path, Sys.time(), runif(1L)), 1L, 16L)
+            )
             on.exit(
                 {
                     try(
-                        ddb_exec(private$conn, sprintf("DROP TABLE IF EXISTS %s", ddb_ident(private$conn, tmp_table))),
+                        duckdb::duckdb_unregister(private$conn, tmp_table),
                         silent = TRUE
                     )
                     if (file.exists(tmp_file)) {
@@ -7195,7 +7222,9 @@ EsgStore <- R6::R6Class(
                 add = TRUE
             )
 
-            ddb_write_table(private$conn, tmp_table, as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
+            # Scan the existing R columns directly instead of first inserting
+            # every site's weather rows into a temporary DuckDB table.
+            duckdb::duckdb_register(private$conn, tmp_table, dt)
             ddb_exec(
                 private$conn,
                 sprintf(
@@ -7209,7 +7238,13 @@ EsgStore <- R6::R6Class(
             }
             ok <- file.rename(tmp_file, path)
             if (!isTRUE(ok)) {
-                stop(sprintf("Failed to move Parquet output into place: %s.", path), call. = FALSE)
+                stop(
+                    sprintf(
+                        "Failed to move Parquet output into place: %s.",
+                        path
+                    ),
+                    call. = FALSE
+                )
             }
 
             invisible(path)
@@ -7240,9 +7275,25 @@ EsgStore <- R6::R6Class(
 
         # update_file_actual_time {{{
         update_file_actual_time = function(file, start, end) {
-            file$actual_time_start <- start
-            file$actual_time_end <- end
-            private$replace_rows("file_catalog", as.data.frame(file), "file_key")
+            # All sites of a file share this native range. Avoid rewriting the
+            # catalog row for each site, and preserve unrelated catalog fields.
+            values <- ddb_literal(private$conn, c(start, end))
+            ddb_exec(
+                private$conn,
+                sprintf(
+                    paste(
+                        "UPDATE file_catalog SET actual_time_start = %s,",
+                        "actual_time_end = %s WHERE file_key = %s AND",
+                        "(actual_time_start IS DISTINCT FROM %s OR",
+                        "actual_time_end IS DISTINCT FROM %s)"
+                    ),
+                    values[[1L]],
+                    values[[2L]],
+                    ddb_literal(private$conn, file$file_key[[1L]]),
+                    values[[1L]],
+                    values[[2L]]
+                )
+            )
             invisible(NULL)
         },
         # }}}

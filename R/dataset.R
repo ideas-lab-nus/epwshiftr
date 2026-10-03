@@ -390,6 +390,43 @@ dataset__time_axis <- function(dataset, index = 1L) {
     result
 }
 
+# Read actual bounds only for selected native positions and reuse the last
+# selection within this open dataset. Keep one bounded entry rather than grow
+# a cache for every region; a previously loaded full axis also serves subsets.
+dataset__selected_bounds <- function(dataset, index, axis, indices) {
+    if (!length(indices)) {
+        return(NULL)
+    }
+    private <- dataset__private(dataset)
+    key <- sprintf("time_bounds_%d", index)
+    cached <- private$metadata_cache[[key]]
+    position <- match(indices, cached$indices)
+    if (!is.null(axis$bounds)) {
+        bounds <- axis$bounds
+        position <- indices
+    } else if (!is.null(cached) && !anyNA(position)) {
+        bounds <- cached$bounds
+    } else {
+        bounds <- dataset__time_bounds(
+            dataset,
+            index,
+            axis$units,
+            axis$calendar,
+            axis$length,
+            indices
+        )
+        private$metadata_cache[[key]] <- list(
+            indices = indices,
+            bounds = bounds
+        )
+        position <- seq_along(indices)
+    }
+    if (is.null(bounds)) {
+        return(NULL)
+    }
+    list(start = bounds$start[position], end = bounds$end[position])
+}
+
 #' Remote NetCDF Dataset Access via OPeNDAP
 #'
 #' @description
@@ -1192,7 +1229,6 @@ EsgDataset <- R6::R6Class(
         context = list(),
         async_task = NULL,
         async_state = "idle",
-        async_sequence = 0L,
 
         # get_selection_context {{{
         get_selection_context = function() {
@@ -1417,6 +1453,9 @@ EsgDataset <- R6::R6Class(
                     private$nc_handles[i] <- list(NULL)
                 }
             }
+            # Metadata belongs to these handles; reopening may expose a changed
+            # source, even when its endpoint or local path stays the same.
+            private$metadata_cache <- list()
             private$opened <- FALSE
             invisible(NULL)
         },
@@ -1439,8 +1478,14 @@ EsgDataset <- R6::R6Class(
 
         # next_async_compute_profile {{{
         next_async_compute_profile = function() {
-            private$async_sequence <- private$async_sequence + 1L
-            sprintf("epwshiftr.esgdataset.%d.%d", Sys.getpid(), private$async_sequence)
+            # Different dataset objects can own tasks in the same R process.
+            # A per-object counter would reuse the same compute profile.
+            paste0(
+                "epwshiftr.esgdataset.",
+                Sys.getpid(),
+                ".",
+                basename(tempfile())
+            )
         },
         # }}}
 
@@ -1979,7 +2024,7 @@ EsgDataset <- R6::R6Class(
                 }
             }
 
-            time_info <- self$get_time_axis(index = index)
+            time_info <- dataset__time_axis(self, index)
             time_axis <- time_info$values
             time_coordinates <- time_info$coordinates
             # Calendar-native range matching is required for 360-day and other
@@ -2087,17 +2132,19 @@ EsgDataset <- R6::R6Class(
                 CF_TIME_COORDINATE_COLUMNS,
                 drop = FALSE
             ]
-            if (!is.null(time_info$bounds)) {
+            bounds <- dataset__selected_bounds(
+                self,
+                index,
+                time_info,
+                coordinate_idx
+            )
+            if (!is.null(bounds)) {
                 data.table::set(
                     out,
                     j = "time_bound_start",
-                    value = time_info$bounds$start[coordinate_idx]
+                    value = bounds$start
                 )
-                data.table::set(
-                    out,
-                    j = "time_bound_end",
-                    value = time_info$bounds$end[coordinate_idx]
-                )
+                data.table::set(out, j = "time_bound_end", value = bounds$end)
             }
             for (name in CF_TIME_COORDINATE_COLUMNS) {
                 data.table::set(out, j = name, value = coordinate_rows[[name]])
@@ -2170,7 +2217,7 @@ EsgDataset <- R6::R6Class(
 
             time_axis <- NULL
             if ("time" %in% meta$names) {
-                time_axis <- self$get_time_axis(index = index)$values
+                time_axis <- dataset__time_axis(self, index)$values
             }
 
             # Build coordinates from linear index without assuming dimension count

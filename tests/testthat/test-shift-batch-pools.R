@@ -603,7 +603,7 @@ test_that("public and batch discovery apply the same Dataset filter precedence",
             grid_label = "gn",
             data_node = "data.example",
             latest = TRUE,
-            replica = FALSE,
+            replica = TRUE,
             fields = AVAILABILITY__DATASET_FIELDS,
             institution_id = "Example"
         )

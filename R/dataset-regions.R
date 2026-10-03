@@ -342,32 +342,7 @@ dataset__read_regions_one <- function(
     time_position <- match("time", meta$names)
     lat_position <- match("lat", meta$names)
     lon_position <- match("lon", meta$names)
-    cached_bounds <- private$metadata_cache[[sprintf("time_bounds_%d", index)]]
-    position <- match(selected, cached_bounds$indices)
-    bounds <- if (!is.null(cached_bounds) && !anyNA(position)) {
-        if (is.null(cached_bounds$bounds)) {
-            NULL
-        } else {
-            list(
-                start = cached_bounds$bounds$start[position],
-                end = cached_bounds$bounds$end[position]
-            )
-        }
-    } else if (is.null(time_info$bounds)) {
-        dataset__time_bounds(
-            dataset,
-            index,
-            time_info$units,
-            time_info$calendar,
-            time_info$length,
-            selected
-        )
-    } else {
-        list(
-            start = time_info$bounds$start[selected],
-            end = time_info$bounds$end[selected]
-        )
-    }
+    bounds <- dataset__selected_bounds(dataset, index, time_info, selected)
     clock <- data.table::as.data.table(time_info$coordinates[
         selected,
         CF_TIME_COORDINATE_COLUMNS,

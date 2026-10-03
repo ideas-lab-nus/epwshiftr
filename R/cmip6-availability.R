@@ -19,7 +19,13 @@ availability__filters <- function(filters, selections) {
             shift__compact_list(selections),
             list(
                 latest = TRUE,
-                replica = FALSE,
+                # Honor an explicit replica filter; keep primary-only discovery
+                # as the default when the caller has not selected a policy.
+                replica = if ("replica" %in% names(filters)) {
+                    filters$replica
+                } else {
+                    FALSE
+                },
                 fields = AVAILABILITY__DATASET_FIELDS
             )
         )
