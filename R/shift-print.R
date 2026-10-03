@@ -1366,3 +1366,190 @@ S7::method(print, ShiftSite) <- function(x, ...) {
     opts <- shift__print_options(list(...))
     shift__print_site(x, width = opts$width, verbose = opts$verbose)
 }
+
+# Compact paths below the session temp directory before they reach cli's fact
+# renderer. Lexical comparison handles planned paths that do not exist yet;
+# normalized parent comparison covers Windows short/long path aliases.
+shift__display_path <- function(path, temp_root = tempdir()) {
+    if (is.null(path) || !nzchar(path)) {
+        return(path)
+    }
+    checkmate::assert_string(path, min.chars = 1L)
+    checkmate::assert_string(temp_root, min.chars = 1L)
+
+    # Use one separator for lexical comparison. Drive-letter paths are
+    # case-insensitive even when this pure branch is exercised on Unix CI.
+    lexical <- function(value) {
+        sub("/+$", "", gsub("\\\\", "/", path.expand(value)))
+    }
+    compact <- function(candidate, root) {
+        windows_path <- grepl("^[A-Za-z]:/", candidate) ||
+            grepl("^[A-Za-z]:/", root)
+        candidate_key <- if (windows_path) tolower(candidate) else candidate
+        root_key <- if (windows_path) tolower(root) else root
+        inside <- identical(candidate_key, root_key) ||
+            startsWith(candidate_key, paste0(root_key, "/"))
+        if (!inside) {
+            return(NULL)
+        }
+        paste0("<tempdir>", substring(candidate, nchar(root) + 1L))
+    }
+
+    expanded <- lexical(path)
+    temp_expanded <- lexical(temp_root)
+    displayed <- compact(expanded, temp_expanded)
+    if (!is.null(displayed)) {
+        return(displayed)
+    }
+
+    normalized <- lexical(normalizePath(path, winslash = "/", mustWork = FALSE))
+    temp_normalized <- lexical(normalizePath(
+        temp_root,
+        winslash = "/",
+        mustWork = FALSE
+    ))
+    displayed <- compact(normalized, temp_normalized)
+    if (!is.null(displayed)) {
+        return(displayed)
+    }
+
+    # On Windows an existing temp root may normalize to an 8.3 alias while its
+    # not-yet-created child retains the long form. Normalize the existing
+    # parent independently and then reconstruct the planned child path.
+    parent <- lexical(normalizePath(
+        dirname(expanded),
+        winslash = "/",
+        mustWork = FALSE
+    ))
+    reconstructed <- paste0(parent, "/", basename(expanded))
+    displayed <- compact(reconstructed, temp_normalized)
+    if (!is.null(displayed)) {
+        return(displayed)
+    }
+    normalized
+}
+
+# Collapse a possibly long vector into a stable console summary while retaining
+# its cardinality for scientific identities such as variables and scenarios.
+shift__display_values <- function(x, max = 7L) {
+    x <- as.character(x)
+    x <- x[!is.na(x) & nzchar(x)]
+    if (!length(x)) {
+        return(NULL)
+    }
+    if (length(x) > max) {
+        return(sprintf(
+            "%s, ... (%d total)",
+            paste(utils::head(x, max), collapse = ", "),
+            length(x)
+        ))
+    }
+    paste(x, collapse = ", ")
+}
+
+# Build a compact, user-facing execution plan without touching remote services.
+shift__plan_explain <- function(x) {
+    meta <- x@meta
+    request <- meta$request@meta
+    epw <- meta$epw
+    transform <- meta$transform
+    reference <- meta$reference
+    reference_detail <- "none"
+    if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
+        reference_periods <- paste(
+            sprintf(
+                "%s=%s:%s",
+                unique(reference@periods$period),
+                vapply(
+                    unique(reference@periods$period),
+                    function(value) {
+                        min(reference@periods$year[
+                            reference@periods$period == value
+                        ])
+                    },
+                    integer(1L)
+                ),
+                vapply(
+                    unique(reference@periods$period),
+                    function(value) {
+                        max(reference@periods$year[
+                            reference@periods$period == value
+                        ])
+                    },
+                    integer(1L)
+                )
+            ),
+            collapse = ", "
+        )
+        reference_detail <- sprintf(
+            "%s %s; periods: %s%s",
+            reference@role,
+            reference@mode,
+            reference_periods,
+            if (length(reference@match)) {
+                sprintf("; match: %s", paste(reference@match, collapse = ", "))
+            } else {
+                ""
+            }
+        )
+    } else if (S7::S7_inherits(reference, ShiftClimate)) {
+        reference_detail <- "supplied ShiftClimate"
+    }
+    observed_detail <- shift__format_reference(
+        meta$observed_reference
+    )
+    climate <- meta$climate
+    member <- if (!is.null(climate)) climate@member else request$variant
+    grid <- if (!is.null(climate)) climate@grid else request$filters$grid_label
+    nodes <- if (!is.null(climate)) {
+        climate@index_nodes
+    } else {
+        request$options$index_node
+    }
+    control <- meta$control
+    data.table::data.table(
+        step = c(
+            "request",
+            "transform",
+            "reference",
+            "observed_reference",
+            "cases",
+            "selection",
+            "index_nodes",
+            "partial",
+            "store",
+            "output"
+        ),
+        detail = c(
+            sprintf(
+                "%s %s %s",
+                shift_coalesce(request$project, "CMIP"),
+                shift_coalesce(
+                    shift__display_values(request$source),
+                    "<any source>"
+                ),
+                shift_coalesce(
+                    shift__display_values(request$experiment),
+                    "<any experiment>"
+                )
+            ),
+            transform@label,
+            reference_detail,
+            observed_detail,
+            sprintf("%d expected EPW output(s)", nrow(meta$expected_cases)),
+            sprintf(
+                "member=%s; grid=%s",
+                shift_coalesce(shift__display_values(member), "<auto>"),
+                shift_coalesce(shift__display_values(grid), "<auto>")
+            ),
+            shift_coalesce(shift__display_values(nodes), "<provider default>"),
+            if (isTRUE(control@allow_partial)) {
+                "allow partial outputs"
+            } else {
+                "all requested cases required"
+            },
+            shift__display_path(x@store_path),
+            shift__display_path(shift_coalesce(epw$export_dir, epw$dir))
+        )
+    )
+}

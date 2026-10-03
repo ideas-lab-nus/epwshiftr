@@ -2959,3 +2959,492 @@ shift__extract_selected_partitions <- function(
     }
     shift__combine_climate_stages(stages)
 }
+
+# provider adapter ------------------------------------------------------------
+
+shift_as_query <- function(x) {
+    shift_assert_stage(x)
+    if (!S7::S7_inherits(x, ShiftRequest)) {
+        cli::cli_abort(
+            "Only {.cls ShiftRequest} can be converted to an ESGF query."
+        )
+    }
+    provider <- x@meta$provider
+    switch(
+        provider,
+        esgf = shift_as_esg_query(x),
+        cli::cli_abort("Unsupported shift provider: {.val {provider}}.")
+    )
+}
+
+# Apply a stage request constraint to the ESGF query through the most specific
+# setter available so control parameters such as `latest` and `replica` keep
+# their typed validation instead of falling through to ad hoc `$params()`.
+shift_query_set <- function(query, name, value) {
+    if (is.null(value)) {
+        return(invisible(query))
+    }
+    if (name %in% names(QUERY_PARAM__DEF) && is.function(query[[name]])) {
+        query[[name]](value)
+        return(invisible(query))
+    }
+    args <- stats::setNames(list(value), name)
+    do.call(query$params, args)
+    invisible(query)
+}
+
+shift_as_esg_query <- function(x) {
+    options <- x@meta$options
+    query <- if (!is.null(options$index_node)) {
+        esg_query(index_node = options$index_node)
+    } else {
+        esg_query()
+    }
+
+    aliases <- list(
+        # Preserve provider facet values exactly so the query and EsgDict
+        # diagnostics describe precisely what the user supplied.
+        project = x@meta$project,
+        source_id = x@meta$source,
+        experiment_id = x@meta$experiment,
+        variant_label = x@meta$variant,
+        variable_id = x@meta$variables,
+        frequency = unique(unname(x@meta$frequency))
+    )
+    for (name in names(aliases)) {
+        shift_query_set(query, name, aliases[[name]])
+    }
+    if (!is.null(x@meta$time)) {
+        time <- as.character(x@meta$time)
+        if (length(time) == 1L) {
+            query$datetime_range(time[[1L]], time[[1L]])
+        } else {
+            query$datetime_range(time[[1L]], time[[2L]])
+        }
+    }
+    filters <- x@meta$filters
+    for (name in names(filters)) {
+        shift_query_set(query, name, filters[[name]])
+    }
+
+    query
+}
+
+shift_reference_has_legacy_args <- function(
+    reference_plan_id = NULL,
+    reference_periods = NULL
+) {
+    !is.null(reference_plan_id) || !is.null(reference_periods)
+}
+
+shift_reference_resolve <- function(
+    x,
+    recipe,
+    site,
+    reference = NULL,
+    reference_plan_id = NULL,
+    reference_periods = NULL,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    if (
+        !is.null(reference) &&
+            shift_reference_has_legacy_args(
+                reference_plan_id,
+                reference_periods
+            )
+    ) {
+        cli::cli_abort(
+            "Use either `reference` or `reference_plan_id`/`reference_periods`, not both."
+        )
+    }
+
+    if (!is.null(reference_plan_id) && is.null(reference_periods)) {
+        cli::cli_abort(
+            "`reference_periods` must be supplied when `reference_plan_id` is supplied."
+        )
+    }
+    if (is.null(reference_plan_id) && !is.null(reference_periods)) {
+        cli::cli_abort(
+            "`reference_plan_id` must be supplied when `reference_periods` is supplied."
+        )
+    }
+
+    if (is.null(reference)) {
+        periods <- if (is.null(reference_periods)) {
+            NULL
+        } else {
+            shift_reference_periods(reference_periods)
+        }
+        return(list(
+            reference = NULL,
+            spec = NULL,
+            plan_id = reference_plan_id,
+            periods = periods
+        ))
+    }
+
+    if (S7::S7_inherits(reference, ShiftClimate)) {
+        reference_ids <- shift_ids(reference)
+        return(list(
+            reference = reference,
+            spec = NULL,
+            plan_id = reference_ids$plan_id,
+            periods = shift_reference_periods(reference@meta$periods)
+        ))
+    }
+
+    if (!S7::S7_inherits(reference, ShiftReferenceSpec)) {
+        cli::cli_abort(
+            "`reference` must be a {.cls ShiftClimate} stage or a {.cls ShiftReferenceSpec}."
+        )
+    }
+
+    if (identical(reference@mode, "plan")) {
+        return(list(
+            reference = reference,
+            spec = reference,
+            plan_id = reference@plan_id,
+            periods = shift_reference_periods(reference@periods)
+        ))
+    }
+
+    if (identical(reference@mode, "historical")) {
+        climate <- shift_reference_resolve_historical(
+            x = x,
+            recipe = recipe,
+            site = site,
+            spec = reference,
+            overwrite = overwrite,
+            resume = resume,
+            reporter = reporter
+        )
+        climate_ids <- shift_ids(climate)
+        return(list(
+            reference = climate,
+            spec = reference,
+            plan_id = climate_ids$plan_id,
+            periods = shift_reference_periods(climate@meta$periods)
+        ))
+    }
+
+    cli::cli_abort("Unsupported reference mode: {.val {reference@mode}}.")
+}
+
+# Resolve observed daily weather only from an already extracted climate stage
+# or explicit plan IDs. Automatic CMIP historical discovery cannot satisfy the
+# observational role and is rejected before any store work begins.
+shift__observed_reference_resolve <- function(
+    x,
+    recipe,
+    site,
+    observed_reference = NULL,
+    observed_plan_id = NULL,
+    observed_periods = NULL,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    if (S7::S7_inherits(observed_reference, ShiftReanalysisSpec)) {
+        climate <- reanalysis__materialize(
+            x = x,
+            recipe = recipe,
+            site = site,
+            spec = observed_reference,
+            overwrite = overwrite,
+            resume = resume,
+            reporter = reporter
+        )
+        climate_ids <- shift_ids(climate)
+        return(list(
+            reference = climate,
+            spec = observed_reference,
+            plan_id = climate_ids$plan_id,
+            periods = shift_reference_periods(climate@meta$periods)
+        ))
+    }
+    if (
+        S7::S7_inherits(observed_reference, ShiftReferenceSpec) &&
+            !identical(observed_reference@mode, "plan")
+    ) {
+        cli::cli_abort(
+            paste(
+                "{.arg observed_reference} must use an existing extraction",
+                "plan; historical CMIP output is not an observation."
+            )
+        )
+    }
+    shift_reference_resolve(
+        x = x,
+        recipe = recipe,
+        site = site,
+        reference = observed_reference,
+        reference_plan_id = observed_plan_id,
+        reference_periods = observed_periods,
+        overwrite = overwrite,
+        resume = resume,
+        reporter = reporter
+    )
+}
+
+shift_reference_resolve_historical <- function(
+    x,
+    recipe,
+    site,
+    spec,
+    overwrite = FALSE,
+    resume = TRUE,
+    reporter = NULL
+) {
+    root <- shift_stage_root(x)
+    if (!is.null(root) && !S7::S7_inherits(root, ShiftRequest)) {
+        root <- NULL
+    }
+    provider <- if (is.null(root)) "esgf" else root@meta$provider
+    if (!identical(provider, "esgf")) {
+        cli::cli_abort(
+            "Automatic historical reference resolution currently supports only ESGF-backed shift requests."
+        )
+    }
+
+    store <- shift_store(x)
+    ids <- shift_ids(x)
+    catalog <- if (!is.null(ids$query_id)) {
+        shift_file_catalog(store, ids$query_id)
+    } else {
+        data.table::data.table()
+    }
+
+    periods <- shift_reference_periods(spec@periods)
+    variables <- shift_coalesce(
+        spec@extract$variables,
+        morpher__input_variables(recipe)
+    )
+    variables <- as.character(variables)
+    variables <- variables[!is.na(variables) & nzchar(variables)]
+    if (!length(variables)) {
+        cli::cli_abort(
+            "Automatic historical reference resolution could not determine required climate variables."
+        )
+    }
+
+    filters <- shift_reference_historical_filters(
+        catalog = catalog,
+        request = root,
+        spec = spec,
+        variables = variables
+    )
+    options <- utils::modifyList(
+        if (is.null(root)) list() else root@meta$options,
+        spec@options
+    )
+    project <- shift_coalesce(
+        if (is.null(root)) NULL else root@meta$project,
+        "CMIP6"
+    )
+    # Historical Dataset records often span the full CMIP run; only constrain
+    # ESGF collection by time when the caller explicitly requests it.
+    collect_time <- if ("time" %in% names(spec@collect)) {
+        spec@collect$time
+    } else {
+        NULL
+    }
+    request <- shift_request(
+        provider = provider,
+        project = project,
+        time = collect_time,
+        filters = filters,
+        options = options
+    )
+
+    collect_overrides <- spec@collect
+    collect_overrides$time <- NULL
+    collect_args <- utils::modifyList(
+        list(
+            store = store,
+            fields = "*",
+            all = TRUE,
+            limit = FALSE,
+            label = "historical-reference"
+        ),
+        collect_overrides
+    )
+    files <- shift__do_call_with_reporter(
+        reporter,
+        shift_collect,
+        c(list(request), collect_args)
+    )
+    if (is.null(files@meta$file_count) || files@meta$file_count < 1L) {
+        cli::cli_abort(
+            "Automatic historical reference query returned no File records."
+        )
+    }
+
+    extract_filters <- filters[intersect(
+        names(filters),
+        c(
+            "experiment_id",
+            "activity_id",
+            "source_id",
+            "variant_label",
+            "frequency",
+            "table_id",
+            "grid_label"
+        )
+    )]
+    extract_defaults <- list(
+        site = site,
+        periods = periods,
+        variables = variables,
+        time = shift__method_time_window(periods, recipe),
+        filters = extract_filters,
+        method = "nearest",
+        fallback = "auto",
+        overwrite = overwrite,
+        resume = resume
+    )
+    extract_overrides <- spec@extract
+    if (!is.null(extract_overrides$filters)) {
+        extract_overrides$filters <- utils::modifyList(
+            extract_filters,
+            extract_overrides$filters
+        )
+    }
+    extract_args <- utils::modifyList(extract_defaults, extract_overrides)
+    extract_args$site <- site
+    extract_args$periods <- periods
+    extract_args$overwrite <- overwrite
+    extract_args$resume <- resume
+    climate <- shift__do_call_with_reporter(
+        reporter,
+        shift_extract,
+        c(list(files), extract_args)
+    )
+    shift__derive_hurs_climate(
+        climate,
+        recipe,
+        overwrite = overwrite,
+        resume = resume,
+        reporter = reporter
+    )
+}
+
+shift_reference_historical_filters <- function(
+    catalog,
+    request,
+    spec,
+    variables
+) {
+    filters <- list(
+        experiment_id = spec@experiment,
+        variable_id = variables
+    )
+    if (!is.null(spec@activity)) {
+        filters$activity_id <- spec@activity
+    }
+
+    missing <- character()
+    for (field in spec@match) {
+        if (!is.null(spec@filters[[field]])) {
+            next
+        }
+        values <- shift_reference_infer_field(field, catalog, request)
+        if (!length(values)) {
+            missing <- c(missing, field)
+        } else {
+            filters[[field]] <- values
+        }
+    }
+    if (length(missing)) {
+        cli::cli_abort(c(
+            "Automatic historical reference resolution could not infer required match field(s).",
+            "x" = "{.field {missing}}",
+            "i" = "Supply explicit values through `shift_reference_historical(filters = ...)` or reduce `match`."
+        ))
+    }
+
+    utils::modifyList(filters, spec@filters)
+}
+
+shift_reference_infer_field <- function(field, catalog, request) {
+    values <- character()
+    if (field %in% names(catalog) && nrow(catalog)) {
+        values <- unique(as.character(unlist(
+            catalog[[field]],
+            use.names = FALSE
+        )))
+    }
+    values <- values[!is.na(values) & nzchar(values)]
+    if (length(values)) {
+        return(values)
+    }
+
+    if (!is.null(request)) {
+        alias <- switch(
+            field,
+            source_id = request@meta$source,
+            experiment_id = request@meta$experiment,
+            variant_label = request@meta$variant,
+            frequency = request@meta$frequency,
+            variable_id = request@meta$variables,
+            NULL
+        )
+        values <- unique(as.character(unlist(alias, use.names = FALSE)))
+        values <- values[!is.na(values) & nzchar(values)]
+        if (length(values)) {
+            return(values)
+        }
+
+        filter_value <- request@meta$filters[[field]]
+        values <- unique(as.character(unlist(filter_value, use.names = FALSE)))
+        return(values[!is.na(values) & nzchar(values)])
+    }
+
+    character()
+}
+
+# Select the complete subset of extraction plans for morphing while keeping
+# incomplete-plan diagnostics visible on the morphed stage.
+shift_morph_complete_plan_selection <- function(
+    store,
+    plan_id,
+    complete_only = TRUE,
+    stage = "morph"
+) {
+    if (is.null(plan_id) || !length(plan_id) || !isTRUE(complete_only)) {
+        return(list(plan_id = plan_id, diagnostics = shift_diagnostics_empty()))
+    }
+
+    coverage <- store$coverage(plan_id = plan_id)
+    if (!nrow(coverage) || !"complete" %in% names(coverage)) {
+        return(list(plan_id = plan_id, diagnostics = shift_diagnostics_empty()))
+    }
+
+    complete_ids <- unique(coverage$plan_id[coverage$complete %in% TRUE])
+    selected <- plan_id[plan_id %in% complete_ids]
+    if (!length(selected)) {
+        cli::cli_abort(
+            "No complete extraction plan is available for the `{stage}` stage."
+        )
+    }
+    if (identical(selected, plan_id)) {
+        return(list(plan_id = plan_id, diagnostics = shift_diagnostics_empty()))
+    }
+
+    skipped <- setdiff(plan_id, selected)
+    list(
+        plan_id = selected,
+        diagnostics = shift_diagnostic(
+            stage,
+            "warning",
+            "ignored_incomplete_extraction",
+            sprintf(
+                "Ignoring %d incomplete extraction plan(s) while morphing.",
+                length(skipped)
+            ),
+            plan_id = paste(skipped, collapse = ", "),
+            action = "Inspect `shift_coverage()` for skipped plans, or set `complete_only = FALSE` to include them."
+        )
+    )
+}

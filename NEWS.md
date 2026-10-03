@@ -1,8 +1,9 @@
 # epwshiftr (development version)
 
-* Separate workflow resolution and printing, query-result access and replica
-  planning, and UI state, presentation and reporting into focused source files,
-  preserving the existing APIs and execution behavior (#278).
+* Separate workflow configuration, execution, job recovery, inspection and
+  resolution into focused source files, alongside query-result access and
+  replica planning and UI presentation. Preserve the existing APIs and
+  execution behavior (#278).
 
 * Single-task and batch workflows share installed-package process launching,
   scoped execution settings and attempt transitions. Internal runtime and test
