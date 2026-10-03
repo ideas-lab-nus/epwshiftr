@@ -53,7 +53,10 @@ test_that("shared prefetch failure persists as a blocked batch", {
         list(shift_site("South", epw = get_cache_epw())),
         store = root
     )
+    # This test isolates failure persistence after input resolution. The input
+    # resolver itself is exercised with real local catalogs in shared tests.
     testthat::local_mocked_bindings(
+        shift_batch__resolve_inputs = identity,
         shift_batch__prefetch = function(...) stop("source connection closed")
     )
     expect_error(shift_batch__resume(batch), "source connection closed")

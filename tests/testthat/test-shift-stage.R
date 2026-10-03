@@ -2679,7 +2679,8 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 write_local_cmip6_netcdf_fixture(
                     path,
                     2060L,
-                    variable_id = variable_id
+                    variable_id = variable_id,
+                    frequency = "mon"
                 )
                 path
             },
@@ -2695,7 +2696,8 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 write_local_cmip6_netcdf_fixture(
                     path,
                     1995L,
-                    variable_id = variable_id
+                    variable_id = variable_id,
+                    frequency = "mon"
                 )
                 path
             },
@@ -2720,6 +2722,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                             datetime_start = start,
                             datetime_end = end
                         )
+                        docs$checksum <- checksum_file(paths[[variable_id]])
                         docs$activity_id <- activity
                         docs$source_id <- "BCC-CSM2-MR"
                         docs$experiment_id <- experiment_id

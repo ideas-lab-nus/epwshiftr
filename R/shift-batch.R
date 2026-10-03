@@ -1806,38 +1806,39 @@ shift_batch__run_child <- function(expr) {
 shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
     call_started <- Sys.time()
     execution <- list()
-    # Foreground batches warm the ordinary extraction cache from bounded
-    # multi-site reads. An unavailable shared endpoint leaves child workflows
-    # free to use their existing remote/HTTP fallback and durable recovery.
-    if (!isTRUE(background)) {
-        failure <- tryCatch(
-            {
+    # Resolve actual inputs once per model/method before any child starts.
+    # Foreground execution additionally warms the shared extraction cache;
+    # failures remain durable and do not trigger per-city source retries.
+    failure <- tryCatch(
+        {
+            x <- shift_batch__resolve_inputs(x)
+            if (!isTRUE(background)) {
                 shift_batch__prefetch(x)
-                NULL
-            },
-            error = base::identity
+            }
+            NULL
+        },
+        error = base::identity
+    )
+    if (inherits(failure, "error")) {
+        record <- list(
+            file = shift_coalesce(
+                attr(failure, "shared_file"),
+                "unknown source"
+            ),
+            message = conditionMessage(failure),
+            occurred_at = Sys.time()
         )
-        if (inherits(failure, "error")) {
-            record <- list(
-                file = shift_coalesce(
-                    attr(failure, "shared_file"),
-                    "unknown source"
-                ),
-                message = conditionMessage(failure),
-                occurred_at = Sys.time()
-            )
-            x@meta$shared_failure <- record
-            x@meta$shared_failure_history <- c(
-                x@meta$shared_failure_history,
-                list(record)
-            )
-            shift_batch__receipt_write(x)
-            stop(failure)
-        }
-        if (!is.null(x@meta$shared_failure)) {
-            x@meta$shared_failure <- NULL
-            shift_batch__receipt_write(x)
-        }
+        x@meta$shared_failure <- record
+        x@meta$shared_failure_history <- c(
+            x@meta$shared_failure_history,
+            list(record)
+        )
+        shift_batch__receipt_write(x)
+        stop(failure)
+    }
+    if (!is.null(x@meta$shared_failure)) {
+        x@meta$shared_failure <- NULL
+        shift_batch__receipt_write(x)
     }
     # Update the shared matrix after each child so subsequent foreground frames
     # show batch progress while the ordinary child reporter owns the terminal.

@@ -399,6 +399,8 @@ test_that("shift CLI maps reduced motion independently from detail", {
 
 
 test_that("shift CLI registers, inspects, and cancels background jobs", {
+    # Isolate job lifecycle behavior; source selection has separate local tests.
+    testthat::local_mocked_bindings(shift_batch__resolve_inputs = identity)
     skip_if_not_installed("duckdb")
 
     store <- tempfile("esg-background-store-")
@@ -479,6 +481,8 @@ test_that("shift CLI registers, inspects, and cancels background jobs", {
 
 
 test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
+    # Isolate job lifecycle behavior; source selection has separate local tests.
+    testthat::local_mocked_bindings(shift_batch__resolve_inputs = identity)
     skip_if_not_installed("duckdb")
     skip_on_os("windows")
 
@@ -626,6 +630,11 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         tracking_id = paste0("hdl:21.14100/future-", variable_id),
         id = paste0(title, "|future-", variable_id)
     )]
+    data.table::set(
+        docs,
+        j = "checksum",
+        value = vapply(nc[docs$variable_id], checksum_file, character(1L))
+    )
     calls <- cli_shift_test_mock_collect(docs)
 
     store <- tempfile("esg-store-")

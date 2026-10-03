@@ -2125,6 +2125,11 @@ query__load <- function(file, schema = NULL) {
     ) {
         json$response$response$docs <- data.frame()
     }
+    # JSON has one empty-array representation for character and list vectors.
+    # Restore the URL field's schema type before validating a saved snapshot.
+    if (identical(json$context$query_url, list())) {
+        json$context$query_url <- character()
+    }
     if (
         length(json$context) &&
             length(json$context$selection) &&

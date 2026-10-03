@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+* Batch execution resolves actual future and historical input partitions once
+  per model/method. Optional variables selected by the ordinary resolver share
+  bounded reads across cities, and child runs pin the same File snapshots on
+  foreground, background and resumed execution (#278).
+
 * Dataset asynchronous operations use separate compute profiles across dataset
   objects (#278).
 

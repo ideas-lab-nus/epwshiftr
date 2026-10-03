@@ -5613,7 +5613,7 @@ shift__plan_spec <- function(x) {
     } else {
         shift_coalesce(meta$epw_identity$path, NULL)
     }
-    list(
+    spec <- list(
         version = 2L,
         task = "future_epw",
         request = if (is.null(climate)) {
@@ -5660,6 +5660,10 @@ shift__plan_spec <- function(x) {
             epw = meta$epw
         )
     )
+    # Only resolved batch children carry shared inputs; ordinary task identity
+    # stays independent of batch scheduling.
+    spec$stages$shared_inputs <- meta$shared_inputs
+    spec
 }
 
 # Encode workflow specs with stable key order inherited from the constructor
@@ -6108,6 +6112,7 @@ shift__plan_from_spec <- function(spec, store = NULL) {
         plan@meta$climate <- climate
     }
     plan@meta$epw_identity <- site_spec$identity
+    plan@meta$shared_inputs <- stage$shared_inputs
     plan
 }
 
@@ -8914,11 +8919,55 @@ shift__abort_resolver_exhausted <- function(records) {
     )
 }
 
+# Import immutable, already resolved File query snapshots into a child's own
+# store. The same selection drives shared reads, foreground and background runs;
+# no catalog discovery or service selection is repeated for another city.
+shift__import_shared_inputs <- function(inputs, store) {
+    stages <- lapply(c("files", "reference_files"), function(role) {
+        ref <- inputs[[role]]
+        if (is.null(ref)) {
+            return(NULL)
+        }
+        # Shared snapshots are separate from child databases, so background
+        # workers never open another city's active DuckDB store.
+        checkmate::assert_file_exists(ref$snapshot, access = "r")
+        if (!identical(checksum_file(ref$snapshot), ref$sha256)) {
+            cli::cli_abort("The shared File query snapshot has changed.")
+        }
+        loaded <- query__load(ref$snapshot, SCHEMA_RESULT_FILE)
+        result <- query_result__new(
+            EsgResultFile,
+            index_node = loaded$index_node,
+            params = loaded$parameter,
+            result = loaded$response,
+            context = loaded$context
+        )
+        query_id <- store$add_files(result, label = "shared-resolved-inputs")
+        # add_files hashes both the query and its full source records. Reject a
+        # changed snapshot rather than silently selecting different input data.
+        if (!identical(query_id, as.character(ref$ids$query_id))) {
+            cli::cli_abort("The shared File query snapshot has changed.")
+        }
+        shift__files_from_query(
+            store,
+            shift__stage_from_ref(ref$meta$request),
+            query_id
+        )
+    })
+    list(
+        files = stages[[1L]],
+        reference_files = stages[[2L]],
+        selection = data.table::as.data.table(inputs$selection),
+        index_node = as.character(inputs$index_node)
+    )
+}
+
 # Collect both catalogs from one index node and fail over in the declared order;
 # catalogs from different nodes are never merged.
 shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
                                            job_id = NULL) {
     store <- shift_store(plan, create = TRUE)
+    on.exit(try(store$close(), silent = TRUE), add = TRUE)
     wanted_run_id <- run_id
     run_row <- morpher__private_store(store)$read_table("shift_run")
     run_row <- run_row[run_row[["run_id"]] == wanted_run_id]
@@ -8969,6 +9018,23 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
             )
         }
         return(list(files = files, reference_files = reference_files, selection = data.table::as.data.table(resolved$selection), index_node = as.character(resolved$index_node)))
+    }
+
+    if (!is.null(plan@meta$shared_inputs)) {
+        failure <- plan@meta$shared_inputs$failure
+        if (is.null(failure)) {
+            return(shift__import_shared_inputs(plan@meta$shared_inputs, store))
+        }
+        # The first attempt reports the shared failure without another request.
+        # An explicit resume may retry selection through the ordinary resolver.
+        job <- shift__latest_job(store, run_id)
+        if (!nrow(job) || job$attempt[[1L]] == 1L) {
+            cli::cli_abort(
+                "{failure$message}",
+                class = as.character(failure$class),
+                resolution = failure$resolution
+            )
+        }
     }
 
     climate <- plan@meta$climate

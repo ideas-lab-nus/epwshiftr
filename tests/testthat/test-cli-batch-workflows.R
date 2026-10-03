@@ -338,12 +338,26 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
         },
         epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
     ))
-    variables <- epw_morph_variables(transform__recipe(monthly_transform("epwshiftr")))
-    files <- stats::setNames(vapply(variables, function(variable) {
-        path <- tempfile(fileext = ".nc")
-        write_local_cmip6_netcdf_fixture(path, 2060L, variable_id = variable)
-        path
-    }, character(1L)), variables)
+    variables <- epw_morph_variables(transform__recipe(monthly_transform(
+        "epwshiftr"
+    )))
+    files <- stats::setNames(
+        vapply(
+            variables,
+            function(variable) {
+                path <- tempfile(fileext = ".nc")
+                write_local_cmip6_netcdf_fixture(
+                    path,
+                    2060L,
+                    variable_id = variable,
+                    frequency = "mon"
+                )
+                path
+            },
+            character(1L)
+        ),
+        variables
+    )
     withr::defer(unlink(files))
     docs <- data.table::rbindlist(lapply(variables, function(variable) {
         cli_shift_test_file_docs(basename(files[[variable]]),
@@ -354,7 +368,18 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
         master_id = paste0("future-", variable_id),
         instance_id = paste0("future-", variable_id, ".v20260101"),
         tracking_id = paste0("hdl:21.14100/future-", variable_id),
-        id = paste0(title, "|future-", variable_id))]
+        id = paste0(title, "|future-", variable_id)
+    )]
+    data.table::set(
+        docs,
+        j = "checksum",
+        value = vapply(
+            files[docs$variable_id],
+            checksum_file,
+            character(1L),
+            algo = "sha256"
+        )
+    )
     calls <- cli_shift_test_mock_collect(docs)
     config_path <- tempfile(fileext = ".json")
     cli_shift_test_config(config_path)
