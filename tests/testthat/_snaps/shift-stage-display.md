@@ -1,7 +1,7 @@
 # Shift configuration printers use compact semantic receipts
 
     Code
-      shift_test_print_objects(list(climate, control, ui, reference, transform, site),
+      shift_test__print_objects(list(climate, control, ui, reference, transform, site),
       width = 72L)
     Message
       == CMIP6 Climate =======================================================
@@ -68,7 +68,7 @@
 ---
 
     Code
-      shift_test_print_objects(list(climate, control, ui, reference, transform, site),
+      shift_test__print_objects(list(climate, control, ui, reference, transform, site),
       width = 100L, n = 3L, verbose = TRUE)
     Message
       == CMIP6 Climate ===================================================================================
@@ -148,7 +148,7 @@
 # Shift plan and stage printers use bounded semantic previews
 
     Code
-      shift_test_print_objects(list(plan, download, climate, morphed, outputs),
+      shift_test__print_objects(list(plan, download, climate, morphed, outputs),
       width = 80L, n = 3L)
     Message
       == Future EPW Plan =============================================================
@@ -241,7 +241,7 @@
 ---
 
     Code
-      shift_test_print_objects(list(plan, download, climate, morphed, outputs),
+      shift_test__print_objects(list(plan, download, climate, morphed, outputs),
       width = 100L, n = 3L, verbose = TRUE)
     Message
       == Future EPW Plan =================================================================================

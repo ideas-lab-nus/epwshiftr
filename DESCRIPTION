@@ -32,7 +32,6 @@ Imports:
     RNetCDF,
     S7
 Suggests:
-    pkgload,
     testthat (>= 3.0.0),
     webfakes,
     withr

@@ -624,7 +624,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
 
     docs <- data.table::rbindlist(
         lapply(variables, function(variable_id) {
-            cli_shift_test_file_docs(
+            esgf_test__file_docs(
                 basename(nc[[variable_id]]),
                 opendap_url = nc[[variable_id]],
                 download_url = nc[[variable_id]],

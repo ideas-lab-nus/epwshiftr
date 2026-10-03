@@ -359,12 +359,21 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
         variables
     )
     withr::defer(unlink(files))
-    docs <- data.table::rbindlist(lapply(variables, function(variable) {
-        cli_shift_test_file_docs(basename(files[[variable]]),
-            opendap_url = files[[variable]], download_url = files[[variable]],
-            variable_id = variable, frequency = "mon", table_id = "Amon")
-    }), fill = TRUE)
-    docs[, `:=`(dataset_id = paste0("future-", variable_id),
+    docs <- data.table::rbindlist(
+        lapply(variables, function(variable) {
+            esgf_test__file_docs(
+                basename(files[[variable]]),
+                opendap_url = files[[variable]],
+                download_url = files[[variable]],
+                variable_id = variable,
+                frequency = "mon",
+                table_id = "Amon"
+            )
+        }),
+        fill = TRUE
+    )
+    docs[, `:=`(
+        dataset_id = paste0("future-", variable_id),
         master_id = paste0("future-", variable_id),
         instance_id = paste0("future-", variable_id, ".v20260101"),
         tracking_id = paste0("hdl:21.14100/future-", variable_id),

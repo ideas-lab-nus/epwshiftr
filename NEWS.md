@@ -4,7 +4,9 @@
   scoped execution settings and attempt transitions. Internal runtime and test
   hooks no longer use global options. Execution snapshots read only supported
   options; background launch arguments reject invalid types and lengths, and
-  catalog progress callbacks belong to Dataset results (#278).
+  catalog progress callbacks belong to Dataset results. The obsolete `pkgload`
+  suggestion is removed; workflow tests share catalog fixtures and are grouped
+  by behavior (#278).
 
 * Batch execution resolves actual future and historical input partitions once
   per model/method. Optional variables selected by the ordinary resolver share

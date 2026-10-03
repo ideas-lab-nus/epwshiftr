@@ -376,7 +376,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     withr::defer(unlink(files))
     docs <- data.table::rbindlist(
         lapply(variables, function(variable) {
-            cli_shift_test_file_docs(
+            esgf_test__file_docs(
                 basename(files[[variable]]),
                 opendap_url = files[[variable]],
                 download_url = files[[variable]],
@@ -445,7 +445,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         plan@store_path,
         "discovery"
     ))
-    discovery_store$add_files(cli_shift_test_file_result(docs))
+    discovery_store$add_files(esgf_test__file_result(docs))
     discovery_store$close()
     plan@meta$shared_plan <- shift_batch__plan_from_discovery(
         plan@meta$children,

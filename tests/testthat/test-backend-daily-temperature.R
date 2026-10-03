@@ -391,7 +391,7 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
 
     store <- EsgStore$new(tempfile("daily-temperature-workflow-"))
     on.exit(store$close(), add = TRUE)
-    docs <- cli_shift_test_file_docs(
+    docs <- esgf_test__file_docs(
         basename(nc),
         opendap_url = nc,
         download_url = nc,
@@ -399,7 +399,7 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
         datetime_start = "2061-01-01T00:00:00Z",
         datetime_end = "2061-12-31T23:59:59Z"
     )
-    query_id <- store$add_files(cli_shift_test_file_result(docs))
+    query_id <- store$add_files(esgf_test__file_result(docs))
     extraction <- store$plan_region(
         query_id = query_id,
         lon = 103.98,

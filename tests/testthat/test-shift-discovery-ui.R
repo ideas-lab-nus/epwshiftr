@@ -89,7 +89,7 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
 # Verify the nested File path with a real store as well: discovery bypasses the
 # standalone task wrapper but must still persist catalogs and close its handle.
 test_that("nested coverage collection persists files and closes its owned store", {
-    calls <- cli_shift_test_mock_collect(cli_shift_test_file_docs("tas_day.nc"))
+    calls <- cli_shift_test_mock_collect(esgf_test__file_docs("tas_day.nc"))
     testthat::local_mocked_bindings(
         shift__task_execute = function(...) stop("unexpected standalone operation"),
         .package = "epwshiftr")

@@ -331,7 +331,7 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
     on.exit(store$close(), add = TRUE)
     plans <- lapply(names(years), function(role) {
         year <- years[[role]]
-        docs <- cli_shift_test_file_docs(
+        docs <- esgf_test__file_docs(
             basename(paths[[role]]),
             opendap_url = paths[[role]],
             download_url = paths[[role]],
@@ -345,7 +345,7 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
                 year
             )
         )
-        query_id <- store$add_files(cli_shift_test_file_result(docs))
+        query_id <- store$add_files(esgf_test__file_result(docs))
         plan <- store$plan_region(
             query_id = query_id,
             lon = 103.98,

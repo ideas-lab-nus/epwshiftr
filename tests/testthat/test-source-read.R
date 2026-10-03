@@ -92,6 +92,19 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
             )
         )
     })
+    # Read the tiny native files directly, independently of the extraction and
+    # worker implementations. This catches errors shared by serial and parallel
+    # paths; the fixture's two requested sites resolve to cells (2, 1) and (4, 3).
+    native <- lapply(paths, function(path) {
+        nc <- RNetCDF::open.nc(path)
+        on.exit(RNetCDF::close.nc(nc))
+        list(
+            values = RNetCDF::var.get.nc(nc, "tas"),
+            time = RNetCDF::var.get.nc(nc, "time"),
+            bounds = RNetCDF::var.get.nc(nc, "time_bnds"),
+            units = RNetCDF::att.get.nc(nc, "tas", "units")
+        )
+    })
     expected <- lapply(jobs, store__read_task)
     actual <- vector("list", 2L)
     source__apply(jobs, store__read_task, function(job, value) {
@@ -109,6 +122,32 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
                     actual[[index]]$results[[site]]$payload$data$cf_calendar
                 ),
                 "360_day"
+            )
+            payload <- actual[[index]]$results[[site]]$payload
+            source <- native[[index]]
+            lon_index <- c(2L, 4L)[[site]]
+            lat_index <- c(1L, 3L)[[site]]
+            expect_equal(
+                payload$data$value,
+                source$values[lon_index, lat_index, 2:3],
+                tolerance = 0
+            )
+            expect_identical(unique(payload$data$units), source$units)
+            expect_identical(payload$data$cf_day, 2:3)
+            expect_equal(payload$grid_sources$grid_lon, c(104, 254)[[site]])
+            expect_equal(payload$grid_sources$grid_lat, c(1, 41)[[site]])
+            origin <- as.POSIXct("2060-01-01", tz = "UTC")
+            expect_equal(
+                payload$data$time,
+                origin + as.numeric(source$time[2:3]) * 86400
+            )
+            expect_equal(
+                payload$data$time_bound_start,
+                origin + source$bounds[1L, 2:3] * 86400
+            )
+            expect_equal(
+                payload$data$time_bound_end,
+                origin + source$bounds[2L, 2:3] * 86400
             )
         }
     }

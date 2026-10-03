@@ -26,7 +26,7 @@ shared_inputs_test__fixture <- function(env = parent.frame()) {
             variable,
             calendar = "360_day"
         )
-        rows <- data.table::as.data.table(cli_shift_test_file_docs(
+        rows <- data.table::as.data.table(esgf_test__file_docs(
             path,
             variable_id = variable,
             datetime_start = sprintf("%d-01-01T00:00:00Z", year),
