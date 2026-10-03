@@ -1,3 +1,8 @@
+# Operational native-value limit for each subset request, shared by weather
+# reads, CF bounds and batch scheduling. This is a tested conservative default,
+# not a NetCDF limit or a universal optimum; retune it with transport benchmarks.
+DATASET_REQUEST_MAX_VALUES <- 8192L
+
 # Return the multi-site schema even when a file has no selected native times.
 # The provenance tables remain present so callers can inspect an empty read.
 dataset__empty_regions <- function() {
@@ -138,9 +143,9 @@ dataset__region_cell_groups <- function(points) {
 }
 
 # Partition contiguous native positions into bounded runs. Spatial reads use
-# a time limit based on their spatial area; interval bounds use 4096 times
-# and two endpoints. Both subset paths stay within 8192 values per request.
-dataset__region_runs <- function(indices, max_time = 2048L) {
+# a time limit based on their spatial area; interval bounds account for both
+# endpoints. Callers derive their time limit from DATASET_REQUEST_MAX_VALUES.
+dataset__region_runs <- function(indices, max_time) {
     if (!length(indices)) {
         return(list())
     }
@@ -309,7 +314,7 @@ dataset__read_regions_one <- function(
     max_times <- vapply(
         groups,
         function(group) {
-            8192L %/% (group$lat_count * group$lon_count)
+            DATASET_REQUEST_MAX_VALUES %/% (group$lat_count * group$lon_count)
         },
         integer(1L)
     )

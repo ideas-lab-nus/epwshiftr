@@ -51,4 +51,18 @@ test_that("native time runs use the spatial group's value allowance", {
             )
         }
     }
+    # A different limit must change request partitioning without changing data.
+    local_mocked_bindings(DATASET_REQUEST_MAX_VALUES = 4096L)
+    actual <- dataset__read_regions(dataset, "tas", sites[1:4])
+    slices <- attr(actual, "read_slices")
+    expect_equal(slices$time_count, c(rep(1024L, 8L), 808L))
+    expect_true(all(
+        slices$time_count * slices$lat_count * slices$lon_count <= 4096L
+    ))
+    for (site in 1:4) {
+        expect_identical(
+            actual$value[actual$site_id == sites$site_id[[site]]],
+            as.numeric(values[, sites$lat[[site]] + 1L, sites$lon[[site]] + 1L])
+        )
+    }
 })

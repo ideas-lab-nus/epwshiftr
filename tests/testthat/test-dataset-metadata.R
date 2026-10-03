@@ -231,6 +231,24 @@ test_that("batch prefetch shares selected bounds across value windows", {
         2L
     )
     expect_equal(bounds_counts, list(c(2L, 4096L), c(2L, 4096L), c(2L, 568L)))
+
+    # Retuning the common limit changes both acquisition windows and bounds
+    # slices; fresh receipts and extraction caches force the new schedule.
+    local_mocked_bindings(DATASET_REQUEST_MAX_VALUES = 4096L)
+    withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
+    bounds_counts <- list()
+    expect_equal(
+        shift_batch__prefetch_acquisition(
+            withr::local_tempdir(),
+            acquisition,
+            consumer
+        ),
+        3L
+    )
+    expect_equal(
+        bounds_counts,
+        c(rep(list(c(2L, 2048L)), 4L), list(c(2L, 568L)))
+    )
     expect_false(dir.exists(file.path(cache, "source-metadata")))
 })
 

@@ -34,7 +34,8 @@
   coordinates and grids are reused within each source connection; interval
   bounds are read only for selected native times. Time slices now use the
   actual spatial group size within the unchanged 8192-value request limit;
-  single-cell reads can include up to 8192 native steps (#278).
+  single-cell reads can include up to 8192 native steps. Weather subsets, CF
+  bounds and batch scheduling share one internal request-value limit (#278).
   Ordinary extraction and shared batch reads now use a bounded source-file
   worker pool, controlled by `options(epwshiftr.mirai_workers = 4L)`. Workers
   reuse each file connection when caching is enabled, while the caller writes

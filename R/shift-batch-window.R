@@ -30,9 +30,9 @@ shift_batch__windows <- function(axis, acquisition, consumer_count) {
     max_steps <- max(
         1L,
         min(
-            # The reader applies the 8192-value cap to each actual spatial
+            # The reader applies the shared value cap to each actual spatial
             # group. Do not limit single-cell reads to four-cell time lengths.
-            8192L,
+            DATASET_REQUEST_MAX_VALUES,
             200000L %/% consumer_count,
             max(1L, 250000L %/% worst_points) *
                 max(1L, 4096L %/% worst_points)
@@ -696,7 +696,7 @@ shift_batch__prefetch_acquisition <- function(
         )
         # Resolve this acquisition's bounds once, then subset them in each
         # value window. This avoids extra network round trips for long periods
-        # while keeping each bounds request to at most 8192 native values.
+        # while respecting the shared native-value limit for bounds requests.
         selected <- cf_time__range_indices(
             source$axis$values,
             source$axis$coordinates,

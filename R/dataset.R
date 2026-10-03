@@ -302,8 +302,11 @@ dataset__time_bounds <- function(
     runs <- if (full_axis) {
         list(indices)
     } else {
-        # Two bounds per time position keep each subset below 8192 values.
-        dataset__region_runs(indices, max_time = 4096L)
+        # Each time position consumes two native values in the request budget.
+        dataset__region_runs(
+            indices,
+            max_time = DATASET_REQUEST_MAX_VALUES %/% 2L
+        )
     }
     ordered <- matrix(NA_real_, nrow = length(indices), ncol = 2L)
     offset <- 0L
