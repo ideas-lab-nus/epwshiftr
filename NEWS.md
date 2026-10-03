@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Single-task and batch workflows share installed-package process launching,
+  scoped execution settings and attempt transitions. Internal runtime and test
+  hooks no longer use global options (#278).
+
 * Batch execution resolves actual future and historical input partitions once
   per model/method. Optional variables selected by the ordinary resolver share
   bounded reads across cities, and child runs pin the same File snapshots on

@@ -2,12 +2,12 @@
 # catalog transport is replaced; selection, snapshots and native reads are real.
 shared_inputs_test__fixture <- function(env = parent.frame()) {
     root <- withr::local_tempdir(.local_envir = env)
-    withr::local_options(
+    test_local_dependencies(
         list(
             epwshiftr.dir_cache = file.path(root, "cache"),
             epwshiftr.mirai_workers = 1L,
-            epwshiftr.cmip6.availability = test_cmip6_availability,
-            epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+            availability = test_cmip6_availability,
+            shift__cmip6_period_coverage = test_cmip6_period_coverage
         ),
         .local_envir = env
     )

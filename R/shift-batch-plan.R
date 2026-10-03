@@ -479,7 +479,9 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
         character(1L)
     )
     for (positions in split(pending, groups)) {
-        shift_batch__check_cancel()
+        if (!is.null(reporter)) {
+            reporter$check_cancel()
+        }
         child <- plans[[positions[[1L]]]]
         child@meta$shared_inputs <- NULL
         # Auxiliary catalog runs belong to the shared cache, not a city's

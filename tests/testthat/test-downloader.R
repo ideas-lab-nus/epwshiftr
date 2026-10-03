@@ -20,7 +20,13 @@ downloader_test_queued_job <- function(label = "job") {
     dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
     writeLines(paste(label, "content"), src)
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
     session_id <- dl$enqueue(downloader_test_df(
         logical_file_id = paste0("tracking:", label),
         filename = paste0(label, ".txt"),
@@ -28,7 +34,9 @@ downloader_test_queued_job <- function(label = "job") {
         priority = 1L
     ))
 
-    withr::local_options(list(epwshiftr.downloader.launcher = function(...) TRUE))
+    test_local_dependencies(list(downloader__launch_process = function(...) {
+        TRUE
+    }))
     job <- dl$run(session_id = session_id, block = FALSE, progress = FALSE)
     task_id <- dl$tasks(job_id = job$job_id[[1L]])$task_id[[1L]]
 
@@ -441,12 +449,18 @@ test_that("Downloader$run() supports block = FALSE", {
     writeLines("background content", src)
 
     launched <- list()
-    withr::local_options(list(epwshiftr.downloader.launcher = function(kind, id, manifest, log_path) {
+    test_local_dependencies(list(downloader__launch_process = function(kind, id, manifest, log_path) {
         launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
         TRUE
     }))
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
     session_id <- dl$enqueue(downloader_test_df(
         logical_file_id = "tracking:background",
         filename = "background.txt",
@@ -546,8 +560,16 @@ test_that("Downloader$start() / Downloader$job_status()", {
     dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
     writeLines(rep("job content", 20L), src)
 
-    withr::local_options(list(epwshiftr.downloader.launcher = function(...) TRUE))
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    test_local_dependencies(list(downloader__launch_process = function(...) {
+        TRUE
+    }))
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
     session_id <- dl$enqueue(downloader_test_df(
         logical_file_id = "tracking:job",
         filename = "job.txt",
@@ -578,7 +600,7 @@ test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$d
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
     launched <- list()
-    withr::local_options(list(epwshiftr.downloader.launcher = function(kind, id, manifest, log_path) {
+    test_local_dependencies(list(downloader__launch_process = function(kind, id, manifest, log_path) {
         launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
         TRUE
     }))
@@ -599,7 +621,10 @@ test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$d
     status <- dl$daemon_status()
     expect_true(daemon$daemon_id[[1L]] %in% status$daemon_id)
     stopped <- dl$daemon_stop()
-    expect_equal(stopped$status[stopped$daemon_id == daemon$daemon_id[[1L]]], "stopping")
+    expect_equal(
+        stopped$status[stopped$daemon_id == daemon$daemon_id[[1L]]],
+        "stopping"
+    )
 })
 # }}}
 # downloader__worker_dependencies() {{{

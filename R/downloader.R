@@ -1460,7 +1460,8 @@ downloader__daemon_main <- function(manifest, daemon_id) {
 #' @author Hongyuan Jia
 #' @name Downloader
 #' @export
-Downloader <- R6::R6Class("Downloader",
+Downloader <- R6::R6Class(
+    "Downloader",
     lock_class = TRUE,
     public = list(
         # initialize {{{
@@ -1532,12 +1533,22 @@ Downloader <- R6::R6Class("Downloader",
         #'     n_workers = 8
         #' )
         #' }
-        initialize = function(dest = NULL, temp = NULL, retries = 3L, timeout = 3600L,
-                              ssl_verifypeer = TRUE, proxy = NULL, connect_timeout = NULL,
-                              useragent = NULL, cleanup = TRUE, n_workers = 4L,
-                              node_policy = NULL, transfer_policy = NULL,
-                              resource_policy = NULL,
-                              manifest = NULL) {
+        initialize = function(
+            dest = NULL,
+            temp = NULL,
+            retries = 3L,
+            timeout = 3600L,
+            ssl_verifypeer = TRUE,
+            proxy = NULL,
+            connect_timeout = NULL,
+            useragent = NULL,
+            cleanup = TRUE,
+            n_workers = 4L,
+            node_policy = NULL,
+            transfer_policy = NULL,
+            resource_policy = NULL,
+            manifest = NULL
+        ) {
             checkmate::assert_string(manifest, null.ok = TRUE)
             manifest_config <- NULL
             if (!is.null(manifest)) {
@@ -1602,12 +1613,12 @@ Downloader <- R6::R6Class("Downloader",
             checkmate::assert_flag(cleanup)
             checkmate::assert_count(n_workers, positive = FALSE)
             node_policy <- downloader__node_policy_defaults(node_policy)
-            transfer_policy <- downloader__transfer_policy_defaults(transfer_policy)
-            resource_policy <- downloader__resource_policy_defaults(resource_policy)
-
-            # Check if in development mode via environment variable or option
-            in_dev <- isTRUE(as.logical(Sys.getenv("EPWSHIFTR_DEV_MODE", "FALSE"))) ||
-                      isTRUE(getOption("epwshiftr.dev_mode", FALSE))
+            transfer_policy <- downloader__transfer_policy_defaults(
+                transfer_policy
+            )
+            resource_policy <- downloader__resource_policy_defaults(
+                resource_policy
+            )
 
             private$dest <- normalizePath(dest, mustWork = TRUE, winslash = "/")
 
@@ -1622,7 +1633,11 @@ Downloader <- R6::R6Class("Downloader",
             if (!dir.exists(private$temp)) {
                 dir.create(private$temp, recursive = TRUE)
             }
-            private$temp <- normalizePath(private$temp, mustWork = TRUE, winslash = "/")
+            private$temp <- normalizePath(
+                private$temp,
+                mustWork = TRUE,
+                winslash = "/"
+            )
 
             private$retries <- retries
             private$dl_timeout <- timeout
@@ -1635,7 +1650,6 @@ Downloader <- R6::R6Class("Downloader",
             private$node_policy_config <- node_policy
             private$transfer_policy_config <- transfer_policy
             private$resource_policy_config <- resource_policy
-            private$in_dev <- in_dev
             private$async_tasks <- list()
             private$persistent_tasks <- list()
             private$callbacks <- list()
@@ -3049,8 +3063,7 @@ Downloader <- R6::R6Class("Downloader",
         retries = NULL,
         cleanup = NULL,
         worker_count = NULL,
-        in_dev = NULL,
-        async_tasks = NULL,  # List of DownloadTask objects for async downloads
+        async_tasks = NULL, # List of DownloadTask objects for async downloads
         persistent_tasks = NULL,
         callbacks = NULL,
         current_job_id = NULL,
@@ -3097,7 +3110,10 @@ Downloader <- R6::R6Class("Downloader",
                 stop("mirai package required for async downloads", call. = FALSE)
             }
 
-            is_set <- tryCatch(isTRUE(mirai::daemons_set()), error = function(e) FALSE)
+            is_set <- tryCatch(
+                isTRUE(mirai::daemons_set()),
+                error = function(e) FALSE
+            )
             status <- tryCatch(mirai::status(), error = function(e) NULL)
             daemon_count <- if (is.list(status) && !is.null(status$connections)) {
                 suppressWarnings(as.integer(status$connections[[1L]]))
@@ -3106,43 +3122,17 @@ Downloader <- R6::R6Class("Downloader",
             } else {
                 NA_integer_
             }
-            needs_start <- !is_set || is.na(daemon_count) || daemon_count < private$worker_count
+            needs_start <- !is_set ||
+                is.na(daemon_count) ||
+                daemon_count < private$worker_count
 
             if (isTRUE(needs_start)) {
                 mirai::daemons(private$worker_count)
-            }
-            if (isTRUE(private$in_dev) && isTRUE(needs_start)) {
-                private$source_mirai_workers()
             }
 
             invisible(TRUE)
         },
 
-        source_mirai_workers = function() {
-            cli::cli_alert_info(
-                "Development mode detected. Sourcing downloader.R on all daemons..."
-            )
-            candidates <- c(
-                file.path(getwd(), "R", "downloader.R"),
-                file.path(getwd(), "..", "R", "downloader.R"),
-                file.path(getwd(), "../..", "R", "downloader.R")
-            )
-            src_path <- NULL
-            for (p in candidates) {
-                if (file.exists(p)) {
-                    src_path <- normalizePath(p, mustWork = FALSE)
-                    break
-                }
-            }
-            if (!is.null(src_path)) {
-                mirai::everywhere(source(src_path, chdir = TRUE), .compute = "default")
-            } else {
-                cli::cli_alert_warning(
-                    "Could not locate R/downloader.R for dev-mode sourcing; async workers may lack Downloader."
-                )
-            }
-            invisible(src_path)
-        },
         # }}}
 
         # manifest config {{{
@@ -3709,32 +3699,13 @@ Downloader <- R6::R6Class("Downloader",
             })
         },
 
-        job_command_expr = function(kind, id) {
-            fun <- if (identical(kind, "daemon")) "downloader__daemon_main" else "downloader__job_main"
-            arg <- if (identical(kind, "daemon")) "daemon_id" else "job_id"
-            sprintf(
-                "library(epwshiftr); epwshiftr:::%s(manifest = %s, %s = %s)",
-                fun,
-                downloader__r_literal(private$manifest_path),
-                arg,
-                downloader__r_literal(id)
-            )
-        },
-
         launch_process = function(kind, id, log_path) {
-            launcher <- getOption("epwshiftr.downloader.launcher", NULL)
-            if (is.function(launcher)) {
-                return(launcher(kind = kind, id = id, manifest = private$manifest_path, log_path = log_path))
-            }
-            expr <- private$job_command_expr(kind, id)
-            status <- tryCatch(
-                system2(downloader__rscript(), c("-e", expr), stdout = log_path, stderr = log_path, wait = FALSE),
-                error = function(e) e
+            downloader__launch_process(
+                kind,
+                id,
+                private$manifest_path,
+                log_path
             )
-            if (inherits(status, "error")) {
-                stop(conditionMessage(status), call. = FALSE)
-            }
-            invisible(status)
         },
 
         wake_daemon = function(command = "wake", id = NA_character_,
@@ -6052,3 +6023,18 @@ Downloader <- R6::R6Class("Downloader",
     )
 )
 # }}}
+
+# Start a persisted download job or daemon using the installed package runtime.
+downloader__launch_process <- function(kind, id, manifest, log_path) {
+    fun <- if (identical(kind, "daemon")) {
+        "downloader__daemon_main"
+    } else {
+        "downloader__job_main"
+    }
+    arg <- if (identical(kind, "daemon")) "daemon_id" else "job_id"
+    execution__launch(
+        fun,
+        stats::setNames(list(manifest, id), c("manifest", arg)),
+        log_path
+    )
+}

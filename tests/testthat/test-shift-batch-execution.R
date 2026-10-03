@@ -65,8 +65,8 @@ test_that("queued batch cancellation starts no source requests or children", {
     background <- shift_run(batch, background = TRUE, ui = shift_ui("none"))
     stopped <- shift_cancel(background)
     expect_identical(shift_status(stopped), "stopping")
-    local_mocked_bindings(shift_batch__resolve_inputs = function(...) {
-        shift_batch__check_cancel()
+    local_mocked_bindings(shift_batch__resolve_inputs = function(x, reporter) {
+        reporter$check_cancel()
         stop("unexpected input query")
     })
     expect_error(
@@ -95,7 +95,12 @@ test_that("queued batch cancellation starts no source requests or children", {
 test_that("shared read progress is inspectable before child registration", {
     fixture <- shared_inputs_test__fixture()
     batch <- fixture$batch
-    local_mocked_bindings(shift_batch__execute = function(x, ui, reporter) {
+    local_mocked_bindings(shift_batch__execute = function(
+        x,
+        ui,
+        reporter,
+        execution
+    ) {
         reporter$heartbeat(
             details = list(
                 unit_type = "source_reads",
@@ -114,7 +119,7 @@ test_that("shared read progress is inspectable before child registration", {
         x
     })
     shift_run(batch, ui = shift_ui("none"))
-    expect_null(getOption("epwshiftr.batch.context"))
+    expect_false("epwshiftr.batch.context" %in% names(options()))
     expect_null(shift_batch__job_read(batch@store_path)$progress)
 })
 

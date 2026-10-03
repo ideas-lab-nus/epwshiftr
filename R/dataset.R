@@ -101,7 +101,7 @@ DatasetAsyncTask <- R6::R6Class(
         # caller visibly alive and respond to cooperative cancellation while
         # RNetCDF performs the blocking read in another process.
         collect = function(
-            progress_callback = getOption("epwshiftr.dataset.progress_callback", NULL),
+            progress_callback = NULL,
             poll_interval = 0.25
         ) {
             if (identical(self$status, "completed")) {
@@ -140,7 +140,11 @@ DatasetAsyncTask <- R6::R6Class(
 
             result <- mirai::collect_mirai(self$mirai_obj)
             collected <- TRUE
-            error <- dataset__async_error(self$operation, result, self$timeout_ms)
+            error <- dataset__async_error(
+                self$operation,
+                result,
+                self$timeout_ms
+            )
             if (!is.null(error)) {
                 status <- if (inherits(error, "epwshiftr_async_timeout")) {
                     "timed_out"
@@ -1222,6 +1226,7 @@ EsgDataset <- R6::R6Class(
     ),
 
     private = list(
+        progress_callback = NULL,
         urls = NULL,
         nc_handles = NULL,
         opened = FALSE,
@@ -1567,7 +1572,7 @@ EsgDataset <- R6::R6Class(
                 add = TRUE
             )
 
-            task$collect()
+            task$collect(progress_callback = private$progress_callback)
         },
         # }}}
 

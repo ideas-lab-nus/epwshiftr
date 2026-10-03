@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 shift_test_response <- function(docs) {
@@ -110,11 +110,21 @@ shift_test_file_result <- function(docs) {
 
 shift_test_mock_collect <- function(file_docs, calls) {
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
             type <- query_param__value(params$type())
-            calls$query_reporter <- c(calls$query_reporter,
-                is.function(getOption("epwshiftr.query.progress_callback")))
+            calls$query_reporter <- c(
+                calls$query_reporter,
+                is.function(progress_callback)
+            )
             docs <- if (identical(type, "Dataset")) {
                 calls$dataset_all <- c(calls$dataset_all, all)
                 calls$dataset_limit <- c(calls$dataset_limit, limit)
@@ -132,7 +142,8 @@ shift_test_mock_collect <- function(file_docs, calls) {
             params$fields(unique(c(fields, required_fields)))
             response <- shift_test_response(docs)
             calls$values <- c(calls$values, type)
-            list(response = response, docs = response$response$docs, parameter = params)
+            list(response = response, docs = response$response$docs,
+                parameter = params)
         },
         .package = "epwshiftr",
         .env = parent.frame()
@@ -153,11 +164,30 @@ shift_test_param_value <- function(params, name) {
 
 shift_test_mock_collect_filtered <- function(file_docs, calls) {
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
             type <- query_param__value(params$type())
-            filter_fields <- c("experiment_id", "activity_id", "source_id", "variant_label", "frequency", "table_id", "variable_id")
-            filter_values <- stats::setNames(vector("list", length(filter_fields)), filter_fields)
+            filter_fields <- c(
+                "experiment_id",
+                "activity_id",
+                "source_id",
+                "variant_label",
+                "frequency",
+                "table_id",
+                "variable_id"
+            )
+            filter_values <- stats::setNames(
+                vector("list", length(filter_fields)),
+                filter_fields
+            )
             for (field in filter_fields) {
                 values <- shift_test_param_value(params, field)
                 values <- as.character(values)
@@ -201,7 +231,8 @@ shift_test_mock_collect_filtered <- function(file_docs, calls) {
             params$fields(unique(c(fields, required_fields)))
             response <- shift_test_response(as.data.frame(docs))
             calls$values <- c(calls$values, type)
-            list(response = response, docs = response$response$docs, parameter = params)
+            list(response = response, docs = response$response$docs,
+                parameter = params)
         },
         .package = "epwshiftr",
         .env = parent.frame()
@@ -212,15 +243,26 @@ shift_test_mock_collect_sequence <- function(file_doc_sets, calls) {
     calls$file_calls <- 0L
     calls$collect_times <- list()
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
             type <- query_param__value(params$type())
             calls$collect_times <- c(calls$collect_times, list(list(
                 type = type,
                 datetime_start = shift_test_param_value(params, "datetime_start"),
                 datetime_stop = shift_test_param_value(params, "datetime_stop")
             )))
-            variables <- as.character(shift_test_param_value(params, "variable_id"))
+            variables <- as.character(shift_test_param_value(
+                params,
+                "variable_id"
+            ))
             variables <- variables[!is.na(variables) & nzchar(variables)]
             docs <- if (identical(type, "Dataset")) {
                 shift_test_dataset_docs(if (length(variables)) variables[[1L]] else "tas")
@@ -249,7 +291,8 @@ shift_test_mock_collect_sequence <- function(file_doc_sets, calls) {
             params$fields(unique(c(fields, required_fields)))
             response <- shift_test_response(as.data.frame(docs))
             calls$values <- c(calls$values, type)
-            list(response = response, docs = response$response$docs, parameter = params)
+            list(response = response, docs = response$response$docs,
+                parameter = params)
         },
         .package = "epwshiftr",
         .env = parent.frame()
@@ -717,8 +760,8 @@ test_that("workflow resolver resolves both File service paths", {
     )
     resolver_calls <- 0L
     resolver_check <- NULL
-    withr::local_options(list(
-        epwshiftr.shift.file_service_resolution = function(
+    test_local_dependencies(list(
+        query_result__resolve_file_services = function(
             value,
             index_node = NULL,
             check = NULL
@@ -1256,12 +1299,20 @@ test_that("failed standalone steps expose recovery identity and resume in place"
     attempts <- 0L
     file_docs <- shift_test_file_docs("tas_day.nc")
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params,
-                                  required_fields = NULL, all = FALSE,
-                                  limit = TRUE, constraints = TRUE,
-                                  dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
             attempts <<- attempts + 1L
-            if (attempts == 1L) stop("temporary catalog failure")
+            if (attempts == 1L) {
+                stop("temporary catalog failure")
+            }
             type <- query_param__value(params$type())
             docs <- if (identical(type, "Dataset")) {
                 shift_test_dataset_docs()
@@ -1269,7 +1320,9 @@ test_that("failed standalone steps expose recovery identity and resume in place"
                 file_docs
             }
             fields <- query_param__value(params$fields())
-            if (is.null(fields) || identical(fields, "*")) fields <- names(docs)
+            if (is.null(fields) || identical(fields, "*")) {
+                fields <- names(docs)
+            }
             params$fields(unique(c(fields, required_fields)))
             response <- shift_test_response(docs)
             list(response = response, docs = response$response$docs,
@@ -2298,7 +2351,7 @@ test_that("an identical interrupted workflow resumes its original run ID", {
 
     resumed_ids <- character()
     testthat::local_mocked_bindings(
-        shift_resume = function(x, background, ui) {
+        shift__resume_one = function(x, background, ui, execution = NULL) {
             resumed_ids <<- c(resumed_ids, x@ids$run_id)
             x
         },
@@ -2514,7 +2567,7 @@ test_that("background runs register live jobs before launching workers", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     launched <- new.env(parent = emptyenv())
-    withr::local_options(list(epwshiftr.shift.launcher = function(
+    test_local_dependencies(list(shift__launch_job = function(
         store_path,
         run_id,
         job_id,
@@ -2574,7 +2627,7 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
         dry_run = TRUE
     )@meta$children[[1L]]
     store_path <- plan@store_path
-    withr::local_options(list(epwshiftr.shift.launcher = function(...) {
+    test_local_dependencies(list(shift__launch_job = function(...) {
         invisible(0L)
     }))
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
@@ -2790,7 +2843,8 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             all = FALSE,
             limit = TRUE,
             constraints = TRUE,
-            dict_check = FALSE
+            dict_check = FALSE,
+            progress_callback = NULL
         ) {
             type <- query_param__value(params$type())
             experiments <- as.character(shift_test_param_value(
@@ -2867,11 +2921,8 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             }
             params$fields(unique(c(fields, required_fields)))
             response <- shift_test_response(docs)
-            list(
-                response = response,
-                docs = response$response$docs,
-                parameter = params
-            )
+            list(response = response, docs = response$response$docs,
+                parameter = params)
         },
         .package = "epwshiftr"
     )

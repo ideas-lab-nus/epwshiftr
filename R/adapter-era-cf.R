@@ -1070,11 +1070,8 @@ reanalysis__materialize <- function(
     }
 
     source_variables <- era5__source_variables(variables, spec@product)
-    retrieve <- getOption("epwshiftr.reanalysis.retrieve", cds__retrieve)
-    reader <- getOption("epwshiftr.reanalysis.read", era__read_netcdf)
-    if (!is.function(retrieve) || !is.function(reader)) {
-        cli::cli_abort("Configured reanalysis adapters must be functions.")
-    }
+    retrieve <- cds__retrieve
+    reader <- era__read_netcdf
     raw <- list()
     for (index in seq_along(source_variables)) {
         source_variable <- source_variables[[index]]

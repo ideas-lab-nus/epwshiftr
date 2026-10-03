@@ -470,7 +470,6 @@ shift_batch__candidate_reader <- function(
     store,
     ui
 ) {
-    adapter <- getOption("epwshiftr.cmip6.availability")
     member <- shift_coalesce(climate@member, "r1i1p1f1")
     if (
         is.null(climate@model) && !identical(as.character(member), "r1i1p1f1")
@@ -486,39 +485,6 @@ shift_batch__candidate_reader <- function(
         logical(1L)
     )
     names(historical) <- names(transforms)
-    if (!is.null(adapter)) {
-        if (!is.function(adapter)) {
-            cli::cli_abort(
-                "Configured CMIP6 availability adapter must be a function."
-            )
-        }
-        return(function(transform_key, alternative, index_node) {
-            transform <- transforms[[transform_key]]
-            variables <- as.character(shift_batch__future_requirement(
-                transform
-            )@variable_sets[[alternative]])
-            adapter(
-                variables = variables,
-                scenarios = climate@scenarios,
-                include_historical = historical[[transform_key]],
-                source = climate@model,
-                member = member,
-                grid = climate@grid,
-                frequency = shift__transform_cmip6_frequencies(
-                    transform,
-                    variables,
-                    climate@frequency
-                ),
-                table = shift_batch__table_spec(climate@table, variables),
-                activity = climate@activity,
-                index_node = index_node,
-                data_node = climate@data_node,
-                filters = climate@filters,
-                store = store,
-                ui = ui
-            )
-        })
-    }
     role <- transform_key <- experiment_id <- variable_id <- frequency <-
         frequency_rank <- allowed <- wanted_table <- table_id <- complete <- NULL
     requirements <- eligibility__requirements(
@@ -664,15 +630,7 @@ shift_batch__available_alternative <- function(
         variables,
         climate@frequency
     )
-    coverage <- getOption(
-        "epwshiftr.cmip6.period_coverage",
-        shift__cmip6_period_coverage
-    )
-    if (!is.function(coverage)) {
-        cli::cli_abort(
-            "Configured CMIP6 period-coverage adapter must be a function."
-        )
-    }
+    coverage <- shift__cmip6_period_coverage
     errors <- character()
     for (node in climate@index_nodes) {
         if (identical(ui@batch_context$kind, "discovery")) {
@@ -1828,10 +1786,15 @@ shift_batch__run_child <- function(expr) {
 
 # Resume plans and interrupted runs independently, leaving active and completed
 # child runs untouched.
-shift_batch__execute <- function(x, ui = shift_ui(), reporter = NULL) {
-    shift_batch__check_cancel()
+shift_batch__execute <- function(
+    x,
+    ui = shift_ui(),
+    reporter = NULL,
+    execution = NULL
+) {
+    execution__check_cancel(execution)
     call_started <- Sys.time()
-    execution <- list()
+    records <- vector("list", length(x@meta$children))
     # Resolve actual inputs once per model/method before any child starts.
     # The coordinator also warms the shared extraction cache;
     # failures remain durable and do not trigger per-city source retries.
@@ -1908,10 +1871,10 @@ shift_batch__execute <- function(x, ui = shift_ui(), reporter = NULL) {
     # Update the shared matrix after each child so subsequent foreground frames
     # show batch progress while the ordinary child reporter owns the terminal.
     for (index in seq_along(x@meta$children)) {
-        shift_batch__check_cancel()
+        execution__check_cancel(execution)
         child <- x@meta$children[[index]]
         if (names(x@meta$children)[[index]] %in% blocked) {
-            execution[[index]] <- data.table::data.table(
+            records[[index]] <- data.table::data.table(
                 child_key = names(x@meta$children)[[index]],
                 action = "blocked",
                 elapsed_seconds = 0
@@ -1919,9 +1882,9 @@ shift_batch__execute <- function(x, ui = shift_ui(), reporter = NULL) {
             next
         }
         inputs <- child@meta$shared_inputs
-        context <- getOption("epwshiftr.batch.context")
+        context <- execution
         if (!is.null(context)) {
-            context$batch <- x
+            context$owner <- x
             context$child_key <- names(x@meta$children)[[index]]
         }
         started <- Sys.time()
@@ -1945,7 +1908,12 @@ shift_batch__execute <- function(x, ui = shift_ui(), reporter = NULL) {
         if (S7::S7_inherits(child, ShiftPlan)) {
             action <- "started"
             child <- shift_batch__run_child(
-                shift_run(child, background = FALSE, ui = child_ui)
+                shift__run_one(
+                    child,
+                    background = FALSE,
+                    ui = child_ui,
+                    execution = execution
+                )
             )
         } else if (
             !status %in%
@@ -1953,12 +1921,17 @@ shift_batch__execute <- function(x, ui = shift_ui(), reporter = NULL) {
         ) {
             action <- "resumed"
             child <- shift_batch__run_child(
-                shift_resume(child, background = FALSE, ui = child_ui)
+                shift__resume_one(
+                    child,
+                    background = FALSE,
+                    ui = child_ui,
+                    execution = execution
+                )
             )
         }
         child@meta$shared_inputs <- inputs
         x@meta$children[[index]] <- child
-        execution[[index]] <- data.table::data.table(
+        records[[index]] <- data.table::data.table(
             child_key = names(x@meta$children)[[index]],
             action = action,
             elapsed_seconds = as.numeric(difftime(
@@ -1971,7 +1944,7 @@ shift_batch__execute <- function(x, ui = shift_ui(), reporter = NULL) {
         # child run IDs rather than only the original dry-run plans.
         shift_batch__receipt_write(x)
     }
-    x@meta$execution <- data.table::rbindlist(execution)
+    x@meta$execution <- data.table::rbindlist(records)
     x@meta$call_elapsed_seconds <- as.numeric(difftime(
         Sys.time(),
         call_started,

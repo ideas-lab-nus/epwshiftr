@@ -140,6 +140,7 @@ Collate:
     'netcdf.R'
     'print-truncation.R'
     'schema.R'
+    'shift-execution.R'
     'shift-batch-execution.R'
     'shift-batch-plan.R'
     'shift-batch-read.R'

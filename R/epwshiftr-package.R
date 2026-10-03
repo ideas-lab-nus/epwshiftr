@@ -29,6 +29,20 @@
 #' * `epwshiftr.dir_cache`: The directory for disposable cache entries. Deleting
 #'   this directory can require re-fetching or re-parsing data, but should not
 #'   invalidate a persistent store.
+#' * `epwshiftr.mirai_workers`: Maximum concurrent source readers, default `4`.
+#'   Set to `1` for serial reads. Single-task and batch workflows share this limit.
+#' * `epwshiftr.ui_height`: Optional terminal display height; unset by default.
+#' * `epwshiftr.cache_max_size`: Disposable cache capacity in bytes, default 1 GiB.
+#' * `epwshiftr.cache_max_age`: Disposable cache lifetime in seconds, default 1800.
+#' * `epwshiftr.cache_max_n`: Maximum cache entries, default `Inf`.
+#'   Cache limits are applied when the session's cache is first initialized.
+#' * `epwshiftr.query.timeout`: Catalog request timeout in seconds, default 300.
+#' * `epwshiftr.query.connect_timeout`: Catalog connection timeout in seconds,
+#'   default 30.
+#'
+#' Execution settings are captured when a workflow attempt starts and forwarded
+#' to detached processes and source workers. They do not change scientific plan
+#' identities. Development and test dependency substitutions are not options.
 #'
 #'
 #' @include utils.R

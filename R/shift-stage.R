@@ -968,10 +968,17 @@ shift__task_condition <- function(condition, run_id, step_id, store_path) {
 # Execute one public standalone stage through the shared reporter and durable
 # run/step state machine. The stage-specific closure remains responsible only
 # for scientific work and business-unit progress.
-shift__task_execute <- function(task, x, code, store = NULL, ui = NULL,
-                                spec = list(), resumable = TRUE,
-                                nonresumable_reason = NULL,
-                                auto_complete = FALSE) {
+shift__task_execute <- function(
+    task,
+    x,
+    code,
+    store = NULL,
+    ui = NULL,
+    spec = list(),
+    resumable = TRUE,
+    nonresumable_reason = NULL,
+    auto_complete = FALSE
+) {
     checkmate::assert_string(task, min.chars = 1L)
     checkmate::assert_function(code)
     checkmate::assert_list(spec)
@@ -981,7 +988,9 @@ shift__task_execute <- function(task, x, code, store = NULL, ui = NULL,
     store_value <- shift__task_store_value(x, store)
     opened <- shift_store(store_value, create = TRUE)
     own_store <- !inherits(store_value, "EsgStore")
-    if (isTRUE(own_store)) on.exit(try(opened$close(), silent = TRUE), add = TRUE)
+    if (isTRUE(own_store)) {
+        on.exit(try(opened$close(), silent = TRUE), add = TRUE)
+    }
 
     override_run_id <- shift__current_run_override()
     context <- if (is.null(override_run_id)) {
@@ -1015,8 +1024,16 @@ shift__task_execute <- function(task, x, code, store = NULL, ui = NULL,
     job <- shift__job_create(opened, run_id, mode = "foreground", ui = ui,
         step_id = step_id)
     job_id <- job$job_id[[1L]]
-    reporter <- shift__reporter(ui, store = opened, run_id = run_id,
-        job_id = job_id, step_id = step_id)
+    execution <- execution__context(opened$path, job, opened)
+    reporter <- shift__reporter(
+        ui,
+        store = opened,
+        run_id = run_id,
+        job_id = job_id,
+        step_id = step_id,
+        execution = execution
+    )
+    on.exit(reporter$close(), add = TRUE)
     sequence <- shift__task_sequence(opened, run_id, task)
     reporter$operation_started(
         task,
@@ -1029,138 +1046,269 @@ shift__task_execute <- function(task, x, code, store = NULL, ui = NULL,
         current_stage = task, completed_at = as.POSIXct(NA, tz = "UTC"),
         last_error = NA_character_)
 
-    tryCatch({
-        result <- code(reporter, opened)
-        shift_assert_stage(result)
-        result@ids <- utils::modifyList(result@ids,
-            list(run_id = run_id, step_id = step_id))
-        artifact_status <- shift_status(result)
-        step_status <- if (artifact_status %in% c("partial", "blocked", "failed")) {
-            "partial"
-        } else {
-            "completed"
-        }
-        session_id <- store__chr1(result@ids$session_id)
-        detached <- identical(task, "download") &&
-            isTRUE(spec$background) && !is.na(session_id) && nzchar(session_id)
-        if (isTRUE(detached)) {
-            # The Downloader owns the long-running process after registration.
-            # Keep this step open until shift_run_get() reconciles its durable
-            # session instead of claiming that the next stage is ready.
-            shift__step_update(opened, step_id,
-                status = "running",
-                output_stage_json = shift__spec_json(shift__stage_ref(result)),
-                completed_at = as.POSIXct(NA, tz = "UTC"),
-                last_error = NA_character_)
-        } else {
-            shift__step_finish(opened, step_id, step_status,
-                output_stage = result)
-        }
-        shift__job_update(opened, job_id, status = "completed",
-            completed_at = store__now(), exit_code = 0L,
-            last_error = NA_character_)
-        ids <- result@ids
-        run_updates <- list()
-        # Each step owns only part of the artifact graph. Preserve identifiers
-        # written by upstream steps instead of replacing them with missing
-        # fields from the current result object.
-        if (!is.null(ids$query_id)) {
-            run_updates$query_id <- store__chr1(ids$query_id)
-        }
-        if (!is.null(ids$plan_id)) {
-            run_updates$plan_ids_json <-
-                shift__spec_json(as.character(ids$plan_id))
-        }
-        if (!is.null(ids$morph_id)) {
-            run_updates$morph_id <- store__chr1(ids$morph_id)
-        }
-        if (!is.null(result@meta$export_dir)) {
-            run_updates$output_dir <- store__chr1(result@meta$export_dir)
-        }
-        # An empty catalog is not a hand-off point: extraction cannot do useful
-        # work without a File record. Other partial stages may still contain a
-        # complete subset and therefore retain the established continuation
-        # semantics.
-        empty_collection <- identical(task, "collect") &&
-            as.integer(shift_coalesce(result@meta$file_count, 0L)) < 1L
-        terminal <- isTRUE(auto_complete) || isTRUE(empty_collection)
-        if (isTRUE(detached)) {
-            do.call(shift__run_update, c(list(store = opened, run_id = run_id,
-                status = "running", current_stage = task,
-                last_error = NA_character_), run_updates))
-        } else if (isTRUE(terminal)) {
-            final_status <- shift__run_completion_status(opened, run_id)
-            do.call(shift__run_finish, c(list(store = opened, run_id = run_id,
-                status = final_status, current_stage = task,
-                last_error = NA_character_), run_updates))
-        } else {
-            do.call(shift__run_update, c(list(store = opened, run_id = run_id,
-                status = "waiting", current_stage = task,
-                last_error = NA_character_), run_updates))
-        }
-        summary <- shift__task_summary(task, result)
-        paths <- shift__task_output_paths(result)
-        event_status <- if (isTRUE(detached)) {
-            "running"
-        } else if (isTRUE(terminal)) {
-            step_status
-        } else {
-            "waiting"
-        }
-        shift__run_event(opened, run_id, task, event_status, summary,
-            details = list(
-                phase = "operation",
-                stage = task,
-                stage_sequence = sequence$sequence,
-                step_id = step_id,
-                outcome = if (isTRUE(detached)) "running" else step_status
-            ),
-            step_id = step_id)
-        if (isTRUE(detached)) {
-            reporter$operation_detached(summary, output_paths = paths,
-                output_dir = result@meta$export_dir)
-        } else if (isTRUE(empty_collection)) {
-            reporter$operation_partial(summary, output_paths = paths,
-                output_dir = result@meta$export_dir)
-        } else if (isTRUE(terminal)) {
-            reporter$operation_completed(summary, output_paths = paths,
-                output_dir = result@meta$export_dir)
-        } else {
-            reporter$operation_waiting(summary, output_paths = paths,
-                output_dir = result@meta$export_dir)
-        }
-        result
-    }, interrupt = function(e) {
-        message <- sprintf("%s was cancelled.", shift__task_label(task))
-        try(shift__step_finish(opened, step_id, "cancelled",
-            last_error = message), silent = TRUE)
-        try(shift__job_update(opened, job_id, status = "cancelled",
-            completed_at = store__now(), exit_code = 130L,
-            last_error = message), silent = TRUE)
-        try(shift__run_finish(opened, run_id, "cancelled",
-            current_stage = task, last_error = message), silent = TRUE)
-        try(shift__run_event(opened, run_id, task, "cancelled", message,
-            details = list(phase = "operation", stage = task,
-                step_id = step_id, outcome = "cancelled"),
-            step_id = step_id), silent = TRUE)
-        reporter$operation_failed(message, cancelled = TRUE)
-        stop(shift__task_condition(e, run_id, step_id, opened$path))
-    }, error = function(e) {
-        message <- conditionMessage(e)
-        try(shift__step_finish(opened, step_id, "failed",
-            last_error = message), silent = TRUE)
-        try(shift__job_update(opened, job_id, status = "failed",
-            completed_at = store__now(), exit_code = 1L,
-            last_error = message), silent = TRUE)
-        try(shift__run_finish(opened, run_id, "failed",
-            current_stage = task, last_error = message), silent = TRUE)
-        try(shift__run_event(opened, run_id, task, "failed", message,
-            details = list(phase = "operation", stage = task,
-                step_id = step_id, outcome = "failed", cause = message),
-            step_id = step_id), silent = TRUE)
-        reporter$operation_failed(message, details = list(cause = message))
-        stop(shift__task_condition(e, run_id, step_id, opened$path))
-    })
+    execution__run(
+        execution,
+        tryCatch(
+            {
+                reporter$check_cancel(task)
+                result <- code(reporter, opened)
+                shift_assert_stage(result)
+                result@ids <- utils::modifyList(
+                    result@ids,
+                    list(run_id = run_id, step_id = step_id)
+                )
+                artifact_status <- shift_status(result)
+                step_status <- if (
+                    artifact_status %in% c("partial", "blocked", "failed")
+                ) {
+                    "partial"
+                } else {
+                    "completed"
+                }
+                session_id <- store__chr1(result@ids$session_id)
+                detached <- identical(task, "download") &&
+                    isTRUE(spec$background) &&
+                    !is.na(session_id) &&
+                    nzchar(session_id)
+                if (isTRUE(detached)) {
+                    # The Downloader owns the long-running process after registration.
+                    # Keep this step open until shift_run_get() reconciles its durable
+                    # session instead of claiming that the next stage is ready.
+                    shift__step_update(
+                        opened,
+                        step_id,
+                        status = "running",
+                        output_stage_json = shift__spec_json(shift__stage_ref(
+                            result
+                        )),
+                        completed_at = as.POSIXct(NA, tz = "UTC"),
+                        last_error = NA_character_
+                    )
+                } else {
+                    shift__step_finish(
+                        opened,
+                        step_id,
+                        step_status,
+                        output_stage = result
+                    )
+                }
+                ids <- result@ids
+                run_updates <- list()
+                # Each step owns only part of the artifact graph. Preserve identifiers
+                # written by upstream steps instead of replacing them with missing
+                # fields from the current result object.
+                if (!is.null(ids$query_id)) {
+                    run_updates$query_id <- store__chr1(ids$query_id)
+                }
+                if (!is.null(ids$plan_id)) {
+                    run_updates$plan_ids_json <-
+                        shift__spec_json(as.character(ids$plan_id))
+                }
+                if (!is.null(ids$morph_id)) {
+                    run_updates$morph_id <- store__chr1(ids$morph_id)
+                }
+                if (!is.null(result@meta$export_dir)) {
+                    run_updates$output_dir <- store__chr1(
+                        result@meta$export_dir
+                    )
+                }
+                # An empty catalog is not a hand-off point: extraction cannot do useful
+                # work without a File record. Other partial stages may still contain a
+                # complete subset and therefore retain the established continuation
+                # semantics.
+                empty_collection <- identical(task, "collect") &&
+                    as.integer(shift_coalesce(result@meta$file_count, 0L)) < 1L
+                terminal <- isTRUE(auto_complete) || isTRUE(empty_collection)
+                if (isTRUE(detached)) {
+                    do.call(
+                        shift__run_update,
+                        c(
+                            list(
+                                store = opened,
+                                run_id = run_id,
+                                status = "running",
+                                current_stage = task,
+                                last_error = NA_character_
+                            ),
+                            run_updates
+                        )
+                    )
+                } else if (isTRUE(terminal)) {
+                    final_status <- shift__run_completion_status(opened, run_id)
+                    do.call(
+                        shift__run_finish,
+                        c(
+                            list(
+                                store = opened,
+                                run_id = run_id,
+                                status = final_status,
+                                current_stage = task,
+                                last_error = NA_character_
+                            ),
+                            run_updates
+                        )
+                    )
+                } else {
+                    do.call(
+                        shift__run_update,
+                        c(
+                            list(
+                                store = opened,
+                                run_id = run_id,
+                                status = "waiting",
+                                current_stage = task,
+                                last_error = NA_character_
+                            ),
+                            run_updates
+                        )
+                    )
+                }
+                summary <- shift__task_summary(task, result)
+                paths <- shift__task_output_paths(result)
+                event_status <- if (isTRUE(detached)) {
+                    "running"
+                } else if (isTRUE(terminal)) {
+                    step_status
+                } else {
+                    "waiting"
+                }
+                shift__run_event(
+                    opened,
+                    run_id,
+                    task,
+                    event_status,
+                    summary,
+                    details = list(
+                        phase = "operation",
+                        stage = task,
+                        stage_sequence = sequence$sequence,
+                        step_id = step_id,
+                        outcome = if (isTRUE(detached)) {
+                            "running"
+                        } else {
+                            step_status
+                        }
+                    ),
+                    step_id = step_id
+                )
+                if (isTRUE(detached)) {
+                    reporter$operation_detached(
+                        summary,
+                        output_paths = paths,
+                        output_dir = result@meta$export_dir
+                    )
+                } else if (isTRUE(empty_collection)) {
+                    reporter$operation_partial(
+                        summary,
+                        output_paths = paths,
+                        output_dir = result@meta$export_dir
+                    )
+                } else if (isTRUE(terminal)) {
+                    reporter$operation_completed(
+                        summary,
+                        output_paths = paths,
+                        output_dir = result@meta$export_dir
+                    )
+                } else {
+                    reporter$operation_waiting(
+                        summary,
+                        output_paths = paths,
+                        output_dir = result@meta$export_dir
+                    )
+                }
+                result
+            },
+            interrupt = function(e) {
+                message <- sprintf("%s was cancelled.", shift__task_label(task))
+                try(
+                    shift__step_finish(
+                        opened,
+                        step_id,
+                        "cancelled",
+                        last_error = message
+                    ),
+                    silent = TRUE
+                )
+                try(
+                    shift__run_finish(
+                        opened,
+                        run_id,
+                        "cancelled",
+                        current_stage = task,
+                        last_error = message
+                    ),
+                    silent = TRUE
+                )
+                try(
+                    shift__run_event(
+                        opened,
+                        run_id,
+                        task,
+                        "cancelled",
+                        message,
+                        details = list(
+                            phase = "operation",
+                            stage = task,
+                            step_id = step_id,
+                            outcome = "cancelled"
+                        ),
+                        step_id = step_id
+                    ),
+                    silent = TRUE
+                )
+                reporter$operation_failed(message, cancelled = TRUE)
+                stop(shift__task_condition(e, run_id, step_id, opened$path))
+            },
+            error = function(e) {
+                message <- conditionMessage(e)
+                cancelled <- inherits(e, "epwshiftr_shift_cancelled")
+                outcome <- if (cancelled) "cancelled" else "failed"
+                try(
+                    shift__step_finish(
+                        opened,
+                        step_id,
+                        outcome,
+                        last_error = message
+                    ),
+                    silent = TRUE
+                )
+                try(
+                    shift__run_finish(
+                        opened,
+                        run_id,
+                        outcome,
+                        current_stage = task,
+                        last_error = message
+                    ),
+                    silent = TRUE
+                )
+                try(
+                    shift__run_event(
+                        opened,
+                        run_id,
+                        task,
+                        outcome,
+                        message,
+                        details = list(
+                            phase = "operation",
+                            stage = task,
+                            step_id = step_id,
+                            outcome = outcome,
+                            cause = message
+                        ),
+                        step_id = step_id
+                    ),
+                    silent = TRUE
+                )
+                reporter$operation_failed(
+                    message,
+                    cancelled = cancelled,
+                    details = list(cause = message)
+                )
+                stop(shift__task_condition(e, run_id, step_id, opened$path))
+            }
+        )
+    )
 }
 
 # Mark a successful intermediate stage as the intentional endpoint of its run.
@@ -2940,6 +3088,17 @@ shift_run <- function(x, background = FALSE, ui = shift_ui(), ...) {
             ui = ui
         ))
     }
+    shift__run_one(x, background = background, ui = ui, ...)
+}
+
+# Execute one plan, optionally owned by a shared batch coordinator.
+shift__run_one <- function(
+    x,
+    background = FALSE,
+    ui = shift_ui(),
+    execution = NULL,
+    ...
+) {
     if (!S7::S7_inherits(x, ShiftPlan)) {
         cli::cli_abort(
             "{.fn shift_run} expects a {.cls ShiftPlan} or {.cls ShiftBatch}."
@@ -2964,47 +3123,67 @@ shift_run <- function(x, background = FALSE, ui = shift_ui(), ...) {
             if (status %in% c("completed", "queued", "running", "stopping")) {
                 return(existing)
             }
-            return(shift_resume(
+            return(shift__resume_one(
                 existing,
                 background = background,
-                ui = ui
+                ui = ui,
+                execution = execution
             ))
         }
     }
     run_id <- shift__run_register(x)
     store <- shift_store(x, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
-    mode <- if (isTRUE(background)) "process" else "foreground"
-    job <- shift__job_create(store, run_id, mode = mode, ui = ui)
-    job_id <- job$job_id[[1L]]
+    shift__start_plan(x, store, run_id, background, ui, execution, ...)
+}
+
+# Register and execute one plan attempt for both initial runs and recovery.
+# Public dispatchers retain their return types; a batch supplies only its owner.
+shift__start_plan <- function(
+    plan,
+    store,
+    run_id,
+    background,
+    ui,
+    execution = NULL,
+    ...
+) {
+    job <- shift__job_create(
+        store,
+        run_id,
+        mode = if (background) "process" else "foreground",
+        ui = ui
+    )
+    context <- execution__context(store$path, job, store, execution)
     reporter <- shift__reporter(
         ui,
         store = store,
         run_id = run_id,
-        job_id = job_id,
-        background = background
+        job_id = context$id,
+        background = background,
+        execution = context
     )
-    reporter$run_started(x, run_id, background = background)
-    shift_batch__register_child(store, run_id)
-
-    if (isTRUE(background)) {
-        # Materialize the queued handle before releasing DuckDB. Reopening the
-        # manifest after launch would race the detached worker for DuckDB's
-        # exclusive process lock and could make an otherwise valid job fail.
-        store_path <- store$path
-        log_path <- job$log_path[[1L]]
+    on.exit(reporter$close(), add = TRUE)
+    reporter$run_started(plan, run_id, background = background)
+    shift_batch__register_child(store, run_id, execution)
+    if (background) {
+        # Capture the handle before releasing DuckDB; reopening it after launch
+        # would race the detached worker's exclusive process lock.
         handle <- shift__run_handle(store, run_id)
+        store_path <- store$path
         store$close()
-        shift__launch_job(store_path, run_id, job_id, log_path)
+        shift__launch_job(store_path, run_id, context$id, job$log_path[[1L]])
         return(handle)
     }
-
-    shift__plan_run(
-        x,
-        run_id = run_id,
-        job_id = job_id,
-        reporter = reporter,
-        ...
+    execution__run(
+        context,
+        shift__plan_run(
+            plan,
+            run_id = run_id,
+            job_id = context$id,
+            reporter = reporter,
+            ...
+        )
     )
 }
 
@@ -3371,6 +3550,17 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
     if (S7::S7_inherits(x, ShiftBatch)) {
         return(shift_batch__resume(x, background = background, ui = ui))
     }
+    shift__resume_one(x, store, background, ui)
+}
+
+# Resume one durable task with the same execution context as a fresh task.
+shift__resume_one <- function(
+    x,
+    store = NULL,
+    background = FALSE,
+    ui = shift_ui(),
+    execution = NULL
+) {
     run <- if (S7::S7_inherits(x, ShiftRun)) {
         shift_refresh(x)
     } else if (S7::S7_inherits(x, ShiftStage)) {
@@ -3494,37 +3684,13 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
         "running",
         "Workflow resume requested."
     )
-    job <- shift__job_create(
+    shift__start_plan(
+        plan,
         run_store,
         run@ids$run_id,
-        mode = if (isTRUE(background)) "process" else "foreground",
-        ui = ui
-    )
-    job_id <- job$job_id[[1L]]
-    reporter <- shift__reporter(
+        background,
         ui,
-        store = run_store,
-        run_id = run@ids$run_id,
-        job_id = job_id,
-        background = background
-    )
-    reporter$run_started(plan, run@ids$run_id, background = background)
-    shift_batch__register_child(run_store, run@ids$run_id)
-    if (isTRUE(background)) {
-        # Capture the new attempt before launch so the parent never reopens and
-        # races the detached worker for DuckDB's process-level write lock.
-        store_path <- run_store$path
-        log_path <- job$log_path[[1L]]
-        handle <- shift__run_handle(run_store, run@ids$run_id)
-        run_store$close()
-        shift__launch_job(store_path, run@ids$run_id, job_id, log_path)
-        return(handle)
-    }
-    shift__plan_run(
-        plan,
-        run_id = run@ids$run_id,
-        job_id = job_id,
-        reporter = reporter,
+        execution,
         resume_existing = TRUE
     )
 }
@@ -4012,8 +4178,13 @@ shift__datasets_attach_run <- function(result, stage) {
 
 #' @rdname shift_api
 #' @export
-shift_datasets <- function(x, all = TRUE, limit = FALSE, store = NULL,
-                           ui = NULL) {
+shift_datasets <- function(
+    x,
+    all = TRUE,
+    limit = FALSE,
+    store = NULL,
+    ui = NULL
+) {
     shift_assert_stage(x)
     checkmate::assert_flag(all)
 
@@ -4043,9 +4214,15 @@ shift_datasets <- function(x, all = TRUE, limit = FALSE, store = NULL,
             details = list(unit_type = "catalog", catalog_role = "Dataset",
                 node = node))
         result <- shift__with_query_reporter(
-            reporter, node, "Dataset",
-            query$collect(type = "Dataset", all = all, limit = limit,
-                progress = FALSE)
+            reporter,
+            query,
+            "Dataset",
+            query$collect(
+                type = "Dataset",
+                all = all,
+                limit = limit,
+                progress = FALSE
+            )
         )
         reporter$unit_completed(sprintf("Indexed %d Dataset catalog records",
             result$count()), current = 1L, total = unit_total,
@@ -4726,8 +4903,16 @@ shift_as_esg_query <- function(x) {
 
 # workflow methods ------------------------------------------------------------
 
-S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*", all = TRUE, limit = FALSE,
-                                                    label = NULL, ui = NULL, ...) {
+S7::method(shift_collect, ShiftRequest) <- function(
+    x,
+    store = NULL,
+    fields = "*",
+    all = TRUE,
+    limit = FALSE,
+    label = NULL,
+    ui = NULL,
+    ...
+) {
     reporter <- shift__current_reporter()
     dots <- list(...)
     if ("progress" %in% names(dots)) {
@@ -4736,7 +4921,12 @@ S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*
             "i" = "Use `ui = shift_ui(progress = ...)`; low-level {.cls EsgQuery} collection still accepts native progress controls."
         ))
     }
-    checkmate::assert_character(fields, any.missing = FALSE, min.len = 1L, null.ok = TRUE)
+    checkmate::assert_character(
+        fields,
+        any.missing = FALSE,
+        min.len = 1L,
+        null.ok = TRUE
+    )
     checkmate::assert_flag(all)
     checkmate::assert_string(label, null.ok = TRUE)
     if (is.null(store)) {
@@ -4753,9 +4943,22 @@ S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*
                 node = node))
     }
     files <- shift__with_query_reporter(
-        reporter, node, "File",
-        do.call(datasets$collect, c(list(type = "File", fields = fields,
-            all = TRUE, limit = NULL, progress = FALSE), dots))
+        reporter,
+        datasets,
+        "File",
+        do.call(
+            datasets$collect,
+            c(
+                list(
+                    type = "File",
+                    fields = fields,
+                    all = TRUE,
+                    limit = NULL,
+                    progress = FALSE
+                ),
+                dots
+            )
+        )
     )
 
     file_time <- shift_coalesce(x@meta$options$file_time, x@meta$time)
@@ -4771,7 +4974,11 @@ S7::method(shift_collect, ShiftRequest) <- function(x, store = NULL, fields = "*
     }
     query_id <- store$add_files(files, label = label)
     file_dt <- files$to_data_table()
-    variables <- if ("variable_id" %in% names(file_dt)) unique(file_dt$variable_id) else character()
+    variables <- if ("variable_id" %in% names(file_dt)) {
+        unique(file_dt$variable_id)
+    } else {
+        character()
+    }
     variables <- variables[!is.na(variables) & nzchar(variables)]
 
     if (!is.null(reporter)) {
@@ -6295,8 +6502,13 @@ shift__run_diagnostics_record <- function(store, run_id, diagnostics) {
 
 # Create one durable execution attempt for a run. Foreground attempts use the
 # current PID; background attempts fill their PID when the worker starts.
-shift__job_create <- function(store, run_id, mode = c("foreground", "process"),
-                              ui = shift_ui(), step_id = NULL) {
+shift__job_create <- function(
+    store,
+    run_id,
+    mode = c("foreground", "process"),
+    ui = shift_ui(),
+    step_id = NULL
+) {
     mode <- match.arg(mode)
     if (!S7::S7_inherits(ui, ShiftUiOptions)) {
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
@@ -6307,7 +6519,10 @@ shift__job_create <- function(store, run_id, mode = c("foreground", "process"),
     attempts <- jobs[jobs[["run_id"]] == wanted_run_id]$attempt
     attempt <- if (length(attempts)) max(attempts, na.rm = TRUE) + 1L else 1L
     now <- store__now()
-    job_id <- paste0("shift-job-", substr(store__hash(run_id, attempt, now, stats::runif(1L)), 1L, 20L))
+    job_id <- paste0(
+        "shift-job-",
+        substr(store__hash(run_id, attempt, now, stats::runif(1L)), 1L, 20L)
+    )
     log_dir <- file.path(store$path, "logs", "shift")
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
     row <- data.frame(
@@ -6317,19 +6532,39 @@ shift__job_create <- function(store, run_id, mode = c("foreground", "process"),
         attempt = as.integer(attempt),
         mode = mode,
         status = if (identical(mode, "process")) "queued" else "running",
-        pid = if (identical(mode, "foreground")) as.integer(Sys.getpid()) else NA_integer_,
-        hostname = unname(shift_coalesce(Sys.info()[["nodename"]], "localhost")),
-        log_path = if (identical(mode, "process")) file.path(log_dir, paste0(job_id, ".log")) else NA_character_,
+        pid = if (identical(mode, "foreground")) {
+            as.integer(Sys.getpid())
+        } else {
+            NA_integer_
+        },
+        hostname = unname(shift_coalesce(
+            Sys.info()[["nodename"]],
+            "localhost"
+        )),
+        log_path = if (identical(mode, "process")) {
+            file.path(log_dir, paste0(job_id, ".log"))
+        } else {
+            NA_character_
+        },
         ui_json = shift__spec_json(list(
             progress = ui@progress,
             detail = ui@detail,
             motion = ui@motion,
             refresh = ui@refresh,
-            heartbeat = ui@heartbeat
+            heartbeat = ui@heartbeat,
+            execution = execution__options()
         )),
         cancel_requested_at = as.POSIXct(NA, tz = "UTC"),
-        started_at = if (identical(mode, "foreground")) now else as.POSIXct(NA, tz = "UTC"),
-        heartbeat_at = if (identical(mode, "foreground")) now else as.POSIXct(NA, tz = "UTC"),
+        started_at = if (identical(mode, "foreground")) {
+            now
+        } else {
+            as.POSIXct(NA, tz = "UTC")
+        },
+        heartbeat_at = if (identical(mode, "foreground")) {
+            now
+        } else {
+            as.POSIXct(NA, tz = "UTC")
+        },
         completed_at = as.POSIXct(NA, tz = "UTC"),
         exit_code = NA_integer_,
         last_error = NA_character_,
@@ -6339,7 +6574,10 @@ shift__job_create <- function(store, run_id, mode = c("foreground", "process"),
     )
     # A resumed attempt owns a new cancellation boundary; remove any marker
     # left by the preceding failed or cancelled attempt before registering it.
-    unlink(shift__live_path(store$path, run_id, suffix = "cancel.json"), force = TRUE)
+    unlink(
+        shift__live_path(store$path, run_id, suffix = "cancel.json"),
+        force = TRUE
+    )
     private$append_new_rows("shift_run_job", row, "job_id")
     shift__live_snapshot_write(store, run_id)
     row
@@ -6488,24 +6726,16 @@ shift__validate_background_plan <- function(plan) {
 # Build the detached Rscript command without serializing live R objects into
 # the child process; the durable run and job IDs are its only inputs.
 shift__launch_job <- function(store_path, run_id, job_id, log_path) {
-    launcher <- getOption("epwshiftr.shift.launcher", NULL)
-    if (is.function(launcher)) {
-        return(launcher(
-            store_path = store_path,
-            run_id = run_id,
-            job_id = job_id,
-            log_path = log_path
-        ))
-    }
-    expr <- sprintf(
-        "library(epwshiftr); epwshiftr:::shift__job_main(store_path = %s, run_id = %s, job_id = %s)",
-        downloader__r_literal(store_path),
-        downloader__r_literal(run_id),
-        downloader__r_literal(job_id)
-    )
     status <- tryCatch(
-        system2(downloader__rscript(), c("-e", expr), stdout = log_path,
-            stderr = log_path, wait = FALSE),
+        execution__launch(
+            "shift__job_main",
+            list(
+                store_path = store_path,
+                run_id = run_id,
+                job_id = job_id
+            ),
+            log_path
+        ),
         error = function(e) e
     )
     if (inherits(status, "error")) {
@@ -6565,11 +6795,6 @@ shift__job_main <- function(store_path, run_id, job_id) {
         refresh = as.numeric(ui_spec$refresh),
         heartbeat = as.numeric(ui_spec$heartbeat)
     )
-    now <- store__now()
-    shift__job_update(store, job_id,
-        status = "running", pid = as.integer(Sys.getpid()),
-        hostname = unname(shift_coalesce(Sys.info()[["nodename"]], "localhost")),
-        started_at = now, heartbeat_at = now, last_error = NA_character_)
     shift__run_update(store, run_id, status = "running",
         completed_at = as.POSIXct(NA, tz = "UTC"), last_error = NA_character_)
 
@@ -6585,11 +6810,27 @@ shift__job_main <- function(store_path, run_id, job_id) {
         # Resume always reuses the first successful node/member/grid selection.
         plan@meta$resolved <- jsonlite::fromJSON(resolved, simplifyVector = TRUE)
     }
-    reporter <- shift__reporter(ui, store = store, run_id = run_id,
-        job_id = job_id, background = TRUE)
+    context <- execution__context(store_path, job, store)
+    reporter <- shift__reporter(
+        ui,
+        store = store,
+        run_id = run_id,
+        job_id = job_id,
+        background = TRUE,
+        execution = context
+    )
+    on.exit(reporter$close(), add = TRUE)
     reporter$run_started(plan, run_id, background = TRUE)
-    shift__plan_run(plan, run_id = run_id, job_id = job_id,
-        reporter = reporter, resume_existing = job$attempt[[1L]] > 1L)
+    execution__run(
+        context,
+        shift__plan_run(
+            plan,
+            run_id = run_id,
+            job_id = job_id,
+            reporter = reporter,
+            resume_existing = job$attempt[[1L]] > 1L
+        )
+    )
     invisible(TRUE)
 }
 
@@ -8802,15 +9043,7 @@ shift__resolve_file_services <- function(
         files@ids$query_id,
         result_type = "File"
     )
-    resolve <- getOption(
-        "epwshiftr.shift.file_service_resolution",
-        query_result__resolve_file_services
-    )
-    if (!is.function(resolve)) {
-        cli::cli_abort(
-            "Configured ESGF file-service resolver must be a function."
-        )
-    }
+    resolve <- query_result__resolve_file_services
     resolved <- resolve(
         result,
         index_node = NULL,
@@ -8883,9 +9116,14 @@ shift__report_node <- function(reporter, node) {
 
 # Install a query callback only for the duration of one catalog collection.
 # This keeps low-level EsgQuery APIs independent of workflow reporter classes.
-shift__with_query_reporter <- function(reporter, node, phase, expr) {
+shift__with_query_reporter <- function(reporter, query, phase, expr) {
     if (is.null(reporter)) {
         return(force(expr))
+    }
+    node <- if (inherits(query, "EsgQuery")) {
+        query$index_node()
+    } else {
+        priv(query)$index_node
     }
     started <- as.numeric(Sys.time())
     last_response <- NULL
@@ -8926,8 +9164,10 @@ shift__with_query_reporter <- function(reporter, node, phase, expr) {
         )
         invisible(TRUE)
     }
-    old <- options(epwshiftr.query.progress_callback = callback)
-    on.exit(options(old), add = TRUE)
+    query_private <- priv(query)
+    old <- query_private$progress_callback
+    query_private$progress_callback <- callback
+    on.exit(query_private$progress_callback <- old, add = TRUE)
     force(expr)
 }
 
@@ -9081,8 +9321,12 @@ shift__import_shared_inputs <- function(inputs, store) {
 
 # Collect both catalogs from one index node and fail over in the declared order;
 # catalogs from different nodes are never merged.
-shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
-                                           job_id = NULL) {
+shift__collect_resolved_inputs <- function(
+    plan,
+    run_id,
+    reporter = NULL,
+    job_id = NULL
+) {
     store <- shift_store(plan, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     wanted_run_id <- run_id
@@ -9155,7 +9399,11 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
     }
 
     climate <- plan@meta$climate
-    nodes <- if (is.null(climate)) plan@meta$request@meta$options$index_node else climate@index_nodes
+    nodes <- if (is.null(climate)) {
+        plan@meta$request@meta$options$index_node
+    } else {
+        climate@index_nodes
+    }
     if (is.null(nodes) || !length(nodes)) {
         nodes <- INDEX_NODES[["ORNL"]]
     }
@@ -9170,7 +9418,11 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
             "future + reference"
         }
         node_future_files <- NA_integer_
-        node_reference_files <- if (is.null(reference_request_for_node)) 0L else NA_integer_
+        node_reference_files <- if (is.null(reference_request_for_node)) {
+            0L
+        } else {
+            NA_integer_
+        }
         if (!is.null(reporter)) {
             reporter$check_cancel("resolve")
             reporter$unit_started(
@@ -9183,100 +9435,131 @@ shift__collect_resolved_inputs <- function(plan, run_id, reporter = NULL,
                 details = list(unit_type = "catalog", node = node,
                     catalog_role = "future"))
         }
-        attempt <- tryCatch({
-            request <- shift__request_at_node(plan@meta$request, node)
-            collect_args <- utils::modifyList(
-                list(store = store, fields = fields, all = TRUE, limit = FALSE,
-                    label = "future-epw"),
-                plan@meta$collect[setdiff(names(plan@meta$collect), "fields")]
-            )
-            files <- shift__with_query_reporter(
-                reporter, node, "future",
-                shift__do_call_with_reporter(reporter, shift_collect,
-                    c(list(request), collect_args))
-            )
-            reference_request <- reference_request_for_node
-            reference_files <- if (is.null(reference_request)) {
-                NULL
-            } else {
-                if (!is.null(reporter)) {
-                    reporter$notice("Collecting catalog",
-                        details = list(unit_type = "catalog", node = node,
-                            catalog_role = "reference"))
-                }
-                collected_reference <- shift__with_query_reporter(
-                    reporter, node, "reference",
-                    shift__do_call_with_reporter(reporter, shift_collect, c(
+        attempt <- tryCatch(
+            {
+                request <- shift__request_at_node(plan@meta$request, node)
+                collect_args <- utils::modifyList(
+                    list(
+                        store = store,
+                        fields = fields,
+                        all = TRUE,
+                        limit = FALSE,
+                        label = "future-epw"
+                    ),
+                    plan@meta$collect[setdiff(
+                        names(plan@meta$collect),
+                        "fields"
+                    )]
+                )
+                files <- shift__do_call_with_reporter(
+                    reporter,
+                    shift_collect,
+                    c(list(request), collect_args)
+                )
+                reference_request <- reference_request_for_node
+                reference_files <- if (is.null(reference_request)) {
+                    NULL
+                } else {
+                    if (!is.null(reporter)) {
+                        reporter$notice(
+                            "Collecting catalog",
+                            details = list(
+                                unit_type = "catalog",
+                                node = node,
+                                catalog_role = "reference"
+                            )
+                        )
+                    }
+                    collected_reference <- shift__do_call_with_reporter(
+                        reporter,
+                        shift_collect,
+                        c(
                             list(reference_request),
-                            utils::modifyList(collect_args,
-                                list(label = "historical-reference"))
-                        ))
+                            utils::modifyList(
+                                collect_args,
+                                list(label = "historical-reference")
+                            )
+                        )
+                    )
+                    collected_reference
+                }
+                # Resolve the scientific identity before making network calls for
+                # individual file services. Batch children pin one model/member/
+                # grid, so this removes unrelated partitions and gap years first.
+                selection <- shift__resolve_cmip6_selection(
+                    plan,
+                    future_catalog = shift_file_catalog(
+                        store,
+                        files@ids$query_id
+                    ),
+                    reference_catalog = if (is.null(reference_files)) {
+                        NULL
+                    } else {
+                        shift_file_catalog(store, reference_files@ids$query_id)
+                    }
                 )
-                collected_reference
-            }
-            # Resolve the scientific identity before making network calls for
-            # individual file services. Batch children pin one model/member/
-            # grid, so this removes unrelated partitions and gap years first.
-            selection <- shift__resolve_cmip6_selection(
-                plan,
-                future_catalog = shift_file_catalog(store, files@ids$query_id),
-                reference_catalog = if (is.null(reference_files)) NULL else shift_file_catalog(store, reference_files@ids$query_id)
-            )
-            future_experiments <- if (is.null(plan@meta$climate)) {
-                plan@meta$request@meta$experiment
-            } else {
-                plan@meta$climate@scenarios
-            }
-            files <- shift__files_for_partitions(
-                files,
-                selection,
-                experiments = future_experiments,
-                years = unique(as.integer(plan@meta$periods$year)),
-                role = "future"
-            )
-            files <- shift__resolve_file_services(
-                files,
-                role = "future",
-                reporter = reporter,
-                refresh = plan@meta$control@refresh
-            )
-            node_future_files <- as.integer(files@meta$file_count)
-            if (!is.null(reference_files)) {
-                reference_files <- shift__files_for_partitions(
-                    reference_files,
+                future_experiments <- if (is.null(plan@meta$climate)) {
+                    plan@meta$request@meta$experiment
+                } else {
+                    plan@meta$climate@scenarios
+                }
+                files <- shift__files_for_partitions(
+                    files,
                     selection,
-                    experiments = plan@meta$reference@experiment,
-                    years = unique(as.integer(
-                        plan@meta$reference@periods$year
-                    )),
-                    role = "reference"
+                    experiments = future_experiments,
+                    years = unique(as.integer(plan@meta$periods$year)),
+                    role = "future"
                 )
-                reference_files <- shift__resolve_file_services(
-                    reference_files,
-                    role = "reference",
+                files <- shift__resolve_file_services(
+                    files,
+                    role = "future",
                     reporter = reporter,
                     refresh = plan@meta$control@refresh
                 )
-                node_reference_files <- as.integer(
-                    reference_files@meta$file_count
-                )
-            }
-            # Service repair can remove an unusable logical file. Re-run the
-            # same coverage kernel so only executable selections are pinned.
-            selection <- shift__resolve_cmip6_selection(
-                plan,
-                future_catalog = shift_file_catalog(
-                    store,
-                    files@ids$query_id
-                ),
-                reference_catalog = if (is.null(reference_files)) {
-                    NULL
-                } else {
-                    shift_file_catalog(store, reference_files@ids$query_id)
+                node_future_files <- as.integer(files@meta$file_count)
+                if (!is.null(reference_files)) {
+                    reference_files <- shift__files_for_partitions(
+                        reference_files,
+                        selection,
+                        experiments = plan@meta$reference@experiment,
+                        years = unique(as.integer(
+                            plan@meta$reference@periods$year
+                        )),
+                        role = "reference"
+                    )
+                    reference_files <- shift__resolve_file_services(
+                        reference_files,
+                        role = "reference",
+                        reporter = reporter,
+                        refresh = plan@meta$control@refresh
+                    )
+                    node_reference_files <- as.integer(
+                        reference_files@meta$file_count
+                    )
                 }
-            )
-            list(files = files, reference_files = reference_files, selection = selection, index_node = node)
-        }, error = function(e) e)
+                # Service repair can remove an unusable logical file. Re-run the
+                # same coverage kernel so only executable selections are pinned.
+                selection <- shift__resolve_cmip6_selection(
+                    plan,
+                    future_catalog = shift_file_catalog(
+                        store,
+                        files@ids$query_id
+                    ),
+                    reference_catalog = if (is.null(reference_files)) {
+                        NULL
+                    } else {
+                        shift_file_catalog(store, reference_files@ids$query_id)
+                    }
+                )
+                list(
+                    files = files,
+                    reference_files = reference_files,
+                    selection = selection,
+                    index_node = node
+                )
+            },
+            error = function(e) e
+        )
         if (!inherits(attempt, "error")) {
             if (!is.null(reporter)) {
                 selected_members <- paste(unique(
@@ -10235,8 +10518,14 @@ shift__cancelled_interrupt <- function(message, run_id, store, stage) {
 
 # Execute a persisted ShiftPlan through the existing stage primitives while
 # enforcing task-level selection, coverage, and completion contracts.
-shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
-                            resume_existing = FALSE, ...) {
+shift__plan_run <- function(
+    x,
+    run_id,
+    job_id = NULL,
+    reporter = NULL,
+    resume_existing = FALSE,
+    ...
+) {
     meta <- x@meta
     control <- meta$control
     store <- shift_store(x, create = TRUE)
@@ -10255,7 +10544,7 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
     stage_index <- 0L
     next_stage <- function(stage, message) {
         stage_index <<- stage_index + 1L
-        shift__job_check_cancel(store, run_id, job_id, stage)
+        reporter$check_cancel(stage)
         shift__run_transition(store, run_id, stage, message,
             reporter = reporter, current = stage_index, total = stage_total)
     }
@@ -10264,454 +10553,663 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
     shift__run_update(store, run_id, status = "running",
         completed_at = as.POSIXct(NA, tz = "UTC"), last_error = NA_character_)
 
-    result <- tryCatch({
-        current_stage <- next_stage("resolve", "Resolving complete CMIP6 workflow inputs.")
-        resolved_inputs <- shift__collect_resolved_inputs(x, run_id,
-            reporter = reporter, job_id = job_id)
-        selection <- data.table::as.data.table(resolved_inputs$selection)
-        selected_partitions <- shift__format_cmip6_partitions(selection)
-        cases <- shift__resolved_expected_cases(x, selection)
-        resolved <- list(
-            index_node = resolved_inputs$index_node,
-            selection = as.data.frame(selection),
-            member = unique(selection$variant_label),
-            grid = unique(selection$grid_label),
-            partitions = selected_partitions
-        )
-        x@meta$resolved <- resolved
-        future_query_id <- resolved_inputs$files@ids$query_id
-        reference_query_id <- if (is.null(resolved_inputs$reference_files)) NA_character_ else resolved_inputs$reference_files@ids$query_id
-        shift__run_update(
-            store,
-            run_id,
-            resolved_spec_json = shift__spec_json(resolved),
-            query_id = future_query_id,
-            reference_query_id = reference_query_id
-        )
-        shift__run_cases_write(store, run_id, cases)
-        reporter$cases_updated(cases)
-        resolved_node_label <- shift__report_node(reporter,
-            resolved_inputs$index_node)
-        reporter$stage_completed(sprintf(
-            "Resolved %s with member %s and partitions %s.",
-            resolved_node_label,
-            paste(unique(selection$variant_label), collapse = ", "),
-            selected_partitions
-        ), details = list(
-            node = resolved_inputs$index_node,
-            future_files = as.integer(resolved_inputs$files@meta$file_count),
-            reference_files = if (is.null(resolved_inputs$reference_files)) {
-                0L
-            } else {
-                as.integer(resolved_inputs$reference_files@meta$file_count)
-            },
-            member = unique(selection$variant_label),
-            grid = unique(selection$grid_label),
-            partitions = selected_partitions
-        ))
-
-        future_stage <- resolved_inputs$files
-        reference_stage <- resolved_inputs$reference_files
-        if (identical(control@download, "always")) {
-            current_stage <- next_stage("download", "Downloading selected CMIP6 source files.")
-            future_stage <- shift__files_for_partitions(
-                future_stage, selection,
-                experiments = if (is.null(meta$climate)) {
-                    meta$request@meta$experiment
-                } else {
-                    meta$climate@scenarios
-                },
-                years = unique(as.integer(meta$periods$year)),
-                role = "future"
+    result <- tryCatch(
+        {
+            current_stage <- next_stage(
+                "resolve",
+                "Resolving complete CMIP6 workflow inputs."
             )
-            if (!is.null(reference_stage)) {
-                reference_stage <- shift__files_for_partitions(
-                    reference_stage, selection,
-                    experiments = meta$reference@experiment,
-                    years = unique(as.integer(meta$reference@periods$year)),
-                    role = "reference"
+            resolved_inputs <- shift__collect_resolved_inputs(
+                x,
+                run_id,
+                reporter = reporter,
+                job_id = job_id
+            )
+            selection <- data.table::as.data.table(resolved_inputs$selection)
+            selected_partitions <- shift__format_cmip6_partitions(selection)
+            cases <- shift__resolved_expected_cases(x, selection)
+            resolved <- list(
+                index_node = resolved_inputs$index_node,
+                selection = as.data.frame(selection),
+                member = unique(selection$variant_label),
+                grid = unique(selection$grid_label),
+                partitions = selected_partitions
+            )
+            x@meta$resolved <- resolved
+            future_query_id <- resolved_inputs$files@ids$query_id
+            reference_query_id <- if (
+                is.null(resolved_inputs$reference_files)
+            ) {
+                NA_character_
+            } else {
+                resolved_inputs$reference_files@ids$query_id
+            }
+            shift__run_update(
+                store,
+                run_id,
+                resolved_spec_json = shift__spec_json(resolved),
+                query_id = future_query_id,
+                reference_query_id = reference_query_id
+            )
+            shift__run_cases_write(store, run_id, cases)
+            reporter$cases_updated(cases)
+            resolved_node_label <- shift__report_node(
+                reporter,
+                resolved_inputs$index_node
+            )
+            reporter$stage_completed(
+                sprintf(
+                    "Resolved %s with member %s and partitions %s.",
+                    resolved_node_label,
+                    paste(unique(selection$variant_label), collapse = ", "),
+                    selected_partitions
+                ),
+                details = list(
+                    node = resolved_inputs$index_node,
+                    future_files = as.integer(
+                        resolved_inputs$files@meta$file_count
+                    ),
+                    reference_files = if (
+                        is.null(resolved_inputs$reference_files)
+                    ) {
+                        0L
+                    } else {
+                        as.integer(
+                            resolved_inputs$reference_files@meta$file_count
+                        )
+                    },
+                    member = unique(selection$variant_label),
+                    grid = unique(selection$grid_label),
+                    partitions = selected_partitions
+                )
+            )
+
+            future_stage <- resolved_inputs$files
+            reference_stage <- resolved_inputs$reference_files
+            if (identical(control@download, "always")) {
+                current_stage <- next_stage(
+                    "download",
+                    "Downloading selected CMIP6 source files."
+                )
+                future_stage <- shift__files_for_partitions(
+                    future_stage,
+                    selection,
+                    experiments = if (is.null(meta$climate)) {
+                        meta$request@meta$experiment
+                    } else {
+                        meta$climate@scenarios
+                    },
+                    years = unique(as.integer(meta$periods$year)),
+                    role = "future"
+                )
+                if (!is.null(reference_stage)) {
+                    reference_stage <- shift__files_for_partitions(
+                        reference_stage,
+                        selection,
+                        experiments = meta$reference@experiment,
+                        years = unique(as.integer(meta$reference@periods$year)),
+                        role = "reference"
+                    )
+                }
+                download_args <- utils::modifyList(
+                    list(
+                        run = TRUE,
+                        background = FALSE,
+                        resume = resume,
+                        overwrite = overwrite,
+                        # The workflow reporter owns presentation. Native downloader
+                        # bars remain disabled while callbacks publish byte/file
+                        # metrics into the shared fixed status region.
+                        progress = FALSE
+                    ),
+                    meta$download
+                )
+                future_stage <- shift__do_call_with_reporter(
+                    reporter,
+                    shift_download,
+                    c(
+                        list(future_stage),
+                        utils::modifyList(
+                            download_args,
+                            list(session_label = "future")
+                        )
+                    )
+                )
+                if (!is.null(reference_stage)) {
+                    reference_stage <- shift__do_call_with_reporter(
+                        reporter,
+                        shift_download,
+                        c(
+                            list(reference_stage),
+                            utils::modifyList(
+                                download_args,
+                                list(session_label = "reference")
+                            )
+                        )
+                    )
+                }
+                reporter$stage_completed(
+                    "Downloaded selected CMIP6 source files."
                 )
             }
-            download_args <- utils::modifyList(
-                list(
-                    run = TRUE,
-                    background = FALSE,
-                    resume = resume,
-                    overwrite = overwrite,
-                    # The workflow reporter owns presentation. Native downloader
-                    # bars remain disabled while callbacks publish byte/file
-                    # metrics into the shared fixed status region.
-                    progress = FALSE
-                ),
-                meta$download
+
+            current_stage <- next_stage(
+                "extract_future",
+                "Extracting future climate data."
             )
-            future_stage <- shift__do_call_with_reporter(reporter,
-                shift_download, c(list(future_stage),
-                    utils::modifyList(download_args,
-                        list(session_label = "future"))))
-            if (!is.null(reference_stage)) {
-                reference_stage <- shift__do_call_with_reporter(reporter,
-                    shift_download, c(list(reference_stage),
-                        utils::modifyList(download_args,
-                            list(session_label = "reference"))))
+            future_experiments <- if (is.null(meta$climate)) {
+                meta$request@meta$experiment
+            } else {
+                meta$climate@scenarios
             }
-            reporter$stage_completed("Downloaded selected CMIP6 source files.")
-        }
-
-        current_stage <- next_stage("extract_future", "Extracting future climate data.")
-        future_experiments <- if (is.null(meta$climate)) {
-            meta$request@meta$experiment
-        } else {
-            meta$climate@scenarios
-        }
-        fallback <- if (identical(control@download, "never")) "error" else "auto"
-        extract_overrides <- meta$extract
-        climate <- shift__extract_selected_partitions(
-            future_stage,
-            selection = selection,
-            experiments = future_experiments,
-            site = meta$site,
-            periods = meta$periods,
-            role = "future",
-            time = shift__method_time_window(
-                meta$periods,
-                meta$recipe
-            ),
-            method = control@extraction_method,
-            fallback = fallback,
-            overwrite = overwrite,
-            resume = resume,
-            overrides = extract_overrides,
-            reporter = reporter
-        )
-        climate <- shift__derive_hurs_climate(
-            climate,
-            meta$recipe,
-            overwrite = overwrite,
-            resume = resume,
-            reporter = reporter
-        )
-        future_coverage <- shift_coverage(climate)
-        reporter$stage_completed(sprintf(
-            "Extracted future climate: %d/%d plan(s) complete.",
-            sum(future_coverage$complete %in% TRUE),
-            nrow(future_coverage)
-        ), details = list(
-            plans_completed = sum(future_coverage$complete %in% TRUE),
-            plans_total = nrow(future_coverage),
-            variables = length(unique(future_coverage$variable_id))
-        ))
-
-        reference_climate <- NULL
-        method_reference <- meta$reference
-        if (!is.null(reference_stage)) {
-            current_stage <- next_stage("extract_reference", "Extracting historical reference climate data.")
-            reference_spec <- method_reference
-            reference_climate <- shift__extract_selected_partitions(
-                reference_stage,
+            fallback <- if (identical(control@download, "never")) {
+                "error"
+            } else {
+                "auto"
+            }
+            extract_overrides <- meta$extract
+            climate <- shift__extract_selected_partitions(
+                future_stage,
                 selection = selection,
-                experiments = reference_spec@experiment,
+                experiments = future_experiments,
                 site = meta$site,
-                periods = reference_spec@periods,
-                role = "reference",
+                periods = meta$periods,
+                role = "future",
                 time = shift__method_time_window(
-                    reference_spec@periods,
+                    meta$periods,
                     meta$recipe
                 ),
                 method = control@extraction_method,
                 fallback = fallback,
                 overwrite = overwrite,
                 resume = resume,
-                overrides = reference_spec@extract,
+                overrides = extract_overrides,
                 reporter = reporter
             )
-            reference_climate <- shift__derive_hurs_climate(
-                reference_climate,
+            climate <- shift__derive_hurs_climate(
+                climate,
                 meta$recipe,
                 overwrite = overwrite,
                 resume = resume,
                 reporter = reporter
             )
-            method_reference <- reference_climate
-            extracted_reference_coverage <- shift_coverage(reference_climate)
-            reporter$stage_completed(sprintf(
-                "Extracted reference climate: %d/%d plan(s) complete.",
-                sum(extracted_reference_coverage$complete %in% TRUE),
-                nrow(extracted_reference_coverage)
-            ), details = list(
-                plans_completed = sum(extracted_reference_coverage$complete %in% TRUE),
-                plans_total = nrow(extracted_reference_coverage),
-                variables = length(unique(extracted_reference_coverage$variable_id))
-            ))
-        }
+            future_coverage <- shift_coverage(climate)
+            reporter$stage_completed(
+                sprintf(
+                    "Extracted future climate: %d/%d plan(s) complete.",
+                    sum(future_coverage$complete %in% TRUE),
+                    nrow(future_coverage)
+                ),
+                details = list(
+                    plans_completed = sum(future_coverage$complete %in% TRUE),
+                    plans_total = nrow(future_coverage),
+                    variables = length(unique(future_coverage$variable_id))
+                )
+            )
 
-        current_stage <- next_stage("coverage", "Checking requested case and reference coverage.")
-        reference_coverage <- if (!is.null(reference_climate)) {
-            shift_coverage(reference_climate)
-        } else if (S7::S7_inherits(method_reference, ShiftClimate)) {
-            shift_coverage(method_reference)
-        } else if (S7::S7_inherits(method_reference, ShiftReferenceSpec) && identical(method_reference@mode, "plan")) {
-            store$coverage(plan_id = method_reference@plan_id)
-        } else {
-            data.table::data.table()
-        }
-        if (S7::S7_inherits(method_reference, ShiftClimate) &&
-            is.null(reference_stage)) {
-            # Manual ShiftClimate references receive the same canonical
-            # derivation contract as automatically extracted historical data.
-            method_reference <- shift__derive_hurs_climate(
-                method_reference,
-                meta$recipe,
-                overwrite = overwrite,
-                resume = resume,
-                reporter = reporter
-            )
-            reference_coverage <- shift_coverage(method_reference)
-        }
-        cases <- shift__case_fulfilment(
-            cases,
-            future_coverage = shift_coverage(climate),
-            reference_coverage = reference_coverage,
-            required_variables = epw_morph_variables(meta$recipe),
-            requires_reference = !is.null(method_reference),
-            requirements = morpher__variable_requirements(meta$recipe)
-        )
-        shift__run_cases_write(store, run_id, cases)
-        ready <- cases[status == "ready"]
-        missing <- cases[status == "missing"]
-        if (nrow(missing)) {
-            for (i in seq_len(nrow(missing))) {
-                reporter$notice(
-                    sprintf("Missing %s/%s: %s",
-                        missing$experiment_id[[i]], missing$period[[i]],
-                        missing$missing_reason[[i]]),
-                    outcome = if (isTRUE(control@allow_partial)) "skipped" else "failed",
+            reference_climate <- NULL
+            method_reference <- meta$reference
+            if (!is.null(reference_stage)) {
+                current_stage <- next_stage(
+                    "extract_reference",
+                    "Extracting historical reference climate data."
+                )
+                reference_spec <- method_reference
+                reference_climate <- shift__extract_selected_partitions(
+                    reference_stage,
+                    selection = selection,
+                    experiments = reference_spec@experiment,
+                    site = meta$site,
+                    periods = reference_spec@periods,
+                    role = "reference",
+                    time = shift__method_time_window(
+                        reference_spec@periods,
+                        meta$recipe
+                    ),
+                    method = control@extraction_method,
+                    fallback = fallback,
+                    overwrite = overwrite,
+                    resume = resume,
+                    overrides = reference_spec@extract,
+                    reporter = reporter
+                )
+                reference_climate <- shift__derive_hurs_climate(
+                    reference_climate,
+                    meta$recipe,
+                    overwrite = overwrite,
+                    resume = resume,
+                    reporter = reporter
+                )
+                method_reference <- reference_climate
+                extracted_reference_coverage <- shift_coverage(
+                    reference_climate
+                )
+                reporter$stage_completed(
+                    sprintf(
+                        "Extracted reference climate: %d/%d plan(s) complete.",
+                        sum(extracted_reference_coverage$complete %in% TRUE),
+                        nrow(extracted_reference_coverage)
+                    ),
                     details = list(
-                        unit_type = "future_epw_case",
-                        scenario = missing$experiment_id[[i]],
-                        period = missing$period[[i]],
-                        outcome = if (isTRUE(control@allow_partial)) "skipped" else "failed"
+                        plans_completed = sum(
+                            extracted_reference_coverage$complete %in% TRUE
+                        ),
+                        plans_total = nrow(extracted_reference_coverage),
+                        variables = length(unique(
+                            extracted_reference_coverage$variable_id
+                        ))
                     )
                 )
             }
-        }
-        if (!nrow(ready)) {
-            cli::cli_abort("Zero requested future EPW cases have complete required climate inputs.")
-        }
-        if (nrow(missing) && !isTRUE(control@allow_partial)) {
-            cli::cli_abort(c(
-                "Not all requested future EPW cases are complete.",
-                "x" = sprintf("%s/%s/%s: %s", missing$source_id, missing$experiment_id, missing$period, missing$missing_reason),
-                "i" = "Set `allow_partial = TRUE` in shift_control() to process only complete cases."
-            ))
-        }
-        reporter$stage_completed(sprintf(
-            "Coverage ready for %d/%d requested case(s).",
-            nrow(ready), nrow(cases)
-        ), details = list(ready = nrow(ready), missing = nrow(missing)))
-        reporter$cases_updated(cases, show = TRUE)
-        climate <- shift__climate_for_cases(climate, cases, reference = FALSE)
-        if (S7::S7_inherits(method_reference, ShiftClimate)) {
-            method_reference <- shift__climate_for_cases(method_reference, cases, reference = TRUE)
-        }
-        shift__run_update(
-            store,
-            run_id,
-            plan_ids_json = shift__spec_json(climate@ids$plan_id),
-            reference_plan_ids_json = if (S7::S7_inherits(method_reference, ShiftClimate)) shift__spec_json(method_reference@ids$plan_id) else NA_character_
-        )
 
-        current_stage <- next_stage("morph", "Morphing all complete requested cases.")
-        morph_args <- utils::modifyList(
-            list(
-                baseline = meta$site,
-                transform = meta$transform,
-                reference = method_reference,
-                observed_reference =
-                    meta$observed_reference,
-                strict = control@strict,
-                complete_only = TRUE,
-                by = c("source_id", "experiment_id", "variant_label", "period"),
-                overwrite = overwrite,
-                resume = resume
-            ),
-            meta$morph
-        )
-        morphed <- shift__do_call_with_reporter(reporter, shift_morph,
-            c(list(climate), morph_args))
-        morph_id <- morphed@ids$morph_id
-        shift__run_update(store, run_id, morph_id = morph_id)
-        # Scientific warnings belong to the completed run receipt, not only to
-        # the transient ShiftMorphed object returned inside this process.
-        shift__run_diagnostics_record(store, run_id, morphed@diagnostics)
-        cases <- shift__apply_morph_case_status(
-            cases,
-            morphed@meta$cases
-        )
-        shift__run_cases_write(store, run_id, cases)
-        reporter$cases_updated(
-            cases,
-            show = shift__ui_at_least(reporter$ui(), "detail")
-        )
-        morphed_count <- sum(cases$status == "ready")
-        failed_morph_count <- sum(cases$status == "failed")
-        reporter$stage_completed(
-            sprintf(
-                "Morphed %d requested case(s); %d failed independently.",
-                morphed_count,
-                failed_morph_count
-            ),
-            details = list(
-                completed = morphed_count,
-                failed = failed_morph_count
+            current_stage <- next_stage(
+                "coverage",
+                "Checking requested case and reference coverage."
             )
-        )
-
-        current_stage <- next_stage("write_epw", "Writing and exporting final EPW files.")
-        epw_args <- utils::modifyList(
-            list(
-                dir = "outputs/future-epw",
-                separate = identical(control@output_layout, "nested"),
-                export_dir = NULL,
-                overwrite = overwrite,
-                resume = resume
-            ),
-            meta$epw
-        )
-        outputs_stage <- shift__do_call_with_reporter(reporter, shift_epw,
-            c(list(morphed), epw_args))
-        cases <- shift__complete_output_cases(cases, shift_outputs(outputs_stage))
-        shift__run_cases_write(store, run_id, cases)
-        reporter$cases_updated(cases,
-            show = shift__ui_at_least(reporter$ui(), "detail"))
-        output_count <- nrow(shift_outputs(outputs_stage))
-        if (!output_count) {
-            cli::cli_abort("The workflow produced zero final EPW files.")
-        }
-        reporter$stage_completed(sprintf("Wrote and exported %d EPW file(s).", output_count))
-        final_status <- if (all(cases[required %in% TRUE]$status == "completed")) "completed" else "partial"
-        shift__run_finish(
-            store,
-            run_id,
-            status = final_status,
-            current_stage = "completed",
-            last_error = NA_character_
-        )
-        shift__run_event(store, run_id, "completed", final_status, sprintf("Produced %d final EPW file(s).", output_count))
-        if (!is.null(job_id)) {
-            shift__job_update(store, job_id,
-                status = final_status, completed_at = store__now(),
-                heartbeat_at = store__now(), exit_code = 0L,
-                last_error = NA_character_)
-        }
-        run <- shift__run_handle(store, run_id, output_stage = outputs_stage, plan = x)
-        reporter$run_completed(run, shift_outputs(run, refresh = FALSE))
-        run
-    }, interrupt = function(e) {
-        requested <- !is.null(job_id) && tryCatch(
-            shift__job_cancel_requested(store, job_id),
-            error = function(err) FALSE
-        )
-        message <- if (isTRUE(requested)) {
-            "Cancellation requested by user."
-        } else {
-            conditionMessage(e)
-        }
-        if (is.null(message) || !length(message) || is.na(message) || !nzchar(message)) {
-            message <- "Interrupted by user."
-        }
-        failure_details <- utils::modifyList(reporter$context(),
-            list(outcome = "cancelled"))
-        try(shift__run_finish(store, run_id,
-            status = "cancelled", current_stage = current_stage,
-            last_error = message), silent = TRUE)
-        try(shift__run_event(store, run_id, current_stage, "cancelled", message,
-            details = failure_details), silent = TRUE)
-        if (!is.null(job_id)) {
-            try(shift__job_update(store, job_id,
-                status = "cancelled", completed_at = store__now(),
-                exit_code = 130L, last_error = message), silent = TRUE)
-        }
-        cancellation_context <- shift__failure_context(failure_details,
-            debug = shift__ui_at_least(reporter$ui(), "debug"))
-        reporter$run_failed(paste(
-            sprintf("Future EPW run %s cancelled during %s.", run_id, current_stage),
-            cancellation_context
-        ), cancelled = TRUE)
-        stop(shift__cancelled_interrupt(
-            message, run_id = run_id, store = store$path, stage = current_stage
-        ))
-    }, error = function(e) {
-        message <- conditionMessage(e)
-        cancelled <- inherits(e, "epwshiftr_shift_cancelled")
-        final_status <- if (isTRUE(cancelled)) "cancelled" else "failed"
-        resolution <- if (inherits(e, "epwshiftr_shift_resolution_error")) {
-            e$resolution
-        } else {
-            NULL
-        }
-        failure_summary <- if (is.null(resolution)) {
-            shift__error_summary(message)
-        } else {
-            as.character(resolution$summary)[[1L]]
-        }
-        failure_details <- utils::modifyList(
-            reporter$context(),
-            c(list(outcome = final_status, error_summary = failure_summary),
-                shift_coalesce(resolution, list()))
-        )
-        try(shift__run_finish(
-            store,
-            run_id,
-            status = final_status,
-            current_stage = current_stage,
-            last_error = message
-        ), silent = TRUE)
-        try(shift__run_event(store, run_id, current_stage, final_status, message,
-            details = failure_details), silent = TRUE)
-        if (!is.null(job_id)) {
-            try(shift__job_update(store, job_id,
-                status = final_status, completed_at = store__now(),
-                heartbeat_at = store__now(),
-                exit_code = if (isTRUE(cancelled)) 130L else 1L,
-                last_error = message), silent = TRUE)
-        }
-        reporter$run_failed(
-            message = failure_summary,
-            cancelled = cancelled,
-            details = failure_details
-        )
-        if (isTRUE(cancelled)) {
-            stop(e)
-        }
-        failure_context <- if (is.null(resolution)) {
-            shift__failure_context(failure_details,
-                debug = shift__ui_at_least(reporter$ui(), "debug"))
-        } else {
-            ""
-        }
-        evidence <- shift__resolution_evidence(resolution)
-        get_command <- shift__run_command(
-            "shift_run_get", run_id, store$path)
-        inspect_command <- sprintf("shift_diagnostics(%s)", get_command)
-        resume_command <- shift__run_command(
-            "shift_resume", run_id, store$path)
-        logs_command <- shift__run_command(
-            "shift_logs", run_id, store$path, "tail = 20L")
-        abort_message <- c(
-                "Future EPW run {.val {run_id}} failed during {.val {current_stage}}.",
-                "x" = paste0("Cause: ", if (is.null(resolution)) {
-                    shift__error_summary(message)
+            reference_coverage <- if (!is.null(reference_climate)) {
+                shift_coverage(reference_climate)
+            } else if (S7::S7_inherits(method_reference, ShiftClimate)) {
+                shift_coverage(method_reference)
+            } else if (
+                S7::S7_inherits(method_reference, ShiftReferenceSpec) &&
+                    identical(method_reference@mode, "plan")
+            ) {
+                store$coverage(plan_id = method_reference@plan_id)
+            } else {
+                data.table::data.table()
+            }
+            if (
+                S7::S7_inherits(method_reference, ShiftClimate) &&
+                    is.null(reference_stage)
+            ) {
+                # Manual ShiftClimate references receive the same canonical
+                # derivation contract as automatically extracted historical data.
+                method_reference <- shift__derive_hurs_climate(
+                    method_reference,
+                    meta$recipe,
+                    overwrite = overwrite,
+                    resume = resume,
+                    reporter = reporter
+                )
+                reference_coverage <- shift_coverage(method_reference)
+            }
+            cases <- shift__case_fulfilment(
+                cases,
+                future_coverage = shift_coverage(climate),
+                reference_coverage = reference_coverage,
+                required_variables = epw_morph_variables(meta$recipe),
+                requires_reference = !is.null(method_reference),
+                requirements = morpher__variable_requirements(meta$recipe)
+            )
+            shift__run_cases_write(store, run_id, cases)
+            ready <- cases[status == "ready"]
+            missing <- cases[status == "missing"]
+            if (nrow(missing)) {
+                for (i in seq_len(nrow(missing))) {
+                    reporter$notice(
+                        sprintf(
+                            "Missing %s/%s: %s",
+                            missing$experiment_id[[i]],
+                            missing$period[[i]],
+                            missing$missing_reason[[i]]
+                        ),
+                        outcome = if (isTRUE(control@allow_partial)) {
+                            "skipped"
+                        } else {
+                            "failed"
+                        },
+                        details = list(
+                            unit_type = "future_epw_case",
+                            scenario = missing$experiment_id[[i]],
+                            period = missing$period[[i]],
+                            outcome = if (isTRUE(control@allow_partial)) {
+                                "skipped"
+                            } else {
+                                "failed"
+                            }
+                        )
+                    )
+                }
+            }
+            if (!nrow(ready)) {
+                cli::cli_abort(
+                    "Zero requested future EPW cases have complete required climate inputs."
+                )
+            }
+            if (nrow(missing) && !isTRUE(control@allow_partial)) {
+                cli::cli_abort(c(
+                    "Not all requested future EPW cases are complete.",
+                    "x" = sprintf(
+                        "%s/%s/%s: %s",
+                        missing$source_id,
+                        missing$experiment_id,
+                        missing$period,
+                        missing$missing_reason
+                    ),
+                    "i" = "Set `allow_partial = TRUE` in shift_control() to process only complete cases."
+                ))
+            }
+            reporter$stage_completed(
+                sprintf(
+                    "Coverage ready for %d/%d requested case(s).",
+                    nrow(ready),
+                    nrow(cases)
+                ),
+                details = list(ready = nrow(ready), missing = nrow(missing))
+            )
+            reporter$cases_updated(cases, show = TRUE)
+            climate <- shift__climate_for_cases(
+                climate,
+                cases,
+                reference = FALSE
+            )
+            if (S7::S7_inherits(method_reference, ShiftClimate)) {
+                method_reference <- shift__climate_for_cases(
+                    method_reference,
+                    cases,
+                    reference = TRUE
+                )
+            }
+            shift__run_update(
+                store,
+                run_id,
+                plan_ids_json = shift__spec_json(climate@ids$plan_id),
+                reference_plan_ids_json = if (
+                    S7::S7_inherits(method_reference, ShiftClimate)
+                ) {
+                    shift__spec_json(method_reference@ids$plan_id)
                 } else {
-                    shift_coalesce(resolution$cause, resolution$summary)
-                }),
-                if (length(evidence)) stats::setNames(evidence,
-                    rep("i", length(evidence))),
+                    NA_character_
+                }
+            )
+
+            current_stage <- next_stage(
+                "morph",
+                "Morphing all complete requested cases."
+            )
+            morph_args <- utils::modifyList(
+                list(
+                    baseline = meta$site,
+                    transform = meta$transform,
+                    reference = method_reference,
+                    observed_reference = meta$observed_reference,
+                    strict = control@strict,
+                    complete_only = TRUE,
+                    by = c(
+                        "source_id",
+                        "experiment_id",
+                        "variant_label",
+                        "period"
+                    ),
+                    overwrite = overwrite,
+                    resume = resume
+                ),
+                meta$morph
+            )
+            morphed <- shift__do_call_with_reporter(
+                reporter,
+                shift_morph,
+                c(list(climate), morph_args)
+            )
+            morph_id <- morphed@ids$morph_id
+            shift__run_update(store, run_id, morph_id = morph_id)
+            # Scientific warnings belong to the completed run receipt, not only to
+            # the transient ShiftMorphed object returned inside this process.
+            shift__run_diagnostics_record(store, run_id, morphed@diagnostics)
+            cases <- shift__apply_morph_case_status(
+                cases,
+                morphed@meta$cases
+            )
+            shift__run_cases_write(store, run_id, cases)
+            reporter$cases_updated(
+                cases,
+                show = shift__ui_at_least(reporter$ui(), "detail")
+            )
+            morphed_count <- sum(cases$status == "ready")
+            failed_morph_count <- sum(cases$status == "failed")
+            reporter$stage_completed(
+                sprintf(
+                    "Morphed %d requested case(s); %d failed independently.",
+                    morphed_count,
+                    failed_morph_count
+                ),
+                details = list(
+                    completed = morphed_count,
+                    failed = failed_morph_count
+                )
+            )
+
+            current_stage <- next_stage(
+                "write_epw",
+                "Writing and exporting final EPW files."
+            )
+            epw_args <- utils::modifyList(
+                list(
+                    dir = "outputs/future-epw",
+                    separate = identical(control@output_layout, "nested"),
+                    export_dir = NULL,
+                    overwrite = overwrite,
+                    resume = resume
+                ),
+                meta$epw
+            )
+            outputs_stage <- shift__do_call_with_reporter(
+                reporter,
+                shift_epw,
+                c(list(morphed), epw_args)
+            )
+            cases <- shift__complete_output_cases(
+                cases,
+                shift_outputs(outputs_stage)
+            )
+            shift__run_cases_write(store, run_id, cases)
+            reporter$cases_updated(
+                cases,
+                show = shift__ui_at_least(reporter$ui(), "detail")
+            )
+            output_count <- nrow(shift_outputs(outputs_stage))
+            if (!output_count) {
+                cli::cli_abort("The workflow produced zero final EPW files.")
+            }
+            reporter$stage_completed(sprintf(
+                "Wrote and exported %d EPW file(s).",
+                output_count
+            ))
+            final_status <- if (
+                all(cases[required %in% TRUE]$status == "completed")
+            ) {
+                "completed"
+            } else {
+                "partial"
+            }
+            shift__run_finish(
+                store,
+                run_id,
+                status = final_status,
+                current_stage = "completed",
+                last_error = NA_character_
+            )
+            shift__run_event(
+                store,
+                run_id,
+                "completed",
+                final_status,
+                sprintf("Produced %d final EPW file(s).", output_count)
+            )
+            run <- shift__run_handle(
+                store,
+                run_id,
+                output_stage = outputs_stage,
+                plan = x
+            )
+            reporter$run_completed(run, shift_outputs(run, refresh = FALSE))
+            run
+        },
+        interrupt = function(e) {
+            requested <- !is.null(job_id) &&
+                tryCatch(
+                    shift__job_cancel_requested(store, job_id),
+                    error = function(err) FALSE
+                )
+            message <- if (isTRUE(requested)) {
+                "Cancellation requested by user."
+            } else {
+                conditionMessage(e)
+            }
+            if (
+                is.null(message) ||
+                    !length(message) ||
+                    is.na(message) ||
+                    !nzchar(message)
+            ) {
+                message <- "Interrupted by user."
+            }
+            failure_details <- utils::modifyList(
+                reporter$context(),
+                list(outcome = "cancelled")
+            )
+            try(
+                shift__run_finish(
+                    store,
+                    run_id,
+                    status = "cancelled",
+                    current_stage = current_stage,
+                    last_error = message
+                ),
+                silent = TRUE
+            )
+            try(
+                shift__run_event(
+                    store,
+                    run_id,
+                    current_stage,
+                    "cancelled",
+                    message,
+                    details = failure_details
+                ),
+                silent = TRUE
+            )
+            cancellation_context <- shift__failure_context(
+                failure_details,
+                debug = shift__ui_at_least(reporter$ui(), "debug")
+            )
+            reporter$run_failed(
+                paste(
+                    sprintf(
+                        "Future EPW run %s cancelled during %s.",
+                        run_id,
+                        current_stage
+                    ),
+                    cancellation_context
+                ),
+                cancelled = TRUE
+            )
+            stop(shift__cancelled_interrupt(
+                message,
+                run_id = run_id,
+                store = store$path,
+                stage = current_stage
+            ))
+        },
+        error = function(e) {
+            message <- conditionMessage(e)
+            cancelled <- inherits(e, "epwshiftr_shift_cancelled")
+            final_status <- if (isTRUE(cancelled)) "cancelled" else "failed"
+            resolution <- if (inherits(e, "epwshiftr_shift_resolution_error")) {
+                e$resolution
+            } else {
+                NULL
+            }
+            failure_summary <- if (is.null(resolution)) {
+                shift__error_summary(message)
+            } else {
+                as.character(resolution$summary)[[1L]]
+            }
+            failure_details <- utils::modifyList(
+                reporter$context(),
+                c(
+                    list(
+                        outcome = final_status,
+                        error_summary = failure_summary
+                    ),
+                    shift_coalesce(resolution, list())
+                )
+            )
+            try(
+                shift__run_finish(
+                    store,
+                    run_id,
+                    status = final_status,
+                    current_stage = current_stage,
+                    last_error = message
+                ),
+                silent = TRUE
+            )
+            try(
+                shift__run_event(
+                    store,
+                    run_id,
+                    current_stage,
+                    final_status,
+                    message,
+                    details = failure_details
+                ),
+                silent = TRUE
+            )
+            reporter$run_failed(
+                message = failure_summary,
+                cancelled = cancelled,
+                details = failure_details
+            )
+            if (isTRUE(cancelled)) {
+                stop(e)
+            }
+            failure_context <- if (is.null(resolution)) {
+                shift__failure_context(
+                    failure_details,
+                    debug = shift__ui_at_least(reporter$ui(), "debug")
+                )
+            } else {
+                ""
+            }
+            evidence <- shift__resolution_evidence(resolution)
+            get_command <- shift__run_command(
+                "shift_run_get",
+                run_id,
+                store$path
+            )
+            inspect_command <- sprintf("shift_diagnostics(%s)", get_command)
+            resume_command <- shift__run_command(
+                "shift_resume",
+                run_id,
+                store$path
+            )
+            logs_command <- shift__run_command(
+                "shift_logs",
+                run_id,
+                store$path,
+                "tail = 20L"
+            )
+            abort_message <- c(
+                "Future EPW run {.val {run_id}} failed during {.val {current_stage}}.",
+                "x" = paste0(
+                    "Cause: ",
+                    if (is.null(resolution)) {
+                        shift__error_summary(message)
+                    } else {
+                        shift_coalesce(resolution$cause, resolution$summary)
+                    }
+                ),
+                if (length(evidence)) {
+                    stats::setNames(evidence, rep("i", length(evidence)))
+                },
                 if (nzchar(failure_context)) {
                     c("i" = failure_context)
                 },
-                if (!is.null(resolution) &&
-                    identical(resolution$recovery, "change_request")) {
+                if (
+                    !is.null(resolution) &&
+                        identical(resolution$recovery, "change_request")
+                ) {
                     c("!" = paste(
                         "Resuming this request unchanged will repeat the",
                         "coverage failure. Adjust the climate selection or reference first."
@@ -10723,17 +11221,18 @@ shift__plan_run <- function(x, run_id, job_id = NULL, reporter = NULL,
                 },
                 "i" = "Logs: {.code {logs_command}}"
             )
-        cli::cli_abort(
-            abort_message,
-            class = "epwshiftr_shift_error",
-            run_id = run_id,
-            store = store$path,
-            stage = current_stage,
-            original_message = message,
-            source_error = e,
-            call = NULL
-        )
-    })
+            cli::cli_abort(
+                abort_message,
+                class = "epwshiftr_shift_error",
+                run_id = run_id,
+                store = store$path,
+                stage = current_stage,
+                original_message = message,
+                source_error = e,
+                call = NULL
+            )
+        }
+    )
     result
 }
 

@@ -394,6 +394,7 @@ EsgResult <- R6::R6Class(
     ),
 
     private = list(
+        progress_callback = NULL,
         index_node = NULL,
         parameter = NULL,
         response = NULL,
@@ -402,8 +403,24 @@ EsgResult <- R6::R6Class(
         result_type = NULL,
 
         required_fields = c("id", "size", "url"),
-        query_fields = c("dataset_id", "fields", "latest", "distrib", "limit", "type", "format"),
-        static_fields = c("id", "url", "size", "fields", "filename", "url_opendap", "url_download"),
+        query_fields = c(
+            "dataset_id",
+            "fields",
+            "latest",
+            "distrib",
+            "limit",
+            "type",
+            "format"
+        ),
+        static_fields = c(
+            "id",
+            "url",
+            "size",
+            "fields",
+            "filename",
+            "url_opendap",
+            "url_download"
+        ),
 
         # result_schema {{{
         result_schema = function() {
@@ -4344,7 +4361,11 @@ EsgResultDataset <- R6::R6Class(
             )
             params <- built$params
             limit <- built$limit
-            selected_dataset_id <- if (is.null(which)) self$id else self$id[which]
+            selected_dataset_id <- if (is.null(which)) {
+                self$id
+            } else {
+                self$id[which]
+            }
             if (!length(selected_dataset_id)) {
                 selected_dataset_id <- NULL
             }
@@ -4360,8 +4381,13 @@ EsgResultDataset <- R6::R6Class(
             } else {
                 # Collect one child query batch. The caller decides whether the
                 # batch is the original full request or a subset of Dataset IDs.
-                collect_one <- function(batch_params, batch_limit, dict_check,
-                                        batch_index = NULL, batch_count = NULL) {
+                collect_one <- function(
+                    batch_params,
+                    batch_limit,
+                    dict_check,
+                    batch_index = NULL,
+                    batch_count = NULL
+                ) {
                     collect_args <- list(
                         child_index_node,
                         batch_params,
@@ -4369,7 +4395,8 @@ EsgResultDataset <- R6::R6Class(
                         all = all,
                         limit = batch_limit,
                         constraints = FALSE,
-                        dict_check = dict_check
+                        dict_check = dict_check,
+                        progress_callback = private$progress_callback
                     )
                     if (isTRUE(progress)) {
                         label <- sprintf("Collecting %s records", type)
@@ -4428,7 +4455,11 @@ EsgResultDataset <- R6::R6Class(
 
             # replace docs in the last response
             result$response$response$docs <- result$docs
-            result_params <- if (!is.null(result$parameter)) result$parameter else params
+            result_params <- if (!is.null(result$parameter)) {
+                result$parameter
+            } else {
+                params
+            }
 
             # create new results
             if (type == "File") {

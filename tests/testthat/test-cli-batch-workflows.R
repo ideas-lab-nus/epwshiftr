@@ -9,8 +9,10 @@ cli_batch__write_config <- function(config) {
 # Resolve deterministic local model coverage while preserving real planning,
 # receipt persistence, and inspection code.
 cli_batch__local_catalog <- function() {
-    list(epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage)
+    list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
+    )
 }
 
 test_that("every catalog configuration can be described and generated offline", {
@@ -136,7 +138,7 @@ test_that("network validation and doctor share reanalysis readiness checks", {
         },
         .package = "epwshiftr"
     )
-    withr::local_options(cli_batch__local_catalog())
+    test_local_dependencies(cli_batch__local_catalog())
     config <- epwshiftr_cli_shift_config_example(c("--methods", "qdm",
         "--model", "1"))$config
     path <- cli_batch__write_config(config)
@@ -157,7 +159,7 @@ test_that("network validation and doctor share reanalysis readiness checks", {
 })
 
 test_that("dry-run batch receipts reopen offline through CLI and R", {
-    withr::local_options(cli_batch__local_catalog())
+    test_local_dependencies(cli_batch__local_catalog())
     config <- epwshiftr_cli_shift_config_example(c(
         "--methods",
         "original_morphing,bws_btws",
@@ -186,9 +188,7 @@ test_that("dry-run batch receipts reopen offline through CLI and R", {
     id <- result$result$batch_id
     # Reopening uses persisted child plans, even if discovery is unavailable.
     testthat::local_mocked_bindings(
-        shift_batch__discover_models = function(...) {
-            stop("Unexpected discovery")
-        },
+        shift_batch__discover_models = function(...) stop("Unexpected discovery"),
         .package = "epwshiftr"
     )
     batch <- shift_batch_get(id, root)
@@ -330,13 +330,13 @@ test_that("failed batch execution returns a nonzero CLI status with its receipt"
 test_that("persisted batch plans execute, reuse artifacts, and repair missing exports", {
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(
+        availability = function(...) {
             args <- list(...)
             args$source <- "EC-Earth3"
             do.call(test_cmip6_availability, args)
         },
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     variables <- epw_morph_variables(transform__recipe(monthly_transform(
         "epwshiftr"
@@ -389,7 +389,13 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     config_path <- cli_batch__write_config(config)
     root <- tempfile("cli-batch-integration-")
     base <- c("--quiet", "--store", root, "shift")
-    planned <- epwshiftr_cli(c(base, "run", "--config", config_path, "--dry-run"))
+    planned <- epwshiftr_cli(c(
+        base,
+        "run",
+        "--config",
+        config_path,
+        "--dry-run"
+    ))
     expect_equal(planned$status, 0L, info = planned$error)
     id <- planned$result$batch_id
     completed <- epwshiftr_cli(c(base, "resume", "--batch", id))
@@ -413,8 +419,14 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     expect_equal(length(calls$types), collected)
     human <- capture.output(epwshiftr_cli(c("--store", root, "shift", "run",
         "--config", config_path)), type = "message")
-    expect_equal(sum(grepl("Future EPW Batch", cli::ansi_strip(human), fixed = TRUE)), 1L)
-    snapshot <- shift_batch__snapshot(shift_batch_get(id, root), refresh = FALSE)
+    expect_equal(
+        sum(grepl("Future EPW Batch", cli::ansi_strip(human), fixed = TRUE)),
+        1L
+    )
+    snapshot <- shift_batch__snapshot(
+        shift_batch_get(id, root),
+        refresh = FALSE
+    )
     expect_equal(snapshot$batch$completed, 1L)
     expect_equal(snapshot$batch$epw_files, 1L)
     data <- epwshiftr_cli(c(base, "data", "--batch", id, "--limit", "2",
@@ -435,7 +447,11 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     reopened <- shift_batch_get(id, root)
     # DuckDB may emit its own first-open notice; the null UI itself must not
     # render progress or attempt to close a nonexistent frame renderer.
-    expect_no_error(shift_watch(reopened, follow = FALSE, ui = shift_ui("none")))
+    expect_no_error(shift_watch(
+        reopened,
+        follow = FALSE,
+        ui = shift_ui("none")
+    ))
 
     # Remove only this test's exported file. The persisted plan and cached
     # scientific artifacts must be sufficient to reconstruct the delivery.

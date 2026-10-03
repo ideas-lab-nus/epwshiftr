@@ -26,7 +26,7 @@ value, warnings are issued and the morphing method fallbacks to
 \code{"shift"} to avoid unrealistic morphed values.
 \item \code{epwshiftr.dir_store}: The persistent store directory for query snapshots,
 dictionaries, source mirrors, downloads, extraction results, outputs, and
-the store manifest. If not set, \code{\link[tools:userdir]{tools::R_user_dir()}} with type \code{"data"}
+the store manifest. If not set, \code{\link[tools:R_user_dir]{tools::R_user_dir()}} with type \code{"data"}
 will be used.
 \item \code{epwshiftr.cache}: Controls caching behavior. \code{TRUE} enables normal
 caching (default), \code{FALSE} disables caching entirely, and \code{"offline"}
@@ -35,7 +35,21 @@ requests are made. Default: \code{TRUE}
 \item \code{epwshiftr.dir_cache}: The directory for disposable cache entries. Deleting
 this directory can require re-fetching or re-parsing data, but should not
 invalidate a persistent store.
+\item \code{epwshiftr.mirai_workers}: Maximum concurrent source readers, default \code{4}.
+Set to \code{1} for serial reads. Single-task and batch workflows share this limit.
+\item \code{epwshiftr.ui_height}: Optional terminal display height; unset by default.
+\item \code{epwshiftr.cache_max_size}: Disposable cache capacity in bytes, default 1 GiB.
+\item \code{epwshiftr.cache_max_age}: Disposable cache lifetime in seconds, default 1800.
+\item \code{epwshiftr.cache_max_n}: Maximum cache entries, default \code{Inf}.
+Cache limits are applied when the session's cache is first initialized.
+\item \code{epwshiftr.query.timeout}: Catalog request timeout in seconds, default 300.
+\item \code{epwshiftr.query.connect_timeout}: Catalog connection timeout in seconds,
+default 30.
 }
+
+Execution settings are captured when a workflow attempt starts and forwarded
+to detached processes and source workers. They do not change scientific plan
+identities. Development and test dependency substitutions are not options.
 }
 
 \seealso{

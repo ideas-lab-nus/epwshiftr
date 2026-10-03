@@ -59,9 +59,9 @@ test_that("batch methods share Dataset discovery while keeping separate pools", 
     catalog <- batch_pool_test__catalog()
     original <- data.table::copy(catalog)
     calls <- list()
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     testthat::local_mocked_bindings(
         availability__collect = function(request, ...) {
@@ -126,9 +126,9 @@ test_that("batch methods share Dataset discovery while keeping separate pools", 
 
 test_that("per-method selection applies counts and explicit allowlists after coverage", {
     catalog <- batch_pool_test__catalog()
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, transform, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = function(candidates, transform, ...) {
             # A is cheaper than B for monthly data; C is cheaper for daily data.
             candidates[,
                 source_file_count := c(A = 1, B = 10, C = 1)[source_id]
@@ -155,7 +155,7 @@ test_that("per-method selection applies counts and explicit allowlists after cov
     )
 
     # Catalogue presence does not waive missing File-year coverage for B.
-    withr::local_options(list(epwshiftr.cmip6.period_coverage = function(
+    test_local_dependencies(list(shift__cmip6_period_coverage = function(
         candidates,
         ...
     ) {
@@ -183,9 +183,9 @@ test_that("shared catalog failover does not repeat failed nodes or mix identity 
     )]
     catalog <- data.table::rbindlist(list(catalog, extra))
     calls <- character()
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     testthat::local_mocked_bindings(
         availability__collect = function(request, ...) {
@@ -246,9 +246,9 @@ test_that("batch alternatives remain available after File coverage rejects the f
         table_id = unname(tables)
     )
     calls <- 0L
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, variables, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = function(candidates, variables, ...) {
             if (identical(variables, as.character(sets[[1L]]))) {
                 candidates[0L]
             } else {
@@ -306,16 +306,16 @@ test_that("climate serialization and current batch receipts round-trip", {
     }
     expect_error(climate@common <- NA, "common")
 
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     store <- tempfile()
     batch <- batch_pool_test__plan(model = 1L, store = store)
     path <- shift_batch__receipt_path(batch@store_path)
     receipt <- readRDS(path)
     saveRDS(receipt, path)
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected discovery")
     }))
     restored <- batch_pool_test__plan(model = 1L, store = store)
@@ -344,7 +344,7 @@ test_that("workflow configuration accepts and displays a per-method pool locally
     config$calibration <- list(dataset = "era5", years = 1995:2014)
     path <- tempfile(fileext = ".json")
     jsonlite::write_json(config, path, auto_unbox = TRUE, null = "null")
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected discovery")
     }))
     result <- epwshiftr_cli(c(
@@ -400,9 +400,9 @@ test_that("all batch alternatives share one normalized and matched catalog", {
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transforms <- shift_batch__transforms(
         transform = list(
@@ -461,9 +461,9 @@ test_that("public and batch discovery agree on cross-period variable alternative
         .package = "epwshiftr"
     )
     coverage_calls <- 0L
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = function(candidates, ...) {
             coverage_calls <<- coverage_calls + 1L
             candidates
         }
@@ -532,9 +532,9 @@ test_that("public and batch discovery apply the same Dataset filter precedence",
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     # Explicit selections override conflicting filters without dropping extras.
     filters <- list(
@@ -626,9 +626,9 @@ test_that("cost ranking retains the least fragmented grid before selecting model
         availability__collect = function(...) catalog,
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = function(candidates, ...) {
             candidates[,
                 source_file_count := data.table::fifelse(
                     source_id == "B",
@@ -678,9 +678,9 @@ test_that("native batch discovery respects explicit frequency and table pins", {
         .package = "epwshiftr"
     )
     checked <- NULL
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, frequency, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = function(candidates, frequency, ...) {
             checked <<- frequency
             candidates
         }
@@ -743,7 +743,7 @@ test_that("unused optional history cannot constrain batch Dataset matching", {
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(epwshiftr.cmip6.availability = NULL))
+    test_local_dependencies(list(availability = NULL))
     for (conflict in c("frequency", "variables")) {
         optional <- transform@optional_inputs
         if (conflict == "frequency") {
@@ -820,9 +820,9 @@ test_that("batch methods share File coverage and skip public summaries", {
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = shift__cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = shift__cmip6_period_coverage
     ))
     first <- batch_pool_test__plan(methods = c("qdm", "isimip3basd"))
     expect_equal(nrow(first@meta$manifest), 4L)
@@ -859,7 +859,7 @@ test_that("candidate frequency grouping serializes distinct maps only", {
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(epwshiftr.cmip6.period_coverage = function(
+    test_local_dependencies(list(shift__cmip6_period_coverage = function(
         candidates,
         climate,
         transform,

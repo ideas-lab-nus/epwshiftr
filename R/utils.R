@@ -728,13 +728,7 @@ mirai_default_workers <- function(n) {
         return(0L)
     }
 
-    workers <- getOption("epwshiftr.mirai_workers", NULL)
-    if (is.null(workers)) {
-        workers <- parallel::detectCores(logical = FALSE)
-        if (is.na(workers) || workers < 1L) {
-            workers <- 1L
-        }
-    }
+    workers <- execution__options()$epwshiftr.mirai_workers
 
     max(1L, min(as.integer(workers), n))
 }

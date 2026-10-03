@@ -124,9 +124,9 @@ test_that("reanalysis materialization persists and reuses ShiftClimate data", {
             )
         )
     }
-    withr::local_options(list(
-        epwshiftr.reanalysis.retrieve = retrieve,
-        epwshiftr.reanalysis.read = reader,
+    test_local_dependencies(list(
+        cds__retrieve = retrieve,
+        era__read_netcdf = reader,
         epwshiftr.dir_cache = tempfile("era-shared-cache-")
     ))
 

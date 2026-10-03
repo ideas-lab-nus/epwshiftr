@@ -80,11 +80,22 @@ cli_shift_test_file_result <- function(docs) {
     )
 }
 
-cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = emptyenv())) {
+cli_shift_test_mock_collect <- function(
+    file_docs,
+    calls = new.env(parent = emptyenv())
+) {
     calls$types <- character()
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
             type <- query_param__value(params$type())
             docs <- if (identical(type, "Dataset")) {
                 cli_shift_test_dataset_docs(
@@ -101,7 +112,11 @@ cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = empt
             params$fields(unique(c(fields, required_fields)))
             response <- cli_shift_test_response(docs)
             calls$types <- c(calls$types, type)
-            list(response = response, docs = response$response$docs, parameter = params)
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr",
         .env = parent.frame()

@@ -112,7 +112,7 @@ test_that("only dependent children are blocked after shared reading", {
                 ))
             )
         },
-        shift_run = function(child, ...) {
+        shift__run_one = function(child, ...) {
             started <<- c(started, child@meta$site@id)
             child
         },

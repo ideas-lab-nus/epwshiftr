@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 test_that("summary plan IDs prefer normalized lineage and support legacy rows", {
@@ -500,8 +500,8 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
     store <- tempfile("esg-background-lock-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
-    withr::local_options(list(
-        epwshiftr.shift.launcher = function(...) invisible(0L)
+    test_local_dependencies(list(
+        shift__launch_job = function(...) invisible(0L)
     ))
     # This test targets a standalone run's locked-store inspection. Batch
     # launch ownership is covered separately above.

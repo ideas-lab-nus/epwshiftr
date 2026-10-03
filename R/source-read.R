@@ -136,8 +136,10 @@ store__read_extract_dataset <- function(
             invisible(TRUE)
         }
     }
-    old <- options(epwshiftr.dataset.progress_callback = callback)
-    on.exit(options(old), add = TRUE)
+    dataset_private <- priv(ds)
+    old_callback <- dataset_private$progress_callback
+    dataset_private$progress_callback <- callback
+    on.exit(dataset_private$progress_callback <- old_callback, add = TRUE)
     read_args <- list(
         variable = plan$variable_id[[1L]],
         lon = plan$lon[[1L]],
@@ -216,7 +218,7 @@ source__apply <- function(
     checkmate::assert_function(on_error, null.ok = TRUE)
     checkmate::assert_function(read)
     checkmate::assert_function(collect)
-    workers <- getOption("epwshiftr.mirai_workers", 4L)
+    workers <- execution__options()$epwshiftr.mirai_workers
     checkmate::assert_count(workers, positive = TRUE)
     workers <- min(workers, length(jobs))
     if (!length(jobs)) {
@@ -251,37 +253,18 @@ source__apply <- function(
     # between several independent source connections.
     mirai::daemons(workers, dispatcher = workers > 1L, .compute = profile)
     on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
-    package_path <- getNamespaceInfo(asNamespace("epwshiftr"), "path")
-    library_paths <- .libPaths()
-    worker_options <- options()[intersect(
-        names(options()),
-        c(
-            "epwshiftr.cache",
-            "epwshiftr.dir_cache",
-            "epwshiftr.dir_store",
-            "epwshiftr.threshold_alpha"
-        )
-    )]
-    # Dev-mode workers must execute the same checkout, not a stale installed
-    # package. Installed packages need no development dependency.
+    library_paths <- execution__library_paths()
+    worker_options <- execution__options()
     setup <- mirai::everywhere(
         {
             .libPaths(library_paths)
-            if (file.exists(file.path(package_path, "Meta", "package.rds"))) {
-                loadNamespace("epwshiftr")
-            } else {
-                getExportedValue("pkgload", "load_all")(
-                    package_path,
-                    quiet = TRUE
-                )
-            }
+            loadNamespace("epwshiftr")
             options(worker_options)
             options(epwshiftr.progress = FALSE, epwshiftr.mirai_workers = 1L)
             data.table::setDTthreads(1L)
             TRUE
         },
         .args = list(
-            package_path = package_path,
             library_paths = library_paths,
             worker_options = worker_options
         ),

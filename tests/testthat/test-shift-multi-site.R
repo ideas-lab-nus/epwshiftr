@@ -44,9 +44,9 @@ multi_site__plan <- function(
 # Keep a failed shared source read visible in the saved batch even when no
 # child run was started, so the user can inspect and resume that batch.
 test_that("shared prefetch failure persists as a blocked batch", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     root <- tempfile("blocked-shared-batch-")
     batch <- multi_site__plan(
@@ -71,12 +71,12 @@ test_that("shared prefetch failure persists as a blocked batch", {
 
 test_that("multiple sites share discovery and retain distinct durable plans", {
     calls <- 0L
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(
+        availability = function(...) {
             calls <<- calls + 1L
             test_cmip6_availability(...)
         },
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     sites <- list(
         shift_site("South", epw = get_cache_epw()),
@@ -132,9 +132,9 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
 })
 
 test_that("site objects preserve coordinates, metadata and EPW identities", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     epw <- get_cache_epw()
     sites <- list(
@@ -171,7 +171,7 @@ test_that("site objects preserve coordinates, metadata and EPW identities", {
 })
 
 test_that("site constructors and collections reject invalid inputs before discovery", {
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     epw <- get_cache_epw()
@@ -212,9 +212,9 @@ test_that("site defaults are independent of explicitly supplied coordinates", {
 })
 
 test_that("single and multiple site calls use one batch contract", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     site <- shift_site("A", epw = get_cache_epw())
     root <- tempfile()
@@ -228,9 +228,9 @@ test_that("single and multiple site calls use one batch contract", {
 })
 
 test_that("version 3 location arrays plan and restore through the CLI", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     config <- epwshiftr_cli_shift_example_config()
     config$version <- 3L
@@ -278,9 +278,9 @@ test_that("version 3 location arrays plan and restore through the CLI", {
 
 
 test_that("multi-site references are resolved for each location", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     sites <- list(
         shift_site("A", epw = get_cache_epw()),
@@ -306,7 +306,7 @@ test_that("multi-site references are resolved for each location", {
         children[[2L]]@meta$site@lon,
         children[[4L]]@meta$site@lon
     ))
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     expect_error(
@@ -328,7 +328,7 @@ test_that("new site inputs validate EPW generation metadata before discovery", {
     header[[9L]] <- "unknown"
     lines[[1L]] <- paste(header, collapse = ",")
     writeLines(lines, path)
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     sites <- shift_site("A", epw = path)
@@ -346,13 +346,13 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(
+        availability = function(...) {
             args <- list(...)
             args$source <- "EC-Earth3"
             do.call(test_cmip6_availability, args)
         },
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transform <- monthly_transform("epwshiftr")
     variables <- epw_morph_variables(transform__recipe(transform))
@@ -576,7 +576,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
 
 
 test_that("R and CLI reject invalid method periods before discovery", {
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     config <- epwshiftr_cli_shift_example_config()

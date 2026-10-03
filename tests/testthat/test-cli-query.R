@@ -207,15 +207,23 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
             constraints = TRUE,
             dict_check = FALSE,
             progress = FALSE,
-            progress_label = NULL
+            progress_label = NULL,
+            progress_callback = NULL
         ) {
             collect_calls[[length(collect_calls) + 1L]] <<- list(
                 progress = progress,
                 progress_label = progress_label
             )
             response <- cli_test_response(file_docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
@@ -241,9 +249,19 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
         ))
     )
     expect_equal(json_search$status, 0L)
-    json_search_result <- jsonlite::fromJSON(paste(json_search_text, collapse = "\n"))
-    expect_true(all(c("id", "title", "source_id") %in% names(json_search_result)))
-    expect_false(any(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
+    json_search_result <- jsonlite::fromJSON(paste(
+        json_search_text,
+        collapse = "\n"
+    ))
+    expect_true(all(
+        c("id", "title", "source_id") %in% names(json_search_result)
+    ))
+    expect_false(any(vapply(
+        tail(collect_calls, 2L),
+        `[[`,
+        logical(1L),
+        "progress"
+    )))
 
     jsonl_search_text <- capture.output(
         jsonl_search <- epwshiftr_cli(c(
@@ -256,7 +274,12 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     )
     expect_equal(jsonl_search$status, 0L)
     expect_match(paste(jsonl_search_text, collapse = "\n"), "\"id\"")
-    expect_false(any(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
+    expect_false(any(vapply(
+        tail(collect_calls, 2L),
+        `[[`,
+        logical(1L),
+        "progress"
+    )))
 
     capture.output(
         no_progress <- epwshiftr_cli(c(
@@ -269,7 +292,12 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
         type = "message"
     )
     expect_equal(no_progress$status, 0L)
-    expect_false(any(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
+    expect_false(any(vapply(
+        tail(collect_calls, 2L),
+        `[[`,
+        logical(1L),
+        "progress"
+    )))
 
     capture.output(
         bad_columns <- epwshiftr_cli(c(
@@ -283,13 +311,26 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     )
     expect_equal(bad_columns$status, 2L)
     expect_match(bad_columns$error, "Unknown display column")
-    expect_true(all(vapply(tail(collect_calls, 2L), `[[`, logical(1L), "progress")))
+    expect_true(all(vapply(
+        tail(collect_calls, 2L),
+        `[[`,
+        logical(1L),
+        "progress"
+    )))
     expect_identical(
         vapply(tail(collect_calls, 2L), `[[`, character(1L), "progress_label"),
         c("Collecting Dataset records", "Collecting File records")
     )
 
-    preview <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "preview", query_id, "--detail"))
+    preview <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        dir,
+        "query",
+        "preview",
+        query_id,
+        "--detail"
+    ))
     expect_equal(preview$status, 0L)
     expect_named(preview$result, c("summary", "changes"))
     expect_equal(preview$result$summary$query_id, query_id)
@@ -304,7 +345,14 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     expect_true(any(grepl("Changes", preview_text)))
     expect_false(any(grepl("^\\$summary", preview_text)))
 
-    updated <- epwshiftr_cli(c("--quiet", "--store", dir, "query", "update", query_id))
+    updated <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        dir,
+        "query",
+        "update",
+        query_id
+    ))
     expect_equal(updated$status, 0L)
     expect_equal(nrow(updated$result), 1L)
 })

@@ -18,10 +18,15 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
             close = function(...) NULL,
             suspend = function(code) code())
         },
+        shift__with_query_reporter = function(reporter, query, phase, expr) {
+            force(expr)
+        },
         shift_as_query = function(x) list(
             index_node = function() "https://example.org",
             collect = function(...) list(count = function() 964L)),
-        shift__task_execute = function(...) stop("unexpected standalone operation"),
+        shift__task_execute = function(...) {
+            stop("unexpected standalone operation")
+        },
         shift__cmip6_coverage_catalog = function(request, store, ui, label) {
             reporter <- shift__current_reporter()
             reporters[[length(reporters) + 1L]] <<- reporter
@@ -37,18 +42,25 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
             reporter$unit_completed(sprintf("Indexed %d File catalog records", nrow(rows)),
                 details = list(unit_type = "catalog", catalog_role = "File"))
             rows
-        }, .package = "epwshiftr")
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = function(...) {
+        },
+        .package = "epwshiftr"
+    )
+    test_local_dependencies(list(
+        availability = function(...) {
             reporter <- shift__current_reporter()
             reporters[[length(reporters) + 1L]] <<- reporter
             shift_datasets(shift_cmip6_scenario(source = "Model-A",
                 scenario = "ssp585", variables = "tas"))
             test_cmip6_availability(...)
-        }, epwshiftr.cmip6.period_coverage = shift__cmip6_period_coverage))
+        },
+        shift__cmip6_period_coverage = shift__cmip6_period_coverage
+    ))
     transforms <- shift_batch__transforms(c("original_morphing", "bws_btws"))
     transforms$epwshiftr <- monthly_transform("epwshiftr")
-    reference <- shift_reference_historical(data.frame(period = "reference", year = 1973:2005))
+    reference <- shift_reference_historical(data.frame(
+        period = "reference",
+        year = 1973:2005
+    ))
     result <- shift_batch__discover_models(shift_cmip6(model = 3L,
         scenarios = c("ssp126", "ssp245", "ssp370", "ssp585")), transforms,
         periods = shift__periods_from_input(list(mid = 2041:2060, late = 2071:2090)),
@@ -103,7 +115,7 @@ test_that("nested coverage collection persists files and closes its owned store"
 test_that("discovery restores reporter ownership after failures and interrupts", {
     for (interrupted in c(FALSE, TRUE)) {
         reporter <- NULL
-        withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+        test_local_dependencies(list(availability = function(...) {
             reporter <<- shift__current_reporter()
             expect_null(reporter$context()$request_started_at)
             reporter$heartbeat("Waiting for catalog response",
@@ -119,7 +131,10 @@ test_that("discovery restores reporter ownership after failures and interrupts",
             error = function(e) e, interrupt = function(e) e)
         expect_null(shift__current_reporter())
         expect_false(is.null(reporter), info = conditionMessage(condition))
-        expect_identical(reporter$snapshot()$status, if (interrupted) "cancelled" else "failed")
+        expect_identical(
+            reporter$snapshot()$status,
+            if (interrupted) "cancelled" else "failed"
+        )
     }
 })
 
@@ -131,8 +146,9 @@ test_that("catalog callbacks retain truthful request and cache metrics", {
     reporter <- shift__reporter(shift_ui("none"))
     on.exit(reporter$close(), add = TRUE)
     reporter$operation_started("collect", "Collect CMIP6")
-    shift__with_query_reporter(reporter, "https://example.org", "File", {
-        callback <- getOption("epwshiftr.query.progress_callback")
+    query <- EsgQuery$new(index_node = "https://example.org")
+    shift__with_query_reporter(reporter, query, "File", {
+        callback <- priv(query)$progress_callback
         callback(list(state = "started"))
         callback(list(state = "completed", downloaded = 128L))
         callback(list(state = "parsed", records = 12L))
@@ -150,7 +166,10 @@ test_that("catalog callbacks retain truthful request and cache metrics", {
     expect_match(text, "waiting 40s")
     expect_match(text, "timeout 5m 00s")
     expect_match(text, "last response")
-    expect_match(text, "1 responses.*1 cached.*15 File catalog records received")
+    expect_match(
+        text,
+        "1 responses.*1 cached.*15 File catalog records received"
+    )
     expect_false(grepl("%|ETA|downloaded", text))
 })
 

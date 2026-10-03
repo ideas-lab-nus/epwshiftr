@@ -2124,12 +2124,19 @@ ShiftReporter <- R6::R6Class(
     public = list(
         # Bind one reporter to a stable run/job identity and resolve its
         # presentation mode once for the lifetime of the execution attempt.
-        initialize = function(ui = shift_ui(), store = NULL, run_id = NULL,
-                              job_id = NULL, background = FALSE,
-                              step_id = NULL) {
+        initialize = function(
+            ui = shift_ui(),
+            store = NULL,
+            run_id = NULL,
+            job_id = NULL,
+            background = FALSE,
+            step_id = NULL,
+            execution = NULL
+        ) {
             if (!S7::S7_inherits(ui, ShiftUiOptions)) {
                 cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
             }
+            private$execution <- execution
             private$ui_value <- ui
             private$mode_value <- shift__ui_mode(ui)
             private$motion_value <- shift__ui_motion(ui, private$mode_value)
@@ -2514,9 +2521,10 @@ ShiftReporter <- R6::R6Class(
         # Check cooperative cancellation at explicit workflow boundaries even
         # when no heartbeat or progress output is currently being rendered.
         check_cancel = function(stage = private$stage) {
-            shift_batch__check_cancel()
+            execution__check_cancel(private$execution, stage)
             if (
-                !is.null(private$store) &&
+                is.null(private$execution) &&
+                    !is.null(private$store) &&
                     !is.null(private$run_id_value) &&
                     !is.null(private$job_id_value)
             ) {
@@ -2566,7 +2574,7 @@ ShiftReporter <- R6::R6Class(
         # Refresh transient liveness and cancellation state without persisting
         # animation-only heartbeat events in the run history.
         heartbeat = function(message = NULL, details = list(), force = FALSE) {
-            shift_batch__checkpoint(details)
+            execution__checkpoint(private$execution, details)
             now <- Sys.time()
             # Keep a stable base label separate from the transient elapsed
             # suffix so repeated heartbeats never grow the displayed message.
@@ -2609,18 +2617,7 @@ ShiftReporter <- R6::R6Class(
                 private$last_heartbeat <- now
                 # Cancellation and durable heartbeat checks follow the slower
                 # liveness cadence, not the animation frame rate.
-                if (
-                    !is.null(private$store) &&
-                        !is.null(private$run_id_value) &&
-                        !is.null(private$job_id_value)
-                ) {
-                    shift__job_check_cancel(
-                        private$store,
-                        private$run_id_value,
-                        private$job_id_value,
-                        shift_coalesce(private$stage, "working")
-                    )
-                }
+                self$check_cancel(shift_coalesce(private$stage, "working"))
                 private$touch_job(force = TRUE)
             }
             if (identical(private$mode_value, "none")) {
@@ -2803,6 +2800,7 @@ ShiftReporter <- R6::R6Class(
         }
     ),
     private = list(
+        execution = NULL,
         ui_value = NULL,
         mode_value = NULL,
         motion_value = NULL,
@@ -3199,16 +3197,23 @@ ShiftReporter <- R6::R6Class(
 )
 
 # Construct a reporter after a run and optional job have durable identities.
-shift__reporter <- function(ui = shift_ui(), store = NULL, run_id = NULL,
-                            job_id = NULL, background = FALSE,
-                            step_id = NULL) {
+shift__reporter <- function(
+    ui = shift_ui(),
+    store = NULL,
+    run_id = NULL,
+    job_id = NULL,
+    background = FALSE,
+    step_id = NULL,
+    execution = NULL
+) {
     ShiftReporter$new(
         ui = ui,
         store = store,
         run_id = run_id,
         job_id = job_id,
         background = background,
-        step_id = step_id
+        step_id = step_id,
+        execution = execution
     )
 }
 

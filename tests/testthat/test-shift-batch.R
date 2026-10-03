@@ -251,9 +251,9 @@ test_that("high-level workflows select common models and retain child plans", {
         availability_calls <<- availability_calls + 1L
         test_cmip6_availability(...)
     }
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     output <- tempfile("batch-output-")
     store <- tempfile("batch-store-")
@@ -358,9 +358,9 @@ test_that("high-level workflows select common models and retain child plans", {
 })
 
 test_that("direct high-level execution builds the whole batch before running", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     received <- NULL
     testthat::local_mocked_bindings(
@@ -394,9 +394,9 @@ test_that("direct high-level execution builds the whole batch before running", {
 })
 
 test_that("batch discovery keeps r1i1p1f1 as a hard default", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     climate <- shift_cmip6(
         model = 1L,
@@ -440,9 +440,9 @@ test_that("batch discovery applies historical coverage per method", {
             index_node = index_node
         )
     }
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = collect,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = collect,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transforms <- list(
         monthly = monthly_transform("epwshiftr"),
@@ -485,9 +485,9 @@ test_that("batch discovery applies historical coverage per method", {
 })
 
 test_that("NULL model selection retains every compatible common model", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transforms <- shift_batch__transforms("isimip3basd")
     references <- stats::setNames(
@@ -510,9 +510,9 @@ test_that("NULL model selection retains every compatible common model", {
 })
 
 test_that("numeric model selection prefers less fragmented complete inputs", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = function(candidates, ...) {
             candidates[, source_file_count := c(
                 `Model-A` = 1200,
                 `Model-B` = 120,
@@ -549,9 +549,9 @@ test_that("batch discovery applies period coverage before model counts", {
         ))
         candidates[source_id != "Model-B"]
     }
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = period_coverage
     ))
 
     batch <- shift_future_epw(
