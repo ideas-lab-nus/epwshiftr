@@ -192,7 +192,8 @@ shift_batch__receipt_write <- function(x) {
             } else {
                 NULL
             },
-            status = shift_status(child, refresh = FALSE)
+            status = shift_status(child, refresh = FALSE),
+            shared_inputs = child@meta$shared_inputs
         )
     })
     receipt <- list(
@@ -200,7 +201,7 @@ shift_batch__receipt_write <- function(x) {
         batch_id = x@ids$batch_id,
         discovery = x@meta$discovery,
         shared_plan = x@meta$shared_plan,
-        shared_failure = x@meta$shared_failure,
+        shared_failure = x@meta[["shared_failure"]],
         shared_failure_history = x@meta$shared_failure_history,
         manifest = data.table::copy(x@meta$manifest),
         children = children,
@@ -256,7 +257,9 @@ shift_batch_get <- function(batch_id, store = NULL) {
     }
     children <- lapply(receipt$children, function(child) {
         if (!is.na(store__chr1(child$run_id))) {
-            return(shift_run_get(child$run_id, store = child$store_path))
+            run <- shift_run_get(child$run_id, store = child$store_path)
+            run@meta$shared_inputs <- child$shared_inputs
+            return(run)
         }
         if (!is.null(child$plan)) {
             return(shift__plan_from_spec(child$plan, store = child$store_path))
@@ -290,7 +293,7 @@ shift_batch_get <- function(batch_id, store = NULL) {
             climate = shift__climate_from_spec(receipt$climate),
             discovery = receipt$discovery,
             shared_plan = receipt$shared_plan,
-            shared_failure = receipt$shared_failure,
+            shared_failure = receipt[["shared_failure"]],
             shared_failure_history = receipt$shared_failure_history,
             selected_models = receipt$discovery$identities,
             output_dir = receipt$output_dir,
@@ -348,6 +351,7 @@ shift_batch__restore_child <- function(reference) {
             ) {
                 return(NULL)
             }
+            run@meta$shared_inputs <- reference$shared_inputs
             return(run)
         }
     }
@@ -368,6 +372,7 @@ shift_batch__restore_child <- function(reference) {
             return(NULL)
         }
     }
+    run@meta$shared_inputs <- reference$shared_inputs
     run
 }
 
@@ -415,7 +420,7 @@ shift_batch__restore <- function(
             climate = climate,
             discovery = receipt$discovery,
             shared_plan = receipt$shared_plan,
-            shared_failure = receipt$shared_failure,
+            shared_failure = receipt[["shared_failure"]],
             shared_failure_history = receipt$shared_failure_history,
             selected_models = data.table::as.data.table(
                 data.table::copy(receipt$discovery$identities)
@@ -1689,10 +1694,19 @@ shift_batch__diagnostics <- function(
 
 # Refresh each persisted child independently; dry-run plans remain unchanged.
 shift_batch__refresh <- function(x) {
+    # A coordinator updates child references as each foreground child finishes.
+    # Reopen that receipt before refreshing an older caller's batch handle.
+    if (!is.null(shift_batch__job_read(x@store_path))) {
+        x <- shift_batch_get(x@ids$batch_id, store = x@store_path)
+    }
     children <- lapply(seq_along(x@meta$children), function(index) {
         child <- x@meta$children[[index]]
         tryCatch(
-            shift_refresh(child),
+            {
+                refreshed <- shift_refresh(child)
+                refreshed@meta$shared_inputs <- child@meta$shared_inputs
+                refreshed
+            },
             error = function(error) {
                 row <- x@meta$manifest[index]
                 child@diagnostics <- shift_bind_diagnostics(
@@ -1719,7 +1733,7 @@ shift_batch__refresh <- function(x) {
         children,
         x@meta$manifest,
         refresh = FALSE,
-        shared_failure = x@meta$shared_failure
+        shared_failure = x@meta[["shared_failure"]]
     )
     x@ids$child_ids <- lapply(children, function(child) child@ids)
     x
@@ -1730,8 +1744,19 @@ shift_batch__status <- function(x, refresh = TRUE) {
     if (isTRUE(refresh)) {
         x <- shift_batch__refresh(x)
     }
-    if (!is.null(x@meta$shared_failure)) {
+    job <- shift_batch__job_read(x@store_path)
+    if (
+        !is.null(job) &&
+            job$status %in%
+                c("queued", "running", "stopping", "cancelled")
+    ) {
+        return(job$status)
+    }
+    if (!is.null(x@meta[["shared_failure"]])) {
         return("blocked")
+    }
+    if (identical(job$status, "failed")) {
+        return("failed")
     }
     statuses <- vapply(
         x@meta$children,
@@ -1803,18 +1828,58 @@ shift_batch__run_child <- function(expr) {
 
 # Resume plans and interrupted runs independently, leaving active and completed
 # child runs untouched.
-shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
+shift_batch__execute <- function(x, ui = shift_ui(), reporter = NULL) {
+    shift_batch__check_cancel()
     call_started <- Sys.time()
     execution <- list()
     # Resolve actual inputs once per model/method before any child starts.
-    # Foreground execution additionally warms the shared extraction cache;
+    # The coordinator also warms the shared extraction cache;
     # failures remain durable and do not trigger per-city source retries.
     failure <- tryCatch(
         {
-            x <- shift_batch__resolve_inputs(x)
-            if (!isTRUE(background)) {
-                shift_batch__prefetch(x)
+            # Validate completed output artifacts before deciding which source
+            # consumers need recovery. Active children remain untouched.
+            for (index in seq_along(x@meta$children)) {
+                child <- x@meta$children[[index]]
+                if (
+                    identical(
+                        shift_status(child, refresh = FALSE),
+                        "completed"
+                    ) &&
+                        is.null(shift_batch__restore_child(list(
+                            run_id = child@ids$run_id,
+                            store_path = child@store_path,
+                            status = "completed"
+                        )))
+                ) {
+                    x@meta$children[[index]] <- shift_batch__child_plan(child)
+                }
             }
+            x <- shift_batch__resolve_inputs(x, reporter)
+            prefetched <- shift_batch__prefetch(x, reporter)
+            failures <- attr(prefetched, "failures")
+            blocked <- unique(unlist(lapply(failures, `[[`, "child_keys")))
+            x@meta[["shared_failure"]] <- if (length(failures)) {
+                list(
+                    file = paste(
+                        vapply(failures, `[[`, character(1L), "file"),
+                        collapse = ", "
+                    ),
+                    message = paste(
+                        vapply(failures, `[[`, character(1L), "message"),
+                        collapse = "; "
+                    ),
+                    child_keys = blocked,
+                    occurred_at = Sys.time()
+                )
+            } else {
+                NULL
+            }
+            x@meta$shared_failure_history <- c(
+                x@meta$shared_failure_history,
+                failures
+            )
+            shift_batch__receipt_write(x)
             NULL
         },
         error = base::identity
@@ -1828,7 +1893,7 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
             message = conditionMessage(failure),
             occurred_at = Sys.time()
         )
-        x@meta$shared_failure <- record
+        x@meta[["shared_failure"]] <- record
         x@meta$shared_failure_history <- c(
             x@meta$shared_failure_history,
             list(record)
@@ -1836,14 +1901,29 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
         shift_batch__receipt_write(x)
         stop(failure)
     }
-    if (!is.null(x@meta$shared_failure)) {
-        x@meta$shared_failure <- NULL
-        shift_batch__receipt_write(x)
+    if (!is.null(reporter)) {
+        reporter$operation_completed("Shared source reads finished.")
+        reporter$close()
     }
     # Update the shared matrix after each child so subsequent foreground frames
     # show batch progress while the ordinary child reporter owns the terminal.
     for (index in seq_along(x@meta$children)) {
+        shift_batch__check_cancel()
         child <- x@meta$children[[index]]
+        if (names(x@meta$children)[[index]] %in% blocked) {
+            execution[[index]] <- data.table::data.table(
+                child_key = names(x@meta$children)[[index]],
+                action = "blocked",
+                elapsed_seconds = 0
+            )
+            next
+        }
+        inputs <- child@meta$shared_inputs
+        context <- getOption("epwshiftr.batch.context")
+        if (!is.null(context)) {
+            context$batch <- x
+            context$child_key <- names(x@meta$children)[[index]]
+        }
         started <- Sys.time()
         statuses <- vapply(
             x@meta$children,
@@ -1861,28 +1941,11 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
             failed = sum(statuses %in% c("failed", "blocked"))
         )
         status <- shift_status(child, refresh = TRUE)
-        if (identical(status, "completed")) {
-            # A completed database row alone does not prove its exported files
-            # still exist. Reuse the same artifact check as receipt restoration.
-            restored <- shift_batch__restore_child(list(
-                run_id = child@ids$run_id,
-                store_path = child@store_path,
-                status = status
-            ))
-            if (is.null(restored)) {
-                spec <- jsonlite::fromJSON(
-                    child@meta$run$spec_json[[1L]],
-                    simplifyVector = TRUE
-                )
-                child <- shift__plan_from_spec(spec, store = child@store_path)
-                status <- "planned"
-            }
-        }
         action <- "reused"
         if (S7::S7_inherits(child, ShiftPlan)) {
             action <- "started"
             child <- shift_batch__run_child(
-                shift_run(child, background = background, ui = child_ui)
+                shift_run(child, background = FALSE, ui = child_ui)
             )
         } else if (
             !status %in%
@@ -1890,9 +1953,10 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
         ) {
             action <- "resumed"
             child <- shift_batch__run_child(
-                shift_resume(child, background = background, ui = child_ui)
+                shift_resume(child, background = FALSE, ui = child_ui)
             )
         }
+        child@meta$shared_inputs <- inputs
         x@meta$children[[index]] <- child
         execution[[index]] <- data.table::data.table(
             child_key = names(x@meta$children)[[index]],
@@ -1913,14 +1977,35 @@ shift_batch__resume <- function(x, background = FALSE, ui = shift_ui()) {
         call_started,
         units = "secs"
     ))
-    x <- shift_batch__refresh(x)
     shift_batch__receipt_write(x)
-    shift_batch__report(x, ui)
+    x <- shift_batch__refresh(x)
     x
 }
 
 # Request cancellation only for children that are not already terminal.
 shift_batch__cancel <- function(x, force = FALSE) {
+    checkmate::assert_flag(force)
+    job <- shift_batch__job_read(x@store_path)
+    if (!is.null(job) && job$status %in% c("queued", "running", "stopping")) {
+        store_write_json_atomic(
+            list(force = force),
+            file.path(
+                x@store_path,
+                paste0(job$id, ".cancel.json")
+            )
+        )
+        if (
+            force &&
+                !is.null(job$pid) &&
+                !is.na(job$pid) &&
+                job$pid != Sys.getpid()
+        ) {
+            # Interrupt the owner so its on-exit handlers close the source pool;
+            # a bare termination could leave its readers alive.
+            try(tools::pskill(job$pid, signal = 2L), silent = TRUE)
+        }
+        return(shift_batch__refresh(x))
+    }
     children <- lapply(x@meta$children, function(child) {
         if (!S7::S7_inherits(child, ShiftRun)) {
             return(child)
@@ -1983,7 +2068,7 @@ S7::method(shift_check, ShiftBatch) <- function(
         x@meta$children,
         x@meta$manifest,
         refresh = FALSE,
-        shared_failure = x@meta$shared_failure
+        shared_failure = x@meta[["shared_failure"]]
     )
     if (isTRUE(strict) && any(diagnostics$severity %in% "error")) {
         shift_abort_diagnostics(diagnostics)

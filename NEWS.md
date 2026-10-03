@@ -5,14 +5,21 @@
   bounded reads across cities, and child runs pin the same File snapshots on
   foreground, background and resumed execution (#278).
 
+* Batch recovery excludes completed and active children and re-resolves failed
+  input selections once across cities. Foreground and background execution use
+  one coordinator with durable progress and cooperative cancellation; source
+  concurrency settings apply to the whole coordinated batch. Fully cached
+  shared reads avoid worker startup, and collector failures drain active readers
+  before returning an error (#278).
+
 * Dataset asynchronous operations use separate compute profiles across dataset
   objects (#278).
 
-* Foreground multi-site batches now read shared physical files in bounded
+* Foreground and background multi-site batches read shared physical files in bounded
   native-time windows. Verified window receipts resume interrupted reads, and
   child workflows reuse the same site-extraction cache keys without changing
-  their output and provenance contracts. Shared remote failures stop the batch
-  before per-site retries (#278).
+  their output and provenance contracts. Shared remote failures block dependent
+  children while unrelated tasks continue, without per-city retries (#278).
   Recovery now records a blocked batch with its source error and can assemble
   complete window receipts without reopening an unavailable source. Partial
   cache recovery reads only missing site keys; duplicate method demands share

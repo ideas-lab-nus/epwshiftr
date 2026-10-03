@@ -56,7 +56,7 @@ test_that("shared prefetch failure persists as a blocked batch", {
     # This test isolates failure persistence after input resolution. The input
     # resolver itself is exercised with real local catalogs in shared tests.
     testthat::local_mocked_bindings(
-        shift_batch__resolve_inputs = identity,
+        shift_batch__resolve_inputs = function(batch, reporter = NULL) batch,
         shift_batch__prefetch = function(...) stop("source connection closed")
     )
     expect_error(shift_batch__resume(batch), "source connection closed")
@@ -455,6 +455,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     expect_gt(nrow(plan@meta$shared_plan$acquisitions), 0L)
     shift_batch__receipt_write(plan)
     completed <- shift_run(plan, ui = shift_ui(progress = "none"))
+    expect_null(completed@meta[["shared_failure"]])
     expect_identical(shift_status(completed), "completed")
     shared_receipts <- list.files(
         file.path(plan@store_path, "shared-acquisitions"),

@@ -162,3 +162,59 @@ test_that("a single visible source read leaves the reporter responsive", {
     expect_false(identical(pid, owner))
     expect_gt(heartbeats, 0L)
 })
+
+# A persistence error belongs to the owning process, but must not destroy the
+# other reader's already started work or dispatch an additional source.
+test_that("collector failures drain readers and stop dispatching", {
+    withr::local_options(epwshiftr.mirai_workers = 2L)
+    root <- withr::local_tempdir()
+    jobs <- lapply(1:3, function(index) list(index = index, root = root))
+    expect_error(
+        source__apply(
+            jobs,
+            function(job) {
+                if (job$index == 1L) {
+                    deadline <- Sys.time() + 10
+                    while (
+                        !file.exists(file.path(job$root, "started-2")) &&
+                            Sys.time() < deadline
+                    ) {
+                        Sys.sleep(0.01)
+                    }
+                }
+                file.create(file.path(job$root, paste0("started-", job$index)))
+                if (job$index == 2L) {
+                    Sys.sleep(0.3)
+                }
+                file.create(file.path(job$root, paste0("done-", job$index)))
+            },
+            function(job, result) {
+                stop("persist conflict")
+            }
+        ),
+        "persist conflict"
+    )
+    expect_true(file.exists(file.path(root, "done-2")))
+    expect_false(file.exists(file.path(root, "started-3")))
+})
+
+test_that("file isolation callbacks allow independent sources to finish", {
+    for (workers in c(1L, 2L)) {
+        withr::local_options(epwshiftr.mirai_workers = workers)
+        done <- integer()
+        failed <- integer()
+        source__apply(
+            as.list(1:3),
+            function(job) {
+                if (job == 1L) {
+                    stop("unavailable source")
+                }
+                job
+            },
+            function(job, value) done <<- c(done, job),
+            on_error = function(job, error) failed <<- c(failed, job)
+        )
+        expect_setequal(done, 2:3)
+        expect_identical(failed, 1L)
+    }
+})

@@ -516,26 +516,9 @@ shift_batch__seed_pending <- function(
     invisible(NULL)
 }
 
-# Open each physical file once, resume verified windows, and publish complete
-# per-site payloads only after every native window succeeds. Failed reads leave
-# earlier window receipts intact for the next batch resume.
-shift_batch__prefetch_acquisition <- function(
-    batch_root,
-    acquisition,
-    consumers,
-    source = NULL
-) {
-    if (is.null(source)) {
-        source <- new.env(parent = emptyenv())
-        source$dataset <- NULL
-        on.exit(
-            if (!is.null(source$dataset)) {
-                try(source$dataset$close(), silent = TRUE)
-            },
-            add = TRUE
-        )
-    }
-    cache_paths <- vapply(
+# Use the ordinary cache identity for every demand, including optional inputs.
+shift_batch__cache_paths <- function(acquisition, consumers) {
+    vapply(
         seq_len(nrow(consumers)),
         function(index) {
             consumer <- consumers[index]
@@ -551,16 +534,39 @@ shift_batch__prefetch_acquisition <- function(
         },
         character(1L)
     )
+}
+
+# Open each physical file once, resume verified windows, and publish complete
+# per-site payloads only after every native window succeeds. Failed reads leave
+# earlier window receipts intact for the next batch resume.
+shift_batch__prefetch_acquisition <- function(
+    batch_root,
+    acquisition,
+    consumers,
+    source = NULL,
+    cached = NULL
+) {
+    if (is.null(source)) {
+        source <- new.env(parent = emptyenv())
+        source$dataset <- NULL
+        on.exit(
+            if (!is.null(source$dataset)) {
+                try(source$dataset$close(), silent = TRUE)
+            },
+            add = TRUE
+        )
+    }
+    cache_paths <- shift_batch__cache_paths(acquisition, consumers)
     # Several weather methods can ask for the same site, source and native
     # period. Their ordinary child cache key is identical, so read it once.
     keep <- !duplicated(cache_paths)
     consumers <- consumers[keep]
     cache_paths <- cache_paths[keep]
-    cached <- vapply(
-        cache_paths,
-        function(path) !is.null(store__extract_cache_read(path)),
-        logical(1L)
-    )
+    cached <- if (is.null(cached)) {
+        vapply(cache_paths, store__extract_cache_available, logical(1L))
+    } else {
+        cached[keep]
+    }
     if (all(cached)) {
         return(invisible(0L))
     }
@@ -578,7 +584,8 @@ shift_batch__prefetch_acquisition <- function(
                 batch_root,
                 acquisition,
                 consumers[rows],
-                source
+                source,
+                cached[rows]
             )
         }
         return(invisible(sum(windows)))
@@ -835,8 +842,8 @@ shift_batch__prefetch_acquisition <- function(
 
 # Warm the existing extraction cache before child workflows start. A plan with
 # unmatched source demands stays on the ordinary child path. A failed shared
-# remote read stops here so the next child does not retry the same source.
-shift_batch__prefetch <- function(batch) {
+# remote read blocks only its dependent children, without per-city retries.
+shift_batch__prefetch <- function(batch, reporter = NULL) {
     shared <- batch@meta$shared_plan
     if (
         is.null(shared) ||
@@ -855,6 +862,15 @@ shift_batch__prefetch <- function(batch) {
     if (all(statuses == "completed")) {
         return(invisible(0L))
     }
+    eligible <- names(batch@meta$children)[
+        !statuses %in%
+            c("completed", "queued", "running", "stopping", "waiting")
+    ]
+    consumers <- shared$consumers[shared$consumers$child_key %in% eligible]
+    if (!nrow(consumers)) {
+        return(invisible(0L))
+    }
+    failures <- list()
     completed <- 0L
     skipped <- character(nrow(shared$acquisitions))
     skip_count <- 0L
@@ -871,15 +887,45 @@ shift_batch__prefetch <- function(batch) {
         if (is.null(consumers) || !nrow(consumers)) {
             return(NULL)
         }
+        needed <- consumers$child_key %in% eligible
+        if (!any(needed)) {
+            return(NULL)
+        }
+        # Keep the original group identity for saved windows. Inactive demand
+        # keys are treated as satisfied, without reading or seeding their data.
+        paths <- shift_batch__cache_paths(acquisition, consumers)
+        unique_paths <- unique(paths[needed])
+        available <- vapply(
+            unique_paths,
+            store__extract_cache_available,
+            logical(1L)
+        )
+        position <- match(paths, unique_paths)
+        cached <- rep(TRUE, length(paths))
+        cached[!is.na(position)] <- available[position[!is.na(position)]]
+        if (all(cached)) {
+            return(NULL)
+        }
         list(
             root = batch@store_path,
             acquisition = acquisition,
-            consumers = consumers
+            consumers = consumers,
+            needed = unique(consumers$child_key[needed]),
+            cached = cached
         )
     })
     source__apply(
         Filter(Negate(is.null), jobs),
         source__read_acquisition,
+        reporter = reporter,
+        on_error = function(job, error) {
+            failures[[job$acquisition$acquisition_id[[1L]]]] <<- list(
+                file = job$acquisition$filename[[1L]],
+                message = conditionMessage(error),
+                child_keys = job$needed,
+                occurred_at = Sys.time()
+            )
+        },
         collect = function(job, outcome) {
             if (is.list(outcome) && !is.null(outcome$unavailable)) {
                 skip_count <<- skip_count + 1L
@@ -899,5 +945,6 @@ shift_batch__prefetch <- function(batch) {
             "i" = skipped[[1L]]
         ))
     }
+    attr(completed, "failures") <- failures
     invisible(completed)
 }

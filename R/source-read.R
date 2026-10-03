@@ -206,7 +206,14 @@ store__read_extract_dataset <- function(
 # native handles only; collect() runs in the caller and may commit to its store.
 # Stop dispatching on a fatal task error, drain already running work, and keep
 # its completed cache entries available for recovery.
-source__apply <- function(jobs, read, collect, reporter = NULL) {
+source__apply <- function(
+    jobs,
+    read,
+    collect,
+    reporter = NULL,
+    on_error = NULL
+) {
+    checkmate::assert_function(on_error, null.ok = TRUE)
     checkmate::assert_function(read)
     checkmate::assert_function(collect)
     workers <- getOption("epwshiftr.mirai_workers", 4L)
@@ -222,7 +229,15 @@ source__apply <- function(jobs, read, collect, reporter = NULL) {
             if (!is.null(reporter)) {
                 reporter$check_cancel()
             }
-            collect(job, read(job))
+            value <- tryCatch(read(job), error = base::identity)
+            if (inherits(value, "error")) {
+                if (is.null(on_error)) {
+                    stop(value)
+                }
+                on_error(job, value)
+            } else {
+                collect(job, value)
+            }
         }
         return(invisible(NULL))
     }
@@ -292,10 +307,25 @@ source__apply <- function(jobs, read, collect, reporter = NULL) {
                 if (nzchar(error)) {
                     value <- simpleError(error)
                 }
-                if (inherits(value, "error")) {
-                    if (is.null(failure)) failure <- value
-                } else {
-                    collect(jobs[[indices[[slot]]]], value)
+                # Collector failures must drain peers just like reader failures.
+                # A file-isolation callback may record an expected source error
+                # and permit independent files to continue.
+                outcome <- tryCatch(
+                    {
+                        if (inherits(value, "error")) {
+                            if (is.null(on_error)) {
+                                stop(value)
+                            }
+                            on_error(jobs[[indices[[slot]]]], value)
+                        } else {
+                            collect(jobs[[indices[[slot]]]], value)
+                        }
+                        NULL
+                    },
+                    error = base::identity
+                )
+                if (inherits(outcome, "error") && is.null(failure)) {
+                    failure <- outcome
                 }
                 tasks[slot] <- list(NULL)
                 completed <- completed + 1L
@@ -376,7 +406,8 @@ source__read_acquisition <- function(job) {
         shift_batch__prefetch_acquisition(
             job$root,
             job$acquisition,
-            job$consumers
+            job$consumers,
+            cached = job$cached
         ),
         epwshiftr_shared_unavailable = function(error) {
             list(unavailable = error)

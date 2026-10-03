@@ -469,7 +469,8 @@ a baseline EPW. The constructor derives omitted coordinates and labels
 from the EPW header. Time zone and elevation remain those of the baseline.
 Always returns a \code{ShiftBatch}, ordered by site ID, with separate output
 and store directories per location, method, and model. Candidate discovery
-is shared; extraction runs independently for each child. Use declarative
+and bounded native reads are shared; each child owns its persisted outputs.
+Use declarative
 historical/reanalysis references. For previously extracted site-specific
 references, use \code{\link[=shift_plan]{shift_plan()}} with the matching site and store.}
 
@@ -487,7 +488,10 @@ batch without extracting climate values or generating EPWs.}
 \item{background}{For \code{\link[=shift_download]{shift_download()}}, whether to run queued downloads in
 a background job. For task-level run/resume functions, whether to launch a
 detached \code{Rscript} worker. Single plans return a queued \code{ShiftRun}; batches
-retain their child runs in the returned \code{ShiftBatch}.}
+return a queued \code{ShiftBatch} whose single coordinator shares source reads
+and starts child workflows. Both modes honor the same source-worker limit
+from \code{options(epwshiftr.mirai_workers = 4L)}. Use \code{\link[=shift_refresh]{shift_refresh()}} or
+\code{\link[=shift_watch]{shift_watch()}} to follow source reading and newly registered child runs.}
 
 \item{methods}{One or more unambiguous method keys from
 \code{\link[=weather_transforms]{weather_transforms()}}. This high-level form creates a \code{ShiftBatch} across
@@ -549,7 +553,9 @@ status.}
 
 \item{force}{If \code{FALSE}, request cancellation at the next safe workflow
 boundary. If \code{TRUE}, persist the request and then terminate the recorded
-background worker process immediately.}
+background worker process immediately. For coordinated batches, send an
+interrupt to the owner so it can close its source workers; cooperative
+cancellation remains requested if the platform cannot deliver the interrupt.}
 
 \item{tail}{Maximum number of trailing execution log lines to return.}
 

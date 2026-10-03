@@ -2514,8 +2514,18 @@ ShiftReporter <- R6::R6Class(
         # Check cooperative cancellation at explicit workflow boundaries even
         # when no heartbeat or progress output is currently being rendered.
         check_cancel = function(stage = private$stage) {
-            if (!is.null(private$store) && !is.null(private$run_id_value) && !is.null(private$job_id_value)) {
-                shift__job_check_cancel(private$store, private$run_id_value, private$job_id_value, stage)
+            shift_batch__check_cancel()
+            if (
+                !is.null(private$store) &&
+                    !is.null(private$run_id_value) &&
+                    !is.null(private$job_id_value)
+            ) {
+                shift__job_check_cancel(
+                    private$store,
+                    private$run_id_value,
+                    private$job_id_value,
+                    stage
+                )
             }
             invisible(FALSE)
         },
@@ -2556,46 +2566,82 @@ ShiftReporter <- R6::R6Class(
         # Refresh transient liveness and cancellation state without persisting
         # animation-only heartbeat events in the run history.
         heartbeat = function(message = NULL, details = list(), force = FALSE) {
+            shift_batch__checkpoint(details)
             now <- Sys.time()
             # Keep a stable base label separate from the transient elapsed
             # suffix so repeated heartbeats never grow the displayed message.
             private$current_details <- utils::modifyList(
-                shift_coalesce(private$current_details,
-                    shift__progress_details(stage = private$stage, phase = "unit")),
+                shift_coalesce(
+                    private$current_details,
+                    shift__progress_details(
+                        stage = private$stage,
+                        phase = "unit"
+                    )
+                ),
                 details
             )
-            label <- shift_coalesce(message, shift_coalesce(
-                private$current_details$unit_base_label,
-                shift_coalesce(private$current_details$unit_label, "Working")))
+            label <- shift_coalesce(
+                message,
+                shift_coalesce(
+                    private$current_details$unit_base_label,
+                    shift_coalesce(
+                        private$current_details$unit_label,
+                        "Working"
+                    )
+                )
+            )
             private$current_details$unit_base_label <- shift_coalesce(
-                private$current_details$unit_base_label, label)
+                private$current_details$unit_base_label,
+                label
+            )
             elapsed <- private$elapsed(private$unit_started_at)
             private$current_details$unit_label <- label
             private$current_details$elapsed_seconds <- elapsed
-            due_liveness <- isTRUE(force) || is.na(private$last_heartbeat) ||
-                as.numeric(difftime(now, private$last_heartbeat, units = "secs")) >=
+            due_liveness <- isTRUE(force) ||
+                is.na(private$last_heartbeat) ||
+                as.numeric(difftime(
+                    now,
+                    private$last_heartbeat,
+                    units = "secs"
+                )) >=
                     max(1, private$ui_value@heartbeat)
             if (isTRUE(due_liveness)) {
                 private$last_heartbeat <- now
                 # Cancellation and durable heartbeat checks follow the slower
                 # liveness cadence, not the animation frame rate.
-                if (!is.null(private$store) && !is.null(private$run_id_value) &&
-                    !is.null(private$job_id_value)) {
-                    shift__job_check_cancel(private$store, private$run_id_value,
-                        private$job_id_value, shift_coalesce(private$stage, "working"))
+                if (
+                    !is.null(private$store) &&
+                        !is.null(private$run_id_value) &&
+                        !is.null(private$job_id_value)
+                ) {
+                    shift__job_check_cancel(
+                        private$store,
+                        private$run_id_value,
+                        private$job_id_value,
+                        shift_coalesce(private$stage, "working")
+                    )
                 }
                 private$touch_job(force = TRUE)
             }
             if (identical(private$mode_value, "none")) {
                 return(invisible(due_liveness))
             }
-            status <- sprintf("%s (%s elapsed)", label, shift__format_elapsed(elapsed))
+            status <- sprintf(
+                "%s (%s elapsed)",
+                label,
+                shift__format_elapsed(elapsed)
+            )
             if (identical(private$mode_value, "dynamic")) {
                 refreshed <- private$render_dynamic(force = force)
                 return(invisible(isTRUE(refreshed) || isTRUE(due_liveness)))
             } else if (isTRUE(due_liveness)) {
-                private$emit("verbatim", private$format_event(status,
-                    details = private$current_details))
+                private$emit(
+                    "verbatim",
+                    private$format_event(
+                        status,
+                        details = private$current_details
+                    )
+                )
             }
             invisible(due_liveness)
         },

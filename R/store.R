@@ -154,17 +154,44 @@ store__extract_cache_read <- function(path) {
     if (!file.exists(path)) {
         return(NULL)
     }
+    receipt <- paste0(path, ".json")
+    if (file.exists(receipt) && !store__extract_cache_available(path)) {
+        return(NULL)
+    }
     payload <- tryCatch(readRDS(path), error = identity)
     required <- c(
-        "data", "grid_sources", "available_time_count", "actual_start",
+        "data",
+        "grid_sources",
+        "available_time_count",
+        "actual_start",
         "actual_end"
     )
-    if (inherits(payload, "error") || !is.list(payload) ||
-        !all(required %in% names(payload)) ||
-        !is.data.frame(payload$data)) {
+    if (
+        inherits(payload, "error") ||
+            !is.list(payload) ||
+            !all(required %in% names(payload)) ||
+            !is.data.frame(payload$data)
+    ) {
         return(NULL)
     }
     payload
+}
+
+# Verify a cache receipt without materializing all native values. Existing
+# payloads without a receipt still undergo their full structural check.
+store__extract_cache_available <- function(path) {
+    if (!file.exists(path)) {
+        return(FALSE)
+    }
+    receipt <- paste0(path, ".json")
+    if (!file.exists(receipt)) {
+        return(!is.null(store__extract_cache_read(path)))
+    }
+    record <- tryCatch(
+        jsonlite::read_json(receipt, simplifyVector = TRUE),
+        error = function(e) NULL
+    )
+    is.list(record) && identical(record[["sha256"]], checksum_file(path))
 }
 
 # Atomically publish an undecorated extraction payload. Plan/query identities
@@ -183,6 +210,10 @@ store__extract_cache_write <- function(path, payload) {
     if (!file.rename(temporary, path)) {
         cli::cli_abort("Could not publish the shared extraction cache entry.")
     }
+    store_write_json_atomic(
+        list(sha256 = checksum_file(path)),
+        paste0(path, ".json")
+    )
     invisible(path)
 }
 

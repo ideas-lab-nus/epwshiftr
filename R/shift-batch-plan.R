@@ -445,13 +445,17 @@ shift_batch__plan_from_discovery <- function(children, manifest, path) {
 # Resolve one site-independent input selection per model/method and persist it
 # before shared reads begin. Dry-run discovery remains provisional; execution
 # pins the same immutable File snapshots for every linked child and resume.
-shift_batch__resolve_inputs <- function(batch) {
+shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
     children <- batch@meta$children
+    plans <- lapply(children, shift_batch__child_plan)
     pending <- which(vapply(
-        children,
-        function(child) {
-            S7::S7_inherits(child, ShiftPlan) &&
-                is.null(child@meta$shared_inputs)
+        seq_along(children),
+        function(index) {
+            status <- shift_status(children[[index]], refresh = FALSE)
+            input <- plans[[index]]@meta$shared_inputs
+            !status %in%
+                c("completed", "queued", "running", "stopping", "waiting") &&
+                (is.null(input) || !is.null(input$failure))
         },
         logical(1L)
     ))
@@ -459,7 +463,7 @@ shift_batch__resolve_inputs <- function(batch) {
         return(batch)
     }
     groups <- vapply(
-        children[pending],
+        plans[pending],
         function(child) {
             meta <- child@meta
             store__hash(
@@ -475,12 +479,18 @@ shift_batch__resolve_inputs <- function(batch) {
         character(1L)
     )
     for (positions in split(pending, groups)) {
-        child <- children[[positions[[1L]]]]
+        shift_batch__check_cancel()
+        child <- plans[[positions[[1L]]]]
+        child@meta$shared_inputs <- NULL
         # Auxiliary catalog runs belong to the shared cache, not a city's
         # public workflow history.
         child@store_path <- file.path(batch@store_path, "shared-inputs")
         resolved <- tryCatch(
-            shift__collect_resolved_inputs(child, run_id = NULL),
+            shift__collect_resolved_inputs(
+                child,
+                run_id = NULL,
+                reporter = reporter
+            ),
             error = identity
         )
         if (inherits(resolved, "error")) {
@@ -495,6 +505,7 @@ shift_batch__resolve_inputs <- function(batch) {
             )
             for (index in positions) {
                 children[[index]]@meta$shared_inputs <- inputs
+                plans[[index]]@meta$shared_inputs <- inputs
             }
             next
         }
@@ -555,21 +566,10 @@ shift_batch__resolve_inputs <- function(batch) {
         # to own its extraction plans, run state and output artifacts.
         for (index in positions) {
             children[[index]]@meta$shared_inputs <- inputs
+            plans[[index]]@meta$shared_inputs <- inputs
         }
     }
     batch@meta$children <- children
-    plans <- lapply(children, function(child) {
-        if (S7::S7_inherits(child, ShiftPlan)) {
-            return(child)
-        }
-        shift__plan_from_spec(
-            jsonlite::fromJSON(
-                child@meta$run$spec_json[[1L]],
-                simplifyVector = TRUE
-            ),
-            store = child@store_path
-        )
-    })
     inputs <- lapply(plans, function(child) child@meta$shared_inputs)
     inputs <- Filter(
         function(input) !is.null(input) && is.null(input$failure),
@@ -609,4 +609,23 @@ shift_batch__resolve_inputs <- function(batch) {
     )
     shift_batch__receipt_write(batch)
     batch
+}
+
+# Reconstruct run intent while retaining a batch's explicitly retried selection.
+# Old failed run specs remain evidence; the batch receipt owns the new snapshot.
+shift_batch__child_plan <- function(child) {
+    if (S7::S7_inherits(child, ShiftPlan)) {
+        return(child)
+    }
+    plan <- shift__plan_from_spec(
+        jsonlite::fromJSON(
+            child@meta$run$spec_json[[1L]],
+            simplifyVector = TRUE
+        ),
+        store = child@store_path
+    )
+    if (!is.null(child@meta$shared_inputs)) {
+        plan@meta$shared_inputs <- child@meta$shared_inputs
+    }
+    plan
 }

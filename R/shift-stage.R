@@ -2448,7 +2448,8 @@ shift_plan <- function(request, site, periods, store, transform,
 #'   from the EPW header. Time zone and elevation remain those of the baseline.
 #'   Always returns a `ShiftBatch`, ordered by site ID, with separate output
 #'   and store directories per location, method, and model. Candidate discovery
-#'   is shared; extraction runs independently for each child. Use declarative
+#'   and bounded native reads are shared; each child owns its persisted outputs.
+#'   Use declarative
 #'   historical/reanalysis references. For previously extracted site-specific
 #'   references, use [shift_plan()] with the matching site and store.
 #' @param methods One or more unambiguous method keys from
@@ -2629,7 +2630,10 @@ shift_collect <- S7::new_generic(
 #' @param background For [shift_download()], whether to run queued downloads in
 #'   a background job. For task-level run/resume functions, whether to launch a
 #'   detached `Rscript` worker. Single plans return a queued `ShiftRun`; batches
-#'   retain their child runs in the returned `ShiftBatch`.
+#'   return a queued `ShiftBatch` whose single coordinator shares source reads
+#'   and starts child workflows. Both modes honor the same source-worker limit
+#'   from `options(epwshiftr.mirai_workers = 4L)`. Use [shift_refresh()] or
+#'   [shift_watch()] to follow source reading and newly registered child runs.
 #' @param resume Whether to reuse complete existing downloads, extraction
 #'   outputs, morphing results, or EPW outputs.
 #' @param overwrite Whether to overwrite existing downloads, extraction outputs,
@@ -2949,8 +2953,11 @@ shift_run <- function(x, background = FALSE, ui = shift_ui(), ...) {
         shift__validate_background_plan(x)
     }
     control <- x@meta$control
-    if (isTRUE(control@resume) && !isTRUE(control@overwrite) &&
-        !isTRUE(control@refresh)) {
+    if (
+        isTRUE(control@resume) &&
+            !isTRUE(control@overwrite) &&
+            !isTRUE(control@refresh)
+    ) {
         existing <- shift__run_existing(x)
         if (!is.null(existing)) {
             status <- shift_status(existing, refresh = FALSE)
@@ -2970,9 +2977,15 @@ shift_run <- function(x, background = FALSE, ui = shift_ui(), ...) {
     mode <- if (isTRUE(background)) "process" else "foreground"
     job <- shift__job_create(store, run_id, mode = mode, ui = ui)
     job_id <- job$job_id[[1L]]
-    reporter <- shift__reporter(ui, store = store, run_id = run_id,
-        job_id = job_id, background = background)
+    reporter <- shift__reporter(
+        ui,
+        store = store,
+        run_id = run_id,
+        job_id = job_id,
+        background = background
+    )
     reporter$run_started(x, run_id, background = background)
+    shift_batch__register_child(store, run_id)
 
     if (isTRUE(background)) {
         # Materialize the queued handle before releasing DuckDB. Reopening the
@@ -2986,8 +2999,13 @@ shift_run <- function(x, background = FALSE, ui = shift_ui(), ...) {
         return(handle)
     }
 
-    shift__plan_run(x, run_id = run_id, job_id = job_id,
-        reporter = reporter, ...)
+    shift__plan_run(
+        x,
+        run_id = run_id,
+        job_id = job_id,
+        reporter = reporter,
+        ...
+    )
 }
 
 #' @rdname shift_api
@@ -3366,7 +3384,9 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
         return(run)
     }
     if (status %in% c("queued", "running", "stopping")) {
-        cli::cli_abort("Shift run {.val {run@ids$run_id}} is already active with status {.val {status}}.")
+        cli::cli_abort(
+            "Shift run {.val {run@ids$run_id}} is already active with status {.val {status}}."
+        )
     }
     row <- run@meta$run
     task <- as.character(row$task[[1L]])
@@ -3381,7 +3401,9 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
         on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
         step <- shift__latest_step(run_store, run@ids$run_id)
         if (!nrow(step)) {
-            cli::cli_abort("Shift run {.val {run@ids$run_id}} has no resumable step.")
+            cli::cli_abort(
+                "Shift run {.val {run@ids$run_id}} has no resumable step."
+            )
         }
         if (!isTRUE(step$resumable[[1L]])) {
             reason <- store__chr1(step$nonresumable_reason[[1L]])
@@ -3394,29 +3416,54 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
                 }
             ))
         }
-        if (is.na(step$input_stage_json[[1L]]) ||
-            !nzchar(step$input_stage_json[[1L]])) {
-            cli::cli_abort("Shift step {.val {step$step_id[[1L]]}} has no reconstructible input stage.")
+        if (
+            is.na(step$input_stage_json[[1L]]) ||
+                !nzchar(step$input_stage_json[[1L]])
+        ) {
+            cli::cli_abort(
+                "Shift step {.val {step$step_id[[1L]]}} has no reconstructible input stage."
+            )
         }
-        shift__run_update(run_store, run@ids$run_id,
-            status = "waiting", current_stage = step$task[[1L]],
+        shift__run_update(
+            run_store,
+            run@ids$run_id,
+            status = "waiting",
+            current_stage = step$task[[1L]],
             completed_at = as.POSIXct(NA, tz = "UTC"),
-            last_error = NA_character_)
-        shift__run_event(run_store, run@ids$run_id, "resume", "waiting",
+            last_error = NA_character_
+        )
+        shift__run_event(
+            run_store,
+            run@ids$run_id,
+            "resume",
+            "waiting",
             sprintf("Resume requested for %s.", step$task[[1L]]),
             details = list(step_id = step$step_id[[1L]]),
-            step_id = step$step_id[[1L]])
+            step_id = step$step_id[[1L]]
+        )
         refreshed <- shift__run_handle(run_store, run@ids$run_id)
         return(tryCatch(
-            shift__resume_generic_task(refreshed, step,
-                ui = ui, background = background),
+            shift__resume_generic_task(
+                refreshed,
+                step,
+                ui = ui,
+                background = background
+            ),
             error = function(e) {
                 latest_run <- shift__run_handle(run_store, run@ids$run_id)
-                if (identical(shift_status(latest_run, refresh = FALSE),
-                    "waiting")) {
-                    shift__run_finish(run_store, run@ids$run_id, "failed",
+                if (
+                    identical(
+                        shift_status(latest_run, refresh = FALSE),
+                        "waiting"
+                    )
+                ) {
+                    shift__run_finish(
+                        run_store,
+                        run@ids$run_id,
+                        "failed",
                         current_stage = step$task[[1L]],
-                        last_error = conditionMessage(e))
+                        last_error = conditionMessage(e)
+                    )
                 }
                 stop(e)
             }
@@ -3424,23 +3471,45 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
     }
     spec <- jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE)
     plan <- shift__plan_from_spec(spec, store = run@store_path)
+    if (!is.null(run@meta$shared_inputs)) {
+        plan@meta$shared_inputs <- run@meta$shared_inputs
+    }
     resolved <- row$resolved_spec_json[[1L]]
     if (!is.na(resolved) && nzchar(resolved)) {
         # Resolved member/grid/node choices are immutable across resume.
-        plan@meta$resolved <- jsonlite::fromJSON(resolved, simplifyVector = TRUE)
+        plan@meta$resolved <- jsonlite::fromJSON(
+            resolved,
+            simplifyVector = TRUE
+        )
     }
     if (isTRUE(background)) {
         shift__validate_background_plan(plan)
     }
     run_store <- shift_store(run)
     on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
-    shift__run_event(run_store, run@ids$run_id, "resume", "running", "Workflow resume requested.")
-    job <- shift__job_create(run_store, run@ids$run_id,
-        mode = if (isTRUE(background)) "process" else "foreground", ui = ui)
+    shift__run_event(
+        run_store,
+        run@ids$run_id,
+        "resume",
+        "running",
+        "Workflow resume requested."
+    )
+    job <- shift__job_create(
+        run_store,
+        run@ids$run_id,
+        mode = if (isTRUE(background)) "process" else "foreground",
+        ui = ui
+    )
     job_id <- job$job_id[[1L]]
-    reporter <- shift__reporter(ui, store = run_store, run_id = run@ids$run_id,
-        job_id = job_id, background = background)
+    reporter <- shift__reporter(
+        ui,
+        store = run_store,
+        run_id = run@ids$run_id,
+        job_id = job_id,
+        background = background
+    )
     reporter$run_started(plan, run@ids$run_id, background = background)
+    shift_batch__register_child(run_store, run@ids$run_id)
     if (isTRUE(background)) {
         # Capture the new attempt before launch so the parent never reopens and
         # races the detached worker for DuckDB's process-level write lock.
@@ -3451,8 +3520,13 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
         shift__launch_job(store_path, run@ids$run_id, job_id, log_path)
         return(handle)
     }
-    shift__plan_run(plan, run_id = run@ids$run_id, job_id = job_id,
-        reporter = reporter, resume_existing = TRUE)
+    shift__plan_run(
+        plan,
+        run_id = run@ids$run_id,
+        job_id = job_id,
+        reporter = reporter,
+        resume_existing = TRUE
+    )
 }
 
 # Resolve either a ShiftRun handle or a run ID to a fresh persisted snapshot.
@@ -3618,7 +3692,9 @@ shift_watch <- function(x, store = NULL, follow = TRUE, interval = 1,
 #' @rdname shift_api
 #' @param force If `FALSE`, request cancellation at the next safe workflow
 #'   boundary. If `TRUE`, persist the request and then terminate the recorded
-#'   background worker process immediately.
+#'   background worker process immediately. For coordinated batches, send an
+#'   interrupt to the owner so it can close its source workers; cooperative
+#'   cancellation remains requested if the platform cannot deliver the interrupt.
 #' @export
 shift_cancel <- function(x, store = NULL, force = FALSE) {
     checkmate::assert_flag(force)
@@ -3754,6 +3830,23 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
 shift_logs <- function(x, store = NULL, tail = 100L) {
     checkmate::assert_count(tail, positive = FALSE)
     if (S7::S7_inherits(x, ShiftBatch)) {
+        job <- shift_batch__job_read(x@store_path)
+        if (!is.null(job) && isTRUE(job$background)) {
+            # The coordinator captures shared reads and child stdout together;
+            # return it once instead of repeating it for every child.
+            path <- file.path(x@store_path, paste0(job$id, ".log"))
+            lines <- if (file.exists(path)) {
+                utils::tail(readLines(path, warn = FALSE), tail)
+            } else {
+                character()
+            }
+            return(data.table::data.table(
+                job_id = rep(job$id, length(lines)),
+                source = rep("process", length(lines)),
+                line = seq_along(lines),
+                message = lines
+            ))
+        }
         return(shift_batch__inspect(
             x@meta$children,
             x@meta$manifest,
@@ -3768,20 +3861,26 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
     run <- shift__as_run(x, store = store)
     run_store <- shift_store(run)
     download_context <- shift__background_download_context(
-        run_store, run@ids$run_id, active_only = FALSE)
+        run_store,
+        run@ids$run_id,
+        active_only = FALSE
+    )
     if (!is.null(download_context) && nrow(download_context$jobs)) {
         downloader_job_id <- as.character(download_context$jobs$job_id[[
-            nrow(download_context$jobs)]])
+            nrow(download_context$jobs)
+        ]])
         downloader_logs <- data.table::as.data.table(
-            download_context$downloader$job_logs(downloader_job_id,
-                tail = tail))
+            download_context$downloader$job_logs(downloader_job_id, tail = tail)
+        )
         run_store$close()
         if (nrow(downloader_logs)) {
             downloader_logs[, source := "downloader"]
             # Character column selection avoids data.table's NSE here so R CMD
             # check does not mistake Downloader log fields for global symbols.
-            return(downloader_logs[, c("job_id", "source", "line", "message"),
-                with = FALSE])
+            return(downloader_logs[,
+                c("job_id", "source", "line", "message"),
+                with = FALSE
+            ])
         }
     } else {
         run_store$close()
@@ -3805,15 +3904,27 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
             character()
         } else {
             event_rows <- utils::tail(event_rows, tail)
-            detail <- tryCatch({
-                value <- jsonlite::fromJSON(job$ui_json[[1L]],
-                    simplifyVector = TRUE)
-                as.character(shift_coalesce(value$detail, "normal"))
-            }, error = function(e) "normal")
-            vapply(seq_len(nrow(event_rows)), function(i) {
-                shift__ui_persisted_event_line(event_rows[i],
-                    detail = detail, width = NULL)
-            }, character(1L))
+            detail <- tryCatch(
+                {
+                    value <- jsonlite::fromJSON(
+                        job$ui_json[[1L]],
+                        simplifyVector = TRUE
+                    )
+                    as.character(shift_coalesce(value$detail, "normal"))
+                },
+                error = function(e) "normal"
+            )
+            vapply(
+                seq_len(nrow(event_rows)),
+                function(i) {
+                    shift__ui_persisted_event_line(
+                        event_rows[i],
+                        detail = detail,
+                        width = NULL
+                    )
+                },
+                character(1L)
+            )
         }
     } else {
         character()
@@ -4234,14 +4345,20 @@ shift_data <- function(
 shift_diagnostics <- function(x, severity = NULL, refresh = TRUE) {
     shift_assert_stage(x)
     checkmate::assert_flag(refresh)
-    checkmate::assert_character(severity, any.missing = FALSE, min.len = 1L, unique = TRUE, null.ok = TRUE)
+    checkmate::assert_character(
+        severity,
+        any.missing = FALSE,
+        min.len = 1L,
+        unique = TRUE,
+        null.ok = TRUE
+    )
     if (S7::S7_inherits(x, ShiftBatch)) {
         return(shift_batch__diagnostics(
             x@meta$children,
             x@meta$manifest,
             severity = severity,
             refresh = refresh,
-            shared_failure = x@meta$shared_failure
+            shared_failure = x@meta[["shared_failure"]]
         ))
     }
     if (isTRUE(refresh) && S7::S7_inherits(x, ShiftRun)) {

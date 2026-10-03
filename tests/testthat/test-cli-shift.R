@@ -398,30 +398,15 @@ test_that("shift CLI maps reduced motion independently from detail", {
 })
 
 
-test_that("shift CLI registers, inspects, and cancels background jobs", {
-    # Isolate job lifecycle behavior; source selection has separate local tests.
-    testthat::local_mocked_bindings(shift_batch__resolve_inputs = identity)
+test_that("shift CLI registers, inspects, and cancels background batches", {
     skip_if_not_installed("duckdb")
-
     store <- tempfile("esg-background-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
-    launched <- new.env(parent = emptyenv())
-    withr::local_options(list(epwshiftr.shift.launcher = function(
-        store_path,
-        run_id,
-        job_id,
-        log_path
-    ) {
-        launched$args <- list(
-            store_path = store_path,
-            run_id = run_id,
-            job_id = job_id,
-            log_path = log_path
-        )
-        invisible(0L)
-    }))
-
+    launched <- NULL
+    testthat::local_mocked_bindings(shift_batch__launch = function(root, job) {
+        launched <<- list(root = root, job = job)
+    })
     queued <- epwshiftr_cli(c(
         "--quiet",
         "--store",
@@ -434,40 +419,68 @@ test_that("shift CLI registers, inspects, and cancels background jobs", {
     ))
     expect_equal(queued$status, 0L)
     expect_equal(queued$result$status, "queued")
-    expect_equal(launched$args$run_id, queued$result$children$run_id)
-    store <- launched$args$store_path
+    batch_id <- queued$result$batch_id
+    expect_identical(launched$job$batch_id, batch_id)
+    expect_true(all(is.na(queued$result$children$run_id)))
     expect_true(all(
         c("watch", "cancel", "logs") %in% queued$result$next_steps$step
     ))
-
     logs <- epwshiftr_cli(c(
         "--quiet",
         "--store",
         store,
         "shift",
         "logs",
-        "--run",
-        queued$result$children$run_id
+        "--batch",
+        batch_id
     ))
     expect_equal(logs$status, 0L)
     expect_equal(nrow(logs$result), 0L)
-
+    writeLines(
+        c("shared source reading", "child started"),
+        file.path(launched$root, paste0(launched$job$id, ".log"))
+    )
+    logs <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "logs",
+        "--batch",
+        batch_id,
+        "--tail",
+        "1"
+    ))
+    expect_identical(logs$result$message, "child started")
     cancelled <- epwshiftr_cli(c(
         "--quiet",
         "--store",
         store,
         "shift",
         "cancel",
-        "--run",
-        queued$result$children$run_id
+        "--batch",
+        batch_id
     ))
     expect_equal(cancelled$status, 0L)
-    expect_equal(cancelled$result$status, "cancelled")
-
+    expect_equal(cancelled$result$status, "stopping")
+    expect_error(
+        shift_batch__job_main(launched$root, launched$job$id),
+        class = "epwshiftr_shift_cancelled"
+    )
+    status <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "status",
+        "--batch",
+        batch_id
+    ))
+    expect_identical(status$result$batch$status, "cancelled")
     conflict <- epwshiftr_cli(c(
         "--quiet",
         "--store",
-        tempfile("esg-background-conflict-"),
+        tempfile(),
         "shift",
         "run",
         "--config",
@@ -481,8 +494,6 @@ test_that("shift CLI registers, inspects, and cancels background jobs", {
 
 
 test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
-    # Isolate job lifecycle behavior; source selection has separate local tests.
-    testthat::local_mocked_bindings(shift_batch__resolve_inputs = identity)
     skip_if_not_installed("duckdb")
     skip_on_os("windows")
 
@@ -492,18 +503,20 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
     withr::local_options(list(
         epwshiftr.shift.launcher = function(...) invisible(0L)
     ))
-    queued <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "run",
-        "--config",
-        config,
-        "--background"
-    ))
-    run_id <- queued$result$children$run_id
-    store <- queued$result$children$store
+    # This test targets a standalone run's locked-store inspection. Batch
+    # launch ownership is covered separately above.
+    plan <- epwshiftr_cli_config_plan(
+        epwshiftr_cli_read_shift_config(config),
+        store = store,
+        ui = shift_ui("none")
+    )
+    run <- shift_run(
+        plan@meta$children[[1L]],
+        background = TRUE,
+        ui = shift_ui("none")
+    )
+    run_id <- run@ids$run_id
+    store <- run@store_path
 
     ready <- tempfile("cli-shift-lock-ready-")
     done <- tempfile("cli-shift-lock-done-")
