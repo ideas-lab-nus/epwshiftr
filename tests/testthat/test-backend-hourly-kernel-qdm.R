@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 # Construct one complete hourly variable over one or more native-calendar years

@@ -11,6 +11,9 @@ shift_batch__consumers <- function(children, manifest) {
     for (index in seq_along(children)) {
         child <- children[[index]]
         meta <- child@meta
+        if (!is.null(meta$shared_inputs$failure)) {
+            next
+        }
         climate <- meta$climate
         variables <- meta$request@meta$variables
         frequencies <- shift__transform_cmip6_frequencies(
@@ -40,58 +43,100 @@ shift_batch__consumers <- function(children, manifest) {
             )
         }
         demands <- lapply(roles, function(role) {
-            periods <- split(role$periods$year, role$periods$period)
-            data.table::rbindlist(
-                lapply(periods, function(years) {
-                    window <- shift__method_time_window(
-                        data.table::data.table(
-                            period = "requested",
-                            year = years
-                        ),
-                        meta$recipe
-                    )
-                    grid <- data.table::CJ(
-                        experiment_id = role$experiments,
-                        variable_id = variables,
-                        sorted = FALSE
-                    )
-                    data.table::set(
-                        grid,
-                        j = "frequency",
-                        value = unname(frequencies[grid$variable_id])
-                    )
-                    data.table::set(
-                        grid,
-                        j = "table_id",
-                        value = unname(tables[grid$variable_id])
-                    )
-                    data.table::set(
-                        grid,
-                        j = "time_start",
-                        value = as.POSIXct(
-                            window[[1L]],
-                            format = "%Y-%m-%dT%H:%M:%SZ",
-                            tz = "UTC"
-                        )
-                    )
-                    data.table::set(
-                        grid,
-                        j = "time_stop",
-                        value = as.POSIXct(
-                            window[[2L]],
-                            format = "%Y-%m-%dT%H:%M:%SZ",
-                            tz = "UTC"
-                        )
-                    )
-                    grid
-                }),
-                use.names = TRUE
+            # Child extraction uses one continuous time window for all named
+            # periods. Match that exact window so the shared read can populate
+            # the child store's existing content-addressed extraction cache.
+            window <- shift__method_time_window(role$periods, meta$recipe)
+            grid <- data.table::CJ(
+                experiment_id = role$experiments,
+                variable_id = variables,
+                sorted = FALSE
             )
+            data.table::set(
+                grid,
+                j = "frequency",
+                value = unname(frequencies[grid$variable_id])
+            )
+            data.table::set(
+                grid,
+                j = "table_id",
+                value = unname(tables[grid$variable_id])
+            )
+            data.table::set(
+                grid,
+                j = "time_start",
+                value = as.POSIXct(
+                    window[[1L]],
+                    format = "%Y-%m-%dT%H:%M:%SZ",
+                    tz = "UTC"
+                )
+            )
+            data.table::set(
+                grid,
+                j = "time_stop",
+                value = as.POSIXct(
+                    window[[2L]],
+                    format = "%Y-%m-%dT%H:%M:%SZ",
+                    tz = "UTC"
+                )
+            )
+            grid
         })
         demand <- data.table::rbindlist(demands, idcol = "role")
+        inputs <- meta$shared_inputs
+        if (!is.null(inputs)) {
+            # Resolve exact variable/table/grid partitions, including optional
+            # inputs admitted by both periods. Do not recreate a union of all
+            # recipe alternatives after scientific selection has completed.
+            selected <- data.table::as.data.table(inputs$selection)
+            partitions <- data.table::rbindlist(
+                lapply(
+                    c("future", "reference"),
+                    function(role) {
+                        if (
+                            identical(role, "reference") &&
+                                is.null(inputs$reference_files)
+                        ) {
+                            return(NULL)
+                        }
+                        rows <- shift__selection_partition_rows(selected, role)
+                        data.table::set(
+                            rows,
+                            j = "role",
+                            value = if (identical(role, "reference")) {
+                                "historical"
+                            } else {
+                                "future"
+                            }
+                        )
+                        rows
+                    }
+                ),
+                use.names = TRUE
+            )
+            windows <- unique(demand[,
+                c(
+                    "role",
+                    "experiment_id",
+                    "time_start",
+                    "time_stop"
+                ),
+                with = FALSE
+            ])
+            demand <- merge(
+                windows,
+                partitions,
+                by = "role",
+                allow.cartesian = TRUE,
+                sort = FALSE
+            )
+            data.table::set(demand, j = "required", value = NULL)
+            data.table::set(demand, j = "input_id", value = inputs$input_id)
+        } else {
+            data.table::set(demand, j = "grid_label", value = climate@grid)
+        }
         data.table::set(demand, j = "source_id", value = climate@model)
         data.table::set(demand, j = "variant_label", value = climate@member)
-        data.table::set(demand, j = "grid_label", value = climate@grid)
         data.table::set(
             demand,
             j = "child_key",
@@ -113,6 +158,9 @@ shift_batch__consumers <- function(children, manifest) {
         rows[[index]] <- demand
     }
     demands <- unique(data.table::rbindlist(rows, use.names = TRUE))
+    if (!nrow(demands)) {
+        return(data.table::data.table())
+    }
     # Demand IDs only join the two tables within this saved plan. Sequential
     # IDs avoid hashing every site-method-variable row separately.
     data.table::set(demands, j = "demand_id", value = seq_len(nrow(demands)))
@@ -132,6 +180,9 @@ shift_batch__shared_plan <- function(catalog, consumers) {
         return(empty)
     }
     catalog <- shift__catalog_current(catalog)
+    if (!"master_id" %in% names(catalog)) {
+        data.table::set(catalog, j = "master_id", value = NA_character_)
+    }
     keys <- c(
         "source_id",
         "experiment_id",
@@ -141,11 +192,14 @@ shift_batch__shared_plan <- function(catalog, consumers) {
         "frequency",
         "table_id"
     )
+    input_key <- intersect("input_id", names(consumers))
     catalog <- catalog[,
         c(
             keys,
+            input_key,
             "file_key",
             "filename",
+            "master_id",
             "version",
             "tracking_id",
             "checksum",
@@ -213,7 +267,12 @@ shift_batch__shared_plan <- function(catalog, consumers) {
     data.table::set(catalog, j = "catalog_row", value = seq_len(nrow(catalog)))
     lookup <- data.table::copy(consumers)
     data.table::set(lookup, j = "consumer_row", value = seq_len(nrow(lookup)))
-    overlap_keys <- c(keys, "file_start<=time_stop", "file_stop>=time_start")
+    overlap_keys <- c(
+        keys,
+        input_key,
+        "file_start<=time_stop",
+        "file_stop>=time_start"
+    )
     pairs <- catalog[
         lookup,
         on = overlap_keys,
@@ -275,6 +334,16 @@ shift_batch__shared_plan <- function(catalog, consumers) {
         "logical_file_id",
         "file_key",
         "filename",
+        "master_id",
+        "source_id",
+        "experiment_id",
+        "variant_label",
+        "grid_label",
+        "variable_id",
+        "frequency",
+        "table_id",
+        "version",
+        "tracking_id",
         "checksum",
         "checksum_type",
         "size",
@@ -323,14 +392,16 @@ shift_batch__shared_plan <- function(catalog, consumers) {
         "lon",
         "lat",
         "spatial_method",
+        "time_start",
+        "time_stop",
         "start",
         "stop"
     )
     links <- data.table::copy(matched[, link_columns, with = FALSE])
     data.table::setnames(
         links,
-        c("start", "stop"),
-        c("time_start", "time_stop")
+        c("time_start", "time_stop", "start", "stop"),
+        c("requested_start", "requested_stop", "time_start", "time_stop")
     )
     data.table::set(
         links,
@@ -369,4 +440,194 @@ shift_batch__plan_from_discovery <- function(children, manifest, path) {
         shift_stage_query_ids(unique(consumers$variable_id))
     )
     shift_batch__shared_plan(store$query(sql), consumers)
+}
+
+# Resolve one site-independent input selection per model/method and persist it
+# before shared reads begin. Dry-run discovery remains provisional; execution
+# pins the same immutable File snapshots for every linked child and resume.
+shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
+    children <- batch@meta$children
+    plans <- lapply(children, shift_batch__child_plan)
+    pending <- which(vapply(
+        seq_along(children),
+        function(index) {
+            status <- shift_status(children[[index]], refresh = FALSE)
+            input <- plans[[index]]@meta$shared_inputs
+            !status %in%
+                c("completed", "queued", "running", "stopping", "waiting") &&
+                (is.null(input) || !is.null(input$failure))
+        },
+        logical(1L)
+    ))
+    if (!length(pending)) {
+        return(batch)
+    }
+    groups <- vapply(
+        plans[pending],
+        function(child) {
+            meta <- child@meta
+            store__hash(
+                shift__request_spec_value(meta$request),
+                shift__climate_spec_value(meta$climate),
+                transform__spec_value(meta$transform),
+                shift__reference_spec_value(meta$reference, "model_historical"),
+                meta$periods,
+                meta$collect,
+                meta$control@allow_partial
+            )
+        },
+        character(1L)
+    )
+    for (positions in split(pending, groups)) {
+        if (!is.null(reporter)) {
+            reporter$check_cancel()
+        }
+        child <- plans[[positions[[1L]]]]
+        child@meta$shared_inputs <- NULL
+        # Auxiliary catalog runs belong to the shared cache, not a city's
+        # public workflow history.
+        child@store_path <- file.path(batch@store_path, "shared-inputs")
+        resolved <- tryCatch(
+            shift__collect_resolved_inputs(
+                child,
+                run_id = NULL,
+                reporter = reporter
+            ),
+            error = identity
+        )
+        if (inherits(resolved, "error")) {
+            # Let each child persist its ordinary failed-run diagnostics without
+            # repeating the same failed catalog request for every city.
+            inputs <- list(
+                failure = list(
+                    message = conditionMessage(resolved),
+                    class = class(resolved),
+                    resolution = resolved$resolution
+                )
+            )
+            for (index in positions) {
+                children[[index]]@meta$shared_inputs <- inputs
+                plans[[index]]@meta$shared_inputs <- inputs
+            }
+            next
+        }
+        # Copy immutable query evidence outside child stores before any worker
+        # can write to them. Content hashes make interrupted copies detectable.
+        snapshots <- lapply(
+            list(resolved$files, resolved$reference_files),
+            function(files) {
+                if (is.null(files)) {
+                    return(NULL)
+                }
+                store <- shift_store(files)
+                on.exit(store$close(), add = TRUE)
+                query <- shift_query_run(store, files@ids$query_id)
+                source <- file.path(store$path, query$query_file[[1L]])
+                hash <- checksum_file(source)
+                path <- file.path(
+                    batch@store_path,
+                    "shared-inputs",
+                    paste0(hash, ".json")
+                )
+                dir.create(
+                    dirname(path),
+                    recursive = TRUE,
+                    showWarnings = FALSE
+                )
+                if (!file.exists(path) && !file.copy(source, path)) {
+                    cli::cli_abort(
+                        "Could not save the shared File query snapshot."
+                    )
+                }
+                if (!identical(checksum_file(path), hash)) {
+                    cli::cli_abort(
+                        "The shared File query snapshot has changed."
+                    )
+                }
+                ref <- shift__stage_ref(files)
+                ref$snapshot <- path
+                ref$sha256 <- hash
+                ref
+            }
+        )
+        inputs <- list(
+            store = child@store_path,
+            files = snapshots[[1L]],
+            reference_files = snapshots[[2L]],
+            selection = resolved$selection,
+            index_node = resolved$index_node,
+            input_id = store__hash(
+                resolved$files@ids$query_id,
+                if (!is.null(resolved$reference_files)) {
+                    resolved$reference_files@ids$query_id
+                },
+                resolved$selection
+            )
+        )
+        # Only the small snapshot references are shared. Each city continues
+        # to own its extraction plans, run state and output artifacts.
+        for (index in positions) {
+            children[[index]]@meta$shared_inputs <- inputs
+            plans[[index]]@meta$shared_inputs <- inputs
+        }
+    }
+    batch@meta$children <- children
+    inputs <- lapply(plans, function(child) child@meta$shared_inputs)
+    inputs <- Filter(
+        function(input) !is.null(input) && is.null(input$failure),
+        inputs
+    )
+    inputs <- inputs[
+        !duplicated(vapply(
+            inputs,
+            function(value) {
+                value$input_id
+            },
+            character(1L)
+        ))
+    ]
+    catalogs <- lapply(inputs, function(input) {
+        store <- shift_store(input$store)
+        on.exit(store$close(), add = TRUE)
+        rows <- data.table::rbindlist(
+            lapply(
+                c("files", "reference_files"),
+                function(role) {
+                    ref <- input[[role]]
+                    if (is.null(ref)) {
+                        return(NULL)
+                    }
+                    shift_file_catalog(store, ref$ids$query_id)
+                }
+            ),
+            use.names = TRUE
+        )
+        data.table::set(rows, j = "input_id", value = input$input_id)
+        rows
+    })
+    batch@meta$shared_plan <- shift_batch__shared_plan(
+        data.table::rbindlist(catalogs, use.names = TRUE),
+        shift_batch__consumers(plans, batch@meta$manifest)
+    )
+    shift_batch__receipt_write(batch)
+    batch
+}
+
+# Reconstruct run intent while retaining a batch's explicitly retried selection.
+# Old failed run specs remain evidence; the batch receipt owns the new snapshot.
+shift_batch__child_plan <- function(child) {
+    if (S7::S7_inherits(child, ShiftPlan)) {
+        return(child)
+    }
+    plan <- shift__plan_from_spec(
+        jsonlite::fromJSON(
+            child@meta$run$spec_json[[1L]],
+            simplifyVector = TRUE
+        ),
+        store = child@store_path
+    )
+    if (!is.null(child@meta$shared_inputs)) {
+        plan@meta$shared_inputs <- child@meta$shared_inputs
+    }
+    plan
 }

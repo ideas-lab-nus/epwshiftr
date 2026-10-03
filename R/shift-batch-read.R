@@ -79,7 +79,7 @@ shift_batch__read_acquisition <- function(dataset, acquisition, consumers) {
     restore_consumers <- function(table) {
         position <- match(table$site_id, read_id)
         data.table::setnames(table, "site_id", "consumer_id")
-        for (column in c("site_id", "demand_id", "child_key", "role")) {
+        for (column in c("site_id", "demand_id", "child_key")) {
             data.table::set(
                 table,
                 j = column,
@@ -89,6 +89,13 @@ shift_batch__read_acquisition <- function(dataset, acquisition, consumers) {
         table
     }
     values <- restore_consumers(values)
+    # The value table records the consumer's future/historical role. Grid
+    # provenance retains its spatial role, such as nearest or a corner.
+    data.table::set(
+        values,
+        j = "role",
+        value = consumers$role[match(values$consumer_id, read_id)]
+    )
     sources <- restore_consumers(sources)
     attr(values, "grid_sources") <- sources
     attr(values, "read_slices") <- slices

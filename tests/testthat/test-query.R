@@ -539,7 +539,9 @@ decode_query <- function(url) {
 # }}}
 # EsgQuery$datetime_range() {{{
 test_that("EsgQuery$datetime_range()", {
-    withr::local_options(epwshiftr.solr_date_math_now = as.POSIXct("2025-06-13 12:34:56", tz = "UTC"))
+    test_local_dependencies(
+        query_time = as.POSIXct("2025-06-13 12:34:56", tz = "UTC")
+    )
 
     q <- esg_query()
 
@@ -551,7 +553,11 @@ test_that("EsgQuery$datetime_range()", {
     # normal inputs
     # full ISO 8601: start -> datetime_start:[* TO ...]
     q$datetime_range(start = "2017-01-01T00:00:00Z")
-    expect_match(decode_query(q$url()), 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_match(
+        decode_query(q$url()),
+        'datetime_start:[* TO "2017-01-01T00:00:00Z"]',
+        fixed = TRUE
+    )
 
     # full ISO 8601: stop -> datetime_stop:[... TO *]
     q2 <- esg_query()$datetime_range(stop = "2025-01-01T00:00:00Z")
@@ -563,11 +569,19 @@ test_that("EsgQuery$datetime_range()", {
 
     # simplified date: auto-completed to ISO 8601
     q3 <- esg_query()$datetime_range(start = "2017")
-    expect_match(decode_query(q3$url()), 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_match(
+        decode_query(q3$url()),
+        'datetime_start:[* TO "2017-01-01T00:00:00Z"]',
+        fixed = TRUE
+    )
 
     # Bridge Date Math is evaluated locally because the bridge API does not support it.
     q4 <- esg_query()$datetime_range(start = "NOW-1YEAR")
-    expect_match(decode_query(q4$url()), 'datetime_start:[* TO "2024-06-13T12:34:56Z"]', fixed = TRUE)
+    expect_match(
+        decode_query(q4$url()),
+        'datetime_start:[* TO "2024-06-13T12:34:56Z"]',
+        fixed = TRUE
+    )
 
     q5 <- esg_query()$datetime_range(stop = "NOW+6MONTHS")
     expect_match(
@@ -576,7 +590,9 @@ test_that("EsgQuery$datetime_range()", {
         fixed = TRUE
     )
 
-    q_fixed_math <- esg_query()$datetime_range(start = "2025-06-13T00:00:00Z-1YEAR")
+    q_fixed_math <- esg_query()$datetime_range(
+        start = "2025-06-13T00:00:00Z-1YEAR"
+    )
     expect_match(
         decode_query(q_fixed_math$url()),
         'datetime_start:[* TO "2024-06-13T00:00:00Z"]',
@@ -589,10 +605,16 @@ test_that("EsgQuery$datetime_range()", {
     )
     normal_query <- decode_query(normal_math$url())
     expect_match(normal_query, "datetime_start:[* TO NOW-1YEAR]", fixed = TRUE)
-    expect_match(normal_query, "datetime_stop:[2025-06-13T00:00:00Z+1YEAR TO *]", fixed = TRUE)
+    expect_match(
+        normal_query,
+        "datetime_stop:[2025-06-13T00:00:00Z+1YEAR TO *]",
+        fixed = TRUE
+    )
 
     # complete Range expression: used directly as the field value
-    q6 <- esg_query()$datetime_range(start = "[2017-01-01T00:00:00Z TO 2020-01-01T00:00:00Z]")
+    q6 <- esg_query()$datetime_range(
+        start = "[2017-01-01T00:00:00Z TO 2020-01-01T00:00:00Z]"
+    )
     expect_match(
         decode_query(q6$url()),
         'datetime_start:["2017-01-01T00:00:00Z" TO "2020-01-01T00:00:00Z"]',
@@ -605,7 +627,11 @@ test_that("EsgQuery$datetime_range()", {
         stop = "2025-01-01T00:00:00Z"
     )
     query7 <- decode_query(q7$url())
-    expect_match(query7, 'datetime_start:[* TO "2017-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_match(
+        query7,
+        'datetime_start:[* TO "2017-01-01T00:00:00Z"]',
+        fixed = TRUE
+    )
     expect_match(
         query7,
         '(datetime_stop:["2025-01-01T00:00:00Z" TO *] OR datetime_end:["2025-01-01T00:00:00Z" TO *])',
@@ -632,7 +658,11 @@ test_that("EsgQuery$datetime_range()", {
     )
     helper_first_query <- decode_query(helper_first$url())
     helper_first_url <- utils::URLdecode(helper_first$url())
-    expect_match(helper_first_query, 'datetime_start:[* TO "2020-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_match(
+        helper_first_query,
+        'datetime_start:[* TO "2020-01-01T00:00:00Z"]',
+        fixed = TRUE
+    )
     expect_false(grepl("start=2019", helper_first_url, fixed = TRUE))
     expect_false(grepl("end=2021", helper_first_url, fixed = TRUE))
 
@@ -659,7 +689,9 @@ test_that("EsgQuery$datetime_range()", {
 # }}}
 # EsgQuery$timestamp_range() {{{
 test_that("EsgQuery$timestamp_range()", {
-    withr::local_options(epwshiftr.solr_date_math_now = as.POSIXct("2025-06-13 12:34:56", tz = "UTC"))
+    test_local_dependencies(
+        query_time = as.POSIXct("2025-06-13 12:34:56", tz = "UTC")
+    )
 
     q <- esg_query()
 
@@ -692,15 +724,27 @@ test_that("EsgQuery$timestamp_range()", {
 
     # simplified date: auto-completed, to defaults to *
     q2 <- esg_query()$timestamp_range(from = "2020")
-    expect_match(decode_query(q2$url()), '_timestamp:["2020-01-01T00:00:00Z" TO *]', fixed = TRUE)
+    expect_match(
+        decode_query(q2$url()),
+        '_timestamp:["2020-01-01T00:00:00Z" TO *]',
+        fixed = TRUE
+    )
 
     # Date Math
     q3 <- esg_query()$timestamp_range(from = "NOW-1YEAR")
-    expect_match(decode_query(q3$url()), '_timestamp:["2024-06-13T12:34:56Z" TO *]', fixed = TRUE)
+    expect_match(
+        decode_query(q3$url()),
+        '_timestamp:["2024-06-13T12:34:56Z" TO *]',
+        fixed = TRUE
+    )
 
     # only to
     q4 <- esg_query()$timestamp_range(to = "2021-01-01T00:00:00Z")
-    expect_match(decode_query(q4$url()), '_timestamp:[* TO "2021-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_match(
+        decode_query(q4$url()),
+        '_timestamp:[* TO "2021-01-01T00:00:00Z"]',
+        fixed = TRUE
+    )
 
     # update existing lower boundary by setting upper boundary later
     q5 <- esg_query()$timestamp_range(from = "2020")
@@ -746,7 +790,11 @@ test_that("EsgQuery$timestamp_range()", {
     )
     helper_first_query <- decode_query(helper_first$url())
     helper_first_url <- utils::URLdecode(helper_first$url())
-    expect_match(helper_first_query, '_timestamp:["2020-01-01T00:00:00Z" TO *]', fixed = TRUE)
+    expect_match(
+        helper_first_query,
+        '_timestamp:["2020-01-01T00:00:00Z" TO *]',
+        fixed = TRUE
+    )
     expect_false(grepl("from=2019", helper_first_url, fixed = TRUE))
     expect_false(grepl("to=2021", helper_first_url, fixed = TRUE))
 
@@ -757,7 +805,11 @@ test_that("EsgQuery$timestamp_range()", {
     )
     raw_first_query <- decode_query(raw_first$url())
     raw_first_url <- utils::URLdecode(raw_first$url())
-    expect_match(raw_first_query, '_timestamp:[* TO "2020-01-01T00:00:00Z"]', fixed = TRUE)
+    expect_match(
+        raw_first_query,
+        '_timestamp:[* TO "2020-01-01T00:00:00Z"]',
+        fixed = TRUE
+    )
     expect_false(grepl("from=2019", raw_first_url, fixed = TRUE))
     expect_false(grepl("to=2021", raw_first_url, fixed = TRUE))
 
@@ -950,7 +1002,8 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
             all = FALSE,
             limit = TRUE,
             constraints = TRUE,
-            dict_check = FALSE
+            dict_check = FALSE,
+            progress_callback = NULL
         ) {
             calls[[length(calls) + 1L]] <<- list(
                 index_node = index_node,
@@ -969,8 +1022,15 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
                 local_file_docs
             }
             response <- local_response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
@@ -989,11 +1049,20 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     expect_true(calls[[2L]]$dict_check)
     expect_identical(query_param__value(calls[[2L]]$params$type()), "File")
     expect_null(calls[[2L]]$params$source_id())
-    expect_identical(query_param__value(calls[[2L]]$params$data_node()), "example.org")
-    expect_identical(calls[[2L]]$params$render(c("datetime_start", "datetime_stop")), character())
+    expect_identical(
+        query_param__value(calls[[2L]]$params$data_node()),
+        "example.org"
+    )
+    expect_identical(
+        calls[[2L]]$params$render(c("datetime_start", "datetime_stop")),
+        character()
+    )
     expect_identical(files$count(), 1L)
 
-    expect_error(q$collect(type = "Dataset", source_id = "AWI-CM-1-1-MR"), "Additional query filters")
+    expect_error(
+        q$collect(type = "Dataset", source_id = "AWI-CM-1-1-MR"),
+        "Additional query filters"
+    )
     expect_error(q$collect(type = "Dataset", fields = "id"), "`fields`")
 })
 
@@ -1009,7 +1078,8 @@ test_that("EsgQuery$collect() passes progress to Dataset and child collection", 
             constraints = TRUE,
             dict_check = FALSE,
             progress = FALSE,
-            progress_label = NULL
+            progress_label = NULL,
+            progress_callback = NULL
         ) {
             calls[[length(calls) + 1L]] <<- list(
                 type = query_param__value(params$type()),
@@ -1023,16 +1093,24 @@ test_that("EsgQuery$collect() passes progress to Dataset and child collection", 
         .package = "epwshiftr"
     )
 
-    q <- esg_query("https://example.org")$experiment_id("ssp585")$variable_id("tas")$limit(2L)
+    q <- esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
+        "tas"
+    )$limit(2L)
     expect_s3_class(q$collect(progress = TRUE), "EsgResultDataset")
     expect_length(calls, 1L)
     expect_true(calls[[1L]]$progress)
     expect_identical(calls[[1L]]$progress_label, "Collecting Dataset records")
 
     calls <- list()
-    expect_s3_class(q$collect(type = "File", fields = "id", progress = TRUE), "EsgResultFile")
+    expect_s3_class(
+        q$collect(type = "File", fields = "id", progress = TRUE),
+        "EsgResultFile"
+    )
     expect_length(calls, 2L)
-    expect_identical(vapply(calls, `[[`, character(1L), "type"), c("Dataset", "File"))
+    expect_identical(
+        vapply(calls, `[[`, character(1L), "type"),
+        c("Dataset", "File")
+    )
     expect_true(all(vapply(calls, `[[`, logical(1L), "progress")))
     expect_identical(
         vapply(calls, `[[`, character(1L), "progress_label"),
@@ -1345,14 +1423,20 @@ test_that("EsgQuery$collect() collects fixture-backed Dataset results", {
             all = FALSE,
             limit = TRUE,
             constraints = TRUE,
-            dict_check = FALSE
+            dict_check = FALSE,
+            progress_callback = NULL
         ) {
             esgf_fixture_collect(params)
         },
         .package = "epwshiftr"
     )
 
-    q <- expect_s3_class(esg_query(index_node)$experiment_id("ssp585")$frequency("1hr")$fields("source_id"), "EsgQuery")
+    q <- expect_s3_class(
+        esg_query(index_node)$experiment_id("ssp585")$frequency("1hr")$fields(
+            "source_id"
+        ),
+        "EsgQuery"
+    )
 
     # can collect the specified limit number of records
     res <- expect_s3_class(q$limit(1)$collect(), "EsgResultDataset")

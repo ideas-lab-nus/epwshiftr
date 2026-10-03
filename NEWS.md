@@ -1,5 +1,63 @@
 # epwshiftr (development version)
 
+* Separate workflow configuration, execution, job recovery, inspection and
+  resolution into focused source files, alongside query-result access and
+  replica planning and UI presentation. Preserve the existing APIs and
+  execution behavior (#278).
+
+* Single-task and batch workflows share installed-package process launching,
+  scoped execution settings and attempt transitions. Internal runtime and test
+  hooks no longer use global options. Execution snapshots read only supported
+  options; background launch arguments reject invalid types and lengths, and
+  catalog progress callbacks belong to Dataset results. The obsolete `pkgload`
+  suggestion is removed; workflow tests share catalog fixtures and are grouped
+  by behavior (#278).
+
+* Batch execution resolves actual future and historical input partitions once
+  per model/method. Optional variables selected by the ordinary resolver share
+  bounded reads across cities, and child runs pin the same File snapshots on
+  foreground, background and resumed execution (#278).
+
+* Batch recovery excludes completed and active children and re-resolves failed
+  input selections once across cities. Foreground and background execution use
+  one coordinator with durable progress and cooperative cancellation; source
+  concurrency settings apply to the whole coordinated batch. Fully cached
+  shared reads avoid worker startup, and collector failures drain active readers
+  before returning an error (#278).
+
+* Dataset asynchronous operations use separate compute profiles across dataset
+  objects (#278).
+
+* Foreground and background multi-site batches read shared physical files in bounded
+  native-time windows. Verified window receipts resume interrupted reads, and
+  child workflows reuse the same site-extraction cache keys without changing
+  their output and provenance contracts. Shared remote failures block dependent
+  children while unrelated tasks continue, without per-city retries (#278).
+  Recovery now records a blocked batch with its source error and can assemble
+  complete window receipts without reopening an unavailable source. Partial
+  cache recovery reads only missing site keys; duplicate method demands share
+  one extraction, and large site groups reuse one source connection (#278).
+  Shared reads preserve spatial roles in grid-source provenance. Native time
+  coordinates and grids are reused within each source connection; interval
+  bounds are read only for selected native times. Time slices now use the
+  actual spatial group size within the unchanged 8192-value request limit;
+  single-cell reads can include up to 8192 native steps. Weather subsets, CF
+  bounds and batch scheduling share one internal request-value limit (#278).
+  Ordinary extraction and shared batch reads now use a bounded source-file
+  worker pool, controlled by `options(epwshiftr.mirai_workers = 4L)`. Workers
+  reuse each file connection when caching is enabled, while the caller writes
+  manifest and Parquet records. Cached ordinary extraction avoids starting
+  workers; failed remote reads enter the existing fallback without repeating
+  the OPeNDAP attempt (#278).
+  Ordinary point extraction now reads actual CF interval bounds only for the
+  requested native times and reuses them across sites. Closing a dataset clears
+  its metadata cache so reopening cannot reuse stale source metadata; the public
+  full-axis accessor continues to return all bounds (#278).
+  Explicit `filters = list(replica = TRUE)` now survives availability discovery,
+  allowing callers to select cataloged replicas through the existing API (#278).
+  Per-site extraction manifests are committed atomically; Parquet export scans
+  R columns directly instead of copying them through a temporary table (#278).
+
 * Added an internal bounded multi-site NetCDF reader for shared file plans.
   Distinct native grid/time slices are read once per acquisition while each
   consumer retains its site, method, CF time, actual grid cells and weights

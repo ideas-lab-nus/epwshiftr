@@ -127,18 +127,25 @@ store_test__planned_extract <- function() {
 # read-phase fixtures reuse a genuine CF time axis to isolate the failure.
 store_test__failing_dataset <- function(phase, time_info = NULL) {
     checkmate::assert_choice(phase, c("metadata", "read"))
-    ds <- new.env(parent = emptyenv())
+    ds <- R6::R6Class(
+        private = list(progress_callback = NULL),
+        lock_objects = FALSE
+    )$new()
     ds$is_open <- TRUE
     ds$close <- function() {
         ds$is_open <- FALSE
         invisible(NULL)
     }
-    ds$get_time_axis <- function(index = 1L) {
+    private <- priv(ds)
+    private$nc_handles <- list()
+    private$opened <- TRUE
+    private$check_open <- function() {
         if (identical(phase, "metadata")) {
             stop("remote metadata timed out", call. = FALSE)
         }
-        time_info
     }
+    private$check_index <- function(index) invisible(NULL)
+    private$metadata_cache <- list(time_coordinates_1 = time_info)
     ds$read_region <- function(...) {
         stop("remote read timed out", call. = FALSE)
     }
@@ -292,11 +299,33 @@ store_test__with_downloaded_query <- function(code) {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            docs <- if (
+                identical(query_param__value(params$type()), "Dataset")
+            ) {
+                dataset_docs
+            } else {
+                file_docs
+            }
             response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
@@ -332,12 +361,16 @@ store_test__with_updated_query <- function(code) {
         access = I(list(c("OPENDAP", "HTTPServer"))),
         check.names = FALSE
     )
-    file_one <- store_test__file_docs(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc")
+    file_one <- store_test__file_docs(
+        path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
+    )
     file_one$tracking_id <- "hdl:21.14100/mock-file-1"
     file_one$master_id <- "CMIP6.mock.master.file-1"
     file_one$latest <- TRUE
     file_one$retracted <- FALSE
-    file_two <- store_test__file_docs(path = "tas_day_EC-Earth3_ssp585_r2i1p1f1_gr_20600101-20601231.nc")
+    file_two <- store_test__file_docs(
+        path = "tas_day_EC-Earth3_ssp585_r2i1p1f1_gr_20600101-20601231.nc"
+    )
     file_two$tracking_id <- "hdl:21.14100/mock-file-2"
     file_two$master_id <- "CMIP6.mock.master.file-2"
     file_two$latest <- TRUE
@@ -347,7 +380,16 @@ store_test__with_updated_query <- function(code) {
     second_files <- data.table::rbindlist(list(file_one), fill = TRUE)
     file_calls <- 0L
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
             type <- query_param__value(params$type())
             docs <- if (identical(type, "Dataset")) {
                 dataset_docs
@@ -356,8 +398,15 @@ store_test__with_updated_query <- function(code) {
                 if (identical(file_calls, 1L)) first_files else second_files
             }
             response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
@@ -372,7 +421,10 @@ store_test__with_updated_query <- function(code) {
     second_links <- store$update_queries(query_id = query_id)
     updates <- store$query_updates(query_id)
     latest <- store$query_updates(query_id, latest = TRUE)
-    stale_changes <- store$query_changes(update_id = latest$update_id, change_type = "stale")
+    stale_changes <- store$query_changes(
+        update_id = latest$update_id,
+        change_type = "stale"
+    )
 
     code(
         store = store,
@@ -921,11 +973,33 @@ test_that("EsgStore$preview_update_queries()", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            docs <- if (
+                identical(query_param__value(params$type()), "Dataset")
+            ) {
+                dataset_docs
+            } else {
+                file_docs
+            }
             response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
@@ -938,9 +1012,15 @@ test_that("EsgStore$preview_update_queries()", {
     expect_equal(preview$bytes_new, 123)
     expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_file")), 0L)
     expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update")), 0L)
-    expect_equal(nrow(ddb_read_table(priv(store)$conn, "esg_query_update_file")), 0L)
+    expect_equal(
+        nrow(ddb_read_table(priv(store)$conn, "esg_query_update_file")),
+        0L
+    )
     after_preview_query <- store$queries()[query_id == qid]
-    expect_identical(after_preview_query$last_checked_at[[1L]], before_query$last_checked_at[[1L]])
+    expect_identical(
+        after_preview_query$last_checked_at[[1L]],
+        before_query$last_checked_at[[1L]]
+    )
 
     detailed <- store$preview_update_queries(query_id = query_id, detail = TRUE)
     expect_named(detailed, c("summary", "changes"))
@@ -1012,12 +1092,38 @@ test_that("EsgStore query update and download workflows release store lock aroun
         testthat::local_mocked_bindings(
             # Collection is the network-facing part of these workflows and must
             # remain outside the store lock.
-            query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-                expect_identical(priv(store)$lock_depth, 0L, info = "query__collect")
-                docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+            query__collect = function(
+                index_node,
+                params,
+                required_fields = NULL,
+                all = FALSE,
+                limit = TRUE,
+                constraints = TRUE,
+                dict_check = FALSE,
+                progress_callback = NULL
+            ) {
+                expect_identical(
+                    priv(store)$lock_depth,
+                    0L,
+                    info = "query__collect"
+                )
+                docs <- if (
+                    identical(query_param__value(params$type()), "Dataset")
+                ) {
+                    dataset_docs
+                } else {
+                    file_docs
+                }
                 response <- store_test__response(docs)
-                params$fields(c(query_param__value(params$fields()), required_fields))
-                list(response = response, docs = response$response$docs, parameter = params)
+                params$fields(c(
+                    query_param__value(params$fields()),
+                    required_fields
+                ))
+                list(
+                    response = response,
+                    docs = response$response$docs,
+                    parameter = params
+                )
             },
             .package = "epwshiftr"
         )
@@ -1131,17 +1237,44 @@ test_that("EsgStore$download_preflight()", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            docs <- if (
+                identical(query_param__value(params$type()), "Dataset")
+            ) {
+                dataset_docs
+            } else {
+                file_docs
+            }
             response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
 
     dl <- store$downloader(n_workers = 0L)
-    preflight <- store$download_preflight(query_id, downloader = dl, replica = "current", probe = FALSE)
+    preflight <- store$download_preflight(
+        query_id,
+        downloader = dl,
+        replica = "current",
+        probe = FALSE
+    )
     expect_named(preflight, c("summary", "changes", "files", "candidates"))
     expect_equal(preflight$summary$query_id, query_id)
     expect_equal(preflight$summary$file_total, 1L)
@@ -1212,11 +1345,33 @@ test_that("EsgStore$set_download_layout()", {
     )
     file_docs <- store_test__file_docs(path = "layout.nc")
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            docs <- if (
+                identical(query_param__value(params$type()), "Dataset")
+            ) {
+                dataset_docs
+            } else {
+                file_docs
+            }
             response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
@@ -1243,7 +1398,10 @@ test_that("EsgStore$set_download_layout()", {
         "gr",
         "v20260101"
     ))
-    expect_match(tasks$target_path, "downloads/CMIP6/ScenarioMIP/.*/v20260101/layout[.]nc$")
+    expect_match(
+        tasks$target_path,
+        "downloads/CMIP6/ScenarioMIP/.*/v20260101/layout[.]nc$"
+    )
 })
 # }}}
 # EsgStore$download_preflight() {{{
@@ -1277,24 +1435,58 @@ test_that("EsgStore$download_preflight() reports layout issues", {
     file_docs <- rbind(first, second)
 
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE, limit = TRUE, constraints = TRUE, dict_check = FALSE) {
-            docs <- if (identical(query_param__value(params$type()), "Dataset")) dataset_docs else file_docs
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            docs <- if (
+                identical(query_param__value(params$type()), "Dataset")
+            ) {
+                dataset_docs
+            } else {
+                file_docs
+            }
             response <- store_test__response(docs)
-            params$fields(c(query_param__value(params$fields()), required_fields))
-            list(response = response, docs = response$response$docs, parameter = params)
+            params$fields(c(
+                query_param__value(params$fields()),
+                required_fields
+            ))
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr"
     )
 
     store$set_download_layout(layout = "flat", collision = "suffix")
-    preflight <- store$download_preflight(query_id, replica = "current", probe = FALSE)
+    preflight <- store$download_preflight(
+        query_id,
+        replica = "current",
+        probe = FALSE
+    )
     expect_equal(preflight$summary$target_path_collision_count, 1L)
     expect_true(all(preflight$candidates$target_path_collision))
     expect_true(all(grepl("file=", preflight$candidates$subdir, fixed = TRUE)))
 
-    store$set_download_layout(layout = "drs", missing = "fallback", collision = "suffix")
+    store$set_download_layout(
+        layout = "drs",
+        missing = "fallback",
+        collision = "suffix"
+    )
     file_docs$activity_id <- NA_character_
-    preflight <- store$download_preflight(query_id, replica = "current", probe = FALSE)
+    preflight <- store$download_preflight(
+        query_id,
+        replica = "current",
+        probe = FALSE
+    )
     expect_equal(preflight$summary$missing_layout_field_count, 2L)
     expect_true(all(startsWith(preflight$candidates$subdir, "datasets/")))
 })
@@ -2544,8 +2736,13 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
         store_test__mock_private(
             store,
             "open_plan_dataset",
-            function(file, fallback = "auto", overwrite = FALSE,
-                     reporter = NULL) {
+            function(
+                file,
+                fallback = "auto",
+                overwrite = FALSE,
+                reporter = NULL,
+                remote_error = NULL
+            ) {
                 list(
                     dataset = remote,
                     target = file$url_opendap[[1L]],
@@ -2569,7 +2766,11 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
             reporter = reporter
         )
         expect_identical(result$status, "done", info = phase)
-        expect_identical(attr(result, "access_method"), "HTTPServer", info = phase)
+        expect_identical(
+            attr(result, "access_method"),
+            "HTTPServer",
+            info = phase
+        )
         expect_identical(download_calls, 1L, info = phase)
         expect_false(remote$is_open, info = phase)
         persisted <- ddb_read_table(
@@ -2585,7 +2786,11 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
         expect_identical(event$details$access_method, "OPeNDAP", info = phase)
         expect_identical(event$details$access_phase, phase, info = phase)
         expect_identical(event$details$attempt, 1L, info = phase)
-        expect_match(event$details$target, "remote\\.example\\.org", info = phase)
+        expect_match(
+            event$details$target,
+            "remote\\.example\\.org",
+            info = phase
+        )
         expect_true(is.numeric(event$details$elapsed_seconds), info = phase)
         expect_true(nzchar(event$details$error_class), info = phase)
         expect_true(nzchar(event$details$error), info = phase)
@@ -2604,18 +2809,12 @@ test_that("EsgStore fallback errors retain both attempts in last_error", {
     on.exit(unlink(fixture$nc), add = TRUE)
     remote <- store_test__failing_dataset("metadata")
     download_calls <- 0L
-    store_test__mock_private(
-        store,
-        "open_plan_dataset",
-        function(file, fallback = "auto", overwrite = FALSE,
-                 reporter = NULL) {
-            list(
-                dataset = remote,
-                target = file$url_opendap[[1L]],
-                access_method = "OPeNDAP"
-            )
-        }
-    )
+    testthat::local_mocked_bindings(store__open_dataset = function(
+        target,
+        service
+    ) {
+        list(dataset = remote, target = target, access_method = service)
+    })
     store_test__mock_private(
         store,
         "download_plan_file",
@@ -2654,8 +2853,13 @@ test_that("EsgStore fallback error mode does not download after read failure", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
-        function(file, fallback = "auto", overwrite = FALSE,
-                 reporter = NULL) {
+        function(
+            file,
+            fallback = "auto",
+            overwrite = FALSE,
+            reporter = NULL,
+            remote_error = NULL
+        ) {
             list(
                 dataset = remote,
                 target = file$url_opendap[[1L]],
@@ -2699,8 +2903,13 @@ test_that("EsgStore classifies persistence failures without another read", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
-        function(file, fallback = "auto", overwrite = FALSE,
-                 reporter = NULL) {
+        function(
+            file,
+            fallback = "auto",
+            overwrite = FALSE,
+            reporter = NULL,
+            remote_error = NULL
+        ) {
             list(
                 dataset = dataset,
                 target = fixture$nc,
@@ -2973,3 +3182,147 @@ test_that("EsgStore$query()", {
     expect_equal(sql$n, 1)
 })
 # }}}
+
+# A failed worker read must enter HTTP recovery without opening OPeNDAP again.
+test_that("worker access failures preserve fallback without remote resubmission", {
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    withr::local_options(epwshiftr.cache = FALSE)
+    original <- store__open_dataset
+    testthat::local_mocked_bindings(store__open_dataset = function(
+        target,
+        service
+    ) {
+        if (identical(service, "OPeNDAP")) {
+            stop("Unexpected second OPeNDAP attempt")
+        }
+        original(target, service)
+    })
+    store_test__mock_private(store, "download_plan_file", function(...) {
+        fixture$nc
+    })
+    error <- store__access_error(
+        simpleError("source disconnected"),
+        "read",
+        "OPeNDAP",
+        fixture$file$url_opendap[[1L]],
+        proc.time()[["elapsed"]]
+    )
+    expect_error(
+        priv(store)$extract_one(
+            fixture$plan,
+            fixture$file,
+            fallback = "error",
+            resolved = error
+        ),
+        "source disconnected"
+    )
+    result <- priv(store)$extract_one(
+        fixture$plan,
+        fixture$file,
+        fallback = "auto",
+        resolved = error
+    )
+    expect_identical(result$status, "done")
+    expect_identical(attr(result, "access_method"), "HTTPServer")
+})
+
+# Disabling disk caching must not collect every site's weather array in one worker.
+test_that("uncached source tasks return one site plan at a time", {
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    withr::local_options(epwshiftr.cache = FALSE)
+    store$plan_region(
+        query_id = fixture$plan$query_id[[1L]],
+        lon = -106,
+        lat = 41,
+        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+        site_id = "USA"
+    )
+    task_count <- 0L
+    testthat::local_mocked_bindings(source__apply = function(
+        jobs,
+        read,
+        collect,
+        reporter = NULL
+    ) {
+        task_count <<- length(jobs)
+        for (job in rev(jobs)) {
+            expect_equal(nrow(job$plans), 1L)
+            data.table::set(job$file, j = "url_opendap", value = fixture$nc)
+            collect(job, read(job))
+        }
+    })
+    reporter <- store_test__access_reporter()
+    progress <- integer(2L)
+    count <- 0L
+    reporter$check_cancel <- function(...) invisible(NULL)
+    reporter$unit_started <- function(...) invisible(NULL)
+    reporter$unit_completed <- function(message, current, ...) {
+        count <<- count + 1L
+        progress[[count]] <<- current
+    }
+    expected_order <- store$query("SELECT plan_id FROM extraction_plan")$plan_id
+    result <- store$extract(fallback = "error", reporter = reporter)
+    expect_identical(progress, 1:2)
+    expect_identical(result$plan_id, expected_order)
+    expect_identical(task_count, 2L)
+    expect_true(all(result$status == "done"))
+    expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 2L)
+})
+
+# A late manifest error must roll back every plan record while preserving the
+# already-written Parquet evidence for explicit recovery/conflict handling.
+test_that("extraction persistence rolls back manifest changes on failure", {
+    fixture <- store_test__planned_extract()
+    store <- fixture$store
+    on.exit(store$close(), add = TRUE)
+    on.exit(unlink(fixture$nc), add = TRUE)
+    dataset <- EsgDataset$new(fixture$nc)
+    dataset$open()
+    on.exit(dataset$close(), add = TRUE)
+    opened <- list(
+        dataset = dataset,
+        access_method = "local",
+        target = fixture$nc
+    )
+    payload <- store__read_extract_dataset(
+        dataset,
+        fixture$plan,
+        fixture$file,
+        opened
+    )
+    original <- store$query("SELECT * FROM file_catalog")
+    store_test__mock_private(store, "mark_plan_status", function(...) {
+        stop("injected late manifest failure", call. = FALSE)
+    })
+    expect_error(
+        priv(store)$persist_extract_payload(
+            payload,
+            fixture$plan,
+            fixture$file,
+            opened
+        ),
+        "injected late manifest failure"
+    )
+    expect_equal(store$query("SELECT * FROM file_catalog"), original)
+    expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 0L)
+    expect_equal(nrow(store$query("SELECT * FROM extraction_grid_source")), 0L)
+    expect_equal(
+        nrow(store$query("SELECT * FROM artifact WHERE kind = 'extract'")),
+        0L
+    )
+    expect_gt(
+        length(list.files(
+            fixture$dir,
+            pattern = "\\.parquet$",
+            recursive = TRUE
+        )),
+        0L
+    )
+    # The transaction is closed even when persistence throws.
+    expect_equal(store$query("SELECT 1 AS value")$value, 1L)
+})

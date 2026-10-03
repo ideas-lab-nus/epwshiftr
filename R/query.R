@@ -64,10 +64,15 @@ query__normalize_solr_response <- function(response) {
 
 # Read an ESGF JSON response through curl, honoring cache mode while exposing a
 # throttled callback boundary for long-running workflow queries.
-cache__read_json <- function(url, strict = TRUE, cache = cache__option("cache", TRUE),
-                             progress_callback = getOption("epwshiftr.query.progress_callback", NULL),
-                             timeout = getOption("epwshiftr.query.timeout", 300),
-                             connect_timeout = getOption("epwshiftr.query.connect_timeout", 30), ...) {
+cache__read_json <- function(
+    url,
+    strict = TRUE,
+    cache = cache__option("cache", TRUE),
+    progress_callback = NULL,
+    timeout = getOption("epwshiftr.query.timeout", 300),
+    connect_timeout = getOption("epwshiftr.query.connect_timeout", 30),
+    ...
+) {
     mode <- cache__mode(cache, name = "`cache`")
     if (!is.null(progress_callback) && !is.function(progress_callback)) {
         stop("`progress_callback` must be a function or NULL.", call. = FALSE)
@@ -1266,7 +1271,12 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(progress)
             dots <- eval(substitute(alist(...)))
 
-            collect_dataset <- function(all, limit, dict_check = TRUE, progress_label = "Collecting Dataset records") {
+            collect_dataset <- function(
+                all,
+                limit,
+                dict_check = TRUE,
+                progress_label = "Collecting Dataset records"
+            ) {
                 collect_args <- list(
                     private$index_node_url,
                     private$parameter,
@@ -1274,7 +1284,8 @@ EsgQuery <- R6::R6Class(
                     all = all,
                     limit = limit,
                     constraints = params,
-                    dict_check = dict_check
+                    dict_check = dict_check,
+                    progress_callback = private$progress_callback
                 )
                 if (isTRUE(progress)) {
                     collect_args$progress <- TRUE
@@ -1284,7 +1295,11 @@ EsgQuery <- R6::R6Class(
 
                 # replace docs in the last response
                 result$response$response$docs <- result$docs
-                result_params <- if (!is.null(result$parameter)) result$parameter else private$parameter
+                result_params <- if (!is.null(result$parameter)) {
+                    result$parameter
+                } else {
+                    private$parameter
+                }
 
                 # create new results
                 query_result__new(
@@ -1313,7 +1328,12 @@ EsgQuery <- R6::R6Class(
             }
 
             child_limit <- private$collect_child_limit(limit)
-            datasets <- collect_dataset(all = TRUE, limit = FALSE, dict_check = FALSE)
+            datasets <- collect_dataset(
+                all = TRUE,
+                limit = FALSE,
+                dict_check = FALSE
+            )
+            priv(datasets)$progress_callback <- private$progress_callback
             datasets$collect(
                 fields = fields,
                 all = all,
@@ -1464,6 +1484,7 @@ EsgQuery <- R6::R6Class(
     ),
 
     private = list(
+        progress_callback = NULL,
         index_node_url = NULL,
 
         parameter = NULL,
@@ -1681,7 +1702,7 @@ query__build <- function(index_node, params, type = "search") {
     # separate query= params from regular facet params
     query_names <- intersect(names(store$state()), query_param__names("date"))
     is_bridge <- query__is_bridge(index_node)
-    bridge_now <- if (is_bridge) getOption("epwshiftr.solr_date_math_now", Sys.time()) else NULL
+    bridge_now <- if (is_bridge) query__now() else NULL
     query_clauses <- if (length(query_names)) {
         store$render(
             query_names,
@@ -1696,7 +1717,11 @@ query__build <- function(index_node, params, type = "search") {
     query_clauses <- query_clauses[nchar(query_clauses) > 0L]
     params <- params[!names(params) %in% query_names]
 
-    is_negate <- vapply(params, function(param) isTRUE(query_param__negate(param)), logical(1L))
+    is_negate <- vapply(
+        params,
+        function(param) isTRUE(query_param__negate(param)),
+        logical(1L)
+    )
     # facet queries without any negated inputs
     if (!is_bridge || !any(is_negate)) {
         rendered <- c(
@@ -1745,7 +1770,10 @@ query__build <- function(index_node, params, type = "search") {
 
     # combine negate query with query= params
     all_query_parts <- c(negate_query, query_clauses)
-    query <- paste(all_query_parts[nchar(all_query_parts) > 0L], collapse = " AND ")
+    query <- paste(
+        all_query_parts[nchar(all_query_parts) > 0L],
+        collapse = " AND "
+    )
 
     paste0(
         endpoint,
@@ -1913,7 +1941,8 @@ query__collect <- function(
     constraints = TRUE,
     dict_check = FALSE,
     progress = FALSE,
-    progress_label = NULL
+    progress_label = NULL,
+    progress_callback = NULL
 ) {
     checkmate::assert_flag(all)
     checkmate::assert_flag(constraints)
@@ -1989,7 +2018,7 @@ query__collect <- function(
 
     url <- query__build(index_node, store)
     query_urls <- c(query_urls, url)
-    response <- cache__read_json(url)
+    response <- cache__read_json(url, progress_callback = progress_callback)
     docs <- response$response$docs
     doc_pages <- list(docs)
 
@@ -2020,7 +2049,10 @@ query__collect <- function(
 
                 url <- query__build(index_node, store)
                 query_urls <- c(query_urls, url)
-                response <- cache__read_json(url)
+                response <- cache__read_json(
+                    url,
+                    progress_callback = progress_callback
+                )
                 page_docs <- response$response$docs
                 page_n <- query__collect_nrow(page_docs)
                 if (page_n == 0L) {
@@ -2125,6 +2157,11 @@ query__load <- function(file, schema = NULL) {
     ) {
         json$response$response$docs <- data.frame()
     }
+    # JSON has one empty-array representation for character and list vectors.
+    # Restore the URL field's schema type before validating a saved snapshot.
+    if (identical(json$context$query_url, list())) {
+        json$context$query_url <- character()
+    }
     if (
         length(json$context) &&
             length(json$context$selection) &&
@@ -2163,3 +2200,8 @@ query__load <- function(file, schema = NULL) {
 # }}}
 
 # vim: fdm=marker :
+
+# Capture one evaluation instant for relative dates in a bridge query.
+query__now <- function() {
+    Sys.time()
+}

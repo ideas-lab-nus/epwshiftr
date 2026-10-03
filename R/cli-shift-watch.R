@@ -266,9 +266,15 @@ epwshiftr_cli_shift_watch_follow <- function(store, run_id,
 }
 
 
+# Keep following the coordinator while source work precedes child registration.
 epwshiftr_cli_shift_watch_active <- function(snapshot) {
+    active <- c("queued", "running", "stopping")
     if (!is.null(snapshot$batch)) {
-        return(any(snapshot$children$status %in% c("queued", "running", "stopping")))
+        return(
+            snapshot$batch$status %in%
+                active ||
+                any(snapshot$children$status %in% active)
+        )
     }
-    nrow(snapshot$run) && snapshot$run$status[[1L]] %in% c("queued", "running", "stopping")
+    nrow(snapshot$run) && snapshot$run$status[[1L]] %in% active
 }

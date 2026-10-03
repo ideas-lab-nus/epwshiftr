@@ -1,93 +1,22 @@
-cli_shift_test_response <- function(docs) {
-    esgf_test__response(docs)
-}
-
-cli_shift_test_dataset_docs <- function(variable_id = "tas",
-                                        frequency = "day") {
-    data.frame(
-        id = "dataset-1",
-        instance_id = "dataset-1.v20260101",
-        master_id = "dataset-1",
-        size = 123,
-        access = I(list(c("OPENDAP", "HTTPServer"))),
-        source_id = "EC-Earth3",
-        experiment_id = "ssp585",
-        variable_id = variable_id[[1L]],
-        frequency = frequency[[1L]],
-        variant_label = "r1i1p1f1",
-        data_node = "example.org",
-        check.names = FALSE
-    )
-}
-
-# Build resolver-complete File documents for CLI workflow tests.
-cli_shift_test_file_docs <- function(path, opendap_url = path,
-                                     download_url = path,
-                                     variable_id = "tas",
-                                     frequency = "day",
-                                     table_id = "day",
-                                     datetime_start = "2060-01-01T00:00:00Z",
-                                     datetime_end = "2060-12-31T23:59:59Z") {
-    docs <- data.frame(
-        id = sprintf("%s|dataset-1", basename(path)),
-        dataset_id = "dataset-1",
-        size = 123,
-        checksum = "abc",
-        checksum_type = "SHA256",
-        instance_id = sprintf("%s.instance", basename(path)),
-        master_id = sprintf("%s.master", basename(path)),
-        replica = FALSE,
-        tracking_id = sprintf("hdl:21.14100/cli-shift-%s", variable_id),
-        title = basename(path),
-        version = 20260101L,
-        latest = TRUE,
-        retracted = FALSE,
-        deprecated = FALSE,
-        datetime_start = datetime_start,
-        datetime_end = datetime_end,
-        data_node = "example.org",
-        activity_id = "ScenarioMIP",
-        institution_id = "EC-Earth-Consortium",
-        source_id = "EC-Earth3",
-        experiment_id = "ssp585",
-        variant_label = "r1i1p1f1",
-        frequency = frequency,
-        table_id = table_id,
-        variable_id = variable_id,
-        grid_label = "gr",
-        check.names = FALSE
-    )
-    docs$url <- I(list(c(
-        sprintf("%s|application/netcdf|OPENDAP", opendap_url),
-        sprintf("%s|application/netcdf|HTTPServer", download_url)
-    )))
-    docs
-}
-
-cli_shift_test_file_result <- function(docs) {
-    params <- query_param__as_store(list(
-        project = "CMIP6",
-        distrib = TRUE,
-        limit = 10L,
-        type = "File",
-        format = QUERY_PARAM__FORMAT_JSON
-    ))
-    query_result__new(
-        EsgResultFile,
-        index_node = "https://example.org",
-        params = params,
-        result = cli_shift_test_response(docs)
-    )
-}
-
-cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = emptyenv())) {
+cli_shift_test_mock_collect <- function(
+    file_docs,
+    calls = new.env(parent = emptyenv())
+) {
     calls$types <- character()
     testthat::local_mocked_bindings(
-        query__collect = function(index_node, params, required_fields = NULL, all = FALSE,
-                                  limit = TRUE, constraints = TRUE, dict_check = FALSE) {
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
             type <- query_param__value(params$type())
             docs <- if (identical(type, "Dataset")) {
-                cli_shift_test_dataset_docs(
+                esgf_test__dataset_docs(
                     unique(file_docs$variable_id),
                     unique(file_docs$frequency)
                 )
@@ -99,9 +28,13 @@ cli_shift_test_mock_collect <- function(file_docs, calls = new.env(parent = empt
                 fields <- names(docs)
             }
             params$fields(unique(c(fields, required_fields)))
-            response <- cli_shift_test_response(docs)
+            response <- esgf_test__response(docs)
             calls$types <- c(calls$types, type)
-            list(response = response, docs = response$response$docs, parameter = params)
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
         },
         .package = "epwshiftr",
         .env = parent.frame()
@@ -152,8 +85,12 @@ cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
 cli_shift_test_store_with_query <- function(nc) {
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
-    docs <- cli_shift_test_file_docs(basename(nc), opendap_url = nc, download_url = nc)
-    query_id <- store$add_files(cli_shift_test_file_result(docs))
+    docs <- esgf_test__file_docs(
+        basename(nc),
+        opendap_url = nc,
+        download_url = nc
+    )
+    query_id <- store$add_files(esgf_test__file_result(docs))
     store$close()
     list(dir = dir, query_id = query_id)
 }

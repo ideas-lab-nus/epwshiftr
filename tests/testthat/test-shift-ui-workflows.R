@@ -52,9 +52,9 @@ ui_workflows__states <- function() {
 
 # Plan a real offline matrix with saved receipts, avoiding remote catalog work.
 ui_workflows__batch <- function(root) {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     shift_future_epw(
         shift_site(epw = get_cache_epw()),

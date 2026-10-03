@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 test_that("shared status views are stage-adaptive and remain within the terminal width", {
@@ -1133,8 +1133,8 @@ test_that("shift_watch() renders the shared status view instead of one long stri
         store = store,
         dry_run = TRUE
     )@meta$children[[1L]]
-    withr::local_options(list(
-        epwshiftr.shift.launcher = function(...) invisible(0L)
+    test_local_dependencies(list(
+        shift__launch_job = function(...) invisible(0L)
     ))
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
     on.exit(shift_cancel(run), add = TRUE)

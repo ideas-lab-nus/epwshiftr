@@ -382,6 +382,7 @@ shift_batch__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
     result <- list(batch = summary, children = children, cases = cases,
         outputs = outputs, diagnostics = diagnostics,
         events = if (is.infinite(event_count)) events else utils::tail(events, event_count),
+        source_progress = shift_batch__job_read(x@store_path)$progress,
         call_elapsed_seconds = x@meta$call_elapsed_seconds,
         execution = shift_coalesce(x@meta$execution, data.table::data.table()),
         activity = activity)
@@ -527,6 +528,21 @@ shift_batch__view <- function(snapshot, width = shift__ui_width(),
         field("Matrix", sprintf("%d configurations \u00b7 %d models \u00b7 %d children \u00b7 %d cases",
             summary$configurations, summary$models, summary$children, summary$cases)),
         field("Status", paste(sprintf("%d %s", counts, names(counts)), collapse = " \u00b7 ")))
+    progress <- snapshot$source_progress
+    if (identical(progress$unit_type, "source_reads")) {
+        overview <- c(
+            overview,
+            field(
+                "Sources",
+                sprintf(
+                    "%d/%d files finished; %d active",
+                    progress$current,
+                    progress$total,
+                    progress$active
+                )
+            )
+        )
+    }
     children <- snapshot$children
     groups <- lapply(seq_len(nrow(children)), function(index) {
         child <- children[index]
@@ -687,7 +703,10 @@ shift_batch__watch <- function(x, follow, interval, events, ui) {
             snapshot <- shift_batch__snapshot(x, event_count = events, refresh = FALSE)
             last_poll <- now
         }
-        done <- !follow || snapshot$batch$active == 0L
+        done <- !follow ||
+            (snapshot$batch$active == 0L &&
+                !snapshot$batch$status %in%
+                    c("queued", "running", "stopping"))
         if (identical(mode, "log") && poll_due) {
             delta <- shift_batch__event_delta(shift_coalesce(
                 attr(snapshot, "shift_ui_events"), snapshot$events),
