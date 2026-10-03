@@ -1,30 +1,39 @@
 #' @include shift-stage.R source-era5.R source-cds.R
 NULL
 
-# ERA reanalysis to CF weather input -----------------------------------------
-
+# ERA reanalysis to CF weather input
 # Translate public and method-declared frequency labels to the temporal bins
 # that ERA normalization can construct from hourly source values.
 era__frequency_kind <- function(frequency) {
     checkmate::assert_string(frequency, min.chars = 1L)
     normalized <- tolower(frequency)
     if (normalized %in% c("hour", "1hr", "1hrpt")) {
-        return(list(label = if (normalized == "hour") "1hr" else frequency,
-            kind = "subdaily", hours = 1L,
-            point = grepl("pt$", normalized)))
+        return(list(
+            label = if (normalized == "hour") "1hr" else frequency,
+            kind = "subdaily",
+            hours = 1L,
+            point = grepl("pt$", normalized)
+        ))
     }
     if (grepl("^[0-9]+hr(pt)?$", normalized)) {
         hours <- as.integer(sub("hr.*$", "", normalized))
-        return(list(label = frequency, kind = "subdaily", hours = hours,
-            point = grepl("pt$", normalized)))
+        return(list(
+            label = frequency,
+            kind = "subdaily",
+            hours = hours,
+            point = grepl("pt$", normalized)
+        ))
     }
     if (normalized %in% c("day", "daily")) {
-        return(list(label = "day", kind = "day", hours = 24L,
-            point = FALSE))
+        return(list(label = "day", kind = "day", hours = 24L, point = FALSE))
     }
     if (normalized %in% c("mon", "month", "monthly")) {
-        return(list(label = "mon", kind = "mon", hours = NA_integer_,
-            point = FALSE))
+        return(list(
+            label = "mon",
+            kind = "mon",
+            hours = NA_integer_,
+            point = FALSE
+        ))
     }
     cli::cli_abort(
         "ERA normalization does not support frequency {.val {frequency}}."
@@ -60,11 +69,14 @@ reanalysis__variables <- function(spec, recipe) {
     # An explicit provider selection may intentionally choose a later method
     # alternative, so satisfiability must be checked before applying the
     # registry's deterministic first-alternative preference.
-    candidates <- Filter(function(variables) {
-        variables <- as.character(variables)
-        all(variables %in% supported) &&
-            (is.null(spec@variables) || all(variables %in% spec@variables))
-    }, alternatives)
+    candidates <- Filter(
+        function(variables) {
+            variables <- as.character(variables)
+            all(variables %in% supported) &&
+                (is.null(spec@variables) || all(variables %in% spec@variables))
+        },
+        alternatives
+    )
     selected <- if (length(candidates)) {
         as.character(candidates[[1L]])
     } else {
@@ -100,8 +112,10 @@ reanalysis__frequencies <- function(spec, recipe, variables) {
         supplied <- as.character(unlist(supplied, use.names = TRUE))
         names(supplied) <- supplied_names
         if (is.null(names(supplied))) {
-            return(stats::setNames(rep(supplied[[1L]], length(variables)),
-                variables))
+            return(stats::setNames(
+                rep(supplied[[1L]], length(variables)),
+                variables
+            ))
         }
         missing <- setdiff(variables, names(supplied))
         if (length(missing)) {
@@ -135,9 +149,13 @@ era__netcdf_variables <- function(handle) {
     if (!info$nvars) {
         return(character())
     }
-    vapply(0:(info$nvars - 1L), function(id) {
-        RNetCDF::var.inq.nc(handle, id)$name
-    }, character(1L))
+    vapply(
+        0:(info$nvars - 1L),
+        function(id) {
+            RNetCDF::var.inq.nc(handle, id)$name
+        },
+        character(1L)
+    )
 }
 
 # Read an optional NetCDF attribute without masking errors from required
@@ -216,9 +234,13 @@ era__read_netcdf <- function(path, source_variable, site) {
         RNetCDF::dim.inq.nc(handle, id)
     })
     dimension_names <- vapply(dimensions, `[[`, character(1L), "name")
-    dimension_lengths <- vapply(dimensions, function(value) {
-        as.integer(value$length)
-    }, integer(1L))
+    dimension_lengths <- vapply(
+        dimensions,
+        function(value) {
+            as.integer(value$length)
+        },
+        integer(1L)
+    )
     values <- RNetCDF::var.get.nc(handle, data_name, collapse = FALSE)
     if (!length(dimension_lengths)) {
         cli::cli_abort("ERA weather variables must contain a time dimension.")
@@ -258,15 +280,21 @@ era__read_netcdf <- function(path, source_variable, site) {
         as.numeric(data[[latitude_name[[1L]]]])
     } else {
         scalar <- intersect(c("latitude", "lat"), variables)
-        if (length(scalar)) era__netcdf_coordinate(handle, scalar[[1L]]) else
+        if (length(scalar)) {
+            era__netcdf_coordinate(handle, scalar[[1L]])
+        } else {
             site@lat
+        }
     }
     grid_lon <- if (length(longitude_name)) {
         as.numeric(data[[longitude_name[[1L]]]])
     } else {
         scalar <- intersect(c("longitude", "lon"), variables)
-        if (length(scalar)) era__netcdf_coordinate(handle, scalar[[1L]]) else
+        if (length(scalar)) {
+            era__netcdf_coordinate(handle, scalar[[1L]])
+        } else {
             site@lon
+        }
     }
     if (length(grid_lat) == 1L) {
         grid_lat <- rep(grid_lat, nrow(data))
@@ -279,8 +307,7 @@ era__read_netcdf <- function(path, source_variable, site) {
     }
     normalized_lon <- reanalysis__longitude(grid_lon)
     site_lon <- reanalysis__longitude(site@lon)
-    distances <- tunnel_dist(grid_lat, normalized_lon, site@lat,
-        site_lon)
+    distances <- tunnel_dist(grid_lat, normalized_lon, site@lat, site_lon)
     nearest <- which.min(distances)
     selected_lat <- grid_lat[[nearest]]
     selected_lon <- normalized_lon[[nearest]]
@@ -289,12 +316,14 @@ era__read_netcdf <- function(path, source_variable, site) {
     data <- data[keep]
     data[, grid_lat := selected_lat]
     data[, grid_lon := selected_lon]
-    data[, grid_dist_km := tunnel_dist(
-        selected_lat,
-        selected_lon,
-        site@lat,
-        site_lon
-    )]
+    data[,
+        grid_dist_km := tunnel_dist(
+            selected_lat,
+            selected_lon,
+            site@lat,
+            site_lon
+        )
+    ]
     # ERA5 results can retain two expver slices near the ERA5/ERA5T boundary.
     # Prefer the first finite value in coordinate order for each valid time.
     data <- data[is.finite(value)]
@@ -304,20 +333,27 @@ era__read_netcdf <- function(path, source_variable, site) {
         )
     }
     data.table::setorderv(data, setdiff(names(data), "value"))
-    data <- data[, .(
-        value = value[[1L]],
-        grid_lat = grid_lat[[1L]],
-        grid_lon = grid_lon[[1L]],
-        grid_dist_km = grid_dist_km[[1L]]
-    ), by = utc_time]
+    data <- data[,
+        .(
+            value = value[[1L]],
+            grid_lat = grid_lat[[1L]],
+            grid_lon = grid_lon[[1L]],
+            grid_dist_km = grid_dist_km[[1L]]
+        ),
+        by = utc_time
+    ]
     units <- as.character(era__netcdf_attribute(
         handle,
         data_name,
         "units",
         default = ""
     ))
-    list(data = data[], units = units, variable = data_name,
-        path = normalizePath(path, winslash = "/", mustWork = TRUE))
+    list(
+        data = data[],
+        units = units,
+        variable = data_name,
+        path = normalizePath(path, winslash = "/", mustWork = TRUE)
+    )
 }
 
 # Infer the interval represented by an accumulated hourly field. The first
@@ -373,10 +409,19 @@ era__canonical_hourly <- function(raw, variables) {
         data[, c("utc_time", variable), with = FALSE]
     })
     names(converted) <- names(raw)
-    common <- Reduce(function(left, right) {
-        merge(left, right, by = "utc_time", all = FALSE, sort = TRUE,
-            suffixes = c("", ".source"))
-    }, converted)
+    common <- Reduce(
+        function(left, right) {
+            merge(
+                left,
+                right,
+                by = "utc_time",
+                all = FALSE,
+                sort = TRUE,
+                suffixes = c("", ".source")
+            )
+        },
+        converted
+    )
     if (!nrow(common)) {
         cli::cli_abort("ERA source fields have no common timestamps.")
     }
@@ -386,25 +431,31 @@ era__canonical_hourly <- function(raw, variables) {
     grid_dist_km <- first_grid$grid_dist_km[[1L]]
 
     if ("hurs" %in% variables) {
-        common[, hurs := 100 * exp(
-            epwphys__psychro_ln_pws(tdps - 273.15) -
-                epwphys__psychro_ln_pws(tas - 273.15)
-        )]
+        common[,
+            hurs := 100 *
+                exp(
+                    epwphys__psychro_ln_pws(tdps - 273.15) -
+                        epwphys__psychro_ln_pws(tas - 273.15)
+                )
+        ]
         common[, hurs := pmin(100, pmax(0, hurs))]
     }
     if ("huss" %in% variables) {
-        relative <- 100 * exp(
-            epwphys__psychro_ln_pws(common$tdps - 273.15) -
-                epwphys__psychro_ln_pws(common$tas - 273.15)
-        )
-        common[, huss := epwphys__huss_from_rh_si(
-            tas - 273.15,
-            relative,
-            ps
-        )]
+        relative <- 100 *
+            exp(
+                epwphys__psychro_ln_pws(common$tdps - 273.15) -
+                    epwphys__psychro_ln_pws(common$tas - 273.15)
+            )
+        common[,
+            huss := epwphys__huss_from_rh_si(
+                tas - 273.15,
+                relative,
+                ps
+            )
+        ]
     }
     if ("sfcWind" %in% variables) {
-        common[, sfcWind := sqrt(uas ^ 2 + vas ^ 2)]
+        common[, sfcWind := sqrt(uas^2 + vas^2)]
     }
     # Daily extrema are derived later from the hourly temperature field.
     for (variable in intersect(c("tasmin", "tasmax"), variables)) {
@@ -430,7 +481,7 @@ era__canonical_hourly <- function(raw, variables) {
 # Resolve the fixed standard-time offset that defines calendar aggregation for
 # one EPW site. This value also participates in persistent reanalysis IDs.
 era__site_timezone <- function(site) {
-    epw <- shift_resolve_epw(site)
+    epw <- shift_spec__resolve_epw(site)
     morpher__epw_location_numeric(
         epw,
         c("time_zone", "timezone", "N4_time_zone"),
@@ -470,25 +521,31 @@ era__aggregate_variable <- function(
         } else {
             block_seconds <- specification$hours * 3600
             table[, block := floor(as.numeric(local_time) / block_seconds)]
-            output <- table[, .(
-                local_time = as.POSIXct(
-                    min(as.numeric(local_time)),
-                    origin = "1970-01-01",
-                    tz = "UTC"
+            output <- table[,
+                .(
+                    local_time = as.POSIXct(
+                        min(as.numeric(local_time)),
+                        origin = "1970-01-01",
+                        tz = "UTC"
+                    ),
+                    value = aggregation(value, na.rm = TRUE)
                 ),
-                value = aggregation(value, na.rm = TRUE)
-            ), by = block]
+                by = block
+            ]
             output[, block := NULL]
         }
     } else if (identical(specification$kind, "day")) {
         table[, date := as.Date(local_time, tz = "UTC")]
-        output <- table[, .(
-            local_time = as.POSIXct(
-                paste(date[[1L]], "12:00:00"),
-                tz = "UTC"
+        output <- table[,
+            .(
+                local_time = as.POSIXct(
+                    paste(date[[1L]], "12:00:00"),
+                    tz = "UTC"
+                ),
+                value = aggregation(value, na.rm = TRUE)
             ),
-            value = aggregation(value, na.rm = TRUE)
-        ), by = date]
+            by = date
+        ]
         output[, date := NULL]
     } else {
         fields <- as.POSIXlt(table$local_time, tz = "UTC")
@@ -496,14 +553,16 @@ era__aggregate_variable <- function(
             year = fields$year + 1900L,
             month = fields$mon + 1L
         )]
-        output <- table[, .(
-            local_time = as.POSIXct(
-                sprintf("%04d-%02d-15 12:00:00", year[[1L]],
-                    month[[1L]]),
-                tz = "UTC"
+        output <- table[,
+            .(
+                local_time = as.POSIXct(
+                    sprintf("%04d-%02d-15 12:00:00", year[[1L]], month[[1L]]),
+                    tz = "UTC"
+                ),
+                value = aggregation(value, na.rm = TRUE)
             ),
-            value = aggregation(value, na.rm = TRUE)
-        ), by = .(year, month)]
+            by = .(year, month)
+        ]
         output[, c("year", "month") := NULL]
     }
     year <- as.POSIXlt(output$local_time, tz = "UTC")$year + 1900L
@@ -535,10 +594,21 @@ era__aggregate_variable <- function(
     for (name in names(coordinates)) {
         output[[name]] <- coordinates[[name]]
     }
-    data.table::setcolorder(output, c(
-        "variable_id", "frequency", "time", CF_TIME_COORDINATE_COLUMNS,
-        "lon", "lat", "units", "time_basis", "utc_offset_hours", "value"
-    ))
+    data.table::setcolorder(
+        output,
+        c(
+            "variable_id",
+            "frequency",
+            "time",
+            CF_TIME_COORDINATE_COLUMNS,
+            "lon",
+            "lat",
+            "units",
+            "time_basis",
+            "utc_offset_hours",
+            "value"
+        )
+    )
     output[]
 }
 
@@ -581,18 +651,32 @@ reanalysis__identities <- function(spec, site, variables, frequencies, access) {
         paste(names(frequencies), frequencies, sep = "=", collapse = ";"),
         access
     )
-    file_keys <- stats::setNames(vapply(variables, function(variable) {
-        store__hash("reanalysis-file-v1", request_id, variable)
-    }, character(1L)), variables)
-    plan_ids <- stats::setNames(vapply(variables, function(variable) {
-        store__hash(
-            "reanalysis-plan-v1",
-            request_id,
-            file_keys[[variable]],
-            variable,
-            frequencies[[variable]]
-        )
-    }, character(1L)), variables)
+    file_keys <- stats::setNames(
+        vapply(
+            variables,
+            function(variable) {
+                store__hash("reanalysis-file-v1", request_id, variable)
+            },
+            character(1L)
+        ),
+        variables
+    )
+    plan_ids <- stats::setNames(
+        vapply(
+            variables,
+            function(variable) {
+                store__hash(
+                    "reanalysis-plan-v1",
+                    request_id,
+                    file_keys[[variable]],
+                    variable,
+                    frequencies[[variable]]
+                )
+            },
+            character(1L)
+        ),
+        variables
+    )
     list(query_id = request_id, file_keys = file_keys, plan_ids = plan_ids)
 }
 
@@ -612,11 +696,13 @@ reanalysis__existing_climate <- function(
         store$coverage(plan_id = unname(identities$plan_ids)),
         error = function(error) data.table::data.table()
     )
-    if (nrow(coverage) != length(identities$plan_ids) ||
-        !all(coverage$complete %in% TRUE)) {
+    if (
+        nrow(coverage) != length(identities$plan_ids) ||
+            !all(coverage$complete %in% TRUE)
+    ) {
         return(NULL)
     }
-    shift_stage_new(
+    shift_stage__new(
         ShiftClimate,
         "climate",
         store_path = store$path,
@@ -633,7 +719,7 @@ reanalysis__existing_climate <- function(
             access = access,
             reused = TRUE
         ),
-        diagnostics = shift_diagnostics_from_coverage(coverage)
+        diagnostics = shift_stage__diagnostics_from_coverage(coverage)
     )
 }
 
@@ -804,8 +890,11 @@ reanalysis__persist <- function(
             overwrite = overwrite,
             project = toupper(spec@dataset)
         )
-        private$replace_rows("extraction_result", as.data.frame(results),
-            "result_id")
+        private$replace_rows(
+            "extraction_result",
+            as.data.frame(results),
+            "result_id"
+        )
         grid_source <- data.frame(
             source_row_id = store__hash(plan$plan_id, "grid", 1L),
             plan_id = plan$plan_id,
@@ -836,9 +925,9 @@ reanalysis__persist <- function(
         ))
     }
     coverage <- store$coverage(plan_id = plan_ids)
-    diagnostics <- shift_bind_diagnostics(
-        shift_diagnostics_from_coverage(coverage),
-        shift_diagnostic(
+    diagnostics <- shift_stage__bind_diagnostics(
+        shift_stage__diagnostics_from_coverage(coverage),
+        shift_stage__diagnostic(
             "observed reference",
             "info",
             "reanalysis_grid_selection",
@@ -852,7 +941,7 @@ reanalysis__persist <- function(
             action = "No altitude correction was applied."
         ),
         if (is.na(normalized$grid$elevation_m)) {
-            shift_diagnostic(
+            shift_stage__diagnostic(
                 "observed reference",
                 "info",
                 "reanalysis_grid_elevation_unavailable",
@@ -864,7 +953,7 @@ reanalysis__persist <- function(
             )
         }
     )
-    shift_stage_new(
+    shift_stage__new(
         ShiftClimate,
         "climate",
         store_path = store$path,
@@ -933,20 +1022,25 @@ reanalysis__materialize_source <- function(source, target, overwrite = FALSE) {
     )
     on.exit(unlink(temporary, force = TRUE), add = TRUE)
     linked <- suppressWarnings(file.link(source, temporary))
-    if (!isTRUE(linked) && !file.copy(
-        source,
-        temporary,
-        overwrite = TRUE,
-        copy.mode = TRUE,
-        copy.date = TRUE
-    )) {
+    if (
+        !isTRUE(linked) &&
+            !file.copy(
+                source,
+                temporary,
+                overwrite = TRUE,
+                copy.mode = TRUE,
+                copy.date = TRUE
+            )
+    ) {
         cli::cli_abort("Could not materialize the cached reanalysis source.")
     }
     if (file.exists(target)) {
         unlink(target, force = TRUE)
     }
     if (!file.rename(temporary, target)) {
-        cli::cli_abort("Could not move the cached reanalysis source into the store.")
+        cli::cli_abort(
+            "Could not move the cached reanalysis source into the store."
+        )
     }
     normalizePath(target, winslash = "/", mustWork = TRUE)
 }
@@ -983,31 +1077,42 @@ reanalysis__retrieve_cached <- function(
     )
     dir.create(dirname(cache_target), recursive = TRUE, showWarnings = FALSE)
     lock_timeout <- suppressWarnings(as.numeric(spec@options$timeout))
-    if (!length(lock_timeout) || !is.finite(lock_timeout) ||
-        lock_timeout <= 0) {
+    if (
+        !length(lock_timeout) || !is.finite(lock_timeout) || lock_timeout <= 0
+    ) {
         lock_timeout <- 86400
     }
-    retrieved <- manifest_with_lock(cache_target, {
-        if (file.exists(cache_target) && !isTRUE(overwrite)) {
-            list(
-                path = normalizePath(
-                    cache_target,
-                    winslash = "/",
-                    mustWork = TRUE
-                ),
-                job = NULL,
-                reused = TRUE
-            )
-        } else {
-            do.call(retrieve, c(list(
-                dataset_id,
-                request,
-                cache_target,
-                reporter = reporter,
-                overwrite = overwrite
-            ), spec@options))
-        }
-    }, timeout = max(30, lock_timeout))
+    retrieved <- manifest_with_lock(
+        cache_target,
+        {
+            if (file.exists(cache_target) && !isTRUE(overwrite)) {
+                list(
+                    path = normalizePath(
+                        cache_target,
+                        winslash = "/",
+                        mustWork = TRUE
+                    ),
+                    job = NULL,
+                    reused = TRUE
+                )
+            } else {
+                do.call(
+                    retrieve,
+                    c(
+                        list(
+                            dataset_id,
+                            request,
+                            cache_target,
+                            reporter = reporter,
+                            overwrite = overwrite
+                        ),
+                        spec@options
+                    )
+                )
+            }
+        },
+        timeout = max(30, lock_timeout)
+    )
     retrieved$path <- reanalysis__materialize_source(
         retrieved$path,
         target,
@@ -1040,7 +1145,7 @@ reanalysis__materialize <- function(
     frequencies <- reanalysis__frequencies(spec, recipe, variables)
     access <- era5__resolve_access(spec, variables)
     dataset_id <- era5__dataset_id(spec@product, access)
-    periods <- shift__periods_from_years(
+    periods <- shift_spec__periods_from_years(
         spec@years,
         period = "observed",
         arg = "calibration$years"
@@ -1138,8 +1243,11 @@ reanalysis__materialize <- function(
                 sprintf("Prepared ERA5 %s", source_variable),
                 current = index,
                 total = length(source_variables),
-                outcome = if (isTRUE(retrieved$reused)) "skipped" else
-                    "completed",
+                outcome = if (isTRUE(retrieved$reused)) {
+                    "skipped"
+                } else {
+                    "completed"
+                },
                 details = list(
                     unit_type = "reanalysis_variable",
                     variable = source_variable,

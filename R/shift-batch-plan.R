@@ -3,7 +3,7 @@ NULL
 
 # Describe each child's source demand before assigning physical files. Separate
 # consumer rows retain site and method ownership even when source data overlap.
-shift_batch__consumers <- function(children, manifest) {
+shift_batch_plan__consumers <- function(children, manifest) {
     if (!length(children)) {
         return(data.table::data.table())
     }
@@ -16,12 +16,12 @@ shift_batch__consumers <- function(children, manifest) {
         }
         climate <- meta$climate
         variables <- meta$request@meta$variables
-        frequencies <- shift__transform_cmip6_frequencies(
+        frequencies <- shift_spec__transform_cmip6_frequencies(
             meta$transform,
             variables,
             climate@frequency
         )
-        tables <- shift__cmip6_variable_tables(
+        tables <- shift_spec__cmip6_variable_tables(
             variables,
             frequencies,
             climate@table
@@ -46,7 +46,7 @@ shift_batch__consumers <- function(children, manifest) {
             # Child extraction uses one continuous time window for all named
             # periods. Match that exact window so the shared read can populate
             # the child store's existing content-addressed extraction cache.
-            window <- shift__method_time_window(role$periods, meta$recipe)
+            window <- shift_spec__method_time_window(role$periods, meta$recipe)
             grid <- data.table::CJ(
                 experiment_id = role$experiments,
                 variable_id = variables,
@@ -99,7 +99,10 @@ shift_batch__consumers <- function(children, manifest) {
                         ) {
                             return(NULL)
                         }
-                        rows <- shift__selection_partition_rows(selected, role)
+                        rows <- shift_resolve__selection_partition_rows(
+                            selected,
+                            role
+                        )
                         data.table::set(
                             rows,
                             j = "role",
@@ -170,7 +173,7 @@ shift_batch__consumers <- function(children, manifest) {
 # Join source demands to cached File metadata once. The file table owns shared
 # acquisition intervals; the link table keeps separate child consumers. Actual
 # native time indices and spatial reads are resolved by the following stage.
-shift_batch__shared_plan <- function(catalog, consumers) {
+shift_batch_plan__shared_plan <- function(catalog, consumers) {
     empty <- list(
         acquisitions = data.table::data.table(),
         consumers = data.table::data.table(),
@@ -179,7 +182,7 @@ shift_batch__shared_plan <- function(catalog, consumers) {
     if (!nrow(catalog) || !nrow(consumers)) {
         return(empty)
     }
-    catalog <- shift__catalog_current(catalog)
+    catalog <- shift_resolve__catalog_current(catalog)
     if (!"master_id" %in% names(catalog)) {
         data.table::set(catalog, j = "master_id", value = NA_character_)
     }
@@ -419,13 +422,19 @@ shift_batch__shared_plan <- function(catalog, consumers) {
 
 # Reuse the File records already cached by model discovery. This planning read
 # performs no remote query and leaves each child's execution store untouched.
-shift_batch__plan_from_discovery <- function(children, manifest, path) {
-    consumers <- shift_batch__consumers(children, manifest)
+shift_batch_plan__plan_from_discovery <- function(children, manifest, path) {
+    consumers <- shift_batch_plan__consumers(children, manifest)
     if (!nrow(consumers)) {
-        return(shift_batch__shared_plan(data.table::data.table(), consumers))
+        return(shift_batch_plan__shared_plan(
+            data.table::data.table(),
+            consumers
+        ))
     }
     if (!file.exists(file.path(path, "manifest.duckdb"))) {
-        return(shift_batch__shared_plan(data.table::data.table(), consumers))
+        return(shift_batch_plan__shared_plan(
+            data.table::data.table(),
+            consumers
+        ))
     }
     store <- shift_store(path)
     on.exit(store$close(), add = TRUE)
@@ -435,19 +444,19 @@ shift_batch__plan_from_discovery <- function(children, manifest, path) {
             "WHERE source_id IN (%s) AND experiment_id IN (%s)",
             "AND variable_id IN (%s)"
         ),
-        shift_stage_query_ids(unique(consumers$source_id)),
-        shift_stage_query_ids(unique(consumers$experiment_id)),
-        shift_stage_query_ids(unique(consumers$variable_id))
+        shift_stage__query_ids(unique(consumers$source_id)),
+        shift_stage__query_ids(unique(consumers$experiment_id)),
+        shift_stage__query_ids(unique(consumers$variable_id))
     )
-    shift_batch__shared_plan(store$query(sql), consumers)
+    shift_batch_plan__shared_plan(store$query(sql), consumers)
 }
 
 # Resolve one site-independent input selection per model/method and persist it
 # before shared reads begin. Dry-run discovery remains provisional; execution
 # pins the same immutable File snapshots for every linked child and resume.
-shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
+shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
     children <- batch@meta$children
-    plans <- lapply(children, shift_batch__child_plan)
+    plans <- lapply(children, shift_batch_plan__child_plan)
     pending <- which(vapply(
         seq_along(children),
         function(index) {
@@ -467,10 +476,13 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
         function(child) {
             meta <- child@meta
             store__hash(
-                shift__request_spec_value(meta$request),
-                shift__climate_spec_value(meta$climate),
+                shift_persist__request_spec_value(meta$request),
+                shift_persist__climate_spec_value(meta$climate),
                 transform__spec_value(meta$transform),
-                shift__reference_spec_value(meta$reference, "model_historical"),
+                shift_persist__reference_spec_value(
+                    meta$reference,
+                    "model_historical"
+                ),
                 meta$periods,
                 meta$collect,
                 meta$control@allow_partial
@@ -488,7 +500,7 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
         # public workflow history.
         child@store_path <- file.path(batch@store_path, "shared-inputs")
         resolved <- tryCatch(
-            shift__collect_resolved_inputs(
+            shift_resolve__collect_resolved_inputs(
                 child,
                 run_id = NULL,
                 reporter = reporter
@@ -521,7 +533,7 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
                 }
                 store <- shift_store(files)
                 on.exit(store$close(), add = TRUE)
-                query <- shift_query_run(store, files@ids$query_id)
+                query <- shift_inspect__query_run(store, files@ids$query_id)
                 source <- file.path(store$path, query$query_file[[1L]])
                 hash <- checksum_file(source)
                 path <- file.path(
@@ -544,7 +556,7 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
                         "The shared File query snapshot has changed."
                     )
                 }
-                ref <- shift__stage_ref(files)
+                ref <- shift_persist__stage_ref(files)
                 ref$snapshot <- path
                 ref$sha256 <- hash
                 ref
@@ -597,7 +609,7 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
                     if (is.null(ref)) {
                         return(NULL)
                     }
-                    shift_file_catalog(store, ref$ids$query_id)
+                    shift_inspect__file_catalog(store, ref$ids$query_id)
                 }
             ),
             use.names = TRUE
@@ -605,9 +617,9 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
         data.table::set(rows, j = "input_id", value = input$input_id)
         rows
     })
-    batch@meta$shared_plan <- shift_batch__shared_plan(
+    batch@meta$shared_plan <- shift_batch_plan__shared_plan(
         data.table::rbindlist(catalogs, use.names = TRUE),
-        shift_batch__consumers(plans, batch@meta$manifest)
+        shift_batch_plan__consumers(plans, batch@meta$manifest)
     )
     shift_batch__receipt_write(batch)
     batch
@@ -615,11 +627,11 @@ shift_batch__resolve_inputs <- function(batch, reporter = NULL) {
 
 # Reconstruct run intent while retaining a batch's explicitly retried selection.
 # Old failed run specs remain evidence; the batch receipt owns the new snapshot.
-shift_batch__child_plan <- function(child) {
+shift_batch_plan__child_plan <- function(child) {
     if (S7::S7_inherits(child, ShiftPlan)) {
         return(child)
     }
-    plan <- shift__plan_from_spec(
+    plan <- shift_persist__plan_from_spec(
         jsonlite::fromJSON(
             child@meta$run$spec_json[[1L]],
             simplifyVector = TRUE

@@ -46,7 +46,7 @@ multi_site__plan <- function(
 test_that("shared prefetch failure persists as a blocked batch", {
     test_local_dependencies(list(
         availability = test_cmip6_availability,
-        shift__cmip6_period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     root <- tempfile("blocked-shared-batch-")
     batch <- multi_site__plan(
@@ -56,10 +56,17 @@ test_that("shared prefetch failure persists as a blocked batch", {
     # This test isolates failure persistence after input resolution. The input
     # resolver itself is exercised with real local catalogs in shared tests.
     testthat::local_mocked_bindings(
-        shift_batch__resolve_inputs = function(batch, reporter = NULL) batch,
-        shift_batch__prefetch = function(...) stop("source connection closed")
+        shift_batch_plan__resolve_inputs = function(batch, reporter = NULL) {
+            batch
+        },
+        shift_batch_window__prefetch = function(...) {
+            stop("source connection closed")
+        }
     )
-    expect_error(shift_batch__resume(batch), "source connection closed")
+    expect_error(
+        shift_batch_execution__resume(batch),
+        "source connection closed"
+    )
     restored <- shift_batch_get(batch@ids$batch_id, root)
     expect_identical(shift_status(restored), "blocked")
     expect_true(
@@ -76,7 +83,7 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
             calls <<- calls + 1L
             test_cmip6_availability(...)
         },
-        shift__cmip6_period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     sites <- list(
         shift_site("South", epw = get_cache_epw()),
@@ -122,11 +129,11 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
     expect_identical(reopened@meta$climate, reordered@meta$climate)
     expect_identical(reopened@meta$shared_plan, reordered@meta$shared_plan)
     expect_identical(
-        lapply(reopened@meta$children, shift__plan_spec),
-        lapply(reordered@meta$children, shift__plan_spec)
+        lapply(reopened@meta$children, shift_persist__plan_spec),
+        lapply(reordered@meta$children, shift_persist__plan_spec)
     )
     expect_identical(calls, 0L)
-    snapshot <- shift_batch__snapshot(reopened, refresh = FALSE)
+    snapshot <- shift_batch_ui__snapshot(reopened, refresh = FALSE)
     expect_setequal(snapshot$children$site_id, c("North", "South"))
     expect_setequal(shift_summary(reopened)$site_id, c("North", "South"))
 })
@@ -134,7 +141,7 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
 test_that("site objects preserve coordinates, metadata and EPW identities", {
     test_local_dependencies(list(
         availability = test_cmip6_availability,
-        shift__cmip6_period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     epw <- get_cache_epw()
     sites <- list(
@@ -156,7 +163,9 @@ test_that("site objects preserve coordinates, metadata and EPW identities", {
     child <- batch@meta$children[[3L]]
     expect_identical(child@meta$site@metadata, list(note = "target"))
     expect_identical(
-        shift__plan_from_spec(shift__plan_spec(child))@meta$site@metadata,
+        shift_persist__plan_from_spec(shift_persist__plan_spec(
+            child
+        ))@meta$site@metadata,
         list(note = "target")
     )
     original <- batch@ids$batch_id
@@ -214,7 +223,7 @@ test_that("site defaults are independent of explicitly supplied coordinates", {
 test_that("single and multiple site calls use one batch contract", {
     test_local_dependencies(list(
         availability = test_cmip6_availability,
-        shift__cmip6_period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     site <- shift_site("A", epw = get_cache_epw())
     root <- tempfile()
@@ -230,7 +239,7 @@ test_that("single and multiple site calls use one batch contract", {
 test_that("version 3 location arrays plan and restore through the CLI", {
     test_local_dependencies(list(
         availability = test_cmip6_availability,
-        shift__cmip6_period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     config <- epwshiftr_cli_shift_example_config()
     config$version <- 3L
@@ -280,7 +289,7 @@ test_that("version 3 location arrays plan and restore through the CLI", {
 test_that("multi-site references are resolved for each location", {
     test_local_dependencies(list(
         availability = test_cmip6_availability,
-        shift__cmip6_period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     sites <- list(
         shift_site("A", epw = get_cache_epw()),
@@ -352,7 +361,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
             args$source <- "EC-Earth3"
             do.call(test_cmip6_availability, args)
         },
-        shift__cmip6_period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transform <- monthly_transform("epwshiftr")
     variables <- epw_morph_variables(transform__recipe(transform))
@@ -447,7 +456,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     ))
     discovery_store$add_files(esgf_test__file_result(docs))
     discovery_store$close()
-    plan@meta$shared_plan <- shift_batch__plan_from_discovery(
+    plan@meta$shared_plan <- shift_batch_plan__plan_from_discovery(
         plan@meta$children,
         plan@meta$manifest,
         file.path(plan@store_path, "discovery")
@@ -479,7 +488,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     RNetCDF::close.nc(nc)
     for (i in seq_along(completed@meta$children)) {
         child <- completed@meta$children[[i]]
-        climate <- shift_stage_new(
+        climate <- shift_stage__new(
             ShiftClimate,
             "climate",
             store_path = child@store_path,

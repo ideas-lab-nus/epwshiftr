@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
 test_local_dependencies(list(
     availability = test_cmip6_availability,
-    shift__cmip6_period_coverage = test_cmip6_period_coverage
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 # Build deterministic daily tas rows for quantile-mapping morphing inputs.
@@ -27,10 +27,12 @@ quantile_mapping_morphing_test__climate <- function(
             8 * sin(2 * pi * phase) +
             temperature_shift
         data.table::data.table(
-            activity_id = if (identical(
-                experiment,
-                "historical"
-            )) {
+            activity_id = if (
+                identical(
+                    experiment,
+                    "historical"
+                )
+            ) {
                 "CMIP"
             } else {
                 "ScenarioMIP"
@@ -210,11 +212,11 @@ test_that("Quantile-mapping morphing applies the selected daily factor to every 
         tolerance = 1e-10
     )
     expect_true(all(
-        result$parts$temperature[
-            ,
+        result$parts$temperature[,
             data.table::uniqueN(temperature_delta),
             by = "target_day"
-        ][["V1"]] == 1L
+        ][["V1"]] ==
+            1L
     ))
 })
 
@@ -260,7 +262,8 @@ test_that("Quantile-mapping morphing harmonized policy closes the humidity state
             result$data$dry_bulb_temperature + 1e-8
     ))
     expect_true(
-        "quantile_mapping_morphing_humidity_closure_status" %in% names(result$data)
+        "quantile_mapping_morphing_humidity_closure_status" %in%
+            names(result$data)
     )
 })
 
@@ -280,7 +283,7 @@ test_that("Quantile-mapping morphing public method persists both reference roles
     )
     periods <- epw_morph_periods(`2060s` = 2061L)
     plan <- shift_plan(
-        request = shift__request_from_cmip6(climate, periods, transform),
+        request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
         transform = transform,
@@ -289,8 +292,8 @@ test_that("Quantile-mapping morphing public method persists both reference roles
         store = tempfile("method-reference-store-"),
         epw = list(export_dir = tempfile("method-reference-output-"))
     )
-    rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
-    explanation <- shift__plan_explain(plan)
+    rebuilt <- shift_persist__plan_from_spec(shift_persist__plan_spec(plan))
+    explanation <- shift_print__plan_explain(plan)
 
     expect_identical(
         rebuilt@meta$recipe$recipe_spec,
@@ -301,7 +304,7 @@ test_that("Quantile-mapping morphing public method persists both reference roles
         "observed-plan"
     )
     expect_true("observed_reference" %in% explanation$step)
-    expect_silent(shift__validate_background_plan(plan))
+    expect_silent(shift_job__validate_background_plan(plan))
 })
 
 test_that("EpwMorpher persists and executes the observed reference separately", {
@@ -314,15 +317,22 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
         future = 2061L
     )
     paths <- stats::setNames(
-        vapply(names(years), function(role) {
-            path <- tempfile(sprintf("qm_morphing-%s-", role), fileext = ".nc")
-            write_local_cmip6_netcdf_fixture(
-                path,
-                years[[role]],
-                variable_id = "tas"
-            )
-            path
-        }, character(1L)),
+        vapply(
+            names(years),
+            function(role) {
+                path <- tempfile(
+                    sprintf("qm_morphing-%s-", role),
+                    fileext = ".nc"
+                )
+                write_local_cmip6_netcdf_fixture(
+                    path,
+                    years[[role]],
+                    variable_id = "tas"
+                )
+                path
+            },
+            character(1L)
+        ),
         names(years)
     )
     on.exit(unlink(paths), add = TRUE)

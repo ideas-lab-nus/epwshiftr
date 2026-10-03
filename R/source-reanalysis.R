@@ -1,8 +1,7 @@
 #' @include utils.R
 NULL
 
-# Reanalysis source contracts -------------------------------------------------
-
+# Reanalysis source contracts
 REANALYSIS__FREQUENCIES <- c("hour", "day", "mon")
 REANALYSIS__ACCESS <- c("auto", "arco", "cds")
 
@@ -36,34 +35,55 @@ ShiftReanalysisSpec <- S7::new_class(
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
-        if (!length(self@years) || anyNA(self@years) ||
-            anyDuplicated(self@years)) {
+        if (
+            !length(self@years) ||
+                anyNA(self@years) ||
+                anyDuplicated(self@years)
+        ) {
             return("`years` must contain unique, non-missing years.")
         }
-        if (!is.null(self@variables) &&
-            (!is.character(self@variables) || !length(self@variables) ||
-                anyNA(self@variables) || any(!nzchar(self@variables)) ||
-                anyDuplicated(self@variables))) {
-            return("`variables` must be NULL or unique, non-empty CF variable IDs.")
+        if (
+            !is.null(self@variables) &&
+                (!is.character(self@variables) ||
+                    !length(self@variables) ||
+                    anyNA(self@variables) ||
+                    any(!nzchar(self@variables)) ||
+                    anyDuplicated(self@variables))
+        ) {
+            return(
+                "`variables` must be NULL or unique, non-empty CF variable IDs."
+            )
         }
         if (!is.null(self@frequency)) {
             frequency <- unlist(self@frequency, use.names = TRUE)
-            if (!is.character(frequency) || !length(frequency) ||
-                anyNA(frequency) || any(!frequency %in% REANALYSIS__FREQUENCIES)) {
+            if (
+                !is.character(frequency) ||
+                    !length(frequency) ||
+                    anyNA(frequency) ||
+                    any(!frequency %in% REANALYSIS__FREQUENCIES)
+            ) {
                 return("`frequency` must use `hour`, `day`, or `mon`.")
             }
-            if (length(frequency) > 1L &&
-                (is.null(names(frequency)) || any(!nzchar(names(frequency))) ||
-                    anyDuplicated(names(frequency)))) {
-                return("A variable-specific `frequency` must be uniquely named.")
+            if (
+                length(frequency) > 1L &&
+                    (is.null(names(frequency)) ||
+                        any(!nzchar(names(frequency))) ||
+                        anyDuplicated(names(frequency)))
+            ) {
+                return(
+                    "A variable-specific `frequency` must be uniquely named."
+                )
             }
         }
         if (!self@access %in% REANALYSIS__ACCESS) {
             return("`access` must be `auto`, `arco`, or `cds`.")
         }
-        if (length(self@options) &&
-            (is.null(names(self@options)) || any(!nzchar(names(self@options))) ||
-                anyDuplicated(names(self@options)))) {
+        if (
+            length(self@options) &&
+                (is.null(names(self@options)) ||
+                    any(!nzchar(names(self@options))) ||
+                    anyDuplicated(names(self@options)))
+        ) {
             return("`options` must be uniquely named.")
         }
         NULL
@@ -159,28 +179,33 @@ reanalysis__spec_value <- function(spec) {
 # Reconstruct a supported reanalysis source from persisted scientific intent.
 reanalysis__from_spec <- function(spec) {
     dataset <- as.character(spec$dataset)
-    arguments <- c(list(
-        years = as.integer(unlist(spec$years, use.names = FALSE)),
-        product = as.character(spec$product),
-        variables = if (is.null(spec$variables)) {
-            NULL
-        } else {
-            as.character(unlist(spec$variables, use.names = FALSE))
-        },
-        frequency = if (is.null(spec$frequency)) {
-            NULL
-        } else {
-            unlist(spec$frequency, use.names = TRUE)
-        },
-        access = as.character(spec$access)
-    ), shift_coalesce(spec$options, list()))
+    arguments <- c(
+        list(
+            years = as.integer(unlist(spec$years, use.names = FALSE)),
+            product = as.character(spec$product),
+            variables = if (is.null(spec$variables)) {
+                NULL
+            } else {
+                as.character(unlist(spec$variables, use.names = FALSE))
+            },
+            frequency = if (is.null(spec$frequency)) {
+                NULL
+            } else {
+                unlist(spec$frequency, use.names = TRUE)
+            },
+            access = as.character(spec$access)
+        ),
+        shift_stage__coalesce(spec$options, list())
+    )
     if (identical(dataset, "era5")) {
         return(do.call(shift_era5, arguments))
     }
     if (identical(dataset, "era6")) {
         return(do.call(shift_era6, arguments))
     }
-    cli::cli_abort("Unsupported persisted reanalysis dataset: {.val {dataset}}.")
+    cli::cli_abort(
+        "Unsupported persisted reanalysis dataset: {.val {dataset}}."
+    )
 }
 
 # Present source intent without printing provider credentials or endpoint

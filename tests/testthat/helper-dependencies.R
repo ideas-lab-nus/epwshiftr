@@ -3,9 +3,9 @@
 test_dependency_originals <- mget(
     c(
         "shift_batch__candidate_reader",
-        "shift__cmip6_period_coverage",
+        "shift_resolve__cmip6_period_coverage",
         "query_result__resolve_file_services",
-        "shift__launch_job",
+        "shift_job__launch_job",
         "downloader__launch_process",
         "cds__retrieve",
         "era__read_netcdf",
@@ -57,7 +57,7 @@ test_local_dependencies <- function(..., .local_envir = parent.frame()) {
 test_candidate_reader <- function(adapter) {
     force(adapter)
     function(climate, transforms, references, store, ui) {
-        member <- shift_coalesce(climate@member, "r1i1p1f1")
+        member <- shift_stage__coalesce(climate@member, "r1i1p1f1")
         historical <- vapply(
             references,
             function(value) {
@@ -79,7 +79,7 @@ test_candidate_reader <- function(adapter) {
                 source = climate@model,
                 member = member,
                 grid = climate@grid,
-                frequency = shift__transform_cmip6_frequencies(
+                frequency = shift_spec__transform_cmip6_frequencies(
                     transform,
                     variables,
                     climate@frequency

@@ -1,8 +1,7 @@
 #' @include adapter-daily-adjusted-epw.R backend-hourly-kernel-qdm.R weather-pipeline.R
 NULL
 
-# EPW morphing backend registry {{{
-
+# EPW morphing backend registry
 EPW_MORPH_BACKEND_REGISTRY <- new.env(parent = emptyenv())
 EPW_MORPH_BACKEND_WARNINGS <- new.env(parent = emptyenv())
 
@@ -69,9 +68,14 @@ morpher__rules_required_variables <- function(rules) {
 
 # Build user-facing guidance for required CMIP variables that are unavailable
 # in the selected extraction or summary input.
-morpher__missing_variable_guidance <- function(variable_id, present_variables = character()) {
+morpher__missing_variable_guidance <- function(
+    variable_id,
+    present_variables = character()
+) {
     present_variables <- unique(as.character(present_variables))
-    present_variables <- present_variables[!is.na(present_variables) & nzchar(present_variables)]
+    present_variables <- present_variables[
+        !is.na(present_variables) & nzchar(present_variables)
+    ]
     if (identical(variable_id, "hurs")) {
         return(list(
             suffix = paste(
@@ -105,12 +109,19 @@ morpher__rule_primary_variable <- function(rule) {
     if (length(vars)) vars[[1L]] else NA_character_
 }
 
-morpher__normalize_backend_rules <- function(name, rules, method_defaults = NULL, method_choices = NULL) {
+morpher__normalize_backend_rules <- function(
+    name,
+    rules,
+    method_defaults = NULL,
+    method_choices = NULL
+) {
     rules <- data.table::as.data.table(rules)
     required_cols <- c("step", "epw_field", "method", "required")
     missing_cols <- setdiff(required_cols, names(rules))
     if (length(missing_cols)) {
-        cli::cli_abort("EPW morphing backend {.val {name}} rules are missing column(s): {.val {missing_cols}}.")
+        cli::cli_abort(
+            "EPW morphing backend {.val {name}} rules are missing column(s): {.val {missing_cols}}."
+        )
     }
     if (!"variable_id" %in% names(rules)) {
         rules[, variable_id := NA_character_]
@@ -126,13 +137,31 @@ morpher__normalize_backend_rules <- function(name, rules, method_defaults = NULL
         method = as.character(method),
         required = as.logical(required)
     )]
-    required_variables <- morpher__rule_list_column(rules, "required_variables", "variable_id")
-    optional_variables <- morpher__rule_list_column(rules, "optional_variables", "optional_variable_id")
-    method_defaults <- if (is.null(method_defaults)) stats::setNames(character(), character()) else method_defaults
-    method_choices <- if (is.null(method_choices)) character() else method_choices
+    required_variables <- morpher__rule_list_column(
+        rules,
+        "required_variables",
+        "variable_id"
+    )
+    optional_variables <- morpher__rule_list_column(
+        rules,
+        "optional_variables",
+        "optional_variable_id"
+    )
+    method_defaults <- if (is.null(method_defaults)) {
+        stats::setNames(character(), character())
+    } else {
+        method_defaults
+    }
+    method_choices <- if (is.null(method_choices)) {
+        character()
+    } else {
+        method_choices
+    }
     rule_method_choices <- lapply(seq_len(nrow(rules)), function(i) {
         if ("method_choices" %in% names(rules)) {
-            choices <- morpher__split_rule_variables(rules[["method_choices"]][i])
+            choices <- morpher__split_rule_variables(rules[["method_choices"]][
+                i
+            ])
             if (length(choices)) {
                 return(choices)
             }
@@ -149,14 +178,23 @@ morpher__normalize_backend_rules <- function(name, rules, method_defaults = NULL
         data.table::set(
             rules,
             j = "derived",
-            value = vapply(required_variables, function(x) !length(x), logical(1L))
+            value = vapply(
+                required_variables,
+                function(x) !length(x),
+                logical(1L)
+            )
         )
     } else {
         rules[, derived := as.logical(derived)]
     }
-    missing_required <- rules[required == TRUE & !derived & lengths(required_variables) == 0L, step]
+    missing_required <- rules[
+        required == TRUE & !derived & lengths(required_variables) == 0L,
+        step
+    ]
     if (length(missing_required)) {
-        cli::cli_abort("EPW morphing backend {.val {name}} rule(s) lack required variables: {.val {missing_required}}.")
+        cli::cli_abort(
+            "EPW morphing backend {.val {name}} rule(s) lack required variables: {.val {missing_required}}."
+        )
     }
     rules[]
 }
@@ -203,27 +241,42 @@ EpwMorphBackend <- R6::R6Class(
         #' @param runner Optional function taking `(context, backend)` and
         #'        returning an `epw_morph_result`. Exactly one of `pipeline` and
         #'        `runner` must be supplied.
-        initialize = function(name, label = NULL, methods = NULL, method_choices = NULL, rules,
-                              requires_reference = FALSE,
-                              accepts_reference = requires_reference,
-                              pipeline = NULL, runner = NULL) {
+        initialize = function(
+            name,
+            label = NULL,
+            methods = NULL,
+            method_choices = NULL,
+            rules,
+            requires_reference = FALSE,
+            accepts_reference = requires_reference,
+            pipeline = NULL,
+            runner = NULL
+        ) {
             checkmate::assert_string(name, min.chars = 1L)
             checkmate::assert_string(label, null.ok = TRUE)
             checkmate::assert_flag(requires_reference)
             checkmate::assert_flag(accepts_reference)
             if (isTRUE(requires_reference) && !isTRUE(accepts_reference)) {
-                cli::cli_abort("A backend that requires reference climate must also accept it.")
+                cli::cli_abort(
+                    "A backend that requires reference climate must also accept it."
+                )
             }
             if (is.null(methods)) {
                 methods <- stats::setNames(character(), character())
             }
-            checkmate::assert_character(methods, any.missing = FALSE, names = "named")
+            checkmate::assert_character(
+                methods,
+                any.missing = FALSE,
+                names = "named"
+            )
             if (is.null(method_choices)) {
                 method_choices <- unique(unname(methods))
             }
             checkmate::assert_character(method_choices, any.missing = FALSE)
-            if (!is.null(pipeline) &&
-                !S7::S7_inherits(pipeline, WeatherPipelineSpec)) {
+            if (
+                !is.null(pipeline) &&
+                    !S7::S7_inherits(pipeline, WeatherPipelineSpec)
+            ) {
                 cli::cli_abort(
                     "{.arg pipeline} must be a WeatherPipelineSpec object."
                 )
@@ -278,7 +331,9 @@ EpwMorphBackend <- R6::R6Class(
         #' Return required CMIP variable IDs.
         required_variables = function() {
             rules <- private$rule_table
-            morpher__rules_required_variables(rules[required == TRUE & !derived])
+            morpher__rules_required_variables(rules[
+                required == TRUE & !derived
+            ])
         },
 
         #' @description
@@ -290,15 +345,24 @@ EpwMorphBackend <- R6::R6Class(
             if (is.null(methods)) {
                 return(defaults)
             }
-            checkmate::assert_character(methods, any.missing = FALSE, names = "named")
+            checkmate::assert_character(
+                methods,
+                any.missing = FALSE,
+                names = "named"
+            )
             unknown <- setdiff(names(methods), names(defaults))
             if (length(unknown)) {
-                cli::cli_abort("Unknown EPW morphing method override(s): {.val {unknown}}.")
+                cli::cli_abort(
+                    "Unknown EPW morphing method override(s): {.val {unknown}}."
+                )
             }
             rules <- private$rule_table
             for (method_name in names(methods)) {
                 rule <- rules[step == method_name]
-                allowed <- morpher__rule_method_choices(rule, private$allowed_methods)
+                allowed <- morpher__rule_method_choices(
+                    rule,
+                    private$allowed_methods
+                )
                 if (!methods[[method_name]] %in% allowed) {
                     cli::cli_abort(
                         "Unsupported EPW morphing method value {.val {methods[[method_name]]}} for step {.val {method_name}}. Allowed value(s): {.val {allowed}}."
@@ -346,7 +410,10 @@ morpher__default_backend_specs <- function() {
         original_morphing = EpwMorphBackend$new(
             name = "original_morphing",
             label = "Original morphing with optional external reference",
-            methods = unlist(EPW_MORPH_ORIGINAL_PROFILE_METHODS$enhanced, use.names = TRUE),
+            methods = unlist(
+                EPW_MORPH_ORIGINAL_PROFILE_METHODS$enhanced,
+                use.names = TRUE
+            ),
             method_choices = EPW_MORPH_ORIGINAL_METHOD_CHOICES,
             rules = EPW_MORPH_ORIGINAL_RULES,
             accepts_reference = TRUE,
@@ -355,7 +422,10 @@ morpher__default_backend_specs <- function() {
         original_morphing_absolute = EpwMorphBackend$new(
             name = "original_morphing_absolute",
             label = "Original morphing with absolute climate targets",
-            methods = unlist(EPW_MORPH_ORIGINAL_ABSOLUTE_PROFILE_METHODS$enhanced, use.names = TRUE),
+            methods = unlist(
+                EPW_MORPH_ORIGINAL_ABSOLUTE_PROFILE_METHODS$enhanced,
+                use.names = TRUE
+            ),
             method_choices = EPW_MORPH_ORIGINAL_METHOD_CHOICES,
             rules = EPW_MORPH_ORIGINAL_RULES,
             runner = original_morphing__absolute_run
@@ -506,16 +576,22 @@ epw_morph_register_backend <- function(name, backend, overwrite = FALSE) {
     checkmate::assert_string(name, min.chars = 1L)
     checkmate::assert_flag(overwrite)
     name <- tolower(name)
-    if (exists(name, envir = EPW_MORPH_BACKEND_REGISTRY, inherits = FALSE) && !isTRUE(overwrite)) {
-        cli::cli_abort("EPW morphing backend {.val {name}} is already registered.")
+    if (
+        exists(name, envir = EPW_MORPH_BACKEND_REGISTRY, inherits = FALSE) &&
+            !isTRUE(overwrite)
+    ) {
+        cli::cli_abort(
+            "EPW morphing backend {.val {name}} is already registered."
+        )
     }
     if (!inherits(backend, "EpwMorphBackend")) {
         cli::cli_abort("`backend` must be an {.cls EpwMorphBackend} object.")
     }
     if (!identical(backend$name, name)) {
-        cli::cli_abort("Backend object name {.val {backend$name}} does not match registration name {.val {name}}.")
+        cli::cli_abort(
+            "Backend object name {.val {backend$name}} does not match registration name {.val {name}}."
+        )
     }
     assign(name, backend, envir = EPW_MORPH_BACKEND_REGISTRY)
     invisible(backend)
 }
-# }}}

@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
 test_local_dependencies(list(
     availability = test_cmip6_availability,
-    shift__cmip6_period_coverage = test_cmip6_period_coverage
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 test_that("historical workflow queries preserve years without exact datetime bounds", {
@@ -20,8 +20,8 @@ test_that("historical workflow queries preserve years without exact datetime bou
         store = tempfile("historical-query-store-"),
         dry_run = TRUE
     )@meta$children[[1L]]
-    request <- shift__historical_request(plan, "https://example.org")
-    query <- shift_as_esg_query(request)
+    request <- shift_resolve__historical_request(plan, "https://example.org")
+    query <- shift_resolve__as_esg_query(request)
 
     expect_null(request@meta$time)
     expect_equal(plan@meta$reference@periods$year, reference_years)
@@ -47,7 +47,7 @@ test_that("historical workflow queries preserve years without exact datetime bou
         }),
         fill = TRUE
     )
-    candidates <- shift__cmip6_candidates(
+    candidates <- shift_resolve__cmip6_candidates(
         reference_catalog,
         models = "BCC-CSM2-MR",
         experiments = "historical",
@@ -59,7 +59,7 @@ test_that("historical workflow queries preserve years without exact datetime bou
     expect_true(any(candidates$complete))
 
     error <- expect_error(
-        shift__resolve_cmip6_selection(
+        shift_resolve__resolve_cmip6_selection(
             plan,
             future_catalog = data.table::data.table(),
             reference_catalog = data.table::data.table()
@@ -99,7 +99,7 @@ test_that("workflow File collection fills omitted ESGF times from DRS names", {
         request,
         store = tempfile("shift-drs-time-store-")
     )
-    catalog <- shift_file_catalog(
+    catalog <- shift_inspect__file_catalog(
         shift_store(files),
         shift_ids(files)$query_id
     )
@@ -120,7 +120,7 @@ test_that("workflow resolver resolves both File service paths", {
     )
     query_id <- store$add_files(esgf_test__file_result(docs))
     store$close()
-    files <- shift_stage_new(
+    files <- shift_stage__new(
         ShiftFiles,
         "files",
         store_path = store_path,
@@ -152,10 +152,10 @@ test_that("workflow resolver resolves both File service paths", {
         }
     ))
 
-    resolved <- shift__resolve_file_services(files, "future")
+    resolved <- shift_resolve__resolve_file_services(files, "future")
     resolved_store <- shift_store(resolved)
     on.exit(resolved_store$close(), add = TRUE)
-    catalog <- shift_file_catalog(
+    catalog <- shift_inspect__file_catalog(
         resolved_store,
         resolved@ids$query_id
     )
@@ -175,7 +175,7 @@ test_that("workflow resolver resolves both File service paths", {
         sub("\\|.*$", "", docs$url[[1L]][[2L]])
     )
 
-    shift__resolve_file_services(files, "future", refresh = TRUE)
+    shift_resolve__resolve_file_services(files, "future", refresh = TRUE)
     expect_identical(resolver_calls, 2L)
     expect_identical(resolver_check$cache_seconds, 0L)
     expect_identical(resolver_check$cache_failures_seconds, 0L)
@@ -197,7 +197,7 @@ test_that("resolver coverage defensively repairs cached catalogs without times",
     catalog$title <- NA_character_
     catalog$datetime_start <- NULL
     catalog$datetime_end <- NULL
-    candidates <- shift__cmip6_candidates(
+    candidates <- shift_resolve__cmip6_candidates(
         catalog,
         models = "BCC-CSM2-MR",
         experiments = "ssp585",
@@ -241,7 +241,7 @@ test_that("catalog time enrichment keeps its label fallback order", {
     catalog$datetime_start <- NULL
     catalog$datetime_end <- NULL
 
-    repaired <- shift__catalog_fill_time_ranges(catalog)
+    repaired <- shift_resolve__catalog_fill_time_ranges(catalog)
 
     expect_identical(
         substr(repaired$datetime_start, 1L, 4L),
@@ -274,7 +274,7 @@ test_that("resolver inputs are not masked by provider convenience columns", {
         variant_label = "r1i1p1f1"
     )
 
-    expect_true(shift__cmip6_input_complete(
+    expect_true(shift_resolve__cmip6_input_complete(
         catalog,
         identity,
         experiment = "ssp245",
@@ -290,7 +290,7 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
     recipe <- epw_morph_recipe("hourly_kernel_qdm")
     variables <- morpher__input_variables(recipe)
     frequencies <- morpher__recipe_required_frequency(recipe)
-    tables <- shift__cmip6_variable_tables(variables, frequencies)
+    tables <- shift_spec__cmip6_variable_tables(variables, frequencies)
     catalog <- data.table::rbindlist(
         lapply(
             c("ssp245", "historical"),
@@ -325,7 +325,7 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         fill = TRUE
     )
 
-    candidates <- shift__cmip6_candidates(
+    candidates <- shift_resolve__cmip6_candidates(
         catalog,
         models = "Model-A",
         experiments = c("ssp245", "historical"),
@@ -334,7 +334,9 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         frequency = frequencies,
         requirements = morpher__variable_requirements(recipe)
     )
-    partitions <- shift__cmip6_partitions(candidates$partitions_json[[1L]])
+    partitions <- shift_resolve__cmip6_partitions(candidates$partitions_json[[
+        1L
+    ]])
 
     expect_true(candidates$complete[[1L]])
     expect_identical(candidates$frequency[[1L]], "3hrPt+3hr+day")
@@ -349,7 +351,7 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         required
     ]))
 
-    core_candidates <- shift__cmip6_candidates(
+    core_candidates <- shift_resolve__cmip6_candidates(
         catalog[!variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES],
         models = "Model-A",
         experiments = c("ssp245", "historical"),
@@ -358,7 +360,7 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         frequency = frequencies,
         requirements = morpher__variable_requirements(recipe)
     )
-    core_partitions <- shift__cmip6_partitions(
+    core_partitions <- shift_resolve__cmip6_partitions(
         core_candidates$partitions_json[[1L]]
     )
     expect_true(core_candidates$complete[[1L]])
@@ -366,7 +368,7 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
         core_partitions$variable_id %in% HOURLY_WEATHER_EXTREMA_VARIABLES
     ))
 
-    scalar_candidates <- shift__cmip6_candidates(
+    scalar_candidates <- shift_resolve__cmip6_candidates(
         catalog,
         models = "Model-A",
         experiments = c("ssp245", "historical"),
@@ -403,7 +405,7 @@ test_that("resolver satisfies canonical hurs only from direct data or huss plus 
     }
     requirements <- list(hurs = list("hurs", c("huss", "tas", "ps")))
     candidates <- function(variables) {
-        shift__cmip6_candidates(
+        shift_resolve__cmip6_candidates(
             make_catalog(variables),
             models = "BCC-CSM2-MR",
             experiments = "ssp126",
@@ -498,7 +500,10 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_equal(file_result$count(), 1L)
     expect_equal(file_result$filename, "tas_day.nc")
     expect_error(shift_files(req), "No File result")
-    expect_named(shift_check(files, strict = TRUE), shift_diagnostic_columns())
+    expect_named(
+        shift_check(files, strict = TRUE),
+        shift_stage__diagnostic_columns()
+    )
     expect_equal(shift_status(shift_refresh(files)), "collected")
 
     printed <- capture.output(print(files), type = "message")
@@ -521,7 +526,7 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_true(any(grepl("Store:", verbose, fixed = TRUE)))
     expect_true(any(grepl("Hidden columns", verbose, fixed = TRUE)))
 
-    detached <- shift_stage_new(
+    detached <- shift_stage__new(
         ShiftFiles,
         "files",
         store_path = tempfile("missing-shift-store-"),
@@ -596,10 +601,10 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
         dry_run = TRUE
     )@meta$children[[1L]]
     store_path <- plan@store_path
-    run_id <- shift__run_register(plan)
+    run_id <- shift_job__run_register(plan)
     store <- shift_store(plan)
     on.exit(store$close(), add = TRUE)
-    shift__run_event(
+    shift_job__run_event(
         store,
         run_id,
         "resolve",
@@ -617,9 +622,9 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
         )
     )
 
-    run <- shift__run_handle(store, run_id)
+    run <- shift_job__run_handle(store, run_id)
     expect_equal(nrow(shift_diagnostics(run, refresh = FALSE)), 0L)
-    nodes <- shift__ui_event_nodes(run@meta$events)
+    nodes <- shift_ui_state__ui_event_nodes(run@meta$events)
     expect_equal(nodes$node, "DKRZ")
     expect_equal(nodes$result, "coverage: missing hurs")
 })
@@ -639,7 +644,7 @@ test_that("file year selection preserves an exact disjoint year union", {
     )
 
     expect_identical(
-        shift__file_year_match(rows, c(2041:2060, 2071:2090)),
+        shift_resolve__file_year_match(rows, c(2041:2060, 2071:2090)),
         c(TRUE, FALSE, TRUE)
     )
 })
@@ -662,7 +667,7 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
         data.table::copy(future)[, variant_label := "r2i1p1f1"]
     ))
     reference[, `:=`(complete = TRUE, missing = NA_character_)]
-    node_diagnostic <- shift__cmip6_resolution_diagnostic(
+    node_diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
         future,
         reference,
         "BCC-CSM2-MR",
@@ -684,9 +689,9 @@ test_that("resolver exhaustion preserves closest candidate and recovery semantic
             resolution = NULL
         )
     )
-    aggregate <- shift__resolver_failure_diagnostic(records)
+    aggregate <- shift_resolve__resolver_failure_diagnostic(records)
     condition <- tryCatch(
-        shift__abort_resolver_exhausted(records),
+        shift_resolve__abort_resolver_exhausted(records),
         epwshiftr_shift_resolver_exhausted = identity
     )
 
@@ -722,14 +727,14 @@ test_that("resolver recommends retry only when every node failure is transient",
             resolution = NULL
         )
     )
-    diagnostic <- shift__resolver_failure_diagnostic(records)
+    diagnostic <- shift_resolve__resolver_failure_diagnostic(records)
 
     expect_true(diagnostic$retryable)
     expect_identical(diagnostic$recovery, "retry")
 })
 
 test_that("resolution evidence tolerates omitted aggregate counters", {
-    evidence <- shift__resolution_evidence(list(
+    evidence <- shift_print__resolution_evidence(list(
         summary = "Selection incomplete",
         closest = list(model = "BCC-CSM2-MR", member = "r1i1p1f1", grid = "gn"),
         missing = "future: ssp585/hurs"
@@ -779,7 +784,11 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
     periods <- epw_morph_periods(`2060s` = 2060L)
     plan <- shift_plan(
-        request = shift__request_from_cmip6(climate_spec, periods, transform),
+        request = shift_spec__request_from_cmip6(
+            climate_spec,
+            periods,
+            transform
+        ),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
         transform = transform,
@@ -787,7 +796,7 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
     plan@meta$climate <- climate_spec
     expect_error(
-        shift__resolve_cmip6_selection(plan, catalogs),
+        shift_resolve__resolve_cmip6_selection(plan, catalogs),
         class = "epwshiftr_shift_resolution_ambiguity"
     )
 
@@ -801,7 +810,11 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
     periods <- epw_morph_periods(`2060s` = 2060L)
     explicit <- shift_plan(
-        request = shift__request_from_cmip6(climate_spec, periods, transform),
+        request = shift_spec__request_from_cmip6(
+            climate_spec,
+            periods,
+            transform
+        ),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
         transform = transform,
@@ -809,7 +822,7 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
     explicit@meta$climate <- climate_spec
     expect_equal(
-        shift__resolve_cmip6_selection(explicit, catalogs)$grid_label,
+        shift_resolve__resolve_cmip6_selection(explicit, catalogs)$grid_label,
         "gr1"
     )
 
@@ -823,7 +836,11 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
     periods <- epw_morph_periods(`2060s` = 2060L)
     missing_member <- shift_plan(
-        request = shift__request_from_cmip6(climate_spec, periods, transform),
+        request = shift_spec__request_from_cmip6(
+            climate_spec,
+            periods,
+            transform
+        ),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
         transform = transform,
@@ -831,7 +848,7 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
     missing_member@meta$climate <- climate_spec
     expect_error(
-        shift__resolve_cmip6_selection(missing_member, catalogs),
+        shift_resolve__resolve_cmip6_selection(missing_member, catalogs),
         "No complete CMIP6 member/grid candidate"
     )
 })

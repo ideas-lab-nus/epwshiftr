@@ -1,26 +1,47 @@
 #' @include source-reanalysis.R
 NULL
 
-# ERA5 source ---------------------------------------------------------------
-
+# ERA5 source
 # Return the canonical ERA5 variable manifest. Long CDS names define requests,
 # short aliases cover both CDS and time-series NetCDF encodings, and product
 # flags prevent an ERA5-Land request from inheriting unsupported ERA5 fields.
 era5__variable_manifest <- function() {
     data.table::data.table(
         variable_id = c(
-            "tas", "tasmin", "tasmax", "tdps", "ps", "psl", "uas", "vas",
-            "sfcWind", "rsds", "rlds", "clt", "pr", "hurs", "huss", "snd"
+            "tas",
+            "tasmin",
+            "tasmax",
+            "tdps",
+            "ps",
+            "psl",
+            "uas",
+            "vas",
+            "sfcWind",
+            "rsds",
+            "rlds",
+            "clt",
+            "pr",
+            "hurs",
+            "huss",
+            "snd"
         ),
         era_variable = c(
-            "2m_temperature", "2m_temperature", "2m_temperature",
-            "2m_dewpoint_temperature", "surface_pressure",
-            "mean_sea_level_pressure", "10m_u_component_of_wind",
-            "10m_v_component_of_wind", "10m_u_component_of_wind",
+            "2m_temperature",
+            "2m_temperature",
+            "2m_temperature",
+            "2m_dewpoint_temperature",
+            "surface_pressure",
+            "mean_sea_level_pressure",
+            "10m_u_component_of_wind",
+            "10m_v_component_of_wind",
+            "10m_u_component_of_wind",
             "surface_solar_radiation_downwards",
-            "surface_thermal_radiation_downwards", "total_cloud_cover",
-            "total_precipitation", "2m_dewpoint_temperature",
-            "2m_dewpoint_temperature", "snow_depth"
+            "surface_thermal_radiation_downwards",
+            "total_cloud_cover",
+            "total_precipitation",
+            "2m_dewpoint_temperature",
+            "2m_dewpoint_temperature",
+            "snow_depth"
         ),
         aliases = I(list(
             c("t2m", "2m_temperature"),
@@ -41,23 +62,78 @@ era5__variable_manifest <- function() {
             c("sd", "snow_depth")
         )),
         units = c(
-            "K", "K", "K", "K", "Pa", "Pa", "m s-1", "m s-1",
-            "m s-1", "W m-2", "W m-2", "%", "kg m-2 s-1", "%", "1",
+            "K",
+            "K",
+            "K",
+            "K",
+            "Pa",
+            "Pa",
+            "m s-1",
+            "m s-1",
+            "m s-1",
+            "W m-2",
+            "W m-2",
+            "%",
+            "kg m-2 s-1",
+            "%",
+            "1",
             "m"
         ),
         aggregation = c("mean", "min", "max", rep("mean", 13L)),
         single_levels = c(rep(TRUE, 15L), FALSE),
         land = c(
-            TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, TRUE, TRUE, TRUE, TRUE,
-            TRUE, FALSE, TRUE, TRUE, TRUE, TRUE
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            FALSE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            FALSE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE
         ),
         time_series_single_levels = c(
-            TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE,
-            FALSE, TRUE, TRUE, TRUE, FALSE
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            FALSE,
+            TRUE,
+            TRUE,
+            TRUE,
+            FALSE
         ),
         time_series_land = c(
-            TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, TRUE, TRUE, TRUE, TRUE,
-            FALSE, FALSE, TRUE, TRUE, TRUE, TRUE
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            FALSE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE,
+            FALSE,
+            FALSE,
+            TRUE,
+            TRUE,
+            TRUE,
+            TRUE
         )
     )
 }
@@ -135,7 +211,9 @@ era5__request <- function(spec, variable, site, access) {
     manifest <- era5__variable_manifest()
     row <- manifest[variable_id == variable & get(spec@product) %in% TRUE]
     if (nrow(row) != 1L) {
-        cli::cli_abort("ERA5 variable mapping is not unique for {.val {variable}}.")
+        cli::cli_abort(
+            "ERA5 variable mapping is not unique for {.val {variable}}."
+        )
     }
     start <- as.Date(sprintf("%04d-01-01", min(spec@years))) - 1L
     stop <- as.Date(sprintf("%04d-12-31", max(spec@years))) + 1L

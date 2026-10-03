@@ -367,7 +367,7 @@ eligibility__match <- function(catalog, requirements) {
     conventional <- vapply(
         frequencies,
         function(value) {
-            table <- shift__cmip6_table_id(value)
+            table <- shift_spec__cmip6_table_id(value)
             if (is.null(table)) NA_character_ else table
         },
         character(1L)

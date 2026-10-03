@@ -1,5 +1,4 @@
-# Shared temperature workflow support {{{
-
+# Shared temperature workflow support
 # Common numerical and EPW-header controls are owned by the temperature
 # workflow boundary rather than by any one daily or monthly backend.
 EPW_MORPH_TEMPERATURE_OPTIONS <- list(
@@ -23,8 +22,11 @@ temperature__backend_options <- function(
     if (is.null(options)) {
         options <- defaults
     } else {
-        if (!is.list(options) || is.null(names(options)) ||
-            any(!nzchar(names(options)))) {
+        if (
+            !is.list(options) ||
+                is.null(names(options)) ||
+                any(!nzchar(names(options)))
+        ) {
             cli::cli_abort("{label} `options` must be a named list.")
         }
         unknown <- setdiff(names(options), names(defaults))
@@ -186,8 +188,12 @@ temperature__epw_template <- function(epw) {
     # none may interpret an EPW numeric missing sentinel as observed weather.
     weather <- epw_file__calculation_weather(epw$data())
     required <- c(
-        "month", "day", "hour", "dry_bulb_temperature",
-        "relative_humidity", "dew_point_temperature",
+        "month",
+        "day",
+        "hour",
+        "dry_bulb_temperature",
+        "relative_humidity",
+        "dew_point_temperature",
         "atmospheric_pressure"
     )
     missing <- setdiff(required, names(weather))
@@ -203,8 +209,18 @@ temperature__epw_template <- function(epw) {
     }
 
     month_days <- c(
-        31L, 28L, 31L, 30L, 31L, 30L,
-        31L, 31L, 30L, 31L, 30L, 31L
+        31L,
+        28L,
+        31L,
+        30L,
+        31L,
+        30L,
+        31L,
+        31L,
+        30L,
+        31L,
+        30L,
+        31L
     )
     month <- as.integer(weather[["month"]])
     day <- as.integer(weather[["day"]])
@@ -227,12 +243,17 @@ temperature__epw_template <- function(epw) {
             weather[["dry_bulb_temperature"]]
         )
     )
-    shape <- template[, .(
-        rows = .N,
-        unique_hours = data.table::uniqueN(hour)
-    ), by = "target_day"]
-    if (nrow(shape) != 365L ||
-        any(shape[["rows"]] != 24L | shape[["unique_hours"]] != 24L)) {
+    shape <- template[,
+        .(
+            rows = .N,
+            unique_hours = data.table::uniqueN(hour)
+        ),
+        by = "target_day"
+    ]
+    if (
+        nrow(shape) != 365L ||
+            any(shape[["rows"]] != 24L | shape[["unique_hours"]] != 24L)
+    ) {
         cli::cli_abort(
             "Daily temperature projection requires 365 days with exactly 24 unique hourly rows each."
         )
@@ -245,5 +266,3 @@ temperature__epw_template <- function(epw) {
 
     list(epw = epw, weather = weather, template = template)
 }
-
-# }}}

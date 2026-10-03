@@ -1,8 +1,7 @@
 #' @include weather-temperature.R
 NULL
 
-# Ek daily temperature workflow {{{
-
+# Ek daily temperature workflow
 # The first Ek implementation is deliberately temperature-only. The paper's
 # prose and Table 2 disagree for wind and cloud, so those variables remain
 # unsupported until their transformations can be reproduced without invention.
@@ -80,8 +79,10 @@ ek__interpolate_calendar_year <- function(annual_phase, value, target_phase) {
         finite = TRUE,
         any.missing = FALSE
     )
-    if (length(annual_phase) != length(value) ||
-        length(annual_phase) < 3L) {
+    if (
+        length(annual_phase) != length(value) ||
+            length(annual_phase) < 3L
+    ) {
         cli::cli_abort(
             "Each Ek calendar year must contain at least three aligned daily values."
         )
@@ -145,8 +146,7 @@ ek__daily_temperature_climatology <- function(data, name) {
     data.table::set(source, j = "value", value = source_value)
 
     target_phase <- daily__phase_grid(365L)
-    yearly <- source[
-        ,
+    yearly <- source[,
         data.table::data.table(
             target_day = seq_len(365L),
             annual_phase = target_phase,
@@ -162,8 +162,7 @@ ek__daily_temperature_climatology <- function(data, name) {
 
     # Ek used 30-year periods. The package records the actual contributing
     # years rather than silently rejecting shorter controlled test periods.
-    climatology <- yearly[
-        ,
+    climatology <- yearly[,
         list(
             climatology = mean(.SD[["value"]]),
             n_years = .N
@@ -200,13 +199,18 @@ ek__daily_temperature_factors <- function(
         sort = FALSE
     )
     required <- c(
-        "climatology_future", "climatology_historical",
-        "n_years_future", "n_years_historical"
+        "climatology_future",
+        "climatology_historical",
+        "n_years_future",
+        "n_years_historical"
     )
     missing <- setdiff(required, names(aligned))
-    if (length(missing) || nrow(aligned) != 730L ||
-        any(!is.finite(aligned[["climatology_future"]])) ||
-        any(!is.finite(aligned[["climatology_historical"]]))) {
+    if (
+        length(missing) ||
+            nrow(aligned) != 730L ||
+            any(!is.finite(aligned[["climatology_future"]])) ||
+            any(!is.finite(aligned[["climatology_historical"]]))
+    ) {
         cli::cli_abort(
             "Matching future and historical Ek tasmin/tasmax climatologies are required for all 365 target days."
         )
@@ -238,33 +242,29 @@ ek__daily_temperature_factors <- function(
         }
     }
 
-    invalid <- factors[["future_maximum"]] <
-        factors[["future_minimum"]] |
-        factors[["historical_maximum"]] <
-            factors[["historical_minimum"]]
+    invalid <- factors[["future_maximum"]] < factors[["future_minimum"]] |
+        factors[["historical_maximum"]] < factors[["historical_minimum"]]
     if (any(invalid)) {
         cli::cli_abort(
             "Ek daily extrema must satisfy {.val tasmax >= tasmin} in both periods."
         )
     }
 
-    historical_mean <- (
-        factors[["historical_minimum"]] +
-            factors[["historical_maximum"]]
-    ) / 2
-    future_mean <- (
-        factors[["future_minimum"]] +
-            factors[["future_maximum"]]
-    ) / 2
+    historical_mean <- (factors[["historical_minimum"]] +
+        factors[["historical_maximum"]]) /
+        2
+    future_mean <- (factors[["future_minimum"]] +
+        factors[["future_maximum"]]) /
+        2
     historical_dtr <- factors[["historical_maximum"]] -
         factors[["historical_minimum"]]
     future_dtr <- factors[["future_maximum"]] -
         factors[["future_minimum"]]
     adjusted <- historical_dtr > tolerance
     relative_change <- rep.int(0, nrow(factors))
-    relative_change[adjusted] <- (
-        future_dtr[adjusted] - historical_dtr[adjusted]
-    ) / historical_dtr[adjusted]
+    relative_change[adjusted] <- (future_dtr[adjusted] -
+        historical_dtr[adjusted]) /
+        historical_dtr[adjusted]
 
     values <- list(
         historical_mean = historical_mean,
@@ -416,17 +416,18 @@ ek__hourly_reconstruct <- function(data, inputs, context, options) {
             baseline_maximum = max(baseline_value),
             baseline_dtr = max(baseline_value) - min(baseline_value),
             target_mean = baseline_mean + factor[["mean_delta"]],
-            target_dtr = (
-                max(baseline_value) - min(baseline_value)
-            ) * factor[["dtr_ratio"]],
+            target_dtr = (max(baseline_value) - min(baseline_value)) *
+                factor[["dtr_ratio"]],
             projected_mean = mean(projected),
             projected_minimum = min(projected),
             projected_maximum = max(projected),
             projected_dtr = max(projected) - min(projected),
-            projection_status = if (identical(
-                factor[["dtr_status"]],
-                "adjusted"
-            )) {
+            projection_status = if (
+                identical(
+                    factor[["dtr_status"]],
+                    "adjusted"
+                )
+            ) {
                 "daily_mean_dtr"
             } else {
                 "mean_shift_zero_historical_dtr"
@@ -458,8 +459,11 @@ ek__hourly_reconstruct <- function(data, inputs, context, options) {
         value = projected_value
     )
     hourly_columns <- c(
-        "annual_phase", "mean_delta", "dtr_relative_change",
-        "dtr_ratio", "dtr_status"
+        "annual_phase",
+        "mean_delta",
+        "dtr_relative_change",
+        "dtr_ratio",
+        "dtr_status"
     )
     for (column in hourly_columns) {
         data.table::set(
@@ -469,26 +473,22 @@ ek__hourly_reconstruct <- function(data, inputs, context, options) {
         )
     }
 
-    daily_first_baseline <- template[
-        ,
+    daily_first_baseline <- template[,
         .SD[["dry_bulb_temperature"]][[1L]],
         by = "target_day",
         .SDcols = "dry_bulb_temperature"
     ][["V1"]]
-    daily_last_baseline <- template[
-        ,
+    daily_last_baseline <- template[,
         .SD[["dry_bulb_temperature"]][[.N]],
         by = "target_day",
         .SDcols = "dry_bulb_temperature"
     ][["V1"]]
-    daily_first_projected <- projected[
-        ,
+    daily_first_projected <- projected[,
         .SD[["temperature_projected"]][[1L]],
         by = "target_day",
         .SDcols = "temperature_projected"
     ][["V1"]]
-    daily_last_projected <- projected[
-        ,
+    daily_last_projected <- projected[,
         .SD[["temperature_projected"]][[.N]],
         by = "target_day",
         .SDcols = "temperature_projected"
@@ -561,22 +561,18 @@ ek__physics_apply <- function(data, inputs, context, options) {
         ek_target_day = hourly[["target_day"]],
         ek_annual_phase = hourly[["annual_phase"]],
         ek_temperature_mean_delta = hourly[["mean_delta"]],
-        ek_temperature_dtr_relative_change =
-            hourly[["dtr_relative_change"]],
+        ek_temperature_dtr_relative_change = hourly[["dtr_relative_change"]],
         ek_temperature_dtr_ratio = hourly[["dtr_ratio"]],
         ek_temperature_dtr_status = hourly[["dtr_status"]],
-        ek_temperature_projection_status =
-            hourly[["projection_status"]],
+        ek_temperature_projection_status = hourly[["projection_status"]],
         ek_temperature_boundary_jump = hourly[["boundary_jump"]],
-        ek_temperature_boundary_jump_change =
-            hourly[["boundary_jump_change"]]
+        ek_temperature_boundary_jump_change = hourly[["boundary_jump_change"]]
     )
     if (identical(policy, "harmonized")) {
         diagnostic_values <- c(
             diagnostic_values,
             list(
-                ek_baseline_specific_humidity =
-                    moisture$baseline_specific_humidity,
+                ek_baseline_specific_humidity = moisture$baseline_specific_humidity,
                 ek_specific_humidity = moisture$specific_humidity,
                 ek_humidity_closure_status = moisture$status
             )
@@ -589,8 +585,7 @@ ek__physics_apply <- function(data, inputs, context, options) {
     )
 
     diagnostics <- list()
-    fallback <- factors[["dtr_status"]] ==
-        "inherited_zero_historical_dtr"
+    fallback <- factors[["dtr_status"]] == "inherited_zero_historical_dtr"
     if (any(fallback)) {
         diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
             stage = "runtime",
@@ -816,5 +811,3 @@ ek__pipeline <- function() {
         output = "daily_mean_dtr_epw_result"
     ))
 }
-
-# }}}

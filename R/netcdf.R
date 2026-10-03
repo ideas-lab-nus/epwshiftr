@@ -1,8 +1,8 @@
 #' @importFrom data.table rbindlist set setcolorder setnames
 NULL
 
-# get_nc_meta {{{
-get_nc_meta <- function (file) {
+# get_nc_meta
+get_nc_meta <- function(file) {
     # to avoid No visible binding for global variable check NOTE
     value <- name <- NULL
     # get all attributes
@@ -12,19 +12,39 @@ get_nc_meta <- function (file) {
     meta <- as.list(atts[
         list(
             "NC_GLOBAL",
-            c("mip_era", "activity_id", "institution_id", "source_id",
-              "experiment_id", "variant_label", "table_id", "grid_label",
-              "nominal_resolution", "variable_id", "tracking_id")
+            c(
+                "mip_era",
+                "activity_id",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "variant_label",
+                "table_id",
+                "grid_label",
+                "nominal_resolution",
+                "variable_id",
+                "tracking_id"
+            )
         ),
         on = c("variable", "attribute"),
-        {v <- unlist(value); names(v) <- attribute; v}])
+        {
+            v <- unlist(value)
+            names(v) <- attribute
+            v
+        }
+    ])
 
     # get variable long name and units
     meta <- c(
         meta,
         data.table::setattr(
-            atts[list(meta$variable_id, c("standard_name", "units")), on = c("variable", "attribute"), value],
-            "names", c("standard_name", "units")
+            atts[
+                list(meta$variable_id, c("standard_name", "units")),
+                on = c("variable", "attribute"),
+                value
+            ],
+            "names",
+            c("standard_name", "units")
         )
     )
 
@@ -32,14 +52,17 @@ get_nc_meta <- function (file) {
     c(
         meta,
         data.table::setattr(
-            atts[list("time", c("units", "calendar")), on = c("variable", "attribute"), value],
-            "names", c("time_units", "time_calendar")
+            atts[
+                list("time", c("units", "calendar")),
+                on = c("variable", "attribute"),
+                value
+            ],
+            "names",
+            c("time_units", "time_calendar")
         )
     )
 }
-# }}}
-
-# get_nc_atts {{{
+# get_nc_atts
 get_nc_atts <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -52,33 +75,49 @@ get_nc_atts <- function(x) {
     inq <- RNetCDF::file.inq.nc(nc)
 
     # global attributes
-    glo <- rbindlist(lapply(seq_len(inq$ngatts), function (i) {
+    glo <- rbindlist(lapply(seq_len(inq$ngatts), function(i) {
         RNetCDF::att.inq.nc(nc, "NC_GLOBAL", i - 1L)
     }))
     # set global attribute id to -1
     set(glo, NULL, "id", -1L)
     set(glo, NULL, "variable", "NC_GLOBAL")
     set(glo, NULL, c("length", "type"), NULL)
-    set(glo, NULL, "value",
-        lapply(seq_len(inq$ngatts), function (i) RNetCDF::att.get.nc(nc, "NC_GLOBAL", i - 1L))
+    set(
+        glo,
+        NULL,
+        "value",
+        lapply(seq_len(inq$ngatts), function(i) {
+            RNetCDF::att.get.nc(nc, "NC_GLOBAL", i - 1L)
+        })
     )
     setnames(glo, "name", "attribute")
 
     # get variables
-    vars <- unique(get_nc_vars(nc)[natts > 0L, .SD, .SDcols = c("id", "name", "natts")])
+    vars <- unique(get_nc_vars(nc)[
+        natts > 0L,
+        .SD,
+        .SDcols = c("id", "name", "natts")
+    ])
     vars <- vars[, by = list(idx = seq_len(nrow(vars))), {
-        nm <- lapply(seq_len(natts) - 1L, function (i) RNetCDF::att.inq.nc(nc, id, i)$name)
-        att <- lapply(seq_len(natts) - 1L, function (i) RNetCDF::att.get.nc(nc, id, i))
-        list(id = id, variable = rep(name, length(nm)), attribute = unlist(nm), value = att)
+        nm <- lapply(seq_len(natts) - 1L, function(i) {
+            RNetCDF::att.inq.nc(nc, id, i)$name
+        })
+        att <- lapply(seq_len(natts) - 1L, function(i) {
+            RNetCDF::att.get.nc(nc, id, i)
+        })
+        list(
+            id = id,
+            variable = rep(name, length(nm)),
+            attribute = unlist(nm),
+            value = att
+        )
     }]
     set(vars, NULL, "idx", NULL)
 
     rbindlist(list(vars, glo), use.names = TRUE)
 }
-# }}}
-
-# get_nc_vars {{{
-get_nc_vars <- function (x) {
+# get_nc_vars
+get_nc_vars <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
     } else {
@@ -89,18 +128,19 @@ get_nc_vars <- function (x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
-    vars <- rbindlist(fill = TRUE, lapply(seq_len(inq$nvars) - 1L, function (i) {
-        res <- RNetCDF::var.inq.nc(nc, i)
-        res <- res[names(res) != "dimids"]
-        res[vapply(res, length, integer(1)) > 0L]
-    }))
+    vars <- rbindlist(
+        fill = TRUE,
+        lapply(seq_len(inq$nvars) - 1L, function(i) {
+            res <- RNetCDF::var.inq.nc(nc, i)
+            res <- res[names(res) != "dimids"]
+            res[vapply(res, length, integer(1)) > 0L]
+        })
+    )
 
     vars
 }
-# }}}
-
-# get_nc_dims {{{
-get_nc_dims <- function (x) {
+# get_nc_dims
+get_nc_dims <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
     } else {
@@ -111,14 +151,12 @@ get_nc_dims <- function (x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
-    rbindlist(lapply(seq_len(inq$ndims) - 1L, function (i) {
+    rbindlist(lapply(seq_len(inq$ndims) - 1L, function(i) {
         RNetCDF::dim.inq.nc(nc, i)
     }))
 }
-# }}}
-
-# get_nc_axes {{{
-get_nc_axes <- function (x) {
+# get_nc_axes
+get_nc_axes <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
     } else {
@@ -129,7 +167,7 @@ get_nc_axes <- function (x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
-    vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function (i) {
+    vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function(i) {
         RNetCDF::var.inq.nc(nc, i)
     }))[, `:=`(axis = .I)]
     set(vars, NULL, setdiff(names(vars), c("axis", "name", "dimids")), NULL)
@@ -138,23 +176,30 @@ get_nc_axes <- function (x) {
 
     vars[]
 }
-# }}}
-
-# get_nc_time {{{
-normalize_cf_calendar <- function (calendar) {
-    if (!length(calendar) || is.na(calendar[[1L]]) || !nzchar(trimws(calendar[[1L]]))) {
+# get_nc_time
+normalize_cf_calendar <- function(calendar) {
+    if (
+        !length(calendar) ||
+            is.na(calendar[[1L]]) ||
+            !nzchar(trimws(calendar[[1L]]))
+    ) {
         return("standard")
     }
 
     tolower(as.character(calendar[[1L]]))
 }
 
-get_nc_time_att <- function (atts, attribute, default = NULL) {
+get_nc_time_att <- function(atts, attribute, default = NULL) {
     idx <- which(atts$variable == "time" & atts$attribute == attribute)
 
     if (!length(idx)) {
-        if (!is.null(default)) return(default)
-        stop(sprintf("Missing NetCDF 'time' attribute: '%s'.", attribute), call. = FALSE)
+        if (!is.null(default)) {
+            return(default)
+        }
+        stop(
+            sprintf("Missing NetCDF 'time' attribute: '%s'.", attribute),
+            call. = FALSE
+        )
     }
 
     atts$value[[idx[[1L]]]]
@@ -200,14 +245,14 @@ CF_TIME_COORDINATE_COLUMNS <- c(
     "annual_phase"
 )
 
-cf_time_check_calendar <- function (calendar) {
+cf_time_check_calendar <- function(calendar) {
     if (!calendar %in% CF_TIME_CALENDARS) {
         stop("Invalid calendar specification", call. = FALSE)
     }
     calendar
 }
 
-cf_time_parse_unit <- function (unit) {
+cf_time_parse_unit <- function(unit) {
     aliases <- c(
         years = "years",
         year = "years",
@@ -238,11 +283,11 @@ cf_time_parse_unit <- function (unit) {
     unit
 }
 
-cf_time_is_leap_gregorian <- function (year) {
+cf_time_is_leap_gregorian <- function(year) {
     (year %% 4L == 0L & year %% 100L != 0L) | year %% 400L == 0L
 }
 
-cf_time_month_days <- function (year, month, calendar) {
+cf_time_month_days <- function(year, month, calendar) {
     common <- c(31L, 28L, 31L, 30L, 31L, 30L, 31L, 31L, 30L, 31L, 30L, 31L)
     leap <- c(31L, 29L, 31L, 30L, 31L, 30L, 31L, 31L, 30L, 31L, 30L, 31L)
 
@@ -257,14 +302,18 @@ cf_time_month_days <- function (year, month, calendar) {
     )
 }
 
-cf_time_valid_days <- function (parts, calendar) {
-    valid <- !is.na(parts$year) & !is.na(parts$month) & !is.na(parts$day) &
-        parts$month >= 1L & parts$month <= 12L & parts$day >= 1L
+cf_time_valid_days <- function(parts, calendar) {
+    valid <- !is.na(parts$year) &
+        !is.na(parts$month) &
+        !is.na(parts$day) &
+        parts$month >= 1L &
+        parts$month <= 12L &
+        parts$day >= 1L
     days <- cf_time_month_days(parts$year, parts$month, calendar)
     valid & !is.na(days) & parts$day <= days
 }
 
-cf_time_parse_origin <- function (origin, calendar) {
+cf_time_parse_origin <- function(origin, calendar) {
     pattern <- paste0(
         "^\\s*",
         "([+-]?[0-9]{1,4})",
@@ -314,14 +363,17 @@ cf_time_parse_origin <- function (origin, calendar) {
     parts
 }
 
-cf_time_parse_definition <- function (units, calendar) {
+cf_time_parse_definition <- function(units, calendar) {
     units <- as.character(units[[1L]])
     pattern <- "^\\s*([[:alpha:]]+)\\s+(since|after|from|ref|per)\\s+(.+?)\\s*$"
     match <- regexec(pattern, units, ignore.case = TRUE)
     parts <- regmatches(units, match)[[1L]]
 
     if (length(parts) != 4L) {
-        stop("Definition string does not appear to be a CF-compliant time coordinate description", call. = FALSE)
+        stop(
+            "Definition string does not appear to be a CF-compliant time coordinate description",
+            call. = FALSE
+        )
     }
 
     list(
@@ -330,14 +382,24 @@ cf_time_parse_definition <- function (units, calendar) {
     )
 }
 
-cf_time_gregorian_date2offset <- function (parts) {
+cf_time_gregorian_date2offset <- function(parts) {
     year1 <- parts$year - 1L
-    corr <- ifelse(parts$month <= 2L, 0L, as.integer(cf_time_is_leap_gregorian(parts$year)) - 2L)
-    365L * year1 + year1 %/% 4L - year1 %/% 100L + year1 %/% 400L +
-        (367L * parts$month - 362L) %/% 12L + corr + parts$day
+    corr <- ifelse(
+        parts$month <= 2L,
+        0L,
+        as.integer(cf_time_is_leap_gregorian(parts$year)) - 2L
+    )
+    365L *
+        year1 +
+        year1 %/% 4L -
+        year1 %/% 100L +
+        year1 %/% 400L +
+        (367L * parts$month - 362L) %/% 12L +
+        corr +
+        parts$day
 }
 
-cf_time_gregorian_offset2date <- function (offsets) {
+cf_time_gregorian_offset2date <- function(offsets) {
     d0 <- offsets - 1L
     n400 <- d0 %/% 146097L
     d1 <- d0 %% 146097L
@@ -351,9 +413,21 @@ cf_time_gregorian_offset2date <- function (offsets) {
     year1 <- year - 1L
     leap <- cf_time_is_leap_gregorian(year)
     jan1 <- 365L * year1 + year1 %/% 4L - year1 %/% 100L + year1 %/% 400L + 1L
-    prior_days <- offsets - jan1 + ifelse(offsets < jan1 + 59L + as.integer(leap), 0L, 2L - as.integer(leap))
+    prior_days <- offsets -
+        jan1 +
+        ifelse(
+            offsets < jan1 + 59L + as.integer(leap),
+            0L,
+            2L - as.integer(leap)
+        )
     month <- (12L * prior_days + 373L) %/% 367L
-    day <- offsets - cf_time_gregorian_date2offset(data.frame(year = year, month = month, day = 1L)) + 1L
+    day <- offsets -
+        cf_time_gregorian_date2offset(data.frame(
+            year = year,
+            month = month,
+            day = 1L
+        )) +
+        1L
 
     data.frame(year = year, month = month, day = day)
 }
@@ -373,9 +447,11 @@ cf_time__fixed_date2offset <- function(parts, year_days) {
         -post_february_correction
     )
 
-    year_days * (parts$year - 1L) +
+    year_days *
+        (parts$year - 1L) +
         (367L * parts$month - 362L) %/% 12L +
-        correction + parts$day
+        correction +
+        parts$day
 }
 
 # Convert absolute offsets back to calendar-native dates on a fixed 365- or
@@ -402,7 +478,7 @@ cf_time__fixed_offset2date <- function(offsets, year_days) {
     data.frame(year = year, month = month, day = day)
 }
 
-cf_time_date2offset <- function (parts, origin, calendar) {
+cf_time_date2offset <- function(parts, origin, calendar) {
     fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
     if (!is.null(fixed_year_days)) {
         return(
@@ -413,13 +489,17 @@ cf_time_date2offset <- function (parts, origin, calendar) {
 
     switch(
         calendar,
-        "360_day" = (parts$year - origin$year) * 360L +
-            (parts$month - origin$month) * 30L + parts$day - origin$day,
-        cf_time_gregorian_date2offset(parts) - cf_time_gregorian_date2offset(origin)
+        "360_day" = (parts$year - origin$year) *
+            360L +
+            (parts$month - origin$month) * 30L +
+            parts$day -
+            origin$day,
+        cf_time_gregorian_date2offset(parts) -
+            cf_time_gregorian_date2offset(origin)
     )
 }
 
-cf_time_offset2date <- function (offsets, origin, calendar) {
+cf_time_offset2date <- function(offsets, origin, calendar) {
     fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
     if (!is.null(fixed_year_days)) {
         return(cf_time__fixed_offset2date(
@@ -444,11 +524,13 @@ cf_time_offset2date <- function (offsets, origin, calendar) {
 
             data.frame(year = year, month = month, day = day)
         },
-        cf_time_gregorian_offset2date(offsets + cf_time_gregorian_date2offset(origin))
+        cf_time_gregorian_offset2date(
+            offsets + cf_time_gregorian_date2offset(origin)
+        )
     )
 }
 
-cf_time_origin_posix <- function (origin, tz) {
+cf_time_origin_posix <- function(origin, tz) {
     ISOdatetime(origin$year[[1L]], origin$month[[1L]], 1L, 0L, 0L, 0, tz = tz) +
         (origin$day[[1L]] - 1L) * 86400 +
         origin$hour[[1L]] * 3600 +
@@ -456,9 +538,14 @@ cf_time_origin_posix <- function (origin, tz) {
         origin$second[[1L]]
 }
 
-cf_time_add_seconds_to_fields <- function (fields, seconds, origin, calendar) {
-    total_seconds <- fields$hour * 3600 + fields$minute * 60 + fields$second + seconds
-    day_offsets <- cf_time_date2offset(fields, origin, calendar) + total_seconds %/% 86400L
+cf_time_add_seconds_to_fields <- function(fields, seconds, origin, calendar) {
+    total_seconds <- fields$hour *
+        3600 +
+        fields$minute * 60 +
+        fields$second +
+        seconds
+    day_offsets <- cf_time_date2offset(fields, origin, calendar) +
+        total_seconds %/% 86400L
     seconds <- round(total_seconds %% 86400L, 3L)
 
     fields <- cf_time_offset2date(day_offsets, origin, calendar)
@@ -468,10 +555,13 @@ cf_time_add_seconds_to_fields <- function (fields, seconds, origin, calendar) {
     fields
 }
 
-cf_time_offsets2fields <- function (offsets, unit, origin, calendar) {
+cf_time_offsets2fields <- function(offsets, unit, origin, calendar) {
     if (unit %in% names(CF_TIME_UNIT_SECONDS)) {
-        seconds <- offsets * CF_TIME_UNIT_SECONDS[[unit]] +
-            origin$hour * 3600 + origin$minute * 60 + origin$second
+        seconds <- offsets *
+            CF_TIME_UNIT_SECONDS[[unit]] +
+            origin$hour * 3600 +
+            origin$minute * 60 +
+            origin$second
         day_offsets <- seconds %/% 86400L
         seconds <- round(seconds %% 86400L, 3L)
 
@@ -484,7 +574,10 @@ cf_time_offsets2fields <- function (offsets, unit, origin, calendar) {
 
     whole_offsets <- offsets %/% 1L
     fractional_offsets <- offsets - whole_offsets
-    fields <- origin[rep(1L, length(offsets)), c("year", "month", "day", "hour", "minute", "second")]
+    fields <- origin[
+        rep(1L, length(offsets)),
+        c("year", "month", "day", "hour", "minute", "second")
+    ]
     if (unit == "months") {
         months <- fields$month + whole_offsets - 1L
         fields$month <- months %% 12L + 1L
@@ -496,24 +589,43 @@ cf_time_offsets2fields <- function (offsets, unit, origin, calendar) {
     }
 
     if (any(fractional_seconds != 0)) {
-        fields <- cf_time_add_seconds_to_fields(fields, fractional_seconds, origin, calendar)
+        fields <- cf_time_add_seconds_to_fields(
+            fields,
+            fractional_seconds,
+            origin,
+            calendar
+        )
     }
 
     fields
 }
 
-cf_time_fields2posix <- function (fields, origin, calendar, tz) {
+cf_time_fields2posix <- function(fields, origin, calendar, tz) {
     if (calendar %in% c("standard", "gregorian", "proleptic_gregorian")) {
         return(as.POSIXct(
-            ISOdatetime(fields$year, fields$month, fields$day, fields$hour, fields$minute, fields$second, tz = tz),
+            ISOdatetime(
+                fields$year,
+                fields$month,
+                fields$day,
+                fields$hour,
+                fields$minute,
+                fields$second,
+                tz = tz
+            ),
             tz = tz
         ))
     }
 
     origin_time <- cf_time_origin_posix(origin, tz)
     day_offsets <- cf_time_date2offset(fields, origin, calendar)
-    second_offsets <- fields$hour * 3600 + fields$minute * 60 + fields$second -
-        (origin$hour[[1L]] * 3600 + origin$minute[[1L]] * 60 + origin$second[[1L]])
+    second_offsets <- fields$hour *
+        3600 +
+        fields$minute * 60 +
+        fields$second -
+        (origin$hour[[1L]] *
+            3600 +
+            origin$minute[[1L]] * 60 +
+            origin$second[[1L]])
 
     as.POSIXct(origin_time + day_offsets * 86400 + second_offsets, tz = tz)
 }
@@ -548,11 +660,10 @@ cf_time__coordinates <- function(fields, calendar) {
     year_days <- cf_time__year_days(fields$year, calendar)
     # Derive clock time directly from parsed CF fields, preserving fractional
     # seconds rather than recovering them from a rounded annual-phase value.
-    second_of_day <- (
-        as.numeric(fields$hour) * 3600 +
-            as.numeric(fields$minute) * 60 +
-            as.numeric(fields$second)
-    )
+    second_of_day <- (as.numeric(fields$hour) *
+        3600 +
+        as.numeric(fields$minute) * 60 +
+        as.numeric(fields$second))
     day_fraction <- second_of_day / 86400
 
     data.frame(
@@ -576,28 +687,37 @@ cf_time__range_indices <- function(time, coordinates, range) {
         return(seq_along(time))
     }
     if (length(time) != nrow(coordinates)) {
-        stop("CF time coordinates do not match the time axis length.", call. = FALSE)
+        stop(
+            "CF time coordinates do not match the time axis length.",
+            call. = FALSE
+        )
     }
 
     # Encode calendar date tuples into sortable day-scale keys. Month and day
     # bases exceed their legal maxima, so numeric ordering is lexicographic.
-    coordinate_fraction <- coordinates$annual_phase * coordinates$cf_year_days -
+    coordinate_fraction <- coordinates$annual_phase *
+        coordinates$cf_year_days -
         (coordinates$cf_day_of_year - 1L)
-    coordinate_key <- (
-        (as.numeric(coordinates$cf_year) * 13 + coordinates$cf_month) * 32 +
-            coordinates$cf_day
-    ) + coordinate_fraction
+    coordinate_key <- ((as.numeric(coordinates$cf_year) *
+        13 +
+        coordinates$cf_month) *
+        32 +
+        coordinates$cf_day) +
+        coordinate_fraction
 
     boundary <- as.POSIXlt(range, tz = "UTC")
-    boundary_fraction <- (
-        as.numeric(boundary$hour) * 3600 +
-            as.numeric(boundary$min) * 60 +
-            as.numeric(boundary$sec)
-    ) / 86400
-    boundary_key <- (
-        (as.numeric(boundary$year + 1900L) * 13 + boundary$mon + 1L) * 32 +
-            boundary$mday
-    ) + boundary_fraction
+    boundary_fraction <- (as.numeric(boundary$hour) *
+        3600 +
+        as.numeric(boundary$min) * 60 +
+        as.numeric(boundary$sec)) /
+        86400
+    boundary_key <- ((as.numeric(boundary$year + 1900L) *
+        13 +
+        boundary$mon +
+        1L) *
+        32 +
+        boundary$mday) +
+        boundary_fraction
 
     which(
         !is.na(time) &
@@ -606,7 +726,7 @@ cf_time__range_indices <- function(time, coordinates, range) {
     )
 }
 
-parse_cf_time <- function (offsets, units, calendar = "standard", tz = "UTC") {
+parse_cf_time <- function(offsets, units, calendar = "standard", tz = "UTC") {
     calendar <- normalize_cf_calendar(calendar)
     calendar <- cf_time_check_calendar(calendar)
     units <- as.character(units[[1L]])
@@ -617,7 +737,12 @@ parse_cf_time <- function (offsets, units, calendar = "standard", tz = "UTC") {
     dim(offsets) <- NULL
 
     parsed <- cf_time_parse_definition(units, calendar)
-    fields <- cf_time_offsets2fields(offsets, parsed$unit, parsed$origin, calendar)
+    fields <- cf_time_offsets2fields(
+        offsets,
+        parsed$unit,
+        parsed$origin,
+        calendar
+    )
     posix_time <- cf_time_fields2posix(fields, parsed$origin, calendar, tz)
     coordinates <- cf_time__coordinates(fields, calendar)
 
@@ -627,7 +752,7 @@ parse_cf_time <- function (offsets, units, calendar = "standard", tz = "UTC") {
     posix_time
 }
 
-get_nc_time <- function (x, range = FALSE) {
+get_nc_time <- function(x, range = FALSE) {
     if (inherits(x, "NetCDF")) {
         nc <- x
     } else {
@@ -654,11 +779,14 @@ get_nc_time <- function (x, range = FALSE) {
 
     parse_cf_time(offsets, time_units, time_calendar)
 }
-# }}}
-
-# match_nc_time {{{
-match_nc_time <- function (x, years = NULL) {
-    checkmate::assert_integerish(years, any.missing = FALSE, unique = TRUE, null.ok = TRUE)
+# match_nc_time
+match_nc_time <- function(x, years = NULL) {
+    checkmate::assert_integerish(
+        years,
+        any.missing = FALSE,
+        unique = TRUE,
+        null.ok = TRUE
+    )
 
     time <- get_nc_time(x)
 
@@ -667,13 +795,15 @@ match_nc_time <- function (x, years = NULL) {
     } else {
         coordinates <- attr(time, "cf_coordinates", exact = TRUE)
         y <- coordinates$cf_year
-        i <- lapply(as.integer(years), function (x) which(y == x))
+        i <- lapply(as.integer(years), function(x) which(y == x))
 
         j <- 1L
         l <- vector("list", length(i))
         l[[1L]] <- i[[1L]]
         for (m in i[-1L]) {
-            if (!length(m)) next
+            if (!length(m)) {
+                next
+            }
             if (length(l[[j]]) && (l[[j]][length(l[[j]])] + 1L) == m[1L]) {
                 l[[j]] <- c(l[[j]], m)
             } else {
@@ -682,10 +812,18 @@ match_nc_time <- function (x, years = NULL) {
             }
         }
 
-        datetime <- lapply(l, function (idx) {
+        datetime <- lapply(l, function(idx) {
             value <- time[idx]
-            data.table::setattr(value, "cf_units", attr(time, "cf_units", exact = TRUE))
-            data.table::setattr(value, "cf_calendar", attr(time, "cf_calendar", exact = TRUE))
+            data.table::setattr(
+                value,
+                "cf_units",
+                attr(time, "cf_units", exact = TRUE)
+            )
+            data.table::setattr(
+                value,
+                "cf_calendar",
+                attr(time, "cf_calendar", exact = TRUE)
+            )
             data.table::setattr(
                 value,
                 "cf_coordinates",
@@ -696,55 +834,67 @@ match_nc_time <- function (x, years = NULL) {
         list(datetime = datetime, which = l)
     }
 }
-# }}}
-
 # nocov start
-# rechunk_nc_dims {{{
-rechunk_nc_dims <- function (nc, out_file) {
-    if (Sys.which("nccopy") == "") return()
+# rechunk_nc_dims
+rechunk_nc_dims <- function(nc, out_file) {
+    if (Sys.which("nccopy") == "") {
+        return()
+    }
 
     out_file <- normalizePath(out_file, "/", mustWork = FALSE)
 
-    system2("nccopy", c(
-        "-k", "nc4",
-        "-u",
-        "-c", "time/365,lon/1,lat/1",
-        paste0("'", nc, "'"), paste0("'", out_file, "'")
-    ))
+    system2(
+        "nccopy",
+        c(
+            "-k",
+            "nc4",
+            "-u",
+            "-c",
+            "time/365,lon/1,lat/1",
+            paste0("'", nc, "'"),
+            paste0("'", out_file, "'")
+        )
+    )
 
     normalizePath(out_file)
 }
-# }}}
-
-# permute_nc_dims {{{
-permute_nc_dims <- function (nc, out_file) {
-    if (Sys.which("ncpdq") == "") return()
+# permute_nc_dims
+permute_nc_dims <- function(nc, out_file) {
+    if (Sys.which("ncpdq") == "") {
+        return()
+    }
 
     out_file <- normalizePath(out_file, "/", mustWork = FALSE)
 
-    system2("ncpdq", c(
-        "--no_tmp_fl",
-        "-h",
-        "-O",
-        "-a", "lat,lon,time",
-        paste0("'", nc, "'"), paste0("'", out_file, "'")
-    ))
+    system2(
+        "ncpdq",
+        c(
+            "--no_tmp_fl",
+            "-h",
+            "-O",
+            "-a",
+            "lat,lon,time",
+            paste0("'", nc, "'"),
+            paste0("'", out_file, "'")
+        )
+    )
 
     normalizePath(out_file)
 }
-# }}}
-
-# reorganize_nc_dims {{{
+# reorganize_nc_dims
 # Ref: https://github.com/ebimodeling/model-drivers/tree/master/met/cruncep
-reorganize_nc_dims <- function (nc) {
+reorganize_nc_dims <- function(nc) {
     f <- rechunk_nc_dims(nc, tempfile(fileext = ".nc"))
-    if (is.null(f)) return(nc)
+    if (is.null(f)) {
+        return(nc)
+    }
     re <- permute_nc_dims(f, nc)
     unlink(f)
 
-    if (is.null(re)) return(nc)
+    if (is.null(re)) {
+        return(nc)
+    }
 
     re
 }
-# }}}
 # nocov end

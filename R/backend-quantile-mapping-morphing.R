@@ -1,8 +1,7 @@
 #' @include weather-temperature.R
 NULL
 
-# Quantile-mapping morphing for temperature {{{
-
+# Quantile-mapping morphing for temperature
 # Quantile-mapping morphing isolates the published additive temperature
 # path. Other variables use different additive or multiplicative equations and
 # require their own units, zero handling, and hourly aggregation contracts.
@@ -121,8 +120,9 @@ quantile_mapping_morphing__temperature_series <- function(data, name) {
     source <- morpher__resolve_calendar_columns(source, month = TRUE)
     month <- as.integer(source[["month"]])
     value <- source[["value"]]
-    if (anyNA(month) || any(month < 1L | month > 12L) ||
-        any(!is.finite(value))) {
+    if (
+        anyNA(month) || any(month < 1L | month > 12L) || any(!is.finite(value))
+    ) {
         cli::cli_abort(
             "{.arg {name}} must contain finite daily {.val tas} values with valid calendar months."
         )
@@ -142,8 +142,7 @@ quantile_mapping_morphing__baseline_days <- function(baseline) {
         j = "month",
         value = as.integer(baseline$weather[["month"]])
     )
-    days <- template[
-        ,
+    days <- template[,
         list(
             month = unique(.SD[["month"]]),
             baseline_daily_mean = mean(
@@ -153,9 +152,11 @@ quantile_mapping_morphing__baseline_days <- function(baseline) {
         by = "target_day",
         .SDcols = c("month", "dry_bulb_temperature")
     ]
-    if (nrow(days) != 365L ||
-        any(lengths(days[["month"]]) != 1L) ||
-        any(!is.finite(days[["baseline_daily_mean"]]))) {
+    if (
+        nrow(days) != 365L ||
+            any(lengths(days[["month"]]) != 1L) ||
+            any(!is.finite(days[["baseline_daily_mean"]]))
+    ) {
         cli::cli_abort(
             "Quantile-mapping morphing requires one finite daily mean for every baseline EPW day."
         )
@@ -264,7 +265,9 @@ quantile_mapping_morphing__change_functions <- function(
             historical_quantile = historical_quantile,
             future_quantile = future_quantile,
             raw_delta = raw_delta,
-            smoothed_delta = quantile_mapping_morphing__smooth_change(raw_delta),
+            smoothed_delta = quantile_mapping_morphing__smooth_change(
+                raw_delta
+            ),
             n_historical = n_historical,
             n_future = n_future,
             n_common = n_common
@@ -275,7 +278,11 @@ quantile_mapping_morphing__change_functions <- function(
 
 # Evaluate the observed monthly empirical CDF at each baseline TMY daily mean,
 # then interpolate the smoothed model change function at that percentile.
-quantile_mapping_morphing__daily_factors <- function(baseline_days, observed, functions) {
+quantile_mapping_morphing__daily_factors <- function(
+    baseline_days,
+    observed,
+    functions
+) {
     checkmate::assert_data_frame(baseline_days)
     checkmate::assert_data_frame(observed)
     checkmate::assert_data_frame(functions)
@@ -310,8 +317,7 @@ quantile_mapping_morphing__daily_factors <- function(baseline_days, observed, fu
             baseline_daily_mean = day[["baseline_daily_mean"]],
             observed_percentile = percentile,
             temperature_delta = delta,
-            percentile_clamped = percentile <
-                min(change[["percentile"]]) |
+            percentile_clamped = percentile < min(change[["percentile"]]) |
                 percentile > max(change[["percentile"]]),
             n_observed = length(observed_value)
         )
@@ -321,7 +327,11 @@ quantile_mapping_morphing__daily_factors <- function(baseline_days, observed, fu
 
 # Normalize all four role-addressable inputs before any CDF or percentile
 # interpretation occurs.
-quantile_mapping_morphing__preprocess_apply <- function(inputs, context, options) {
+quantile_mapping_morphing__preprocess_apply <- function(
+    inputs,
+    context,
+    options
+) {
     morpher__validate_context(context)
     options <- quantile_mapping_morphing__temperature_options(options)
     template <- weather__get_input(inputs, "weather_template")
@@ -349,7 +359,12 @@ quantile_mapping_morphing__preprocess_apply <- function(inputs, context, options
 # Keep source calendars native and reduce them to monthly distributions. This
 # is the method's calendar strategy: it never pairs model calendar dates
 # directly with the 365 baseline EPW dates.
-quantile_mapping_morphing__calendar_apply <- function(data, inputs, context, options) {
+quantile_mapping_morphing__calendar_apply <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
     list(signal__group(
         inputs = list(
             weather_template = data$baseline,
@@ -363,12 +378,18 @@ quantile_mapping_morphing__calendar_apply <- function(data, inputs, context, opt
 
 # Calculate the month-wise change functions and select one additive factor for
 # every baseline EPW day from its observed-reference percentile.
-quantile_mapping_morphing__signal_apply_group <- function(inputs, settings, key) {
+quantile_mapping_morphing__signal_apply_group <- function(
+    inputs,
+    settings,
+    key
+) {
     functions <- quantile_mapping_morphing__change_functions(
         inputs$model_historical,
         inputs$model_future
     )
-    baseline_days <- quantile_mapping_morphing__baseline_days(inputs$weather_template)
+    baseline_days <- quantile_mapping_morphing__baseline_days(
+        inputs$weather_template
+    )
     list(
         baseline = inputs$weather_template,
         functions = functions,
@@ -382,13 +403,23 @@ quantile_mapping_morphing__signal_apply_group <- function(inputs, settings, key)
 
 # Preserve the original TMY day sequence instead of sampling or reordering
 # events after the percentile-dependent climate signal has been estimated.
-quantile_mapping_morphing__sequence_generate <- function(data, inputs, context, options) {
+quantile_mapping_morphing__sequence_generate <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
     signal__single_value(data, "quantile-mapping morphing")
 }
 
 # Apply each daily additive factor to all 24 TMY hours as specified by Arima
 # equation (4)/(7), retaining the original hourly temperature profile shape.
-quantile_mapping_morphing__hourly_reconstruct <- function(data, inputs, context, options) {
+quantile_mapping_morphing__hourly_reconstruct <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
     options <- quantile_mapping_morphing__temperature_options(options)
     baseline <- data$baseline
     template <- data.table::copy(baseline$template)
@@ -435,7 +466,12 @@ quantile_mapping_morphing__hourly_reconstruct <- function(data, inputs, context,
 
 # Apply either paper-faithful humidity preservation or the package's shared
 # specific-humidity closure without changing the quantile-mapping climate signal.
-quantile_mapping_morphing__physics_apply <- function(data, inputs, context, options) {
+quantile_mapping_morphing__physics_apply <- function(
+    data,
+    inputs,
+    context,
+    options
+) {
     policy <- context$recipe$policy
     checkmate::assert_choice(
         policy,
@@ -457,16 +493,19 @@ quantile_mapping_morphing__physics_apply <- function(data, inputs, context, opti
 
     diagnostic_values <- list(
         quantile_mapping_morphing_target_day = hourly[["target_day"]],
-        quantile_mapping_morphing_observed_percentile = hourly[["observed_percentile"]],
+        quantile_mapping_morphing_observed_percentile = hourly[[
+            "observed_percentile"
+        ]],
         quantile_mapping_morphing_delta = hourly[["temperature_delta"]],
-        quantile_mapping_morphing_percentile_clamped = hourly[["percentile_clamped"]]
+        quantile_mapping_morphing_percentile_clamped = hourly[[
+            "percentile_clamped"
+        ]]
     )
     if (identical(policy, "harmonized")) {
         diagnostic_values <- c(
             diagnostic_values,
             list(
-                quantile_mapping_morphing_baseline_specific_humidity =
-                    moisture$baseline_specific_humidity,
+                quantile_mapping_morphing_baseline_specific_humidity = moisture$baseline_specific_humidity,
                 quantile_mapping_morphing_specific_humidity = moisture$specific_humidity,
                 quantile_mapping_morphing_humidity_closure_status = moisture$status
             )
@@ -570,7 +609,13 @@ quantile_mapping_morphing__physics_apply <- function(data, inputs, context, opti
 
 # Return the common result while retaining raw/smoothed change functions,
 # selected daily factors, and empirical-CDF conventions as inspectable parts.
-quantile_mapping_morphing__output_write <- function(data, inputs, context, options, stages) {
+quantile_mapping_morphing__output_write <- function(
+    data,
+    inputs,
+    context,
+    options,
+    stages
+) {
     epw_morph_result(
         context,
         epw = data$epw,
@@ -610,7 +655,9 @@ quantile_mapping_morphing__component_specs <- function() {
             input_kinds = "role_inputs",
             output_kinds = "quantile_mapping_morphing_daily_preprocessed",
             scopes = "multivariate",
-            operations = list(apply = quantile_mapping_morphing__preprocess_apply)
+            operations = list(
+                apply = quantile_mapping_morphing__preprocess_apply
+            )
         ),
         calendar = component__spec(
             name = "monthly_temperature_distributions",
@@ -640,7 +687,9 @@ quantile_mapping_morphing__component_specs <- function() {
             input_kinds = "daily_percentile_temperature_factors",
             output_kinds = "percentile_temperature_sequence",
             scopes = "multivariate",
-            operations = list(generate = quantile_mapping_morphing__sequence_generate)
+            operations = list(
+                generate = quantile_mapping_morphing__sequence_generate
+            )
         ),
         hourly = component__spec(
             name = "daily_percentile_temperature_shift",
@@ -650,7 +699,9 @@ quantile_mapping_morphing__component_specs <- function() {
             input_kinds = "percentile_temperature_sequence",
             output_kinds = "percentile_temperature_hourly",
             scopes = "multivariate",
-            operations = list(reconstruct = quantile_mapping_morphing__hourly_reconstruct)
+            operations = list(
+                reconstruct = quantile_mapping_morphing__hourly_reconstruct
+            )
         ),
         physics = component__spec(
             name = "percentile_temperature_physical_policy",
@@ -701,5 +752,3 @@ quantile_mapping_morphing__pipeline <- function() {
         output = "percentile_temperature_epw_result"
     ))
 }
-
-# }}}

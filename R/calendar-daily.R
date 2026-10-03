@@ -1,5 +1,4 @@
-# Daily climatology statistical primitives {{{
-
+# Daily climatology statistical primitives
 # Build a calendar-neutral daily grid at day midpoints. Midpoints avoid making
 # phase zero belong preferentially to either side of the circular year boundary.
 daily__phase_grid <- function(target_year_days = 365L) {
@@ -70,7 +69,9 @@ daily__check_phase <- function(annual_phase, name = "annual_phase") {
         .var.name = name
     )
     if (any(annual_phase >= 1)) {
-        cli::cli_abort("{.arg {name}} must contain values in the interval [0, 1).")
+        cli::cli_abort(
+            "{.arg {name}} must contain values in the interval [0, 1)."
+        )
     }
 
     as.numeric(annual_phase)
@@ -131,8 +132,12 @@ daily__circular_interpolate <- function(
 # Select observations inside an odd-width circular window expressed in target
 # grid days. Calendar-native observations participate through annual_phase, so
 # no Gregorian date or raw day-of-year pairing is introduced.
-daily__phase_window <- function(annual_phase, center, window_days = 31L,
-                                target_year_days = 365L) {
+daily__phase_window <- function(
+    annual_phase,
+    center,
+    window_days = 31L,
+    target_year_days = 365L
+) {
     annual_phase <- daily__check_phase(annual_phase)
     center <- daily__check_phase(center, "center")
     if (length(center) != 1L) {
@@ -170,7 +175,8 @@ daily__climatology_group <- function(annual_phase, value, target_phase, spec) {
             in_window <- daily__phase_distance(
                 annual_phase,
                 target_phase[[i]]
-            ) <= spec$half_width + tolerance
+            ) <=
+                spec$half_width + tolerance
             keep <- in_window & valid_value
             sample_count[[i]] <- sum(keep)
             if (sample_count[[i]]) {
@@ -189,8 +195,13 @@ daily__climatology_group <- function(annual_phase, value, target_phase, spec) {
 
 # Estimate a grouped circular daily climatology on a common target grid. The
 # returned n column counts only finite, non-missing values used in each mean.
-daily__climatology <- function(data, value = "value", by = character(),
-                               window_days = 31L, target_year_days = 365L) {
+daily__climatology <- function(
+    data,
+    value = "value",
+    by = character(),
+    window_days = 31L,
+    target_year_days = 365L
+) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(value, min.chars = 1L)
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
@@ -255,8 +266,7 @@ daily__climatology <- function(data, value = "value", by = character(),
         ))
     }
 
-    working[
-        ,
+    working[,
         daily__climatology_group(
             .SD[["annual_phase"]],
             .SD[[".daily_value"]],
@@ -267,5 +277,3 @@ daily__climatology <- function(data, value = "value", by = character(),
         .SDcols = c("annual_phase", ".daily_value")
     ][]
 }
-
-# }}}

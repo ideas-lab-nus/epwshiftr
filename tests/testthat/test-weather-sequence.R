@@ -30,7 +30,9 @@ test_that("future-weather sequence contracts validate year-addressable members",
             units = "K",
             value = 300
         ),
-        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute"))
+        recipe = suppressWarnings(epw_morph_recipe(
+            "original_morphing_absolute"
+        ))
     )
     result <- sequence__result(
         context,
@@ -52,10 +54,13 @@ test_that("future-weather sequence contracts validate year-addressable members",
         vapply(records, `[[`, integer(1L), "weather_year"),
         c(2061L, 2062L)
     )
-    expect_identical(records[[1L]]$provenance, list(
-        method = "synthetic_sequence",
-        source = "synthetic"
-    ))
+    expect_identical(
+        records[[1L]]$provenance,
+        list(
+            method = "synthetic_sequence",
+            source = "synthetic"
+        )
+    )
     expect_error(
         sequence__member(weather_2061, weather_year = 2062L),
         "Every hourly row"
@@ -96,8 +101,8 @@ test_that("Shift case completion accepts only complete output sequences", {
         member_count = 2L
     )
 
-    complete <- shift__complete_output_cases(cases, outputs)
-    incomplete <- shift__complete_output_cases(cases, outputs[1L])
+    complete <- shift_run__complete_output_cases(cases, outputs)
+    incomplete <- shift_run__complete_output_cases(cases, outputs[1L])
 
     expect_identical(complete$status, "completed")
     expect_identical(complete$output_id, "output-2061")
@@ -151,8 +156,9 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
             weather <- context$epw$data()
             weather[, `:=`(
                 year = target_year,
-                dry_bulb_temperature =
-                    dry_bulb_temperature + target_year - 2060L
+                dry_bulb_temperature = dry_bulb_temperature +
+                    target_year -
+                    2060L
             )]
             sequence__member(
                 weather,
@@ -250,9 +256,13 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     expect_match(basename(output_paths), "realization-1\\.206[12]\\.epw$")
     expect_true(all(file.exists(output_paths)))
     expect_identical(
-        unname(vapply(output_paths, function(path) {
-            unique(epw_file_read(path)$data()$year)
-        }, integer(1L))),
+        unname(vapply(
+            output_paths,
+            function(path) {
+                unique(epw_file_read(path)$data()$year)
+            },
+            integer(1L)
+        )),
         c(2061L, 2062L)
     )
 

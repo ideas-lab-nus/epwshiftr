@@ -1,7 +1,11 @@
 # Read one planned file for all linked consumers from a single open dataset.
 # Consumer IDs remain distinct when methods reuse a site, while source cells
 # and native time slices are shared.
-shift_batch__read_acquisition <- function(dataset, acquisition, consumers) {
+shift_batch_read__read_acquisition <- function(
+    dataset,
+    acquisition,
+    consumers
+) {
     checkmate::assert_data_table(acquisition, nrows = 1L)
     checkmate::assert_data_table(consumers, min.rows = 1L)
     required <- c(

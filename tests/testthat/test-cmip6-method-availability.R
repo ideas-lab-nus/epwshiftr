@@ -237,7 +237,7 @@ test_that("method queries derive mixed frequencies and reject missing catalog fi
         table_id := vapply(
             frequency,
             function(value) {
-                shift__cmip6_table_id(value)
+                shift_spec__cmip6_table_id(value)
             },
             character(1L)
         )
@@ -353,14 +353,14 @@ test_that("public method discovery rejects incompatible cross-period alternative
 })
 
 test_that("frequency table defaults are resolved once per unique frequency", {
-    original <- shift__cmip6_table_id
+    original <- shift_spec__cmip6_table_id
     calls <- character()
     catalog <- method_availability_test__datasets(
         source = paste0("Model-", 1:100)
     )
     local_mocked_bindings(
         availability__collect = function(...) catalog,
-        shift__cmip6_table_id = function(frequency) {
+        shift_spec__cmip6_table_id = function(frequency) {
             calls <<- c(calls, frequency)
             original(frequency)
         },

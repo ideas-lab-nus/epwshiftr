@@ -1,4 +1,4 @@
-# data_node_status {{{
+# data_node_status
 data_node_http_probe <- function(node, timeout = 3) {
     urls <- if (grepl("^https?://", node, ignore.case = TRUE)) {
         node
@@ -57,7 +57,11 @@ data_node_http_probe <- function(node, timeout = 3) {
 #' }
 #'
 #' @export
-data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX_NODES[["ORNL"]]) {
+data_node_status <- function(
+    speed_test = FALSE,
+    timeout = 3,
+    index_node = INDEX_NODES[["ORNL"]]
+) {
     checkmate::assert_flag(speed_test)
     checkmate::assert_number(timeout, lower = 0)
 
@@ -84,7 +88,10 @@ data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX
     if (parsed$path == "/esgf-1-5-bridge") {
         url <- curl::curl_modify_url(parsed$url, path = path)
     } else {
-        url <- curl::curl_modify_url(parsed$url, path = paste(parsed$path, path, sep = "/"))
+        url <- curl::curl_modify_url(
+            parsed$url,
+            path = paste(parsed$path, path, sep = "/")
+        )
     }
 
     msg <- NULL
@@ -109,7 +116,10 @@ data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX
 
     # nocov start
     if (is.null(res) || res$status != "success") {
-        message("Failed to retrieve the data node status from aims2.llnl.gov. Reason:\n  ", msg)
+        message(
+            "Failed to retrieve the data node status from aims2.llnl.gov. Reason:\n  ",
+            msg
+        )
         return(empty_nodes())
     }
     # nocov end
@@ -149,4 +159,3 @@ data_node_status <- function(speed_test = FALSE, timeout = 3, index_node = INDEX
 
     res[status == "UP", probe_ms := probe][order(probe_ms)]
 }
-# }}}

@@ -6,7 +6,7 @@ NULL
 # Rebuild one failed, cancelled, or partial standalone step from its immutable
 # input and scientific spec. UI choices are supplied by the new attempt and are
 # intentionally absent from the persisted step hash.
-shift__resume_generic_task <- function(run, step, ui, background = FALSE) {
+shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
     if (!isTRUE(step$resumable[[1L]])) {
         reason <- store__chr1(step$nonresumable_reason[[1L]])
         cli::cli_abort(c(
@@ -30,7 +30,7 @@ shift__resume_generic_task <- function(run, step, ui, background = FALSE) {
         step$input_stage_json[[1L]],
         simplifyVector = FALSE
     )
-    input <- shift__stage_from_ref(input_ref)
+    input <- shift_persist__stage_from_ref(input_ref)
     spec <- jsonlite::fromJSON(step$spec_json[[1L]], simplifyVector = TRUE)
     task <- as.character(step$task[[1L]])
     if (isTRUE(background) && !identical(task, "download")) {
@@ -63,7 +63,7 @@ shift__resume_generic_task <- function(run, step, ui, background = FALSE) {
                     label = store__chr1(spec$label),
                     ui = ui
                 ),
-                shift_coalesce(spec$options, list())
+                shift_stage__coalesce(spec$options, list())
             )
         ),
         download = list(
@@ -78,22 +78,22 @@ shift__resume_generic_task <- function(run, step, ui, background = FALSE) {
                     session_label = store__chr1(spec$session_label),
                     ui = ui
                 ),
-                shift_coalesce(spec$options, list())
+                shift_stage__coalesce(spec$options, list())
             )
         ),
         extract = list(
             what = shift_extract,
             args = list(
                 input,
-                site = shift__site_from_ref(spec$site),
-                periods = shift__periods_from_input(spec$periods),
+                site = shift_persist__site_from_ref(spec$site),
+                periods = shift_spec__periods_from_input(spec$periods),
                 variables = if (is.null(spec$variables)) {
                     NULL
                 } else {
                     as.character(spec$variables)
                 },
                 time = spec$time,
-                filters = shift_coalesce(spec$filters, list()),
+                filters = shift_stage__coalesce(spec$filters, list()),
                 method = as.character(spec$method),
                 fallback = as.character(spec$fallback),
                 overwrite = isTRUE(spec$overwrite),
@@ -111,8 +111,8 @@ shift__resume_generic_task <- function(run, step, ui, background = FALSE) {
                     as.character(spec$baseline)
                 },
                 transform = transform__from_spec(spec$transform),
-                reference = shift__reference_from_spec(spec$reference),
-                observed_reference = shift__reference_from_spec(
+                reference = shift_persist__reference_from_spec(spec$reference),
+                observed_reference = shift_persist__reference_from_spec(
                     spec$observed_reference
                 ),
                 strict = isTRUE(spec$strict),
@@ -156,7 +156,7 @@ shift__resume_generic_task <- function(run, step, ui, background = FALSE) {
             value
         }
     })
-    shift__with_run_override(run@ids$run_id, do.call(call$what, call$args))
+    shift_run__with_run_override(run@ids$run_id, do.call(call$what, call$args))
 }
 
 #' @rdname shift_api
@@ -167,13 +167,17 @@ shift_resume <- function(x, store = NULL, background = FALSE, ui = shift_ui()) {
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
     }
     if (S7::S7_inherits(x, ShiftBatch)) {
-        return(shift_batch__resume(x, background = background, ui = ui))
+        return(shift_batch_execution__resume(
+            x,
+            background = background,
+            ui = ui
+        ))
     }
-    shift__resume_one(x, store, background, ui)
+    shift_job__resume_one(x, store, background, ui)
 }
 
 # Resume one durable task with the same execution context as a fresh task.
-shift__resume_one <- function(
+shift_job__resume_one <- function(
     x,
     store = NULL,
     background = FALSE,
@@ -208,7 +212,7 @@ shift__resume_one <- function(
     if (!identical(task, "future_epw")) {
         run_store <- shift_store(run)
         on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
-        step <- shift__latest_step(run_store, run@ids$run_id)
+        step <- shift_job__latest_step(run_store, run@ids$run_id)
         if (!nrow(step)) {
             cli::cli_abort(
                 "Shift run {.val {run@ids$run_id}} has no resumable step."
@@ -233,7 +237,7 @@ shift__resume_one <- function(
                 "Shift step {.val {step$step_id[[1L]]}} has no reconstructible input stage."
             )
         }
-        shift__run_update(
+        shift_job__run_update(
             run_store,
             run@ids$run_id,
             status = "waiting",
@@ -241,7 +245,7 @@ shift__resume_one <- function(
             completed_at = as.POSIXct(NA, tz = "UTC"),
             last_error = NA_character_
         )
-        shift__run_event(
+        shift_job__run_event(
             run_store,
             run@ids$run_id,
             "resume",
@@ -250,23 +254,23 @@ shift__resume_one <- function(
             details = list(step_id = step$step_id[[1L]]),
             step_id = step$step_id[[1L]]
         )
-        refreshed <- shift__run_handle(run_store, run@ids$run_id)
+        refreshed <- shift_job__run_handle(run_store, run@ids$run_id)
         return(tryCatch(
-            shift__resume_generic_task(
+            shift_job__resume_generic_task(
                 refreshed,
                 step,
                 ui = ui,
                 background = background
             ),
             error = function(e) {
-                latest_run <- shift__run_handle(run_store, run@ids$run_id)
+                latest_run <- shift_job__run_handle(run_store, run@ids$run_id)
                 if (
                     identical(
                         shift_status(latest_run, refresh = FALSE),
                         "waiting"
                     )
                 ) {
-                    shift__run_finish(
+                    shift_job__run_finish(
                         run_store,
                         run@ids$run_id,
                         "failed",
@@ -279,7 +283,7 @@ shift__resume_one <- function(
         ))
     }
     spec <- jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE)
-    plan <- shift__plan_from_spec(spec, store = run@store_path)
+    plan <- shift_persist__plan_from_spec(spec, store = run@store_path)
     if (!is.null(run@meta$shared_inputs)) {
         plan@meta$shared_inputs <- run@meta$shared_inputs
     }
@@ -292,18 +296,18 @@ shift__resume_one <- function(
         )
     }
     if (isTRUE(background)) {
-        shift__validate_background_plan(plan)
+        shift_job__validate_background_plan(plan)
     }
     run_store <- shift_store(run)
     on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
-    shift__run_event(
+    shift_job__run_event(
         run_store,
         run@ids$run_id,
         "resume",
         "running",
         "Workflow resume requested."
     )
-    shift__start_plan(
+    shift_run__start_plan(
         plan,
         run_store,
         run@ids$run_id,
@@ -315,7 +319,7 @@ shift__resume_one <- function(
 }
 
 # Resolve either a ShiftRun handle or a run ID to a fresh persisted snapshot.
-shift__as_run <- function(x, store = NULL) {
+shift_job__as_run <- function(x, store = NULL) {
     if (S7::S7_inherits(x, ShiftRun)) {
         return(shift_refresh(x))
     }
@@ -328,13 +332,13 @@ shift__as_run <- function(x, store = NULL) {
 
 # Isolate watch-loop wall-clock reads so cadence tests can advance a deterministic
 # clock without depending on runner speed or covr instrumentation overhead.
-shift__watch_now <- function() {
+shift_job__watch_now <- function() {
     Sys.time()
 }
 
 # Isolate frame waiting for the same deterministic watch-loop tests while the
 # production path continues to yield normally between dashboard updates.
-shift__watch_sleep <- function(seconds) {
+shift_job__watch_sleep <- function(seconds) {
     Sys.sleep(seconds)
 }
 
@@ -360,15 +364,15 @@ shift_watch <- function(
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
     }
     if (S7::S7_inherits(x, ShiftBatch)) {
-        return(shift_batch__watch(x, follow, interval, events, ui))
+        return(shift_batch_ui__watch(x, follow, interval, events, ui))
     }
-    run <- shift__as_run(x, store = store)
+    run <- shift_job__as_run(x, store = store)
     run_id <- run@ids$run_id
     store_path <- run@store_path
-    mode <- shift__ui_mode(ui)
-    motion <- shift__ui_motion(ui, mode)
+    mode <- shift_ui__ui_mode(ui)
+    motion <- shift_ui__ui_motion(ui, mode)
     terminal <- c("waiting", "completed", "partial", "failed", "cancelled")
-    renderer <- tryCatch(shift__ui_renderer(mode), error = function(e) NULL)
+    renderer <- tryCatch(shift_tui__ui_renderer(mode), error = function(e) NULL)
     if (identical(mode, "dynamic") && is.null(renderer)) {
         mode <- "log"
         motion <- "none"
@@ -399,22 +403,22 @@ shift_watch <- function(
     }
     on.exit(close_dynamic(), add = TRUE)
     emit_snapshot <- function(snapshot, initial = FALSE, final = FALSE) {
-        view <- shift__ui_run_view(
+        view <- shift_ui_view__ui_run_view(
             snapshot,
-            width = shift__ui_width(),
+            width = shift_ui__ui_width(),
             detail = ui@detail,
             motion = motion,
             frame = frame
         )
         if (identical(mode, "dynamic") && !isTRUE(final)) {
             if (!isTRUE(update_dynamic(view))) {
-                shift__ui_print_view(view, include_tables = FALSE)
+                shift_ui_view__ui_print_view(view, include_tables = FALSE)
             }
         } else if (identical(mode, "dynamic") && isTRUE(final)) {
             close_dynamic(result = "done")
-            shift__ui_print_view(view, include_tables = TRUE)
+            shift_ui_view__ui_print_view(view, include_tables = TRUE)
         } else if (identical(mode, "log")) {
-            delta <- shift__ui_event_delta(
+            delta <- shift_ui_state__ui_event_delta(
                 snapshot@meta$events,
                 last_event_id = last_event_id,
                 initial_limit = events,
@@ -422,7 +426,7 @@ shift_watch <- function(
             )
             rows <- delta$rows
             if (isTRUE(initial)) {
-                shift__ui_print_view(view, include_tables = TRUE)
+                shift_ui_view__ui_print_view(view, include_tables = TRUE)
             } else {
                 if (isTRUE(delta$gap)) {
                     cli::cli_alert_info(paste(
@@ -432,22 +436,26 @@ shift_watch <- function(
                 }
                 for (i in seq_len(nrow(rows))) {
                     cli::cli_text(
-                        "{shift__ui_persisted_event_line(rows[i], detail = ui@detail)}"
+                        "{shift_ui_view__ui_persisted_event_line(rows[i], detail = ui@detail)}"
                     )
                 }
             }
             last_event_id <<- delta$cursor
             event_cursor_initialized <<- TRUE
             if (isTRUE(final) && !isTRUE(initial)) {
-                shift__ui_print_view(view, include_tables = TRUE)
+                shift_ui_view__ui_print_view(view, include_tables = TRUE)
             }
         }
         invisible(snapshot)
     }
     if (!isTRUE(follow)) {
         if (!identical(mode, "none")) {
-            shift__ui_print_view(
-                shift__ui_run_view(run, detail = ui@detail, motion = "none"),
+            shift_ui_view__ui_print_view(
+                shift_ui_view__ui_run_view(
+                    run,
+                    detail = ui@detail,
+                    motion = "none"
+                ),
                 include_tables = TRUE
             )
         }
@@ -465,7 +473,7 @@ shift_watch <- function(
                 interval
             }
             repeat {
-                now <- shift__watch_now()
+                now <- shift_job__watch_now()
                 poll_due <- isTRUE(first) ||
                     is.na(last_poll) ||
                     as.numeric(difftime(now, last_poll, units = "secs")) >=
@@ -485,7 +493,7 @@ shift_watch <- function(
                 if (done) {
                     break
                 }
-                shift__watch_sleep(frame_interval)
+                shift_job__watch_sleep(frame_interval)
             }
         },
         interrupt = function(e) {
@@ -512,14 +520,14 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
     if (S7::S7_inherits(x, ShiftBatch)) {
         return(shift_batch__cancel(x, force = force))
     }
-    run <- shift__as_run(x, store = store)
+    run <- shift_job__as_run(x, store = store)
     status <- shift_status(run, refresh = FALSE)
     if (status %in% c("completed", "partial", "failed", "cancelled")) {
         return(run)
     }
     if (status %in% c("running", "stopping")) {
         download_store <- shift_store(run)
-        download_context <- shift__background_download_context(
+        download_context <- shift_job__background_download_context(
             download_store,
             run@ids$run_id
         )
@@ -544,13 +552,13 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
             download_context$downloader$cancel(
                 session_id = download_context$session_id
             )
-            shift__run_update(
+            shift_job__run_update(
                 download_store,
                 run@ids$run_id,
                 status = "stopping",
                 last_error = "Cancelled by user."
             )
-            shift__run_event(
+            shift_job__run_event(
                 download_store,
                 run@ids$run_id,
                 "download",
@@ -564,8 +572,11 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
                 ),
                 step_id = download_context$step$step_id[[1L]]
             )
-            shift__reconcile_background_download(download_store, run@ids$run_id)
-            return(shift__run_handle(download_store, run@ids$run_id))
+            shift_job__reconcile_background_download(
+                download_store,
+                run@ids$run_id
+            )
+            return(shift_job__run_handle(download_store, run@ids$run_id))
         }
         try(download_store$close(), silent = TRUE)
     }
@@ -575,21 +586,21 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
         # state that no worker could ever acknowledge.
         run_store <- shift_store(run)
         on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
-        shift__run_finish(
+        shift_job__run_finish(
             run_store,
             run@ids$run_id,
             "cancelled",
             current_stage = run@meta$run$current_stage[[1L]],
             last_error = "Cancelled by user while waiting for the next stage."
         )
-        shift__run_event(
+        shift_job__run_event(
             run_store,
             run@ids$run_id,
             run@meta$run$current_stage[[1L]],
             "cancelled",
             "Waiting shift run cancelled by user."
         )
-        return(shift__run_handle(run_store, run@ids$run_id))
+        return(shift_job__run_handle(run_store, run@ids$run_id))
     }
     job <- data.table::as.data.table(run@meta$jobs)
     if (nrow(job)) {
@@ -602,7 +613,7 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
     }
     now <- store__now()
     pid <- suppressWarnings(as.integer(job$pid[[1L]]))
-    shift__cancel_request_write(
+    shift_job__cancel_request_write(
         run@store_path,
         run@ids$run_id,
         job$job_id[[1L]],
@@ -617,11 +628,11 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
         error = function(e) e
     )
     if (inherits(run_store, "error")) {
-        if (!shift__manifest_locked(run_store)) {
+        if (!shift_job__manifest_locked(run_store)) {
             stop(run_store)
         }
         live_status <- if (isTRUE(force)) "cancelled" else "stopping"
-        marked <- shift__live_cancel_mark(
+        marked <- shift_job__live_cancel_mark(
             run@store_path,
             run@ids$run_id,
             job$job_id[[1L]],
@@ -651,14 +662,14 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
         return(run)
     }
     on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
-    job <- shift__latest_job(run_store, run@ids$run_id)
+    job <- shift_job__latest_job(run_store, run@ids$run_id)
     immediate <- identical(job$status[[1L]], "queued") && is.na(pid)
     job_status <- if (isTRUE(immediate) || isTRUE(force)) {
         "cancelled"
     } else {
         "stopping"
     }
-    shift__job_update(
+    shift_job__job_update(
         run_store,
         job$job_id[[1L]],
         status = job_status,
@@ -676,21 +687,21 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
         last_error = "Cancelled by user."
     )
     if (identical(job_status, "cancelled")) {
-        shift__run_finish(
+        shift_job__run_finish(
             run_store,
             run@ids$run_id,
             status = job_status,
             last_error = "Cancelled by user."
         )
     } else {
-        shift__run_update(
+        shift_job__run_update(
             run_store,
             run@ids$run_id,
             status = job_status,
             last_error = "Cancelled by user."
         )
     }
-    shift__run_event(
+    shift_job__run_event(
         run_store,
         run@ids$run_id,
         run@meta$run$current_stage[[1L]],
@@ -701,19 +712,19 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
     if (isTRUE(force) && !is.na(pid)) {
         downloader__pid_kill(pid)
     }
-    shift__run_handle(run_store, run@ids$run_id)
+    shift_job__run_handle(run_store, run@ids$run_id)
 }
 
 # Resolve the Downloader session that owns an open standalone download step.
 # The returned context joins the shift run identity to the existing persistent
 # downloader manifest without duplicating its task or process tables.
-shift__background_download_context <- function(
+shift_job__background_download_context <- function(
     store,
     run_id,
     active_only = TRUE
 ) {
     checkmate::assert_flag(active_only)
-    step <- shift__latest_step(store, run_id)
+    step <- shift_job__latest_step(store, run_id)
     if (
         !nrow(step) ||
             !identical(step$task[[1L]], "download") ||
@@ -733,7 +744,7 @@ shift__background_download_context <- function(
     if (is.null(ref)) {
         return(NULL)
     }
-    stage <- shift__stage_from_ref(ref)
+    stage <- shift_persist__stage_from_ref(ref)
     session_id <- store__chr1(stage@ids$session_id)
     if (is.na(session_id) || !nzchar(session_id)) {
         return(NULL)
@@ -765,8 +776,8 @@ shift__background_download_context <- function(
 # Reconcile an existing Downloader process into the shared ShiftRun lifecycle.
 # Polling is read-only while work is active; only terminal downloader states
 # create shift step/run events, so watch refreshes do not become heartbeat spam.
-shift__reconcile_background_download <- function(store, run_id) {
-    context <- shift__background_download_context(store, run_id)
+shift_job__reconcile_background_download <- function(store, run_id) {
+    context <- shift_job__background_download_context(store, run_id)
     if (is.null(context)) {
         return(invisible(NULL))
     }
@@ -806,20 +817,20 @@ shift__reconcile_background_download <- function(store, run_id) {
         # The detached downloader has released its manifest and output files;
         # synchronize those files before exposing the next-stage boundary.
         store$sync_downloads(context$downloader)
-        shift__step_finish(
+        shift_job__step_finish(
             store,
             step_id,
             "completed",
             output_stage = context$stage
         )
-        shift__run_update(
+        shift_job__run_update(
             store,
             run_id,
             status = "waiting",
             current_stage = "download",
             last_error = NA_character_
         )
-        shift__run_event(
+        shift_job__run_event(
             store,
             run_id,
             "download",
@@ -841,15 +852,20 @@ shift__reconcile_background_download <- function(store, run_id) {
     } else {
         sprintf("Background download failed with status %s.", status)
     }
-    shift__step_finish(store, step_id, terminal_status, last_error = message)
-    shift__run_finish(
+    shift_job__step_finish(
+        store,
+        step_id,
+        terminal_status,
+        last_error = message
+    )
+    shift_job__run_finish(
         store,
         run_id,
         terminal_status,
         current_stage = "download",
         last_error = message
     )
-    shift__run_event(
+    shift_job__run_event(
         store,
         run_id,
         "download",
@@ -864,7 +880,7 @@ shift__reconcile_background_download <- function(store, run_id) {
 # Append one immutable run event for status displays and recovery diagnostics.
 # Reporter callers may defer the sidecar snapshot until their paired heartbeat
 # update so a single milestone does not rewrite the same live state twice.
-shift__run_event <- function(
+shift_job__run_event <- function(
     store,
     run_id,
     stage,
@@ -876,11 +892,11 @@ shift__run_event <- function(
     event_id = NULL
 ) {
     now <- store__now()
-    event_id <- shift_coalesce(
+    event_id <- shift_stage__coalesce(
         event_id,
         store__hash(run_id, stage, status, now, stats::runif(1L))
     )
-    row <- data.frame(
+    row <- data.table::data.table(
         event_id = event_id,
         run_id = run_id,
         step_id = store__chr1(step_id),
@@ -890,10 +906,9 @@ shift__run_event <- function(
         details_json = if (is.null(details)) {
             NA_character_
         } else {
-            shift__spec_json(details)
+            shift_persist__spec_json(details)
         },
-        created_at = now,
-        stringsAsFactors = FALSE
+        created_at = now
     )
     morpher__private_store(store)$append_new_rows(
         "shift_run_event",
@@ -901,15 +916,15 @@ shift__run_event <- function(
         "event_id"
     )
     if (isTRUE(snapshot)) {
-        shift__live_snapshot_write(store, run_id)
+        shift_job__live_snapshot_write(store, run_id)
     }
     invisible(row)
 }
 
 # Persist stage diagnostics as idempotent run events so warnings and
 # informational scientific decisions survive refresh and cross-session resume.
-shift__run_diagnostics_record <- function(store, run_id, diagnostics) {
-    diagnostics <- shift_diagnostics_normalize(diagnostics)
+shift_job__run_diagnostics_record <- function(store, run_id, diagnostics) {
+    diagnostics <- shift_stage__diagnostics_normalize(diagnostics)
     if (!nrow(diagnostics)) {
         return(invisible(diagnostics))
     }
@@ -919,7 +934,7 @@ shift__run_diagnostics_record <- function(store, run_id, diagnostics) {
             list(kind = "scientific_diagnostic"),
             as.list(row)
         )
-        shift__run_event(
+        shift_job__run_event(
             store,
             run_id,
             stage = row$stage[[1L]],
@@ -939,7 +954,7 @@ shift__run_diagnostics_record <- function(store, run_id, diagnostics) {
 
 # Create one durable execution attempt for a run. Foreground attempts use the
 # current PID; background attempts fill their PID when the worker starts.
-shift__job_create <- function(
+shift_job__job_create <- function(
     store,
     run_id,
     mode = c("foreground", "process"),
@@ -952,8 +967,12 @@ shift__job_create <- function(
     }
     wanted_run_id <- run_id
     private <- morpher__private_store(store)
-    jobs <- private$read_table("shift_run_job")
-    attempts <- jobs[jobs[["run_id"]] == wanted_run_id]$attempt
+    attempts <- shift_inspect__rows(
+        store,
+        "shift_run_job",
+        "run_id",
+        wanted_run_id
+    )$attempt
     attempt <- if (length(attempts)) max(attempts, na.rm = TRUE) + 1L else 1L
     now <- store__now()
     job_id <- paste0(
@@ -962,7 +981,7 @@ shift__job_create <- function(
     )
     log_dir <- file.path(store$path, "logs", "shift")
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-    row <- data.frame(
+    row <- data.table::data.table(
         job_id = job_id,
         run_id = run_id,
         step_id = store__chr1(step_id),
@@ -974,7 +993,7 @@ shift__job_create <- function(
         } else {
             NA_integer_
         },
-        hostname = unname(shift_coalesce(
+        hostname = unname(shift_stage__coalesce(
             Sys.info()[["nodename"]],
             "localhost"
         )),
@@ -983,13 +1002,13 @@ shift__job_create <- function(
         } else {
             NA_character_
         },
-        ui_json = shift__spec_json(list(
+        ui_json = shift_persist__spec_json(list(
             progress = ui@progress,
             detail = ui@detail,
             motion = ui@motion,
             refresh = ui@refresh,
             heartbeat = ui@heartbeat,
-            execution = execution__options()
+            execution = shift_execution__options()
         )),
         cancel_requested_at = as.POSIXct(NA, tz = "UTC"),
         started_at = if (identical(mode, "foreground")) {
@@ -1006,23 +1025,22 @@ shift__job_create <- function(
         exit_code = NA_integer_,
         last_error = NA_character_,
         created_at = now,
-        updated_at = now,
-        stringsAsFactors = FALSE
+        updated_at = now
     )
     # A resumed attempt owns a new cancellation boundary; remove any marker
     # left by the preceding failed or cancelled attempt before registering it.
     unlink(
-        shift__live_path(store$path, run_id, suffix = "cancel.json"),
+        shift_job__live_path(store$path, run_id, suffix = "cancel.json"),
         force = TRUE
     )
     private$append_new_rows("shift_run_job", row, "job_id")
-    shift__live_snapshot_write(store, run_id)
+    shift_job__live_snapshot_write(store, run_id)
     row
 }
 
-# Replace a job row after a process/status transition while preserving the
+# Update a job row after a process/status transition while preserving the
 # immutable run, attempt, and job identities.
-shift__job_update <- function(
+shift_job__job_update <- function(
     store,
     job_id,
     ...,
@@ -1030,9 +1048,7 @@ shift__job_update <- function(
     .ui_state = NULL
 ) {
     wanted_job_id <- job_id
-    private <- morpher__private_store(store)
-    jobs <- private$read_table("shift_run_job")
-    row <- jobs[jobs[["job_id"]] == wanted_job_id]
+    row <- shift_inspect__rows(store, "shift_run_job", "job_id", wanted_job_id)
     if (!nrow(row)) {
         cli::cli_abort("Shift job {.val {job_id}} was not found.")
     }
@@ -1042,12 +1058,18 @@ shift__job_update <- function(
         cli::cli_abort("Unknown shift job field(s): {.field {unknown}}.")
     }
     for (name in names(updates)) {
-        row[[name]] <- updates[[name]]
+        data.table::set(row, j = name, value = updates[[name]])
     }
-    row$updated_at <- store__now()
-    private$replace_rows("shift_run_job", as.data.frame(row), "job_id")
+    data.table::set(row, j = "updated_at", value = store__now())
+    shift_job__update_row(
+        store,
+        "shift_run_job",
+        "job_id",
+        row,
+        unique(c(names(updates), "updated_at"))
+    )
     if (isTRUE(.snapshot)) {
-        shift__live_snapshot_write(
+        shift_job__live_snapshot_write(
             store,
             row$run_id[[1L]],
             ui_state = .ui_state
@@ -1058,8 +1080,8 @@ shift__job_update <- function(
 
 # Update the worker heartbeat only at reporter callbacks and workflow
 # boundaries; this is deliberately separate from transient Console animation.
-shift__job_touch <- function(store, job_id, ui_state = NULL) {
-    shift__job_update(
+shift_job__job_touch <- function(store, job_id, ui_state = NULL) {
+    shift_job__job_update(
         store,
         job_id,
         heartbeat_at = store__now(),
@@ -1068,24 +1090,23 @@ shift__job_touch <- function(store, job_id, ui_state = NULL) {
 }
 
 # Return all attempts for a run in deterministic attempt order.
-shift__run_jobs <- function(store, run_id) {
+shift_job__run_jobs <- function(store, run_id) {
     wanted_run_id <- run_id
-    jobs <- morpher__private_store(store)$read_table("shift_run_job")
-    jobs <- jobs[jobs[["run_id"]] == wanted_run_id]
+    jobs <- shift_inspect__rows(store, "shift_run_job", "run_id", wanted_run_id)
     jobs[order(jobs[["attempt"]])]
 }
 
 # Read the most recent attempt, which is authoritative for cancellation,
 # logging, and stale-process reconciliation.
-shift__latest_job <- function(store, run_id) {
-    jobs <- shift__run_jobs(store, run_id)
+shift_job__latest_job <- function(store, run_id) {
+    jobs <- shift_job__run_jobs(store, run_id)
     if (!nrow(jobs)) jobs else jobs[which.max(jobs[["attempt"]])]
 }
 
 # Reconcile detached jobs when a worker exits before it can persist a terminal
 # state, preventing background runs from appearing active forever.
-shift__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
-    job <- shift__latest_job(store, run_id)
+shift_job__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
+    job <- shift_job__latest_job(store, run_id)
     if (
         !nrow(job) || !job$status[[1L]] %in% c("queued", "running", "stopping")
     ) {
@@ -1115,14 +1136,14 @@ shift__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
     if (!isTRUE(stale)) {
         return(invisible(job))
     }
-    cancelled <- shift__cancel_request_exists(
+    cancelled <- shift_job__cancel_request_exists(
         store$path,
         run_id,
         job$job_id[[1L]]
     )
     if (isTRUE(cancelled)) {
         reason <- "Background worker stopped after cancellation was requested."
-        shift__job_update(
+        shift_job__job_update(
             store,
             job$job_id[[1L]],
             status = "cancelled",
@@ -1130,13 +1151,13 @@ shift__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
             exit_code = 130L,
             last_error = reason
         )
-        shift__run_finish(
+        shift_job__run_finish(
             store,
             run_id,
             status = "cancelled",
             last_error = reason
         )
-        shift__run_event(
+        shift_job__run_event(
             store,
             run_id,
             "worker",
@@ -1149,7 +1170,7 @@ shift__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
             )
         )
     } else {
-        shift__job_update(
+        shift_job__job_update(
             store,
             job$job_id[[1L]],
             status = "stale",
@@ -1157,8 +1178,13 @@ shift__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
             exit_code = 1L,
             last_error = reason
         )
-        shift__run_finish(store, run_id, status = "failed", last_error = reason)
-        shift__run_event(
+        shift_job__run_finish(
+            store,
+            run_id,
+            status = "failed",
+            last_error = reason
+        )
+        shift_job__run_event(
             store,
             run_id,
             "worker",
@@ -1171,24 +1197,27 @@ shift__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
             )
         )
     }
-    invisible(shift__latest_job(store, run_id))
+    invisible(shift_job__latest_job(store, run_id))
 }
 
 # Cooperative cancellation is checked at every stage and business-unit
 # boundary so partial artifacts remain resumable and manifest-consistent.
-shift__job_cancel_requested <- function(store, job_id) {
+shift_job__job_cancel_requested <- function(store, job_id) {
     wanted_job_id <- job_id
-    jobs <- morpher__private_store(store)$read_table("shift_run_job")
-    row <- jobs[jobs[["job_id"]] == wanted_job_id]
+    row <- shift_inspect__rows(store, "shift_run_job", "job_id", wanted_job_id)
     nrow(row) &&
         (!is.na(row$cancel_requested_at[[1L]]) ||
             row$status[[1L]] %in% c("stopping", "cancelled") ||
-            shift__cancel_request_exists(store$path, row$run_id[[1L]], job_id))
+            shift_job__cancel_request_exists(
+                store$path,
+                row$run_id[[1L]],
+                job_id
+            ))
 }
 
 # Abort with a dedicated condition after persisting a user cancellation request.
-shift__job_check_cancel <- function(store, run_id, job_id, stage) {
-    if (!is.null(job_id) && shift__job_cancel_requested(store, job_id)) {
+shift_job__job_check_cancel <- function(store, run_id, job_id, stage) {
+    if (!is.null(job_id) && shift_job__job_cancel_requested(store, job_id)) {
         cli::cli_abort(
             "Future EPW workflow run {.val {run_id}} was cancelled during {.val {stage}}.",
             class = "epwshiftr_shift_cancelled",
@@ -1202,10 +1231,10 @@ shift__job_check_cancel <- function(store, run_id, job_id, stage) {
 
 # Background workers require a JSON-safe public transform and plan; validate
 # both by reconstructing the exact persisted specification before registration.
-shift__validate_background_plan <- function(plan) {
-    spec <- shift__plan_spec(plan)
+shift_job__validate_background_plan <- function(plan) {
+    spec <- shift_persist__plan_spec(plan)
     tryCatch(
-        shift__plan_from_spec(spec, store = plan@store_path),
+        shift_persist__plan_from_spec(spec, store = plan@store_path),
         error = function(e) {
             cli::cli_abort(
                 c(
@@ -1222,10 +1251,10 @@ shift__validate_background_plan <- function(plan) {
 
 # Build the detached Rscript command without serializing live R objects into
 # the child process; the durable run and job IDs are its only inputs.
-shift__launch_job <- function(store_path, run_id, job_id, log_path) {
+shift_job__launch_job <- function(store_path, run_id, job_id, log_path) {
     status <- tryCatch(
-        execution__launch(
-            "shift__job_main",
+        shift_execution__launch(
+            "shift_job__job_main",
             list(
                 store_path = store_path,
                 run_id = run_id,
@@ -1238,7 +1267,7 @@ shift__launch_job <- function(store_path, run_id, job_id, log_path) {
     if (inherits(status, "error")) {
         failed_store <- EsgStore$new(store_path, create = FALSE)
         on.exit(try(failed_store$close(), silent = TRUE), add = TRUE)
-        shift__job_update(
+        shift_job__job_update(
             failed_store,
             job_id,
             status = "failed",
@@ -1246,7 +1275,7 @@ shift__launch_job <- function(store_path, run_id, job_id, log_path) {
             exit_code = 1L,
             last_error = conditionMessage(status)
         )
-        shift__run_finish(
+        shift_job__run_finish(
             failed_store,
             run_id,
             status = "failed",
@@ -1261,7 +1290,11 @@ shift__launch_job <- function(store_path, run_id, job_id, log_path) {
 
 # Open the worker manifest with bounded retries because an immediate status or
 # cancel call may briefly own DuckDB between process launch and worker startup.
-shift__job_store_open <- function(store_path, timeout = 60, interval = 0.1) {
+shift_job__job_store_open <- function(
+    store_path,
+    timeout = 60,
+    interval = 0.1
+) {
     checkmate::assert_number(timeout, lower = 0, finite = TRUE)
     checkmate::assert_number(interval, lower = 0.01, finite = TRUE)
     started <- Sys.time()
@@ -1274,7 +1307,7 @@ shift__job_store_open <- function(store_path, timeout = 60, interval = 0.1) {
             return(store)
         }
         elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
-        if (!shift__manifest_locked(store) || elapsed >= timeout) {
+        if (!shift_job__manifest_locked(store) || elapsed >= timeout) {
             stop(store)
         }
         Sys.sleep(interval)
@@ -1283,13 +1316,12 @@ shift__job_store_open <- function(store_path, timeout = 60, interval = 0.1) {
 
 # Execute one detached workflow attempt from persisted intent. The worker uses
 # log mode because its stdout/stderr are redirected to the job log.
-shift__job_main <- function(store_path, run_id, job_id) {
-    store <- shift__job_store_open(store_path)
+shift_job__job_main <- function(store_path, run_id, job_id) {
+    store <- shift_job__job_store_open(store_path)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     wanted_run_id <- run_id
     wanted_job_id <- job_id
-    private <- morpher__private_store(store)
-    jobs <- private$read_table("shift_run_job")
+    jobs <- shift_inspect__rows(store, "shift_run_job", "job_id", wanted_job_id)
     job <- jobs[
         jobs[["job_id"]] == wanted_job_id &
             jobs[["run_id"]] == wanted_run_id
@@ -1311,7 +1343,7 @@ shift__job_main <- function(store_path, run_id, job_id) {
         refresh = as.numeric(ui_spec$refresh),
         heartbeat = as.numeric(ui_spec$heartbeat)
     )
-    shift__run_update(
+    shift_job__run_update(
         store,
         run_id,
         status = "running",
@@ -1319,13 +1351,12 @@ shift__job_main <- function(store_path, run_id, job_id) {
         last_error = NA_character_
     )
 
-    runs <- private$read_table("shift_run")
-    row <- runs[runs[["run_id"]] == wanted_run_id]
+    row <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
     if (!nrow(row)) {
         cli::cli_abort("Background shift run {.val {run_id}} was not found.")
     }
     spec <- jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE)
-    plan <- shift__plan_from_spec(spec, store = store_path)
+    plan <- shift_persist__plan_from_spec(spec, store = store_path)
     resolved <- row$resolved_spec_json[[1L]]
     if (!is.na(resolved) && nzchar(resolved)) {
         # Resume always reuses the first successful node/member/grid selection.
@@ -1334,8 +1365,8 @@ shift__job_main <- function(store_path, run_id, job_id) {
             simplifyVector = TRUE
         )
     }
-    context <- execution__context(store_path, job, store)
-    reporter <- shift__reporter(
+    context <- shift_execution__context(store_path, job, store)
+    reporter <- shift_reporter__reporter(
         ui,
         store = store,
         run_id = run_id,
@@ -1345,9 +1376,9 @@ shift__job_main <- function(store_path, run_id, job_id) {
     )
     on.exit(reporter$close(), add = TRUE)
     reporter$run_started(plan, run_id, background = TRUE)
-    execution__run(
+    shift_execution__run(
         context,
-        shift__plan_run(
+        shift_run__plan_run(
             plan,
             run_id = run_id,
             job_id = job_id,
@@ -1358,13 +1389,11 @@ shift__job_main <- function(store_path, run_id, job_id) {
     invisible(TRUE)
 }
 
-# Replace a run row after a state transition while leaving the original spec
+# Update a run row after a state transition while leaving the original spec
 # and unique run identity unchanged.
-shift__run_update <- function(store, run_id, ...) {
+shift_job__run_update <- function(store, run_id, ...) {
     wanted_run_id <- run_id
-    private <- morpher__private_store(store)
-    rows <- private$read_table("shift_run")
-    row <- rows[rows[["run_id"]] == wanted_run_id]
+    row <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
     if (!nrow(row)) {
         cli::cli_abort("Shift run {.val {run_id}} was not found.")
     }
@@ -1374,27 +1403,33 @@ shift__run_update <- function(store, run_id, ...) {
         cli::cli_abort("Unknown shift run field(s): {.field {unknown}}.")
     }
     for (name in names(updates)) {
-        row[[name]] <- updates[[name]]
+        data.table::set(row, j = name, value = updates[[name]])
     }
-    row$updated_at <- store__now()
-    private$replace_rows("shift_run", as.data.frame(row), "run_id")
-    shift__live_snapshot_write(store, run_id)
+    data.table::set(row, j = "updated_at", value = store__now())
+    shift_job__update_row(
+        store,
+        "shift_run",
+        "run_id",
+        row,
+        unique(c(names(updates), "updated_at"))
+    )
+    shift_job__live_snapshot_write(store, run_id)
     invisible(row)
 }
 
 # Finish one run through a single terminal-state boundary so every completed,
 # partial, failed, or cancelled row freezes its elapsed time consistently.
-shift__run_finish <- function(store, run_id, status, ...) {
+shift_job__run_finish <- function(store, run_id, status, ...) {
     checkmate::assert_choice(
         status,
         c("completed", "partial", "failed", "cancelled")
     )
     updates <- list(...)
     if ("completed_at" %in% names(updates)) {
-        cli::cli_abort("`completed_at` is owned by `shift__run_finish()`.")
+        cli::cli_abort("`completed_at` is owned by `shift_job__run_finish()`.")
     }
     do.call(
-        shift__run_update,
+        shift_job__run_update,
         c(
             list(
                 store = store,
@@ -1409,10 +1444,10 @@ shift__run_finish <- function(store, run_id, status, ...) {
 
 # Persist the current case matrix as the authoritative fulfilment contract for
 # this run. Each run owns independent rows even when its spec hash is reused.
-shift__run_cases_write <- function(store, run_id, cases) {
+shift_job__run_cases_write <- function(store, run_id, cases) {
     private <- morpher__private_store(store)
     cases <- data.table::as.data.table(data.table::copy(cases))
-    rows <- data.frame(
+    rows <- data.table::data.table(
         run_case_id = vapply(
             cases$case_id,
             function(value) store__hash(run_id, value),
@@ -1427,7 +1462,7 @@ shift__run_cases_write <- function(store, run_id, cases) {
         period = cases$period,
         years_json = vapply(
             cases$years,
-            function(value) shift__spec_json(as.integer(value)),
+            function(value) shift_persist__spec_json(as.integer(value)),
             character(1L)
         ),
         required = as.logical(cases$required),
@@ -1435,65 +1470,32 @@ shift__run_cases_write <- function(store, run_id, cases) {
         output_id = cases$output_id,
         export_path = cases$export_path,
         missing_reason = cases$missing_reason,
-        updated_at = store__now(),
-        stringsAsFactors = FALSE
+        updated_at = store__now()
     )
     private$delete_by_key("shift_run_case", "run_id", run_id)
     private$append_new_rows("shift_run_case", rows, "run_case_id")
-    shift__live_snapshot_write(store, run_id)
+    shift_job__live_snapshot_write(store, run_id)
     invisible(cases)
 }
 
-# Register a unique persisted run before any remote or morphing side effects.
-shift__run_register <- function(plan) {
+
+# Register workflow intent through the shared run writer, then save its cases.
+shift_job__run_register <- function(plan) {
     store <- shift_store(plan, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
-    spec <- shift__plan_spec(plan)
-    spec_json <- shift__spec_json(spec)
-    spec_hash <- store__hash(spec_json)
-    now <- store__now()
-    run_id <- paste0(
-        "run_",
-        substr(store__hash(spec_hash, now, stats::runif(1L)), 1L, 24L)
-    )
-    output_dir <- shift_coalesce(plan@meta$epw$export_dir, NA_character_)
-    row <- data.frame(
-        run_id = run_id,
-        task = "future_epw",
-        spec_hash = spec_hash,
-        spec_json = spec_json,
-        resolved_spec_json = NA_character_,
-        status = "queued",
-        current_stage = "planned",
-        query_id = NA_character_,
-        reference_query_id = NA_character_,
-        plan_ids_json = NA_character_,
-        reference_plan_ids_json = NA_character_,
-        morph_id = NA_character_,
-        output_dir = output_dir,
-        package_version = as.character(utils::packageVersion("epwshiftr")),
-        started_at = now,
-        updated_at = now,
-        completed_at = as.POSIXct(NA, tz = "UTC"),
-        last_error = NA_character_,
-        stringsAsFactors = FALSE
-    )
-    morpher__private_store(store)$append_new_rows("shift_run", row, "run_id")
-    shift__run_cases_write(store, run_id, plan@meta$expected_cases)
-    shift__run_event(
+    run_id <- shift_job__task_run_register(
         store,
-        run_id,
-        "planned",
-        "queued",
-        "Workflow run registered."
+        "future_epw",
+        shift_persist__plan_spec(plan)
     )
+    shift_job__run_cases_write(store, run_id, plan@meta$expected_cases)
     run_id
 }
 
 # Register a generic stage run before its first side effect. UI preferences are
 # intentionally absent from the spec so changing presentation never alters
 # deterministic task identity.
-shift__task_run_register <- function(
+shift_job__task_run_register <- function(
     store,
     task,
     spec = list(),
@@ -1502,8 +1504,12 @@ shift__task_run_register <- function(
     status <- match.arg(status)
     checkmate::assert_string(task, min.chars = 1L)
     checkmate::assert_list(spec)
-    spec <- utils::modifyList(list(version = 1L, task = task), spec)
-    spec_json <- shift__spec_json(spec)
+    # Workflow specs already carry a canonical schema, including explicit NULLs.
+    # Keep their serialization byte-identical for persisted run reuse.
+    if (task != "future_epw") {
+        spec <- utils::modifyList(list(version = 1L, task = task), spec)
+    }
+    spec_json <- shift_persist__spec_json(spec)
     spec_hash <- store__hash(spec_json)
     now <- store__now()
     run_id <- paste0(
@@ -1518,7 +1524,7 @@ shift__task_run_register <- function(
             24L
         )
     )
-    row <- data.frame(
+    row <- data.table::data.table(
         run_id = run_id,
         task = task,
         spec_hash = spec_hash,
@@ -1535,28 +1541,37 @@ shift__task_run_register <- function(
         plan_ids_json = NA_character_,
         reference_plan_ids_json = NA_character_,
         morph_id = NA_character_,
-        output_dir = store__chr1(spec$output_dir),
+        output_dir = store__chr1(
+            if (task == "future_epw") {
+                spec$stages$epw$export_dir
+            } else {
+                spec$output_dir
+            }
+        ),
         package_version = as.character(utils::packageVersion("epwshiftr")),
         started_at = now,
         updated_at = now,
         completed_at = as.POSIXct(NA, tz = "UTC"),
-        last_error = NA_character_,
-        stringsAsFactors = FALSE
+        last_error = NA_character_
     )
     morpher__private_store(store)$append_new_rows("shift_run", row, "run_id")
-    shift__run_event(
+    shift_job__run_event(
         store,
         run_id,
         row$current_stage[[1L]],
         status,
-        sprintf("%s task registered.", task)
+        if (task == "future_epw") {
+            "Workflow run registered."
+        } else {
+            sprintf("%s task registered.", task)
+        }
     )
     run_id
 }
 
 # Create one ordered task step under a run. The immutable input/spec fields are
 # written before execution so even an early interrupt remains diagnosable.
-shift__step_create <- function(
+shift_job__step_create <- function(
     store,
     run_id,
     task,
@@ -1569,10 +1584,14 @@ shift__step_create <- function(
     checkmate::assert_flag(resumable)
     wanted_run_id <- run_id
     private <- morpher__private_store(store)
-    steps <- private$read_table("shift_run_step")
-    previous <- steps[steps[["run_id"]] == wanted_run_id]$ordinal
+    previous <- shift_inspect__rows(
+        store,
+        "shift_run_step",
+        "run_id",
+        wanted_run_id
+    )$ordinal
     ordinal <- if (length(previous)) max(previous, na.rm = TRUE) + 1L else 1L
-    spec_json <- shift__spec_json(spec)
+    spec_json <- shift_persist__spec_json(spec)
     now <- store__now()
     step_id <- paste0(
         "step_",
@@ -1586,7 +1605,7 @@ shift__step_create <- function(
             24L
         )
     )
-    row <- data.frame(
+    row <- data.table::data.table(
         step_id = step_id,
         run_id = run_id,
         ordinal = as.integer(ordinal),
@@ -1596,7 +1615,7 @@ shift__step_create <- function(
         input_stage_json = if (is.null(input_stage)) {
             NA_character_
         } else {
-            shift__spec_json(shift__stage_ref(input_stage))
+            shift_persist__spec_json(shift_persist__stage_ref(input_stage))
         },
         output_stage_json = NA_character_,
         status = "running",
@@ -1605,19 +1624,21 @@ shift__step_create <- function(
         started_at = now,
         updated_at = now,
         completed_at = as.POSIXct(NA, tz = "UTC"),
-        last_error = NA_character_,
-        stringsAsFactors = FALSE
+        last_error = NA_character_
     )
     private$append_new_rows("shift_run_step", row, "step_id")
     row
 }
 
-# Replace mutable step state while preserving its stable task specification.
-shift__step_update <- function(store, step_id, ...) {
+# Update mutable step state while preserving its stable task specification.
+shift_job__step_update <- function(store, step_id, ...) {
     wanted_step_id <- step_id
-    private <- morpher__private_store(store)
-    steps <- private$read_table("shift_run_step")
-    row <- steps[steps[["step_id"]] == wanted_step_id]
+    row <- shift_inspect__rows(
+        store,
+        "shift_run_step",
+        "step_id",
+        wanted_step_id
+    )
     if (!nrow(row)) {
         cli::cli_abort("Shift step {.val {step_id}} was not found.")
     }
@@ -1627,16 +1648,22 @@ shift__step_update <- function(store, step_id, ...) {
         cli::cli_abort("Unknown shift step field(s): {.field {unknown}}.")
     }
     for (name in names(updates)) {
-        row[[name]] <- updates[[name]]
+        data.table::set(row, j = name, value = updates[[name]])
     }
-    row$updated_at <- store__now()
-    private$replace_rows("shift_run_step", as.data.frame(row), "step_id")
-    shift__live_snapshot_write(store, row$run_id[[1L]])
+    data.table::set(row, j = "updated_at", value = store__now())
+    shift_job__update_row(
+        store,
+        "shift_run_step",
+        "step_id",
+        row,
+        unique(c(names(updates), "updated_at"))
+    )
+    shift_job__live_snapshot_write(store, row$run_id[[1L]])
     invisible(row)
 }
 
 # Close one step independently from its object-carried workflow run.
-shift__step_finish <- function(
+shift_job__step_finish <- function(
     store,
     step_id,
     status,
@@ -1647,14 +1674,14 @@ shift__step_finish <- function(
         status,
         c("completed", "partial", "failed", "cancelled")
     )
-    shift__step_update(
+    shift_job__step_update(
         store,
         step_id,
         status = status,
         output_stage_json = if (is.null(output_stage)) {
             NA_character_
         } else {
-            shift__spec_json(shift__stage_ref(output_stage))
+            shift_persist__spec_json(shift_persist__stage_ref(output_stage))
         },
         completed_at = store__now(),
         last_error = store__chr1(last_error)
@@ -1663,10 +1690,14 @@ shift__step_finish <- function(
 
 # Return the latest step for resume, result reconstruction, and task-aware
 # inspectors without assuming that every run is a Future EPW workflow.
-shift__latest_step <- function(store, run_id, completed = FALSE) {
+shift_job__latest_step <- function(store, run_id, completed = FALSE) {
     wanted_run_id <- run_id
-    steps <- morpher__private_store(store)$read_table("shift_run_step")
-    steps <- steps[steps[["run_id"]] == wanted_run_id]
+    steps <- shift_inspect__rows(
+        store,
+        "shift_run_step",
+        "run_id",
+        wanted_run_id
+    )
     if (isTRUE(completed)) {
         steps <- steps[
             steps[["status"]] %in%
@@ -1680,10 +1711,14 @@ shift__latest_step <- function(store, run_id, completed = FALSE) {
 # Derive the terminal run outcome from every durable step rather than only the
 # last artifact. A later successful morph or export must not hide an upstream
 # partial extraction or download.
-shift__run_completion_status <- function(store, run_id) {
+shift_job__run_completion_status <- function(store, run_id) {
     wanted_run_id <- run_id
-    steps <- morpher__private_store(store)$read_table("shift_run_step")
-    steps <- steps[steps[["run_id"]] == wanted_run_id]
+    steps <- shift_inspect__rows(
+        store,
+        "shift_run_step",
+        "run_id",
+        wanted_run_id
+    )
     if (nrow(steps) && any(steps[["status"]] == "partial")) {
         "partial"
     } else {
@@ -1694,7 +1729,7 @@ shift__run_completion_status <- function(store, run_id) {
 # Rebuild one actionable ShiftRun diagnostic from its persisted terminal event.
 # Resolver coverage failures recommend changing intent, while transient and
 # later-stage errors retain resume as the recovery action.
-shift__run_event_diagnostic <- function(event, run_id, store_path) {
+shift_job__run_event_diagnostic <- function(event, run_id, store_path) {
     details <- if (
         !is.null(event$details_json) &&
             length(event$details_json) &&
@@ -1710,7 +1745,7 @@ shift__run_event_diagnostic <- function(event, run_id, store_path) {
     }
     if (identical(as.character(details$kind), "scientific_diagnostic")) {
         field <- function(name) store__chr1(details[[name]])
-        return(shift_diagnostic(
+        return(shift_stage__diagnostic(
             field("stage"),
             field("severity"),
             field("code"),
@@ -1729,13 +1764,13 @@ shift__run_event_diagnostic <- function(event, run_id, store_path) {
             action = field("action")
         ))
     }
-    missing <- as.character(shift_coalesce(details$missing, character()))
+    missing <- as.character(shift_stage__coalesce(details$missing, character()))
     missing <- missing[!is.na(missing) & nzchar(missing)]
-    message <- as.character(shift_coalesce(
+    message <- as.character(shift_stage__coalesce(
         details$cause,
-        shift_coalesce(
+        shift_stage__coalesce(
             details$error_summary,
-            shift__error_summary(event$message[[1L]])
+            shift_print__error_summary(event$message[[1L]])
         )
     ))[[1L]]
     if (length(missing)) {
@@ -1746,7 +1781,9 @@ shift__run_event_diagnostic <- function(event, run_id, store_path) {
             "."
         )
     }
-    recovery <- as.character(shift_coalesce(details$recovery, "retry"))[[1L]]
+    recovery <- as.character(shift_stage__coalesce(details$recovery, "retry"))[[
+        1L
+    ]]
     action <- switch(
         recovery,
         change_request = paste(
@@ -1759,14 +1796,14 @@ shift__run_event_diagnostic <- function(event, run_id, store_path) {
         ),
         sprintf(
             "Run %s.",
-            shift__run_command(
+            shift_print__run_command(
                 "shift_resume",
                 run_id,
                 store_path
             )
         )
     )
-    shift_diagnostic(
+    shift_stage__diagnostic(
         event$stage[[1L]],
         "error",
         if (identical(details$kind, "resolver_exhausted")) {
@@ -1780,18 +1817,25 @@ shift__run_event_diagnostic <- function(event, run_id, store_path) {
 }
 
 # Materialize a lightweight ShiftRun handle from persisted tables.
-shift__run_handle <- function(store, run_id, output_stage = NULL, plan = NULL) {
+shift_job__run_handle <- function(
+    store,
+    run_id,
+    output_stage = NULL,
+    plan = NULL
+) {
     wanted_run_id <- run_id
-    private <- morpher__private_store(store)
-    runs <- private$read_table("shift_run")
-    row <- runs[runs[["run_id"]] == wanted_run_id]
+    row <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
     if (!nrow(row)) {
         cli::cli_abort(
             "Shift run {.val {run_id}} was not found in {.path {store$path}}."
         )
     }
-    cases <- private$read_table("shift_run_case")
-    cases <- cases[cases[["run_id"]] == wanted_run_id]
+    cases <- shift_inspect__rows(
+        store,
+        "shift_run_case",
+        "run_id",
+        wanted_run_id
+    )
     if (nrow(cases)) {
         cases[,
             years := lapply(years_json, function(value) {
@@ -1799,26 +1843,33 @@ shift__run_handle <- function(store, run_id, output_stage = NULL, plan = NULL) {
             })
         ]
     }
-    events <- private$read_table("shift_run_event")
-    events <- events[events[["run_id"]] == wanted_run_id][order(created_at)]
-    jobs <- private$read_table("shift_run_job")
-    jobs <- jobs[jobs[["run_id"]] == wanted_run_id]
+    events <- shift_inspect__rows(
+        store,
+        "shift_run_event",
+        "run_id",
+        wanted_run_id
+    )[order(created_at)]
+    jobs <- shift_inspect__rows(store, "shift_run_job", "run_id", wanted_run_id)
     jobs <- jobs[order(jobs[["attempt"]])]
-    steps <- private$read_table("shift_run_step")
-    steps <- steps[steps[["run_id"]] == wanted_run_id]
+    steps <- shift_inspect__rows(
+        store,
+        "shift_run_step",
+        "run_id",
+        wanted_run_id
+    )
     steps <- steps[order(steps[["ordinal"]])]
     diagnostic_events <- events[
         status %in% c("failed", "error", "diagnostic")
     ]
     diagnostics <- if (!nrow(diagnostic_events)) {
-        shift_diagnostics_empty()
+        shift_stage__diagnostics_empty()
     } else {
         do.call(
-            shift_bind_diagnostics,
+            shift_stage__bind_diagnostics,
             lapply(
                 seq_len(nrow(diagnostic_events)),
                 function(i) {
-                    shift__run_event_diagnostic(
+                    shift_job__run_event_diagnostic(
                         diagnostic_events[i],
                         run_id,
                         store$path
@@ -1827,7 +1878,7 @@ shift__run_handle <- function(store, run_id, output_stage = NULL, plan = NULL) {
             )
         )
     }
-    shift_stage_new(
+    shift_stage__new(
         ShiftRun,
         "run",
         store_path = store$path,
@@ -1852,13 +1903,13 @@ shift__run_handle <- function(store, run_id, output_stage = NULL, plan = NULL) {
 
 # Use atomic sidecar snapshots as the live read channel while a detached worker
 # owns DuckDB's cross-process write lock. DuckDB remains the durable authority.
-shift__live_path <- function(store_path, run_id, suffix = "live.json") {
+shift_job__live_path <- function(store_path, run_id, suffix = "live.json") {
     file.path(store_path, "logs", "shift", sprintf("%s.%s", run_id, suffix))
 }
 
 # Sidecar fallback is only valid for DuckDB's expected cross-process lock
 # conflict; schema, corruption, and path errors must remain visible.
-shift__manifest_locked <- function(error) {
+shift_job__manifest_locked <- function(error) {
     inherits(error, "error") &&
         grepl(
             "Could not set lock|Conflicting lock",
@@ -1870,54 +1921,67 @@ shift__manifest_locked <- function(error) {
 # Serialize the latest run tables after each durable milestone. Keeping only a
 # bounded event tail prevents frequent progress snapshots from growing without
 # bound during large workflows.
-shift__live_snapshot_write <- function(
+shift_job__live_snapshot_write <- function(
     store,
     run_id,
     event_limit = 200L,
     ui_state = NULL
 ) {
     wanted_run_id <- run_id
-    private <- morpher__private_store(store)
-    runs <- private$read_table("shift_run")
-    run <- runs[runs[["run_id"]] == wanted_run_id]
+    run <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
     if (!nrow(run)) {
         return(invisible(NULL))
     }
-    cases <- private$read_table("shift_run_case")
-    cases <- cases[cases[["run_id"]] == wanted_run_id]
-    events <- private$read_table("shift_run_event")
-    events <- events[events[["run_id"]] == wanted_run_id][order(created_at)]
-    if (nrow(events) > event_limit) {
-        events <- utils::tail(events, event_limit)
-    }
-    jobs <- private$read_table("shift_run_job")
-    jobs <- jobs[jobs[["run_id"]] == wanted_run_id]
+    cases <- shift_inspect__rows(
+        store,
+        "shift_run_case",
+        "run_id",
+        wanted_run_id
+    )
+    checkmate::assert_count(event_limit, positive = FALSE)
+    events <- store$query(sprintf(
+        paste(
+            "SELECT * FROM (SELECT * FROM shift_run_event WHERE run_id IN (%s)",
+            "ORDER BY created_at DESC LIMIT %d) ORDER BY created_at"
+        ),
+        shift_stage__query_ids(wanted_run_id),
+        as.integer(event_limit)
+    ))
+    jobs <- shift_inspect__rows(store, "shift_run_job", "run_id", wanted_run_id)
     jobs <- jobs[order(jobs[["attempt"]])]
-    steps <- private$read_table("shift_run_step")
-    steps <- steps[steps[["run_id"]] == wanted_run_id]
+    steps <- shift_inspect__rows(
+        store,
+        "shift_run_step",
+        "run_id",
+        wanted_run_id
+    )
     steps <- steps[order(steps[["ordinal"]])]
     outputs <- data.table::data.table()
     morph_id <- store__chr1(run$morph_id[[1L]])
     if (!is.na(morph_id) && nzchar(morph_id)) {
-        all_outputs <- private$read_table("epw_output")
-        outputs <- all_outputs[all_outputs[["morph_id"]] == morph_id]
+        outputs <- shift_inspect__rows(
+            store,
+            "epw_output",
+            "morph_id",
+            morph_id
+        )
     }
     payload <- list(
         version = 1L,
         run_id = run_id,
         store_path = store$path,
         written_at = store__now(),
-        run = as.data.frame(run),
-        cases = as.data.frame(cases),
-        events = as.data.frame(events),
-        jobs = as.data.frame(jobs),
-        steps = as.data.frame(steps),
-        outputs = as.data.frame(outputs),
+        run = run,
+        cases = cases,
+        events = events,
+        jobs = jobs,
+        steps = steps,
+        outputs = outputs,
         ui_state = ui_state
     )
     store_write_json_atomic(
         payload,
-        shift__live_path(store$path, run_id),
+        shift_job__live_path(store$path, run_id),
         auto_unbox = TRUE,
         dataframe = "rows",
         null = "null",
@@ -1930,7 +1994,7 @@ shift__live_snapshot_write <- function(
 
 # Parse the ISO timestamps written by jsonlite without allowing base R to
 # accept only the date prefix. Keep fractional seconds and explicit offsets.
-shift__live_time <- function(x) {
+shift_job__live_time <- function(x) {
     if (inherits(x, "POSIXt") || inherits(x, "Date")) {
         return(as.POSIXct(x, tz = "UTC"))
     }
@@ -1959,7 +2023,7 @@ shift__live_time <- function(x) {
 
 # Normalize JSON rows back to data.table form and restore timestamp columns
 # needed by status age calculations and watch rendering.
-shift__live_table <- function(x) {
+shift_job__live_table <- function(x) {
     if (is.null(x) || !length(x)) {
         return(data.table::data.table())
     }
@@ -1976,15 +2040,15 @@ shift__live_table <- function(x) {
         names(out)
     )
     for (name in time_columns) {
-        out[[name]] <- shift__live_time(out[[name]])
+        out[[name]] <- shift_job__live_time(out[[name]])
     }
     out
 }
 
 # Rebuild the same lightweight ShiftRun shape from a live sidecar when opening
 # the manifest fails specifically because the background worker owns its lock.
-shift__live_run_get <- function(run_id, store_path) {
-    path <- shift__live_path(store_path, run_id)
+shift_job__live_run_get <- function(run_id, store_path) {
+    path <- shift_job__live_path(store_path, run_id)
     if (!file.exists(path)) {
         return(NULL)
     }
@@ -2001,13 +2065,13 @@ shift__live_run_get <- function(run_id, store_path) {
     ) {
         return(NULL)
     }
-    row <- shift__live_table(snapshot$run)
-    cases <- shift__live_table(snapshot$cases)
-    events <- shift__live_table(snapshot$events)
-    jobs <- shift__live_table(snapshot$jobs)
-    steps <- shift__live_table(snapshot$steps)
-    outputs <- shift__live_table(snapshot$outputs)
-    ui_state <- shift_coalesce(snapshot$ui_state, list())
+    row <- shift_job__live_table(snapshot$run)
+    cases <- shift_job__live_table(snapshot$cases)
+    events <- shift_job__live_table(snapshot$events)
+    jobs <- shift_job__live_table(snapshot$jobs)
+    steps <- shift_job__live_table(snapshot$steps)
+    outputs <- shift_job__live_table(snapshot$outputs)
+    ui_state <- shift_stage__coalesce(snapshot$ui_state, list())
     if (!nrow(row)) {
         return(NULL)
     }
@@ -2021,14 +2085,14 @@ shift__live_run_get <- function(run_id, store_path) {
         status %in% c("failed", "error", "diagnostic")
     ]
     diagnostics <- if (!nrow(diagnostic_events)) {
-        shift_diagnostics_empty()
+        shift_stage__diagnostics_empty()
     } else {
         do.call(
-            shift_bind_diagnostics,
+            shift_stage__bind_diagnostics,
             lapply(
                 seq_len(nrow(diagnostic_events)),
                 function(i) {
-                    shift__run_event_diagnostic(
+                    shift_job__run_event_diagnostic(
                         diagnostic_events[i],
                         run_id,
                         store_path
@@ -2037,7 +2101,7 @@ shift__live_run_get <- function(run_id, store_path) {
             )
         )
     }
-    shift_stage_new(
+    shift_stage__new(
         ShiftRun,
         "run",
         store_path = store_path,
@@ -2064,7 +2128,7 @@ shift__live_run_get <- function(run_id, store_path) {
 # Decide whether an atomic live snapshot is safe to serve without opening
 # DuckDB. Dead PIDs and launch attempts older than the grace period fall back
 # to manifest reconciliation so stale runs still become failed.
-shift__live_process_is_active <- function(run, startup_grace = 60) {
+shift_job__live_process_is_active <- function(run, startup_grace = 60) {
     if (is.null(run) || !S7::S7_inherits(run, ShiftRun)) {
         return(FALSE)
     }
@@ -2094,7 +2158,7 @@ shift__live_process_is_active <- function(run, startup_grace = 60) {
 
 # Persist a cooperative cancellation request outside DuckDB so a watcher can
 # signal a worker even while the manifest is exclusively locked.
-shift__cancel_request_write <- function(
+shift_job__cancel_request_write <- function(
     store_path,
     run_id,
     job_id,
@@ -2111,7 +2175,7 @@ shift__cancel_request_write <- function(
                 tz = "UTC"
             )
         ),
-        shift__live_path(store_path, run_id, suffix = "cancel.json"),
+        shift_job__live_path(store_path, run_id, suffix = "cancel.json"),
         auto_unbox = TRUE,
         null = "null"
     )
@@ -2119,8 +2183,8 @@ shift__cancel_request_write <- function(
 
 # Reflect cancellation in the lock-free snapshot immediately; the worker will
 # subsequently persist the authoritative terminal state in DuckDB.
-shift__live_cancel_mark <- function(store_path, run_id, job_id, status) {
-    path <- shift__live_path(store_path, run_id)
+shift_job__live_cancel_mark <- function(store_path, run_id, job_id, status) {
+    path <- shift_job__live_path(store_path, run_id)
     snapshot <- tryCatch(
         jsonlite::fromJSON(path, simplifyDataFrame = TRUE),
         error = function(e) NULL
@@ -2160,13 +2224,13 @@ shift__live_cancel_mark <- function(store_path, run_id, job_id, status) {
         POSIXt = "ISO8601",
         digits = 15
     )
-    shift__live_run_get(run_id, store_path)
+    shift_job__live_run_get(run_id, store_path)
 }
 
 # Read only cancellation requests for the current attempt; stale markers from
 # a previous attempt cannot cancel a resumed job.
-shift__cancel_request_exists <- function(store_path, run_id, job_id) {
-    path <- shift__live_path(store_path, run_id, suffix = "cancel.json")
+shift_job__cancel_request_exists <- function(store_path, run_id, job_id) {
+    path <- shift_job__live_path(store_path, run_id, suffix = "cancel.json")
     if (!file.exists(path)) {
         return(FALSE)
     }
@@ -2176,4 +2240,28 @@ shift__cancel_request_exists <- function(store_path, run_id, job_id) {
     )
     !is.null(request) &&
         identical(as.character(request$job_id), as.character(job_id))
+}
+
+
+# Update a validated record in place, quoting identifiers and scalar values
+# through DuckDB so timestamps, missing values and strings retain their types.
+shift_job__update_row <- function(store, table, key, row, fields) {
+    conn <- morpher__private_store(store)$conn
+    values <- vapply(
+        fields,
+        function(field) ddb_literal(conn, row[[field]]),
+        character(1L)
+    )
+    sql <- sprintf(
+        "UPDATE %s SET %s WHERE %s = %s",
+        ddb_ident(conn, table),
+        paste(
+            paste(ddb_ident(conn, fields), values, sep = " = "),
+            collapse = ", "
+        ),
+        ddb_ident(conn, key),
+        ddb_literal(conn, row[[key]])
+    )
+    ddb_exec(conn, sql)
+    invisible(row)
 }

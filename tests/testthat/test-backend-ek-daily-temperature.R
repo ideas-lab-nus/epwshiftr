@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
 test_local_dependencies(list(
     availability = test_cmip6_availability,
-    shift__cmip6_period_coverage = test_cmip6_period_coverage
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 # Build deterministic native-calendar daily extrema for the Ek factor tests.
@@ -39,10 +39,12 @@ ek_test__climate <- function(
             setdiff(names(values), omit),
             function(variable_id) {
                 data.table::data.table(
-                    activity_id = if (identical(
-                        experiment,
-                        "historical"
-                    )) {
+                    activity_id = if (
+                        identical(
+                            experiment,
+                            "historical"
+                        )
+                    ) {
                         "CMIP"
                     } else {
                         "ScenarioMIP"
@@ -57,7 +59,8 @@ ek_test__climate <- function(
                     time = as.POSIXct(
                         sprintf("%04d-01-01 12:00:00", years[[index]]),
                         tz = "UTC"
-                    ) + seq.int(0L, calendar_days - 1L) * 86400,
+                    ) +
+                        seq.int(0L, calendar_days - 1L) * 86400,
                     year = years[[index]],
                     annual_phase = phase,
                     period = period,
@@ -284,10 +287,13 @@ test_that("Ek harmonized policy closes humidity against temperature", {
         paper$data$dry_bulb_temperature,
         tolerance = 1e-12
     )
-    expect_true(any(abs(
-        harmonized$data$relative_humidity -
-            paper$data$relative_humidity
-    ) > 1e-6))
+    expect_true(any(
+        abs(
+            harmonized$data$relative_humidity -
+                paper$data$relative_humidity
+        ) >
+            1e-6
+    ))
     expect_true(all(
         harmonized$data$relative_humidity >= 0 &
             harmonized$data$relative_humidity <= 100
@@ -339,12 +345,10 @@ test_that("Ek records zero historical model DTR fallback", {
     result <- morpher__run_context(context)
 
     expect_true(all(
-        result$factors$dtr_status ==
-            "inherited_zero_historical_dtr"
+        result$factors$dtr_status == "inherited_zero_historical_dtr"
     ))
     expect_true(all(
-        result$factors$projection_status ==
-            "mean_shift_zero_historical_dtr"
+        result$factors$projection_status == "mean_shift_zero_historical_dtr"
     ))
     expect_true(
         "ek_zero_historical_model_dtr" %in%
@@ -429,7 +433,7 @@ test_that("Ek public transform survives dry-run plan reconstruction", {
         store = tempfile("ek-daily-store-"),
         dry_run = TRUE
     )@meta$children[[1L]]
-    rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
+    rebuilt <- shift_persist__plan_from_spec(shift_persist__plan_spec(plan))
 
     expect_identical(
         plan@meta$recipe$backend,
@@ -447,5 +451,5 @@ test_that("Ek public transform survives dry-run plan reconstruction", {
         rebuilt@meta$recipe$policy,
         transform__recipe(transform)$policy
     )
-    expect_silent(shift__validate_background_plan(plan))
+    expect_silent(shift_job__validate_background_plan(plan))
 })

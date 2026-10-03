@@ -50,10 +50,8 @@ shift_inspect__history_runs <- function(
     method = NA_character_,
     model = NA_character_
 ) {
-    if (!nrow(rows)) {
-        return(shift_inspect__history_empty())
-    }
-    data.table::data.table(
+    out <- shift_inspect__history_empty()[rep(NA_integer_, nrow(rows))]
+    values <- list(
         type = "run",
         id = rows$run_id,
         status = rows$status,
@@ -61,9 +59,14 @@ shift_inspect__history_runs <- function(
         method = method,
         model = model,
         updated_at = as.character(rows$updated_at),
-        store = store,
-        error = NA_character_
+        store = store
     )
+    if (nrow(out)) {
+        for (name in names(values)) {
+            data.table::set(out, j = name, value = values[[name]])
+        }
+    }
+    out
 }
 
 # Inspect one receipt as a unit so malformed metadata cannot abort the history
@@ -105,35 +108,69 @@ shift_inspect__history_batch <- function(path, type) {
     ) {
         stop("Batch receipt children do not match its manifest.", call. = FALSE)
     }
-    pieces <- list()
-    states <- errors <- character()
-    updated <- as.character(receipt$updated_at)
-    for (child in receipt$children) {
+    n <- length(receipt$children)
+    pieces <- vector("list", n + 1L)
+    states <- rep("planned", n)
+    errors <- rep(NA_character_, n)
+    updated <- c(as.character(receipt$updated_at), rep(NA_character_, n))
+    child_paths <- vapply(receipt$children, `[[`, character(1L), "store_path")
+    run_ids <- vapply(
+        receipt$children,
+        function(child) {
+            store__chr1(child$run_id)
+        },
+        character(1L)
+    )
+    registered <- data.table::data.table(path = child_paths, run_id = run_ids)
+    registered <- registered[!is.na(registered$run_id)]
+    paths <- unique(registered$path)
+    data.table::setindexv(registered, "path")
+    # A lock fallback remains read-only; refresh/reconciliation is deliberately
+    # excluded from history inspection.
+    runs <- stats::setNames(
+        lapply(paths, function(path) {
+            tryCatch(
+                {
+                    ids <- registered[list(path), on = "path"]$run_id
+                    value <- shift_inspect__runs(path, unique(ids))
+                    data.table::setindexv(value, "run_id")
+                    value
+                },
+                error = identity
+            )
+        }),
+        paths
+    )
+    identities <- manifest[match(child_keys, manifest$child_key)]
+    for (index in seq_along(receipt$children)) {
+        child <- receipt$children[[index]]
         run_id <- store__chr1(child$run_id)
         if (is.na(run_id)) {
-            states <- c(states, "planned")
             next
         }
         # Read saved rows directly; opening a workflow handle can reconcile
         # jobs and write status changes as an inspection side effect.
         run <- tryCatch(
             {
-                rows <- shift_runs(child$store_path)
-                matching <- which(rows$run_id == run_id)
-                if (!length(matching)) {
+                rows <- runs[[child$store_path]]
+                if (inherits(rows, "error")) {
+                    stop(rows)
+                }
+                matching <- rows[list(run_id), on = "run_id", nomatch = 0L]
+                if (!nrow(matching)) {
                     stop(
                         sprintf("Saved run '%s' is missing.", run_id),
                         call. = FALSE
                     )
                 }
-                rows[matching]
+                matching
             },
             error = identity
         )
-        child_identity <- manifest[manifest$child_key == child$child_key]
+        child_identity <- identities[index]
         if (inherits(run, "error")) {
-            states <- c(states, "unavailable")
-            errors <- c(errors, conditionMessage(run))
+            states[[index]] <- "unavailable"
+            errors[[index]] <- conditionMessage(run)
             rows <- data.table::data.table(
                 run_id = run_id,
                 status = "unavailable",
@@ -141,8 +178,8 @@ shift_inspect__history_batch <- function(path, type) {
             )
         } else {
             rows <- run
-            states <- c(states, rows$status)
-            updated <- c(updated, as.character(rows$updated_at))
+            states[[index]] <- rows$status[[1L]]
+            updated[[index + 1L]] <- as.character(rows$updated_at[[1L]])
         }
         if (type != "batch") {
             value <- shift_inspect__history_runs(
@@ -153,14 +190,18 @@ shift_inspect__history_batch <- function(path, type) {
                 store__chr1(child_identity$model)
             )
             if (inherits(run, "error")) {
-                value$error <- conditionMessage(run)
+                data.table::set(
+                    value,
+                    j = "error",
+                    value = conditionMessage(run)
+                )
             }
-            pieces[[length(pieces) + 1L]] <- value
+            pieces[[index]] <- value
         }
     }
     if (type != "run") {
         updated <- updated[!is.na(updated) & nzchar(updated)]
-        pieces[[length(pieces) + 1L]] <- data.table::data.table(
+        pieces[[n + 1L]] <- data.table::data.table(
             type = "batch",
             id = id,
             status = shift_inspect__status(states),
@@ -169,8 +210,8 @@ shift_inspect__history_batch <- function(path, type) {
             model = paste(unique(manifest$model), collapse = ", "),
             updated_at = if (length(updated)) max(updated) else NA_character_,
             store = path,
-            error = if (length(errors)) {
-                paste(unique(errors), collapse = "; ")
+            error = if (any(!is.na(errors))) {
+                paste(unique(errors[!is.na(errors)]), collapse = "; ")
             } else {
                 NA_character_
             }
@@ -201,7 +242,7 @@ shift_history <- function(
 ) {
     type <- match.arg(type)
     checkmate::assert_character(status, any.missing = FALSE, null.ok = TRUE)
-    root <- shift_coalesce(store, store_dir(init = FALSE))
+    root <- shift_stage__coalesce(store, store_dir(init = FALSE))
     root <- if (inherits(root, "EsgStore")) {
         root$path
     } else {
@@ -299,10 +340,10 @@ shift_inspect__weather <- function(paths) {
     )
     sums <- counts <- stats::setNames(rep(0, length(fields)), fields)
     unreadable <- 0L
-    errors <- character()
     hours <- 0L
     paths <- unique(paths)
-    reporter <- shift__current_reporter()
+    errors <- rep(NA_character_, length(paths))
+    reporter <- shift_run__current_reporter()
     for (index in seq_along(paths)) {
         path <- paths[[index]]
         if (!is.null(reporter)) {
@@ -319,7 +360,7 @@ shift_inspect__weather <- function(paths) {
         )
         if (inherits(weather, "error")) {
             unreadable <- unreadable + 1L
-            errors <- c(errors, conditionMessage(weather))
+            errors[[index]] <- conditionMessage(weather)
             if (!is.null(reporter)) {
                 reporter$unit_completed(
                     paste("Cannot read", basename(path)),
@@ -345,24 +386,29 @@ shift_inspect__weather <- function(paths) {
             )
         }
     }
+    errors <- errors[!is.na(errors)]
     means <- sums / counts
     means[counts == 0] <- NA_real_
-    list(
-        weather_hours = hours,
-        unreadable_files = unreadable,
-        mean_temperature_c = unname(means[[1L]]),
-        temperature_hours = unname(counts[[1L]]),
-        mean_relative_humidity_pct = unname(means[[2L]]),
-        humidity_hours = unname(counts[[2L]]),
-        mean_wind_speed_ms = unname(means[[3L]]),
-        wind_hours = unname(counts[[3L]]),
-        mean_global_horizontal_radiation_wh_m2 = unname(means[[4L]]),
-        radiation_hours = unname(counts[[4L]]),
-        weather_error = if (length(errors)) {
-            paste(unique(errors), collapse = "; ")
-        } else {
-            NA_character_
-        }
+    labels <- c(
+        "mean_temperature_c",
+        "temperature_hours",
+        "mean_relative_humidity_pct",
+        "humidity_hours",
+        "mean_wind_speed_ms",
+        "wind_hours",
+        "mean_global_horizontal_radiation_wh_m2",
+        "radiation_hours"
+    )
+    c(
+        list(weather_hours = hours, unreadable_files = unreadable),
+        stats::setNames(as.list(as.vector(rbind(means, counts))), labels),
+        list(
+            weather_error = if (length(errors)) {
+                paste(unique(errors), collapse = "; ")
+            } else {
+                NA_character_
+            }
+        )
     )
 }
 
@@ -411,103 +457,167 @@ shift_inspect__summary_child <- function(child, identity, weather) {
         # cases instead of weather-year files, keeping every scientific group.
         columns <- intersect(c(dimensions, "case_id"), names(outputs))
         cases <- unique(outputs[, columns, with = FALSE])
-        cases[, status := "completed"]
+        data.table::set(cases, j = "status", value = "completed")
     }
     groups <- intersect(dimensions, names(cases))
+    # Store integer row groups instead of copying one table for each partition.
     partitions <- if (nrow(cases) && length(groups)) {
-        split(cases, by = groups, keep.by = TRUE, drop = TRUE)
+        cases[, list(rows = list(.I)), by = groups]
     } else {
-        list(cases)
+        data.table::data.table(rows = list(seq_len(nrow(cases))))
     }
-    rows <- lapply(partitions, function(group) {
-        files <- outputs
-        # Workflow case IDs and morpher case IDs are separate namespaces.
-        # Match their shared scientific dimensions, including member and grid
-        # when the output schema records them, so multi-year files stay together.
-        keys <- intersect(groups, names(files))
-        if (nrow(group) && length(keys)) {
-            for (key in keys) {
-                files <- files[files[[key]] %in% group[[key]]]
-            }
-        } else if (nrow(group) && "case_id" %in% names(files)) {
-            files <- files[files$case_id %in% group$case_id]
-        }
-        checks <- diagnostics
-        if (nrow(checks) && "case_id" %in% names(checks)) {
-            checks <- checks[
-                is.na(checks$case_id) |
-                    checks$case_id %in% c(group$case_id, files$case_id)
-            ]
-        }
-        paths <- if (nrow(files)) {
-            vapply(
-                seq_len(nrow(files)),
-                function(index) {
-                    exported <- store__chr1(files$export_path[index])
-                    if (!is.na(exported) && file.exists(exported)) {
-                        exported
-                    } else {
-                        store_abs_path(
-                            files$path[[index]],
-                            root = child@store_path
-                        )
-                    }
-                },
-                character(1L)
+    data.table::set(
+        partitions,
+        j = "summary_group",
+        value = seq_len(nrow(partitions))
+    )
+    keys <- intersect(groups, names(outputs))
+    if (nrow(cases) && length(keys)) {
+        owners <- partitions[, c(keys, "summary_group"), with = FALSE]
+        source <- data.table::copy(outputs[, keys, with = FALSE])
+        data.table::set(
+            source,
+            j = "output_row",
+            value = seq_len(nrow(outputs))
+        )
+        links <- merge(
+            owners,
+            source,
+            by = keys,
+            sort = FALSE,
+            allow.cartesian = TRUE
+        )
+    } else if (nrow(cases) && "case_id" %in% names(outputs)) {
+        owners <- data.table::data.table(
+            case_id = cases$case_id[unlist(partitions$rows, use.names = FALSE)],
+            summary_group = rep(
+                partitions$summary_group,
+                lengths(partitions$rows)
             )
-        } else {
-            character()
+        )
+        source <- data.table::data.table(
+            case_id = outputs$case_id,
+            output_row = seq_len(nrow(outputs))
+        )
+        links <- unique(merge(
+            owners,
+            source,
+            by = "case_id",
+            sort = FALSE,
+            allow.cartesian = TRUE
+        ))
+    } else {
+        links <- data.table::CJ(
+            summary_group = partitions$summary_group,
+            output_row = seq_len(nrow(outputs))
+        )
+    }
+    file_rows <- split(
+        links$output_row,
+        factor(links$summary_group, levels = partitions$summary_group)
+    )
+    file_rows <- lapply(file_rows, sort)
+    # Resolve each path and query filesystem existence once, independently of
+    # the number of scientific groups which consume that file.
+    source_paths <- unique(outputs$path)
+    absolute <- vapply(
+        source_paths,
+        store_abs_path,
+        character(1L),
+        root = child@store_path
+    )
+    paths <- unname(absolute[match(outputs$path, source_paths)])
+    if ("export_path" %in% names(outputs)) {
+        exported <- outputs$export_path
+        present <- !is.na(exported) & nzchar(exported) & file.exists(exported)
+        paths[present] <- exported[present]
+    }
+    present <- file.exists(paths)
+    status <- shift_status(child, refresh = FALSE)
+    # Link both case-ID namespaces once; global diagnostics apply to every
+    # group, while duplicate links must never inflate warning/error counts.
+    if (nrow(diagnostics) && "case_id" %in% names(diagnostics)) {
+        owners <- data.table::data.table(
+            case_id = cases$case_id[unlist(partitions$rows, use.names = FALSE)],
+            summary_group = rep(
+                partitions$summary_group,
+                lengths(partitions$rows)
+            )
+        )
+        if ("case_id" %in% names(outputs)) {
+            owners <- unique(data.table::rbindlist(list(
+                owners,
+                data.table::data.table(
+                    case_id = outputs$case_id[links$output_row],
+                    summary_group = links$summary_group
+                )
+            )))
         }
+        source <- data.table::data.table(
+            case_id = diagnostics$case_id,
+            diagnostic_row = seq_len(nrow(diagnostics))
+        )
+        global <- which(is.na(source$case_id))
+        linked <- unique(merge(
+            owners[!is.na(owners$case_id)],
+            source[!is.na(source$case_id)],
+            by = "case_id",
+            sort = FALSE,
+            allow.cartesian = TRUE
+        ))
+        check_rows <- split(
+            linked$diagnostic_row,
+            factor(linked$summary_group, levels = partitions$summary_group)
+        )
+        check_rows <- lapply(check_rows, function(rows) {
+            sort(unique(c(global, rows)))
+        })
+    } else {
+        check_rows <- rep(list(seq_len(nrow(diagnostics))), nrow(partitions))
+    }
+    rows <- lapply(seq_len(nrow(partitions)), function(index) {
+        group <- cases[partitions$rows[[index]]]
+        indices <- file_rows[[index]]
+        files <- outputs[indices]
+        checks <- diagnostics[check_rows[[index]]]
         years <- sort(unique(files$weather_year[!is.na(files$weather_year)]))
-        completion <- shift__ui_completion(group, files, checks)
+        completion <- shift_inspect__completion(group, files, checks)
+        row <- identity
+        row$model <- shift_stage__coalesce(
+            if (nrow(group)) group$source_id[[1L]] else NULL,
+            identity$model
+        )
+        fields <- c(
+            scenario = "experiment_id",
+            member = "variant_label",
+            grid = "grid_label",
+            period = "period"
+        )
+        row[names(fields)] <- lapply(fields, function(field) {
+            store__chr1(group[[field]])
+        })
         row <- c(
-            identity,
+            row,
             list(
-                model = shift_coalesce(
-                    if (nrow(group)) group$source_id[[1L]] else NULL,
-                    identity$model
-                ),
-                scenario = if (nrow(group)) {
-                    store__chr1(group$experiment_id)
-                } else {
-                    NA_character_
-                },
-                member = if (nrow(group)) {
-                    store__chr1(group$variant_label)
-                } else {
-                    NA_character_
-                },
-                grid = if (nrow(group)) {
-                    store__chr1(group$grid_label)
-                } else {
-                    NA_character_
-                },
-                period = if (nrow(group)) {
-                    store__chr1(group$period)
-                } else {
-                    NA_character_
-                },
-                status = shift_status(child, refresh = FALSE),
+                status = status,
                 cases = nrow(group),
                 completed_cases = sum(group$status == "completed"),
                 epw_files = nrow(files),
-                available_files = sum(file.exists(paths)),
+                available_files = sum(present[indices]),
                 output_type = paste(unique(files$output_type), collapse = ", "),
                 weather_years = paste(years, collapse = ", "),
                 warnings = sum(checks$severity == "warning"),
                 errors = sum(checks$severity == "error"),
-                field_roles = shift_coalesce(
+                field_roles = shift_stage__coalesce(
                     completion$field_summary,
                     NA_character_
                 )
             )
         )
-        # Identity supplies a fallback model only; emit that column exactly once.
-        row <- row[!duplicated(names(row), fromLast = TRUE)]
         if (weather) {
-            row <- c(row, shift_inspect__weather(paths))
+            row <- c(row, shift_inspect__weather(paths[indices]))
         }
-        data.table::as.data.table(row)
+        row
     })
     data.table::rbindlist(rows, fill = TRUE)
 }
@@ -555,13 +665,17 @@ shift_summary <- function(
     if (refresh && !S7::S7_inherits(x, ShiftPlan)) {
         x <- shift_refresh(x)
     }
-    if (weather && is.null(shift__current_reporter())) {
-        return(shift__ui_check(ui, "Summarize EPWs", function(reporter) {
-            shift__with_reporter(
-                reporter,
-                shift_summary(x, refresh = FALSE, weather = TRUE, ui = ui)
-            )
-        }))
+    if (weather && is.null(shift_run__current_reporter())) {
+        return(shift_reporter__ui_check(
+            ui,
+            "Summarize EPWs",
+            function(reporter) {
+                shift_run__with_reporter(
+                    reporter,
+                    shift_summary(x, refresh = FALSE, weather = TRUE, ui = ui)
+                )
+            }
+        ))
     }
     if (S7::S7_inherits(x, ShiftBatch)) {
         columns <- c(
@@ -585,7 +699,7 @@ shift_summary <- function(
         return(data.table::rbindlist(rows, fill = TRUE))
     }
     spec <- if (S7::S7_inherits(x, ShiftPlan)) {
-        shift__plan_spec(x)
+        shift_persist__plan_spec(x)
     } else {
         jsonlite::fromJSON(x@meta$run$spec_json[[1L]], simplifyVector = TRUE)
     }
@@ -603,86 +717,31 @@ shift_summary <- function(
     )
 }
 
-# Parse read-only history filters without opening or initializing a database.
-cli_shift__history <- function(store, args) {
-    parsed <- epwshiftr_cli_parse_command(
-        args,
-        options = c("--type", "--status", "--limit")
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    type <- shift_coalesce(parsed$options[["--type"]], "all")
-    if (!type %in% c("all", "run", "batch")) {
-        epwshiftr_cli_usage_abort(
-            "--type must be all, run, or batch."
-        )
-    }
-    rows <- shift_history(
-        store,
-        type = type,
-        status = epwshiftr_cli_csv(parsed$options[["--status"]])
-    )
-    limit <- epwshiftr_cli_count_or_default(
-        parsed$options[["--limit"]],
-        "--limit",
-        20L,
-        positive = FALSE
-    )
-    out <- utils::head(rows, limit)
-    attr(out, "shift_history_total") <- nrow(rows)
-    out
-}
 
-# Share the same comparison table between R and CLI, with optional local reads.
-cli_shift__summary <- function(
-    store,
-    args,
-    json = FALSE,
-    jsonl = FALSE,
-    quiet = FALSE
-) {
-    parsed <- epwshiftr_cli_parse_command(
-        args,
-        options = c("--run", "--batch"),
-        flags = c("--weather", "--no-progress", "--reduced-motion")
-    )
-    epwshiftr_cli_assert_no_positionals(parsed)
-    shift_summary(
-        cli_shift__target(parsed, store),
-        refresh = FALSE,
-        weather = isTRUE(parsed$flags[["--weather"]]),
-        ui = epwshiftr_cli_task_ui(
-            parsed,
-            json = json,
-            jsonl = jsonl,
-            quiet = quiet
-        )
-    )
-}
-
-shift_query_run <- function(store, query_id) {
-    shift_query_maybe(
+shift_inspect__query_run <- function(store, query_id) {
+    shift_stage__query_maybe(
         store,
         sprintf(
             "SELECT * FROM query_run WHERE query_id IN (%s)",
-            shift_stage_query_ids(query_id)
+            shift_stage__query_ids(query_id)
         )
     )
 }
 
-shift_file_catalog <- function(store, query_id) {
-    shift_query_maybe(
+shift_inspect__file_catalog <- function(store, query_id) {
+    shift_stage__query_maybe(
         store,
         sprintf(
             "SELECT * FROM file_catalog WHERE query_id IN (%s)",
-            shift_stage_query_ids(query_id)
+            shift_stage__query_ids(query_id)
         )
     )
 }
 
 # Summarize a persisted File catalog without materializing every record merely
 # to print a ShiftFiles object.
-shift__file_catalog_summary <- function(store, query_id) {
-    shift_query_maybe(
+shift_inspect__file_catalog_summary <- function(store, query_id) {
+    shift_stage__query_maybe(
         store,
         sprintf(
             paste(
@@ -690,14 +749,14 @@ shift__file_catalog_summary <- function(store, query_id) {
                 "COALESCE(SUM(size), 0) AS total_size",
                 "FROM file_catalog WHERE query_id IN (%s)"
             ),
-            shift_stage_query_ids(query_id)
+            shift_stage__query_ids(query_id)
         )
     )
 }
 
 # Read only the ordered rows needed for a console preview. An explicit infinite
 # limit remains available for users who deliberately request the full print.
-shift__file_catalog_preview <- function(store, query_id, n = 10L) {
+shift_inspect__file_catalog_preview <- function(store, query_id, n = 10L) {
     columns <- paste(
         c(
             "source_id",
@@ -715,7 +774,7 @@ shift__file_catalog_preview <- function(store, query_id, n = 10L) {
         collapse = ", "
     )
     limit <- if (is.infinite(n)) "" else sprintf(" LIMIT %d", as.integer(n))
-    shift_query_maybe(
+    shift_stage__query_maybe(
         store,
         sprintf(
             paste0(
@@ -726,13 +785,13 @@ shift__file_catalog_preview <- function(store, query_id, n = 10L) {
                 " grid_label, table_id, datetime_start, filename",
                 limit
             ),
-            shift_stage_query_ids(query_id)
+            shift_stage__query_ids(query_id)
         )
     )
 }
 
-shift_extraction_plan <- function(store, plan_id) {
-    shift_query_maybe(
+shift_inspect__extraction_plan <- function(store, plan_id) {
+    shift_stage__query_maybe(
         store,
         sprintf(
             paste(
@@ -741,13 +800,13 @@ shift_extraction_plan <- function(store, plan_id) {
                 "available_time_count, attempt_count, last_error, created_at, updated_at",
                 "FROM extraction_plan WHERE plan_id IN (%s)"
             ),
-            shift_stage_query_ids(plan_id)
+            shift_stage__query_ids(plan_id)
         )
     )
 }
 
-shift_extraction_result_rows <- function(store, plan_id) {
-    shift_query_maybe(
+shift_inspect__extraction_result_rows <- function(store, plan_id) {
+    shift_stage__query_maybe(
         store,
         sprintf(
             paste(
@@ -761,76 +820,74 @@ shift_extraction_result_rows <- function(store, plan_id) {
                 "WHERE r.plan_id IN (%s)",
                 "ORDER BY p.variable_id, r.year, r.output_path"
             ),
-            shift_stage_query_ids(plan_id)
+            shift_stage__query_ids(plan_id)
         )
     )
 }
 
-shift_morph_plan <- function(store, morph_id) {
-    shift_query_maybe(
+shift_inspect__morph_plan <- function(store, morph_id) {
+    shift_stage__query_maybe(
         store,
         sprintf(
             "SELECT * FROM epw_morph_plan WHERE morph_id IN (%s)",
-            shift_stage_query_ids(morph_id)
+            shift_stage__query_ids(morph_id)
         )
     )
 }
 
-shift_morph_result_rows <- function(store, morph_id, case_id = NULL) {
+shift_inspect__morph_result_rows <- function(store, morph_id, case_id = NULL) {
     sql <- sprintf(
         "SELECT * FROM epw_morph_result WHERE morph_id IN (%s)",
-        shift_stage_query_ids(morph_id)
+        shift_stage__query_ids(morph_id)
     )
     if (!is.null(case_id)) {
         sql <- paste(
             sql,
-            sprintf("AND case_id IN (%s)", shift_stage_query_ids(case_id))
+            sprintf("AND case_id IN (%s)", shift_stage__query_ids(case_id))
         )
     }
-    shift_query_maybe(store, paste(sql, "ORDER BY case_id, output_path"))
+    shift_stage__query_maybe(store, paste(sql, "ORDER BY case_id, output_path"))
 }
 
-shift_epw_output_rows <- function(store, morph_id) {
-    shift_query_maybe(
-        store,
-        sprintf(
-            "SELECT * FROM epw_output WHERE morph_id IN (%s)",
-            shift_stage_query_ids(morph_id)
-        )
+
+# Select only requested EPW records and preserve stable case/path ordering.
+shift_inspect__epw_output_rows <- function(store, morph_id, case_id = NULL) {
+    sql <- sprintf(
+        "SELECT * FROM epw_output WHERE morph_id IN (%s)",
+        shift_stage__query_ids(morph_id)
     )
-}
-
-shift_epw_output_rows_for_cases <- function(store, morph_id, case_id = NULL) {
-    rows <- shift_epw_output_rows(store, morph_id)
-    if (!is.null(case_id) && nrow(rows)) {
-        target_case_id <- case_id
-        rows <- rows[rows[["case_id"]] %in% target_case_id]
+    if (!is.null(case_id)) {
+        sql <- paste(
+            sql,
+            sprintf("AND case_id IN (%s)", shift_stage__query_ids(case_id))
+        )
     }
-    rows[order(rows$case_id, rows$path)]
+    shift_stage__query_maybe(store, paste(sql, "ORDER BY case_id, path"))
 }
 
-shift_artifact_rows <- function(store, artifact_id) {
+
+shift_inspect__artifact_rows <- function(store, artifact_id) {
     artifact_id <- unique(as.character(artifact_id))
     artifact_id <- artifact_id[!is.na(artifact_id) & nzchar(artifact_id)]
     if (!length(artifact_id)) {
         return(data.table::data.table())
     }
-    shift_query_maybe(
+    shift_stage__query_maybe(
         store,
         sprintf(
             "SELECT * FROM artifact WHERE artifact_id IN (%s)",
-            shift_stage_query_ids(artifact_id)
+            shift_stage__query_ids(artifact_id)
         )
     )
 }
 
-shift_relative_paths_exist <- function(store, paths) {
+shift_inspect__relative_paths_exist <- function(store, paths) {
     paths <- as.character(paths)
     paths <- paths[!is.na(paths) & nzchar(paths)]
     length(paths) > 0L && all(file.exists(file.path(store$path, paths)))
 }
 
-shift_data_limit <- function(n) {
+shift_inspect__data_limit <- function(n) {
     if (is.null(n) || identical(n, Inf)) {
         return(Inf)
     }
@@ -841,7 +898,7 @@ shift_data_limit <- function(n) {
     as.integer(n)
 }
 
-shift_read_parquet <- function(store, path, n = Inf, columns = NULL) {
+shift_inspect__read_parquet <- function(store, path, n = Inf, columns = NULL) {
     conn <- morpher__private_store(store)$conn
     select <- if (is.null(columns)) {
         "*"
@@ -866,7 +923,7 @@ shift_read_parquet <- function(store, path, n = Inf, columns = NULL) {
     data.table::as.data.table(ddb_query(conn, sql))
 }
 
-shift_select_data_columns <- function(dt, columns, stage) {
+shift_inspect__select_data_columns <- function(dt, columns, stage) {
     if (is.null(columns)) {
         return(dt)
     }
@@ -877,9 +934,9 @@ shift_select_data_columns <- function(dt, columns, stage) {
     dt[, columns, with = FALSE]
 }
 
-shift_add_constant_columns <- function(dt, values) {
+shift_inspect__add_constant_columns <- function(dt, values) {
     for (name in names(values)) {
-        dt[, (name) := values[[name]]]
+        data.table::set(dt, j = name, value = values[[name]])
     }
     data.table::setcolorder(
         dt,
@@ -889,7 +946,7 @@ shift_add_constant_columns <- function(dt, values) {
 }
 
 # Read ordered artifact records under one global row allowance.
-shift__read_artifact_rows <- function(
+shift_inspect__read_artifact_rows <- function(
     store,
     records,
     n,
@@ -922,9 +979,9 @@ shift__read_artifact_rows <- function(
         if (!is.null(metadata)) {
             # Add record-level identity before selecting requested columns so
             # callers may request both stored and manifest-backed fields.
-            dt <- shift_add_constant_columns(dt, metadata(records, i))
+            dt <- shift_inspect__add_constant_columns(dt, metadata(records, i))
         }
-        pieces[[i]] <- shift_select_data_columns(dt, columns, stage)
+        pieces[[i]] <- shift_inspect__select_data_columns(dt, columns, stage)
         if (!is.infinite(remaining)) {
             remaining <- remaining - nrow(dt)
         }
@@ -938,15 +995,15 @@ shift__read_artifact_rows <- function(
 }
 
 # Read morphed Parquet artifacts with their persisted result identity columns.
-shift__read_morph_data <- function(store, results, n, columns) {
-    shift__read_artifact_rows(
+shift_inspect__read_morph_data <- function(store, results, n, columns) {
+    shift_inspect__read_artifact_rows(
         store,
         results,
         n = n,
         columns = columns,
         path_column = "output_path",
         reader = function(path, limit, columns) {
-            shift_read_parquet(store, path, n = limit)
+            shift_inspect__read_parquet(store, path, n = limit)
         },
         metadata = function(records, i) {
             list(
@@ -971,8 +1028,8 @@ shift__read_morph_data <- function(store, results, n, columns) {
 }
 
 # Read EPW artifacts with output-manifest identity and bounded weather rows.
-shift__read_epw_output_data <- function(store, outputs, n, columns) {
-    shift__read_artifact_rows(
+shift_inspect__read_epw_output_data <- function(store, outputs, n, columns) {
+    shift_inspect__read_artifact_rows(
         store,
         outputs,
         n = n,
@@ -1011,7 +1068,11 @@ shift__read_epw_output_data <- function(store, outputs, n, columns) {
     )
 }
 
-shift_stage_query_result <- function(store, query_id, result_type = NULL) {
+shift_inspect__stage_query_result <- function(
+    store,
+    query_id,
+    result_type = NULL
+) {
     checkmate::assert_string(query_id, min.chars = 1L)
     checkmate::assert_choice(
         result_type,
@@ -1019,7 +1080,7 @@ shift_stage_query_result <- function(store, query_id, result_type = NULL) {
         null.ok = TRUE
     )
 
-    runs <- shift_query_run(store, query_id)
+    runs <- shift_inspect__query_run(store, query_id)
     if (!nrow(runs)) {
         cli::cli_abort(
             "No stored File query result was found for this shift stage."
@@ -1080,9 +1141,9 @@ shift_explain <- function(x, ...) {
             function(child) shift_explain(child, ...)
         ))
     }
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftPlan)) {
-        return(shift__plan_explain(x))
+        return(shift_print__plan_explain(x))
     }
     if (S7::S7_inherits(x, ShiftRun)) {
         x <- shift_refresh(x)
@@ -1135,12 +1196,11 @@ shift_explain <- function(x, ...) {
     )
 }
 
-# public inspectors -----------------------------------------------------------
-
+# public inspectors
 #' @rdname shift_api
 #' @export
 shift_refresh <- function(x) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftBatch)) {
         return(shift_batch__refresh(x))
     }
@@ -1150,7 +1210,7 @@ shift_refresh <- function(x) {
     if (S7::S7_inherits(x, ShiftRequest) || S7::S7_inherits(x, ShiftSite)) {
         return(x)
     }
-    x@diagnostics <- shift_diagnostics_empty()
+    x@diagnostics <- shift_stage__diagnostics_empty()
     x@diagnostics <- shift_check(x, strict = FALSE)
     x
 }
@@ -1158,7 +1218,7 @@ shift_refresh <- function(x) {
 #' @rdname shift_api
 #' @export
 shift_ids <- function(x, refresh = TRUE) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     checkmate::assert_flag(refresh)
     if (S7::S7_inherits(x, ShiftBatch)) {
         if (isTRUE(refresh)) {
@@ -1175,7 +1235,7 @@ shift_ids <- function(x, refresh = TRUE) {
 #' @rdname shift_api
 #' @export
 shift_cases <- function(x, refresh = TRUE) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     checkmate::assert_flag(refresh)
     if (S7::S7_inherits(x, ShiftBatch)) {
         if (isTRUE(refresh)) {
@@ -1217,7 +1277,13 @@ shift_missing <- function(x) {
 #' @rdname shift_api
 #' @export
 shift_runs <- function(store = NULL) {
-    store_value <- shift_coalesce(store, store_dir(init = FALSE))
+    shift_inspect__runs(store)
+}
+
+# Share read-only run inspection while allowing batch history to request only
+# its own runs. Locked stores use the same saved live snapshots as public history.
+shift_inspect__runs <- function(store, run_ids = NULL) {
+    store_value <- shift_stage__coalesce(store, store_dir(init = FALSE))
     store_path <- if (inherits(store_value, "EsgStore")) {
         store_value$path
     } else {
@@ -1231,10 +1297,15 @@ shift_runs <- function(store = NULL) {
         if (!inherits(store_value, "EsgStore")) {
             on.exit(try(opened$close(), silent = TRUE), add = TRUE)
         }
-        rows <- morpher__private_store(opened)$read_table("shift_run")
-        return(rows[order(-started_at)])
+        rows <- if (is.null(run_ids)) {
+            morpher__private_store(opened)$read_table("shift_run")
+        } else {
+            shift_inspect__rows(opened, "shift_run", "run_id", run_ids)
+        }
+        data.table::setorderv(rows, "started_at", -1L, na.last = TRUE)
+        return(rows)
     }
-    if (!shift__manifest_locked(opened)) {
+    if (!shift_job__manifest_locked(opened)) {
         stop(opened)
     }
     live <- list.files(
@@ -1242,12 +1313,15 @@ shift_runs <- function(store = NULL) {
         pattern = "[.]live[.]json$",
         full.names = TRUE
     )
+    if (!is.null(run_ids)) {
+        live <- live[basename(live) %in% paste0(run_ids, ".live.json")]
+    }
     rows <- lapply(live, function(path) {
         value <- tryCatch(
             jsonlite::fromJSON(path, simplifyDataFrame = TRUE),
             error = function(e) NULL
         )
-        if (is.null(value)) NULL else shift__live_table(value$run)
+        if (is.null(value)) NULL else shift_job__live_table(value$run)
     })
     rows <- Filter(function(x) !is.null(x) && nrow(x), rows)
     if (!length(rows)) {
@@ -1275,7 +1349,7 @@ shift_run_get <- function(run_id, store = NULL) {
                 "This Dataset result is not associated with a persisted shift run."
             )
         }
-        store <- shift_coalesce(
+        store <- shift_stage__coalesce(
             store,
             attr(result, "epwshiftr.store", exact = TRUE)
         )
@@ -1294,19 +1368,19 @@ shift_run_get <- function(run_id, store = NULL) {
                 "This shift stage is not associated with a persisted run."
             )
         }
-        store <- shift_coalesce(store, stage@store_path)
+        store <- shift_stage__coalesce(store, stage@store_path)
         run_id <- as.character(value[[1L]])
     }
     checkmate::assert_string(run_id, min.chars = 1L)
-    store_value <- shift_coalesce(store, store_dir(init = FALSE))
+    store_value <- shift_stage__coalesce(store, store_dir(init = FALSE))
     store_path <- if (inherits(store_value, "EsgStore")) {
         store_value$path
     } else {
         normalizePath(path.expand(store_value), winslash = "/", mustWork = TRUE)
     }
     if (!inherits(store_value, "EsgStore")) {
-        live <- shift__live_run_get(run_id, store_path)
-        if (shift__live_process_is_active(live)) {
+        live <- shift_job__live_run_get(run_id, store_path)
+        if (shift_job__live_process_is_active(live)) {
             # Active process jobs publish authoritative live state. Avoiding a
             # speculative DuckDB read here also prevents status/watch calls
             # from racing a newly launched worker for the manifest lock.
@@ -1318,10 +1392,10 @@ shift_run_get <- function(run_id, store = NULL) {
         error = function(e) e
     )
     if (inherits(opened, "error")) {
-        if (!shift__manifest_locked(opened)) {
+        if (!shift_job__manifest_locked(opened)) {
             stop(opened)
         }
-        live <- shift__live_run_get(run_id, store_path)
+        live <- shift_job__live_run_get(run_id, store_path)
         if (!is.null(live)) {
             return(live)
         }
@@ -1330,9 +1404,9 @@ shift_run_get <- function(run_id, store = NULL) {
     if (!inherits(store_value, "EsgStore")) {
         on.exit(try(opened$close(), silent = TRUE), add = TRUE)
     }
-    shift__reconcile_background_download(opened, run_id)
-    shift__reconcile_run_job(opened, run_id)
-    shift__run_handle(opened, run_id)
+    shift_job__reconcile_background_download(opened, run_id)
+    shift_job__reconcile_run_job(opened, run_id)
+    shift_job__run_handle(opened, run_id)
 }
 
 # Reconstruct the latest completed standalone result from its persisted stage
@@ -1349,8 +1423,8 @@ shift_result <- function(x, store = NULL) {
     if (S7::S7_inherits(run@meta$output_stage, ShiftStage)) {
         stage <- run@meta$output_stage
         if (S7::S7_inherits(stage, ShiftDatasets)) {
-            return(shift__datasets_attach_run(
-                shift__datasets_result(stage),
+            return(shift_run__datasets_attach_run(
+                shift_run__datasets_result(stage),
                 stage
             ))
         }
@@ -1358,7 +1432,7 @@ shift_result <- function(x, store = NULL) {
     }
     opened <- shift_store(run)
     on.exit(try(opened$close(), silent = TRUE), add = TRUE)
-    step <- shift__latest_step(opened, run@ids$run_id, completed = TRUE)
+    step <- shift_job__latest_step(opened, run@ids$run_id, completed = TRUE)
     if (!nrow(step)) {
         cli::cli_abort(
             "Shift run {.val {run@ids$run_id}} has no completed stage result."
@@ -1368,10 +1442,10 @@ shift_result <- function(x, store = NULL) {
         step$output_stage_json[[1L]],
         simplifyVector = FALSE
     )
-    stage <- shift__stage_from_ref(ref)
+    stage <- shift_persist__stage_from_ref(ref)
     if (S7::S7_inherits(stage, ShiftDatasets)) {
-        return(shift__datasets_attach_run(
-            shift__datasets_result(stage),
+        return(shift_run__datasets_attach_run(
+            shift_run__datasets_result(stage),
             stage
         ))
     }
@@ -1384,7 +1458,7 @@ shift_result <- function(x, store = NULL) {
 shift_logs <- function(x, store = NULL, tail = 100L) {
     checkmate::assert_count(tail, positive = FALSE)
     if (S7::S7_inherits(x, ShiftBatch)) {
-        job <- shift_batch__job_read(x@store_path)
+        job <- shift_batch_execution__job_read(x@store_path)
         if (!is.null(job) && isTRUE(job$background)) {
             # The coordinator captures shared reads and child stdout together;
             # return it once instead of repeating it for every child.
@@ -1412,9 +1486,9 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
             }
         ))
     }
-    run <- shift__as_run(x, store = store)
+    run <- shift_job__as_run(x, store = store)
     run_store <- shift_store(run)
-    download_context <- shift__background_download_context(
+    download_context <- shift_job__background_download_context(
         run_store,
         run@ids$run_id,
         active_only = FALSE
@@ -1464,14 +1538,14 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
                         job$ui_json[[1L]],
                         simplifyVector = TRUE
                     )
-                    as.character(shift_coalesce(value$detail, "normal"))
+                    as.character(shift_stage__coalesce(value$detail, "normal"))
                 },
                 error = function(e) "normal"
             )
             vapply(
                 seq_len(nrow(event_rows)),
                 function(i) {
-                    shift__ui_persisted_event_line(
+                    shift_ui_view__ui_persisted_event_line(
                         event_rows[i],
                         detail = detail,
                         width = NULL
@@ -1497,7 +1571,7 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
 #' @rdname shift_api
 #' @export
 shift_files <- function(x) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     ids <- shift_ids(x)
     if (
         is.null(ids$query_id) ||
@@ -1510,7 +1584,11 @@ shift_files <- function(x) {
     }
 
     store <- shift_store(x)
-    shift_stage_query_result(store, ids$query_id[[1L]], result_type = "File")
+    shift_inspect__stage_query_result(
+        store,
+        ids$query_id[[1L]],
+        result_type = "File"
+    )
 }
 
 #' @rdname shift_api
@@ -1531,8 +1609,8 @@ shift_data <- function(
     columns = NULL,
     refresh = TRUE
 ) {
-    shift_assert_stage(x)
-    n <- shift_data_limit(n)
+    shift_stage__assert_stage(x)
+    n <- shift_inspect__data_limit(n)
     checkmate::assert_character(
         variables,
         any.missing = FALSE,
@@ -1643,7 +1721,7 @@ shift_data <- function(
             if (is.na(morph_id) || !nzchar(morph_id)) {
                 return(data.table::data.table())
             }
-            stage <- shift_stage_new(
+            stage <- shift_stage__new(
                 ShiftOutputs,
                 "epw",
                 store_path = x@store_path,
@@ -1685,7 +1763,7 @@ shift_data <- function(
         if (is.null(ids$plan_id) || !length(ids$plan_id)) {
             return(data.table::data.table())
         }
-        results <- shift_extraction_result_rows(store, ids$plan_id)
+        results <- shift_inspect__extraction_result_rows(store, ids$plan_id)
         if (!is.null(variables)) {
             results <- results[results[["variable_id"]] %in% variables]
         }
@@ -1695,14 +1773,14 @@ shift_data <- function(
 
         # Keep Parquet projection in DuckDB for extracted climate while the
         # shared artifact loop owns ordering and the cross-file row allowance.
-        return(shift__read_artifact_rows(
+        return(shift_inspect__read_artifact_rows(
             store,
             results,
             n = n,
             columns = columns,
             path_column = "output_path",
             reader = function(path, limit, columns) {
-                shift_read_parquet(
+                shift_inspect__read_parquet(
                     store,
                     path,
                     n = limit,
@@ -1728,7 +1806,7 @@ shift_data <- function(
         if (is.null(ids$morph_id) || !length(ids$morph_id)) {
             return(data.table::data.table())
         }
-        results <- shift_morph_result_rows(
+        results <- shift_inspect__morph_result_rows(
             store,
             ids$morph_id,
             case_id = case_id
@@ -1736,7 +1814,7 @@ shift_data <- function(
         if (!nrow(results)) {
             return(data.table::data.table())
         }
-        return(shift__read_morph_data(
+        return(shift_inspect__read_morph_data(
             store,
             results,
             n = n,
@@ -1748,7 +1826,7 @@ shift_data <- function(
         if (is.null(ids$morph_id) || !length(ids$morph_id)) {
             return(data.table::data.table())
         }
-        outputs <- shift_epw_output_rows_for_cases(
+        outputs <- shift_inspect__epw_output_rows(
             store,
             ids$morph_id,
             case_id = case_id
@@ -1756,7 +1834,7 @@ shift_data <- function(
         if (!nrow(outputs)) {
             return(data.table::data.table())
         }
-        return(shift__read_epw_output_data(
+        return(shift_inspect__read_epw_output_data(
             store,
             outputs,
             n = n,
@@ -1771,7 +1849,7 @@ shift_data <- function(
 #' @param severity Optional diagnostic severities to keep.
 #' @export
 shift_diagnostics <- function(x, severity = NULL, refresh = TRUE) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     checkmate::assert_flag(refresh)
     checkmate::assert_character(
         severity,
@@ -1792,7 +1870,7 @@ shift_diagnostics <- function(x, severity = NULL, refresh = TRUE) {
     if (isTRUE(refresh) && S7::S7_inherits(x, ShiftRun)) {
         x <- shift_refresh(x)
     }
-    out <- shift_diagnostics_normalize(x@diagnostics)
+    out <- shift_stage__diagnostics_normalize(x@diagnostics)
     if (!is.null(severity)) {
         out <- out[out$severity %in% severity]
     }
@@ -1810,7 +1888,7 @@ shift_store <- function(x, create = FALSE) {
     if (is.character(x) && length(x) == 1L) {
         return(EsgStore$new(x, create = create))
     }
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     path <- x@store_path
     if (is.null(path) || !nzchar(path)) {
         cli::cli_abort("This shift stage is not associated with an EsgStore.")
@@ -1824,7 +1902,7 @@ shift_target <- function(x) {
     if (S7::S7_inherits(x, ShiftSite)) {
         return(x)
     }
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftBatch)) {
         return(shift_target(x@meta$children[[1L]]))
     }
@@ -1847,7 +1925,7 @@ shift_target <- function(x) {
 #' @rdname shift_api
 #' @export
 shift_coverage <- function(x) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftBatch)) {
         return(shift_batch__inspect(
             x@meta$children,
@@ -1856,7 +1934,7 @@ shift_coverage <- function(x) {
         ))
     }
     if (S7::S7_inherits(x, ShiftClimate)) {
-        return(data.table::as.data.table(shift_coalesce(
+        return(data.table::as.data.table(shift_stage__coalesce(
             x@meta$coverage,
             data.table::data.table()
         )))
@@ -1872,7 +1950,7 @@ shift_coverage <- function(x) {
 #' @rdname shift_api
 #' @export
 shift_outputs <- function(x, refresh = TRUE) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     checkmate::assert_flag(refresh)
     if (S7::S7_inherits(x, ShiftBatch)) {
         if (isTRUE(refresh)) {
@@ -1901,12 +1979,12 @@ shift_outputs <- function(x, refresh = TRUE) {
         }
         run_store <- tryCatch(shift_store(x), error = function(e) NULL)
         outputs <- if (is.null(run_store)) {
-            data.table::as.data.table(shift_coalesce(
+            data.table::as.data.table(shift_stage__coalesce(
                 x@meta$outputs,
                 data.table::data.table()
             ))
         } else {
-            shift_epw_output_rows(run_store, morph_id)
+            shift_inspect__epw_output_rows(run_store, morph_id)
         }
         cases <- shift_cases(x, refresh = FALSE)
         if (nrow(outputs) && nrow(cases)) {
@@ -1922,7 +2000,7 @@ shift_outputs <- function(x, refresh = TRUE) {
         return(outputs[])
     }
     if (S7::S7_inherits(x, ShiftOutputs)) {
-        return(data.table::as.data.table(shift_coalesce(
+        return(data.table::as.data.table(shift_stage__coalesce(
             x@meta$outputs,
             data.table::data.table()
         )))
@@ -1932,13 +2010,13 @@ shift_outputs <- function(x, refresh = TRUE) {
         return(data.table::data.table())
     }
     store <- shift_store(x)
-    shift_epw_output_rows(store, ids$morph_id)
+    shift_inspect__epw_output_rows(store, ids$morph_id)
 }
 
 #' @rdname shift_api
 #' @export
 shift_artifacts <- function(x) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftBatch)) {
         return(shift_batch__inspect(
             x@meta$children,
@@ -1950,14 +2028,14 @@ shift_artifacts <- function(x) {
 
     if (S7::S7_inherits(x, ShiftMorphed) && !is.null(ids$morph_id)) {
         store <- shift_store(x)
-        results <- shift_morph_result_rows(store, ids$morph_id)
-        return(shift_artifact_rows(store, results$artifact_id))
+        results <- shift_inspect__morph_result_rows(store, ids$morph_id)
+        return(shift_inspect__artifact_rows(store, results$artifact_id))
     }
 
     if (S7::S7_inherits(x, ShiftOutputs) && !is.null(ids$morph_id)) {
         store <- shift_store(x)
-        outputs <- shift_epw_output_rows_for_cases(store, ids$morph_id)
-        return(shift_artifact_rows(store, outputs$artifact_id))
+        outputs <- shift_inspect__epw_output_rows(store, ids$morph_id)
+        return(shift_inspect__artifact_rows(store, outputs$artifact_id))
     }
 
     ids <- ids[!vapply(ids, is.null, logical(1L))]
@@ -1970,8 +2048,8 @@ shift_artifacts <- function(x) {
     if (!length(values)) {
         return(data.table::data.table())
     }
-    quoted <- shift_stage_query_ids(values)
-    shift_query_maybe(
+    quoted <- shift_stage__query_ids(values)
+    shift_stage__query_maybe(
         store,
         sprintf(
             paste(
@@ -1988,7 +2066,7 @@ shift_artifacts <- function(x) {
 #' @rdname shift_api
 #' @export
 shift_status <- function(x, refresh = TRUE) {
-    shift_assert_stage(x)
+    shift_stage__assert_stage(x)
     checkmate::assert_flag(refresh)
 
     if (S7::S7_inherits(x, ShiftBatch)) {
@@ -2002,7 +2080,7 @@ shift_status <- function(x, refresh = TRUE) {
         return(as.character(x@meta$run$status[[1L]]))
     }
 
-    if (shift_stage_has_errors(x@diagnostics)) {
+    if (shift_stage__has_errors(x@diagnostics)) {
         return("blocked")
     }
     if (S7::S7_inherits(x, ShiftRequest) || S7::S7_inherits(x, ShiftSite)) {
@@ -2020,17 +2098,17 @@ shift_status <- function(x, refresh = TRUE) {
 
     if (S7::S7_inherits(x, ShiftDatasets)) {
         path <- store_abs_path(x@meta$result_path, root = store$path)
-        count <- as.integer(shift_coalesce(x@meta$dataset_count, 0L))
+        count <- as.integer(shift_stage__coalesce(x@meta$dataset_count, 0L))
         return(if (file.exists(path) && count > 0L) "collected" else "partial")
     }
 
     if (S7::S7_inherits(x, ShiftFiles)) {
-        files <- shift_file_catalog(store, ids$query_id)
+        files <- shift_inspect__file_catalog(store, ids$query_id)
         return(if (nrow(files)) "collected" else "partial")
     }
 
     if (S7::S7_inherits(x, ShiftDownload)) {
-        files <- shift_file_catalog(store, ids$query_id)
+        files <- shift_inspect__file_catalog(store, ids$query_id)
         if (!nrow(files)) {
             return("partial")
         }
@@ -2078,7 +2156,7 @@ shift_status <- function(x, refresh = TRUE) {
     }
 
     if (S7::S7_inherits(x, ShiftMorphed)) {
-        plans <- shift_morph_plan(store, ids$morph_id)
+        plans <- shift_inspect__morph_plan(store, ids$morph_id)
         if (!nrow(plans)) {
             return("partial")
         }
@@ -2106,7 +2184,10 @@ shift_status <- function(x, refresh = TRUE) {
         )
         if (
             length(path_col) &&
-                shift_relative_paths_exist(store, outputs[[path_col[[1L]]]])
+                shift_inspect__relative_paths_exist(
+                    store,
+                    outputs[[path_col[[1L]]]]
+                )
         ) {
             return("written")
         }
@@ -2128,30 +2209,30 @@ S7::method(summary, ShiftStage) <- function(object, ...) {
     )
 }
 
-shift_stage_as_data_table <- function(x, ...) {
+shift_inspect__stage_as_data_table <- function(x, ...) {
     if (S7::S7_inherits(x, ShiftRequest)) {
         filters <- x@meta$filters
         return(data.table::data.table(
             provider = x@meta$provider,
-            project = shift_coalesce(x@meta$project, NA_character_),
+            project = shift_stage__coalesce(x@meta$project, NA_character_),
             source = paste(
-                shift_coalesce(x@meta$source, character()),
+                shift_stage__coalesce(x@meta$source, character()),
                 collapse = ","
             ),
             experiment = paste(
-                shift_coalesce(x@meta$experiment, character()),
+                shift_stage__coalesce(x@meta$experiment, character()),
                 collapse = ","
             ),
             variant = paste(
-                shift_coalesce(x@meta$variant, character()),
+                shift_stage__coalesce(x@meta$variant, character()),
                 collapse = ","
             ),
             variables = paste(
-                shift_coalesce(x@meta$variables, character()),
+                shift_stage__coalesce(x@meta$variables, character()),
                 collapse = ","
             ),
             frequency = paste(
-                shift_coalesce(x@meta$frequency, character()),
+                shift_stage__coalesce(x@meta$frequency, character()),
                 collapse = ","
             ),
             filter_count = length(filters)
@@ -2163,7 +2244,7 @@ shift_stage_as_data_table <- function(x, ...) {
             id = x@id,
             lon = x@lon,
             lat = x@lat,
-            label = shift_coalesce(x@label, NA_character_),
+            label = shift_stage__coalesce(x@label, NA_character_),
             has_epw = !is.null(x@epw)
         ))
     }
@@ -2171,7 +2252,7 @@ shift_stage_as_data_table <- function(x, ...) {
     store <- tryCatch(shift_store(x), error = function(e) NULL)
     ids <- shift_ids(x)
     if (S7::S7_inherits(x, ShiftFiles) && !is.null(store)) {
-        return(shift_file_catalog(store, ids$query_id))
+        return(shift_inspect__file_catalog(store, ids$query_id))
     }
     if (S7::S7_inherits(x, ShiftDownload) && !is.null(store)) {
         tasks <- if (!is.null(ids$session_id) && !is.na(ids$session_id)) {
@@ -2188,11 +2269,60 @@ shift_stage_as_data_table <- function(x, ...) {
         return(store$coverage(plan_id = ids$plan_id))
     }
     if (S7::S7_inherits(x, ShiftMorphed) && !is.null(store)) {
-        return(shift_morph_plan(store, ids$morph_id))
+        return(shift_inspect__morph_plan(store, ids$morph_id))
     }
     if (S7::S7_inherits(x, ShiftOutputs)) {
         return(shift_outputs(x))
     }
 
     data.table::data.table()
+}
+
+# Derive terminal facts from persisted cases and output manifests. A method's
+# multi-year files never inflate the number of completed scientific cases.
+shift_inspect__completion <- function(cases, outputs, diagnostics) {
+    warnings <- diagnostics[diagnostics$severity == "warning"]
+    roles <- if (nrow(outputs) && "provenance_json" %in% names(outputs)) {
+        tryCatch(
+            jsonlite::fromJSON(outputs$provenance_json[[
+                1L
+            ]])$weather_field_roles,
+            error = function(error) NULL
+        )
+    } else {
+        NULL
+    }
+    list(
+        result_summary = sprintf(
+            "%d/%d cases completed \u00b7 %d EPW files \u00b7 %d warnings",
+            sum(cases$status == "completed"),
+            nrow(cases),
+            nrow(outputs),
+            nrow(warnings)
+        ),
+        warning_messages = unique(warnings$message),
+        field_summary = if (is.null(roles)) {
+            NULL
+        } else {
+            sprintf(
+                "%d transformed \u00b7 %d derived \u00b7 %d physically closed \u00b7 %d inherited",
+                length(roles$transformed_fields),
+                length(roles$derived_fields),
+                length(roles$physically_closed_fields),
+                length(roles$inherited_fields)
+            )
+        }
+    )
+}
+
+# Read only the requested identity rows; lifecycle errors must not become empty
+# successful results. Callers decide explicitly whether a read failure is optional.
+shift_inspect__rows <- function(store, table, key, ids) {
+    conn <- morpher__private_store(store)$conn
+    store$query(sprintf(
+        "SELECT * FROM %s WHERE %s IN (%s)",
+        ddb_ident(conn, table),
+        ddb_ident(conn, key),
+        shift_stage__query_ids(ids)
+    ))
 }

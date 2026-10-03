@@ -16,7 +16,7 @@ availability__filters <- function(filters, selections) {
     utils::modifyList(
         filters,
         c(
-            shift__compact_list(selections),
+            compact_list(selections),
             list(
                 latest = TRUE,
                 # Honor an explicit replica filter; keep primary-only discovery
@@ -83,12 +83,12 @@ availability__summarize <- function(
     table,
     index_node
 ) {
-    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-    table <- shift__cmip6_table_spec(table)
+    frequencies <- shift_spec__cmip6_variable_frequencies(variables, frequency)
+    table <- shift_spec__cmip6_table_spec(table)
     tables <- if (is.null(table)) {
         NULL
     } else {
-        shift__cmip6_variable_tables(variables, frequency, table)
+        shift_spec__cmip6_variable_tables(variables, frequency, table)
     }
     # Share the narrow catalog with method discovery. Variable queries require
     # usable partitions; method queries retain them to explain rejections.
@@ -122,7 +122,10 @@ availability__summarize <- function(
         defaults <- vapply(
             unique(unname(frequencies)),
             function(value) {
-                shift_coalesce(shift__cmip6_table_id(value), NA_character_)
+                shift_stage__coalesce(
+                    shift_spec__cmip6_table_id(value),
+                    NA_character_
+                )
             },
             character(1L)
         )
@@ -483,12 +486,15 @@ shift_cmip6_avail <- function(
             unique = TRUE
         )
         checkmate::assert_flag(include_historical)
-        frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-        table <- shift__cmip6_table_spec(table)
+        frequencies <- shift_spec__cmip6_variable_frequencies(
+            variables,
+            frequency
+        )
+        table <- shift_spec__cmip6_table_spec(table)
         tables <- if (is.null(table)) {
             NULL
         } else {
-            shift__cmip6_variable_tables(variables, frequency, table)
+            shift_spec__cmip6_variable_tables(variables, frequency, table)
         }
         query_variables <- variables
         query_frequencies <- unique(unname(frequencies))

@@ -1,5 +1,4 @@
-# Native CF sub-daily coordinate support {{{
-
+# Native CF sub-daily coordinate support
 # Regular source frequencies shared by point-state and interval-mean temporal
 # components. Named seconds keep validation independent of timestamp parsing.
 TEMPORAL_SOURCE_STEPS <- c(
@@ -86,21 +85,25 @@ temporal__second_of_day <- function(data, name) {
     if ("cf_second_of_day" %in% names(data)) {
         seconds <- as.numeric(data[["cf_second_of_day"]])
     } else {
-        raw_seconds <- (
-            data[["annual_phase"]] * data[["cf_year_days"]] -
-                (data[["cf_day_of_year"]] - 1L)
-        ) * 86400
+        raw_seconds <- (data[["annual_phase"]] *
+            data[["cf_year_days"]] -
+            (data[["cf_day_of_year"]] - 1L)) *
+            86400
         seconds <- round(raw_seconds)
-        if (any(!is.finite(raw_seconds)) ||
-            any(abs(raw_seconds - seconds) > 1e-4)) {
+        if (
+            any(!is.finite(raw_seconds)) ||
+                any(abs(raw_seconds - seconds) > 1e-4)
+        ) {
             cli::cli_abort(
                 "{.arg {name}} cannot derive exact whole-second sub-daily coordinates from `annual_phase`."
             )
         }
     }
-    if (any(!is.finite(seconds)) ||
-        any(seconds < 0 | seconds >= 86400) ||
-        any(abs(seconds - round(seconds)) > 1e-6)) {
+    if (
+        any(!is.finite(seconds)) ||
+            any(seconds < 0 | seconds >= 86400) ||
+            any(abs(seconds - round(seconds)) > 1e-6)
+    ) {
         cli::cli_abort(
             "{.arg {name}} must use whole-second `cf_second_of_day` values in [0, 86400)."
         )
@@ -117,7 +120,8 @@ temporal__native_seconds <- function(data, calendar) {
         month = as.integer(data[["cf_month"]]),
         day = as.integer(data[["cf_day"]])
     )
-    as.numeric(cf_time_date2offset(parts, origin, calendar)) * 86400 +
+    as.numeric(cf_time_date2offset(parts, origin, calendar)) *
+        86400 +
         as.numeric(data[["cf_second_of_day"]])
 }
 
@@ -189,10 +193,14 @@ temporal__group_columns <- function(data, input, context, role) {
 # Render a stable diagnostic label for one independently processed native-time
 # series.
 temporal__group_label <- function(data, group_columns) {
-    values <- vapply(group_columns, function(column) {
-        value <- data[[column]][[1L]]
-        if (is.na(value)) "<NA>" else as.character(value)
-    }, character(1L))
+    values <- vapply(
+        group_columns,
+        function(column) {
+            value <- data[[column]][[1L]]
+            if (is.na(value)) "<NA>" else as.character(value)
+        },
+        character(1L)
+    )
     paste(sprintf("%s=%s", group_columns, values), collapse = ",")
 }
 
@@ -210,5 +218,3 @@ temporal__target_coordinates <- function(target_seconds, calendar) {
     coordinates[["cf_second_of_day"]] <- as.numeric(second_of_day)
     list(fields = fields, coordinates = coordinates)
 }
-
-# }}}

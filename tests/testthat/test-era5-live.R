@@ -4,7 +4,7 @@ test_that("ERA5 can be retrieved, normalized, persisted, and reused", {
     store <- EsgStore$new(store_path)
     store$close()
     site <- shift_site(epw = get_cache_epw(), id = "SIN")
-    stage <- shift_stage_new(
+    stage <- shift_stage__new(
         ShiftFiles,
         "files",
         store_path = store_path
@@ -35,10 +35,13 @@ test_that("ERA5 can be retrieved, normalized, persisted, and reused", {
     reused <- reanalysis__materialize(stage, recipe, site, source)
     expect_true(S7::S7_inherits(reused, ShiftClimate))
     expect_true(reused@meta$reused)
-    expect_identical(files, list.files(
-        file.path(store_path, "sources", "reanalysis", "era5"),
-        pattern = "[.]nc$",
-        recursive = TRUE,
-        full.names = TRUE
-    ))
+    expect_identical(
+        files,
+        list.files(
+            file.path(store_path, "sources", "reanalysis", "era5"),
+            pattern = "[.]nc$",
+            recursive = TRUE,
+            full.names = TRUE
+        )
+    )
 })

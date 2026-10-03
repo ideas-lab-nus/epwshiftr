@@ -8,52 +8,82 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
     reporters <- list()
     withr::local_options(list(cli.width = 112L, cli.num_colors = 1L))
     testthat::local_mocked_bindings(
-        shift__ui_renderer = function(...) {
+        shift_tui__ui_renderer = function(...) {
             opened <<- opened + 1L
-            list(draw = function(lines, compact) {
-                frames[[length(frames) + 1L]] <<- cli::ansi_strip(lines)
-                TRUE
-            }, backend = function() "frame",
-            commit = function(...) committed <<- committed + 1L,
-            close = function(...) NULL,
-            suspend = function(code) code())
+            list(
+                draw = function(lines, compact) {
+                    frames[[length(frames) + 1L]] <<- cli::ansi_strip(lines)
+                    TRUE
+                },
+                backend = function() "frame",
+                commit = function(...) committed <<- committed + 1L,
+                close = function(...) NULL,
+                suspend = function(code) code()
+            )
         },
-        shift__with_query_reporter = function(reporter, query, phase, expr) {
+        shift_resolve__with_query_reporter = function(
+            reporter,
+            query,
+            phase,
+            expr
+        ) {
             force(expr)
         },
-        shift_as_query = function(x) list(
-            index_node = function() "https://example.org",
-            collect = function(...) list(count = function() 964L)),
-        shift__task_execute = function(...) {
+        shift_resolve__as_query = function(x) {
+            list(
+                index_node = function() "https://example.org",
+                collect = function(...) list(count = function() 964L)
+            )
+        },
+        shift_run__task_execute = function(...) {
             stop("unexpected standalone operation")
         },
-        shift__cmip6_coverage_catalog = function(request, store, ui, label) {
-            reporter <- shift__current_reporter()
+        shift_resolve__cmip6_coverage_catalog = function(
+            request,
+            store,
+            ui,
+            label
+        ) {
+            reporter <- shift_run__current_reporter()
             reporters[[length(reporters) + 1L]] <<- reporter
-            reporter$unit_started("Querying File catalog",
-                details = list(unit_type = "catalog", catalog_role = "File"))
-            rows <- data.table::CJ(source_id = request@meta$source,
+            reporter$unit_started(
+                "Querying File catalog",
+                details = list(unit_type = "catalog", catalog_role = "File")
+            )
+            rows <- data.table::CJ(
+                source_id = request@meta$source,
                 experiment_id = request@meta$experiment,
-                variable_id = request@meta$variables)
-            rows[, `:=`(variant_label = "r1i1p1f1", grid_label = "gn",
-                frequency = "mon", table_id = "Amon", latest = TRUE,
+                variable_id = request@meta$variables
+            )
+            rows[, `:=`(
+                variant_label = "r1i1p1f1",
+                grid_label = "gn",
+                frequency = "mon",
+                table_id = "Amon",
+                latest = TRUE,
                 datetime_start = "1900-01-01T00:00:00Z",
-                datetime_end = "2100-12-31T23:59:59Z")]
-            reporter$unit_completed(sprintf("Indexed %d File catalog records", nrow(rows)),
-                details = list(unit_type = "catalog", catalog_role = "File"))
+                datetime_end = "2100-12-31T23:59:59Z"
+            )]
+            reporter$unit_completed(
+                sprintf("Indexed %d File catalog records", nrow(rows)),
+                details = list(unit_type = "catalog", catalog_role = "File")
+            )
             rows
         },
         .package = "epwshiftr"
     )
     test_local_dependencies(list(
         availability = function(...) {
-            reporter <- shift__current_reporter()
+            reporter <- shift_run__current_reporter()
             reporters[[length(reporters) + 1L]] <<- reporter
-            shift_datasets(shift_cmip6_scenario(source = "Model-A",
-                scenario = "ssp585", variables = "tas"))
+            shift_datasets(shift_cmip6_scenario(
+                source = "Model-A",
+                scenario = "ssp585",
+                variables = "tas"
+            ))
             test_cmip6_availability(...)
         },
-        shift__cmip6_period_coverage = shift__cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = shift_resolve__cmip6_period_coverage
     ))
     transforms <- shift_batch__transforms(c("original_morphing", "bws_btws"))
     transforms$epwshiftr <- monthly_transform("epwshiftr")
@@ -61,16 +91,28 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
         period = "reference",
         year = 1973:2005
     ))
-    result <- shift_batch__discover_models(shift_cmip6(model = 3L,
-        scenarios = c("ssp126", "ssp245", "ssp370", "ssp585")), transforms,
-        periods = shift__periods_from_input(list(mid = 2041:2060, late = 2071:2090)),
-        references = lapply(transforms, function(x) list(reference = reference)),
-        store = tempfile(), ui = shift_ui("dynamic"), site = "San Francisco")
+    result <- shift_batch_ui__discover_models(
+        shift_cmip6(
+            model = 3L,
+            scenarios = c("ssp126", "ssp245", "ssp370", "ssp585")
+        ),
+        transforms,
+        periods = shift_spec__periods_from_input(list(
+            mid = 2041:2060,
+            late = 2071:2090
+        )),
+        references = lapply(transforms, function(x) {
+            list(reference = reference)
+        }),
+        store = tempfile(),
+        ui = shift_ui("dynamic"),
+        site = "San Francisco"
+    )
     expect_equal(nrow(result$identities), 3L)
     expect_equal(opened, 1L)
     expect_equal(committed, 1L)
     expect_true(all(vapply(reporters, identical, logical(1L), reporters[[1L]])))
-    expect_null(shift__current_reporter())
+    expect_null(shift_run__current_reporter())
     text <- paste(unlist(frames), collapse = "\n")
     expect_match(text, "San Francisco")
     expect_match(text, "3 GCMs.*4 scenarios.*3 methods")
@@ -91,21 +133,38 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
 test_that("nested coverage collection persists files and closes its owned store", {
     calls <- cli_shift_test_mock_collect(esgf_test__file_docs("tas_day.nc"))
     testthat::local_mocked_bindings(
-        shift__task_execute = function(...) stop("unexpected standalone operation"),
-        .package = "epwshiftr")
-    request <- shift_request(project = "CMIP6", experiment = "ssp585",
-        variables = "tas", frequency = "day")
+        shift_run__task_execute = function(...) {
+            stop("unexpected standalone operation")
+        },
+        .package = "epwshiftr"
+    )
+    request <- shift_request(
+        project = "CMIP6",
+        experiment = "ssp585",
+        variables = "tas",
+        frequency = "day"
+    )
     root <- tempfile("discovery-owned-store-")
-    reporter <- shift__reporter(shift_ui("none"))
+    reporter <- shift_reporter__reporter(shift_ui("none"))
     on.exit(reporter$close(), add = TRUE)
-    catalog <- shift__with_reporter(reporter, shift__cmip6_coverage_catalog(
-        request, root, shift_ui("none"), "future-coverage"))
+    catalog <- shift_run__with_reporter(
+        reporter,
+        shift_resolve__cmip6_coverage_catalog(
+            request,
+            root,
+            shift_ui("none"),
+            "future-coverage"
+        )
+    )
     expect_equal(nrow(catalog), 1L)
     expect_identical(calls$types, c("Dataset", "File"))
     expect_equal(catalog$variable_id, "tas")
     # DuckDB rejects a differently configured connection while a writable
     # handle to the same database is still open in this process.
-    connection <- ddb_connect(file.path(root, "manifest.duckdb"), read_only = TRUE)
+    connection <- ddb_connect(
+        file.path(root, "manifest.duckdb"),
+        read_only = TRUE
+    )
     expect_s4_class(connection, "duckdb_connection")
     ddb_disconnect(connection, shutdown = TRUE)
 })
@@ -116,20 +175,37 @@ test_that("discovery restores reporter ownership after failures and interrupts",
     for (interrupted in c(FALSE, TRUE)) {
         reporter <- NULL
         test_local_dependencies(list(availability = function(...) {
-            reporter <<- shift__current_reporter()
+            reporter <<- shift_run__current_reporter()
             expect_null(reporter$context()$request_started_at)
-            reporter$heartbeat("Waiting for catalog response",
-                details = list(request_started_at = as.numeric(Sys.time()), records_received = 12L))
-            if (interrupted) stop(structure(list(message = "interrupted", call = NULL),
-                class = c("interrupt", "condition")))
+            reporter$heartbeat(
+                "Waiting for catalog response",
+                details = list(
+                    request_started_at = as.numeric(Sys.time()),
+                    records_received = 12L
+                )
+            )
+            if (interrupted) {
+                stop(structure(
+                    list(message = "interrupted", call = NULL),
+                    class = c("interrupt", "condition")
+                ))
+            }
             stop("catalog unavailable")
         }))
         transforms <- shift_batch__transforms("original_morphing")
-        condition <- tryCatch(shift_batch__discover_models(shift_cmip6(model = 1L,
-            scenarios = "ssp585"), transforms,
-            shift__periods_from_input(list(mid = 2041:2060)), NULL, tempfile(), shift_ui("none")),
-            error = function(e) e, interrupt = function(e) e)
-        expect_null(shift__current_reporter())
+        condition <- tryCatch(
+            shift_batch_ui__discover_models(
+                shift_cmip6(model = 1L, scenarios = "ssp585"),
+                transforms,
+                shift_spec__periods_from_input(list(mid = 2041:2060)),
+                NULL,
+                tempfile(),
+                shift_ui("none")
+            ),
+            error = function(e) e,
+            interrupt = function(e) e
+        )
+        expect_null(shift_run__current_reporter())
         expect_false(is.null(reporter), info = conditionMessage(condition))
         expect_identical(
             reporter$snapshot()$status,
@@ -143,11 +219,11 @@ test_that("discovery restores reporter ownership after failures and interrupts",
 # overall completion from a method or node ordinal.
 test_that("catalog callbacks retain truthful request and cache metrics", {
     withr::local_options(epwshiftr.query.timeout = 300)
-    reporter <- shift__reporter(shift_ui("none"))
+    reporter <- shift_reporter__reporter(shift_ui("none"))
     on.exit(reporter$close(), add = TRUE)
     reporter$operation_started("collect", "Collect CMIP6")
     query <- EsgQuery$new(index_node = "https://example.org")
-    shift__with_query_reporter(reporter, query, "File", {
+    shift_resolve__with_query_reporter(reporter, query, "File", {
         callback <- priv(query)$progress_callback
         callback(list(state = "started"))
         callback(list(state = "completed", downloaded = 128L))
@@ -162,7 +238,7 @@ test_that("catalog callbacks retain truthful request and cache metrics", {
     expect_equal(state$current_details$cache_hits, 1L)
     expect_equal(state$current_details$records_received, 15L)
     state$now_seconds <- state$current_details$request_started_at + 40
-    text <- paste(shift__ui_query_lines(state, 112L), collapse = " ")
+    text <- paste(shift_ui_view__ui_query_lines(state, 112L), collapse = " ")
     expect_match(text, "waiting 40s")
     expect_match(text, "timeout 5m 00s")
     expect_match(text, "last response")
@@ -177,20 +253,38 @@ test_that("catalog callbacks retain truthful request and cache metrics", {
 # progress callback or get counted as a second network response.
 test_that("JSON catalog reads report parsed rows and cache hits separately", {
     cache <- DiskCache$new(tempfile("discovery-cache-"), prune_on_init = FALSE)
-    testthat::local_mocked_bindings(cache__get = function(...) cache,
-        .package = "epwshiftr")
-    testthat::local_mocked_bindings(curl_fetch_memory = function(...) list(
-        content = charToRaw('{"response":{"numFound":2,"docs":[{"id":"a"},{"id":"b"}]}}'),
-        status_code = 200L), .package = "curl")
+    testthat::local_mocked_bindings(
+        cache__get = function(...) cache,
+        .package = "epwshiftr"
+    )
+    testthat::local_mocked_bindings(
+        curl_fetch_memory = function(...) {
+            list(
+                content = charToRaw(
+                    '{"response":{"numFound":2,"docs":[{"id":"a"},{"id":"b"}]}}'
+                ),
+                status_code = 200L
+            )
+        },
+        .package = "curl"
+    )
     events <- list()
     callback <- function(event) events[[length(events) + 1L]] <<- event
-    online <- cache__read_json("https://example.org/catalog", cache = TRUE,
-        progress_callback = callback)
-    cached <- cache__read_json("https://example.org/catalog", cache = TRUE,
-        progress_callback = callback)
+    online <- cache__read_json(
+        "https://example.org/catalog",
+        cache = TRUE,
+        progress_callback = callback
+    )
+    cached <- cache__read_json(
+        "https://example.org/catalog",
+        cache = TRUE,
+        progress_callback = callback
+    )
     expect_equal(online$response, cached$response)
-    expect_identical(vapply(events, `[[`, character(1L), "state"),
-        c("started", "completed", "parsed", "cached"))
+    expect_identical(
+        vapply(events, `[[`, character(1L), "state"),
+        c("started", "completed", "parsed", "cached")
+    )
     expect_equal(events[[3L]]$records, 2L)
     expect_equal(events[[4L]]$records, 2L)
 })
@@ -198,13 +292,19 @@ test_that("JSON catalog reads report parsed rows and cache hits separately", {
 # Standalone receipts retain their box and one result, without duplicating the
 # title, elapsed time, result text, or meaningless single-step flow rail.
 test_that("standalone catalog receipts are concise and unambiguous", {
-    reporter <- shift__reporter(shift_ui("none"))
+    reporter <- shift_reporter__reporter(shift_ui("none"))
     on.exit(reporter$close(), add = TRUE)
-    reporter$operation_started("collect", "Collect CMIP6",
-        context = list(items = c("Collect CMIP6", "input request")))
+    reporter$operation_started(
+        "collect",
+        "Collect CMIP6",
+        context = list(items = c("Collect CMIP6", "input request"))
+    )
     reporter$operation_waiting("12 Dataset and 42 File catalog records indexed")
     for (width in c(48L, 60L, 80L, 112L)) {
-        lines <- cli::ansi_strip(shift__ui_status_lines(reporter$snapshot(), width))
+        lines <- cli::ansi_strip(shift_ui_view__ui_status_lines(
+            reporter$snapshot(),
+            width
+        ))
         text <- paste(lines, collapse = " ")
         expect_match(text, "CATALOG READY")
         expect_equal(sum(grepl("42 File", lines, fixed = TRUE)), 1L)
@@ -221,8 +321,11 @@ test_that("frame writes isolate ANSI state and respect no-color output", {
     for (colors in c(1L, 256L)) {
         withr::local_options(cli.num_colors = colors)
         writes <- character()
-        renderer <- ShiftFrameRenderer$new(output, backend = "frame",
-            writer = function(text) writes <<- c(writes, text))
+        renderer <- ShiftFrameRenderer$new(
+            output,
+            backend = "frame",
+            writer = function(text) writes <<- c(writes, text)
+        )
         renderer$draw(c("Neutral body", cli::col_green("COMPLETED")))
         renderer$commit()
         if (colors > 1L) {

@@ -302,7 +302,7 @@ test_that("offline results are deterministic and do not mutate or query the cata
     original <- data.table::copy(catalog)
     local_mocked_bindings(
         availability__collect = function(...) stop("Unexpected Dataset query"),
-        shift__cmip6_period_coverage = function(...) {
+        shift_resolve__cmip6_period_coverage = function(...) {
             stop("Unexpected File query")
         },
         .package = "epwshiftr"

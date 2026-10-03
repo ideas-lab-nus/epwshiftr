@@ -1,8 +1,7 @@
 #' @include weather-temperature.R component-temperature-epw.R method-bws.R method-btws.R
 NULL
 
-# BWS and BTWS monthly weather workflow {{{
-
+# BWS and BTWS monthly weather workflow
 # The complete backend applies BTWS to temperature and BWS to global
 # shortwave radiation and cloud cover before common EPW physical closure.
 EPW_MORPH_BWS_BTWS_METHODS <- c(
@@ -15,25 +14,44 @@ EPW_MORPH_BWS_BTWS_METHODS <- c(
 # climate variable needed by the complete revised method.
 EPW_MORPH_BWS_BTWS_RULES <- data.table::data.table(
     step = c(
-        "tdb", "glob_rad", "total_cover", "rh", "tdew", "diff_rad",
-        "norm_rad", "opaque_cover"
+        "tdb",
+        "glob_rad",
+        "total_cover",
+        "rh",
+        "tdew",
+        "diff_rad",
+        "norm_rad",
+        "opaque_cover"
     ),
     epw_field = c(
-        "dry_bulb_temperature", "global_horizontal_radiation",
-        "total_sky_cover", "relative_humidity", "dew_point_temperature",
-        "diffuse_horizontal_radiation", "direct_normal_radiation",
+        "dry_bulb_temperature",
+        "global_horizontal_radiation",
+        "total_sky_cover",
+        "relative_humidity",
+        "dew_point_temperature",
+        "diffuse_horizontal_radiation",
+        "direct_normal_radiation",
         "opaque_sky_cover"
     ),
     variable_id = c(
-        "tas,tasmin,tasmax", "rsds", "clt", rep(NA_character_, 5L)
+        "tas,tasmin,tasmax",
+        "rsds",
+        "clt",
+        rep(NA_character_, 5L)
     ),
     optional_variable_id = NA_character_,
     method = c("btws", "bws", "bws", rep("derived", 5L)),
     required = c(rep(TRUE, 3L), rep(FALSE, 5L)),
     derived = c(rep(FALSE, 3L), rep(TRUE, 5L)),
     method_choices = list(
-        "btws", "bws", "bws", "derived", "derived", "derived",
-        "derived", "derived"
+        "btws",
+        "bws",
+        "bws",
+        "derived",
+        "derived",
+        "derived",
+        "derived",
+        "derived"
     )
 )
 
@@ -82,7 +100,10 @@ bws_btws__monthly_climate <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
     required <- c(
-        "variable_id", "value", "units", "frequency"
+        "variable_id",
+        "value",
+        "units",
+        "frequency"
     )
     missing <- setdiff(required, names(data))
     if (length(missing)) {
@@ -206,17 +227,21 @@ bws_btws__monthly_climatology <- function(data, name) {
 
     # Monthly tasmin and tasmax retain the CMIP definitions of monthly averages
     # of daily extrema; pooling years forms the selected-period climatology.
-    monthly <- source[, {
-        finite <- is.finite(.SD[["value"]])
-        list(
-            climatology = if (any(finite)) {
-                mean(as.numeric(.SD[["value"]][finite]))
-            } else {
-                NA_real_
-            },
-            n = sum(finite)
-        )
-    }, by = c("variable_id", "month"), .SDcols = "value"]
+    monthly <- source[,
+        {
+            finite <- is.finite(.SD[["value"]])
+            list(
+                climatology = if (any(finite)) {
+                    mean(as.numeric(.SD[["value"]][finite]))
+                } else {
+                    NA_real_
+                },
+                n = sum(finite)
+            )
+        },
+        by = c("variable_id", "month"),
+        .SDcols = "value"
+    ]
     expected <- data.table::CJ(
         variable_id = variables,
         month = seq_len(12L),
@@ -230,7 +255,8 @@ bws_btws__monthly_climatology <- function(data, name) {
         sort = FALSE
     )
     incomplete <- !is.finite(monthly[["climatology"]]) |
-        is.na(monthly[["n"]]) | monthly[["n"]] < 1L
+        is.na(monthly[["n"]]) |
+        monthly[["n"]] < 1L
     if (any(incomplete)) {
         labels <- sprintf(
             "%s month %d",
@@ -263,15 +289,20 @@ bws_btws__monthly_changes <- function(
         sort = FALSE
     )
     required <- c(
-        "climatology_future", "climatology_historical",
-        "n_future", "n_historical"
+        "climatology_future",
+        "climatology_historical",
+        "n_future",
+        "n_historical"
     )
     missing <- setdiff(required, names(changes))
-    if (length(missing) || nrow(changes) != 60L ||
-        any(!is.finite(changes[["climatology_future"]])) ||
-        any(!is.finite(changes[["climatology_historical"]])) ||
-        any(changes[["n_future"]] < 1L) ||
-        any(changes[["n_historical"]] < 1L)) {
+    if (
+        length(missing) ||
+            nrow(changes) != 60L ||
+            any(!is.finite(changes[["climatology_future"]])) ||
+            any(!is.finite(changes[["climatology_historical"]])) ||
+            any(changes[["n_future"]] < 1L) ||
+            any(changes[["n_historical"]] < 1L)
+    ) {
         cli::cli_abort(
             paste0(
                 "Matching future and historical monthly tas, tasmin, tasmax, ",
@@ -304,11 +335,9 @@ bws_btws__monthly_changes <- function(
         }
     }
 
-    invalid_extrema <- (
-        monthly[["future_maximum"]] < monthly[["future_minimum"]] |
-            monthly[["historical_maximum"]] <
-                monthly[["historical_minimum"]]
-    )
+    invalid_extrema <- (monthly[["future_maximum"]] <
+        monthly[["future_minimum"]] |
+        monthly[["historical_maximum"]] < monthly[["historical_minimum"]])
     if (any(invalid_extrema)) {
         cli::cli_abort(
             paste0(
@@ -388,7 +417,8 @@ bws_btws__monthly_changes <- function(
     clt_scale <- numeric(nrow(monthly))
     clt_scale[!zero_cloud] <-
         monthly[["future_clt_mean"]][!zero_cloud] /
-        monthly[["historical_clt_mean"]][!zero_cloud] - 1
+        monthly[["historical_clt_mean"]][!zero_cloud] -
+        1
     data.table::set(monthly, j = "clt_scale", value = clt_scale)
 
     monthly[]
@@ -398,14 +428,26 @@ bws_btws__monthly_changes <- function(
 # by the shared BTWS reconstruction component.
 bws_btws__daily_temperature_targets <- function(monthly) {
     checkmate::assert_data_frame(monthly)
-    if (nrow(monthly) != 12L ||
-        !identical(sort(as.integer(monthly[["month"]])), seq_len(12L))) {
+    if (
+        nrow(monthly) != 12L ||
+            !identical(sort(as.integer(monthly[["month"]])), seq_len(12L))
+    ) {
         cli::cli_abort("BWS/BTWS monthly changes must contain all 12 months.")
     }
 
     month_days <- c(
-        31L, 28L, 31L, 30L, 31L, 30L,
-        31L, 31L, 30L, 31L, 30L, 31L
+        31L,
+        28L,
+        31L,
+        30L,
+        31L,
+        30L,
+        31L,
+        31L,
+        30L,
+        31L,
+        30L,
+        31L
     )
     target <- data.table::data.table(
         target_day = seq_len(365L),
@@ -414,14 +456,17 @@ bws_btws__daily_temperature_targets <- function(monthly) {
     )
     target <- merge(
         target,
-        monthly[, c(
-            "month",
-            "mean_delta",
-            "minimum_delta",
-            "maximum_delta",
-            "dtr_delta",
-            "dtr_status"
-        ), with = FALSE],
+        monthly[,
+            c(
+                "month",
+                "mean_delta",
+                "minimum_delta",
+                "maximum_delta",
+                "dtr_delta",
+                "dtr_status"
+            ),
+            with = FALSE
+        ],
         by = "month",
         all.x = TRUE,
         sort = FALSE
@@ -430,8 +475,13 @@ bws_btws__daily_temperature_targets <- function(monthly) {
     data.table::setcolorder(
         target,
         c(
-            "target_day", "annual_phase", "month",
-            "mean_delta", "minimum_delta", "maximum_delta", "dtr_delta",
+            "target_day",
+            "annual_phase",
+            "month",
+            "mean_delta",
+            "minimum_delta",
+            "maximum_delta",
+            "dtr_delta",
             "dtr_status"
         )
     )
@@ -517,15 +567,18 @@ bws_btws__signal_apply_group <- function(
     list(
         baseline = inputs$weather_template,
         targets = bws_btws__daily_temperature_targets(monthly),
-        monthly_bws_targets = monthly[, c(
-            "month",
-            "rsds_delta",
-            "clt_scale",
-            "future_rsds_mean",
-            "historical_rsds_mean",
-            "future_clt_mean",
-            "historical_clt_mean"
-        ), with = FALSE]
+        monthly_bws_targets = monthly[,
+            c(
+                "month",
+                "rsds_delta",
+                "clt_scale",
+                "future_rsds_mean",
+                "historical_rsds_mean",
+                "future_clt_mean",
+                "historical_clt_mean"
+            ),
+            with = FALSE
+        ]
     )
 }
 
@@ -613,5 +666,3 @@ bws_btws__pipeline <- function() {
         output = "bws_btws_epw_result"
     ))
 }
-
-# }}}

@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
 test_local_dependencies(list(
     availability = test_cmip6_availability,
-    shift__cmip6_period_coverage = test_cmip6_period_coverage
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 test_that("ShiftRequest print shares the ESGF query renderer", {
@@ -117,7 +117,7 @@ test_that("Shift display paths compact Windows temp roots lexically", {
         "shift-print-output"
     )
     expect_identical(
-        shift__display_path(path, temp_root = root),
+        shift_print__display_path(path, temp_root = root),
         "<tempdir>/shift-print-output"
     )
 })
@@ -129,7 +129,11 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
     transform <- monthly_transform("original_morphing")
     climate_spec <- shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585"))
     plan <- shift_plan(
-        request = shift__request_from_cmip6(climate_spec, periods, transform),
+        request = shift_spec__request_from_cmip6(
+            climate_spec,
+            periods,
+            transform
+        ),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
         transform = transform,
@@ -153,7 +157,7 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
         attempts = c(1L, 1L, 0L, 2L),
         last_error = c(NA, NA, NA, "connection failed")
     )
-    download <- shift_stage_new(
+    download <- shift_stage__new(
         ShiftDownload,
         "download",
         ids = list(session_id = "session-print"),
@@ -172,7 +176,7 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
         output_rows = c(132L, 132L, 0L),
         last_error = c(NA, NA, "missing years")
     )
-    climate <- shift_stage_new(
+    climate <- shift_stage__new(
         ShiftClimate,
         "climate",
         meta = list(site = site, periods = periods, coverage = coverage)
@@ -187,7 +191,7 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
         row_count = 8760L,
         output_path = sprintf("morph/case-%d.parquet", 1:4)
     )
-    morphed <- shift_stage_new(
+    morphed <- shift_stage__new(
         ShiftMorphed,
         "morphed",
         meta = list(
@@ -206,7 +210,7 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
         export_path = sprintf("/exports/future-%02d.epw", 1:12),
         created_at = as.POSIXct("2026-01-01", tz = "UTC")
     )
-    outputs <- shift_stage_new(
+    outputs <- shift_stage__new(
         ShiftOutputs,
         "outputs",
         meta = list(outputs = output_rows, export_dir = "/exports")
@@ -272,10 +276,10 @@ test_that("ShiftRun print refreshes state and reuses the static dashboard", {
         dry_run = TRUE
     )@meta$children[[1L]]
     store_path <- plan@store_path
-    run_id <- shift__run_register(plan)
+    run_id <- shift_job__run_register(plan)
     stale <- shift_run_get(run_id, store = store_path)
     store <- shift_store(plan)
-    shift__run_update(
+    shift_job__run_update(
         store,
         run_id,
         status = "waiting",
@@ -295,14 +299,14 @@ test_that("ShiftRun print refreshes state and reuses the static dashboard", {
         72L
     )
 
-    view <- shift__ui_run_view(
+    view <- shift_ui_view__ui_run_view(
         shift_refresh(stale),
         width = 72L,
         detail = "normal",
         motion = "none"
     )
     direct <- capture.output(
-        shift__ui_print_view(view, include_tables = TRUE),
+        shift_ui_view__ui_print_view(view, include_tables = TRUE),
         type = "message"
     )
     expect_identical(printed, direct)
@@ -360,7 +364,7 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
         details_json = character(),
         created_at = as.POSIXct(character(), tz = "UTC")
     )
-    run <- shift_stage_new(
+    run <- shift_stage__new(
         ShiftRun,
         "run",
         ids = list(run_id = "run_print_12345678"),
@@ -394,9 +398,12 @@ test_that("shift_ui() validates presentation options without changing scientific
     expect_error(shift_ui(motion = "invalid"), "arg")
     expect_error(shift_ui(refresh = 0.01), "not >= 0.05")
     expect_error(shift_ui(heartbeat = -1), "not >= 0")
-    expect_equal(shift__ui_mode(shift_ui("none")), "none")
-    expect_equal(shift__ui_motion(shift_ui("dynamic", motion = "auto")), "full")
-    expect_equal(shift__ui_motion(shift_ui("log", motion = "full")), "none")
+    expect_equal(shift_ui__ui_mode(shift_ui("none")), "none")
+    expect_equal(
+        shift_ui__ui_motion(shift_ui("dynamic", motion = "auto")),
+        "full"
+    )
+    expect_equal(shift_ui__ui_motion(shift_ui("log", motion = "full")), "none")
 
     store <- tempfile("shift-ui-store-")
     output <- tempfile("shift-ui-output-")
@@ -422,8 +429,8 @@ test_that("shift_ui() validates presentation options without changing scientific
         )@meta$children[[1L]]
     }
     expect_identical(
-        shift__plan_spec(make_plan(shift_ui("none"))),
-        shift__plan_spec(make_plan(shift_ui(
+        shift_persist__plan_spec(make_plan(shift_ui("none"))),
+        shift_persist__plan_spec(make_plan(shift_ui(
             "log",
             detail = "debug",
             motion = "full",
@@ -438,7 +445,7 @@ test_that("ShiftReporter persists structured milestones while none mode stays si
 
     store <- EsgStore$new(tempfile("shift-reporter-store-"))
     on.exit(store$close(), add = TRUE)
-    reporter <- shift__reporter(
+    reporter <- shift_reporter__reporter(
         shift_ui("none"),
         store = store,
         run_id = "reporter-run"
@@ -483,7 +490,7 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
     compacts <- character()
     closes <- 0L
     testthat::local_mocked_bindings(
-        shift__ui_renderer = function(...) {
+        shift_tui__ui_renderer = function(...) {
             list(
                 draw = function(lines, compact = NULL) {
                     frames[[length(frames) + 1L]] <<- lines
@@ -500,7 +507,7 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
         .package = "epwshiftr"
     )
 
-    reporter <- shift__reporter(shift_ui("dynamic", heartbeat = 0))
+    reporter <- shift_reporter__reporter(shift_ui("dynamic", heartbeat = 0))
     reporter$stage_started("resolve", "Resolving inputs.")
     reporter$unit_started("Trying node one", current = 1L, total = 2L)
     expect_silent(reporter$heartbeat(
@@ -526,7 +533,7 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
 
 test_that("ShiftReporter falls back to logs when frame painting fails", {
     testthat::local_mocked_bindings(
-        shift__ui_renderer = function(...) {
+        shift_tui__ui_renderer = function(...) {
             list(
                 draw = function(...) FALSE,
                 suspend = function(code) code(),
@@ -535,7 +542,7 @@ test_that("ShiftReporter falls back to logs when frame painting fails", {
         },
         .package = "epwshiftr"
     )
-    reporter <- shift__reporter(shift_ui("dynamic"))
+    reporter <- shift_reporter__reporter(shift_ui("dynamic"))
 
     expect_message(
         reporter$stage_started("resolve", "Resolving inputs."),

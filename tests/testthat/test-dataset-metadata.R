@@ -223,7 +223,7 @@ test_that("batch prefetch shares selected bounds across value windows", {
         }
     )
     expect_equal(
-        shift_batch__prefetch_acquisition(
+        shift_batch_window__prefetch_acquisition(
             withr::local_tempdir(),
             acquisition,
             consumer
@@ -238,7 +238,7 @@ test_that("batch prefetch shares selected bounds across value windows", {
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
     bounds_counts <- list()
     expect_equal(
-        shift_batch__prefetch_acquisition(
+        shift_batch_window__prefetch_acquisition(
             withr::local_tempdir(),
             acquisition,
             consumer

@@ -6,7 +6,7 @@ NULL
 # Return the exact execution-stage sequence implied by one plan. Reporter stage
 # events persist the next stage so a background watch does not need to rebuild
 # the scientific plan merely to explain what comes next.
-shift__ui_stage_sequence <- function(plan) {
+shift_ui_state__ui_stage_sequence <- function(plan) {
     reference <- plan@meta$reference
     reference_expected <- S7::S7_inherits(reference, ShiftReferenceSpec) &&
         identical(reference@mode, "historical")
@@ -24,26 +24,26 @@ shift__ui_stage_sequence <- function(plan) {
 # Extract the compact scientific context carried inside every foreground frame.
 # Keeping this separate from the startup receipt lets dynamic mode replace its
 # first frame instead of leaving a duplicated five-line transcript behind.
-shift__ui_plan_context <- function(plan) {
+shift_ui_state__ui_plan_context <- function(plan) {
     request <- plan@meta$request@meta
     model <- paste(
-        as.character(shift_coalesce(request$source, "<model>")),
+        as.character(shift_stage__coalesce(request$source, "<model>")),
         collapse = ", "
     )
     scenarios <- paste(
-        as.character(shift_coalesce(
+        as.character(shift_stage__coalesce(
             request$experiment,
             "<scenario>"
         )),
         collapse = " + "
     )
-    reference <- shift__ui_reference(plan@meta$reference)
+    reference <- shift_ui_view__ui_reference(plan@meta$reference)
     expected <- nrow(plan@meta$expected_cases)
     transform_label <- plan@meta$transform@label
     items <- c(
         model,
         scenarios,
-        shift__ui_periods(plan@meta$periods),
+        shift_ui_view__ui_periods(plan@meta$periods),
         sprintf("%s / %s", transform_label, reference),
         if (identical(plan@meta$transform@output_type, "multi_year")) {
             sprintf("%d cases; one EPW per weather year", expected)
@@ -51,33 +51,39 @@ shift__ui_plan_context <- function(plan) {
             sprintf("%d EPW%s", expected, if (expected == 1L) "" else "s")
         },
         if (!is.null(plan@meta$observed_reference)) {
-            paste("Observed", shift__ui_reference(plan@meta$observed_reference))
+            paste(
+                "Observed",
+                shift_ui_view__ui_reference(plan@meta$observed_reference)
+            )
         }
     )
     list(
         line = paste(items, collapse = " \u00b7 "),
         items = items,
-        selection = shift__ui_selection(plan),
-        output = shift_coalesce(plan@meta$epw$export_dir, "<output directory>")
+        selection = shift_ui_view__ui_selection(plan),
+        output = shift_stage__coalesce(
+            plan@meta$epw$export_dir,
+            "<output directory>"
+        )
     )
 }
 
 # Select the stage-specific count used by the determinate progress row.
-shift__ui_progress_values <- function(state) {
-    details <- shift_coalesce(state$current_details, list())
-    current <- shift__ui_metric_number(
+shift_ui_state__ui_progress_values <- function(state) {
+    details <- shift_stage__coalesce(state$current_details, list())
+    current <- shift_ui_view__ui_metric_number(
         details,
         "current",
-        shift_coalesce(state$unit_current, NA_real_)
+        shift_stage__coalesce(state$unit_current, NA_real_)
     )
-    total <- shift__ui_metric_number(
+    total <- shift_ui_view__ui_metric_number(
         details,
         "total",
-        shift_coalesce(state$unit_total, NA_real_)
+        shift_stage__coalesce(state$unit_total, NA_real_)
     )
     if (identical(state$stage, "coverage")) {
-        current <- as.numeric(shift_coalesce(state$cases_ready, 0L))
-        total <- as.numeric(shift_coalesce(state$cases_total, 0L))
+        current <- as.numeric(shift_stage__coalesce(state$cases_ready, 0L))
+        total <- as.numeric(shift_stage__coalesce(state$cases_total, 0L))
     } else if (
         !identical(state$stage, "resolve") &&
             identical(details$phase, "unit") &&
@@ -90,46 +96,10 @@ shift__ui_progress_values <- function(state) {
     list(current = current, total = total)
 }
 
-# Derive terminal facts from persisted cases and output manifests. A method's
-# multi-year files never inflate the number of completed scientific cases.
-shift__ui_completion <- function(cases, outputs, diagnostics) {
-    warnings <- diagnostics[diagnostics$severity == "warning"]
-    roles <- if (nrow(outputs) && "provenance_json" %in% names(outputs)) {
-        tryCatch(
-            jsonlite::fromJSON(outputs$provenance_json[[
-                1L
-            ]])$weather_field_roles,
-            error = function(error) NULL
-        )
-    } else {
-        NULL
-    }
-    list(
-        result_summary = sprintf(
-            "%d/%d cases completed \u00b7 %d EPW files \u00b7 %d warnings",
-            sum(cases$status == "completed"),
-            nrow(cases),
-            nrow(outputs),
-            nrow(warnings)
-        ),
-        warning_messages = unique(warnings$message),
-        field_summary = if (is.null(roles)) {
-            NULL
-        } else {
-            sprintf(
-                "%d transformed \u00b7 %d derived \u00b7 %d physically closed \u00b7 %d inherited",
-                length(roles$transformed_fields),
-                length(roles$derived_fields),
-                length(roles$physically_closed_fields),
-                length(roles$inherited_fields)
-            )
-        }
-    )
-}
 
 # Decode persisted event details without allowing a malformed historical event
 # to break shift_watch() for the rest of an otherwise readable run.
-shift__ui_event_details <- function(events) {
+shift_ui_state__ui_event_details <- function(events) {
     if (!nrow(events)) {
         return(list())
     }
@@ -151,7 +121,7 @@ shift__ui_event_details <- function(events) {
 
 # Rebuild the planned stage route from the persisted scientific specification
 # before a queued worker has emitted its first reporter event.
-shift__ui_stage_sequence_from_row <- function(row) {
+shift_ui_state__ui_stage_sequence_from_row <- function(row) {
     row <- data.table::as.data.table(row)
     if (
         !nrow(row) ||
@@ -168,25 +138,31 @@ shift__ui_stage_sequence_from_row <- function(row) {
     if (is.null(spec)) {
         return(character())
     }
-    task <- as.character(shift_coalesce(spec$task, "future_epw"))[[1L]]
+    task <- as.character(shift_stage__coalesce(spec$task, "future_epw"))[[1L]]
     if (!identical(task, "future_epw")) {
-        current <- as.character(shift_coalesce(row$current_stage[[1L]], task))
+        current <- as.character(shift_stage__coalesce(
+            row$current_stage[[1L]],
+            task
+        ))
         return(current)
     }
     reference_mode <- if (is.null(spec$reference)) {
         "none"
     } else {
-        as.character(shift_coalesce(spec$reference$mode, "none"))[[1L]]
+        as.character(shift_stage__coalesce(spec$reference$mode, "none"))[[1L]]
     }
     observed_reference_mode <- if (is.null(spec$observed_reference)) {
         "none"
     } else {
-        as.character(shift_coalesce(
+        as.character(shift_stage__coalesce(
             spec$observed_reference$mode,
             "none"
         ))[[1L]]
     }
-    download <- as.character(shift_coalesce(spec$control$download, "auto"))[[
+    download <- as.character(shift_stage__coalesce(
+        spec$control$download,
+        "auto"
+    ))[[
         1L
     ]]
     c(
@@ -205,7 +181,7 @@ shift__ui_stage_sequence_from_row <- function(row) {
 
 # Format the named period list stored in a canonical workflow specification
 # without reconstructing a complete ShiftPlan in watch clients.
-shift__ui_periods_from_spec <- function(periods) {
+shift_ui_state__ui_periods_from_spec <- function(periods) {
     if (is.null(periods) || !length(periods)) {
         return("no periods")
     }
@@ -244,8 +220,8 @@ shift__ui_periods_from_spec <- function(periods) {
 
 # Describe a persisted reference using only explicit values in the run spec;
 # this display helper never infers a historical reference from missing data.
-shift__ui_reference_from_spec <- function(reference) {
-    mode <- as.character(shift_coalesce(reference$mode, "none"))[[1L]]
+shift_ui_state__ui_reference_from_spec <- function(reference) {
+    mode <- as.character(shift_stage__coalesce(reference$mode, "none"))[[1L]]
     if (identical(mode, "none")) {
         return("no reference")
     }
@@ -261,7 +237,7 @@ shift__ui_reference_from_spec <- function(reference) {
         ))
     }
     if (identical(mode, "historical")) {
-        periods <- shift__ui_periods_from_spec(reference$periods)
+        periods <- shift_ui_state__ui_periods_from_spec(reference$periods)
         periods <- sub("^[^(]+ \\(", "", periods)
         periods <- sub("\\)$", "", periods)
         return(paste("historical", periods))
@@ -271,7 +247,7 @@ shift__ui_reference_from_spec <- function(reference) {
 
 # Rebuild the one-line dashboard context from persisted intent so foreground,
 # R watch, and CLI watch retain the same visual hierarchy across sessions.
-shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
+shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     row <- data.table::as.data.table(row)
     if (
         !nrow(row) ||
@@ -288,10 +264,13 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     if (is.null(spec)) {
         return(list())
     }
-    task <- as.character(shift_coalesce(spec$task, "future_epw"))[[1L]]
+    task <- as.character(shift_stage__coalesce(spec$task, "future_epw"))[[1L]]
     if (!identical(task, "future_epw")) {
-        current <- as.character(shift_coalesce(row$current_stage[[1L]], task))
-        label <- shift__task_label(current)
+        current <- as.character(shift_stage__coalesce(
+            row$current_stage[[1L]],
+            task
+        ))
+        label <- shift_run__task_label(current)
         return(list(
             title = label,
             line = label,
@@ -299,7 +278,10 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
                 label,
                 sprintf(
                     "store %s",
-                    shift__display_path(shift_coalesce(spec$store, "<store>"))
+                    shift_print__display_path(shift_stage__coalesce(
+                        spec$store,
+                        "<store>"
+                    ))
                 )
             ),
             selection = NULL,
@@ -310,28 +292,28 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
             }
         ))
     }
-    climate <- shift_coalesce(spec$climate, spec$request)
+    climate <- shift_stage__coalesce(spec$climate, spec$request)
     model <- paste(
-        as.character(shift_coalesce(
+        as.character(shift_stage__coalesce(
             climate$model,
             climate$source
         )),
         collapse = ", "
     )
     scenarios <- paste(
-        as.character(shift_coalesce(
+        as.character(shift_stage__coalesce(
             climate$scenarios,
             climate$experiment
         )),
         collapse = " + "
     )
-    transform <- shift_coalesce(spec$transform$method, "transform")
-    reference <- shift__ui_reference_from_spec(spec$reference)
+    transform <- shift_stage__coalesce(spec$transform$method, "transform")
+    reference <- shift_ui_state__ui_reference_from_spec(spec$reference)
     expected <- as.integer(cases_total)
     line <- c(
         if (nzchar(model)) model,
         if (nzchar(scenarios)) scenarios,
-        shift__ui_periods_from_spec(spec$periods),
+        shift_ui_state__ui_periods_from_spec(spec$periods),
         sprintf("%s / %s", transform, reference),
         if (expected > 0L) sprintf("%d cases", expected),
         if (
@@ -340,12 +322,15 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
         ) {
             paste(
                 "Observed",
-                shift__ui_reference_from_spec(spec$observed_reference)
+                shift_ui_state__ui_reference_from_spec(spec$observed_reference)
             )
         }
     )
-    member_value <- shift_coalesce(spec$climate$member, spec$request$variant)
-    grid_value <- shift_coalesce(
+    member_value <- shift_stage__coalesce(
+        spec$climate$member,
+        spec$request$variant
+    )
+    grid_value <- shift_stage__coalesce(
         spec$climate$grid,
         spec$request$filters$grid_label
     )
@@ -364,7 +349,10 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     } else {
         sprintf("grid %s", paste(grid_value, collapse = ", "))
     }
-    tables <- sprintf("tables %s", shift__format_cmip6_tables(table_value))
+    tables <- sprintf(
+        "tables %s",
+        shift_print__format_cmip6_tables(table_value)
+    )
     list(
         line = paste(line, collapse = " \u00b7 "),
         items = line,
@@ -379,11 +367,11 @@ shift__ui_plan_context_from_row <- function(row, cases_total = 0L) {
 
 # Reconstruct the same semantic live state from persisted tables that the
 # foreground reporter maintains in memory.
-shift__ui_table_state <- function(row, events, cases) {
+shift_ui_state__ui_table_state <- function(row, events, cases) {
     row <- data.table::as.data.table(row)
     events <- data.table::as.data.table(events)
     cases <- data.table::as.data.table(cases)
-    details <- shift__ui_event_details(events)
+    details <- shift_ui_state__ui_event_details(events)
     stage <- row$current_stage[[1L]]
     stage_indices <- which(vapply(
         details,
@@ -452,11 +440,11 @@ shift__ui_table_state <- function(row, events, cases) {
         character(1L)
     ))
     completed_stages <- completed_stages[!is.na(completed_stages)]
-    started_at <- shift_coalesce(
+    started_at <- shift_stage__coalesce(
         row$started_at[[1L]],
         as.POSIXct(NA, tz = "UTC")
     )
-    stopped_at <- shift_coalesce(
+    stopped_at <- shift_stage__coalesce(
         row$completed_at[[1L]],
         as.POSIXct(NA, tz = "UTC")
     )
@@ -494,12 +482,12 @@ shift__ui_table_state <- function(row, events, cases) {
     }
     stage_details <- if (is.na(stage_index)) list() else details[[stage_index]]
     unit_details <- if (is.na(unit_index)) list() else details[[unit_index]]
-    stage_sequence <- as.character(shift_coalesce(
+    stage_sequence <- as.character(shift_stage__coalesce(
         stage_details$stage_sequence,
         character()
     ))
     if (!length(stage_sequence)) {
-        stage_sequence <- shift__ui_stage_sequence_from_row(row)
+        stage_sequence <- shift_ui_state__ui_stage_sequence_from_row(row)
     }
     fallback_stage_message <- switch(
         row$status[[1L]],
@@ -512,7 +500,7 @@ shift__ui_table_state <- function(row, events, cases) {
         stopping = "Waiting for cancellation boundary",
         "Waiting for next workflow event"
     )
-    plan_context <- shift__ui_plan_context_from_row(row, nrow(cases))
+    plan_context <- shift_ui_state__ui_plan_context_from_row(row, nrow(cases))
     output_paths <- if ("export_path" %in% names(cases)) {
         as.character(cases$export_path)
     } else {
@@ -527,7 +515,7 @@ shift__ui_table_state <- function(row, events, cases) {
                 identical(value$unit_type, "epw_export") &&
                     isTRUE(value$outcome %in% c("completed", "skipped"))
             ) {
-                as.integer(shift_coalesce(value$current, 0L))
+                as.integer(shift_stage__coalesce(value$current, 0L))
             } else {
                 0L
             }
@@ -543,7 +531,7 @@ shift__ui_table_state <- function(row, events, cases) {
     ))
     list(
         run_id = row$run_id[[1L]],
-        task_label = shift_coalesce(plan_context$title, "Future EPW"),
+        task_label = shift_stage__coalesce(plan_context$title, "Future EPW"),
         status = row$status[[1L]],
         stage = stage,
         stage_message = if (is.na(stage_index)) {
@@ -597,7 +585,7 @@ shift__ui_table_state <- function(row, events, cases) {
         } else {
             as.character(events$status[recent_indices])
         },
-        node_rows = shift__ui_event_nodes(events),
+        node_rows = shift_ui_state__ui_event_nodes(events),
         failure_details = if (is.na(failure_index)) {
             list()
         } else {
@@ -608,9 +596,9 @@ shift__ui_table_state <- function(row, events, cases) {
 }
 
 # Reconstruct the resolver-attempt table from terminal index-node events.
-shift__ui_event_nodes <- function(events) {
+shift_ui_state__ui_event_nodes <- function(events) {
     events <- data.table::as.data.table(events)
-    details <- shift__ui_event_details(events)
+    details <- shift_ui_state__ui_event_details(events)
     rows <- lapply(seq_along(details), function(i) {
         value <- details[[i]]
         if (
@@ -621,22 +609,25 @@ shift__ui_event_nodes <- function(events) {
             return(NULL)
         }
         data.table::data.table(
-            node = shift__node_label(value$node),
-            future = shift_coalesce(value$future_files, NA_integer_),
-            reference = shift_coalesce(value$reference_files, NA_integer_),
+            node = shift_ui_view__node_label(value$node),
+            future = shift_stage__coalesce(value$future_files, NA_integer_),
+            reference = shift_stage__coalesce(
+                value$reference_files,
+                NA_integer_
+            ),
             outcome = as.character(events$status[[i]]),
             duration = if (is.null(value$elapsed_seconds)) {
                 "\u2014"
             } else {
-                shift__format_elapsed(value$elapsed_seconds)
+                shift_ui_view__format_elapsed(value$elapsed_seconds)
             },
             result = if (events$status[[i]] %in% c("completed", "skipped")) {
-                shift_coalesce(value$result, "selected")
+                shift_stage__coalesce(value$result, "selected")
             } else {
-                error <- shift_coalesce(value$error, events$message[[i]])
-                kind <- shift_coalesce(
+                error <- shift_stage__coalesce(value$error, events$message[[i]])
+                kind <- shift_stage__coalesce(
                     value$error_kind,
-                    shift__ui_error_kind(error)
+                    shift_ui_view__ui_error_kind(error)
                 )
                 sprintf("%s: %s", kind, error)
             }
@@ -647,7 +638,7 @@ shift__ui_event_nodes <- function(events) {
 
 # Merge transient progress into a persisted run state. The run status remains
 # authoritative when a cancellation arrives after the worker's last frame.
-shift__ui_live_state <- function(row, state, ui_state = NULL) {
+shift_ui_state__ui_live_state <- function(row, state, ui_state = NULL) {
     if (
         !length(ui_state) ||
             !nrow(row) ||
@@ -662,7 +653,7 @@ shift__ui_live_state <- function(row, state, ui_state = NULL) {
         state$elapsed_seconds <- max(
             0,
             as.numeric(difftime(
-                shift__watch_now(),
+                shift_job__watch_now(),
                 row$started_at[[1L]],
                 units = "secs"
             ))
@@ -675,7 +666,7 @@ shift__ui_live_state <- function(row, state, ui_state = NULL) {
 # client cannot silently lose milestones when more than one page arrives
 # between polls. A missing cursor is reported separately because bounded live
 # sidecars may legitimately have discarded older events.
-shift__ui_event_delta <- function(
+shift_ui_state__ui_event_delta <- function(
     events,
     last_event_id = NA_character_,
     initial_limit = 10L,

@@ -66,9 +66,11 @@ WeatherTransformSpec <- S7::new_class(
         status = S7::new_property(S7::class_character)
     ),
     validator = function(self) {
-        if (length(self@scale) != 1L ||
-            is.na(self@scale) ||
-            !self@scale %in% WEATHER_TRANSFORM_SCALES) {
+        if (
+            length(self@scale) != 1L ||
+                is.na(self@scale) ||
+                !self@scale %in% WEATHER_TRANSFORM_SCALES
+        ) {
             return("`scale` must be `monthly`, `daily`, or `hourly`.")
         }
         for (property in c(
@@ -88,9 +90,11 @@ WeatherTransformSpec <- S7::new_class(
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
-        if (length(self@recipe_version) != 1L ||
-            is.na(self@recipe_version) ||
-            self@recipe_version < 1L) {
+        if (
+            length(self@recipe_version) != 1L ||
+                is.na(self@recipe_version) ||
+                self@recipe_version < 1L
+        ) {
             return("`recipe_version` must be one positive integer.")
         }
         if (!self@evidence %in% WEATHER_TRANSFORM_EVIDENCE) {
@@ -99,24 +103,35 @@ WeatherTransformSpec <- S7::new_class(
         if (!self@status %in% WEATHER_RECIPE_STATUSES) {
             return("`status` must use one supported recipe status.")
         }
-        if (!length(self@references) || anyNA(self@references) ||
-            any(!nzchar(self@references)) || anyDuplicated(self@references)) {
+        if (
+            !length(self@references) ||
+                anyNA(self@references) ||
+                any(!nzchar(self@references)) ||
+                anyDuplicated(self@references)
+        ) {
             return(
                 "`references` must contain unique, non-empty scientific references."
             )
         }
-        if (length(self@options) &&
-            (is.null(names(self@options)) || any(!nzchar(names(self@options))) ||
-                anyDuplicated(names(self@options)))) {
+        if (
+            length(self@options) &&
+                (is.null(names(self@options)) ||
+                    any(!nzchar(names(self@options))) ||
+                    anyDuplicated(names(self@options)))
+        ) {
             return("`options` must be uniquely named scientific settings.")
         }
-        if (is.null(names(self@required_inputs)) ||
-            any(!nzchar(names(self@required_inputs)))) {
+        if (
+            is.null(names(self@required_inputs)) ||
+                any(!nzchar(names(self@required_inputs)))
+        ) {
             return("`required_inputs` must be a named role contract.")
         }
-        if (length(self@optional_inputs) &&
-            (is.null(names(self@optional_inputs)) ||
-                any(!nzchar(names(self@optional_inputs))))) {
+        if (
+            length(self@optional_inputs) &&
+                (is.null(names(self@optional_inputs)) ||
+                    any(!nzchar(names(self@optional_inputs))))
+        ) {
             return("`optional_inputs` must be a named role contract.")
         }
         for (contract_name in c("required_inputs", "optional_inputs")) {
@@ -129,11 +144,13 @@ WeatherTransformSpec <- S7::new_class(
             }
             for (role in names(contract)) {
                 requirement <- contract[[role]]
-                if (!S7::S7_inherits(
-                    requirement,
-                    WeatherInputRequirement
-                ) ||
-                    !identical(requirement@role, role)) {
+                if (
+                    !S7::S7_inherits(
+                        requirement,
+                        WeatherInputRequirement
+                    ) ||
+                        !identical(requirement@role, role)
+                ) {
                     return(sprintf(
                         "`%s` role `%s` must contain a matching WeatherInputRequirement.",
                         contract_name,
@@ -156,9 +173,12 @@ WeatherTransformSpec <- S7::new_class(
             "optional_variable_frequencies"
         )) {
             value <- S7::prop(self, property)
-            if (length(value) &&
-                (is.null(names(value)) || any(!nzchar(names(value))) ||
-                    anyDuplicated(names(value)))) {
+            if (
+                length(value) &&
+                    (is.null(names(value)) ||
+                        any(!nzchar(names(value))) ||
+                        anyDuplicated(names(value)))
+            ) {
                 return(sprintf(
                     "`%s` must be uniquely named by input role.",
                     property
@@ -173,18 +193,22 @@ WeatherTransformSpec <- S7::new_class(
             names(self@optional_inputs),
             "weather_template"
         )
-        if (!setequal(
-            names(self@source_frequencies),
-            required_frequency_roles
-        )) {
+        if (
+            !setequal(
+                names(self@source_frequencies),
+                required_frequency_roles
+            )
+        ) {
             return(
                 "`source_frequencies` must match required climate input roles."
             )
         }
-        if (!setequal(
-            names(self@optional_source_frequencies),
-            optional_frequency_roles
-        )) {
+        if (
+            !setequal(
+                names(self@optional_source_frequencies),
+                optional_frequency_roles
+            )
+        ) {
             return(
                 "`optional_source_frequencies` must match optional climate input roles."
             )
@@ -193,27 +217,35 @@ WeatherTransformSpec <- S7::new_class(
             required_frequency_roles,
             optional_frequency_roles
         )
-        if (length(setdiff(names(self@optional_variables), known_roles)) ||
-            !setequal(
-                names(self@optional_variable_frequencies),
-                names(self@optional_variables)
-            )) {
+        if (
+            length(setdiff(names(self@optional_variables), known_roles)) ||
+                !setequal(
+                    names(self@optional_variable_frequencies),
+                    names(self@optional_variables)
+                )
+        ) {
             return(
                 "Optional variable metadata must use declared climate input roles."
             )
         }
         for (role in names(self@optional_variables)) {
             variables <- self@optional_variables[[role]]
-            if (!is.character(variables) || !length(variables) ||
-                anyNA(variables) || any(!nzchar(variables)) ||
-                anyDuplicated(variables)) {
+            if (
+                !is.character(variables) ||
+                    !length(variables) ||
+                    anyNA(variables) ||
+                    any(!nzchar(variables)) ||
+                    anyDuplicated(variables)
+            ) {
                 return(
                     "Optional source variables must be unique, non-empty variable IDs."
                 )
             }
             frequencies <- self@optional_variable_frequencies[[role]]
-            if (is.null(names(frequencies)) ||
-                !setequal(names(frequencies), variables)) {
+            if (
+                is.null(names(frequencies)) ||
+                    !setequal(names(frequencies), variables)
+            ) {
                 return(
                     "Every optional source variable must declare its frequency."
                 )
@@ -227,8 +259,12 @@ WeatherTransformSpec <- S7::new_class(
             contract <- S7::prop(self, property)
             for (role in names(contract)) {
                 frequencies <- unlist(contract[[role]], use.names = FALSE)
-                if (!is.character(frequencies) || !length(frequencies) ||
-                    anyNA(frequencies) || any(!nzchar(frequencies))) {
+                if (
+                    !is.character(frequencies) ||
+                        !length(frequencies) ||
+                        anyNA(frequencies) ||
+                        any(!nzchar(frequencies))
+                ) {
                     return(sprintf(
                         "`%s` must contain non-empty source frequencies.",
                         property
@@ -239,17 +275,21 @@ WeatherTransformSpec <- S7::new_class(
         if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
-        if (anyNA(self@stochastic_variables) ||
-            any(!nzchar(self@stochastic_variables)) ||
-            anyDuplicated(self@stochastic_variables)) {
+        if (
+            anyNA(self@stochastic_variables) ||
+                any(!nzchar(self@stochastic_variables)) ||
+                anyDuplicated(self@stochastic_variables)
+        ) {
             return(
                 "`stochastic_variables` must contain unique, non-empty variable IDs."
             )
         }
-        if (!identical(
-            self@stochastic,
-            length(self@stochastic_variables) > 0L
-        )) {
+        if (
+            !identical(
+                self@stochastic,
+                length(self@stochastic_variables) > 0L
+            )
+        ) {
             return(paste(
                 "`stochastic` must agree with whether",
                 "`stochastic_variables` is non-empty."
@@ -444,8 +484,13 @@ transform__records <- function() {
 transform__validate_records <- function(records) {
     checkmate::assert_list(records, min.len = 1L)
     required_fields <- c(
-        "scale", "method", "recipe", "method_definition", "reconstructions",
-        "reconstruction_labels", "default_reconstruction",
+        "scale",
+        "method",
+        "recipe",
+        "method_definition",
+        "reconstructions",
+        "reconstruction_labels",
+        "default_reconstruction",
         "statistical_grouping"
     )
     method_keys <- character()
@@ -488,10 +533,12 @@ transform__validate_records <- function(records) {
             unique = TRUE,
             names = "unique"
         )
-        if (!identical(
-            names(record$reconstruction_labels),
-            record$reconstructions
-        )) {
+        if (
+            !identical(
+                names(record$reconstruction_labels),
+                record$reconstructions
+            )
+        ) {
             cli::cli_abort(
                 "Weather transformation {.val {record$method}} must label every reconstruction."
             )
@@ -515,8 +562,10 @@ transform__validate_records <- function(records) {
                 "Weather transformation {.val {record$method}} must map each reconstruction to one recipe."
             )
         }
-        if (length(recipes) > 1L &&
-            !identical(names(record$recipe), record$reconstructions)) {
+        if (
+            length(recipes) > 1L &&
+                !identical(names(record$recipe), record$reconstructions)
+        ) {
             cli::cli_abort(
                 "Weather transformation {.val {record$method}} must name recipes by reconstruction."
             )
@@ -548,8 +597,10 @@ transform__validate_records <- function(records) {
             "Weather transform registry contains duplicate public selection tuples."
         )
     }
-    if (anyDuplicated(recipe_names) ||
-        !setequal(recipe_names, WEATHER_RECIPE_DEFAULTS)) {
+    if (
+        anyDuplicated(recipe_names) ||
+            !setequal(recipe_names, WEATHER_RECIPE_DEFAULTS)
+    ) {
         cli::cli_abort(
             paste(
                 "Every built-in canonical recipe must be reachable through",
@@ -588,10 +639,12 @@ transform__validate_records <- function(records) {
             next
         }
 
-        if (!identical(
-            recipe@components$signal,
-            method@implementation_key
-        )) {
+        if (
+            !identical(
+                recipe@components$signal,
+                method@implementation_key
+            )
+        ) {
             cli::cli_abort(
                 "Method and signal component identity disagree for {.val {recipe_name}}."
             )
@@ -699,7 +752,7 @@ transform__validated_signal_settings <- function(
                 "Signal method {.val {method@name}} has no settings profile for {.val {variable}}."
             )
         }
-        override <- shift_coalesce(overrides[[variable]], list())
+        override <- shift_stage__coalesce(overrides[[variable]], list())
         checkmate::assert_list(override, names = "unique")
         invalid <- setdiff(names(override), names(defaults))
         if (length(invalid)) {
@@ -769,8 +822,10 @@ transform__recipe_options <- function(record, options) {
     checkmate::assert_list(options, names = "unique")
     recipe_spec <- recipe__get(record$recipe)
     method <- method__get(recipe_spec@method)
-    if (startsWith(recipe_spec@backend, "daily_adjustment_") ||
-        identical(recipe_spec@backend, "hourly_kernel_qdm")) {
+    if (
+        startsWith(recipe_spec@backend, "daily_adjustment_") ||
+            identical(recipe_spec@backend, "hourly_kernel_qdm")
+    ) {
         return(transform__signal_options(recipe_spec, method, options))
     }
     defaults <- epw_morph_recipe(record$recipe)$options
@@ -788,11 +843,14 @@ transform__recipe_options <- function(record, options) {
 transform__variable_sets <- function(requirements) {
     variable_sets <- list(character())
     for (alternatives in unname(requirements)) {
-        variable_sets <- unlist(lapply(variable_sets, function(current) {
-            lapply(alternatives, function(alternative) {
-                unique(c(current, as.character(alternative)))
-            })
-        }), recursive = FALSE)
+        variable_sets <- unlist(
+            lapply(variable_sets, function(current) {
+                lapply(alternatives, function(alternative) {
+                    unique(c(current, as.character(alternative)))
+                })
+            }),
+            recursive = FALSE
+        )
     }
     unname(variable_sets)
 }
@@ -815,7 +873,10 @@ transform__with_variable_sets <- function(requirement, variable_sets) {
 transform__input_contracts <- function(recipe_spec, recipe) {
     required_inputs <- recipe_spec@required_inputs
     optional_inputs <- recipe_spec@optional_inputs
-    if (!recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
+    if (
+        !recipe$backend %in%
+            c("original_morphing", "original_morphing_absolute")
+    ) {
         return(list(
             required_inputs = required_inputs,
             optional_inputs = optional_inputs
@@ -877,7 +938,7 @@ transform__optional_variables <- function(recipe, inputs) {
         c(names(inputs$required_inputs), names(inputs$optional_inputs))
     )
     values <- lapply(model_roles, function(role) {
-        requirement <- shift_coalesce(
+        requirement <- shift_stage__coalesce(
             inputs$required_inputs[[role]],
             inputs$optional_inputs[[role]]
         )
@@ -903,7 +964,7 @@ transform__optional_variable_frequencies <- function(
     }
     recipe_frequencies <- morpher__recipe_required_frequency(recipe)
     values <- lapply(names(optional_variables), function(role) {
-        requirement <- shift_coalesce(
+        requirement <- shift_stage__coalesce(
             inputs$required_inputs[[role]],
             inputs$optional_inputs[[role]]
         )
@@ -913,8 +974,10 @@ transform__optional_variable_frequencies <- function(
             if (!is.null(mapped)) {
                 return(mapped)
             }
-            if (!is.null(names(recipe_frequencies)) &&
-                variable %in% names(recipe_frequencies)) {
+            if (
+                !is.null(names(recipe_frequencies)) &&
+                    variable %in% names(recipe_frequencies)
+            ) {
                 return(unname(recipe_frequencies[[variable]]))
             }
             as.character(recipe_frequencies)
@@ -964,12 +1027,11 @@ transform__from_recipe <- function(record, recipe) {
             inputs$optional_inputs
         ),
         optional_variables = optional_variables,
-        optional_variable_frequencies =
-            transform__optional_variable_frequencies(
-                recipe,
-                inputs,
-                optional_variables
-            ),
+        optional_variable_frequencies = transform__optional_variable_frequencies(
+            recipe,
+            inputs,
+            optional_variables
+        ),
         statistical_grouping = record$statistical_grouping,
         output_frequency = "hour",
         output_type = recipe_spec@output_type,
@@ -986,7 +1048,9 @@ transform__from_recipe <- function(record, recipe) {
 # in current user-facing commands.
 transform__from_recipe_object <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
-        cli::cli_abort("Cannot resolve a weather transform from an invalid recipe.")
+        cli::cli_abort(
+            "Cannot resolve a weather transform from an invalid recipe."
+        )
     }
     recipe_spec <- morpher__recipe_spec(recipe)
     recipe_name <- if (is.null(recipe_spec)) {
@@ -1019,7 +1083,12 @@ transform__from_recipe_object <- function(recipe) {
 }
 
 # Construct one validated reusable transform from the public tuple and options.
-transform__new <- function(scale, method, reconstruction = NULL, options = list()) {
+transform__new <- function(
+    scale,
+    method,
+    reconstruction = NULL,
+    options = list()
+) {
     record <- transform__record(scale, method, reconstruction)
     recipe_options <- transform__recipe_options(record, options)
     recipe <- epw_morph_recipe(
@@ -1225,14 +1294,17 @@ transform__spec_value <- function(transform) {
             "{.arg transform} must be a {.cls WeatherTransformSpec}."
         )
     }
-    c(list(
-        scale = transform@scale,
-        method = transform@method,
-        recipe = transform@recipe,
-        recipe_version = transform@recipe_version,
-        reconstruction = transform@reconstruction,
-        options = transform__options_to_spec(unclass(transform@options))
-    ), transform__persistence_snapshot(transform))
+    c(
+        list(
+            scale = transform@scale,
+            method = transform@method,
+            recipe = transform@recipe,
+            recipe_version = transform@recipe_version,
+            reconstruction = transform@reconstruction,
+            options = transform__options_to_spec(unclass(transform@options))
+        ),
+        transform__persistence_snapshot(transform)
+    )
 }
 
 # Restore a persisted transform only when its public tuple still resolves to
@@ -1264,11 +1336,13 @@ transform__from_spec <- function(spec) {
         as.character(spec$method)
     )
     recorded_reconstruction <- as.character(spec$reconstruction)
-    if (length(base_record$reconstructions) == 1L &&
-        !identical(
-            base_record$reconstruction,
-            recorded_reconstruction
-        )) {
+    if (
+        length(base_record$reconstructions) == 1L &&
+            !identical(
+                base_record$reconstruction,
+                recorded_reconstruction
+            )
+    ) {
         cli::cli_abort(
             "Persisted weather transform no longer matches its fixed hourly reconstruction."
         )
@@ -1291,16 +1365,18 @@ transform__from_spec <- function(spec) {
         record$recipe,
         version = as.integer(spec$recipe_version),
         options = transform__options_from_spec(
-            shift_coalesce(spec$options, list())
+            shift_stage__coalesce(spec$options, list())
         )
     )
     transform <- transform__from_recipe(record, recipe)
     expected <- transform__persistence_snapshot(transform)
     actual <- spec[names(expected)]
-    if (!identical(
-        transform__snapshot_json(actual),
-        transform__snapshot_json(expected)
-    )) {
+    if (
+        !identical(
+            transform__snapshot_json(actual),
+            transform__snapshot_json(expected)
+        )
+    ) {
         cli::cli_abort(c(
             "Persisted weather transform no longer matches its recorded scientific contract.",
             "i" = "Create a new plan with the current weather transform registry."
@@ -1312,10 +1388,11 @@ transform__from_spec <- function(spec) {
 # Test whether a transform declares one semantic role in its complete recipe
 # contract, including optional inputs where relevant.
 transform__accepts_input <- function(transform, role) {
-    role %in% c(
-        names(transform@required_inputs),
-        names(transform@optional_inputs)
-    )
+    role %in%
+        c(
+            names(transform@required_inputs),
+            names(transform@optional_inputs)
+        )
 }
 
 # Test whether execution must supply one semantic role before any catalog or
@@ -1361,8 +1438,11 @@ transform__validate_execution_inputs <- function(
             )
         }
         is_reanalysis <- S7::S7_inherits(value, ShiftReanalysisSpec)
-        if (!S7::S7_inherits(value, ShiftReferenceSpec) &&
-            !S7::S7_inherits(value, ShiftClimate) && !is_reanalysis) {
+        if (
+            !S7::S7_inherits(value, ShiftReferenceSpec) &&
+                !S7::S7_inherits(value, ShiftClimate) &&
+                !is_reanalysis
+        ) {
             cli::cli_abort(
                 paste(
                     "{.arg {name}} must be a {.cls ShiftReferenceSpec},",
@@ -1375,8 +1455,10 @@ transform__validate_execution_inputs <- function(
                 "A reanalysis source can only satisfy {.arg observed_reference}."
             )
         }
-        if (S7::S7_inherits(value, ShiftReferenceSpec) &&
-            !identical(value@role, role)) {
+        if (
+            S7::S7_inherits(value, ShiftReferenceSpec) &&
+                !identical(value@role, role)
+        ) {
             cli::cli_abort(
                 "{.arg {name}} declares role {.val {value@role}} but {.val {role}} is required."
             )
@@ -1385,8 +1467,10 @@ transform__validate_execution_inputs <- function(
         # semantic role is declared by the argument receiving it and is written
         # explicitly when the execution plan is persisted.
     }
-    if (S7::S7_inherits(observed_reference, ShiftReferenceSpec) &&
-        !identical(observed_reference@mode, "plan")) {
+    if (
+        S7::S7_inherits(observed_reference, ShiftReferenceSpec) &&
+            !identical(observed_reference@mode, "plan")
+    ) {
         cli::cli_abort(
             paste(
                 "{.arg observed_reference} must use a plan-backed reference;",
@@ -1537,12 +1621,20 @@ transform__format_variable_sets <- function(requirements) {
     if (!length(requirements)) {
         return("none")
     }
-    values <- vapply(names(requirements), function(role) {
-        sets <- vapply(requirements[[role]]@variable_sets, function(variables) {
-            paste(variables, collapse = " + ")
-        }, character(1L))
-        sprintf("%s: %s", role, paste(sets, collapse = " or "))
-    }, character(1L))
+    values <- vapply(
+        names(requirements),
+        function(role) {
+            sets <- vapply(
+                requirements[[role]]@variable_sets,
+                function(variables) {
+                    paste(variables, collapse = " + ")
+                },
+                character(1L)
+            )
+            sprintf("%s: %s", role, paste(sets, collapse = " or "))
+        },
+        character(1L)
+    )
     paste(values, collapse = "; ")
 }
 
@@ -1552,26 +1644,39 @@ transform__format_source_frequencies <- function(source_frequencies) {
     if (!length(source_frequencies)) {
         return("none")
     }
-    values <- vapply(names(source_frequencies), function(role) {
-        frequency <- source_frequencies[[role]]
-        if (length(frequency) && !is.null(names(frequency)) &&
-            all(nzchar(names(frequency)))) {
-            frequency <- paste(
-                sprintf(
-                    "%s=%s",
-                    names(frequency),
-                    vapply(frequency, function(value) {
-                        paste(value, collapse = "/")
-                    }, character(1L))
-                ),
-                collapse = ", "
-            )
-        } else {
-            frequency <- paste(unlist(frequency, use.names = FALSE),
-                collapse = "/")
-        }
-        sprintf("%s: %s", role, frequency)
-    }, character(1L))
+    values <- vapply(
+        names(source_frequencies),
+        function(role) {
+            frequency <- source_frequencies[[role]]
+            if (
+                length(frequency) &&
+                    !is.null(names(frequency)) &&
+                    all(nzchar(names(frequency)))
+            ) {
+                frequency <- paste(
+                    sprintf(
+                        "%s=%s",
+                        names(frequency),
+                        vapply(
+                            frequency,
+                            function(value) {
+                                paste(value, collapse = "/")
+                            },
+                            character(1L)
+                        )
+                    ),
+                    collapse = ", "
+                )
+            } else {
+                frequency <- paste(
+                    unlist(frequency, use.names = FALSE),
+                    collapse = "/"
+                )
+            }
+            sprintf("%s: %s", role, frequency)
+        },
+        character(1L)
+    )
     paste(values, collapse = "; ")
 }
 
@@ -1601,20 +1706,29 @@ S7::method(print, WeatherTransformSpec) <- function(x, ...) {
             x@optional_inputs
         ),
         "Optional source variables" = if (length(x@optional_variables)) {
-            paste(vapply(names(x@optional_variables), function(role) {
-                sprintf(
-                    "%s: %s",
-                    role,
-                    paste(x@optional_variables[[role]], collapse = " + ")
-                )
-            }, character(1L)), collapse = "; ")
+            paste(
+                vapply(
+                    names(x@optional_variables),
+                    function(role) {
+                        sprintf(
+                            "%s: %s",
+                            role,
+                            paste(
+                                x@optional_variables[[role]],
+                                collapse = " + "
+                            )
+                        )
+                    },
+                    character(1L)
+                ),
+                collapse = "; "
+            )
         } else {
             "none"
         },
-        "Optional variable frequency" =
-            transform__format_source_frequencies(
-                x@optional_variable_frequencies
-            ),
+        "Optional variable frequency" = transform__format_source_frequencies(
+            x@optional_variable_frequencies
+        ),
         "Stochastic variables" = if (length(x@stochastic_variables)) {
             paste(x@stochastic_variables, collapse = ", ")
         } else {

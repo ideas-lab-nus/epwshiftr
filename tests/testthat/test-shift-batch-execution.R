@@ -4,17 +4,20 @@
 test_that("background batches share reads through one coordinator", {
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
-    batch <- shift_batch__resolve_inputs(fixture$batch)
+    batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     withr::local_options(epwshiftr.mirai_workers = 2L)
     background <- shift_run(batch, background = TRUE, ui = shift_ui("none"))
-    original <- shift_batch__job_read(batch@store_path)
+    original <- shift_batch_execution__job_read(batch@store_path)
     expect_equal(original$options$epwshiftr.mirai_workers, 2L)
     shift_resume(background, background = TRUE, ui = shift_ui("none"))
-    expect_identical(shift_batch__job_read(batch@store_path)$id, original$id)
+    expect_identical(
+        shift_batch_execution__job_read(batch@store_path)$id,
+        original$id
+    )
     deadline <- Sys.time() + 90
     observed <- FALSE
     repeat {
-        job <- shift_batch__job_read(batch@store_path)
+        job <- shift_batch_execution__job_read(batch@store_path)
         if (!job$status %in% c("queued", "running", "stopping")) {
             break
         }
@@ -59,18 +62,21 @@ test_that("queued batch cancellation starts no source requests or children", {
     fixture <- shared_inputs_test__fixture()
     batch <- fixture$batch
     launched <- NULL
-    local_mocked_bindings(shift_batch__launch = function(root, job) {
+    local_mocked_bindings(shift_batch_execution__launch = function(root, job) {
         launched <<- job
     })
     background <- shift_run(batch, background = TRUE, ui = shift_ui("none"))
     stopped <- shift_cancel(background)
     expect_identical(shift_status(stopped), "stopping")
-    local_mocked_bindings(shift_batch__resolve_inputs = function(x, reporter) {
+    local_mocked_bindings(shift_batch_plan__resolve_inputs = function(
+        x,
+        reporter
+    ) {
         reporter$check_cancel()
         stop("unexpected input query")
     })
     expect_error(
-        shift_batch__job_main(batch@store_path, launched$id),
+        shift_batch_execution__job_main(batch@store_path, launched$id),
         class = "epwshiftr_shift_cancelled"
     )
     expect_identical(shift_status(background), "cancelled")
@@ -82,7 +88,7 @@ test_that("queued batch cancellation starts no source requests or children", {
         ui = shift_ui("none")
     )
     expect_false(identical(
-        shift_batch__job_read(batch@store_path)$id,
+        shift_batch_execution__job_read(batch@store_path)$id,
         basename(sub(
             "[.]cancel[.]json$",
             "",
@@ -110,17 +116,20 @@ test_that("shared read progress is inspectable before child registration", {
             ),
             force = TRUE
         )
-        job <- shift_batch__job_read(x@store_path)
+        job <- shift_batch_execution__job_read(x@store_path)
         expect_equal(job$progress$current, 1L)
         expect_equal(job$progress$active, 2L)
-        snapshot <- shift_batch__snapshot(x, refresh = FALSE)
+        snapshot <- shift_batch_ui__snapshot(x, refresh = FALSE)
         expect_equal(snapshot$source_progress$total, 3L)
-        expect_true(any(grepl("1/3 files", shift_batch__view(snapshot)$lines)))
+        expect_true(any(grepl(
+            "1/3 files",
+            shift_batch_ui__view(snapshot)$lines
+        )))
         x
     })
     shift_run(batch, ui = shift_ui("none"))
     expect_false("epwshiftr.batch.context" %in% names(options()))
-    expect_null(shift_batch__job_read(batch@store_path)$progress)
+    expect_null(shift_batch_execution__job_read(batch@store_path)$progress)
 })
 
 test_that("CLI watch follows shared reads before any child is registered", {

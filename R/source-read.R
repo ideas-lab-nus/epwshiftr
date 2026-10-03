@@ -130,7 +130,10 @@ store__read_extract_dataset <- function(
                         format(plan$time_stop[[1L]], "%Y")
                     ),
                     access_method = opened$access_method,
-                    transfer_state = shift_coalesce(progress$state, "waiting")
+                    transfer_state = shift_stage__coalesce(
+                        progress$state,
+                        "waiting"
+                    )
                 )
             )
             invisible(TRUE)
@@ -218,7 +221,7 @@ source__apply <- function(
     checkmate::assert_function(on_error, null.ok = TRUE)
     checkmate::assert_function(read)
     checkmate::assert_function(collect)
-    workers <- execution__options()$epwshiftr.mirai_workers
+    workers <- shift_execution__options()$epwshiftr.mirai_workers
     checkmate::assert_count(workers, positive = TRUE)
     workers <- min(workers, length(jobs))
     if (!length(jobs)) {
@@ -253,8 +256,8 @@ source__apply <- function(
     # between several independent source connections.
     mirai::daemons(workers, dispatcher = workers > 1L, .compute = profile)
     on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
-    library_paths <- execution__library_paths()
-    worker_options <- execution__options()
+    library_paths <- shift_execution__library_paths()
+    worker_options <- shift_execution__options()
     setup <- mirai::everywhere(
         {
             .libPaths(library_paths)
@@ -386,7 +389,7 @@ store__read_task <- function(job) {
 # child manifest is opened in the source worker.
 source__read_acquisition <- function(job) {
     tryCatch(
-        shift_batch__prefetch_acquisition(
+        shift_batch_window__prefetch_acquisition(
             job$root,
             job$acquisition,
             job$consumers,

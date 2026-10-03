@@ -1,7 +1,7 @@
 # Resolve user settings once at an execution boundary. The same snapshot is
 # persisted for detached jobs and copied to source workers; runtime objects and
 # testing dependencies never enter this configuration.
-execution__options <- function() {
+shift_execution__options <- function() {
     defaults <- list(
         epwshiftr.verbose = FALSE,
         epwshiftr.progress = interactive(),
@@ -35,7 +35,7 @@ execution__options <- function() {
 
 # Worker processes load the installed package that owns this namespace. A
 # source checkout must be installed by the development/test harness first.
-execution__library_paths <- function() {
+shift_execution__library_paths <- function() {
     path <- getNamespaceInfo(asNamespace("epwshiftr"), "path")
     if (!file.exists(file.path(path, "Meta", "package.rds"))) {
         cli::cli_abort(c(
@@ -48,7 +48,7 @@ execution__library_paths <- function() {
 
 # Quote only scalar strings accepted by background entry points. Reject other
 # types and lengths instead of silently coercing or discarding arguments.
-execution__string_literal <- function(x) {
+shift_execution__string_literal <- function(x) {
     checkmate::assert_string(x, null.ok = TRUE)
     if (is.null(x)) {
         return("NULL")
@@ -58,11 +58,11 @@ execution__string_literal <- function(x) {
 
 # Start one detached entry point through the same installed library and quoting
 # rules for standalone workflows, batches and downloader jobs.
-execution__launch <- function(entry, args, log_path) {
+shift_execution__launch <- function(entry, args, log_path) {
     libraries <- paste(
         vapply(
-            execution__library_paths(),
-            execution__string_literal,
+            shift_execution__library_paths(),
+            shift_execution__string_literal,
             character(1L)
         ),
         collapse = ","
@@ -71,7 +71,7 @@ execution__launch <- function(entry, args, log_path) {
         paste0(
             names(args),
             " = ",
-            vapply(args, execution__string_literal, character(1L))
+            vapply(args, shift_execution__string_literal, character(1L))
         ),
         collapse = ","
     )
@@ -96,7 +96,7 @@ execution__launch <- function(entry, args, log_path) {
 
 # Bind a durable attempt to an explicit, call-owned runtime context. Child
 # contexts refer to their batch owner without modifying session-global state.
-execution__context <- function(root, job, store = NULL, parent = NULL) {
+shift_execution__context <- function(root, job, store = NULL, parent = NULL) {
     context <- new.env(parent = emptyenv())
     context$root <- root
     context$store <- store
@@ -122,7 +122,7 @@ execution__context <- function(root, job, store = NULL, parent = NULL) {
 
 # Keep storage-specific representation at one boundary. Batch receipts stay
 # readable while child DuckDB stores are busy; both use the same lifecycle.
-execution__update <- function(context, status, message = NULL) {
+shift_execution__update <- function(context, status, message = NULL) {
     now <- store__now()
     terminal <- status %in% c("completed", "partial", "cancelled", "failed")
     if (context$batch) {
@@ -162,18 +162,21 @@ execution__update <- function(context, status, message = NULL) {
         } else {
             values$started_at <- now
         }
-        do.call(shift__job_update, c(list(context$store, context$id), values))
+        do.call(
+            shift_job__job_update,
+            c(list(context$store, context$id), values)
+        )
     }
     invisible(NULL)
 }
 
 # Observe both the task and its owning batch at cooperative cancellation
 # boundaries, including shared reads before any child run is registered.
-execution__check_cancel <- function(context, stage = "working") {
+shift_execution__check_cancel <- function(context, stage = "working") {
     if (is.null(context)) {
         return(invisible(NULL))
     }
-    execution__check_cancel(context$parent, stage)
+    shift_execution__check_cancel(context$parent, stage)
     if (context$batch) {
         if (
             file.exists(file.path(
@@ -187,7 +190,7 @@ execution__check_cancel <- function(context, stage = "working") {
             )
         }
     } else {
-        shift__job_check_cancel(
+        shift_job__job_check_cancel(
             context$store,
             context$job$run_id[[1L]],
             context$id,
@@ -199,15 +202,15 @@ execution__check_cancel <- function(context, stage = "working") {
 
 # Batch source progress is written at most once per second; ordinary run
 # snapshots remain owned by the reporter attached to their DuckDB store.
-execution__checkpoint <- function(context, details = list()) {
+shift_execution__checkpoint <- function(context, details = list()) {
     if (is.null(context)) {
         return(invisible(NULL))
     }
-    execution__checkpoint(context$parent, details)
+    shift_execution__checkpoint(context$parent, details)
     if (!context$batch) {
         return(invisible(NULL))
     }
-    execution__check_cancel(context)
+    shift_execution__check_cancel(context)
     now <- as.numeric(Sys.time())
     if (now - context$heartbeat < 1) {
         return(invisible(NULL))
@@ -224,22 +227,22 @@ execution__checkpoint <- function(context, details = list()) {
 
 # Own attempt transitions and option restoration for every execution mode.
 # Scientific run results remain separate from the process attempt status.
-execution__run <- function(context, code) {
+shift_execution__run <- function(context, code) {
     old <- options(context$options)
     on.exit(options(old), add = TRUE)
-    execution__update(context, "running")
+    shift_execution__update(context, "running")
     value <- tryCatch(
         {
             # Standalone stages check cancellation inside their own scientific
             # result handler so the step and run receive the same terminal state.
             if (context$batch) {
-                execution__check_cancel(context)
+                shift_execution__check_cancel(context)
             }
             force(code)
         },
         interrupt = function(error) {
             try(
-                execution__update(
+                shift_execution__update(
                     context,
                     "cancelled",
                     conditionMessage(error)
@@ -256,7 +259,11 @@ execution__run <- function(context, code) {
             }
             # Preserve the original error if its persistence also fails.
             try(
-                execution__update(context, status, conditionMessage(error)),
+                shift_execution__update(
+                    context,
+                    status,
+                    conditionMessage(error)
+                ),
                 silent = TRUE
             )
             stop(error)
@@ -270,7 +277,7 @@ execution__run <- function(context, code) {
     } else {
         "completed"
     }
-    execution__update(context, outcome)
+    shift_execution__update(context, outcome)
     if (S7::S7_inherits(value, ShiftRun)) {
         # Return the completed attempt, including for refresh = FALSE callers.
         jobs <- morpher__private_store(context$store)$read_table(

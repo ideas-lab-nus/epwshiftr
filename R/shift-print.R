@@ -3,11 +3,10 @@ NULL
 
 # Render bounded workflow previews without changing execution state.
 
-# display and conversion ------------------------------------------------------
-
+# display and conversion
 # Parse the shared console controls accepted by modern Shift object printers.
 # Unknown arguments fail early so misspelled display options are not ignored.
-shift__print_options <- function(dots, default_n = 10L) {
+shift_print__print_options <- function(dots, default_n = 10L) {
     if (is.null(names(dots))) {
         names(dots) <- rep("", length(dots))
     }
@@ -31,7 +30,7 @@ shift__print_options <- function(dots, default_n = 10L) {
     }
     width <- dots$width
     checkmate::assert_integerish(width, lower = 40L, len = 1L, null.ok = TRUE)
-    verbose <- shift_coalesce(dots$verbose, FALSE)
+    verbose <- shift_stage__coalesce(dots$verbose, FALSE)
     checkmate::assert_flag(verbose)
     list(
         n = n,
@@ -41,7 +40,7 @@ shift__print_options <- function(dots, default_n = 10L) {
 }
 
 # Apply an explicit print width only for the duration of one object receipt.
-shift__print_use_width <- function(width, env = parent.frame()) {
+shift_print__print_use_width <- function(width, env = parent.frame()) {
     if (is.null(width)) {
         return(invisible(NULL))
     }
@@ -54,7 +53,7 @@ shift__print_use_width <- function(width, env = parent.frame()) {
 }
 
 # Format persisted timestamps whether DuckDB returns POSIXct or an ISO string.
-shift__print_time <- function(x) {
+shift_print__print_time <- function(x) {
     if (is.null(x) || !length(x) || is.na(x[[1L]])) {
         return(NULL)
     }
@@ -66,19 +65,19 @@ shift__print_time <- function(x) {
 
 # Apply the shared Shift receipt vocabulary on top of the established ESGF
 # header renderer without changing the lower-level query/result presentation.
-shift__print_header <- function(title) {
+shift_print__print_header <- function(title) {
     esg__print_header(title)
 }
 
 # Render semantic Shift facts with the same bullet rhythm as ESGF receipts.
 # Values are formatted by callers so scientific concepts remain class-aware.
-shift__print_facts <- function(x) {
+shift_print__print_facts <- function(x) {
     esg__print_facts(x)
 }
 
 # Compress integer years into readable consecutive ranges so period specs do
 # not expand into one console row per year.
-shift__format_years <- function(years) {
+shift_print__format_years <- function(years) {
     years <- sort(unique(as.integer(years)))
     years <- years[!is.na(years)]
     if (!length(years)) {
@@ -104,19 +103,26 @@ shift__format_years <- function(years) {
 
 # Format normalized period tables and named year lists through one compact
 # representation shared by plans, references, and extracted climate stages.
-shift__format_periods <- function(periods) {
+shift_print__format_periods <- function(periods) {
     if (is.null(periods)) {
         return(NULL)
     }
     if (is.list(periods) && !is.data.frame(periods)) {
         if (is.null(names(periods))) {
-            return(shift__format_years(unlist(periods, use.names = FALSE)))
+            return(shift_print__format_years(unlist(
+                periods,
+                use.names = FALSE
+            )))
         }
         return(paste(
             vapply(
                 names(periods),
                 function(name) {
-                    sprintf("%s %s", name, shift__format_years(periods[[name]]))
+                    sprintf(
+                        "%s %s",
+                        name,
+                        shift_print__format_years(periods[[name]])
+                    )
                 },
                 character(1L)
             ),
@@ -135,7 +141,7 @@ shift__format_periods <- function(periods) {
                 sprintf(
                     "%s %s",
                     label,
-                    shift__format_years(periods[period == label, year])
+                    shift_print__format_years(periods[period == label, year])
                 )
             },
             character(1L)
@@ -146,7 +152,7 @@ shift__format_periods <- function(periods) {
 
 # Describe an optional workflow reference without exposing its full S7 object,
 # extraction metadata, or one-row-per-year period table.
-shift__format_reference <- function(reference, recipe = NULL) {
+shift_print__format_reference <- function(reference, recipe = NULL) {
     if (is.null(reference)) {
         if (
             !is.null(recipe) &&
@@ -157,7 +163,7 @@ shift__format_reference <- function(reference, recipe = NULL) {
         return("none")
     }
     if (S7::S7_inherits(reference, ShiftReferenceSpec)) {
-        periods <- shift__format_periods(reference@periods)
+        periods <- shift_print__format_periods(reference@periods)
         parts <- c(reference@role, reference@mode, periods)
         parts <- parts[!is.na(parts) & nzchar(parts)]
         return(paste(parts, collapse = " \u00b7 "))
@@ -179,20 +185,20 @@ shift__format_reference <- function(reference, recipe = NULL) {
 
 # Display unresolved workflow selections explicitly instead of letting NULL
 # disappear from a compact receipt.
-shift__format_auto <- function(x) {
-    shift_coalesce(shift__display_values(x), "auto")
+shift_print__format_auto <- function(x) {
+    shift_stage__coalesce(shift_print__display_values(x), "auto")
 }
 
 # Format the public method name together with its persisted compatibility
 # profile. Earlier original-morphing specs did not carry a profile and remain
 # visibly legacy when rendered without first reconstructing the recipe.
-shift__format_morph_method <- function(
+shift_print__format_morph_method <- function(
     name,
     recipe = NULL,
     missing_original_morphing_profile = NULL
 ) {
-    name <- as.character(shift_coalesce(name, "method"))[[1L]]
-    backend <- as.character(shift_coalesce(recipe$backend, name))[[1L]]
+    name <- as.character(shift_stage__coalesce(name, "method"))[[1L]]
+    backend <- as.character(shift_stage__coalesce(recipe$backend, name))[[1L]]
     profile <- recipe$profile
     if (
         (is.null(profile) || !length(profile)) &&
@@ -214,7 +220,7 @@ shift__format_morph_method <- function(
 # Describe scalar table forcing and named per-variable overrides distinctly.
 # This makes the automatic Amon/LImon routing visible without expanding the
 # complete recipe variable map in normal receipts.
-shift__format_cmip6_tables <- function(table) {
+shift_print__format_cmip6_tables <- function(table) {
     if (is.null(table) || !length(table)) {
         return("auto by variable")
     }
@@ -226,7 +232,10 @@ shift__format_cmip6_tables <- function(table) {
     names(table) <- table_names
     named <- !is.null(names(table)) && any(nzchar(names(table)))
     if (!named) {
-        return(sprintf("%s (forced)", shift__display_values(table, max = Inf)))
+        return(sprintf(
+            "%s (forced)",
+            shift_print__display_values(table, max = Inf)
+        ))
     }
     overrides <- paste(
         sprintf("%s=%s", names(table), table),
@@ -237,7 +246,7 @@ shift__format_cmip6_tables <- function(table) {
 
 # Render scalar and variable-specific frequency specifications without losing
 # the distinction between CMIP6 interval means and point samples.
-shift__format_cmip6_frequencies <- function(frequency) {
+shift_print__format_cmip6_frequencies <- function(frequency) {
     if (is.null(frequency) || !length(frequency)) {
         return(NULL)
     }
@@ -248,7 +257,7 @@ shift__format_cmip6_frequencies <- function(frequency) {
     frequency <- as.character(frequency)
     names(frequency) <- frequency_names
     if (is.null(frequency_names) || !any(nzchar(frequency_names))) {
-        return(shift__display_values(frequency, max = Inf))
+        return(shift_print__display_values(frequency, max = Inf))
     }
     paste(
         sprintf("%s=%s", frequency_names, frequency),
@@ -259,8 +268,8 @@ shift__format_cmip6_frequencies <- function(frequency) {
 # Render the exact table/grid partitions selected for download and extraction.
 # `grid_label` remains a compatibility summary, while `partition_key` is the
 # authoritative multi-table identity persisted by the resolver.
-shift__format_cmip6_partitions <- function(selection) {
-    selection <- data.table::as.data.table(shift_coalesce(
+shift_print__format_cmip6_partitions <- function(selection) {
+    selection <- data.table::as.data.table(shift_stage__coalesce(
         selection,
         data.table::data.table()
     ))
@@ -303,7 +312,7 @@ shift__format_cmip6_partitions <- function(selection) {
 
 # Format named provider or workflow option lists without printing nested
 # environments or arbitrary objects by structure.
-shift__format_options <- function(x) {
+shift_print__format_options <- function(x) {
     if (is.null(x) || !length(x)) {
         return(NULL)
     }
@@ -315,7 +324,10 @@ shift__format_options <- function(x) {
                 sprintf(
                     "%s=%s",
                     name,
-                    shift_coalesce(shift__display_values(value), "<empty>")
+                    shift_stage__coalesce(
+                        shift_print__display_values(value),
+                        "<empty>"
+                    )
                 )
             } else {
                 sprintf("%s=<%s>", name, class(value)[[1L]])
@@ -328,7 +340,7 @@ shift__format_options <- function(x) {
 
 # Read optional persisted data for a receipt and return a printable diagnostic
 # rather than making print() fail when a store is temporarily unavailable.
-shift__print_store_read <- function(x, reader) {
+shift_print__print_store_read <- function(x, reader) {
     opened <- tryCatch(shift_store(x), error = identity)
     if (inherits(opened, "condition")) {
         return(list(
@@ -349,7 +361,7 @@ shift__print_store_read <- function(x, reader) {
 
 # Render a bounded, width-aware table preview and preserve the total row count
 # in the continuation hint even when only the requested rows were materialized.
-shift__print_table <- function(
+shift_print__print_table <- function(
     x,
     title,
     columns,
@@ -359,7 +371,10 @@ shift__print_table <- function(
     more_hint = "use the corresponding shift_*() inspector for all rows."
 ) {
     checkmate::assert_string(title, min.chars = 1L)
-    x <- data.table::as.data.table(shift_coalesce(x, data.table::data.table()))
+    x <- data.table::as.data.table(shift_stage__coalesce(
+        x,
+        data.table::data.table()
+    ))
     if (is.null(total_rows)) {
         total_rows <- nrow(x)
     }
@@ -383,9 +398,9 @@ shift__print_table <- function(
 
 # Print a consistent stage heading and status fact before class-specific
 # scientific context is added.
-shift__print_stage_intro <- function(x, title, facts = list()) {
-    shift__print_header(title)
-    shift__print_facts(c(
+shift_print__print_stage_intro <- function(x, title, facts = list()) {
+    shift_print__print_header(title)
+    shift_print__print_facts(c(
         list(
             "Status" = tryCatch(shift_status(x), error = function(e) "unknown")
         ),
@@ -395,14 +410,14 @@ shift__print_stage_intro <- function(x, title, facts = list()) {
 }
 
 # Render optional workflow provenance after the scientific query/result view.
-shift__print_workflow <- function(x, verbose = FALSE) {
+shift_print__print_workflow <- function(x, verbose = FALSE) {
     ids <- shift_ids(x)
     diagnostics <- shift_diagnostics(x)
     if (isTRUE(verbose)) {
         cli::cli_rule("Workflow")
         esg__print_facts(list(
             "Status" = tryCatch(shift_status(x), error = function(e) "unknown"),
-            "Store" = shift__display_path(x@store_path),
+            "Store" = shift_print__display_path(x@store_path),
             "Query ID" = ids$query_id,
             "Run ID" = ids$run_id,
             "Step ID" = ids$step_id
@@ -423,21 +438,26 @@ shift__print_workflow <- function(x, verbose = FALSE) {
 
 # Print a ShiftRequest through the same canonical parameter renderer as
 # EsgQuery while retaining the workflow's explicit auto-node semantics.
-shift__print_request <- function(x, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
-    query <- shift_as_query(x)
+shift_print__print_request <- function(x, width = NULL, verbose = FALSE) {
+    shift_print__print_use_width(width)
+    query <- shift_resolve__as_query(x)
     state <- query$state()
     pinned_node <- x@meta$options$index_node
     node <- if (is.null(pinned_node)) "auto" else query$index_node()
     esg__print_query(node, state$parameter, title = "ESGF request")
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Print a persisted ShiftFiles catalog as an ESGF result receipt plus a
 # width-aware table preview, without reading the complete catalog into R.
-shift__print_files <- function(x, n = 10L, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
+shift_print__print_files <- function(
+    x,
+    n = 10L,
+    width = NULL,
+    verbose = FALSE
+) {
+    shift_print__print_use_width(width)
     ids <- shift_ids(x)
     result_fields <- unique(as.character(x@meta$result_fields))
     result_fields <- result_fields[
@@ -448,9 +468,9 @@ shift__print_files <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         # A detached or temporarily unavailable store must not make the object
         # itself unprintable. Preserve the established result header and expose
         # only metadata already cached on the ShiftFiles handle.
-        request <- shift_stage_root(x)
+        request <- shift_stage__root(x)
         node <- if (!is.null(request)) {
-            shift_coalesce(request@meta$options$index_node, "auto")
+            shift_stage__coalesce(request@meta$options$index_node, "auto")
         } else {
             "unavailable"
         }
@@ -462,23 +482,26 @@ shift__print_files <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         esg__print_header("ESGF Query Result [File]")
         esg__print_facts(list(
             "Index Node" = node,
-            "Result count" = shift_coalesce(x@meta$file_count, "unavailable"),
+            "Result count" = shift_stage__coalesce(
+                x@meta$file_count,
+                "unavailable"
+            ),
             "Fields" = fields
         ))
         if (!is.null(request)) {
-            query <- shift_as_query(request)
+            query <- shift_resolve__as_query(request)
             esg__print_parameters(query$state()$parameter)
         }
         cli::cli_rule("Files")
         cli::cli_alert_info(
             "Cached File rows are not available on this handle."
         )
-        shift__print_store_notice(conditionMessage(store))
-        shift__print_workflow(x, verbose = verbose)
+        shift_print__print_store_notice(conditionMessage(store))
+        shift_print__print_workflow(x, verbose = verbose)
         return(invisible(x))
     }
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
-    summary <- shift__file_catalog_summary(store, ids$query_id)
+    summary <- shift_inspect__file_catalog_summary(store, ids$query_id)
     if (!nrow(summary)) {
         summary <- data.table::data.table(
             file_count = 0L,
@@ -486,15 +509,15 @@ shift__print_files <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         )
     }
     summary <- summary[1L]
-    runs <- shift_query_run(store, ids$query_id)
+    runs <- shift_inspect__query_run(store, ids$query_id)
     run <- if (nrow(runs)) runs[1L] else data.table::data.table()
     file_count <- as.integer(summary$file_count[[1L]])
-    created <- if (nrow(run)) shift__print_time(run$created_at) else NULL
+    created <- if (nrow(run)) shift_print__print_time(run$created_at) else NULL
     node <- if (nrow(run)) run$index_node[[1L]] else NULL
     if (!length(result_fields)) {
         # Stages created before response fields were persisted fall back to
         # the stable catalog preview schema rather than reading every record.
-        result_fields <- names(shift__file_catalog_preview(
+        result_fields <- names(shift_inspect__file_catalog_preview(
             store,
             ids$query_id,
             n = 1L
@@ -518,9 +541,9 @@ shift__print_files <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     )
     esg__print_facts(facts)
 
-    request <- shift_stage_root(x)
+    request <- shift_stage__root(x)
     if (!is.null(request)) {
-        query <- shift_as_query(request)
+        query <- shift_resolve__as_query(request)
         esg__print_parameters(query$state()$parameter)
     }
 
@@ -530,7 +553,11 @@ shift__print_files <- function(x, n = 10L, width = NULL, verbose = FALSE) {
             "No matching file records. Review the ESGF query constraints and collect again."
         )
     } else {
-        preview <- shift__file_catalog_preview(store, ids$query_id, n = n)
+        preview <- shift_inspect__file_catalog_preview(
+            store,
+            ids$query_id,
+            n = n
+        )
         epwshiftr_cli_render_table(
             preview,
             columns = c(
@@ -553,13 +580,13 @@ shift__print_files <- function(x, n = 10L, width = NULL, verbose = FALSE) {
             total_rows = file_count
         )
     }
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Describe an EPW input by its stable path when available, falling back to the
 # adapter class rather than dumping an R6 or external Epw object.
-shift__format_epw <- function(epw, full = FALSE) {
+shift_print__format_epw <- function(epw, full = FALSE) {
     if (is.null(epw)) {
         return(NULL)
     }
@@ -580,7 +607,7 @@ shift__format_epw <- function(epw, full = FALSE) {
 
 # Add a non-fatal store-read notice after a cached object summary so temporary
 # filesystem problems remain visible without masking the object itself.
-shift__print_store_notice <- function(error) {
+shift_print__print_store_notice <- function(error) {
     if (is.null(error) || !nzchar(error)) {
         return(invisible(NULL))
     }
@@ -591,8 +618,8 @@ shift__print_store_notice <- function(error) {
 
 # Render the deferred Future EPW intent and expected case matrix without
 # resolving ESGF nodes or mutating the plan.
-shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
+shift_print__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
+    shift_print__print_use_width(width)
     meta <- x@meta
     climate <- meta$climate
     request <- meta$request@meta
@@ -606,8 +633,8 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     member <- if (!is.null(climate)) climate@member else request$variant
     grid <- if (!is.null(climate)) climate@grid else request$filters$grid_label
     climate_parts <- c(
-        shift__display_values(model),
-        shift__display_values(scenarios)
+        shift_print__display_values(model),
+        shift_print__display_values(scenarios)
     )
     climate_parts <- climate_parts[
         !is.na(climate_parts) &
@@ -615,28 +642,30 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     ]
     cases <- data.table::copy(data.table::as.data.table(meta$expected_cases))
     if ("years" %in% names(cases)) {
-        cases[, years := vapply(years, shift__format_years, character(1L))]
+        cases[,
+            years := vapply(years, shift_print__format_years, character(1L))
+        ]
     }
 
-    shift__print_stage_intro(
+    shift_print__print_stage_intro(
         x,
         "Future EPW Plan",
         list(
             "Climate" = paste(climate_parts, collapse = " \u00b7 "),
-            "Periods" = shift__format_periods(meta$periods),
+            "Periods" = shift_print__format_periods(meta$periods),
             "Transform" = transform@label,
-            "Reference" = shift__format_reference(
+            "Reference" = shift_print__format_reference(
                 meta$reference,
                 meta$recipe
             ),
-            "Observed reference" = shift__format_reference(
+            "Observed reference" = shift_print__format_reference(
                 meta$observed_reference
             ),
             "Selection" = sprintf(
                 "member %s \u00b7 grid %s \u00b7 tables %s",
-                shift__format_auto(member),
-                shift__format_auto(grid),
-                shift__format_cmip6_tables(
+                shift_print__format_auto(member),
+                shift_print__format_auto(grid),
+                shift_print__format_cmip6_tables(
                     if (!is.null(climate)) {
                         climate@table
                     } else {
@@ -645,7 +674,7 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
                 )
             ),
             "Expected outputs" = nrow(cases),
-            "Output directory" = shift__display_path(meta$epw$export_dir)
+            "Output directory" = shift_print__display_path(meta$epw$export_dir)
         )
     )
     if (isTRUE(verbose)) {
@@ -656,29 +685,29 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         }
         control <- meta$control
         cli::cli_rule("Discovery")
-        shift__print_facts(list(
-            "Frequency" = shift__format_cmip6_frequencies(
+        shift_print__print_facts(list(
+            "Frequency" = shift_print__format_cmip6_frequencies(
                 if (!is.null(climate) && !is.null(climate@frequency)) {
                     climate@frequency
                 } else {
                     request$frequency
                 }
             ),
-            "Table" = shift__format_cmip6_tables(
+            "Table" = shift_print__format_cmip6_tables(
                 if (!is.null(climate)) {
                     climate@table
                 } else {
                     request$filters$table_id
                 }
             ),
-            "Index nodes" = shift__display_values(nodes, max = Inf),
+            "Index nodes" = shift_print__display_values(nodes, max = Inf),
             "Download" = control@download,
             "Remote refresh" = control@refresh,
             "Partial outputs" = control@allow_partial,
             "Output layout" = control@output_layout
         ))
     }
-    shift__print_table(
+    shift_print__print_table(
         cases,
         "Expected outputs",
         columns = c(
@@ -695,14 +724,19 @@ shift__print_plan <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         empty = "No expected output cases.",
         more_hint = "use `shift_cases()` for all expected cases."
     )
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Summarize persistent download task state and expose only a bounded task table
 # in the default console receipt.
-shift__print_download <- function(x, n = 10L, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
+shift_print__print_download <- function(
+    x,
+    n = 10L,
+    width = NULL,
+    verbose = FALSE
+) {
+    shift_print__print_use_width(width)
     ids <- shift_ids(x)
     cached <- if (is.data.frame(x@meta$session)) {
         data.table::as.data.table(x@meta$session)
@@ -712,7 +746,7 @@ shift__print_download <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     read <- if (nrow(cached)) {
         list(data = cached, error = NULL)
     } else {
-        shift__print_store_read(x, function(store) {
+        shift_print__print_store_read(x, function(store) {
             if (is.null(ids$session_id) || is.na(ids$session_id)) {
                 return(data.table::data.table())
             }
@@ -741,7 +775,7 @@ shift__print_download <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         0
     }
 
-    shift__print_stage_intro(
+    shift_print__print_stage_intro(
         x,
         "CMIP6 Download",
         list(
@@ -777,7 +811,7 @@ shift__print_download <- function(x, n = 10L, width = NULL, verbose = FALSE) {
             }
         )
     )
-    shift__print_table(
+    shift_print__print_table(
         tasks,
         "Tasks",
         columns = c(
@@ -795,16 +829,21 @@ shift__print_download <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         empty = "No download tasks are registered.",
         more_hint = "use `shift_data()` or the Downloader inspectors for all tasks."
     )
-    shift__print_store_notice(read$error)
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_store_notice(read$error)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Summarize extraction coverage by scientific identity while keeping the full
 # plan and extracted time-series data behind their dedicated inspectors.
-shift__print_climate <- function(x, n = 10L, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
-    cached <- data.table::as.data.table(shift_coalesce(
+shift_print__print_climate <- function(
+    x,
+    n = 10L,
+    width = NULL,
+    verbose = FALSE
+) {
+    shift_print__print_use_width(width)
+    cached <- data.table::as.data.table(shift_stage__coalesce(
         x@meta$coverage,
         data.table::data.table()
     ))
@@ -812,7 +851,7 @@ shift__print_climate <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         list(data = cached, error = NULL)
     } else {
         ids <- shift_ids(x)
-        shift__print_store_read(x, function(store) {
+        shift_print__print_store_read(x, function(store) {
             store$coverage(plan_id = ids$plan_id)
         })
     }
@@ -829,19 +868,19 @@ shift__print_climate <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         0
     }
 
-    shift__print_stage_intro(
+    shift_print__print_stage_intro(
         x,
         "Extracted Climate",
         list(
             "Site" = if (!is.null(site)) {
-                shift_coalesce(site@label, site@id)
+                shift_stage__coalesce(site@label, site@id)
             } else {
                 NULL
             },
-            "Periods" = shift__format_periods(x@meta$periods),
+            "Periods" = shift_print__format_periods(x@meta$periods),
             "Coverage" = sprintf("%d/%d complete", complete, nrow(coverage)),
             "Variables" = if ("variable_id" %in% names(coverage)) {
-                shift__display_values(unique(coverage$variable_id))
+                shift_print__display_values(unique(coverage$variable_id))
             } else {
                 NULL
             },
@@ -852,7 +891,7 @@ shift__print_climate <- function(x, n = 10L, width = NULL, verbose = FALSE) {
             }
         )
     )
-    shift__print_table(
+    shift_print__print_table(
         coverage,
         "Coverage",
         columns = c(
@@ -872,15 +911,15 @@ shift__print_climate <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         empty = "No extraction coverage is available.",
         more_hint = "use `shift_coverage()` for all extraction plans."
     )
-    shift__print_store_notice(read$error)
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_store_notice(read$error)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Select the most informative available morph result source in a deterministic
 # order so old and resumed stages remain printable across process boundaries.
-shift__morph_print_rows <- function(x) {
-    cached <- data.table::as.data.table(shift_coalesce(
+shift_print__morph_print_rows <- function(x) {
+    cached <- data.table::as.data.table(shift_stage__coalesce(
         x@meta$results,
         data.table::data.table()
     ))
@@ -888,13 +927,13 @@ shift__morph_print_rows <- function(x) {
         return(list(data = cached, error = NULL))
     }
     ids <- shift_ids(x)
-    persisted <- shift__print_store_read(x, function(store) {
-        shift_morph_result_rows(store, ids$morph_id)
+    persisted <- shift_print__print_store_read(x, function(store) {
+        shift_inspect__morph_result_rows(store, ids$morph_id)
     })
     if (nrow(persisted$data)) {
         return(persisted)
     }
-    plan <- data.table::as.data.table(shift_coalesce(
+    plan <- data.table::as.data.table(shift_stage__coalesce(
         x@meta$plan,
         data.table::data.table()
     ))
@@ -906,40 +945,45 @@ shift__morph_print_rows <- function(x) {
 
 # Render weather-transform/reference identity and a bounded result/case preview
 # without printing hourly morphed weather data.
-shift__print_morphed <- function(x, n = 10L, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
+shift_print__print_morphed <- function(
+    x,
+    n = 10L,
+    width = NULL,
+    verbose = FALSE
+) {
+    shift_print__print_use_width(width)
     recipe <- x@meta$recipe
     transform <- x@meta$transform
-    read <- shift__morph_print_rows(x)
+    read <- shift_print__morph_print_rows(x)
     rows <- read$data
     case_count <- if ("case_id" %in% names(rows)) {
         data.table::uniqueN(rows$case_id)
     } else {
         nrow(rows)
     }
-    reference <- shift_coalesce(x@meta$reference_spec, x@meta$reference)
+    reference <- shift_stage__coalesce(x@meta$reference_spec, x@meta$reference)
     transform_label <- if (S7::S7_inherits(transform, WeatherTransformSpec)) {
         transform@label
     } else {
         # Older persisted stages may not contain the public transform record.
-        shift__format_morph_method(
-            shift_coalesce(recipe$name, recipe$backend),
+        shift_print__format_morph_method(
+            shift_stage__coalesce(recipe$name, recipe$backend),
             recipe,
             missing_original_morphing_profile = "legacy"
         )
     }
 
-    shift__print_stage_intro(
+    shift_print__print_stage_intro(
         x,
         "Morphed EPW",
         list(
             "Transform" = transform_label,
-            "Reference" = shift__format_reference(reference, recipe),
+            "Reference" = shift_print__format_reference(reference, recipe),
             "Cases" = case_count,
             "Results" = nrow(rows)
         )
     )
-    shift__print_table(
+    shift_print__print_table(
         rows,
         "Morph results",
         columns = c(
@@ -957,28 +1001,28 @@ shift__print_morphed <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         empty = "No morph results are available.",
         more_hint = "use `shift_data()` or `shift_artifacts()` for complete morph data."
     )
-    shift__print_store_notice(read$error)
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_store_notice(read$error)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Render generated and exported EPW paths by user case while keeping weather
 # rows behind shift_data().
-shift__print_outputs_stage <- function(
+shift_print__print_outputs_stage <- function(
     x,
     n = 10L,
     width = NULL,
     verbose = FALSE
 ) {
-    shift__print_use_width(width)
-    outputs <- data.table::as.data.table(shift_coalesce(
+    shift_print__print_use_width(width)
+    outputs <- data.table::as.data.table(shift_stage__coalesce(
         x@meta$outputs,
         data.table::data.table()
     ))
     read_error <- NULL
     if (!nrow(outputs)) {
-        read <- shift__print_store_read(x, function(store) {
-            shift_epw_output_rows(store, shift_ids(x)$morph_id)
+        read <- shift_print__print_store_read(x, function(store) {
+            shift_inspect__epw_output_rows(store, shift_ids(x)$morph_id)
         })
         outputs <- read$data
         read_error <- read$error
@@ -991,7 +1035,7 @@ shift__print_outputs_stage <- function(
         0L
     }
 
-    shift__print_stage_intro(
+    shift_print__print_stage_intro(
         x,
         "EPW Outputs",
         list(
@@ -1002,13 +1046,13 @@ shift__print_outputs_stage <- function(
                 if (existing == 1L) "" else "s"
             ),
             "Export directory" = if (!is.null(x@meta$export_dir)) {
-                shift__display_path(x@meta$export_dir)
+                shift_print__display_path(x@meta$export_dir)
             } else {
                 NULL
             }
         )
     )
-    shift__print_table(
+    shift_print__print_table(
         outputs,
         "Outputs",
         columns = c(
@@ -1024,36 +1068,43 @@ shift__print_outputs_stage <- function(
         empty = "No EPW outputs are registered.",
         more_hint = "use `shift_outputs()` for all output records."
     )
-    shift__print_store_notice(read_error)
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_store_notice(read_error)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Render a site target as scientific context rather than exposing its inherited
 # ShiftStage storage fields.
-shift__print_site <- function(x, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
-    shift__print_header("EPW Site")
-    shift__print_facts(list(
+shift_print__print_site <- function(x, width = NULL, verbose = FALSE) {
+    shift_print__print_use_width(width)
+    shift_print__print_header("EPW Site")
+    shift_print__print_facts(list(
         "ID" = x@id,
         "Label" = x@label,
         "Coordinates" = sprintf("%.6f, %.6f", x@lon, x@lat),
-        "EPW" = shift__format_epw(x@epw, full = verbose)
+        "EPW" = shift_print__format_epw(x@epw, full = verbose)
     ))
     if (isTRUE(verbose) && length(x@metadata)) {
         cli::cli_rule("Metadata")
-        shift__print_facts(list("Values" = shift__format_options(x@metadata)))
+        shift_print__print_facts(list(
+            "Values" = shift_print__format_options(x@metadata)
+        ))
     }
-    shift__print_workflow(x, verbose = verbose)
+    shift_print__print_workflow(x, verbose = verbose)
     invisible(x)
 }
 
 # Render a complete CMIP6 scientific specification without listing every
 # failover URL unless verbose output was explicitly requested.
-shift__print_cmip6 <- function(x, n = 10L, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
-    shift__print_header("CMIP6 Climate")
-    shift__print_facts(list(
+shift_print__print_cmip6 <- function(
+    x,
+    n = 10L,
+    width = NULL,
+    verbose = FALSE
+) {
+    shift_print__print_use_width(width)
+    shift_print__print_header("CMIP6 Climate")
+    shift_print__print_facts(list(
         "Model" = if (is.null(x@model)) {
             if (is.null(x@n_models)) {
                 "auto (all compatible models)"
@@ -1061,27 +1112,27 @@ shift__print_cmip6 <- function(x, n = 10L, width = NULL, verbose = FALSE) {
                 sprintf("auto (%d models)", x@n_models)
             }
         } else {
-            shift__display_values(x@model)
+            shift_print__display_values(x@model)
         },
-        "Scenarios" = shift__display_values(x@scenarios),
-        "Member" = shift__format_auto(x@member),
-        "Grid" = shift__format_auto(x@grid),
+        "Scenarios" = shift_print__display_values(x@scenarios),
+        "Member" = shift_print__format_auto(x@member),
+        "Grid" = shift_print__format_auto(x@grid),
         "Frequency" = if (is.null(x@frequency)) {
             "inferred by weather method"
         } else {
-            shift__format_cmip6_frequencies(x@frequency)
+            shift_print__format_cmip6_frequencies(x@frequency)
         },
-        "Table" = shift__format_cmip6_tables(x@table),
+        "Table" = shift_print__format_cmip6_tables(x@table),
         "Activity" = x@activity,
         "Index nodes" = sprintf("%d-node failover", length(x@index_nodes)),
-        "Data node" = shift__format_auto(x@data_node)
+        "Data node" = shift_print__format_auto(x@data_node)
     ))
     if (isTRUE(verbose)) {
         nodes <- data.table::data.table(
             priority = seq_along(x@index_nodes),
             index_node = x@index_nodes
         )
-        shift__print_table(
+        shift_print__print_table(
             nodes,
             "Discovery",
             c("priority", "index_node"),
@@ -1090,8 +1141,8 @@ shift__print_cmip6 <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         )
         if (length(x@filters)) {
             cli::cli_rule("Filters")
-            shift__print_facts(list(
-                "Values" = shift__format_options(x@filters)
+            shift_print__print_facts(list(
+                "Values" = shift_print__format_options(x@filters)
             ))
         }
     }
@@ -1100,10 +1151,10 @@ shift__print_cmip6 <- function(x, n = 10L, width = NULL, verbose = FALSE) {
 
 # Render workflow control policy as explicit semantic choices instead of a raw
 # S7 property dump.
-shift__print_control <- function(x, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
-    shift__print_header("Shift Control")
-    shift__print_facts(list(
+shift_print__print_control <- function(x, width = NULL, verbose = FALSE) {
+    shift_print__print_use_width(width)
+    shift_print__print_header("Shift Control")
+    shift_print__print_facts(list(
         "Strict" = x@strict,
         "Allow partial" = x@allow_partial,
         "Download" = x@download,
@@ -1118,24 +1169,24 @@ shift__print_control <- function(x, width = NULL, verbose = FALSE) {
 
 # Render a reference specification with compact periods and keep provider and
 # stage option detail behind verbose output.
-shift__print_reference <- function(x, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
-    shift__print_header("Climate Reference")
-    shift__print_facts(list(
+shift_print__print_reference <- function(x, width = NULL, verbose = FALSE) {
+    shift_print__print_use_width(width)
+    shift_print__print_header("Climate Reference")
+    shift_print__print_facts(list(
         "Mode" = x@mode,
         "Role" = x@role,
-        "Periods" = shift__format_periods(x@periods),
-        "Plan IDs" = shift__display_values(x@plan_id),
+        "Periods" = shift_print__format_periods(x@periods),
+        "Plan IDs" = shift_print__display_values(x@plan_id),
         "Experiment" = x@experiment,
         "Activity" = x@activity,
-        "Match" = shift__display_values(x@match)
+        "Match" = shift_print__display_values(x@match)
     ))
     if (isTRUE(verbose)) {
         details <- list(
-            "Filters" = shift__format_options(x@filters),
-            "Options" = shift__format_options(x@options),
-            "Collect" = shift__format_options(x@collect),
-            "Extract" = shift__format_options(x@extract)
+            "Filters" = shift_print__format_options(x@filters),
+            "Options" = shift_print__format_options(x@options),
+            "Collect" = shift_print__format_options(x@collect),
+            "Extract" = shift_print__format_options(x@extract)
         )
         if (
             any(vapply(
@@ -1148,7 +1199,7 @@ shift__print_reference <- function(x, width = NULL, verbose = FALSE) {
             ))
         ) {
             cli::cli_rule("Workflow options")
-            shift__print_facts(details)
+            shift_print__print_facts(details)
         }
     }
     invisible(x)
@@ -1156,7 +1207,7 @@ shift__print_reference <- function(x, width = NULL, verbose = FALSE) {
 
 # Bound a dashboard table after it has been rendered so ShiftRun can honour the
 # same `n` contract without duplicating the watch renderer's table semantics.
-shift__print_view_rows <- function(lines, n, width, label) {
+shift_print__print_view_rows <- function(lines, n, width, label) {
     if (!length(lines) || is.infinite(n)) {
         return(lines)
     }
@@ -1167,7 +1218,7 @@ shift__print_view_rows <- function(lines, n, width, label) {
     if (records <= n) {
         return(lines)
     }
-    hint <- shift__ui_fit(
+    hint <- shift_ui_view__ui_fit(
         sprintf("  \u2026 %d more %s", records - n, label),
         width
     )
@@ -1177,8 +1228,8 @@ shift__print_view_rows <- function(lines, n, width, label) {
 # Print one non-animated snapshot through the same state/view pipeline used by
 # foreground completion receipts and shift_watch(). A failed refresh falls back
 # to the handle's cached snapshot and is reported after the dashboard.
-shift__print_run <- function(x, n = 10L, width = NULL, verbose = FALSE) {
-    shift__print_use_width(width)
+shift_print__print_run <- function(x, n = 10L, width = NULL, verbose = FALSE) {
+    shift_print__print_use_width(width)
     refresh_error <- NULL
     run <- x
     # A cached cross-session handle without store identity cannot be refreshed.
@@ -1195,9 +1246,9 @@ shift__print_run <- function(x, n = 10L, width = NULL, verbose = FALSE) {
         }
     }
     view <- tryCatch(
-        shift__ui_run_view(
+        shift_ui_view__ui_run_view(
             run,
-            width = shift__ui_width(width),
+            width = shift_ui__ui_width(width),
             detail = if (isTRUE(verbose)) "detail" else "normal",
             motion = "none"
         ),
@@ -1206,7 +1257,7 @@ shift__print_run <- function(x, n = 10L, width = NULL, verbose = FALSE) {
     if (inherits(view, "condition")) {
         # A failed preview must not retry the unavailable store to obtain an
         # identifier that is already present on the cached handle.
-        shift__print_stage_intro(
+        shift_print__print_stage_intro(
             run,
             "Shift Run",
             list(
@@ -1220,36 +1271,36 @@ shift__print_run <- function(x, n = 10L, width = NULL, verbose = FALSE) {
             collapse = "; "
         )
     } else {
-        view$nodes <- shift__print_view_rows(
+        view$nodes <- shift_print__print_view_rows(
             view$nodes,
             n,
-            shift__ui_width(width),
+            shift_ui__ui_width(width),
             "resolver attempt(s)"
         )
-        view$cases <- shift__print_view_rows(
+        view$cases <- shift_print__print_view_rows(
             view$cases,
             n,
-            shift__ui_width(width),
+            shift_ui__ui_width(width),
             "case(s)"
         )
-        shift__ui_print_view(view, include_tables = TRUE)
+        shift_ui_view__ui_print_view(view, include_tables = TRUE)
     }
-    shift__print_store_notice(refresh_error)
+    shift_print__print_store_notice(refresh_error)
     invisible(x)
 }
 
 # ShiftRequest has a query-oriented static receipt rather than the generic
 # internal stage dump used by data-processing stages.
 S7::method(print, ShiftRequest) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_request(x, width = opts$width, verbose = opts$verbose)
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_request(x, width = opts$width, verbose = opts$verbose)
 }
 
 # ShiftFiles combines the shared ESGF result hierarchy with a semantic CMIP6
 # catalog preview whose row count and terminal width are user-controllable.
 S7::method(print, ShiftFiles) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_files(
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_files(
         x,
         n = opts$n,
         width = opts$width,
@@ -1260,22 +1311,32 @@ S7::method(print, ShiftFiles) <- function(x, ...) {
 # ShiftPlan prints immutable scientific intent and its expected case contract;
 # it never invokes the resolver or touches remote services.
 S7::method(print, ShiftPlan) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_plan(x, n = opts$n, width = opts$width, verbose = opts$verbose)
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_plan(
+        x,
+        n = opts$n,
+        width = opts$width,
+        verbose = opts$verbose
+    )
 }
 
 # ShiftRun reuses the static dashboard view so print, watch, and foreground
 # completion receipts cannot drift in status or diagnostic wording.
 S7::method(print, ShiftRun) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_run(x, n = opts$n, width = opts$width, verbose = opts$verbose)
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_run(
+        x,
+        n = opts$n,
+        width = opts$width,
+        verbose = opts$verbose
+    )
 }
 
 # ShiftDownload prints persistent transfer state without starting or resuming a
 # Downloader job.
 S7::method(print, ShiftDownload) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_download(
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_download(
         x,
         n = opts$n,
         width = opts$width,
@@ -1286,8 +1347,8 @@ S7::method(print, ShiftDownload) <- function(x, ...) {
 # ShiftClimate prints coverage plans rather than materializing extracted
 # Parquet weather rows.
 S7::method(print, ShiftClimate) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_climate(
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_climate(
         x,
         n = opts$n,
         width = opts$width,
@@ -1298,8 +1359,8 @@ S7::method(print, ShiftClimate) <- function(x, ...) {
 # ShiftMorphed prints result identity and artifacts, leaving hourly weather
 # values behind shift_data().
 S7::method(print, ShiftMorphed) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_morphed(
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_morphed(
         x,
         n = opts$n,
         width = opts$width,
@@ -1309,8 +1370,8 @@ S7::method(print, ShiftMorphed) <- function(x, ...) {
 
 # ShiftOutputs prints generated/exported paths by user case.
 S7::method(print, ShiftOutputs) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_outputs_stage(
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_outputs_stage(
         x,
         n = opts$n,
         width = opts$width,
@@ -1321,8 +1382,8 @@ S7::method(print, ShiftOutputs) <- function(x, ...) {
 # ShiftCmip6Spec prints the complete future climate identity while collapsing
 # failover nodes until verbose output is requested.
 S7::method(print, ShiftCmip6Spec) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_cmip6(
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_cmip6(
         x,
         n = opts$n,
         width = opts$width,
@@ -1333,23 +1394,23 @@ S7::method(print, ShiftCmip6Spec) <- function(x, ...) {
 # ShiftControl prints the workflow-wide policy choices that cannot be
 # overridden by individual stage option lists.
 S7::method(print, ShiftControl) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_control(x, width = opts$width, verbose = opts$verbose)
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_control(x, width = opts$width, verbose = opts$verbose)
 }
 
 # ShiftReferenceSpec prints compact reference periods and identity rather than
 # its raw S7 properties.
 S7::method(print, ShiftReferenceSpec) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_reference(x, width = opts$width, verbose = opts$verbose)
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_reference(x, width = opts$width, verbose = opts$verbose)
 }
 
 # Extension ShiftStage classes without a dedicated print method still receive
 # the shared receipt hierarchy instead of the historical angle-bracket dump.
 S7::method(print, ShiftStage) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_use_width(opts$width)
-    shift__print_stage_intro(
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_use_width(opts$width)
+    shift_print__print_stage_intro(
         x,
         "Shift Stage",
         list(
@@ -1357,20 +1418,20 @@ S7::method(print, ShiftStage) <- function(x, ...) {
             "Stage" = x@stage
         )
     )
-    shift__print_workflow(x, verbose = opts$verbose)
+    shift_print__print_workflow(x, verbose = opts$verbose)
     invisible(x)
 }
 
 # ShiftSite prints user-facing geographic and EPW identity.
 S7::method(print, ShiftSite) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_site(x, width = opts$width, verbose = opts$verbose)
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_site(x, width = opts$width, verbose = opts$verbose)
 }
 
 # Compact paths below the session temp directory before they reach cli's fact
 # renderer. Lexical comparison handles planned paths that do not exist yet;
 # normalized parent comparison covers Windows short/long path aliases.
-shift__display_path <- function(path, temp_root = tempdir()) {
+shift_print__display_path <- function(path, temp_root = tempdir()) {
     if (is.null(path) || !nzchar(path)) {
         return(path)
     }
@@ -1431,7 +1492,7 @@ shift__display_path <- function(path, temp_root = tempdir()) {
 
 # Collapse a possibly long vector into a stable console summary while retaining
 # its cardinality for scientific identities such as variables and scenarios.
-shift__display_values <- function(x, max = 7L) {
+shift_print__display_values <- function(x, max = 7L) {
     x <- as.character(x)
     x <- x[!is.na(x) & nzchar(x)]
     if (!length(x)) {
@@ -1448,7 +1509,7 @@ shift__display_values <- function(x, max = 7L) {
 }
 
 # Build a compact, user-facing execution plan without touching remote services.
-shift__plan_explain <- function(x) {
+shift_print__plan_explain <- function(x) {
     meta <- x@meta
     request <- meta$request@meta
     epw <- meta$epw
@@ -1495,7 +1556,7 @@ shift__plan_explain <- function(x) {
     } else if (S7::S7_inherits(reference, ShiftClimate)) {
         reference_detail <- "supplied ShiftClimate"
     }
-    observed_detail <- shift__format_reference(
+    observed_detail <- shift_print__format_reference(
         meta$observed_reference
     )
     climate <- meta$climate
@@ -1523,13 +1584,13 @@ shift__plan_explain <- function(x) {
         detail = c(
             sprintf(
                 "%s %s %s",
-                shift_coalesce(request$project, "CMIP"),
-                shift_coalesce(
-                    shift__display_values(request$source),
+                shift_stage__coalesce(request$project, "CMIP"),
+                shift_stage__coalesce(
+                    shift_print__display_values(request$source),
                     "<any source>"
                 ),
-                shift_coalesce(
-                    shift__display_values(request$experiment),
+                shift_stage__coalesce(
+                    shift_print__display_values(request$experiment),
                     "<any experiment>"
                 )
             ),
@@ -1539,17 +1600,265 @@ shift__plan_explain <- function(x) {
             sprintf("%d expected EPW output(s)", nrow(meta$expected_cases)),
             sprintf(
                 "member=%s; grid=%s",
-                shift_coalesce(shift__display_values(member), "<auto>"),
-                shift_coalesce(shift__display_values(grid), "<auto>")
+                shift_stage__coalesce(
+                    shift_print__display_values(member),
+                    "<auto>"
+                ),
+                shift_stage__coalesce(
+                    shift_print__display_values(grid),
+                    "<auto>"
+                )
             ),
-            shift_coalesce(shift__display_values(nodes), "<provider default>"),
+            shift_stage__coalesce(
+                shift_print__display_values(nodes),
+                "<provider default>"
+            ),
             if (isTRUE(control@allow_partial)) {
                 "allow partial outputs"
             } else {
                 "all requested cases required"
             },
-            shift__display_path(x@store_path),
-            shift__display_path(shift_coalesce(epw$export_dir, epw$dir))
+            shift_print__display_path(x@store_path),
+            shift_print__display_path(shift_stage__coalesce(
+                epw$export_dir,
+                epw$dir
+            ))
         )
+    )
+}
+
+# Format copyable run commands without repeating the package's default store
+# path. Non-default stores remain explicit so recovery never targets the wrong
+# persisted run after a failure.
+shift_print__run_command <- function(name, run_id, store_path, extra = NULL) {
+    default_store <- store_normalize_path(store_dir(init = FALSE))
+    actual_store <- store_normalize_path(store_path)
+    arguments <- c(
+        encodeString(run_id, quote = '"'),
+        if (!identical(actual_store, default_store)) {
+            sprintf("store = %s", encodeString(actual_store, quote = '"'))
+        },
+        extra
+    )
+    sprintf("%s(%s)", name, paste(arguments, collapse = ", "))
+}
+
+# Summarize structured resolver evidence in one scan-friendly line for the
+# final cli condition; the committed dashboard retains the same source fields.
+shift_print__resolution_evidence <- function(diagnostic) {
+    if (is.null(diagnostic) || !length(diagnostic)) {
+        return(character())
+    }
+    # Resolution conditions from custom or older workflow components may omit
+    # aggregate node counters. Normalize them here so the presentation layer
+    # never replaces the original scientific error with a formatting error.
+    number <- function(name) {
+        value <- suppressWarnings(as.integer(diagnostic[[name]]))
+        if (!length(value) || is.na(value[[1L]])) 0L else value[[1L]]
+    }
+    counts <- c(
+        if (number("coverage_failures") > 0L) {
+            sprintf(
+                "%d incomplete",
+                number("coverage_failures")
+            )
+        },
+        if (number("timeout_failures") > 0L) {
+            sprintf(
+                "%d timed out",
+                number("timeout_failures")
+            )
+        },
+        if (number("network_failures") > 0L) {
+            sprintf(
+                "%d network errors",
+                number("network_failures")
+            )
+        },
+        if (number("other_failures") > 0L) {
+            sprintf(
+                "%d other errors",
+                number("other_failures")
+            )
+        }
+    )
+    evidence <- if (!is.null(diagnostic$nodes_checked)) {
+        checked <- number("nodes_checked")
+        sprintf(
+            "%d node%s checked%s.",
+            checked,
+            if (checked == 1L) "" else "s",
+            if (length(counts)) {
+                paste0(": ", paste(counts, collapse = ", "))
+            } else {
+                ""
+            }
+        )
+    } else {
+        character()
+    }
+    closest <- shift_stage__coalesce(diagnostic$closest, list())
+    identity <- c(closest$model, closest$member, closest$grid)
+    identity <- as.character(identity[!vapply(identity, is.null, logical(1L))])
+    identity <- identity[!is.na(identity) & nzchar(identity)]
+    missing <- as.character(shift_stage__coalesce(
+        diagnostic$missing,
+        character()
+    ))
+    missing <- missing[!is.na(missing) & nzchar(missing)]
+    c(
+        evidence,
+        if (length(identity)) {
+            sprintf("Closest identity: %s.", paste(identity, collapse = "/"))
+        },
+        if (length(missing)) {
+            sprintf("First missing requirement: %s.", missing[[1L]])
+        }
+    )
+}
+
+# Format the last business unit into a compact terminal diagnostic while the
+# structured form remains available in shift_run_event$details_json.
+shift_print__failure_context <- function(details, debug = FALSE) {
+    if (is.null(details) || !length(details)) {
+        return("")
+    }
+    fields <- c(
+        node = "node",
+        scenario = "scenario",
+        variable = "variable",
+        period = "period",
+        access_method = "access",
+        unit_label = "unit"
+    )
+    values <- vapply(
+        names(fields),
+        function(name) {
+            value <- details[[name]]
+            if (
+                is.null(value) ||
+                    !length(value) ||
+                    is.na(value[[1L]]) ||
+                    !nzchar(as.character(value[[1L]]))
+            ) {
+                return(NA_character_)
+            }
+            shown <- as.character(value[[1L]])
+            if (identical(name, "node") && !isTRUE(debug)) {
+                shown <- shift_ui_view__node_label(shown)
+            }
+            sprintf("%s=%s", fields[[name]], shown)
+        },
+        character(1L)
+    )
+    values <- unique(values[!is.na(values)])
+    if (!length(values)) {
+        ""
+    } else {
+        paste0("Last activity: ", paste(values, collapse = ", "), ".")
+    }
+}
+
+# Reduce a nested cli/rlang message to the primary cause shown in the one
+# user-facing failure block; the complete message remains persisted on the run.
+shift_print__error_summary <- function(message) {
+    message <- cli::ansi_strip(as.character(shift_stage__coalesce(
+        message,
+        "Unknown error."
+    )))
+    lines <- trimws(unlist(strsplit(message, "[\r\n]+")))
+    lines <- lines[nzchar(lines)]
+    if (!length(lines)) {
+        return("Unknown error.")
+    }
+    sub("^[!xX][[:space:]]*", "", lines[[1L]])
+}
+
+# Build actionable failure text from the recorded cause without changing run state.
+shift_print__abort_run <- function(
+    error,
+    run_id,
+    store_path,
+    stage,
+    details,
+    debug = FALSE
+) {
+    resolution <- if (inherits(error, "epwshiftr_shift_resolution_error")) {
+        error$resolution
+    } else {
+        NULL
+    }
+    message <- conditionMessage(error)
+    failure_details <- details
+    failure_context <- if (is.null(resolution)) {
+        shift_print__failure_context(
+            failure_details,
+            debug = debug
+        )
+    } else {
+        ""
+    }
+    evidence <- shift_print__resolution_evidence(resolution)
+    get_command <- shift_print__run_command(
+        "shift_run_get",
+        run_id,
+        store_path
+    )
+    inspect_command <- sprintf("shift_diagnostics(%s)", get_command)
+    resume_command <- shift_print__run_command(
+        "shift_resume",
+        run_id,
+        store_path
+    )
+    logs_command <- shift_print__run_command(
+        "shift_logs",
+        run_id,
+        store_path,
+        "tail = 20L"
+    )
+    cli::cli_abort(
+        c(
+            "Future EPW run {.val {run_id}} failed during {.val {stage}}.",
+            "x" = paste0(
+                "Cause: ",
+                if (is.null(resolution)) {
+                    shift_print__error_summary(message)
+                } else {
+                    shift_stage__coalesce(
+                        resolution$cause,
+                        resolution$summary
+                    )
+                }
+            ),
+            if (length(evidence)) {
+                stats::setNames(evidence, rep("i", length(evidence)))
+            },
+            if (nzchar(failure_context)) {
+                c("i" = failure_context)
+            },
+            if (
+                !is.null(resolution) &&
+                    identical(resolution$recovery, "change_request")
+            ) {
+                c(
+                    "!" = paste(
+                        "Resuming this request unchanged will repeat the",
+                        "coverage failure. Adjust the climate selection or reference first."
+                    )
+                )
+            },
+            "i" = "Inspect: {.code {inspect_command}}",
+            if (is.null(resolution) || isTRUE(resolution$retryable)) {
+                c("i" = "Retry: {.code {resume_command}}")
+            },
+            "i" = "Logs: {.code {logs_command}}"
+        ),
+        class = "epwshiftr_shift_error",
+        run_id = run_id,
+        store = store_path,
+        stage = stage,
+        original_message = message,
+        source_error = error,
+        call = NULL
     )
 }

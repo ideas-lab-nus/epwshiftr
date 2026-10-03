@@ -26,7 +26,11 @@ test_that("one acquisition reads linked sites and methods from sparse cells", {
         time_start = rep(acquisition$time_start, 3L),
         time_stop = rep(acquisition$time_stop, 3L)
     )
-    actual <- shift_batch__read_acquisition(dataset, acquisition, consumers)
+    actual <- shift_batch_read__read_acquisition(
+        dataset,
+        acquisition,
+        consumers
+    )
     sources <- attr(actual, "grid_sources")
     slices <- attr(actual, "read_slices")
 
@@ -44,7 +48,7 @@ test_that("one acquisition reads linked sites and methods from sparse cells", {
     other$open()
     on.exit(other$close(), add = TRUE)
     expect_error(
-        shift_batch__read_acquisition(other, acquisition, consumers),
+        shift_batch_read__read_acquisition(other, acquisition, consumers),
         "does not match the acquisition source"
     )
     empty_acquisition <- data.table::copy(acquisition)
@@ -58,7 +62,7 @@ test_that("one acquisition reads linked sites and methods from sparse cells", {
         j = "time_stop",
         value = as.POSIXct("2062-01-02", tz = "UTC")
     )
-    empty <- shift_batch__read_acquisition(
+    empty <- shift_batch_read__read_acquisition(
         dataset,
         empty_acquisition,
         consumers
@@ -152,7 +156,7 @@ test_that("shared File planning retains four consumers for one source interval",
 
     original_catalog <- data.table::copy(catalog)
     original_consumers <- data.table::copy(consumers)
-    plan <- shift_batch__shared_plan(catalog, consumers)
+    plan <- shift_batch_plan__shared_plan(catalog, consumers)
 
     expect_equal(nrow(plan$acquisitions), 1L)
     expect_equal(nrow(plan$consumers), 4L)
@@ -167,7 +171,7 @@ test_that("shared File planning retains four consumers for one source interval",
     data.table::set(another, j = "file_key", value = "file-b")
     data.table::set(another, j = "version", value = "v2")
     data.table::set(another, j = "checksum", value = "checksum-b")
-    versions <- shift_batch__shared_plan(
+    versions <- shift_batch_plan__shared_plan(
         data.table::rbindlist(list(catalog, another)),
         consumers
     )
@@ -191,7 +195,7 @@ test_that("shared File planning retains four consumers for one source interval",
             tz = "UTC"
         )
     )
-    intervals <- shift_batch__shared_plan(catalog, windows)
+    intervals <- shift_batch_plan__shared_plan(catalog, windows)
     expect_equal(nrow(intervals$acquisitions), 2L)
     expect_equal(nrow(intervals$consumers), 4L)
     expect_setequal(
@@ -256,7 +260,7 @@ test_that("shared File planning preserves gaps and missing demands", {
         spatial_method = "nearest"
     )
 
-    plan <- shift_batch__shared_plan(catalog, consumers)
+    plan <- shift_batch_plan__shared_plan(catalog, consumers)
     expect_equal(nrow(plan$acquisitions), 2L)
     expect_setequal(plan$consumers$demand_id, c("jan", "mar"))
     expect_identical(plan$unmatched$demand_id, "missing")
@@ -270,8 +274,8 @@ test_that("child demands retain site and historical source roles", {
         member = "r1i1p1f1",
         grid = "gr"
     )
-    periods <- shift__periods_from_input(list(mid = 2060))
-    request <- shift__request_from_cmip6(climate, periods, transform)
+    periods <- shift_spec__periods_from_input(list(mid = 2060))
+    request <- shift_spec__request_from_cmip6(climate, periods, transform)
     reference <- historical_reference(1995:2014)
     epw <- get_cache_epw()
     sites <- list(
@@ -296,7 +300,7 @@ test_that("child demands retain site and historical source roles", {
         method = "epwshiftr"
     )
 
-    demands <- shift_batch__consumers(children, manifest)
+    demands <- shift_batch_plan__consumers(children, manifest)
     expect_s3_class(demands, "data.table")
     expect_setequal(demands$site_id, manifest$site_id)
     expect_setequal(demands$role, c("future", "historical"))
@@ -329,7 +333,7 @@ test_that("child demands retain site and historical source roles", {
     )
     store$add_files(files)
     store$close()
-    plan <- shift_batch__plan_from_discovery(children, manifest, discovery)
+    plan <- shift_batch_plan__plan_from_discovery(children, manifest, discovery)
     expect_equal(nrow(plan$acquisitions), 1L)
     expect_equal(nrow(plan$consumers), 2L)
     expect_setequal(plan$consumers$site_id, manifest$site_id)
@@ -354,8 +358,8 @@ test_that("child demands retain site and historical source roles", {
 })
 
 test_that("empty child collection creates an empty local plan", {
-    consumers <- shift_batch__consumers(list(), data.table::data.table())
-    plan <- shift_batch__shared_plan(data.table::data.table(), consumers)
+    consumers <- shift_batch_plan__consumers(list(), data.table::data.table())
+    plan <- shift_batch_plan__shared_plan(data.table::data.table(), consumers)
     expect_s3_class(consumers, "data.table")
     expect_equal(nrow(plan$acquisitions), 0L)
     expect_equal(nrow(plan$consumers), 0L)
@@ -413,7 +417,7 @@ test_that("batch windows seed child caches and resume verified native reads", {
     no_checksum <- data.table::copy(acquisition)
     data.table::set(no_checksum, j = "checksum", value = NA_character_)
     expect_error(
-        shift_batch__prefetch_acquisition(
+        shift_batch_window__prefetch_acquisition(
             batch_root,
             no_checksum,
             consumers
@@ -428,11 +432,11 @@ test_that("batch windows seed child caches and resume verified native reads", {
         value = "https://example.org/whole-file.nc"
     )
     expect_error(
-        shift_batch__prefetch_acquisition(batch_root, no_dap, consumers),
+        shift_batch_window__prefetch_acquisition(batch_root, no_dap, consumers),
         "OPeNDAP endpoint or a local file"
     )
     expect_gt(
-        shift_batch__prefetch_acquisition(
+        shift_batch_window__prefetch_acquisition(
             batch_root,
             acquisition,
             consumers
@@ -475,7 +479,11 @@ test_that("batch windows seed child caches and resume verified native reads", {
     }
     # Complete child caches skip even the source metadata open.
     expect_identical(
-        shift_batch__prefetch_acquisition(batch_root, acquisition, consumers),
+        shift_batch_window__prefetch_acquisition(
+            batch_root,
+            acquisition,
+            consumers
+        ),
         0L
     )
     receipt <- list.files(
@@ -506,12 +514,16 @@ test_that("batch windows seed child caches and resume verified native reads", {
     # Recovery reads only the verified windows and reconstructs the missing
     # site cache without issuing another source-value request.
     testthat::local_mocked_bindings(
-        shift_batch__read_acquisition = function(...) {
+        shift_batch_read__read_acquisition = function(...) {
             stop("Unexpected source-value read")
         }
     )
     expect_gt(
-        shift_batch__prefetch_acquisition(batch_root, acquisition, consumers),
+        shift_batch_window__prefetch_acquisition(
+            batch_root,
+            acquisition,
+            consumers
+        ),
         1L
     )
     expect_true(file.exists(store__extract_cache_path(
@@ -528,7 +540,11 @@ test_that("batch windows seed child caches and resume verified native reads", {
         value = "https://unavailable.example/source.nc"
     )
     expect_gt(
-        shift_batch__prefetch_acquisition(batch_root, unavailable, consumers),
+        shift_batch_window__prefetch_acquisition(
+            batch_root,
+            unavailable,
+            consumers
+        ),
         1L
     )
     expect_true(file.exists(store__extract_cache_path(
@@ -546,7 +562,7 @@ test_that("batch windows seed child caches and resume verified native reads", {
     )[[1L]]
     cat("tampered", file = window_path, append = TRUE)
     expect_error(
-        shift_batch__prefetch_acquisition(
+        shift_batch_window__prefetch_acquisition(
             batch_root,
             acquisition,
             consumers
@@ -591,7 +607,7 @@ test_that("partial site recovery excludes cached consumers", {
     )
     root <- withr::local_tempdir()
     expect_equal(
-        shift_batch__prefetch_acquisition(root, acquisition, consumers),
+        shift_batch_window__prefetch_acquisition(root, acquisition, consumers),
         1L
     )
     plan <- data.table::data.table(
@@ -610,10 +626,10 @@ test_that("partial site recovery excludes cached consumers", {
         full.names = TRUE
     )[[1L]]
     unlink(receipt)
-    original_read <- shift_batch__read_acquisition
+    original_read <- shift_batch_read__read_acquisition
     counts <- integer()
     testthat::local_mocked_bindings(
-        shift_batch__read_acquisition = function(
+        shift_batch_read__read_acquisition = function(
             dataset,
             acquisition,
             consumers
@@ -623,7 +639,7 @@ test_that("partial site recovery excludes cached consumers", {
         }
     )
     expect_equal(
-        shift_batch__prefetch_acquisition(root, acquisition, consumers),
+        shift_batch_window__prefetch_acquisition(root, acquisition, consumers),
         1L
     )
     expect_identical(counts, 1L)
@@ -647,7 +663,11 @@ test_that("partial site recovery excludes cached consumers", {
     )
     other_root <- withr::local_tempdir()
     expect_equal(
-        shift_batch__prefetch_acquisition(other_root, acquisition, duplicate),
+        shift_batch_window__prefetch_acquisition(
+            other_root,
+            acquisition,
+            duplicate
+        ),
         1L
     )
     other_receipt <- list.files(
@@ -711,7 +731,11 @@ test_that("shared acquisition partitions large site collections", {
         })
     )
     expect_equal(
-        shift_batch__prefetch_acquisition(batch_root, acquisition, consumers),
+        shift_batch_window__prefetch_acquisition(
+            batch_root,
+            acquisition,
+            consumers
+        ),
         2L
     )
     expect_identical(opens, 1L)
@@ -737,7 +761,11 @@ test_that("shared acquisition partitions large site collections", {
         expect_equal(nrow(payload$data), 30L)
     }
     expect_identical(
-        shift_batch__prefetch_acquisition(batch_root, acquisition, consumers),
+        shift_batch_window__prefetch_acquisition(
+            batch_root,
+            acquisition,
+            consumers
+        ),
         0L
     )
     expect_identical(opens, 1L)

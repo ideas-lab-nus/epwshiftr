@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+* Consolidate workflow validation, year parsing and durable run registration.
+  Inspectors group outputs once and query relevant manifest rows; internal
+  helpers follow their owning modules and tests are organized by behavior.
+  Remove unused reference-argument branches (#278).
+
 * Separate workflow configuration, execution, job recovery, inspection and
   resolution into focused source files, alongside query-result access and
   replica planning and UI presentation. Preserve the existing APIs and

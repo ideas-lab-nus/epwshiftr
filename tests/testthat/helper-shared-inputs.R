@@ -7,7 +7,7 @@ shared_inputs_test__fixture <- function(env = parent.frame()) {
             epwshiftr.dir_cache = file.path(root, "cache"),
             epwshiftr.mirai_workers = 1L,
             availability = test_cmip6_availability,
-            shift__cmip6_period_coverage = test_cmip6_period_coverage
+            shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
         ),
         .local_envir = env
     )

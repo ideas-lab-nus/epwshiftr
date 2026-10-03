@@ -1,8 +1,7 @@
 #' @include weather-temperature.R component-temperature-epw.R
 NULL
 
-# Daily temperature backend {{{
-
+# Daily temperature backend
 # The backend owns only temperature and its humidity-state post-process. Other
 # EPW fields remain on the baseline hourly sequence until their daily methods
 # are implemented independently.
@@ -274,5 +273,3 @@ daily__temperature_pipeline <- function(
         output = "daily_temperature_epw_result"
     ))
 }
-
-# }}}

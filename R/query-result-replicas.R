@@ -864,7 +864,7 @@ query_result__http_fallback <- function(
     unname(paths)
 }
 
-# query_result__open_dataset {{{
+# query_result__open_dataset
 # Shared OPeNDAP open and HTTP fallback implementation for File and Aggregation
 # results. Class-specific wrappers provide labels and error messages.
 query_result__open_dataset <- function(

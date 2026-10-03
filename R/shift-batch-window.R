@@ -1,7 +1,7 @@
 # Divide one physical file's native axis at calendar-month boundaries. The
 # next month's first instant closes the preceding window, which also includes
 # day 30 of February in a 360-day calendar without inventing a POSIX date.
-shift_batch__windows <- function(axis, acquisition, consumer_count) {
+shift_batch_window__windows <- function(axis, acquisition, consumer_count) {
     checkmate::assert_count(consumer_count, positive = TRUE)
     selected <- cf_time__range_indices(
         axis$values,
@@ -110,7 +110,7 @@ shift_batch__windows <- function(axis, acquisition, consumer_count) {
 # Keep each completed native window behind a SHA-256 receipt. A missing receipt
 # is an interrupted write, while a checksum mismatch is an error that must not
 # silently replace evidence or contaminate child extraction caches.
-shift_batch__window_read <- function(path, identity, demand_ids) {
+shift_batch_window__window_read <- function(path, identity, demand_ids) {
     receipt_path <- paste0(path, ".json")
     if (!file.exists(receipt_path)) {
         return(NULL)
@@ -188,7 +188,12 @@ shift_batch__window_read <- function(path, identity, demand_ids) {
 # Split one bounded multi-site result once, then publish small per-consumer
 # chunks. The receipt is written last so interrupted windows cannot seed any
 # child cache, and reconstruction needs only one site's chunks in memory.
-shift_batch__window_write <- function(path, identity, values, demand_ids) {
+shift_batch_window__window_write <- function(
+    path,
+    identity,
+    values,
+    demand_ids
+) {
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     if (dir.exists(path)) {
         # Preserve an interrupted publication for diagnosis. Completed
@@ -231,8 +236,8 @@ shift_batch__window_write <- function(path, identity, values, demand_ids) {
         temporary <- tempfile(pattern = "chunk-", tmpdir = path)
         on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
         payload <- list(
-            data = shift_coalesce(value_groups[[demand_id]], values[0L]),
-            grid_sources = shift_coalesce(
+            data = shift_stage__coalesce(value_groups[[demand_id]], values[0L]),
+            grid_sources = shift_stage__coalesce(
                 source_groups[[demand_id]],
                 sources[0L]
             )
@@ -270,7 +275,7 @@ shift_batch__window_write <- function(path, identity, values, demand_ids) {
 # Persist the small native-axis facts needed to assemble verified windows when
 # the source service is temporarily unavailable. The identity and content hash
 # prevent a different consumer group from reusing these counts or boundaries.
-shift_batch__source_metadata <- function(
+shift_batch_window__source_metadata <- function(
     axis,
     acquisition,
     consumers,
@@ -301,7 +306,11 @@ shift_batch__source_metadata <- function(
     )
     list(
         identity = identity,
-        windows = shift_batch__windows(axis, acquisition, nrow(consumers)),
+        windows = shift_batch_window__windows(
+            axis,
+            acquisition,
+            nrow(consumers)
+        ),
         units = units,
         available_counts = stats::setNames(
             counts[match_index],
@@ -314,7 +323,7 @@ shift_batch__source_metadata <- function(
 
 # Read a group's metadata only when its complete content still matches the
 # saved hash; a missing manifest merely requires opening the original source.
-shift_batch__metadata_read <- function(path, identity, demand_ids) {
+shift_batch_window__metadata_read <- function(path, identity, demand_ids) {
     if (!file.exists(path)) {
         return(NULL)
     }
@@ -341,7 +350,7 @@ shift_batch__metadata_read <- function(path, identity, demand_ids) {
 
 # Atomically publish the native-axis summary before any source-value window.
 # Existing valid metadata is left untouched across interrupted attempts.
-shift_batch__metadata_write <- function(path, identity, data) {
+shift_batch_window__metadata_write <- function(path, identity, data) {
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     temporary <- tempfile(pattern = "source-metadata-", tmpdir = dirname(path))
     on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
@@ -360,7 +369,7 @@ shift_batch__metadata_write <- function(path, identity, data) {
 # Materialize one consumer in the existing site-extraction cache format. Child
 # stores can then use their ordinary extraction task, provenance and resume
 # logic without knowing that another site shared the source read.
-shift_batch__seed_consumer <- function(
+shift_batch_window__seed_consumer <- function(
     acquisition,
     consumer,
     pieces,
@@ -459,7 +468,7 @@ shift_batch__seed_consumer <- function(
 # Resolve only the uncached consumers in every completed window. A missing
 # receipt means a source read is still needed; an altered chunk remains an
 # error instead of silently being regenerated.
-shift_batch__window_pieces <- function(
+shift_batch_window__window_pieces <- function(
     directory,
     identity,
     windows,
@@ -481,7 +490,7 @@ shift_batch__window_pieces <- function(
         path <- file.path(directory, window$window_id[[1L]])
         piece <- manifest_with_lock(
             path,
-            shift_batch__window_read(
+            shift_batch_window__window_read(
                 path,
                 store__hash(identity, window$window_id[[1L]]),
                 active$demand_id
@@ -498,7 +507,7 @@ shift_batch__window_pieces <- function(
 
 # Rebuild only missing site caches after the required window chunks are
 # verified, keeping a single consumer's data in memory at any one time.
-shift_batch__seed_pending <- function(
+shift_batch_window__seed_pending <- function(
     acquisition,
     consumers,
     cached,
@@ -506,7 +515,7 @@ shift_batch__seed_pending <- function(
     metadata
 ) {
     for (index in which(!cached)) {
-        shift_batch__seed_consumer(
+        shift_batch_window__seed_consumer(
             acquisition,
             consumers[index],
             pieces,
@@ -517,7 +526,7 @@ shift_batch__seed_pending <- function(
 }
 
 # Use the ordinary cache identity for every demand, including optional inputs.
-shift_batch__cache_paths <- function(acquisition, consumers) {
+shift_batch_window__cache_paths <- function(acquisition, consumers) {
     vapply(
         seq_len(nrow(consumers)),
         function(index) {
@@ -539,7 +548,7 @@ shift_batch__cache_paths <- function(acquisition, consumers) {
 # Open each physical file once, resume verified windows, and publish complete
 # per-site payloads only after every native window succeeds. Failed reads leave
 # earlier window receipts intact for the next batch resume.
-shift_batch__prefetch_acquisition <- function(
+shift_batch_window__prefetch_acquisition <- function(
     batch_root,
     acquisition,
     consumers,
@@ -556,7 +565,7 @@ shift_batch__prefetch_acquisition <- function(
             add = TRUE
         )
     }
-    cache_paths <- shift_batch__cache_paths(acquisition, consumers)
+    cache_paths <- shift_batch_window__cache_paths(acquisition, consumers)
     # Several weather methods can ask for the same site, source and native
     # period. Their ordinary child cache key is identical, so read it once.
     keep <- !duplicated(cache_paths)
@@ -580,7 +589,7 @@ shift_batch__prefetch_acquisition <- function(
                 first[[index]],
                 min(first[[index]] + 255L, nrow(consumers))
             )
-            windows[[index]] <- shift_batch__prefetch_acquisition(
+            windows[[index]] <- shift_batch_window__prefetch_acquisition(
                 batch_root,
                 acquisition,
                 consumers[rows],
@@ -604,7 +613,7 @@ shift_batch__prefetch_acquisition <- function(
         source_identity
     )
     metadata_path <- file.path(directory, "source-metadata.rds")
-    metadata <- shift_batch__metadata_read(
+    metadata <- shift_batch_window__metadata_read(
         metadata_path,
         source_identity,
         consumers$demand_id
@@ -616,7 +625,7 @@ shift_batch__prefetch_acquisition <- function(
         }
         # Completed windows can seed missing site caches without reconnecting
         # to a source whose transport is currently unavailable.
-        restored <- shift_batch__window_pieces(
+        restored <- shift_batch_window__window_pieces(
             directory,
             source_identity,
             metadata$windows,
@@ -624,7 +633,7 @@ shift_batch__prefetch_acquisition <- function(
             cached
         )
         if (restored$complete) {
-            shift_batch__seed_pending(
+            shift_batch_window__seed_pending(
                 acquisition,
                 consumers,
                 cached,
@@ -718,16 +727,20 @@ shift_batch__prefetch_acquisition <- function(
     dataset <- source$dataset
     axis <- source$axis
     if (is.null(metadata)) {
-        metadata <- shift_batch__source_metadata(
+        metadata <- shift_batch_window__source_metadata(
             axis,
             acquisition,
             consumers,
             source_identity,
             source$units
         )
-        shift_batch__metadata_write(metadata_path, source_identity, metadata)
+        shift_batch_window__metadata_write(
+            metadata_path,
+            source_identity,
+            metadata
+        )
     } else {
-        observed <- shift_batch__source_metadata(
+        observed <- shift_batch_window__source_metadata(
             axis,
             acquisition,
             consumers,
@@ -789,7 +802,7 @@ shift_batch__prefetch_acquisition <- function(
         piece <- manifest_with_lock(
             path,
             {
-                cached_window <- shift_batch__window_read(
+                cached_window <- shift_batch_window__window_read(
                     path,
                     identity,
                     active$demand_id
@@ -819,12 +832,12 @@ shift_batch__prefetch_acquisition <- function(
                         j = "time_stop",
                         value = window$time_stop
                     )
-                    values <- shift_batch__read_acquisition(
+                    values <- shift_batch_read__read_acquisition(
                         dataset,
                         bounded,
                         active
                     )
-                    shift_batch__window_write(
+                    shift_batch_window__window_write(
                         path,
                         identity,
                         values,
@@ -836,14 +849,20 @@ shift_batch__prefetch_acquisition <- function(
         )
         pieces[[index]] <- piece
     }
-    shift_batch__seed_pending(acquisition, consumers, cached, pieces, metadata)
+    shift_batch_window__seed_pending(
+        acquisition,
+        consumers,
+        cached,
+        pieces,
+        metadata
+    )
     invisible(nrow(windows))
 }
 
 # Warm the existing extraction cache before child workflows start. A plan with
 # unmatched source demands stays on the ordinary child path. A failed shared
 # remote read blocks only its dependent children, without per-city retries.
-shift_batch__prefetch <- function(batch, reporter = NULL) {
+shift_batch_window__prefetch <- function(batch, reporter = NULL) {
     shared <- batch@meta$shared_plan
     if (
         is.null(shared) ||
@@ -893,7 +912,7 @@ shift_batch__prefetch <- function(batch, reporter = NULL) {
         }
         # Keep the original group identity for saved windows. Inactive demand
         # keys are treated as satisfied, without reading or seeding their data.
-        paths <- shift_batch__cache_paths(acquisition, consumers)
+        paths <- shift_batch_window__cache_paths(acquisition, consumers)
         unique_paths <- unique(paths[needed])
         available <- vapply(
             unique_paths,

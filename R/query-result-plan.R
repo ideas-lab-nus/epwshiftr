@@ -290,7 +290,7 @@ query_result__download_plan <- function(
     plan[]
 }
 
-# query_result__resolve_downloader {{{
+# query_result__resolve_downloader
 # Resolve the shared downloader contract used by public download methods and
 # HTTP fallback paths.
 query_result__resolve_downloader <- function(
@@ -308,7 +308,7 @@ query_result__resolve_downloader <- function(
     cli::cli_abort(message)
 }
 
-# query_result__download {{{
+# query_result__download
 # Shared implementation for File and Aggregation result downloads. The public
 # wrappers keep class-specific argument defaults and delegate the common work here.
 query_result__download <- function(

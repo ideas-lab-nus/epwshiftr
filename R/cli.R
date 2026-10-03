@@ -13,7 +13,10 @@
 #'
 #' @return Invisibly, a list with `status`, `result`, and `error`.
 #' @export
-epwshiftr_cli <- function(args = commandArgs(trailingOnly = TRUE), exit = FALSE) {
+epwshiftr_cli <- function(
+    args = commandArgs(trailingOnly = TRUE),
+    exit = FALSE
+) {
     checkmate::assert_character(args, any.missing = FALSE)
     checkmate::assert_flag(exit)
 
@@ -27,15 +30,24 @@ epwshiftr_cli <- function(args = commandArgs(trailingOnly = TRUE), exit = FALSE)
             result <- epwshiftr_cli_dispatch(parsed)
             # Operational failures can be returned as inspectable batch or
             # partial-run results. Automation still needs a nonzero exit code.
-            if (length(parsed$args) >= 2L &&
-                identical(parsed$args[[1L]], "shift") &&
-                parsed$args[[2L]] %in% c("run", "resume") &&
-                is.list(result) && !is.data.frame(result) &&
-                isTRUE(result$status %in% c("failed", "blocked", "partial", "cancelled"))) {
+            if (
+                length(parsed$args) >= 2L &&
+                    identical(parsed$args[[1L]], "shift") &&
+                    parsed$args[[2L]] %in% c("run", "resume") &&
+                    is.list(result) &&
+                    !is.data.frame(result) &&
+                    isTRUE(
+                        result$status %in%
+                            c("failed", "blocked", "partial", "cancelled")
+                    )
+            ) {
                 status <- 1L
             }
-            if (is.list(result) && !is.data.frame(result) &&
-                identical(result$readiness, "blocked")) {
+            if (
+                is.list(result) &&
+                    !is.data.frame(result) &&
+                    identical(result$readiness, "blocked")
+            ) {
                 status <- 1L
             }
             epwshiftr_cli_emit_result(
@@ -134,13 +146,21 @@ epwshiftr_cli_parse_globals <- function(args) {
 # Translate command flags into the same UI contract used by the R shift APIs.
 # Machine-readable and quiet modes always select the null renderer so progress
 # events remain durable without contaminating stdout.
-epwshiftr_cli_task_ui <- function(parsed, json = FALSE, jsonl = FALSE,
-                                  quiet = FALSE) {
+epwshiftr_cli_task_ui <- function(
+    parsed,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
     # Commands expose different flag sets. List lookup treats missing flags as
     # disabled instead of throwing on a named atomic-vector subscript.
-    flags <- as.list(shift_coalesce(parsed$flags, list()))
-    progress <- if (isTRUE(quiet) || isTRUE(json) || isTRUE(jsonl) ||
-        isTRUE(flags[["--no-progress"]])) {
+    flags <- as.list(shift_stage__coalesce(parsed$flags, list()))
+    progress <- if (
+        isTRUE(quiet) ||
+            isTRUE(json) ||
+            isTRUE(jsonl) ||
+            isTRUE(flags[["--no-progress"]])
+    ) {
         "none"
     } else {
         "auto"
@@ -166,13 +186,22 @@ epwshiftr_cli_dispatch <- function(parsed) {
         return(epwshiftr_cli_help(args[-1L]))
     }
     if (length(args) && identical(args[[1L]], "doctor")) {
-        return(epwshiftr_cli_doctor(parsed$store, args[-1L],
+        return(epwshiftr_cli_doctor(
+            parsed$store,
+            args[-1L],
             ui = if (parsed$json || parsed$jsonl || parsed$quiet) {
                 shift_ui("none")
-            } else shift_ui()))
+            } else {
+                shift_ui()
+            }
+        ))
     }
     if (length(args) >= 2L && identical(args[[2L]], "help")) {
-        topic <- if (length(args) > 2L) c(args[[1L]], args[-seq_len(2L)]) else args[[1L]]
+        topic <- if (length(args) > 2L) {
+            c(args[[1L]], args[-seq_len(2L)])
+        } else {
+            args[[1L]]
+        }
         return(epwshiftr_cli_help(topic))
     }
     if (length(args) < 2L) {
@@ -186,10 +215,18 @@ epwshiftr_cli_dispatch <- function(parsed) {
     if (identical(group, "shift")) {
         # Generating a JSON template needs neither a database nor a writable
         # default store. History also inspects existing stores without creation.
-        if (identical(command, "config") && length(rest) &&
-            identical(rest[[1L]], "example")) {
-            return(epwshiftr_cli_shift_config(NULL, rest,
-                json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+        if (
+            identical(command, "config") &&
+                length(rest) &&
+                identical(rest[[1L]], "example")
+        ) {
+            return(epwshiftr_cli_shift_config(
+                NULL,
+                rest,
+                json = parsed$json,
+                jsonl = parsed$jsonl,
+                quiet = parsed$quiet
+            ))
         }
         # Shift status/watch/cancel/log commands must be able to fall back to
         # atomic live sidecars while a detached worker owns DuckDB's process
@@ -200,24 +237,53 @@ epwshiftr_cli_dispatch <- function(parsed) {
         } else {
             store_normalize_path(parsed$store)
         }
-        return(epwshiftr_cli_shift(store_path, command, rest,
-            json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+        return(epwshiftr_cli_shift(
+            store_path,
+            command,
+            rest,
+            json = parsed$json,
+            jsonl = parsed$jsonl,
+            quiet = parsed$quiet
+        ))
     }
 
     # Scientific catalog and option inspection need no writable store.
-    if (identical(group, "morph") && command %in% c("transforms", "describe", "variables")) {
-        return(epwshiftr_cli_morph(NULL, command, rest,
-            json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+    if (
+        identical(group, "morph") &&
+            command %in% c("transforms", "describe", "variables")
+    ) {
+        return(epwshiftr_cli_morph(
+            NULL,
+            command,
+            rest,
+            json = parsed$json,
+            jsonl = parsed$jsonl,
+            quiet = parsed$quiet
+        ))
     }
 
     store <- EsgStore$new(path = parsed$store)
     on.exit(store$close(), add = TRUE)
 
     if (identical(group, "query")) {
-        return(epwshiftr_cli_query(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+        return(epwshiftr_cli_query(
+            store,
+            command,
+            rest,
+            json = parsed$json,
+            jsonl = parsed$jsonl,
+            quiet = parsed$quiet
+        ))
     }
     if (identical(group, "download")) {
-        return(epwshiftr_cli_download(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+        return(epwshiftr_cli_download(
+            store,
+            command,
+            rest,
+            json = parsed$json,
+            jsonl = parsed$jsonl,
+            quiet = parsed$quiet
+        ))
     }
     if (identical(group, "esgf")) {
         return(epwshiftr_cli_esgf(store, command, rest))
@@ -226,16 +292,36 @@ epwshiftr_cli_dispatch <- function(parsed) {
         return(epwshiftr_cli_storage(store, command, rest))
     }
     if (identical(group, "extract")) {
-        return(epwshiftr_cli_extract(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+        return(epwshiftr_cli_extract(
+            store,
+            command,
+            rest,
+            json = parsed$json,
+            jsonl = parsed$jsonl,
+            quiet = parsed$quiet
+        ))
     }
     if (identical(group, "morph")) {
-        return(epwshiftr_cli_morph(store, command, rest, json = parsed$json, jsonl = parsed$jsonl, quiet = parsed$quiet))
+        return(epwshiftr_cli_morph(
+            store,
+            command,
+            rest,
+            json = parsed$json,
+            jsonl = parsed$jsonl,
+            quiet = parsed$quiet
+        ))
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown command group: %s", group))
 }
 
 
-epwshiftr_cli_emit_result <- function(result, json = FALSE, jsonl = FALSE, quiet = FALSE, context = NULL) {
+epwshiftr_cli_emit_result <- function(
+    result,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE,
+    context = NULL
+) {
     if (inherits(result, "epwshiftr_cli_emitted")) {
         return(invisible(NULL))
     }
@@ -243,12 +329,25 @@ epwshiftr_cli_emit_result <- function(result, json = FALSE, jsonl = FALSE, quiet
         return(invisible(NULL))
     }
     if (isTRUE(jsonl)) {
-        cat(jsonlite::toJSON(result, dataframe = "rows", POSIXt = "ISO8601", auto_unbox = TRUE, null = "null"))
+        cat(jsonlite::toJSON(
+            result,
+            dataframe = "rows",
+            POSIXt = "ISO8601",
+            auto_unbox = TRUE,
+            null = "null"
+        ))
         cat("\n")
         return(invisible(NULL))
     }
     if (isTRUE(json)) {
-        cat(jsonlite::toJSON(result, dataframe = "rows", POSIXt = "ISO8601", auto_unbox = TRUE, null = "null", pretty = TRUE))
+        cat(jsonlite::toJSON(
+            result,
+            dataframe = "rows",
+            POSIXt = "ISO8601",
+            auto_unbox = TRUE,
+            null = "null",
+            pretty = TRUE
+        ))
         cat("\n")
         return(invisible(NULL))
     }
@@ -257,17 +356,32 @@ epwshiftr_cli_emit_result <- function(result, json = FALSE, jsonl = FALSE, quiet
 }
 
 
-epwshiftr_cli_emit_error <- function(message, json = FALSE, jsonl = FALSE, quiet = FALSE, status = 1L) {
+epwshiftr_cli_emit_error <- function(
+    message,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE,
+    status = 1L
+) {
     if (isTRUE(quiet)) {
         return(invisible(NULL))
     }
     if (isTRUE(jsonl)) {
-        cat(jsonlite::toJSON(list(status = status, error = message), auto_unbox = TRUE, null = "null"))
+        cat(jsonlite::toJSON(
+            list(status = status, error = message),
+            auto_unbox = TRUE,
+            null = "null"
+        ))
         cat("\n")
         return(invisible(NULL))
     }
     if (isTRUE(json)) {
-        cat(jsonlite::toJSON(list(status = status, error = message), auto_unbox = TRUE, null = "null", pretty = TRUE))
+        cat(jsonlite::toJSON(
+            list(status = status, error = message),
+            auto_unbox = TRUE,
+            null = "null",
+            pretty = TRUE
+        ))
         cat("\n")
         return(invisible(NULL))
     }

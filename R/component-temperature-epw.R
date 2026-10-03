@@ -1,5 +1,4 @@
-# Shared temperature-to-EPW components {{{
-
+# Shared temperature-to-EPW components
 # The reusable hourly projectors consume only a numerical tolerance. Signal and
 # EPW-header options remain owned by their corresponding stages.
 EPW_MORPH_TEMPERATURE_PROJECTION_OPTIONS <- list(tolerance = 1e-8)
@@ -9,41 +8,56 @@ EPW_MORPH_TEMPERATURE_PROJECTION_OPTIONS <- list(tolerance = 1e-8)
 temperature__factor_rows <- function(targets, projected) {
     method_columns <- intersect(
         c(
-            "shape_exponent", "btws_scale", "btws_m", "btws_n",
+            "shape_exponent",
+            "btws_scale",
+            "btws_m",
+            "btws_n",
             "btws_fallback_reason"
         ),
         names(projected)
     )
     projection_columns <- c(
-        "dry_bulb_temperature", "target_mean", "target_minimum",
-        "target_maximum", "projected_mean", "projected_minimum",
-        "projected_maximum", "dtr_status", "projection_status",
-        method_columns, "boundary_jump", "boundary_jump_change"
+        "dry_bulb_temperature",
+        "target_mean",
+        "target_minimum",
+        "target_maximum",
+        "projected_mean",
+        "projected_minimum",
+        "projected_maximum",
+        "dtr_status",
+        "projection_status",
+        method_columns,
+        "boundary_jump",
+        "boundary_jump_change"
     )
     # Explicit .SD access keeps package checks free from data.table NSE notes
     # while preserving one diagnostic value for every projected target day.
-    daily_projection <- projected[, {
-        row <- list(
-            baseline_mean = mean(.SD[["dry_bulb_temperature"]]),
-            baseline_minimum = min(.SD[["dry_bulb_temperature"]]),
-            baseline_maximum = max(.SD[["dry_bulb_temperature"]]),
-            target_mean = unique(.SD[["target_mean"]]),
-            target_minimum = unique(.SD[["target_minimum"]]),
-            target_maximum = unique(.SD[["target_maximum"]]),
-            projected_mean = unique(.SD[["projected_mean"]]),
-            projected_minimum = unique(.SD[["projected_minimum"]]),
-            projected_maximum = unique(.SD[["projected_maximum"]]),
-            dtr_status = unique(.SD[["dtr_status"]]),
-            projection_status = unique(.SD[["projection_status"]])
-        )
-        for (column in method_columns) {
-            row[[column]] <- unique(.SD[[column]])
-        }
-        row$boundary_jump <- unique(.SD[["boundary_jump"]])
-        row$boundary_jump_change <-
-            unique(.SD[["boundary_jump_change"]])
-        row
-    }, by = "target_day", .SDcols = projection_columns]
+    daily_projection <- projected[,
+        {
+            row <- list(
+                baseline_mean = mean(.SD[["dry_bulb_temperature"]]),
+                baseline_minimum = min(.SD[["dry_bulb_temperature"]]),
+                baseline_maximum = max(.SD[["dry_bulb_temperature"]]),
+                target_mean = unique(.SD[["target_mean"]]),
+                target_minimum = unique(.SD[["target_minimum"]]),
+                target_maximum = unique(.SD[["target_maximum"]]),
+                projected_mean = unique(.SD[["projected_mean"]]),
+                projected_minimum = unique(.SD[["projected_minimum"]]),
+                projected_maximum = unique(.SD[["projected_maximum"]]),
+                dtr_status = unique(.SD[["dtr_status"]]),
+                projection_status = unique(.SD[["projection_status"]])
+            )
+            for (column in method_columns) {
+                row[[column]] <- unique(.SD[[column]])
+            }
+            row$boundary_jump <- unique(.SD[["boundary_jump"]])
+            row$boundary_jump_change <-
+                unique(.SD[["boundary_jump_change"]])
+            row
+        },
+        by = "target_day",
+        .SDcols = projection_columns
+    ]
     factors <- merge(
         data.table::copy(targets),
         daily_projection,
@@ -122,8 +136,12 @@ temperature__hourly_result <- function(data, options, projector) {
 
     # Join target deltas back to every hourly row before physical closure.
     target_columns <- c(
-        "target_day", "annual_phase", "mean_delta", "minimum_delta",
-        "maximum_delta", "dtr_delta"
+        "target_day",
+        "annual_phase",
+        "mean_delta",
+        "minimum_delta",
+        "maximum_delta",
+        "dtr_delta"
     )
     hourly <- merge(
         projected,
@@ -162,42 +180,44 @@ temperature__physics_payload <- function(data, physical) {
 
     method_diagnostic_values <- if ("shape_exponent" %in% names(hourly)) {
         list(
-            daily_temperature_shape_exponent =
-                hourly[["shape_exponent"]]
+            daily_temperature_shape_exponent = hourly[["shape_exponent"]]
         )
     } else {
         list(
             btws_scale = hourly[["btws_scale"]],
             btws_m = hourly[["btws_m"]],
             btws_n = hourly[["btws_n"]],
-            btws_fallback_reason =
-                hourly[["btws_fallback_reason"]]
+            btws_fallback_reason = hourly[["btws_fallback_reason"]]
         )
     }
-    diagnostic_values <- c(list(
-        daily_target_day = hourly[["target_day"]],
-        daily_annual_phase = hourly[["annual_phase"]],
-        daily_temperature_mean_delta = hourly[["mean_delta"]],
-        daily_temperature_minimum_delta = hourly[["minimum_delta"]],
-        daily_temperature_maximum_delta = hourly[["maximum_delta"]],
-        daily_temperature_dtr_delta = hourly[["dtr_delta"]],
-        daily_temperature_dtr_status = hourly[["dtr_status"]],
-        daily_temperature_projection_status = hourly[["projection_status"]]
-    ), method_diagnostic_values, list(
-        daily_temperature_target_mean = hourly[["target_mean"]],
-        daily_temperature_target_minimum = hourly[["target_minimum"]],
-        daily_temperature_target_maximum = hourly[["target_maximum"]],
-        daily_temperature_projected_mean = hourly[["projected_mean"]],
-        daily_temperature_projected_minimum = hourly[["projected_minimum"]],
-        daily_temperature_projected_maximum = hourly[["projected_maximum"]],
-        daily_temperature_boundary_jump = hourly[["boundary_jump"]],
-        daily_temperature_boundary_jump_change =
-            hourly[["boundary_jump_change"]],
-        daily_temperature_baseline_specific_humidity =
-            humidity$baseline_specific_humidity,
-        daily_temperature_specific_humidity = humidity$specific_humidity,
-        daily_temperature_moisture_status = humidity$status
-    ))
+    diagnostic_values <- c(
+        list(
+            daily_target_day = hourly[["target_day"]],
+            daily_annual_phase = hourly[["annual_phase"]],
+            daily_temperature_mean_delta = hourly[["mean_delta"]],
+            daily_temperature_minimum_delta = hourly[["minimum_delta"]],
+            daily_temperature_maximum_delta = hourly[["maximum_delta"]],
+            daily_temperature_dtr_delta = hourly[["dtr_delta"]],
+            daily_temperature_dtr_status = hourly[["dtr_status"]],
+            daily_temperature_projection_status = hourly[["projection_status"]]
+        ),
+        method_diagnostic_values,
+        list(
+            daily_temperature_target_mean = hourly[["target_mean"]],
+            daily_temperature_target_minimum = hourly[["target_minimum"]],
+            daily_temperature_target_maximum = hourly[["target_maximum"]],
+            daily_temperature_projected_mean = hourly[["projected_mean"]],
+            daily_temperature_projected_minimum = hourly[["projected_minimum"]],
+            daily_temperature_projected_maximum = hourly[["projected_maximum"]],
+            daily_temperature_boundary_jump = hourly[["boundary_jump"]],
+            daily_temperature_boundary_jump_change = hourly[[
+                "boundary_jump_change"
+            ]],
+            daily_temperature_baseline_specific_humidity = humidity$baseline_specific_humidity,
+            daily_temperature_specific_humidity = humidity$specific_humidity,
+            daily_temperature_moisture_status = humidity$status
+        )
+    )
     data.table::set(
         weather,
         j = names(diagnostic_values),
@@ -384,5 +404,3 @@ temperature__component_specs <- function() {
 temperature__register_components <- function() {
     component__register_builtins(temperature__component_specs())
 }
-
-# }}}

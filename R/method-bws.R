@@ -1,13 +1,12 @@
-# Bounded weighted stretch {{{
-
+# Bounded weighted stretch
 # Evaluate the Eames et al. transfer function from equation (7). Both BWS and
 # BTWS use this kernel, so the mathematical definition has one implementation.
 bws__transfer_weight <- function(normalized, m = 1, n = 1) {
     normalized <- as.numeric(normalized)
     weight <- numeric(length(normalized))
     interior <- normalized > 0 & normalized < 1
-    weight[interior] <- normalized[interior] ^ m *
-        (1 - normalized[interior]) ^ n
+    weight[interior] <- normalized[interior]^m *
+        (1 - normalized[interior])^n
     weight
 }
 
@@ -17,8 +16,10 @@ bws__transfer_weight <- function(normalized, m = 1, n = 1) {
 bws__project_normalized <- function(normalized, scale, m, n) {
     weight <- bws__transfer_weight(normalized, m, n)
     mean_weight <- mean(weight)
-    if (!is.finite(mean_weight) ||
-        mean_weight <= .Machine$double.eps) {
+    if (
+        !is.finite(mean_weight) ||
+            mean_weight <= .Machine$double.eps
+    ) {
         return(NULL)
     }
 
@@ -114,8 +115,10 @@ bws__bounded_normalized_projection <- function(
     tolerance
 ) {
     baseline_mean <- mean(normalized)
-    if (!is.finite(baseline_mean) ||
-        baseline_mean <= .Machine$double.eps) {
+    if (
+        !is.finite(baseline_mean) ||
+            baseline_mean <= .Machine$double.eps
+    ) {
         return(list(reason = "zero_normalized_baseline_mean"))
     }
 
@@ -223,7 +226,9 @@ bws__project <- function(
         cli::cli_abort("BWS input must contain finite values.")
     }
     if (upper < lower) {
-        cli::cli_abort("BWS requires an upper bound at least as large as its lower bound.")
+        cli::cli_abort(
+            "BWS requires an upper bound at least as large as its lower bound."
+        )
     }
     if (any(value < lower - tolerance | value > upper + tolerance)) {
         cli::cli_abort("BWS input contains values outside its declared bounds.")
@@ -241,8 +246,10 @@ bws__project <- function(
     # A collapsed physical range has one admissible state. This matters for an
     # unchanged all-zero radiation month at sites with polar night.
     if (abs(upper - lower) <= tolerance) {
-        if (abs(target_mean - lower) > tolerance ||
-            any(abs(value - lower) > tolerance)) {
+        if (
+            abs(target_mean - lower) > tolerance ||
+                any(abs(value - lower) > tolerance)
+        ) {
             cli::cli_abort(
                 "BWS cannot change a series whose lower and upper bounds coincide.",
                 class = "epwshiftr_bws_infeasible_error"
@@ -302,8 +309,10 @@ bws__project <- function(
     }
     projected <- lower + span * shape$value
     closure_error <- mean(projected) - target_mean
-    if (!is.finite(closure_error) ||
-        abs(closure_error) > max(tolerance, 1e-9)) {
+    if (
+        !is.finite(closure_error) ||
+            abs(closure_error) > max(tolerance, 1e-9)
+    ) {
         cli::cli_abort(
             "BWS failed numerical mean closure.",
             class = "epwshiftr_bws_infeasible_error"
@@ -357,7 +366,9 @@ bws__round_to_mean <- function(value, target_mean, lower, upper) {
             method = "radix"
         )]
         if (increment > length(order)) {
-            cli::cli_abort("Bounded integer projection cannot attain its target sum.")
+            cli::cli_abort(
+                "Bounded integer projection cannot attain its target sum."
+            )
         }
         result[order[seq_len(increment)]] <-
             result[order[seq_len(increment)]] + 1L
@@ -385,9 +396,12 @@ bws__project_monthly <- function(
     checkmate::assert_string(variable_id, min.chars = 1L)
     checkmate::assert_flag(integer)
     checkmate::assert_number(tolerance, lower = 0, finite = TRUE)
-    if (length(value) != length(month) ||
-        !identical(sort(unique(month)), seq_len(12L)) ||
-        length(target_mean) != 12L || length(upper) != 12L) {
+    if (
+        length(value) != length(month) ||
+            !identical(sort(unique(month)), seq_len(12L)) ||
+            length(target_mean) != 12L ||
+            length(upper) != 12L
+    ) {
         cli::cli_abort(
             "Monthly BWS projection requires hourly values and 12 monthly targets and bounds."
         )
@@ -441,5 +455,3 @@ bws__project_monthly <- function(
         factors = data.table::rbindlist(factors)
     )
 }
-
-# }}}

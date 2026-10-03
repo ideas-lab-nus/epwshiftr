@@ -1,8 +1,7 @@
 #' @include component-hourly-kqdm-input.R weather-pipeline.R
 NULL
 
-# Hourly kernel-QDM backend {{{
-
+# Hourly kernel-QDM backend
 # The complete workflow follows the six climate variables used by the
 # published hourly KDE-QDM weather generation path. Dew point and direct-normal
 # radiation are derived later by the common EPW physical policy.
@@ -111,5 +110,3 @@ hourly_kqdm__pipeline <- function() {
         output = "direct_model_epw_result"
     ))
 }
-
-# }}}

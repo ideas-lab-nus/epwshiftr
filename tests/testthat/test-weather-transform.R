@@ -9,9 +9,16 @@ test_that("weather transform registry exposes every canonical method once", {
 
     expect_identical(anyDuplicated(tuples), 0L)
     expect_setequal(transforms$scale, WEATHER_TRANSFORM_SCALES)
-    expect_false(any(c(
-        "recipe", "backend", "profile", "policy", "component"
-    ) %in% names(transforms)))
+    expect_false(any(
+        c(
+            "recipe",
+            "backend",
+            "profile",
+            "policy",
+            "component"
+        ) %in%
+            names(transforms)
+    ))
 
     resolved_recipes <- unlist(lapply(
         transform__records(),
@@ -87,10 +94,16 @@ test_that("public catalog uses controlled evidence and status labels", {
     expect_true(all(transforms$status %in% WEATHER_RECIPE_STATUSES))
     expect_true(all(lengths(transforms$references) > 0L))
     daily_adjustments <- transforms[
-        method %in% c(
-            "linear_scaling", "delta_change", "qm", "qdm", "sdm",
-            "cdf_t", "isimip3basd"
-        )
+        method %in%
+            c(
+                "linear_scaling",
+                "delta_change",
+                "qm",
+                "qdm",
+                "sdm",
+                "cdf_t",
+                "isimip3basd"
+            )
     ]
     expect_true(all(daily_adjustments$evidence == "adapted_publication"))
     expect_identical(
@@ -155,8 +168,10 @@ test_that("scale-specific constructors resolve fixed and selectable reconstructi
 
     expect_s7_class(original_morphing, WeatherTransformSpec)
     expect_identical(original_morphing@recipe_version, 2L)
-    expect_true(all(c("tas", "tasmax", "tasmin") %in%
-        original_morphing@required_inputs$model_future@variable_sets[[1L]]))
+    expect_true(all(
+        c("tas", "tasmax", "tasmin") %in%
+            original_morphing@required_inputs$model_future@variable_sets[[1L]]
+    ))
     expect_identical(bws_btws@scale, "monthly")
     expect_identical(bws_btws@source_frequencies$model_future, "mon")
     expect_identical(bws_btws@reconstruction, "bws_btws_weather")
@@ -183,7 +198,10 @@ test_that("printed transforms hide internal execution identifiers", {
 
     expect_true(any(grepl("Transformation scale: monthly", output)))
     expect_true(any(grepl("Required source frequency", output)))
-    expect_true(any(grepl("Hourly reconstruction: Original morphing field equations", output)))
+    expect_true(any(grepl(
+        "Hourly reconstruction: Original morphing field equations",
+        output
+    )))
     expect_false(any(grepl(
         paste(
             "original_morphing_monthly|original_morphing_field_equations|paper_faithful|",
@@ -302,10 +320,15 @@ test_that("persisted transforms reject reconstruction and catalog drift", {
     restored <- transform__from_spec(round_trip)
 
     expect_equal(restored@options, transform@options)
-    expect_true(all(c(
-        "method_version", "required_inputs", "optional_inputs",
-        "provenance"
-    ) %in% names(spec)))
+    expect_true(all(
+        c(
+            "method_version",
+            "required_inputs",
+            "optional_inputs",
+            "provenance"
+        ) %in%
+            names(spec)
+    ))
 
     changed_reconstruction <- spec
     changed_reconstruction$reconstruction <- "btws"
@@ -396,8 +419,17 @@ test_that("resolved options update the public input contract", {
     )))
     expect_identical(
         huss_only@required_inputs$model_future@variable_sets,
-        list(c("tas", "huss", "ps", "psl", "rlds", "rsds", "sfcWind",
-            "clt", "pr"))
+        list(c(
+            "tas",
+            "huss",
+            "ps",
+            "psl",
+            "rlds",
+            "rsds",
+            "sfcWind",
+            "clt",
+            "pr"
+        ))
     )
     for (transform in precipitation_off) {
         expect_false(any(vapply(
@@ -407,23 +439,38 @@ test_that("resolved options update the public input contract", {
         )))
         recipe <- transform__recipe(transform)
         expect_identical(recipe$options$precipitation, "off")
-        expect_false("pr" %in% epw_morph_variables(
-            recipe,
-            include_optional = TRUE
-        ))
+        expect_false(
+            "pr" %in%
+                epw_morph_variables(
+                    recipe,
+                    include_optional = TRUE
+                )
+        )
         expect_false(morpher__recipe_rules(
             recipe
         )[step == "precip", required])
-        expect_true("liquid_precip_depth" %in%
-            morpher__weather_field_roles(recipe)$inherited_fields)
+        expect_true(
+            "liquid_precip_depth" %in%
+                morpher__weather_field_roles(recipe)$inherited_fields
+        )
     }
 })
 
 test_that("transform specifications contain no execution-owned data", {
     transform <- daily_transform("qdm")
     prohibited <- c(
-        "reference", "observed_reference", "climate", "epw", "periods",
-        "model", "member", "grid", "scenario", "node", "dir", "path"
+        "reference",
+        "observed_reference",
+        "climate",
+        "epw",
+        "periods",
+        "model",
+        "member",
+        "grid",
+        "scenario",
+        "node",
+        "dir",
+        "path"
     )
 
     expect_false(any(prohibited %in% S7::props(transform)))
@@ -443,7 +490,7 @@ test_that("reference objects retain distinct semantic input roles", {
         periods,
         role = "observed_reference"
     )
-    observed_stage <- shift_stage_new(
+    observed_stage <- shift_stage__new(
         ShiftClimate,
         "climate",
         ids = list(plan_id = "observed-stage-plan"),
@@ -470,7 +517,7 @@ test_that("reference objects retain distinct semantic input roles", {
         observed_reference = observed_stage
     ))
     expect_identical(
-        shift__reference_spec_value(
+        shift_persist__reference_spec_value(
             observed_stage,
             role = "observed_reference"
         )$role,
@@ -487,8 +534,10 @@ test_that("required and optional source frequencies remain distinguishable", {
         daily@optional_variable_frequencies$model_future,
         list(tasmin = "day", tasmax = "day")
     )
-    expect_false(any(c("tasmin", "tasmax") %in%
-        names(hourly@source_frequencies$model_future)))
+    expect_false(any(
+        c("tasmin", "tasmax") %in%
+            names(hourly@source_frequencies$model_future)
+    ))
     expect_named(
         hourly@optional_variable_frequencies$model_future,
         c("tasmin", "tasmax")

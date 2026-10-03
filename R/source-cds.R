@@ -1,11 +1,14 @@
 #' @include utils.R
 NULL
 
-# Copernicus Data Store transport --------------------------------------------
-
+# Copernicus Data Store transport
 CDS__DEFAULT_URL <- "https://cds.climate.copernicus.eu/api"
 CDS__TERMINAL_STATUSES <- c(
-    "successful", "failed", "rejected", "dismissed", "deleted"
+    "successful",
+    "failed",
+    "rejected",
+    "dismissed",
+    "deleted"
 )
 
 # Parse the simple key-value configuration format used by both current ECMWF
@@ -47,10 +50,13 @@ cds__config <- function(require_key = TRUE) {
         "ECMWF_DATASTORES_URL",
         unset = Sys.getenv(
             "CDSAPI_URL",
-            unset = shift_coalesce(modern$url, shift_coalesce(
-                legacy$url,
-                CDS__DEFAULT_URL
-            ))
+            unset = shift_stage__coalesce(
+                modern$url,
+                shift_stage__coalesce(
+                    legacy$url,
+                    CDS__DEFAULT_URL
+                )
+            )
         )
     )
     key <- Sys.getenv(
@@ -59,25 +65,31 @@ cds__config <- function(require_key = TRUE) {
             "CDSAPI_KEY",
             unset = Sys.getenv(
                 "CDS_API_KEY",
-                unset = shift_coalesce(modern$key, legacy$key)
+                unset = shift_stage__coalesce(modern$key, legacy$key)
             )
         )
     )
     url <- sub("/+$", "", url)
     if (isTRUE(require_key) && (is.null(key) || !nzchar(key))) {
-        cli::cli_abort(c(
-            "A Copernicus Data Store API key is required to retrieve ERA data.",
-            "i" = paste(
-                "Set `ECMWF_DATASTORES_KEY` or add `key:` to",
-                "`~/.ecmwfdatastoresrc` or `~/.cdsapirc`."
-            )
-        ), class = "epwshiftr_cds_auth_error")
+        cli::cli_abort(
+            c(
+                "A Copernicus Data Store API key is required to retrieve ERA data.",
+                "i" = paste(
+                    "Set `ECMWF_DATASTORES_KEY` or add `key:` to",
+                    "`~/.ecmwfdatastoresrc` or `~/.cdsapirc`."
+                )
+            ),
+            class = "epwshiftr_cds_auth_error"
+        )
     }
     if (!is.null(key) && grepl(":", key, fixed = TRUE)) {
-        cli::cli_abort(c(
-            "The configured CDS key uses the retired `UID:key` form.",
-            "i" = "Replace it with the personal access token shown in the current CDS profile."
-        ), class = "epwshiftr_cds_auth_error")
+        cli::cli_abort(
+            c(
+                "The configured CDS key uses the retired `UID:key` form.",
+                "i" = "Replace it with the personal access token shown in the current CDS profile."
+            ),
+            class = "epwshiftr_cds_auth_error"
+        )
     }
     list(url = url, key = key)
 }
@@ -93,8 +105,8 @@ cds__normalize_url_path <- function(url) {
         return(url)
     }
     origin <- parsed[[2L]]
-    path <- shift_coalesce(parsed[[3L]], "/")
-    suffix <- shift_coalesce(parsed[[4L]], "")
+    path <- shift_stage__coalesce(parsed[[3L]], "/")
+    suffix <- shift_stage__coalesce(parsed[[4L]], "")
     stack <- character()
     for (part in strsplit(path, "/", fixed = TRUE)[[1L]]) {
         if (!nzchar(part) || identical(part, ".")) {
@@ -120,8 +132,10 @@ cds__absolute_url <- function(url, base) {
     }
     base <- sub("[#?].*$", "", base)
     base_parts <- strsplit(base, "/", fixed = TRUE)[[1L]]
-    origin <- paste(base_parts[seq_len(min(3L, length(base_parts)))],
-        collapse = "/")
+    origin <- paste(
+        base_parts[seq_len(min(3L, length(base_parts)))],
+        collapse = "/"
+    )
     if (startsWith(url, "/")) {
         return(cds__normalize_url_path(paste0(origin, url)))
     }
@@ -150,11 +164,12 @@ cds__http_error_classes <- function(status_code, provider_message) {
             "epwshiftr_cds_request_error"
         ))
     }
-    licence_error <- identical(as.integer(status_code), 403L) && grepl(
-        "licen[cs]e|terms?.*(accept|agree)|(accept|agree).*terms?",
-        provider_message,
-        ignore.case = TRUE
-    )
+    licence_error <- identical(as.integer(status_code), 403L) &&
+        grepl(
+            "licen[cs]e|terms?.*(accept|agree)|(accept|agree).*terms?",
+            provider_message,
+            ignore.case = TRUE
+        )
     if (licence_error) {
         return(c(
             "epwshiftr_cds_license_error",
@@ -250,9 +265,12 @@ cds__http <- function(
         list()
     }
     if (response$status_code < 200L || response$status_code >= 300L) {
-        provider_message <- shift_coalesce(
+        provider_message <- shift_stage__coalesce(
             parsed$detail,
-            shift_coalesce(parsed$title, shift_coalesce(parsed$message, text))
+            shift_stage__coalesce(
+                parsed$title,
+                shift_stage__coalesce(parsed$message, text)
+            )
         )
         provider_message <- paste(
             cds__redact(provider_message, key),
@@ -283,11 +301,15 @@ cds__http <- function(
 cds__link <- function(response, relation, required = TRUE) {
     checkmate::assert_string(relation, min.chars = 1L)
     checkmate::assert_flag(required)
-    links <- shift_coalesce(response$links, list())
-    matches <- Filter(function(link) {
-        identical(as.character(link$rel), relation) &&
-            !is.null(link$href) && nzchar(as.character(link$href))
-    }, links)
+    links <- shift_stage__coalesce(response$links, list())
+    matches <- Filter(
+        function(link) {
+            identical(as.character(link$rel), relation) &&
+                !is.null(link$href) &&
+                nzchar(as.character(link$href))
+        },
+        links
+    )
     if (length(matches) == 1L) {
         return(as.character(matches[[1L]]$href))
     }
@@ -340,7 +362,7 @@ cds__submit <- function(dataset_id, request, config = cds__config()) {
         dataset_id = dataset_id,
         request_id = sub(".*/", "", monitor),
         monitor_url = monitor,
-        status = as.character(shift_coalesce(
+        status = as.character(shift_stage__coalesce(
             response$body$status,
             "accepted"
         ))
@@ -360,8 +382,8 @@ cds__status <- function(job, config = cds__config()) {
         request_id = job$request_id,
         monitor_url = job$monitor_url,
         status = as.character(response$body$status),
-        links = shift_coalesce(response$body$links, list()),
-        message = shift_coalesce(response$body$message, NULL)
+        links = shift_stage__coalesce(response$body$links, list()),
+        message = shift_stage__coalesce(response$body$message, NULL)
     )
 }
 
@@ -379,8 +401,11 @@ cds__wait <- function(
     delay <- poll_interval
     repeat {
         current <- cds__status(job, config = config)
-        if (length(current$status) != 1L || is.na(current$status) ||
-            !nzchar(current$status)) {
+        if (
+            length(current$status) != 1L ||
+                is.na(current$status) ||
+                !nzchar(current$status)
+        ) {
             cli::cli_abort(
                 "CDS returned a missing or malformed job status.",
                 class = "epwshiftr_cds_response_error"
@@ -389,10 +414,13 @@ cds__wait <- function(
         if (identical(current$status, "successful")) {
             return(current)
         }
-        if (current$status %in% setdiff(
-            CDS__TERMINAL_STATUSES,
-            "successful"
-        )) {
+        if (
+            current$status %in%
+                setdiff(
+                    CDS__TERMINAL_STATUSES,
+                    "successful"
+                )
+        ) {
             cli::cli_abort(
                 c(
                     "CDS request {.val {current$request_id}} ended with status {.val {current$status}}.",
@@ -410,8 +438,11 @@ cds__wait <- function(
         }
         if (!is.null(reporter)) {
             reporter$heartbeat(
-                sprintf("ERA5 request %s is %s", current$request_id,
-                    current$status),
+                sprintf(
+                    "ERA5 request %s is %s",
+                    current$request_id,
+                    current$status
+                ),
                 details = list(
                     unit_type = "reanalysis_request",
                     request_id = current$request_id,
@@ -448,7 +479,7 @@ cds__result <- function(job, config = cds__config()) {
     list(
         url = cds__absolute_url(as.character(asset$href), response$url),
         size = suppressWarnings(as.numeric(asset[["file:size"]])),
-        type = as.character(shift_coalesce(
+        type = as.character(shift_stage__coalesce(
             asset$type,
             "application/octet-stream"
         ))
@@ -460,10 +491,11 @@ cds__result <- function(job, config = cds__config()) {
 cds__is_zip_file <- function(path) {
     checkmate::assert_file_exists(path)
     signature <- readBin(path, what = "raw", n = 4L)
-    length(signature) >= 4L && identical(
-        as.integer(signature[seq_len(4L)]),
-        c(0x50L, 0x4bL, 0x03L, 0x04L)
-    )
+    length(signature) >= 4L &&
+        identical(
+            as.integer(signature[seq_len(4L)]),
+            c(0x50L, 0x4bL, 0x03L, 0x04L)
+        )
 }
 
 # Extract the single NetCDF member returned for one variable-sized CDS request.
@@ -481,8 +513,7 @@ cds__extract_netcdf_archive <- function(archive, directory) {
             )
         }
     )
-    members <- manifest$Name[grepl("[.]nc$", manifest$Name,
-        ignore.case = TRUE)]
+    members <- manifest$Name[grepl("[.]nc$", manifest$Name, ignore.case = TRUE)]
     safe_member <- length(members) == 1L &&
         identical(basename(members), members) &&
         !grepl("[\\\\/]", members)
@@ -543,8 +574,11 @@ cds__download <- function(asset, target, config = cds__config()) {
             )
         }
     )
-    if (length(asset$size) && is.finite(asset$size) &&
-        file.info(temporary)$size != asset$size) {
+    if (
+        length(asset$size) &&
+            is.finite(asset$size) &&
+            file.info(temporary)$size != asset$size
+    ) {
         cli::cli_abort(
             "CDS result size does not match the provider manifest.",
             class = "epwshiftr_cds_download_error"
@@ -557,8 +591,10 @@ cds__download <- function(asset, target, config = cds__config()) {
             tmpdir = dirname(target)
         )
         dir.create(extraction_directory)
-        on.exit(unlink(extraction_directory, recursive = TRUE,
-            force = TRUE), add = TRUE)
+        on.exit(
+            unlink(extraction_directory, recursive = TRUE, force = TRUE),
+            add = TRUE
+        )
         completed <- cds__extract_netcdf_archive(
             temporary,
             extraction_directory

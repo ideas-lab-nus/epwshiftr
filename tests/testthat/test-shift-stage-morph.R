@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
 test_local_dependencies(list(
     availability = test_cmip6_availability,
-    shift__cmip6_period_coverage = test_cmip6_period_coverage
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 test_that("humidity fallback persists a canonical hurs extraction artifact", {
@@ -70,7 +70,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
             periods = epw_morph_periods(`2060s` = 2060L),
             fallback = "error"
         )
-    derived <- shift__derive_hurs_climate(
+    derived <- shift_climate__derive_hurs_climate(
         climate,
         epw_morph_recipe("original_morphing")
     )
@@ -99,7 +99,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     ))
     expect_match(artifact$metadata_json[[1L]], "huss,tas,ps")
 
-    reused <- shift__derive_hurs_climate(
+    reused <- shift_climate__derive_hurs_climate(
         derived,
         epw_morph_recipe("original_morphing"),
         resume = TRUE
@@ -449,9 +449,9 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     calls$future_scenarios <- c("ssp126", "ssp585")
     resume_store <- tempfile("shift-resume-store-")
     export_attempts <- 0L
-    original_export <- shift__export_outputs
+    original_export <- shift_export__export_outputs
     testthat::local_mocked_bindings(
-        shift__export_outputs = function(...) {
+        shift_export__export_outputs = function(...) {
             export_attempts <<- export_attempts + 1L
             if (export_attempts == 1L) {
                 stop("simulated interruption after morphing", call. = FALSE)
@@ -753,7 +753,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     expect_equal(auto@meta$reference_spec@mode, "historical")
     expect_equal(shift_status(auto), "morphed")
     expect_equal(shift_status(reference_climate), "extracted")
-    reference_rows <- shift_extraction_result_rows(
+    reference_rows <- shift_inspect__extraction_result_rows(
         shift_store(reference_climate),
         reference_ids$plan_id
     )

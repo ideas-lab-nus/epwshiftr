@@ -5,7 +5,7 @@ NULL
 
 # Normalize event details to a stable JSON shape shared by Console reporters,
 # persisted run events, and CLI/R watch views.
-shift__progress_details <- function(
+shift_reporter__progress_details <- function(
     stage = NULL,
     phase = NULL,
     unit_type = NULL,
@@ -64,10 +64,10 @@ ShiftReporter <- R6::R6Class(
             }
             private$execution <- execution
             private$ui_value <- ui
-            private$mode_value <- shift__ui_mode(ui)
-            private$motion_value <- shift__ui_motion(ui, private$mode_value)
+            private$mode_value <- shift_ui__ui_mode(ui)
+            private$motion_value <- shift_ui__ui_motion(ui, private$mode_value)
             private$renderer <- tryCatch(
-                shift__ui_renderer(private$mode_value),
+                shift_tui__ui_renderer(private$mode_value),
                 error = function(e) NULL
             )
             # An explicitly requested dynamic mode still degrades safely when
@@ -111,7 +111,7 @@ ShiftReporter <- R6::R6Class(
             private$stage_sequence <- unique(as.character(stage_sequence))
             private$completed_stages <- unique(as.character(completed_stages))
             private$stage_started_at <- Sys.time()
-            private$stage_message <- shift_coalesce(
+            private$stage_message <- shift_stage__coalesce(
                 context$message,
                 paste("Preparing", tolower(label))
             )
@@ -122,7 +122,7 @@ ShiftReporter <- R6::R6Class(
                         label,
                         sprintf(
                             "store %s",
-                            shift__display_path(shift_coalesce(
+                            shift_print__display_path(shift_stage__coalesce(
                                 context$store,
                                 "<store>"
                             ))
@@ -163,7 +163,7 @@ ShiftReporter <- R6::R6Class(
                 if (
                     identical(batch$kind, "discovery") && length(batch$message)
                 ) {
-                    for (line in shift__ui_labeled_lines(
+                    for (line in shift_ui_view__ui_labeled_lines(
                         "Discovery",
                         batch$message,
                         width = private$width()
@@ -171,7 +171,7 @@ ShiftReporter <- R6::R6Class(
                         private$emit("verbatim", line)
                     }
                 }
-                for (line in shift__ui_plan_lines(
+                for (line in shift_ui_view__ui_plan_lines(
                     private$plan_context,
                     width = private$width()
                 )) {
@@ -182,7 +182,7 @@ ShiftReporter <- R6::R6Class(
                 task,
                 "running",
                 private$stage_message,
-                shift__progress_details(
+                shift_reporter__progress_details(
                     stage = task,
                     phase = "operation",
                     unit_type = "shift_operation",
@@ -212,7 +212,7 @@ ShiftReporter <- R6::R6Class(
                 private$current_details <- NULL
             }
             batch <- private$ui_value@batch_context
-            private$stage_message <- shift_coalesce(
+            private$stage_message <- shift_stage__coalesce(
                 batch$scope,
                 "Preparing model discovery"
             )
@@ -238,7 +238,7 @@ ShiftReporter <- R6::R6Class(
                             batch$scope,
                             batch$scope_periods,
                             if (!is.null(batch$node)) {
-                                shift__node_label(batch$node)
+                                shift_ui_view__node_label(batch$node)
                             }
                         ),
                         collapse = " \u00b7 "
@@ -331,8 +331,8 @@ ShiftReporter <- R6::R6Class(
             private$status <- if (isTRUE(background)) "queued" else "running"
             private$task_label <- "Future EPW"
             private$cases_total <- nrow(plan@meta$expected_cases)
-            private$stage_sequence <- shift__ui_stage_sequence(plan)
-            private$plan_context <- shift__ui_plan_context(plan)
+            private$stage_sequence <- shift_ui_state__ui_stage_sequence(plan)
+            private$plan_context <- shift_ui_state__ui_plan_context(plan)
             if (!identical(private$mode_value, "none")) {
                 # Foreground dynamic runs introduce the plan as a replaceable
                 # first frame. Logs and queued jobs retain a permanent receipt.
@@ -355,7 +355,7 @@ ShiftReporter <- R6::R6Class(
                     private$stage_message <- "Preparing resolver"
                     private$render_dynamic(force = TRUE)
                 } else {
-                    summary <- shift__ui_plan_summary(
+                    summary <- shift_ui_view__ui_plan_summary(
                         plan,
                         run_id,
                         background = background,
@@ -444,7 +444,7 @@ ShiftReporter <- R6::R6Class(
                 "running",
                 message,
                 utils::modifyList(
-                    shift__progress_details(
+                    shift_reporter__progress_details(
                         stage = stage,
                         phase = "stage",
                         current = current,
@@ -468,7 +468,7 @@ ShiftReporter <- R6::R6Class(
         ) {
             private$unit_started_at <- Sys.time()
             private$current_details <- utils::modifyList(
-                shift__progress_details(
+                shift_reporter__progress_details(
                     stage = private$stage,
                     phase = "unit",
                     unit_label = message,
@@ -511,9 +511,9 @@ ShiftReporter <- R6::R6Class(
         ) {
             elapsed <- private$elapsed(private$unit_started_at)
             event_details <- utils::modifyList(
-                shift_coalesce(
+                shift_stage__coalesce(
                     private$current_details,
-                    shift__progress_details(stage = private$stage)
+                    shift_reporter__progress_details(stage = private$stage)
                 ),
                 c(
                     details,
@@ -554,7 +554,7 @@ ShiftReporter <- R6::R6Class(
                 }
                 private$render_dynamic(force = TRUE)
             } else if (
-                shift__ui_at_least(private$ui_value, "detail") ||
+                shift_ui__ui_at_least(private$ui_value, "detail") ||
                     outcome %in% c("failed", "fallback")
             ) {
                 event_type <- if (identical(outcome, "failed")) {
@@ -587,9 +587,9 @@ ShiftReporter <- R6::R6Class(
             details = list()
         ) {
             event_details <- utils::modifyList(
-                shift_coalesce(
+                shift_stage__coalesce(
                     private$current_details,
-                    shift__progress_details(stage = private$stage)
+                    shift_reporter__progress_details(stage = private$stage)
                 ),
                 c(
                     details,
@@ -605,7 +605,7 @@ ShiftReporter <- R6::R6Class(
             private$current_details <- event_details
             if (identical(private$mode_value, "dynamic")) {
                 private$render_dynamic(force = TRUE)
-            } else if (shift__ui_at_least(private$ui_value, "detail")) {
+            } else if (shift_ui__ui_at_least(private$ui_value, "detail")) {
                 private$emit(
                     "verbatim",
                     private$format_event(
@@ -641,7 +641,7 @@ ShiftReporter <- R6::R6Class(
         # but is not itself a countable business unit.
         notice = function(message, outcome = "info", details = list()) {
             event_details <- utils::modifyList(
-                shift__progress_details(
+                shift_reporter__progress_details(
                     stage = private$stage,
                     phase = "notice",
                     outcome = outcome
@@ -704,7 +704,7 @@ ShiftReporter <- R6::R6Class(
                 isTRUE(show) &&
                     !identical(private$mode_value, "none") &&
                     (!identical(private$mode_value, "dynamic") ||
-                        shift__ui_at_least(private$ui_value, "detail"))
+                        shift_ui__ui_at_least(private$ui_value, "detail"))
             ) {
                 private$render_case_table()
             }
@@ -714,14 +714,14 @@ ShiftReporter <- R6::R6Class(
         # Check cooperative cancellation at explicit workflow boundaries even
         # when no heartbeat or progress output is currently being rendered.
         check_cancel = function(stage = private$stage) {
-            execution__check_cancel(private$execution, stage)
+            shift_execution__check_cancel(private$execution, stage)
             if (
                 is.null(private$execution) &&
                     !is.null(private$store) &&
                     !is.null(private$run_id_value) &&
                     !is.null(private$job_id_value)
             ) {
-                shift__job_check_cancel(
+                shift_job__job_check_cancel(
                     private$store,
                     private$run_id_value,
                     private$job_id_value,
@@ -747,7 +747,7 @@ ShiftReporter <- R6::R6Class(
                 # Only explicit detail mode adds a scrolling resolver table.
                 if (
                     identical(private$stage, "resolve") &&
-                        shift__ui_at_least(private$ui_value, "detail")
+                        shift_ui__ui_at_least(private$ui_value, "detail")
                 ) {
                     private$render_node_table()
                 }
@@ -768,7 +768,7 @@ ShiftReporter <- R6::R6Class(
                 "completed",
                 message,
                 utils::modifyList(
-                    shift__progress_details(
+                    shift_reporter__progress_details(
                         stage = private$stage,
                         phase = "stage",
                         elapsed_seconds = elapsed,
@@ -783,31 +783,31 @@ ShiftReporter <- R6::R6Class(
         # Refresh transient liveness and cancellation state without persisting
         # animation-only heartbeat events in the run history.
         heartbeat = function(message = NULL, details = list(), force = FALSE) {
-            execution__checkpoint(private$execution, details)
+            shift_execution__checkpoint(private$execution, details)
             now <- Sys.time()
             # Keep a stable base label separate from the transient elapsed
             # suffix so repeated heartbeats never grow the displayed message.
             private$current_details <- utils::modifyList(
-                shift_coalesce(
+                shift_stage__coalesce(
                     private$current_details,
-                    shift__progress_details(
+                    shift_reporter__progress_details(
                         stage = private$stage,
                         phase = "unit"
                     )
                 ),
                 details
             )
-            label <- shift_coalesce(
+            label <- shift_stage__coalesce(
                 message,
-                shift_coalesce(
+                shift_stage__coalesce(
                     private$current_details$unit_base_label,
-                    shift_coalesce(
+                    shift_stage__coalesce(
                         private$current_details$unit_label,
                         "Working"
                     )
                 )
             )
-            private$current_details$unit_base_label <- shift_coalesce(
+            private$current_details$unit_base_label <- shift_stage__coalesce(
                 private$current_details$unit_base_label,
                 label
             )
@@ -826,7 +826,10 @@ ShiftReporter <- R6::R6Class(
                 private$last_heartbeat <- now
                 # Cancellation and durable heartbeat checks follow the slower
                 # liveness cadence, not the animation frame rate.
-                self$check_cancel(shift_coalesce(private$stage, "working"))
+                self$check_cancel(shift_stage__coalesce(
+                    private$stage,
+                    "working"
+                ))
                 private$touch_job(force = TRUE)
             }
             if (identical(private$mode_value, "none")) {
@@ -835,7 +838,7 @@ ShiftReporter <- R6::R6Class(
             status <- sprintf(
                 "%s (%s elapsed)",
                 label,
-                shift__format_elapsed(elapsed)
+                shift_ui_view__format_elapsed(elapsed)
             )
             if (identical(private$mode_value, "dynamic")) {
                 refreshed <- private$render_dynamic(force = force)
@@ -859,7 +862,7 @@ ShiftReporter <- R6::R6Class(
             elapsed <- private$elapsed(private$started_at)
             status <- shift_status(run, refresh = FALSE)
             private$status <- status
-            completion <- shift__ui_completion(
+            completion <- shift_inspect__completion(
                 shift_cases(run, refresh = FALSE),
                 outputs,
                 shift_diagnostics(run, refresh = FALSE)
@@ -871,7 +874,7 @@ ShiftReporter <- R6::R6Class(
             if (identical(status, "completed")) {
                 private$completed_stages <- private$stage_sequence
             }
-            paths <- shift_coalesce(outputs$export_path, outputs$path)
+            paths <- shift_stage__coalesce(outputs$export_path, outputs$path)
             paths <- as.character(paths[!is.na(paths) & nzchar(paths)])
             output_dir <- if (
                 nrow(run@meta$run) &&
@@ -893,7 +896,7 @@ ShiftReporter <- R6::R6Class(
             private$output_paths <- paths
             private$output_dir <- output_dir
             private$output_path_limit <- if (
-                shift__ui_at_least(private$ui_value, "detail")
+                shift_ui__ui_at_least(private$ui_value, "detail")
             ) {
                 Inf
             } else {
@@ -922,7 +925,7 @@ ShiftReporter <- R6::R6Class(
                         private$run_id_value,
                         status,
                         nrow(outputs),
-                        shift__format_elapsed(elapsed)
+                        shift_ui_view__format_elapsed(elapsed)
                     )
                 )
                 private$emit("text", private$result_summary)
@@ -945,11 +948,11 @@ ShiftReporter <- R6::R6Class(
                         "text",
                         sprintf(
                             "Output directory: %s",
-                            shift__display_path(output_dir[[1L]])
+                            shift_print__display_path(output_dir[[1L]])
                         )
                     )
                 }
-                if (shift__ui_at_least(private$ui_value, "detail")) {
+                if (shift_ui__ui_at_least(private$ui_value, "detail")) {
                     for (path in paths) {
                         private$emit("path", path)
                     }
@@ -966,10 +969,10 @@ ShiftReporter <- R6::R6Class(
             details = list()
         ) {
             private$status <- if (isTRUE(cancelled)) "cancelled" else "failed"
-            private$failure_details <- shift_coalesce(details, list())
-            terminal_message <- shift_coalesce(
+            private$failure_details <- shift_stage__coalesce(details, list())
+            terminal_message <- shift_stage__coalesce(
                 message,
-                shift_coalesce(
+                shift_stage__coalesce(
                     private$failure_details$summary,
                     if (isTRUE(cancelled)) {
                         "Workflow cancelled"
@@ -982,7 +985,7 @@ ShiftReporter <- R6::R6Class(
                 private$last_event <- terminal_message
                 private$add_recent(terminal_message, private$status)
                 private$current_details <- utils::modifyList(
-                    shift_coalesce(private$current_details, list()),
+                    shift_stage__coalesce(private$current_details, list()),
                     list(
                         unit_label = terminal_message,
                         unit_base_label = terminal_message,
@@ -1010,7 +1013,7 @@ ShiftReporter <- R6::R6Class(
                 # Logs and explicit detail modes retain complete tables.
                 if (
                     !isTRUE(was_dynamic) ||
-                        shift__ui_at_least(private$ui_value, "detail")
+                        shift_ui__ui_at_least(private$ui_value, "detail")
                 ) {
                     private$render_node_table(force = TRUE)
                     private$render_case_table(force = TRUE, detail = "detail")
@@ -1031,7 +1034,7 @@ ShiftReporter <- R6::R6Class(
         # requested by the caller.
         detail = function(message, level = c("detail", "debug")) {
             level <- match.arg(level)
-            if (shift__ui_at_least(private$ui_value, level)) {
+            if (shift_ui__ui_at_least(private$ui_value, level)) {
                 private$emit("text", message)
             }
             invisible(self)
@@ -1050,7 +1053,9 @@ ShiftReporter <- R6::R6Class(
         step_id = function() private$step_id_value,
         # Return the current business context for terminal diagnostics without
         # exposing the reporter's mutable private environment.
-        context = function() shift_coalesce(private$current_details, list()),
+        context = function() {
+            shift_stage__coalesce(private$current_details, list())
+        },
         # Return the semantic view state for unit tests and alternate renderers.
         snapshot = function() private$view_state(),
 
@@ -1150,7 +1155,7 @@ ShiftReporter <- R6::R6Class(
             # Job heartbeat persistence immediately snapshots the same event;
             # suppress the first snapshot to avoid two full live JSON rewrites
             # for every reporter milestone.
-            shift__run_event(
+            shift_job__run_event(
                 private$store,
                 private$run_id_value,
                 stage,
@@ -1183,10 +1188,10 @@ ShiftReporter <- R6::R6Class(
             if (
                 !is.null(private$store) &&
                     !is.null(private$job_id_value) &&
-                    exists("shift__job_touch", mode = "function")
+                    exists("shift_job__job_touch", mode = "function")
             ) {
                 try(
-                    shift__job_touch(
+                    shift_job__job_touch(
                         private$store,
                         private$job_id_value,
                         ui_state = private$view_state()
@@ -1226,7 +1231,7 @@ ShiftReporter <- R6::R6Class(
 
         # Resolve the output width at render time so tests, IDE resizing, and
         # redirected 80-column logs all share the same clipping behavior.
-        width = function() shift__ui_width(),
+        width = function() shift_ui__ui_width(),
 
         # Keep only user-meaningful terminal milestones in the fixed activity
         # feed. Animation ticks and routine updates never enter this buffer.
@@ -1244,7 +1249,7 @@ ShiftReporter <- R6::R6Class(
 
         # Assemble the semantic state consumed by the shared status formatter.
         view_state = function() {
-            details <- shift_coalesce(private$current_details, list())
+            details <- shift_stage__coalesce(private$current_details, list())
             list(
                 run_id = private$run_id_value,
                 task_label = private$task_label,
@@ -1305,7 +1310,7 @@ ShiftReporter <- R6::R6Class(
             private$output_dir <- output_dir
             private$add_recent(summary, status)
             private$current_details <- utils::modifyList(
-                shift_coalesce(private$current_details, list()),
+                shift_stage__coalesce(private$current_details, list()),
                 list(
                     unit_label = summary,
                     unit_base_label = summary,
@@ -1370,13 +1375,13 @@ ShiftReporter <- R6::R6Class(
             private$last_refresh <- now
             private$animation_frame <- private$animation_frame + 1L
             state <- private$view_state()
-            lines <- shift__ui_status_lines(
+            lines <- shift_ui_view__ui_status_lines(
                 state,
                 width = private$width(),
                 motion = private$motion_value,
                 frame = private$animation_frame
             )
-            compact <- shift__ui_compact_line(
+            compact <- shift_ui_view__ui_compact_line(
                 state,
                 width = private$width(),
                 motion = private$motion_value,
@@ -1406,11 +1411,11 @@ ShiftReporter <- R6::R6Class(
                 private$emit("verbatim", line)
             }
             private$persist(
-                shift_coalesce(private$stage, "ui"),
+                shift_stage__coalesce(private$stage, "ui"),
                 "warning",
                 "Dynamic progress was unavailable; switched to line-by-line logs.",
-                shift__progress_details(
-                    stage = shift_coalesce(private$stage, "ui"),
+                shift_reporter__progress_details(
+                    stage = shift_stage__coalesce(private$stage, "ui"),
                     phase = "notice",
                     unit_type = "ui",
                     outcome = "fallback"
@@ -1427,7 +1432,7 @@ ShiftReporter <- R6::R6Class(
             total = NULL,
             details = list()
         ) {
-            stage <- shift__ui_stage_label(shift_coalesce(
+            stage <- shift_ui_view__ui_stage_label(shift_stage__coalesce(
                 details$stage,
                 private$stage
             ))
@@ -1435,8 +1440,8 @@ ShiftReporter <- R6::R6Class(
             node <- details$node
             if (!is.null(node) && length(node) && !is.na(node[[1L]])) {
                 node <- as.character(node[[1L]])
-                if (!shift__ui_at_least(private$ui_value, "debug")) {
-                    node <- shift__node_label(node)
+                if (!shift_ui__ui_at_least(private$ui_value, "debug")) {
+                    node <- shift_ui_view__node_label(node)
                 }
                 context <- c(context, node)
             }
@@ -1472,28 +1477,31 @@ ShiftReporter <- R6::R6Class(
         capture_business_result = function(message, details) {
             if (identical(details$unit_type, "index_node")) {
                 row <- data.table::data.table(
-                    node = shift__node_label(details$node),
-                    future = shift_coalesce(details$future_files, NA_integer_),
-                    reference = shift_coalesce(
+                    node = shift_ui_view__node_label(details$node),
+                    future = shift_stage__coalesce(
+                        details$future_files,
+                        NA_integer_
+                    ),
+                    reference = shift_stage__coalesce(
                         details$reference_files,
                         NA_integer_
                     ),
-                    outcome = as.character(shift_coalesce(
+                    outcome = as.character(shift_stage__coalesce(
                         details$outcome,
                         "rejected"
                     )),
-                    duration = shift__format_elapsed(
-                        shift_coalesce(details$elapsed_seconds, 0)
+                    duration = shift_ui_view__format_elapsed(
+                        shift_stage__coalesce(details$elapsed_seconds, 0)
                     ),
                     result = if (
                         details$outcome %in% c("completed", "skipped")
                     ) {
-                        shift_coalesce(details$result, "selected")
+                        shift_stage__coalesce(details$result, "selected")
                     } else {
-                        error <- shift_coalesce(details$error, message)
-                        kind <- shift_coalesce(
+                        error <- shift_stage__coalesce(details$error, message)
+                        kind <- shift_stage__coalesce(
                             details$error_kind,
-                            shift__ui_error_kind(error)
+                            shift_ui_view__ui_error_kind(error)
                         )
                         sprintf("%s: %s", kind, error)
                     }
@@ -1510,7 +1518,7 @@ ShiftReporter <- R6::R6Class(
             ) {
                 private$outputs_completed <- max(
                     private$outputs_completed,
-                    as.integer(shift_coalesce(details$current, 0L))
+                    as.integer(shift_stage__coalesce(details$current, 0L))
                 )
             }
             invisible(NULL)
@@ -1524,7 +1532,7 @@ ShiftReporter <- R6::R6Class(
                 return(invisible(NULL))
             }
             private$with_output(function() {
-                for (line in shift__ui_node_table(
+                for (line in shift_ui_view__ui_node_table(
                     rows,
                     width = private$width(),
                     detail = private$ui_value@detail
@@ -1546,12 +1554,12 @@ ShiftReporter <- R6::R6Class(
                 is.null(rows) ||
                     !nrow(rows) ||
                     (!isTRUE(force) &&
-                        !shift__ui_at_least(private$ui_value, "normal"))
+                        !shift_ui__ui_at_least(private$ui_value, "normal"))
             ) {
                 return(invisible(NULL))
             }
             private$with_output(function() {
-                for (line in shift__ui_case_table(
+                for (line in shift_ui_view__ui_case_table(
                     rows,
                     width = private$width(),
                     detail = detail
@@ -1565,7 +1573,7 @@ ShiftReporter <- R6::R6Class(
 )
 
 # Construct a reporter after a run and optional job have durable identities.
-shift__reporter <- function(
+shift_reporter__reporter <- function(
     ui = shift_ui(),
     store = NULL,
     run_id = NULL,
@@ -1587,8 +1595,8 @@ shift__reporter <- function(
 
 # Give potentially slow readiness checks a visible lifecycle without creating
 # a persisted scientific run. The caller owns the complete final check report.
-shift__ui_check <- function(ui, label, code) {
-    reporter <- shift__reporter(ui)
+shift_reporter__ui_check <- function(ui, label, code) {
+    reporter <- shift_reporter__reporter(ui)
     on.exit(reporter$close(), add = TRUE)
     reporter$operation_started(
         "check",

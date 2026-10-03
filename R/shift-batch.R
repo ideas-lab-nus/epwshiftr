@@ -1,8 +1,7 @@
 #' @include shift-stage.R cmip6-availability.R
 NULL
 
-# Ergonomic future-weather batches ------------------------------------------
-
+# Ergonomic future-weather batches
 # ShiftBatch groups independently resumable future-weather plans or runs. It
 # adds no comparison statistics and retains each method's ordinary ShiftStage
 # result as the authoritative execution record.
@@ -74,7 +73,7 @@ shift_batch__transforms <- function(methods = NULL, transform = NULL) {
         }
         return(stats::setNames(explicit, keys))
     }
-    values <- shift_coalesce(methods, transform)
+    values <- shift_stage__coalesce(methods, transform)
     if (is.null(values)) {
         cli::cli_abort(
             "Supply `methods` or one explicit weather `transform`."
@@ -188,7 +187,7 @@ shift_batch__receipt_write <- function(x) {
                 NA_character_
             },
             plan = if (S7::S7_inherits(child, ShiftPlan)) {
-                shift__plan_spec(child)
+                shift_persist__plan_spec(child)
             } else {
                 NULL
             },
@@ -207,7 +206,7 @@ shift_batch__receipt_write <- function(x) {
         children = children,
         output_dir = x@meta$output_dir,
         status = shift_batch__status(x, refresh = FALSE),
-        climate = shift__climate_spec_value(x@meta$climate),
+        climate = shift_persist__climate_spec_value(x@meta$climate),
         periods = data.table::copy(x@meta$periods),
         updated_at = Sys.time()
     )
@@ -262,7 +261,10 @@ shift_batch_get <- function(batch_id, store = NULL) {
             return(run)
         }
         if (!is.null(child$plan)) {
-            return(shift__plan_from_spec(child$plan, store = child$store_path))
+            return(shift_persist__plan_from_spec(
+                child$plan,
+                store = child$store_path
+            ))
         }
         cli::cli_abort(
             "The batch receipt contains a child without a plan or run ID."
@@ -278,7 +280,7 @@ shift_batch_get <- function(batch_id, store = NULL) {
         cli::cli_abort("The batch receipt contains no children.")
     }
     manifest <- data.table::as.data.table(data.table::copy(receipt$manifest))
-    shift_stage_new(
+    shift_stage__new(
         ShiftBatch,
         "batch",
         store_path = batch_root,
@@ -290,7 +292,7 @@ shift_batch_get <- function(batch_id, store = NULL) {
             children = children,
             manifest = manifest,
             periods = data.table::copy(receipt$periods),
-            climate = shift__climate_from_spec(receipt$climate),
+            climate = shift_persist__climate_from_spec(receipt$climate),
             discovery = receipt$discovery,
             shared_plan = receipt$shared_plan,
             shared_failure = receipt[["shared_failure"]],
@@ -347,7 +349,7 @@ shift_batch__restore_child <- function(reference) {
             }
             if (
                 identical(shift_status(run, refresh = FALSE), "completed") &&
-                    !shift__run_artifacts_complete(child_store, run_id)
+                    !shift_run__run_artifacts_complete(child_store, run_id)
             ) {
                 return(NULL)
             }
@@ -368,7 +370,7 @@ shift_batch__restore_child <- function(reference) {
     if (identical(shift_status(run, refresh = FALSE), "completed")) {
         child_store <- shift_store(run)
         on.exit(try(child_store$close(), silent = TRUE), add = TRUE)
-        if (!shift__run_artifacts_complete(child_store, run_id)) {
+        if (!shift_run__run_artifacts_complete(child_store, run_id)) {
             return(NULL)
         }
     }
@@ -405,7 +407,7 @@ shift_batch__restore <- function(
         "child_key"
     )
     manifest <- data.table::as.data.table(data.table::copy(receipt$manifest))
-    shift_stage_new(
+    shift_stage__new(
         ShiftBatch,
         "batch",
         store_path = batch_root,
@@ -470,7 +472,7 @@ shift_batch__candidate_reader <- function(
     store,
     ui
 ) {
-    member <- shift_coalesce(climate@member, "r1i1p1f1")
+    member <- shift_stage__coalesce(climate@member, "r1i1p1f1")
     if (
         is.null(climate@model) && !identical(as.character(member), "r1i1p1f1")
     ) {
@@ -494,7 +496,7 @@ shift_batch__candidate_reader <- function(
     )
     if (!is.null(climate@frequency)) {
         # Apply an explicit execution frequency once to the compiled contract.
-        frequencies <- shift__cmip6_variable_frequencies(
+        frequencies <- shift_spec__cmip6_variable_frequencies(
             unique(requirements$pairs$variable_id),
             climate@frequency
         )
@@ -559,7 +561,7 @@ shift_batch__candidate_reader <- function(
                             frequency
                         )])
                         partitions[,
-                            wanted_table := unname(shift__cmip6_variable_tables(
+                            wanted_table := unname(shift_spec__cmip6_variable_tables(
                                 variable_id,
                                 .BY$frequency,
                                 shift_batch__table_spec(
@@ -625,16 +627,16 @@ shift_batch__available_alternative <- function(
     read_candidates,
     coverage_cache = NULL
 ) {
-    frequency <- shift__transform_cmip6_frequencies(
+    frequency <- shift_spec__transform_cmip6_frequencies(
         transform,
         variables,
         climate@frequency
     )
-    coverage <- shift__cmip6_period_coverage
+    coverage <- shift_resolve__cmip6_period_coverage
     errors <- character()
     for (node in climate@index_nodes) {
         if (identical(ui@batch_context$kind, "discovery")) {
-            shift_batch__discovery_update(
+            shift_batch_ui__discovery_update(
                 list(
                     node = node,
                     node_index = match(node, climate@index_nodes),
@@ -651,9 +653,9 @@ shift_batch__available_alternative <- function(
         )
         if (inherits(current, "error")) {
             errors <- c(errors, conditionMessage(current))
-            shift_batch__discovery_notice(
+            shift_batch_ui__discovery_notice(
                 paste(
-                    shift__node_label(node),
+                    shift_ui_view__node_label(node),
                     "candidate query failed:",
                     conditionMessage(current)
                 ),
@@ -674,7 +676,7 @@ shift_batch__available_alternative <- function(
                         distinct <- unique(mappings)
                         keys <- vapply(
                             distinct,
-                            shift__spec_json,
+                            shift_persist__spec_json,
                             character(1L)
                         )
                         split(
@@ -709,7 +711,7 @@ shift_batch__available_alternative <- function(
                             if (
                                 identical(
                                     coverage,
-                                    shift__cmip6_period_coverage
+                                    shift_resolve__cmip6_period_coverage
                                 )
                             ) {
                                 args$cache <- coverage_cache
@@ -724,9 +726,9 @@ shift_batch__available_alternative <- function(
             )
             if (inherits(current, "error")) {
                 errors <- c(errors, conditionMessage(current))
-                shift_batch__discovery_notice(
+                shift_batch_ui__discovery_notice(
                     paste(
-                        shift__node_label(node),
+                        shift_ui_view__node_label(node),
                         "coverage query failed:",
                         conditionMessage(current)
                     ),
@@ -747,9 +749,9 @@ shift_batch__available_alternative <- function(
             ]
             return(current[])
         }
-        shift_batch__discovery_notice(
+        shift_batch_ui__discovery_notice(
             paste(
-                shift__node_label(node),
+                shift_ui_view__node_label(node),
                 "has no model with complete requested coverage"
             ),
             "rejected"
@@ -805,7 +807,7 @@ shift_batch__discover_candidates <- function(
             seq_along(requirement@variable_sets),
             function(index) {
                 variables <- as.character(requirement@variable_sets[[index]])
-                shift_batch__discovery_update(
+                shift_batch_ui__discovery_update(
                     list(
                         current = match(transform_key, names(transforms)),
                         total = length(transforms),
@@ -838,7 +840,7 @@ shift_batch__discover_candidates <- function(
                         selected_variables = list(variables)
                     )]
                 }
-                shift_batch__discovery_notice(
+                shift_batch_ui__discovery_notice(
                     sprintf(
                         "%s / combination %d: %d GCM(s) with complete coverage",
                         transform@label,
@@ -926,7 +928,7 @@ shift_batch__discover_candidates <- function(
             "the common pool"
         )
         pools <- rep(list(selected), length(transforms))
-        shift_batch__discovery_update(
+        shift_batch_ui__discovery_update(
             list(common_models = nrow(selected)),
             reset = TRUE
         )
@@ -1024,7 +1026,7 @@ shift_batch__store_root <- function(store) {
     path <- if (inherits(store, "EsgStore")) {
         store$path
     } else {
-        shift_coalesce(store, store_dir(init = FALSE))
+        shift_stage__coalesce(store, store_dir(init = FALSE))
     }
     path <- path.expand(path)
     # Resolve an existing parent before the new store is created so macOS
@@ -1052,7 +1054,10 @@ shift_batch__child_climate <- function(
         # Preserve default task identities. Only an alternative source frequency
         # needs an explicit mapping, including the recipe's optional variables.
         variables <- morpher__input_variables(transform__recipe(transform))
-        defaults <- shift__transform_cmip6_frequencies(transform, variables)
+        defaults <- shift_spec__transform_cmip6_frequencies(
+            transform,
+            variables
+        )
         if (!identical(unname(defaults[names(selected)]), unname(selected))) {
             defaults[names(selected)] <- selected
             frequency <- defaults
@@ -1171,7 +1176,7 @@ shift_batch__sites <- function(sites) {
                     "Site {.val {site@id}} needs a baseline EPW for future-weather generation."
                 )
             }
-            path <- if (shift_is_epw_object(site@epw)) {
+            path <- if (shift_spec__is_epw_object(site@epw)) {
                 epw_file_coerce(site@epw)$path()
             } else {
                 site@epw
@@ -1238,35 +1243,38 @@ shift_batch__future_epw <- function(
     if (!S7::S7_inherits(climate, ShiftCmip6Spec)) {
         cli::cli_abort("`climate` must be created by {.fn shift_cmip6}.")
     }
-    periods <- shift__periods_from_input(periods)
+    periods <- shift_spec__periods_from_input(periods)
     output_root <- normalizePath(
         path.expand(dir),
         winslash = "/",
         mustWork = FALSE
     )
     store_root <- shift_batch__store_root(store)
-    shift__validate_delivery_store_paths(output_root, store_root)
+    shift_path__validate_delivery_store_paths(output_root, store_root)
     references <- lapply(transforms, function(transform) {
-        shift__validate_transform_periods(transform, periods)
+        shift_spec__validate_transform_periods(transform, periods)
         if (!is.null(climate@frequency)) {
-            shift__validate_transform_frequency(transform, climate@frequency)
+            shift_spec__validate_transform_frequency(
+                transform,
+                climate@frequency
+            )
         }
         shift_batch__references(transform, reference, calibration)
     })
     reference_intent <- lapply(references, function(value) {
         list(
-            model_historical = shift__reference_spec_value(
+            model_historical = shift_persist__reference_spec_value(
                 value$reference,
                 "model_historical"
             ),
-            observed_reference = shift__reference_spec_value(
+            observed_reference = shift_persist__reference_spec_value(
                 value$observed_reference,
                 "observed_reference"
             )
         )
     })
     site_identity <- lapply(seq_len(nrow(sites)), function(index) {
-        value <- shift__site_ref(sites$site[[index]])
+        value <- shift_persist__site_ref(sites$site[[index]])
         value$epw <- sites$checksum[[index]]
         value
     })
@@ -1275,7 +1283,7 @@ shift_batch__future_epw <- function(
     batch_id <- store__hash(
         "shift-batch-sites-v2",
         site_identity,
-        shift__climate_spec_value(climate),
+        shift_persist__climate_spec_value(climate),
         lapply(transforms, transform__spec_value),
         split(periods$year, periods$period),
         reference_intent,
@@ -1334,10 +1342,10 @@ shift_batch__future_epw <- function(
                     call_started,
                     units = "secs"
                 ))
-                shift_batch__report(restored, ui)
+                shift_batch_ui__report(restored, ui)
                 return(restored)
             }
-            return(shift_batch__resume(
+            return(shift_batch_execution__resume(
                 restored,
                 background = background,
                 ui = ui
@@ -1347,7 +1355,7 @@ shift_batch__future_epw <- function(
     discovery <- if (!is.null(receipt)) {
         receipt$discovery
     } else {
-        shift_batch__discover_models(
+        shift_batch_ui__discover_models(
             climate,
             transforms,
             periods = periods,
@@ -1387,7 +1395,7 @@ shift_batch__future_epw <- function(
             identities[index],
             candidate
         )
-        requests[[index]] <- shift__request_from_cmip6(
+        requests[[index]] <- shift_spec__request_from_cmip6(
             climates[[index]],
             periods,
             selected_transforms[[index]]
@@ -1479,7 +1487,7 @@ shift_batch__future_epw <- function(
         )
         child@meta$climate <- climates[[mi]]
         child@meta$epw_identity <- list(
-            path = if (shift_is_epw_object(child@meta$site@epw)) {
+            path = if (shift_spec__is_epw_object(child@meta$site@epw)) {
                 child@meta$site@epw$path()
             } else {
                 sites$epw[[si]]
@@ -1490,12 +1498,12 @@ shift_batch__future_epw <- function(
         children[[index]] <- child
     }
     names(children) <- manifest$child_key
-    shared_plan <- shift_batch__plan_from_discovery(
+    shared_plan <- shift_batch_plan__plan_from_discovery(
         children,
         manifest,
         file.path(batch_root, "discovery")
     )
-    batch <- shift_stage_new(
+    batch <- shift_stage__new(
         ShiftBatch,
         "batch",
         store_path = batch_root,
@@ -1583,7 +1591,7 @@ shift_batch__diagnostics <- function(
                 refresh = refresh
             ),
             error = function(error) {
-                shift_diagnostic(
+                shift_stage__diagnostic(
                     "batch",
                     "error",
                     "batch_child_inspection_failed",
@@ -1609,7 +1617,7 @@ shift_batch__diagnostics <- function(
                 pools[, .N, by = c("model", "member", "grid")]$N != method_count
             )
         ) {
-            warning <- shift_diagnostic(
+            warning <- shift_stage__diagnostic(
                 "batch",
                 "warning",
                 "batch_method_pools_differ",
@@ -1626,7 +1634,7 @@ shift_batch__diagnostics <- function(
         }
     }
     if (!is.null(shared_failure)) {
-        failure <- shift_diagnostic(
+        failure <- shift_stage__diagnostic(
             "batch",
             "error",
             "batch_shared_read_failed",
@@ -1654,7 +1662,7 @@ shift_batch__diagnostics <- function(
 shift_batch__refresh <- function(x) {
     # A coordinator updates child references as each foreground child finishes.
     # Reopen that receipt before refreshing an older caller's batch handle.
-    if (!is.null(shift_batch__job_read(x@store_path))) {
+    if (!is.null(shift_batch_execution__job_read(x@store_path))) {
         x <- shift_batch_get(x@ids$batch_id, store = x@store_path)
     }
     children <- lapply(seq_along(x@meta$children), function(index) {
@@ -1667,9 +1675,9 @@ shift_batch__refresh <- function(x) {
             },
             error = function(error) {
                 row <- x@meta$manifest[index]
-                child@diagnostics <- shift_bind_diagnostics(
+                child@diagnostics <- shift_stage__bind_diagnostics(
                     child@diagnostics,
-                    shift_diagnostic(
+                    shift_stage__diagnostic(
                         "batch",
                         "error",
                         "batch_child_refresh_failed",
@@ -1702,7 +1710,7 @@ shift_batch__status <- function(x, refresh = TRUE) {
     if (isTRUE(refresh)) {
         x <- shift_batch__refresh(x)
     }
-    job <- shift_batch__job_read(x@store_path)
+    job <- shift_batch_execution__job_read(x@store_path)
     if (
         !is.null(job) &&
             job$status %in%
@@ -1766,7 +1774,7 @@ shift_batch__run <- function(x, background = FALSE, ui = shift_ui()) {
         ))
     }
     x@meta$dry_run <- FALSE
-    shift_batch__resume(x, background = background, ui = ui)
+    shift_batch_execution__resume(x, background = background, ui = ui)
 }
 
 # Recover the durable failed-run handle emitted by an ordinary child workflow.
@@ -1792,7 +1800,7 @@ shift_batch__execute <- function(
     reporter = NULL,
     execution = NULL
 ) {
-    execution__check_cancel(execution)
+    shift_execution__check_cancel(execution)
     call_started <- Sys.time()
     records <- vector("list", length(x@meta$children))
     # Resolve actual inputs once per model/method before any child starts.
@@ -1815,11 +1823,13 @@ shift_batch__execute <- function(
                             status = "completed"
                         )))
                 ) {
-                    x@meta$children[[index]] <- shift_batch__child_plan(child)
+                    x@meta$children[[index]] <- shift_batch_plan__child_plan(
+                        child
+                    )
                 }
             }
-            x <- shift_batch__resolve_inputs(x, reporter)
-            prefetched <- shift_batch__prefetch(x, reporter)
+            x <- shift_batch_plan__resolve_inputs(x, reporter)
+            prefetched <- shift_batch_window__prefetch(x, reporter)
             failures <- attr(prefetched, "failures")
             blocked <- unique(unlist(lapply(failures, `[[`, "child_keys")))
             x@meta[["shared_failure"]] <- if (length(failures)) {
@@ -1849,7 +1859,7 @@ shift_batch__execute <- function(
     )
     if (inherits(failure, "error")) {
         record <- list(
-            file = shift_coalesce(
+            file = shift_stage__coalesce(
                 attr(failure, "shared_file"),
                 "unknown source"
             ),
@@ -1871,7 +1881,7 @@ shift_batch__execute <- function(
     # Update the shared matrix after each child so subsequent foreground frames
     # show batch progress while the ordinary child reporter owns the terminal.
     for (index in seq_along(x@meta$children)) {
-        execution__check_cancel(execution)
+        shift_execution__check_cancel(execution)
         child <- x@meta$children[[index]]
         if (names(x@meta$children)[[index]] %in% blocked) {
             records[[index]] <- data.table::data.table(
@@ -1908,7 +1918,7 @@ shift_batch__execute <- function(
         if (S7::S7_inherits(child, ShiftPlan)) {
             action <- "started"
             child <- shift_batch__run_child(
-                shift__run_one(
+                shift_run__run_one(
                     child,
                     background = FALSE,
                     ui = child_ui,
@@ -1921,7 +1931,7 @@ shift_batch__execute <- function(
         ) {
             action <- "resumed"
             child <- shift_batch__run_child(
-                shift__resume_one(
+                shift_job__resume_one(
                     child,
                     background = FALSE,
                     ui = child_ui,
@@ -1958,7 +1968,7 @@ shift_batch__execute <- function(
 # Request cancellation only for children that are not already terminal.
 shift_batch__cancel <- function(x, force = FALSE) {
     checkmate::assert_flag(force)
-    job <- shift_batch__job_read(x@store_path)
+    job <- shift_batch_execution__job_read(x@store_path)
     if (!is.null(job) && job$status %in% c("queued", "running", "stopping")) {
         store_write_json_atomic(
             list(force = force),
@@ -1995,8 +2005,8 @@ shift_batch__cancel <- function(x, force = FALSE) {
 
 # Render a compact receipt for the selected method-by-model matrix.
 S7::method(print, ShiftBatch) <- function(x, ...) {
-    opts <- shift__print_options(list(...))
-    shift__print_use_width(opts$width)
+    opts <- shift_print__print_options(list(...))
+    shift_print__print_use_width(opts$width)
     manifest <- data.table::copy(x@meta$manifest)
     manifest[,
         status := vapply(
@@ -2007,7 +2017,7 @@ S7::method(print, ShiftBatch) <- function(x, ...) {
             character(1L)
         )
     ]
-    shift__print_stage_intro(
+    shift_print__print_stage_intro(
         x,
         "Future EPW Batch",
         list(
@@ -2015,10 +2025,10 @@ S7::method(print, ShiftBatch) <- function(x, ...) {
             "Methods" = data.table::uniqueN(manifest$method),
             "Models" = data.table::uniqueN(manifest$model),
             "Children" = nrow(manifest),
-            "Output directory" = shift__display_path(x@meta$output_dir)
+            "Output directory" = shift_print__display_path(x@meta$output_dir)
         )
     )
-    shift__print_table(
+    shift_print__print_table(
         manifest,
         "Method and model runs",
         c("method", "scale", "model", "member", "grid", "status"),
@@ -2044,7 +2054,7 @@ S7::method(shift_check, ShiftBatch) <- function(
         shared_failure = x@meta[["shared_failure"]]
     )
     if (isTRUE(strict) && any(diagnostics$severity %in% "error")) {
-        shift_abort_diagnostics(diagnostics)
+        shift_stage__abort_diagnostics(diagnostics)
     }
     diagnostics[]
 }

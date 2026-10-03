@@ -1,5 +1,4 @@
-# BTWS hourly temperature component {{{
-
+# BTWS hourly temperature component
 # Reconstruct every EPW day with the BTWS projector while retaining the shared
 # target, boundary, and physical-closure payload used by daily temperature.
 btws__hourly_reconstruct <- function(
@@ -47,5 +46,3 @@ btws__register_hourly_component <- function() {
     component__register_builtin(btws__hourly_component())
     invisible(NULL)
 }
-
-# }}}

@@ -1,8 +1,7 @@
 #' @include epw-file.R weather-input.R epw-physics.R
 NULL
 
-# EPW morphing execution context {{{
-
+# EPW morphing execution context
 morpher__units_label <- function(x) {
     out <- attr(x, "epw_unit", exact = TRUE)
     if (length(out) != 1L || is.na(out) || !nzchar(out)) NA_character_ else out
@@ -67,7 +66,14 @@ morpher__convert_value_checked <- function(value, from, to) {
     value <- as.numeric(value)
     from <- morpher__unit_alias(from)
     to <- morpher__unit_alias(to)
-    if (all(is.na(value)) || is.na(from) || is.na(to) || !nzchar(from) || !nzchar(to) || identical(from, to)) {
+    if (
+        all(is.na(value)) ||
+            is.na(from) ||
+            is.na(to) ||
+            !nzchar(from) ||
+            !nzchar(to) ||
+            identical(from, to)
+    ) {
         return(list(value = value, ok = TRUE, message = NA_character_))
     }
     if (identical(from, "K") && identical(to, "degC")) {
@@ -97,7 +103,11 @@ morpher__convert_value_checked <- function(value, from, to) {
     list(
         value = value,
         ok = FALSE,
-        message = sprintf("Unsupported unit conversion from %s to %s.", from, to)
+        message = sprintf(
+            "Unsupported unit conversion from %s to %s.",
+            from,
+            to
+        )
     )
 }
 
@@ -155,8 +165,16 @@ morpher__derive_hurs_rows <- function(climate) {
     }
 
     key <- intersect(
-        c("source_id", "experiment_id", "variant_label", "frequency",
-          "table_id", "grid_label", "site_id", "time"),
+        c(
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "frequency",
+            "table_id",
+            "grid_label",
+            "site_id",
+            "time"
+        ),
         names(climate)
     )
     if (!"time" %in% key) {
@@ -169,11 +187,16 @@ morpher__derive_hurs_rows <- function(climate) {
         target_variable <- variable_id
         rows <- climate[climate[["variable_id"]] == target_variable]
         rows[["value_si"]] <- morpher__humidity_input_si(
-            rows[["value"]], rows[["units"]], target_variable
+            rows[["value"]],
+            rows[["units"]],
+            target_variable
         )
-        conflicts <- rows[, list(
-            values = data.table::uniqueN(get("value_si"))
-        ), by = key]
+        conflicts <- rows[,
+            list(
+                values = data.table::uniqueN(get("value_si"))
+            ),
+            by = key
+        ]
         conflicts <- conflicts[conflicts[["values"]] > 1L]
         if (nrow(conflicts)) {
             cli::cli_abort(
@@ -198,11 +221,15 @@ morpher__derive_hurs_rows <- function(climate) {
     }
 
     source_plan_ids <- sort(unique(as.character(climate$plan_id)))
-    source_plan_ids <- source_plan_ids[!is.na(source_plan_ids) & nzchar(source_plan_ids)]
+    source_plan_ids <- source_plan_ids[
+        !is.na(source_plan_ids) & nzchar(source_plan_ids)
+    ]
     out[["variable_id"]] <- "hurs"
     out[["variable"]] <- "hurs"
     out[["value"]] <- epwphys__hurs_from_huss_si(
-        out[["value_si"]], out[["tas_si"]], out[["ps_si"]]
+        out[["value_si"]],
+        out[["tas_si"]],
+        out[["ps_si"]]
     )
     out[["units"]] <- "%"
     out[["derived_from"]] <- "huss,tas,ps"
@@ -215,9 +242,20 @@ morpher__derive_hurs_rows <- function(climate) {
 
 morpher__diagnostic_columns <- function() {
     c(
-        "stage", "severity", "code", "message", "plan_id", "summary_id",
-        "baseline_id", "morph_id", "case_id", "variable_id", "epw_field",
-        "period", "month", "action"
+        "stage",
+        "severity",
+        "code",
+        "message",
+        "plan_id",
+        "summary_id",
+        "baseline_id",
+        "morph_id",
+        "case_id",
+        "variable_id",
+        "epw_field",
+        "period",
+        "month",
+        "action"
     )
 }
 
@@ -241,12 +279,22 @@ morpher__empty_diagnostics <- function() {
     out[, morpher__diagnostic_columns(), with = FALSE]
 }
 
-morpher__diagnostic <- function(stage, severity, code, message, plan_id = NA_character_,
-                                 summary_id = NA_character_, baseline_id = NA_character_,
-                                 morph_id = NA_character_, case_id = NA_character_,
-                                 variable_id = NA_character_, epw_field = NA_character_,
-                                 period = NA_character_, month = NA_integer_,
-                                 action = NA_character_) {
+morpher__diagnostic <- function(
+    stage,
+    severity,
+    code,
+    message,
+    plan_id = NA_character_,
+    summary_id = NA_character_,
+    baseline_id = NA_character_,
+    morph_id = NA_character_,
+    case_id = NA_character_,
+    variable_id = NA_character_,
+    epw_field = NA_character_,
+    period = NA_character_,
+    month = NA_integer_,
+    action = NA_character_
+) {
     out <- data.table::data.table(
         stage = stage,
         severity = severity,
@@ -320,7 +368,11 @@ morpher__decorate_case_diagnostics <- function(
 morpher__case_error_diagnostic <- function(error, morph_id, case_id, case) {
     case <- data.table::as.data.table(case)
     pick <- function(name) {
-        if (name %in% names(case)) store__chr1(case[[name]][[1L]]) else NA_character_
+        if (name %in% names(case)) {
+            store__chr1(case[[name]][[1L]])
+        } else {
+            NA_character_
+        }
     }
     morpher__diagnostic(
         stage = "runtime",
@@ -378,11 +430,14 @@ morpher__weather_field_roles <- function(recipe) {
     physically_closed <- character()
     if (!is.null(policy)) {
         physically_closed <- policy@bounded_fields
-        if (policy@humidity %in% c(
-            "preserve_specific_humidity",
-            "specific_humidity_target",
-            "absolute"
-        )) {
+        if (
+            policy@humidity %in%
+                c(
+                    "preserve_specific_humidity",
+                    "specific_humidity_target",
+                    "absolute"
+                )
+        ) {
             physically_closed <- c(
                 physically_closed,
                 "relative_humidity",
@@ -419,7 +474,10 @@ morpher__weather_field_roles <- function(recipe) {
     )
 }
 
-morpher__abort_diagnostics <- function(diagnostics, message = "EPW morphing preflight has blocking issues.") {
+morpher__abort_diagnostics <- function(
+    diagnostics,
+    message = "EPW morphing preflight has blocking issues."
+) {
     errors <- diagnostics[diagnostics$severity == "error"]
     if (!nrow(errors)) {
         return(invisible(NULL))
@@ -456,7 +514,11 @@ morpher__observed_case_by <- function(by) {
 # Resolve calendar columns with row-level compatibility for old extraction
 # artifacts. Canonical CF fields take precedence; missing values fall back to
 # existing columns and finally to the surrogate POSIXct timestamp.
-morpher__resolve_calendar_columns <- function(climate, month = FALSE, day = FALSE) {
+morpher__resolve_calendar_columns <- function(
+    climate,
+    month = FALSE,
+    day = FALSE
+) {
     n <- nrow(climate)
     time <- if ("time" %in% names(climate)) climate$time else NULL
 
@@ -487,8 +549,10 @@ morpher__resolve_calendar_columns <- function(climate, month = FALSE, day = FALS
         resolve("year", "cf_year", fallback_year)
     }
 
-    if (isTRUE(month) &&
-        (any(c("month", "cf_month") %in% names(climate)) || !is.null(time))) {
+    if (
+        isTRUE(month) &&
+            (any(c("month", "cf_month") %in% names(climate)) || !is.null(time))
+    ) {
         fallback_month <- if (is.null(time)) {
             rep.int(NA_integer_, n)
         } else {
@@ -496,8 +560,10 @@ morpher__resolve_calendar_columns <- function(climate, month = FALSE, day = FALS
         }
         resolve("month", "cf_month", fallback_month)
     }
-    if (isTRUE(day) &&
-        (any(c("day", "cf_day") %in% names(climate)) || !is.null(time))) {
+    if (
+        isTRUE(day) &&
+            (any(c("day", "cf_day") %in% names(climate)) || !is.null(time))
+    ) {
         fallback_day <- if (is.null(time)) {
             rep.int(NA_integer_, n)
         } else {
@@ -509,7 +575,11 @@ morpher__resolve_calendar_columns <- function(climate, month = FALSE, day = FALS
     climate[]
 }
 
-morpher__normalize_context_climate <- function(climate, years = NULL, labels = NULL) {
+morpher__normalize_context_climate <- function(
+    climate,
+    years = NULL,
+    labels = NULL
+) {
     climate <- data.table::as.data.table(data.table::copy(climate))
     if (!"time" %in% names(climate) && "datetime" %in% names(climate)) {
         climate[, time := datetime]
@@ -517,7 +587,9 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
     if ("variable" %in% names(climate)) {
         climate[, variable_id := variable]
     }
-    if (!"variant_label" %in% names(climate) && "member_id" %in% names(climate)) {
+    if (
+        !"variant_label" %in% names(climate) && "member_id" %in% names(climate)
+    ) {
         climate[, variant_label := member_id]
     }
     if (!"period" %in% names(climate) && "interval" %in% names(climate)) {
@@ -526,7 +598,10 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
     climate <- morpher__resolve_calendar_columns(climate)
     if (!"period" %in% names(climate) && "year" %in% names(climate)) {
         if (!is.null(years) && !is.null(labels)) {
-            label_map <- data.table::data.table(year = as.integer(years), period = as.character(labels))
+            label_map <- data.table::data.table(
+                year = as.integer(years),
+                period = as.character(labels)
+            )
             climate <- label_map[climate, on = "year"]
         } else {
             climate[, period := as.character(year)]
@@ -543,20 +618,32 @@ morpher__normalize_context_climate <- function(climate, years = NULL, labels = N
     climate[]
 }
 
-morpher__context <- function(epw, climate, recipe = epw_morph_recipe("original_morphing"),
-                              reference_climate = NULL,
-                              years = NULL, labels = NULL,
-                              reference_years = NULL, reference_labels = NULL,
-                              by = character(),
-                              case = NULL, strict = TRUE, warning = FALSE,
-                              observed_reference = NULL) {
+morpher__context <- function(
+    epw,
+    climate,
+    recipe = epw_morph_recipe("original_morphing"),
+    reference_climate = NULL,
+    years = NULL,
+    labels = NULL,
+    reference_years = NULL,
+    reference_labels = NULL,
+    by = character(),
+    case = NULL,
+    strict = TRUE,
+    warning = FALSE,
+    observed_reference = NULL
+) {
     if (!inherits(epw, "EpwFile")) {
         cli::cli_abort("`epw` must be an internal {.cls EpwFile} object.")
     }
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
-    climate <- morpher__normalize_context_climate(climate, years = years, labels = labels)
+    climate <- morpher__normalize_context_climate(
+        climate,
+        years = years,
+        labels = labels
+    )
     if (!is.null(reference_climate)) {
         reference_climate <- morpher__normalize_context_climate(
             reference_climate,
@@ -610,7 +697,9 @@ morpher__validate_context <- function(context) {
     climate <- context$climate
     missing <- setdiff(morpher__context_required_columns(), names(climate))
     if (length(missing)) {
-        cli::cli_abort("Canonical EPW morphing climate data are missing column(s): {.val {missing}}.")
+        cli::cli_abort(
+            "Canonical EPW morphing climate data are missing column(s): {.val {missing}}."
+        )
     }
     invisible(context)
 }
@@ -627,9 +716,14 @@ morpher__context_reference_variable <- function(context, variable_id) {
     if (is.null(context$reference_climate)) {
         return(data.table::data.table())
     }
-    missing <- setdiff(morpher__context_required_columns(), names(context$reference_climate))
+    missing <- setdiff(
+        morpher__context_required_columns(),
+        names(context$reference_climate)
+    )
     if (length(missing)) {
-        cli::cli_abort("Canonical EPW morphing reference climate data are missing column(s): {.val {missing}}.")
+        cli::cli_abort(
+            "Canonical EPW morphing reference climate data are missing column(s): {.val {missing}}."
+        )
     }
     target_variable_id <- store__chr1(variable_id)
     climate <- context$reference_climate
@@ -644,16 +738,28 @@ morpher__context_year_labels <- function(context) {
     if (!all(c("year", "period") %in% names(climate))) {
         return(list(years = NULL, labels = NULL))
     }
-    period_years <- unique(climate[, .(year = as.integer(year), period = as.character(period))])
+    period_years <- unique(climate[, .(
+        year = as.integer(year),
+        period = as.character(period)
+    )])
     data.table::setorder(period_years, year, period)
     years <- sort(unique(period_years$year))
-    labels <- vapply(years, function(year) {
-        period_years$period[match(year, period_years$year)]
-    }, character(1L))
+    labels <- vapply(
+        years,
+        function(year) {
+            period_years$period[match(year, period_years$year)]
+        },
+        character(1L)
+    )
     list(years = years, labels = labels)
 }
 
-morpher__context_pick_column <- function(data, primary, fallback = NULL, default = NA_character_) {
+morpher__context_pick_column <- function(
+    data,
+    primary,
+    fallback = NULL,
+    default = NA_character_
+) {
     if (primary %in% names(data)) {
         return(data[[primary]])
     }
@@ -665,38 +771,94 @@ morpher__context_pick_column <- function(data, primary, fallback = NULL, default
 
 morpher__context_identity_rows <- function(data) {
     data.table::data.table(
-        activity_drs = store__chr(morpher__context_pick_column(data, "activity_drs", "activity_id")),
-        institution_id = store__chr(morpher__context_pick_column(data, "institution_id")),
+        activity_drs = store__chr(morpher__context_pick_column(
+            data,
+            "activity_drs",
+            "activity_id"
+        )),
+        institution_id = store__chr(morpher__context_pick_column(
+            data,
+            "institution_id"
+        )),
         source_id = store__chr(morpher__context_pick_column(data, "source_id")),
-        experiment_id = store__chr(morpher__context_pick_column(data, "experiment_id")),
-        member_id = store__chr(morpher__context_pick_column(data, "member_id", "variant_label")),
-        table_id = store__chr(morpher__context_pick_column(data, "table_id", "frequency")),
-        lon = as.numeric(morpher__context_pick_column(data, "lon", default = NA_real_)),
-        lat = as.numeric(morpher__context_pick_column(data, "lat", default = NA_real_))
+        experiment_id = store__chr(morpher__context_pick_column(
+            data,
+            "experiment_id"
+        )),
+        member_id = store__chr(morpher__context_pick_column(
+            data,
+            "member_id",
+            "variant_label"
+        )),
+        table_id = store__chr(morpher__context_pick_column(
+            data,
+            "table_id",
+            "frequency"
+        )),
+        lon = as.numeric(morpher__context_pick_column(
+            data,
+            "lon",
+            default = NA_real_
+        )),
+        lat = as.numeric(morpher__context_pick_column(
+            data,
+            "lat",
+            default = NA_real_
+        ))
     )
 }
 
-morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning = FALSE) {
+morpher__monthly_climate <- function(
+    data,
+    years = NULL,
+    labels = NULL,
+    warning = FALSE
+) {
     data <- data.table::as.data.table(data.table::copy(data))
     if (!nrow(data)) {
         return(data.table::data.table())
     }
-    missing <- setdiff(c("variable_id", "time", "year", "period", "units", "value", "lon", "lat"), names(data))
+    missing <- setdiff(
+        c(
+            "variable_id",
+            "time",
+            "year",
+            "period",
+            "units",
+            "value",
+            "lon",
+            "lat"
+        ),
+        names(data)
+    )
     if (length(missing)) {
-        cli::cli_abort("Canonical EPW morphing climate data are missing column(s): {.val {missing}}.")
+        cli::cli_abort(
+            "Canonical EPW morphing climate data are missing column(s): {.val {missing}}."
+        )
     }
     data <- morpher__resolve_calendar_columns(data, month = TRUE, day = TRUE)
     data[, year := as.integer(year)]
     data <- data[!(month == 2L & day == 29L)]
 
-    checkmate::assert_integerish(years, lower = 1900, unique = TRUE, sorted = TRUE, any.missing = FALSE, null.ok = TRUE)
+    checkmate::assert_integerish(
+        years,
+        lower = 1900,
+        unique = TRUE,
+        sorted = TRUE,
+        any.missing = FALSE,
+        null.ok = TRUE
+    )
     if (is.null(years)) {
         data[, interval := as.factor(period)]
     } else {
         years <- as.integer(years)
         missing_years <- setdiff(years, unique(data$year))
         if (length(missing_years)) {
-            stop("Input data does not contain any data of year ", paste0("'", missing_years, "'", collapse = ", "), ".")
+            stop(
+                "Input data does not contain any data of year ",
+                paste0("'", missing_years, "'", collapse = ", "),
+                "."
+            )
         }
         data <- data[year %in% years]
         if (is.null(labels)) {
@@ -705,25 +867,64 @@ morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning 
             if (is.factor(labels)) {
                 labels <- as.character(labels)
             }
-            checkmate::assert_character(labels, any.missing = FALSE, len = length(years))
-            label_map <- data.table::data.table(year = years, interval = as.factor(labels))
+            checkmate::assert_character(
+                labels,
+                any.missing = FALSE,
+                len = length(years)
+            )
+            label_map <- data.table::data.table(
+                year = years,
+                interval = as.factor(labels)
+            )
             data <- label_map[data, on = "year"]
         }
     }
 
     if (isTRUE(warning)) {
-        by_cols <- intersect(c("variable_id", "table_id", "frequency", "source_id", "experiment_id", "variant_label", "member_id"), names(data))
+        by_cols <- intersect(
+            c(
+                "variable_id",
+                "table_id",
+                "frequency",
+                "source_id",
+                "experiment_id",
+                "variant_label",
+                "member_id"
+            ),
+            names(data)
+        )
         if (length(by_cols)) {
-            rng_year <- data[, list(years = list(sort(unique(year))), num_years = length(unique(year))), by = by_cols][num_years < 10L]
+            rng_year <- data[,
+                list(
+                    years = list(sort(unique(year))),
+                    num_years = length(unique(year))
+                ),
+                by = by_cols
+            ][num_years < 10L]
             if (nrow(rng_year)) {
-                data.table::set(rng_year, NULL, "index_case", seq.int(nrow(rng_year)))
+                data.table::set(
+                    rng_year,
+                    NULL,
+                    "index_case",
+                    seq.int(nrow(rng_year))
+                )
                 mes <- rng_year[, by = "index_case", {
                     yrs <- paste0("'", years[[1L]], "'", collapse = ", ")
-                    list(message = sprintf("#%i | [%i] %s", .BY$index_case, num_years, yrs))
+                    list(
+                        message = sprintf(
+                            "#%i | [%i] %s",
+                            .BY$index_case,
+                            num_years,
+                            yrs
+                        )
+                    )
                 }]$message
-                warning("Case(s) shown below contains CMIP data less than a decade. ",
+                warning(
+                    "Case(s) shown below contains CMIP data less than a decade. ",
                     "The morphed data may not be able to capture average weather of the future climate.\n",
-                    paste0(mes, collapse = "\n"), call. = FALSE)
+                    paste0(mes, collapse = "\n"),
+                    call. = FALSE
+                )
             }
         }
     }
@@ -736,21 +937,56 @@ morpher__monthly_climate <- function(data, years = NULL, labels = NULL, warning 
         month = as.integer(data$month),
         interval = data$interval
     )
-    group_cols <- c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "units", "month", "interval")
-    out <- data[, .(
-        lon = mean(lon, na.rm = TRUE),
-        lat = mean(lat, na.rm = TRUE),
-        value = mean(value, na.rm = TRUE)
-    ), by = group_cols]
-    data.table::setcolorder(out, c("activity_drs", "institution_id", "source_id", "experiment_id", "member_id", "table_id", "lon", "lat", "units", "value", "month", "interval"))
+    group_cols <- c(
+        "activity_drs",
+        "institution_id",
+        "source_id",
+        "experiment_id",
+        "member_id",
+        "table_id",
+        "units",
+        "month",
+        "interval"
+    )
+    out <- data[,
+        .(
+            lon = mean(lon, na.rm = TRUE),
+            lat = mean(lat, na.rm = TRUE),
+            value = mean(value, na.rm = TRUE)
+        ),
+        by = group_cols
+    ]
+    data.table::setcolorder(
+        out,
+        c(
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "lon",
+            "lat",
+            "units",
+            "value",
+            "month",
+            "interval"
+        )
+    )
     out[]
 }
 
 
 morpher__factor_case_columns <- function(data) {
     intersect(
-        c("activity_drs", "institution_id", "source_id", "experiment_id",
-          "member_id", "interval"),
+        c(
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "interval"
+        ),
         names(data)
     )
 }
@@ -774,7 +1010,10 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
     })
 
     cols_dt <- c("datetime", "year", "month", "day", "hour", "minute")
-    cols_by <- intersect(morpher__engine_by_columns(by), Reduce(intersect, lapply(parts, names)))
+    cols_by <- intersect(
+        morpher__engine_by_columns(by),
+        Reduce(intersect, lapply(parts, names))
+    )
     keep_base <- c(cols_by, cols_dt)
     for (i in seq_along(parts)) {
         keep <- c(intersect(names(data_epw), names(parts[[i]])), keep_base)
@@ -789,10 +1028,18 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
     merged <- merged[, lapply(.SD, mean), by = merge_by]
 
     if ("total_sky_cover" %in% names(merged)) {
-        data.table::set(merged, j = "total_sky_cover", value = as.integer(round(merged$total_sky_cover)))
+        data.table::set(
+            merged,
+            j = "total_sky_cover",
+            value = as.integer(round(merged$total_sky_cover))
+        )
     }
     if ("opaque_sky_cover" %in% names(merged)) {
-        data.table::set(merged, j = "opaque_sky_cover", value = as.integer(round(merged$opaque_sky_cover)))
+        data.table::set(
+            merged,
+            j = "opaque_sky_cover",
+            value = as.integer(round(merged$opaque_sky_cover))
+        )
     }
 
     value_cols <- setdiff(intersect(names(merged), names(data_epw)), cols_dt)
@@ -810,7 +1057,12 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
         morphed_col <- paste0(col, ".morphed")
         if (morphed_col %in% names(complete)) {
             idx <- !is.na(complete[[morphed_col]])
-            data.table::set(complete, i = which(idx), j = col, value = complete[[morphed_col]][idx])
+            data.table::set(
+                complete,
+                i = which(idx),
+                j = col,
+                value = complete[[morphed_col]][idx]
+            )
             data.table::set(complete, j = morphed_col, value = NULL)
         }
     }
@@ -836,8 +1088,14 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
 #'
 #' @return An `epw_morph_result` object.
 #' @export
-epw_morph_result <- function(context, epw = context$epw, data, parts = list(),
-                             diagnostics = morpher__empty_diagnostics(), factors = NULL) {
+epw_morph_result <- function(
+    context,
+    epw = context$epw,
+    data,
+    parts = list(),
+    diagnostics = morpher__empty_diagnostics(),
+    factors = NULL
+) {
     checkmate::assert_class(context, "morpher__context")
     if (!inherits(epw, "EpwFile")) {
         cli::cli_abort("`epw` must be an internal {.cls EpwFile} object.")
@@ -847,14 +1105,31 @@ epw_morph_result <- function(context, epw = context$epw, data, parts = list(),
     }
     checkmate::assert_list(parts, names = "named")
     data <- data.table::as.data.table(data.table::copy(data))
-    morpher__engine_output(context, epw, parts = parts, data = data, diagnostics = diagnostics, factors = factors)
+    morpher__engine_output(
+        context,
+        epw,
+        parts = parts,
+        data = data,
+        diagnostics = diagnostics,
+        factors = factors
+    )
 }
 
-morpher__engine_output <- function(context, epw, parts, data = NULL, diagnostics = morpher__empty_diagnostics(), factors = NULL) {
+morpher__engine_output <- function(
+    context,
+    epw,
+    parts,
+    data = NULL,
+    diagnostics = morpher__empty_diagnostics(),
+    factors = NULL
+) {
     if (is.null(data)) {
         data <- morpher__engine_complete_data(epw, parts, by = context$by)
     }
-    if (context$recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
+    if (
+        context$recipe$backend %in%
+            c("original_morphing", "original_morphing_absolute")
+    ) {
         # Monthly backends predate executable pipeline stages. Applying their
         # declared policy by complete case gives them the same physical boundary
         # as pipeline methods while retaining every legacy field value.
@@ -904,17 +1179,21 @@ morpher__run_context <- function(context) {
     }
     backend <- epw_morph_backend(context$recipe$backend)
     result <- backend$run(context)
-    if (!inherits(result, "epw_morph_result") &&
-        !S7::S7_inherits(result, WeatherSequenceResult)) {
+    if (
+        !inherits(result, "epw_morph_result") &&
+            !S7::S7_inherits(result, WeatherSequenceResult)
+    ) {
         cli::cli_abort(
             "EPW morphing backend {.val {backend$name}} did not return an {.cls epw_morph_result} or {.cls WeatherSequenceResult}."
         )
     }
     if (!is.null(recipe_spec)) {
-        actual_output_type <- if (S7::S7_inherits(
-            result,
-            WeatherSequenceResult
-        )) {
+        actual_output_type <- if (
+            S7::S7_inherits(
+                result,
+                WeatherSequenceResult
+            )
+        ) {
             result@output_type
         } else {
             "representative_year"
@@ -928,4 +1207,3 @@ morpher__run_context <- function(context) {
     }
     result
 }
-# }}}

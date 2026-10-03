@@ -23,8 +23,13 @@ write_test_era_netcdf <- function(
         "NC_DOUBLE",
         c("longitude", "latitude", "time")
     )
-    RNetCDF::att.put.nc(handle, "time", "units", "NC_CHAR",
-        "hours since 2000-01-01 00:00:00")
+    RNetCDF::att.put.nc(
+        handle,
+        "time",
+        "units",
+        "NC_CHAR",
+        "hours since 2000-01-01 00:00:00"
+    )
     RNetCDF::att.put.nc(handle, "time", "calendar", "NC_CHAR", "standard")
     RNetCDF::att.put.nc(handle, variable, "units", "NC_CHAR", units)
     RNetCDF::var.put.nc(handle, "longitude", longitude)
@@ -52,18 +57,29 @@ test_cmip6_availability <- function(
         source
     }
     grid <- if (is.null(grid)) "gn" else grid
-    tables <- stats::setNames(vapply(frequency, function(value) {
-        shift_coalesce(shift__cmip6_table_id(value), "unknown")
-    }, character(1L)), names(frequency))
+    tables <- stats::setNames(
+        vapply(
+            frequency,
+            function(value) {
+                shift_stage__coalesce(
+                    shift_spec__cmip6_table_id(value),
+                    "unknown"
+                )
+            },
+            character(1L)
+        ),
+        names(frequency)
+    )
     data.frame(
         source_id = models,
         variant_label = rep(member, length(models)),
         grid_label = rep(grid, length(models)),
-        frequency = rep(paste(unique(frequency), collapse = "+"),
-            length(models)),
+        frequency = rep(
+            paste(unique(frequency), collapse = "+"),
+            length(models)
+        ),
         frequency_spec = I(rep(list(frequency), length(models))),
-        table_id = rep(paste(unique(tables), collapse = "+"),
-            length(models)),
+        table_id = rep(paste(unique(tables), collapse = "+"), length(models)),
         table = I(rep(list(tables), length(models))),
         complete = TRUE,
         complete_experiments = length(scenarios) + 1L,

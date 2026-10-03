@@ -7,16 +7,16 @@ test_that("execution snapshots preserve settings and restore caller state", {
         epwshiftr.mirai_workers = 3L
     )
     root <- withr::local_tempdir()
-    job <- list(id = "execution-test", options = execution__options())
+    job <- list(id = "execution-test", options = shift_execution__options())
     store_write_json_atomic(job, file.path(root, "batch-job.json"))
     saved <- jsonlite::read_json(
         file.path(root, "batch-job.json"),
         simplifyVector = TRUE
     )
-    context <- execution__context(root, saved)
+    context <- shift_execution__context(root, saved)
     options(epwshiftr.query.timeout = 91)
     expect_error(
-        execution__run(context, {
+        shift_execution__run(context, {
             expect_identical(getOption("epwshiftr.query.timeout"), 37L)
             expect_identical(getOption("epwshiftr.cache_max_n"), Inf)
             stop("execution failure")
@@ -24,29 +24,32 @@ test_that("execution snapshots preserve settings and restore caller state", {
         "execution failure"
     )
     expect_equal(getOption("epwshiftr.query.timeout"), 91)
-    expect_identical(shift_batch__job_read(root)$status, "failed")
-    expect_identical(shift_batch__job_read(root)$message, "execution failure")
+    expect_identical(shift_batch_execution__job_read(root)$status, "failed")
+    expect_identical(
+        shift_batch_execution__job_read(root)$message,
+        "execution failure"
+    )
 })
 
 # Cancellation is tied to an attempt and passed explicitly to its reporter.
 test_that("independent reporters cannot inherit another execution's cancellation", {
     root <- withr::local_tempdir()
-    context <- execution__context(
+    context <- shift_execution__context(
         root,
-        list(id = "cancelled-owner", options = execution__options())
+        list(id = "cancelled-owner", options = shift_execution__options())
     )
     file.create(file.path(root, "cancelled-owner.cancel.json"))
-    attached <- shift__reporter(shift_ui("none"), execution = context)
-    unrelated <- shift__reporter(shift_ui("none"))
+    attached <- shift_reporter__reporter(shift_ui("none"), execution = context)
+    unrelated <- shift_reporter__reporter(shift_ui("none"))
     on.exit(attached$close(), add = TRUE)
     on.exit(unrelated$close(), add = TRUE)
     expect_error(attached$check_cancel(), class = "epwshiftr_shift_cancelled")
     expect_no_error(unrelated$check_cancel())
     expect_error(
-        execution__run(context, stop("must not run")),
+        shift_execution__run(context, stop("must not run")),
         class = "epwshiftr_shift_cancelled"
     )
-    expect_identical(shift_batch__job_read(root)$status, "cancelled")
+    expect_identical(shift_batch_execution__job_read(root)$status, "cancelled")
 })
 
 # Real installed workers inherit effective user settings and never start nested
@@ -89,10 +92,10 @@ test_that("source workers share the execution settings snapshot", {
 test_that("early standalone cancellation updates the run and step", {
     store <- shift_store(withr::local_tempdir(), create = TRUE)
     on.exit(store$close(), add = TRUE)
-    create <- shift__job_create
-    local_mocked_bindings(shift__job_create = function(...) {
+    create <- shift_job__job_create
+    local_mocked_bindings(shift_job__job_create = function(...) {
         job <- create(...)
-        shift__cancel_request_write(
+        shift_job__cancel_request_write(
             store$path,
             job$run_id[[1L]],
             job$job_id[[1L]]
@@ -101,7 +104,7 @@ test_that("early standalone cancellation updates the run and step", {
     })
     called <- FALSE
     expect_error(
-        shift__task_execute(
+        shift_run__task_execute(
             "collect",
             shift_request(),
             code = function(...) {
@@ -125,17 +128,25 @@ test_that("early standalone cancellation updates the run and step", {
 test_that("execution returns the final attempt snapshot", {
     store <- shift_store(withr::local_tempdir(), create = TRUE)
     on.exit(store$close(), add = TRUE)
-    run_id <- shift__task_run_register(store, "collect", spec = list())
-    job <- shift__job_create(
+    run_id <- shift_job__task_run_register(store, "collect", spec = list())
+    job <- shift_job__job_create(
         store,
         run_id,
         mode = "foreground",
         ui = shift_ui("none")
     )
-    result <- execution__run(execution__context(store$path, job, store), {
-        shift__run_finish(store, run_id, "completed", current_stage = "collect")
-        shift__run_handle(store, run_id)
-    })
+    result <- shift_execution__run(
+        shift_execution__context(store$path, job, store),
+        {
+            shift_job__run_finish(
+                store,
+                run_id,
+                "completed",
+                current_stage = "collect"
+            )
+            shift_job__run_handle(store, run_id)
+        }
+    )
     expect_identical(result@meta$jobs$status, "completed")
     expect_false(anyNA(result@meta$jobs$completed_at))
 })
@@ -145,21 +156,21 @@ test_that("execution returns the final attempt snapshot", {
 test_that("standalone progress checks cancellation once per heartbeat", {
     store <- shift_store(withr::local_tempdir(), create = TRUE)
     on.exit(store$close(), add = TRUE)
-    run_id <- shift__task_run_register(store, "collect", spec = list())
-    job <- shift__job_create(
+    run_id <- shift_job__task_run_register(store, "collect", spec = list())
+    job <- shift_job__job_create(
         store,
         run_id,
         mode = "foreground",
         ui = shift_ui("none")
     )
-    context <- execution__context(store$path, job, store)
-    reporter <- shift__reporter(
+    context <- shift_execution__context(store$path, job, store)
+    reporter <- shift_reporter__reporter(
         shift_ui("none", heartbeat = 60),
         execution = context
     )
     on.exit(reporter$close(), add = TRUE)
     checks <- 0L
-    local_mocked_bindings(shift__job_check_cancel = function(...) {
+    local_mocked_bindings(shift_job__job_check_cancel = function(...) {
         checks <<- checks + 1L
     })
     reporter$heartbeat(force = TRUE)
@@ -183,7 +194,7 @@ test_that("execution snapshots read only supported options", {
         epwshiftr.cache_max_n = 0,
         unrelated_execution_setting = "keep"
     )
-    actual <- execution__options()
+    actual <- shift_execution__options()
     expect_identical(actual$epwshiftr.query.timeout, 300)
     expect_identical(actual$epwshiftr.query.connect_timeout, 11)
     expect_true("epwshiftr.ui_height" %in% names(actual))
@@ -208,11 +219,11 @@ test_that("background string literals round trip without coercion", {
     )
     for (value in values) {
         expect_identical(
-            eval(parse(text = execution__string_literal(value))),
+            eval(parse(text = shift_execution__string_literal(value))),
             value
         )
     }
-    expect_identical(execution__string_literal(NULL), "NULL")
+    expect_identical(shift_execution__string_literal(NULL), "NULL")
     for (value in list(
         character(),
         NA_character_,
@@ -221,7 +232,7 @@ test_that("background string literals round trip without coercion", {
         FALSE,
         list("a")
     )) {
-        expect_error(execution__string_literal(value))
+        expect_error(shift_execution__string_literal(value))
     }
 })
 
@@ -233,7 +244,7 @@ test_that("background launch preserves strings and reports launch failure", {
     captured <- NULL
     status <- 0L
     local_mocked_bindings(
-        execution__library_paths = function() libraries
+        shift_execution__library_paths = function() libraries
     )
     local_mocked_bindings(
         .package = "base",
@@ -249,7 +260,11 @@ test_that("background launch preserves strings and reports launch failure", {
         shQuote = identity
     )
     expect_identical(
-        execution__launch("shift_batch__job_main", arguments, "job.log"),
+        shift_execution__launch(
+            "shift_batch_execution__job_main",
+            arguments,
+            "job.log"
+        ),
         0L
     )
     expressions <- parse(text = captured$args[[3L]])
@@ -261,7 +276,11 @@ test_that("background launch preserves strings and reports launch failure", {
     expect_false(captured$wait)
     status <- 1L
     expect_error(
-        execution__launch("shift_batch__job_main", arguments, "job.log"),
+        shift_execution__launch(
+            "shift_batch_execution__job_main",
+            arguments,
+            "job.log"
+        ),
         "Could not launch"
     )
 })

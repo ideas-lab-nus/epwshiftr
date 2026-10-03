@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
 test_local_dependencies(list(
     availability = test_cmip6_availability,
-    shift__cmip6_period_coverage = test_cmip6_period_coverage
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 # Build deterministic daily temperature rows for the composite BTWS recipe.
@@ -18,7 +18,8 @@ btws_test__climate <- function(
         time <- as.POSIXct(
             as.Date(sprintf("%04d-01-01", year)) + seq.int(0L, 364L),
             tz = "UTC"
-        ) + 12 * 3600
+        ) +
+            12 * 3600
         seasonal <- 7 * sin(2 * pi * phase)
         values <- list(
             tas = 20 + seasonal + mean_shift,
@@ -145,29 +146,38 @@ test_that("daily CMIP6 and BTWS composition closes a future EPW year", {
     expect_true(all(is.finite(result$factors$btws_scale)))
     expect_true(all(is.finite(result$factors$btws_m)))
     expect_true(all(is.finite(result$factors$btws_n)))
-    expect_true(all(c(
-        "btws_scale",
-        "btws_m",
-        "btws_n",
-        "btws_fallback_reason"
-    ) %in% names(weather)))
+    expect_true(all(
+        c(
+            "btws_scale",
+            "btws_m",
+            "btws_n",
+            "btws_fallback_reason"
+        ) %in%
+            names(weather)
+    ))
     expect_false(
         "daily_temperature_shape_exponent" %in% names(weather)
     )
 
-    achieved <- weather[, .(
-        baseline_mean = mean(baseline_data$dry_bulb_temperature[.I]),
-        projected_mean = mean(dry_bulb_temperature)
-    ), by = "daily_target_day"]
+    achieved <- weather[,
+        .(
+            baseline_mean = mean(baseline_data$dry_bulb_temperature[.I]),
+            projected_mean = mean(dry_bulb_temperature)
+        ),
+        by = "daily_target_day"
+    ]
     expect_equal(
         achieved$projected_mean - achieved$baseline_mean,
         rep(0.5, 365L),
         tolerance = 1e-8
     )
-    expect_true(all(weather$relative_humidity >= 0 &
-        weather$relative_humidity <= 100))
-    expect_true(all(weather$dew_point_temperature <=
-        weather$dry_bulb_temperature))
+    expect_true(all(
+        weather$relative_humidity >= 0 &
+            weather$relative_humidity <= 100
+    ))
+    expect_true(all(
+        weather$dew_point_temperature <= weather$dry_bulb_temperature
+    ))
 })
 
 test_that("daily temperature selects BTWS and survives plan reconstruction", {
@@ -193,7 +203,7 @@ test_that("daily temperature selects BTWS and survives plan reconstruction", {
         store = tempfile("daily-btws-store-"),
         dry_run = TRUE
     )@meta$children[[1L]]
-    rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
+    rebuilt <- shift_persist__plan_from_spec(shift_persist__plan_spec(plan))
 
     expect_identical(
         plan@meta$recipe$backend,
@@ -211,7 +221,7 @@ test_that("daily temperature selects BTWS and survives plan reconstruction", {
         rebuilt@meta$recipe$components$hourly,
         "btws_temperature_projection"
     )
-    expect_silent(shift__validate_background_plan(plan))
+    expect_silent(shift_job__validate_background_plan(plan))
 })
 
 test_that("daily temperature reconstruction selects one hourly component", {

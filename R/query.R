@@ -55,8 +55,10 @@ query__normalize_solr_response <- function(response) {
     if (!is.list(response) || is.null(response$response)) {
         return(response)
     }
-    if (identical(response$response$numFound, 0L) &&
-        is.null(response$response$maxScore)) {
+    if (
+        identical(response$response$numFound, 0L) &&
+            is.null(response$response$maxScore)
+    ) {
         response$response$maxScore <- 0
     }
     response
@@ -86,26 +88,42 @@ cache__read_json <- function(
 
         cached <- disk_cache$get(key)
         if (!cache__missing(cached)) {
-            if (!is.null(progress_callback)) progress_callback(list(
-                state = "cached", url = url,
-                records = NROW(cached$response$docs)))
+            if (!is.null(progress_callback)) {
+                progress_callback(list(
+                    state = "cached",
+                    url = url,
+                    records = NROW(cached$response$docs)
+                ))
+            }
             return(cached)
         }
 
         if (mode == "offline") {
-            stop("Cache miss in offline mode for URL '", url, "'. Cannot fetch data while offline.", call. = FALSE)
+            stop(
+                "Cache miss in offline mode for URL '",
+                url,
+                "'. Cannot fetch data while offline.",
+                call. = FALSE
+            )
         }
     }
 
     json_source <- url
-    if (is.character(url) && length(url) == 1L && grepl("^https?://", url, useBytes = TRUE)) {
+    if (
+        is.character(url) &&
+            length(url) == 1L &&
+            grepl("^https?://", url, useBytes = TRUE)
+    ) {
         handle <- curl::new_handle(
             timeout = timeout,
             connecttimeout = min(connect_timeout, timeout),
             followlocation = TRUE,
             failonerror = TRUE
         )
-        curl::handle_setheaders(handle, Accept = "application/json, text/*, */*")
+        curl::handle_setheaders(
+            handle,
+            Accept = "application/json, text/*, */*"
+        )
         if (!is.null(progress_callback)) {
             # libcurl calls this during connection and transfer waits. Returning
             # TRUE tells curl to continue after the reporter callback.
@@ -113,7 +131,12 @@ cache__read_json <- function(
                 handle,
                 noprogress = FALSE,
                 progressfunction = function(down, up) {
-                    progress_callback(list(state = "transfer", download = down, upload = up, url = url))
+                    progress_callback(list(
+                        state = "transfer",
+                        download = down,
+                        upload = up,
+                        url = url
+                    ))
                     TRUE
                 }
             )
@@ -129,7 +152,8 @@ cache__read_json <- function(
             json_source <- rawToChar(fetched$content)
             if (!is.null(progress_callback)) {
                 progress_callback(list(
-                    state = "completed", url = url,
+                    state = "completed",
+                    url = url,
                     downloaded = length(fetched$content),
                     status_code = as.integer(fetched$status_code)
                 ))
@@ -140,7 +164,11 @@ cache__read_json <- function(
     res <- if (inherits(json_source, "error")) {
         json_source
     } else {
-        tryCatch(jsonlite::fromJSON(json_source, bigint_as_char = TRUE, ...), warning = function(w) w, error = function(e) e)
+        tryCatch(
+            jsonlite::fromJSON(json_source, bigint_as_char = TRUE, ...),
+            warning = function(w) w,
+            error = function(e) e
+        )
     }
     timestamp <- Sys.time()
 
@@ -158,8 +186,13 @@ cache__read_json <- function(
     # Apply normalization before schema-backed query objects or the disk cache
     # observe the response, so online and cached behavior remain identical.
     res <- query__normalize_solr_response(res)
-    if (!is.null(progress_callback)) progress_callback(list(
-        state = "parsed", url = url, records = NROW(res$response$docs)))
+    if (!is.null(progress_callback)) {
+        progress_callback(list(
+            state = "parsed",
+            url = url,
+            records = NROW(res$response$docs)
+        ))
+    }
     if (!is.null(res$response$numFound) && res$response$numFound == 0L) {
         cache__verbose(warning(
             "No matched data. ",
@@ -178,7 +211,7 @@ cache__read_json <- function(
     res
 }
 
-# esg_query {{{
+# esg_query
 #' Query CMIP6 data using ESGF search RESTful API
 #'
 #' @description
@@ -376,16 +409,14 @@ cache__read_json <- function(
 esg_query <- function(index_node = "https://esgf-node.ornl.gov") {
     EsgQuery$new(index_node = index_node)
 }
-# }}}
-
 #' @name EsgQuery
 #' @export
-# EsgQuery {{{
+# EsgQuery
 EsgQuery <- R6::R6Class(
     "EsgQuery",
     lock_class = TRUE,
     public = list(
-        # initialize {{{
+        # initialize
         #' @description
         #' Create a new EsgQuery object
         #'
@@ -423,9 +454,7 @@ EsgQuery <- R6::R6Class(
 
             self
         },
-        # }}}
-
-        # index_node {{{
+        # index_node
         #' @description
         #' Get or set the ESGF index node.
         #'
@@ -453,9 +482,7 @@ EsgQuery <- R6::R6Class(
             private$index_node_url <- query__normalize_node(value)
             self
         },
-        # }}}
-
-        # list_facets {{{
+        # list_facets
         #' @description
         #' List all available facet names
         #'
@@ -502,9 +529,7 @@ EsgQuery <- R6::R6Class(
 
             unlst(res$responseHeader$params$facet.field)
         },
-        # }}}
-
-        # list_fields {{{
+        # list_fields
         #' @description
         #' List all available field names
         #'
@@ -536,9 +561,7 @@ EsgQuery <- R6::R6Class(
             res <- private$query_listing_cached(url, force, "field")
             names(res$response$docs[[1L]])
         },
-        # }}}
-
-        # list_shards {{{
+        # list_shards
         #' @description
         #' List all available shards.
         #'
@@ -579,7 +602,10 @@ EsgQuery <- R6::R6Class(
             shards <- strsplit(shards, ",", fixed = TRUE)[[1L]]
 
             # fix the index_node if it refers to the local server
-            shards_parts <- regmatches(shards, regexec("(.*?)(?::(\\d*))?/solr(.*)", shards))
+            shards_parts <- regmatches(
+                shards,
+                regexec("(.*?)(?::(\\d*))?/solr(.*)", shards)
+            )
 
             invld <- shards[lengths(shards_parts) != 4L]
             if (length(invld)) {
@@ -592,16 +618,27 @@ EsgQuery <- R6::R6Class(
             vapply(shards_parts, FUN.VALUE = "", function(shard) {
                 shard <- shard[-1L]
                 # replace localhost
-                if (tolower(shard[[1L]]) %in% c("localhost", "0.0.0.0", "127.0.0.1")) {
-                    shard[1L] <- strsplit(private$index_node_url, "/", fixed = TRUE)[[1L]][[3L]]
+                if (
+                    tolower(shard[[1L]]) %in%
+                        c("localhost", "0.0.0.0", "127.0.0.1")
+                ) {
+                    shard[1L] <- strsplit(
+                        private$index_node_url,
+                        "/",
+                        fixed = TRUE
+                    )[[1L]][[3L]]
                 }
                 # exclude suffix
-                sprintf("%s%s%s/solr%s", shard[[1L]], if (shard[[2L]] != "") ":" else "", shard[[2L]], shard[[3L]])
+                sprintf(
+                    "%s%s%s/solr%s",
+                    shard[[1L]],
+                    if (shard[[2L]] != "") ":" else "",
+                    shard[[2L]],
+                    shard[[3L]]
+                )
             })
         },
-        # }}}
-
-        # list_values {{{
+        # list_values
         #' @description
         #' List all available values of specific facets.
         #'
@@ -652,9 +689,7 @@ EsgQuery <- R6::R6Class(
             }
             out
         },
-        # }}}
-
-        # parameter methods {{{
+        # parameter methods
         #' @description
         #' Get or set the `project` facet parameter.
         #'
@@ -670,7 +705,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$project())
             }
             private$eval_param_call(
-                substitute(private$parameter$project(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$project(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -690,7 +728,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$activity_id())
             }
             private$eval_param_call(
-                substitute(private$parameter$activity_id(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$activity_id(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -710,7 +751,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$experiment_id())
             }
             private$eval_param_call(
-                substitute(private$parameter$experiment_id(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$experiment_id(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -729,7 +773,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$source_id())
             }
             private$eval_param_call(
-                substitute(private$parameter$source_id(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$source_id(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -748,7 +795,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$variable_id())
             }
             private$eval_param_call(
-                substitute(private$parameter$variable_id(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$variable_id(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -767,7 +817,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$frequency())
             }
             private$eval_param_call(
-                substitute(private$parameter$frequency(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$frequency(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -786,7 +839,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$variant_label())
             }
             private$eval_param_call(
-                substitute(private$parameter$variant_label(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$variant_label(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -805,7 +861,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$nominal_resolution())
             }
             private$eval_param_call(
-                substitute(private$parameter$nominal_resolution(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$nominal_resolution(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -824,7 +883,10 @@ EsgQuery <- R6::R6Class(
                 return(private$parameter$data_node())
             }
             private$eval_param_call(
-                substitute(private$parameter$data_node(value), list(value = substitute(value))),
+                substitute(
+                    private$parameter$data_node(value),
+                    list(value = substitute(value))
+                ),
                 parent.frame()
             )
             self
@@ -1072,12 +1134,13 @@ EsgQuery <- R6::R6Class(
                 )
             }
 
-            private$eval_param_call(substitute(private$parameter$params(...)), parent.frame())
+            private$eval_param_call(
+                substitute(private$parameter$params(...)),
+                parent.frame()
+            )
             self
         },
-        # }}}
-
-        # url {{{
+        # url
         #' @description
         #' Get the URL of actual query or wget script
         #'
@@ -1113,9 +1176,7 @@ EsgQuery <- R6::R6Class(
                 type = if (wget) "wget" else "search"
             )
         },
-        # }}}
-
-        # count {{{
+        # count
         #' @description
         #' Send a query of facet counting and fetch the results
         #'
@@ -1174,12 +1235,13 @@ EsgQuery <- R6::R6Class(
                 return(res$response$numFound)
             }
 
-            counts <- lapply(res$facet_counts$facet_fields, private$format_facet_counts)
+            counts <- lapply(
+                res$facet_counts$facet_fields,
+                private$format_facet_counts
+            )
             c(list(total = res$response$numFound), counts)
         },
-        # }}}
-
-        # collect {{{
+        # collect
         #' @description
         #' Send the actual query and fetch the results
         #'
@@ -1343,9 +1405,7 @@ EsgQuery <- R6::R6Class(
                 ...
             )
         },
-        # }}}
-
-        # state {{{
+        # state
         #' @description
         #' Get the current query state.
         #'
@@ -1370,9 +1430,7 @@ EsgQuery <- R6::R6Class(
                 parameter = private$parameter$state(name = name, null = null)
             )
         },
-        # }}}
-
-        # reset {{{
+        # reset
         #' @description
         #' Reset query parameters to their defaults.
         #'
@@ -1389,9 +1447,7 @@ EsgQuery <- R6::R6Class(
             private$parameter <- query_param__new_store()
             self
         },
-        # }}}
-
-        # save {{{
+        # save
         #' @description
         #' Save the query into a JSON file
         #'
@@ -1421,9 +1477,7 @@ EsgQuery <- R6::R6Class(
                 schema = SCHEMA_QUERY
             )
         },
-        # }}}
-
-        # load {{{
+        # load
         #' @description
         #' Restore the query state from an JSON file
         #'
@@ -1453,9 +1507,7 @@ EsgQuery <- R6::R6Class(
 
             self
         },
-        # }}}
-
-        # print {{{
+        # print
         #' @description
         #' Print a summary of the current `EsgQuery` object
         #'
@@ -1480,7 +1532,6 @@ EsgQuery <- R6::R6Class(
 
             invisible(self)
         }
-        # }}}
     ),
 
     private = list(
@@ -1492,7 +1543,12 @@ EsgQuery <- R6::R6Class(
         collect_child_limit = function(limit) {
             checkmate::assert(
                 checkmate::check_flag(limit),
-                checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
+                checkmate::check_integerish(
+                    limit,
+                    lower = 1L,
+                    upper = this$data_max_limit,
+                    len = 1L
+                )
             )
 
             if (isTRUE(limit)) {
@@ -1520,7 +1576,11 @@ EsgQuery <- R6::R6Class(
                             "Loaded query has 'type' = %s.",
                             "Use 'EsgResultDataset$collect(type = ...)' for File or Aggregation records."
                         ),
-                        if (is.null(type_value)) "NULL" else sprintf("'%s'", type_value)
+                        if (is.null(type_value)) {
+                            "NULL"
+                        } else {
+                            sprintf("'%s'", type_value)
+                        }
                     ),
                     call. = FALSE
                 )
@@ -1533,7 +1593,11 @@ EsgQuery <- R6::R6Class(
                     sprintf(
                         "'EsgQuery' only supports JSON response format '%s'. Loaded query has 'format' = %s.",
                         QUERY_PARAM__FORMAT_JSON,
-                        if (is.null(format_value)) "NULL" else sprintf("'%s'", format_value)
+                        if (is.null(format_value)) {
+                            "NULL"
+                        } else {
+                            sprintf("'%s'", format_value)
+                        }
                     ),
                     call. = FALSE
                 )
@@ -1578,7 +1642,10 @@ EsgQuery <- R6::R6Class(
                     return(cached)
                 }
                 if (mode == "offline") {
-                    stop("Cache miss in offline mode. Cannot fetch data while offline.", call. = FALSE)
+                    stop(
+                        "Cache miss in offline mode. Cannot fetch data while offline.",
+                        call. = FALSE
+                    )
                 }
             }
 
@@ -1594,9 +1661,7 @@ EsgQuery <- R6::R6Class(
         }
     )
 )
-# }}}
-
-# query__is_bridge {{{
+# query__is_bridge
 query__is_bridge <- function(index_node) {
     grepl("esgf-1-5-bridge", index_node, fixed = TRUE)
 }
@@ -1617,9 +1682,7 @@ query__assert_bridge_type <- function(index_node, params) {
 
     invisible(TRUE)
 }
-# }}}
-
-# query__normalize_node {{{
+# query__normalize_node
 query__normalize_node <- function(index_node, raw = FALSE) {
     index_node <- curl::curl_unescape(index_node)
     # curl::curl_parse_url() requires scheme and host to present
@@ -1632,7 +1695,8 @@ query__normalize_node <- function(index_node, raw = FALSE) {
     parsed <- curl::curl_parse_url(index_node)
 
     if (
-        (parsed$host == "esgf-node.ornl.gov" || parsed$host == "esgf-node.llnl.gov") &&
+        (parsed$host == "esgf-node.ornl.gov" ||
+            parsed$host == "esgf-node.llnl.gov") &&
             (is.null(parsed$path) || parsed$path == "/")
     ) {
         # since LLNL will redirect to ORNL bridge, we always use ORNL bridge
@@ -1651,9 +1715,7 @@ query__normalize_node <- function(index_node, raw = FALSE) {
     }
     url
 }
-# }}}
-
-# query__build {{{
+# query__build
 query__free_text <- function(query) {
     if (!length(query) || !nchar(query)) {
         return(character())
@@ -1664,7 +1726,11 @@ query__free_text <- function(query) {
 
 query__glob_value <- function(value) {
     value <- as.character(value)
-    ifelse(grepl("*", value, fixed = TRUE), value, query_param__quote_bound(value))
+    ifelse(
+        grepl("*", value, fixed = TRUE),
+        value,
+        query_param__quote_bound(value)
+    )
 }
 
 query__build <- function(index_node, params, type = "search") {
@@ -1725,7 +1791,11 @@ query__build <- function(index_node, params, type = "search") {
     # facet queries without any negated inputs
     if (!is_bridge || !any(is_negate)) {
         rendered <- c(
-            vapply(names(params), function(name) query_param__render(params[[name]], name), FUN.VALUE = ""),
+            vapply(
+                names(params),
+                function(name) query_param__render(params[[name]], name),
+                FUN.VALUE = ""
+            ),
             if (length(query_clauses)) {
                 query__free_text(paste(query_clauses, collapse = " AND "))
             }
@@ -1782,9 +1852,7 @@ query__build <- function(index_node, params, type = "search") {
         query__free_text(query)
     )
 }
-# }}}
-
-# query dict check {{{
+# query dict check
 query__dict_project <- function(store) {
     project <- store$project()
     if (is.null(project) || isTRUE(query_param__negate(project))) {
@@ -1866,7 +1934,11 @@ query__dict_warning <- function(invalid, n = 5L) {
             msg <- invalid$message[[i]]
             suggestions <- invalid$suggestions[[i]]
             if (length(suggestions)) {
-                msg <- sprintf("%s Suggestions: %s.", msg, paste(utils::head(suggestions, 3L), collapse = ", "))
+                msg <- sprintf(
+                    "%s Suggestions: %s.",
+                    msg,
+                    paste(utils::head(suggestions, 3L), collapse = ", ")
+                )
             }
             sprintf("- %s", msg)
         },
@@ -1902,7 +1974,13 @@ query__warn_dict <- function(params) {
     }
 
     result <- tryCatch(
-        dict__check(dict, args, error = FALSE, suggest = TRUE, relationship = "any"),
+        dict__check(
+            dict,
+            args,
+            error = FALSE,
+            suggest = TRUE,
+            relationship = "any"
+        ),
         error = function(e) NULL
     )
     if (is.null(result) || !nrow(result)) {
@@ -1916,9 +1994,7 @@ query__warn_dict <- function(params) {
 
     invisible(result)
 }
-# }}}
-
-# query__collect {{{
+# query__collect
 query__collect_nrow <- function(docs) {
     if (is.null(docs)) {
         return(0L)
@@ -1951,7 +2027,12 @@ query__collect <- function(
     checkmate::assert_string(progress_label, null.ok = TRUE)
     checkmate::assert(
         checkmate::check_flag(limit),
-        checkmate::check_integerish(limit, lower = 1L, upper = this$data_max_limit, len = 1L)
+        checkmate::check_integerish(
+            limit,
+            lower = 1L,
+            upper = this$data_max_limit,
+            len = 1L
+        )
     )
 
     store <- query_param__clone(params)
@@ -1962,7 +2043,11 @@ query__collect <- function(
     if (isTRUE(progress)) {
         progress_initial_total <- 1L
         progress_id <- cli::cli_progress_bar(
-            if (is.null(progress_label)) "Collecting ESGF records" else progress_label,
+            if (is.null(progress_label)) {
+                "Collecting ESGF records"
+            } else {
+                progress_label
+            },
             total = progress_initial_total,
             .auto_close = FALSE
         )
@@ -1973,7 +2058,12 @@ query__collect <- function(
             ),
             add = TRUE
         )
-        cli::cli_progress_update(id = progress_id, total = progress_initial_total, set = 0L, force = TRUE)
+        cli::cli_progress_update(
+            id = progress_id,
+            total = progress_initial_total,
+            set = 0L,
+            force = TRUE
+        )
     }
 
     # include necessary fields
@@ -1989,7 +2079,10 @@ query__collect <- function(
             }
 
             if (constraints) {
-                fields <- unique(c(fields, names(params)[query_param__field(names(params))]))
+                fields <- unique(c(
+                    fields,
+                    names(params)[query_param__field(names(params))]
+                ))
             }
 
             store$fields(fields)
@@ -2063,7 +2156,11 @@ query__collect <- function(
                 doc_pages[[length(doc_pages) + 1L]] <- page_docs
                 current <- current + page_n
                 if (!is.null(progress_id)) {
-                    cli::cli_progress_update(id = progress_id, total = total, set = current)
+                    cli::cli_progress_update(
+                        id = progress_id,
+                        total = total,
+                        set = current
+                    )
                 }
 
                 left <- total - current
@@ -2079,7 +2176,10 @@ query__collect <- function(
     fields <- store$fields()
     if ("score" %in% names(docs) && !is.null(fields)) {
         in_facets <- "score" %in% query_param__value(fields)
-        if ((in_facets && query_param__negate(fields)) || (!in_facets && !query_param__negate(fields))) {
+        if (
+            (in_facets && query_param__negate(fields)) ||
+                (!in_facets && !query_param__negate(fields))
+        ) {
             docs$score <- NULL
         }
     }
@@ -2089,13 +2189,21 @@ query__collect <- function(
         response = response,
         docs = docs,
         parameter = effective_store,
-        context = list(query_url = query_result__query_urls(query_urls, named = FALSE))
+        context = list(
+            query_url = query_result__query_urls(query_urls, named = FALSE)
+        )
     )
 }
-# }}}
-
-# query__save {{{
-query__save <- function(index_node, parameter, response, ..., file = "query.json", pretty = TRUE, schema = NULL) {
+# query__save
+query__save <- function(
+    index_node,
+    parameter,
+    response,
+    ...,
+    file = "query.json",
+    pretty = TRUE,
+    schema = NULL
+) {
     checkmate::assert_string(file)
     checkmate::assert_choice(tools::file_ext(file), "json")
 
@@ -2137,15 +2245,17 @@ query__save <- function(index_node, parameter, response, ..., file = "query.json
 
     normalizePath(file, mustWork = TRUE)
 }
-# }}}
-
-# query__load {{{
+# query__load
 query__load <- function(file, schema = NULL) {
     checkmate::assert_file(file, "r", extension = "json")
 
     # simplifyVector will convert facet counts to characters
     # have to set simplifyMatrix to FALSE
-    json <- jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    json <- jsonlite::fromJSON(
+        file,
+        simplifyVector = TRUE,
+        simplifyMatrix = FALSE
+    )
 
     if (
         length(json$response) &&
@@ -2172,7 +2282,13 @@ query__load <- function(file, schema = NULL) {
         json$context$selection$source_indices <- integer()
     }
 
-    if (length(json$parameter) && any(c("facet", "query", "control", "others") %in% names(json$parameter))) {
+    if (
+        length(json$parameter) &&
+            any(
+                c("facet", "query", "control", "others") %in%
+                    names(json$parameter)
+            )
+    ) {
         stop(
             "Bucketed query parameter states are no longer supported. Use the flat parameter schema.",
             call. = FALSE
@@ -2197,8 +2313,6 @@ query__load <- function(file, schema = NULL) {
 
     json
 }
-# }}}
-
 # vim: fdm=marker :
 
 # Capture one evaluation instant for relative dates in a bridge query.
