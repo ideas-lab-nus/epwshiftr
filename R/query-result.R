@@ -394,7 +394,6 @@ EsgResult <- R6::R6Class(
     ),
 
     private = list(
-        progress_callback = NULL,
         index_node = NULL,
         parameter = NULL,
         response = NULL,
@@ -4523,6 +4522,8 @@ EsgResultDataset <- R6::R6Class(
     ),
 
     private = list(
+        # Dataset results can collect child catalogs and report request progress.
+        progress_callback = NULL,
         result_type = "Dataset",
 
         required_fields = sort(unique(c(

@@ -2,7 +2,9 @@
 
 * Single-task and batch workflows share installed-package process launching,
   scoped execution settings and attempt transitions. Internal runtime and test
-  hooks no longer use global options (#278).
+  hooks no longer use global options. Execution snapshots read only supported
+  options; background launch arguments reject invalid types and lengths, and
+  catalog progress callbacks belong to Dataset results (#278).
 
 * Batch execution resolves actual future and historical input partitions once
   per model/method. Optional variables selected by the ordinary resolver share

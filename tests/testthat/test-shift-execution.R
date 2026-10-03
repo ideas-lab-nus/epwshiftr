@@ -171,3 +171,97 @@ test_that("standalone progress checks cancellation once per heartbeat", {
     reporter$heartbeat(force = TRUE)
     expect_identical(checks, 3L)
 })
+
+# Snapshots retain NULL defaults and explicit FALSE/zero values without copying
+# options owned by other packages or changing the current session.
+test_that("execution snapshots read only supported options", {
+    withr::local_options(
+        epwshiftr.query.timeout = NULL,
+        epwshiftr.query.connect_timeout = 11,
+        epwshiftr.ui_height = NULL,
+        epwshiftr.cache = FALSE,
+        epwshiftr.cache_max_n = 0,
+        unrelated_execution_setting = "keep"
+    )
+    actual <- execution__options()
+    expect_identical(actual$epwshiftr.query.timeout, 300)
+    expect_identical(actual$epwshiftr.query.connect_timeout, 11)
+    expect_true("epwshiftr.ui_height" %in% names(actual))
+    expect_null(actual$epwshiftr.ui_height)
+    expect_identical(actual$epwshiftr.cache, FALSE)
+    expect_identical(actual$epwshiftr.cache_max_n, 0)
+    expect_false("unrelated_execution_setting" %in% names(actual))
+    expect_null(getOption("epwshiftr.query.timeout"))
+    expect_identical(getOption("unrelated_execution_setting"), "keep")
+})
+
+# Arguments cross an R expression boundary before the shell boundary. Test
+# round trips and rejection rather than assuming every value is a path string.
+test_that("background string literals round trip without coercion", {
+    values <- c(
+        "",
+        "two cities",
+        'a"b',
+        "C:\\weather\\file",
+        "line\nnext",
+        "广州"
+    )
+    for (value in values) {
+        expect_identical(
+            eval(parse(text = execution__string_literal(value))),
+            value
+        )
+    }
+    expect_identical(execution__string_literal(NULL), "NULL")
+    for (value in list(
+        character(),
+        NA_character_,
+        c("a", "b"),
+        1,
+        FALSE,
+        list("a")
+    )) {
+        expect_error(execution__string_literal(value))
+    }
+})
+
+# Parse the complete generated expression to verify that library paths and job
+# arguments survive quoting and that launch failures reach the caller.
+test_that("background launch preserves strings and reports launch failure", {
+    libraries <- c('/tmp/library "one"', "C:\\R libs")
+    arguments <- list(root = "广州 / weather", id = 'job"1', optional = NULL)
+    captured <- NULL
+    status <- 0L
+    local_mocked_bindings(
+        execution__library_paths = function() libraries
+    )
+    local_mocked_bindings(
+        .package = "base",
+        system2 = function(command, args, stdout, stderr, wait) {
+            captured <<- list(
+                args = args,
+                stdout = stdout,
+                stderr = stderr,
+                wait = wait
+            )
+            status
+        },
+        shQuote = identity
+    )
+    expect_identical(
+        execution__launch("shift_batch__job_main", arguments, "job.log"),
+        0L
+    )
+    expressions <- parse(text = captured$args[[3L]])
+    expect_identical(eval(expressions[[1L]][[2L]]), libraries)
+    actual <- lapply(as.list(expressions[[3L]])[-1L], eval)
+    expect_identical(actual, arguments)
+    expect_identical(captured$stdout, "job.log")
+    expect_identical(captured$stderr, "job.log")
+    expect_false(captured$wait)
+    status <- 1L
+    expect_error(
+        execution__launch("shift_batch__job_main", arguments, "job.log"),
+        "Could not launch"
+    )
+})

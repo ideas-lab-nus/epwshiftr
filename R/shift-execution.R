@@ -17,9 +17,11 @@ execution__options <- function() {
         epwshiftr.query.timeout = 300,
         epwshiftr.query.connect_timeout = 30
     )
-    configured <- options()
-    present <- intersect(names(defaults), names(configured))
-    defaults[present] <- configured[present]
+    # Read only supported settings; unrelated session options stay outside
+    # the persisted configuration, including when a default is NULL.
+    defaults[] <- lapply(names(defaults), function(name) {
+        getOption(name, defaults[[name]])
+    })
     checkmate::assert_count(defaults$epwshiftr.mirai_workers, positive = TRUE)
     for (name in c(
         "epwshiftr.cache_max_size",
@@ -44,13 +46,23 @@ execution__library_paths <- function() {
     unique(c(dirname(path), .libPaths()))
 }
 
+# Quote only scalar strings accepted by background entry points. Reject other
+# types and lengths instead of silently coercing or discarding arguments.
+execution__string_literal <- function(x) {
+    checkmate::assert_string(x, null.ok = TRUE)
+    if (is.null(x)) {
+        return("NULL")
+    }
+    encodeString(x, quote = '"')
+}
+
 # Start one detached entry point through the same installed library and quoting
 # rules for standalone workflows, batches and downloader jobs.
 execution__launch <- function(entry, args, log_path) {
     libraries <- paste(
         vapply(
             execution__library_paths(),
-            downloader__r_literal,
+            execution__string_literal,
             character(1L)
         ),
         collapse = ","
@@ -59,7 +71,7 @@ execution__launch <- function(entry, args, log_path) {
         paste0(
             names(args),
             " = ",
-            vapply(args, downloader__r_literal, character(1L))
+            vapply(args, execution__string_literal, character(1L))
         ),
         collapse = ","
     )

@@ -174,13 +174,6 @@ downloader__hostname <- function() {
     if (is.na(host) || !nzchar(host)) "localhost" else host
 }
 
-downloader__r_literal <- function(x) {
-    if (is.null(x) || length(x) == 0L || is.na(x[[1L]])) {
-        return("NULL")
-    }
-    encodeString(as.character(x[[1L]]), quote = "\"")
-}
-
 downloader__rscript <- function() {
     file.path(R.home("bin"), "Rscript")
 }

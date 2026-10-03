@@ -2323,7 +2323,11 @@ test_that("EsgResultDataset$collect() keeps limit global across child batches", 
 test_that("EsgResultDataset$collect() passes progress to child query only for non-empty results", {
     datasets <- query_result_test_object(
         "Dataset",
-        data.frame(id = c("dataset-1", "dataset-2"), size = c(1, 1), check.names = FALSE),
+        data.frame(
+            id = c("dataset-1", "dataset-2"),
+            size = c(1, 1),
+            check.names = FALSE
+        ),
         query_result_test_params("Dataset")
     )
     empty <- query_result_test_object(
@@ -2332,6 +2336,8 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
         query_result_test_params("Dataset")
     )
 
+    callback <- function(event) invisible(event)
+    priv(datasets)$progress_callback <- callback
     calls <- list()
     # Mock child collection so the test can inspect progress forwarding
     # without issuing ESGF requests.
@@ -2349,6 +2355,7 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
             progress_callback = NULL
         ) {
             calls[[length(calls) + 1L]] <<- list(
+                callback = progress_callback,
                 progress = progress,
                 progress_label = progress_label
             )
@@ -2367,9 +2374,11 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
     )
 
     expect_s3_class(
-        datasets$collect(fields = "id", progress = TRUE),
+        files <- datasets$collect(fields = "id", progress = TRUE),
         "EsgResultFile"
     )
+    expect_identical(calls[[1L]]$callback, callback)
+    expect_false("progress_callback" %in% names(priv(files)))
     expect_length(calls, 1L)
     expect_true(calls[[1L]]$progress)
     expect_identical(calls[[1L]]$progress_label, "Collecting File records")
@@ -2378,6 +2387,7 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
         datasets$collect(fields = "id", type = "Aggregation", progress = TRUE),
         "EsgResultAggregation"
     )
+    expect_identical(calls[[2L]]$callback, callback)
     expect_length(calls, 2L)
     expect_true(calls[[2L]]$progress)
     expect_identical(
