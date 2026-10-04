@@ -80,12 +80,22 @@ jobs:
           retention-days: 14
 
       - name: Upload coverage to Codecov
+        id: codecov
+        continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
           files: ${{ runner.temp }}/coverage-report/coverage.xml
           disable_search: true
+          # Expose the upload outcome so the next step can issue a warning.
           fail_ci_if_error: true
           use_oidc: true
+
+      - name: Warn about Codecov upload failure
+        if: steps.codecov.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::Codecov upload failed. Coverage results remain available in the coverage-report artifact."
+          echo "Codecov upload failed; download the coverage-report artifact for the computed results." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve coverage diagnostics
         if: failure() && steps.coverage.outcome == 'failure'
