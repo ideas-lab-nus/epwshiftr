@@ -14,7 +14,6 @@ quantile_mapping_morphing_test__climate <- function(
     frequency = "day",
     source_id = "TestModel"
 ) {
-    # lapply callback {{{
     rows <- lapply(as.integer(years), function(year) {
         dates <- seq.Date(
             as.Date(sprintf("%d-01-01", year)),
@@ -57,7 +56,6 @@ quantile_mapping_morphing_test__climate <- function(
             value = temperature + 273.15
         )
     })
-    # }}}
     data.table::rbindlist(rows)
 }
 # }}}
@@ -325,7 +323,6 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
     paths <- stats::setNames(
         vapply(
             names(years),
-            # vapply callback {{{
             function(role) {
                 path <- tempfile(
                     sprintf("qm_morphing-%s-", role),
@@ -338,7 +335,6 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
                 )
                 path
             },
-            # }}}
             character(1L)
         ),
         names(years)
@@ -347,7 +343,6 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
 
     store <- EsgStore$new(tempfile("qm_morphing-workflow-"))
     on.exit(store$close(), add = TRUE)
-    # lapply callback {{{
     plans <- lapply(names(years), function(role) {
         year <- years[[role]]
         docs <- esgf_test__file_docs(
@@ -391,7 +386,6 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
         )
         completed$plan_id
     })
-    # }}}
     names(plans) <- names(years)
 
     morpher <- epw_morpher(

@@ -97,7 +97,6 @@ WeatherInput <- S7::new_class(
                     "`variable_frequencies` must be uniquely named by variable ID."
                 )
             }
-            # vapply callback {{{
             valid <- vapply(
                 mapping,
                 function(value) {
@@ -109,7 +108,6 @@ WeatherInput <- S7::new_class(
                 },
                 logical(1L)
             )
-            # }}}
             if (!all(valid)) {
                 return(
                     "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
@@ -216,11 +214,9 @@ weather__variable_frequencies <- function(value, name) {
     if (is.null(names(value)) || any(!nzchar(names(value)))) {
         cli::cli_abort("{.arg {name}} must be named by variable ID.")
     }
-    # lapply callback {{{
     lapply(value, function(frequencies) {
         weather__descriptor_values(frequencies, name)
     })
-    # }}}
 }
 # }}}
 
@@ -238,9 +234,7 @@ weather__combine_variable_frequencies <- function(mappings, context) {
         variables
     )
     for (variable in variables) {
-        # lapply callback {{{
         choices <- lapply(mappings, function(mapping) mapping[[variable]])
-        # }}}
         choices <- Filter(length, choices)
         allowed <- Reduce(intersect, choices)
         if (length(allowed) != 1L) {
@@ -273,14 +267,12 @@ weather__source_variable_frequencies <- function(source) {
     variables <- variables[keep]
     frequencies <- frequencies[keep]
     ordered_variables <- unique(variables)
-    # lapply callback {{{
     stats::setNames(
         lapply(ordered_variables, function(variable) {
             unique(frequencies[variables == variable])
         }),
         ordered_variables
     )
-    # }}}
 }
 # }}}
 

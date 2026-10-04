@@ -78,11 +78,9 @@ get_nc_atts <- function(x) {
     inq <- RNetCDF::file.inq.nc(nc)
 
     # global attributes
-    # lapply callback {{{
     glo <- rbindlist(lapply(seq_len(inq$ngatts), function(i) {
         RNetCDF::att.inq.nc(nc, "NC_GLOBAL", i - 1L)
     }))
-    # }}}
     # set global attribute id to -1
     set(glo, NULL, "id", -1L)
     set(glo, NULL, "variable", "NC_GLOBAL")
@@ -91,11 +89,9 @@ get_nc_atts <- function(x) {
         glo,
         NULL,
         "value",
-        # lapply callback {{{
         lapply(seq_len(inq$ngatts), function(i) {
             RNetCDF::att.get.nc(nc, "NC_GLOBAL", i - 1L)
         })
-        # }}}
     )
     setnames(glo, "name", "attribute")
 
@@ -106,16 +102,12 @@ get_nc_atts <- function(x) {
         .SDcols = c("id", "name", "natts")
     ])
     vars <- vars[, by = list(idx = seq_len(nrow(vars))), {
-        # lapply callback {{{
         nm <- lapply(seq_len(natts) - 1L, function(i) {
             RNetCDF::att.inq.nc(nc, id, i)$name
         })
-        # }}}
-        # lapply callback {{{
         att <- lapply(seq_len(natts) - 1L, function(i) {
             RNetCDF::att.get.nc(nc, id, i)
         })
-        # }}}
         list(
             id = id,
             variable = rep(name, length(nm)),
@@ -143,13 +135,11 @@ get_nc_vars <- function(x) {
 
     vars <- rbindlist(
         fill = TRUE,
-        # lapply callback {{{
         lapply(seq_len(inq$nvars) - 1L, function(i) {
             res <- RNetCDF::var.inq.nc(nc, i)
             res <- res[names(res) != "dimids"]
             res[vapply(res, length, integer(1)) > 0L]
         })
-        # }}}
     )
 
     vars
@@ -168,11 +158,9 @@ get_nc_dims <- function(x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
-    # lapply callback {{{
     rbindlist(lapply(seq_len(inq$ndims) - 1L, function(i) {
         RNetCDF::dim.inq.nc(nc, i)
     }))
-    # }}}
 }
 # }}}
 # get_nc_axes
@@ -188,11 +176,9 @@ get_nc_axes <- function(x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
-    # lapply callback {{{
     vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function(i) {
         RNetCDF::var.inq.nc(nc, i)
     }))[, `:=`(axis = .I)]
-    # }}}
     set(vars, NULL, setdiff(names(vars), c("axis", "name", "dimids")), NULL)
     setcolorder(vars, "axis")
     setnames(vars, c("axis", "variable", "dimension"))
@@ -868,9 +854,7 @@ match_nc_time <- function(x, years = NULL) {
     } else {
         coordinates <- attr(time, "cf_coordinates", exact = TRUE)
         y <- coordinates$cf_year
-        # lapply callback {{{
         i <- lapply(as.integer(years), function(x) which(y == x))
-        # }}}
 
         j <- 1L
         l <- vector("list", length(i))
@@ -887,7 +871,6 @@ match_nc_time <- function(x, years = NULL) {
             }
         }
 
-        # lapply callback {{{
         datetime <- lapply(l, function(idx) {
             value <- time[idx]
             data.table::setattr(
@@ -907,7 +890,6 @@ match_nc_time <- function(x, years = NULL) {
             )
             value
         })
-        # }}}
         list(datetime = datetime, which = l)
     }
 }

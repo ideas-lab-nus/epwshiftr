@@ -39,11 +39,9 @@ downloader_test_queued_job <- function(label = "job") {
         priority = 1L
     ))
 
-    # downloader__launch_process {{{
     test_local_dependencies(list(downloader__launch_process = function(...) {
         TRUE
     }))
-    # }}}
     job <- dl$run(session_id = session_id, block = FALSE, progress = FALSE)
     task_id <- dl$tasks(job_id = job$job_id[[1L]])$task_id[[1L]]
 
@@ -499,7 +497,6 @@ test_that("Downloader$run() supports block = FALSE", {
     writeLines("background content", src)
 
     launched <- list()
-    # downloader__launch_process {{{
     test_local_dependencies(list(downloader__launch_process = function(
         kind,
         id,
@@ -514,7 +511,6 @@ test_that("Downloader$run() supports block = FALSE", {
         )
         TRUE
     }))
-    # }}}
 
     dl <- Downloader$new(
         dest = dest,
@@ -622,11 +618,9 @@ test_that("Downloader$start() / Downloader$job_status()", {
     dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
     writeLines(rep("job content", 20L), src)
 
-    # downloader__launch_process {{{
     test_local_dependencies(list(downloader__launch_process = function(...) {
         TRUE
     }))
-    # }}}
     dl <- Downloader$new(
         dest = dest,
         temp = temp,
@@ -664,7 +658,6 @@ test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$d
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
     launched <- list()
-    # downloader__launch_process {{{
     test_local_dependencies(list(downloader__launch_process = function(
         kind,
         id,
@@ -679,7 +672,6 @@ test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$d
         )
         TRUE
     }))
-    # }}}
 
     dl <- Downloader$new(
         dest = file.path(root, "downloads"),
@@ -1816,7 +1808,6 @@ test_that("Downloader$on() / Downloader$off()", {
         "error",
         "created_at"
     )
-    # dl$on callback {{{
     done_token <- dl$on("task_done", function(event, downloader) {
         seen <<- c(seen, event$event)
         done_payload <<- event
@@ -1829,8 +1820,6 @@ test_that("Downloader$on() / Downloader$off()", {
         expect_true(is.na(event$error))
         expect_s3_class(downloader, "Downloader")
     })
-    # }}}
-    # dl$on callback {{{
     session_token <- dl$on("session_done", function(event, downloader) {
         seen <<- c(seen, event$event)
         session_payload <<- event
@@ -1838,12 +1827,9 @@ test_that("Downloader$on() / Downloader$off()", {
         expect_equal(event$status, "done")
         expect_true(is.na(event$task_id))
     })
-    # }}}
-    # dl$on callback {{{
     dl$on("task_done", function(event, downloader) {
         stop("callback boom", call. = FALSE)
     })
-    # }}}
 
     plan <- downloader_test_df(
         logical_file_id = "tracking:event-test",
@@ -1889,11 +1875,9 @@ test_that("Downloader$events()", {
         retries = 1L,
         n_workers = 0L
     )
-    # dl$on callback {{{
     dl$on("task_done", function(event, downloader) {
         stop("callback boom", call. = FALSE)
     })
-    # }}}
 
     plan <- downloader_test_df(
         logical_file_id = "tracking:event-test",
@@ -2445,9 +2429,7 @@ test_that("Downloader$print()", {
 
     expect_snapshot(
         print(dl),
-        # transform {{{
         transform = function(lines) {
-            # lapply callback {{{
             unlist(
                 lapply(lines, function(line) {
                     inline_path <- regexec(
@@ -2463,16 +2445,13 @@ test_that("Downloader$print()", {
                 }),
                 use.names = FALSE
             )
-            # }}}
         }
-        # }}}
     )
 })
 # }}}
 
 # Reuse real download inputs while exercising independent instance lifetimes.
 # Destroying the first downloader must not stop the second one's queued work.
-# test_that callback {{{
 test_that("Downloader owns its worker pool without interrupting other instances", {
     root <- tempfile("downloader-pools-")
     dir.create(root)
@@ -2509,11 +2488,9 @@ test_that("Downloader owns its worker pool without interrupting other instances"
         checksum
     )
 })
-# }}}
 
 # A missing local source fails inside a real worker and must not be reported as
 # a completed download merely because mirai returned an atomic error object.
-# test_that callback {{{
 test_that("Downloader reports asynchronous worker failures", {
     root <- tempfile("downloader-worker-error-")
     dir.create(root)
@@ -2528,6 +2505,5 @@ test_that("Downloader reports asynchronous worker failures", {
     expect_true(nzchar(result$error))
     expect_false(file.exists(file.path(root, "absent.bin")))
 })
-# }}}
 
 # vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

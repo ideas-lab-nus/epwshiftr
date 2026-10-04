@@ -295,9 +295,7 @@ epwshiftr_cli_apply_search_params <- function(query, params) {
             query <- condition_query
             next
         }
-        # error {{{
         method <- tryCatch(query[[key]], error = function(e) NULL)
-        # }}}
         if (is.function(method)) {
             query <- epwshiftr_cli_apply_query_param(method, value)
         } else {

@@ -45,9 +45,7 @@ cdft_test__settings <- function(variable) {
     profiles <- cdft__profiles()
     index <- which(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
-        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings
@@ -240,12 +238,10 @@ test_that("precipitation SSR is deterministic without changing global RNG", {
     )
     expect_true(all(vapply(
         first$values,
-        # vapply callback {{{
         function(value) {
             all(value > 0) &&
                 all(value[seq_len(3L)] < CDFT_PR_SSR_THRESHOLD)
         },
-        # }}}
         logical(1L)
     )))
 })
@@ -336,14 +332,12 @@ test_that("CDF-t rejects incompatible settings and invalid inputs", {
 
     precipitation <- lapply(
         boundary$group@inputs,
-        # lapply callback {{{
         function(data) {
             data$variable_id <- "pr"
             data$units <- "kg m-2 s-1"
             data$value <- abs(data$value) * 1e-7
             data
         }
-        # }}}
     )
     precipitation$model_future$value[[1L]] <- -1
     expect_error(
@@ -376,9 +370,7 @@ test_that("CDF-t profiles separate published and package provenance", {
     )
     expect_true(all(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile$evidence, "published"),
-        # }}}
         logical(1L)
     )))
     expect_identical(

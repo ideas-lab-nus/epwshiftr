@@ -123,7 +123,6 @@ WeatherInputRequirement <- S7::new_class(
                     "`variable_frequencies` must be uniquely named by variable ID."
                 )
             }
-            # vapply callback {{{
             valid <- vapply(
                 mapping,
                 function(value) {
@@ -135,7 +134,6 @@ WeatherInputRequirement <- S7::new_class(
                 },
                 logical(1L)
             )
-            # }}}
             if (!all(valid)) {
                 return(
                     "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
@@ -173,7 +171,6 @@ component__variable_sets <- function(variable_sets) {
         variable_sets <- list(variable_sets)
     }
     checkmate::assert_list(variable_sets)
-    # lapply callback {{{
     lapply(variable_sets, function(variable_set) {
         checkmate::assert_character(
             variable_set,
@@ -188,7 +185,6 @@ component__variable_sets <- function(variable_sets) {
         }
         as.character(variable_set)
     })
-    # }}}
 }
 # }}}
 
@@ -549,9 +545,7 @@ component__list <- function(
     components <- lapply(keys, get, envir = registry, inherits = FALSE)
     if (!is.null(stage)) {
         components <- Filter(
-            # Filter callback {{{
             function(component) identical(component@stage, stage),
-            # }}}
             components
         )
     }
@@ -566,7 +560,6 @@ component__list <- function(
             stochastic = logical()
         ))
     }
-    # lapply callback {{{
     out <- data.table::rbindlist(lapply(components, function(component) {
         data.table::data.table(
             stage = component@stage,
@@ -578,7 +571,6 @@ component__list <- function(
             stochastic = component@stochastic
         )
     }))
-    # }}}
     # Use explicit column access so package checks do not treat temporary
     # ordering columns as unresolved symbols.
     data.table::set(
@@ -711,9 +703,7 @@ component__requirement_errors <- function(requirement, input) {
     if (length(requirement@variable_sets)) {
         matched <- vapply(
             requirement@variable_sets,
-            # vapply callback {{{
             function(variable_set) all(variable_set %in% input@variables),
-            # }}}
             logical(1L)
         )
         if (!any(matched)) {

@@ -142,19 +142,15 @@ bws__bounded_normalized_projection <- function(
         ))
     }
 
-    # project {{{
     project <- function(m, n) {
         bws__project_normalized(normalized, scale, m, n)
     }
-    # }}}
-    # admissible {{{
     admissible <- function(candidate) {
         !is.null(candidate) &&
             all(is.finite(candidate)) &&
             min(candidate) >= -tolerance &&
             max(candidate) <= 1 + tolerance
     }
-    # }}}
 
     candidate <- project(1, 1)
     if (admissible(candidate)) {

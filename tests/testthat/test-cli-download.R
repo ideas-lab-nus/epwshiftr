@@ -15,7 +15,6 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
 
     file_docs <- cli_test_file_docs()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -37,7 +36,6 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -258,7 +256,6 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_false(any(grepl("^\\[\\[|^\\$", logs_text)))
 
     launched <- list()
-    # downloader__launch_process {{{
     test_local_dependencies(list(downloader__launch_process = function(
         kind,
         id,
@@ -273,7 +270,6 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
         )
         TRUE
     }))
-    # }}}
     background <- epwshiftr_cli(c(
         "--quiet",
         "--store",

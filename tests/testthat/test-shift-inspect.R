@@ -19,7 +19,6 @@ test_that("artifact row reader preserves order, metadata, and global limits", {
     calls <- new.env(parent = emptyenv())
     calls$paths <- character()
     calls$limits <- numeric()
-    # reader {{{
     reader <- function(path, limit, columns) {
         calls$paths <- c(calls$paths, basename(path))
         calls$limits <- c(calls$limits, limit)
@@ -29,7 +28,6 @@ test_that("artifact row reader preserves order, metadata, and global limits", {
         }
         rows
     }
-    # }}}
 
     out <- shift_inspect__read_artifact_rows(
         store = list(path = root),
@@ -38,11 +36,9 @@ test_that("artifact row reader preserves order, metadata, and global limits", {
         columns = c("artifact_label", "value"),
         path_column = "relative_path",
         reader = reader,
-        # metadata {{{
         metadata = function(records, i) {
             list(artifact_label = records$artifact_label[[i]])
         },
-        # }}}
         missing = c(
             "Fixture artifact is missing.",
             "x" = "{.path {path}}"
@@ -77,13 +73,11 @@ test_that("artifact row reader preserves order, metadata, and global limits", {
 test_that("history and summary inspect saved dry-run matrices without discovery", {
     root <- tempfile("ui-history-")
     batch <- ui_workflows__batch(root)
-    # shift_batch_ui__discover_models {{{
     testthat::local_mocked_bindings(shift_batch_ui__discover_models = function(
         ...
     ) {
         stop("Unexpected network")
     })
-    # }}}
     history <- shift_history(root, type = "batch")
     expect_equal(nrow(history), 1L)
     expect_identical(history$status, "planned")
@@ -203,7 +197,6 @@ test_that("staged summaries preserve output identities, transforms and weather g
     baseline <- epw_file_read(original)$data()
     paths <- vapply(
         c(10, 20, 40),
-        # vapply callback {{{
         function(temperature) {
             path <- tempfile(fileext = ".epw")
             writeLines(readLines(original, n = 8L), path)
@@ -219,7 +212,6 @@ test_that("staged summaries preserve output identities, transforms and weather g
             )
             path
         },
-        # }}}
         character(1L)
     )
     withr::defer(unlink(paths))
@@ -261,9 +253,7 @@ test_that("staged summaries preserve output identities, transforms and weather g
         )
     )
     # Isolate result restoration; exercise real public grouping and EPW reads.
-    # shift_result {{{
     testthat::local_mocked_bindings(shift_result = function(...) stage)
-    # }}}
     summary <- shift_summary(
         run,
         refresh = FALSE,

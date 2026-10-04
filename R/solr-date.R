@@ -315,7 +315,6 @@ solrdate__check_time <- function(
 solrdate__value_prop <- function() {
     S7::new_property(
         class = S7::class_any,
-        # validator {{{
         validator = function(value) {
             if (inherits(value, "POSIXct")) {
                 return(checkmate_result(solrdate__check_time(
@@ -328,7 +327,6 @@ solrdate__value_prop <- function() {
             }
             "Must be a UTC POSIXct value or SolrDateTime object."
         }
-        # }}}
     )
 }
 # }}}
@@ -473,9 +471,7 @@ solrdate__parts_parse <- function(x) {
 
     tryCatch(
         SolrDateTime(year, month, day, hour, minute, second, millisecond),
-        # error {{{
         error = function(e) solrdate__na()
-        # }}}
     )
 }
 # }}}
@@ -819,7 +815,6 @@ solrdate__tokens <- function(x) {
         stop(sprintf("Invalid Date Math expression: '%s'.", x), call. = FALSE)
     }
 
-    # lapply callback {{{
     lapply(tokens, function(token) {
         if (startsWith(token, "/")) {
             return(list(
@@ -838,7 +833,6 @@ solrdate__tokens <- function(x) {
             unit = parts[[4L]]
         )
     })
-    # }}}
 }
 # }}}
 

@@ -88,7 +88,6 @@ shift_spec__years_value <- function(value, arg = "years") {
         )
     }
     bounds <- strsplit(pieces, ":", fixed = TRUE)
-    # lapply callback {{{
     parsed <- lapply(bounds, function(piece) {
         years <- suppressWarnings(as.integer(trimws(piece)))
         if (anyNA(years)) {
@@ -96,7 +95,6 @@ shift_spec__years_value <- function(value, arg = "years") {
         }
         if (length(years) == 1L) years else seq.int(min(years), max(years))
     })
-    # }}}
     unique(unlist(parsed, use.names = FALSE))
 }
 # }}}
@@ -134,14 +132,12 @@ shift_spec__periods_from_input <- function(periods, arg = "periods") {
             "`{arg}` must be target years, a period table, or a named list of years."
         )
     }
-    # lapply callback {{{
     values <- lapply(seq_along(periods), function(i) {
         shift_spec__years_value(
             periods[[i]],
             sprintf("%s$%s", arg, names(periods)[[i]])
         )
     })
-    # }}}
     do.call(epw_morph_periods, stats::setNames(values, names(periods)))
 }
 # }}}
@@ -255,12 +251,10 @@ shift_spec__expected_cases <- function(request, periods) {
         request_meta$filters$variant_label
     )
     grids <- request_meta$filters$grid_label
-    # scalar_or_missing {{{
     scalar_or_missing <- function(value) {
         value <- as.character(value)
         if (length(value)) value else NA_character_
     }
-    # }}}
     sources <- scalar_or_missing(sources)
     experiments <- scalar_or_missing(experiments)
     members <- scalar_or_missing(members)
@@ -278,16 +272,13 @@ shift_spec__expected_cases <- function(request, periods) {
     # Keep the exact requested year set as a list column because coverage is a
     # case-level contract, not just a min/max time filter.
     cases[,
-        # lapply callback {{{
         years := lapply(period, function(value) {
             as.integer(periods[periods[["period"]] == value, year])
         })
-        # }}}
     ]
     cases[,
         case_id := vapply(
             seq_len(.N),
-            # vapply callback {{{
             function(i) {
                 store__hash(
                     source_id[[i]],
@@ -298,7 +289,6 @@ shift_spec__expected_cases <- function(request, periods) {
                     years[[i]]
                 )
             },
-            # }}}
             character(1L)
         )
     ]
@@ -388,12 +378,10 @@ shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
         }
         frequency <- vapply(
             frequency,
-            # vapply callback {{{
             function(value) {
                 checkmate::assert_string(value, min.chars = 1L)
                 value
             },
-            # }}}
             character(1L)
         )
     }
@@ -485,12 +473,10 @@ shift_spec__cmip6_table_spec <- function(table, null.ok = TRUE) {
         }
         table <- vapply(
             table,
-            # vapply callback {{{
             function(value) {
                 checkmate::assert_string(value, min.chars = 1L)
                 value
             },
-            # }}}
             character(1L)
         )
     }
@@ -527,14 +513,12 @@ shift_spec__cmip6_variable_tables <- function(
     frequencies <- shift_spec__cmip6_variable_frequencies(variables, frequency)
     defaults <- vapply(
         frequencies,
-        # vapply callback {{{
         function(value) {
             shift_stage__coalesce(
                 shift_spec__cmip6_table_id(value),
                 NA_character_
             )
         },
-        # }}}
         character(1L)
     )
     unresolved <- names(defaults)[is.na(defaults)]

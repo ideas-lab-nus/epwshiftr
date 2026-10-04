@@ -59,7 +59,6 @@ epwshiftr_cli <- function(
                 context = epwshiftr_cli_context(parsed)
             )
         },
-        # epwshiftr_cli_usage_error {{{
         epwshiftr_cli_usage_error = function(e) {
             status <<- 2L
             error <<- conditionMessage(e)
@@ -71,8 +70,6 @@ epwshiftr_cli <- function(
                 status = status
             )
         },
-        # }}}
-        # error {{{
         error = function(e) {
             status <<- 1L
             error <<- conditionMessage(e)
@@ -84,7 +81,6 @@ epwshiftr_cli <- function(
                 status = status
             )
         }
-        # }}}
     )
     out <- list(status = status, result = result, error = error)
     if (isTRUE(exit)) {
@@ -417,17 +413,13 @@ epwshiftr_cli_theme <- function() {
             color = "cyan",
             "margin-top" = 0,
             "margin-bottom" = 1,
-            # fmt {{{
             fmt = function(x) cli::rule(left = x, line = 2, line_col = "cyan")
-            # }}}
         ),
         h2 = list(
             "font-weight" = "bold",
             "margin-top" = 1,
             "margin-bottom" = 0,
-            # fmt {{{
             fmt = function(x) cli::rule(left = x, line = 1)
-            # }}}
         ),
         par = list(
             "margin-top" = 0,

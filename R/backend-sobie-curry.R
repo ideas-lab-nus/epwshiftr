@@ -152,7 +152,6 @@ sobie__climate <- function(data, name) {
 
     variables <- c("tas", "tasmin", "tasmax", "huss", "ps")
     wide <- Reduce(
-        # Reduce callback {{{
         function(left, right) {
             merge(
                 left,
@@ -162,12 +161,9 @@ sobie__climate <- function(data, name) {
                 sort = FALSE
             )
         },
-        # }}}
-        # lapply callback {{{
         lapply(variables, function(variable_id) {
             sobie__variable_rows(data, variable_id)
         })
-        # }}}
     )
     incomplete <- !stats::complete.cases(wide[, variables, with = FALSE])
     if (any(incomplete)) {
@@ -293,14 +289,12 @@ sobie__daily_statistics_set <- function(data) {
         "pressure"
     )
     stats::setNames(
-        # lapply callback {{{
         lapply(variables, function(variable) {
             sobie__daily_statistics(
                 data,
                 value = variable
             )
         }),
-        # }}}
         variables
     )
 }
@@ -315,14 +309,12 @@ sobie__smoothing_windows <- function(
 ) {
     phase <- daily__phase_grid(target_year_days)
     spec <- daily__window_spec(window_days, target_year_days)
-    # lapply callback {{{
     lapply(phase, function(center) {
         which(
             daily__phase_distance(phase, center) <=
                 spec$half_width + 8 * .Machine$double.eps
         )
     })
-    # }}}
 }
 # }}}
 
@@ -335,7 +327,6 @@ sobie__smooth_factor <- function(value, windows, name) {
     checkmate::assert_string(name, min.chars = 1L)
     out <- vapply(
         windows,
-        # vapply callback {{{
         function(index) {
             values <- value[index]
             values <- values[is.finite(values)]
@@ -344,7 +335,6 @@ sobie__smooth_factor <- function(value, windows, name) {
             }
             mean(values)
         },
-        # }}}
         numeric(1L)
     )
     if (any(!is.finite(out))) {
@@ -362,7 +352,6 @@ sobie__smooth_factor <- function(value, windows, name) {
 sobie__smooth_status <- function(status, windows) {
     vapply(
         windows,
-        # vapply callback {{{
         function(index) {
             values <- status[index]
             values <- values[!is.na(values) & values != "missing_alignment"]
@@ -378,7 +367,6 @@ sobie__smooth_status <- function(status, windows) {
             }
             "ok"
         },
-        # }}}
         character(1L)
     )
 }
@@ -425,12 +413,10 @@ sobie__signal_factors <- function(
     annual_phase <- future$dry_mean[["annual_phase"]]
     aligned <- vapply(
         metrics,
-        # vapply callback {{{
         function(metric) {
             identical(future[[metric]][["target_day"]], target_day) &&
                 identical(historical[[metric]][["target_day"]], target_day)
         },
-        # }}}
         logical(1L)
     )
     if (!all(aligned)) {
@@ -523,20 +509,16 @@ sobie__signal_factors <- function(
         ),
         n_future = vapply(
             windows,
-            # vapply callback {{{
             function(index) {
                 sum(future$dry_mean[["n"]][index], na.rm = TRUE)
             },
-            # }}}
             integer(1L)
         ),
         n_historical = vapply(
             windows,
-            # vapply callback {{{
             function(index) {
                 sum(historical$dry_mean[["n"]][index], na.rm = TRUE)
             },
-            # }}}
             integer(1L)
         )
     )
@@ -1121,7 +1103,6 @@ sobie__component_specs <- function() {
     reference <- "https://doi.org/10.1016/j.dib.2025.111667"
     profiles <- lapply(
         c("tas", "tasmin", "tasmax", "huss", "ps"),
-        # lapply callback {{{
         function(variable_id) {
             signal__variable_profile(
                 variable_id,
@@ -1134,7 +1115,6 @@ sobie__component_specs <- function() {
                 )
             )
         }
-        # }}}
     )
 
     list(

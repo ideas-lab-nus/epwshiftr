@@ -342,9 +342,7 @@ SignalExecutionResult <- S7::new_class(
             return("`values` must remain positionally aligned with `groups`.")
         }
         variables <- unique(unlist(
-            # lapply callback {{{
             lapply(self@groups, function(group) group@variables),
-            # }}}
             use.names = FALSE
         ))
         if (
@@ -440,9 +438,7 @@ signal__profiles <- function(profiles) {
     }
     ids <- vapply(
         profiles,
-        # vapply callback {{{
         function(profile) profile@variable_id,
-        # }}}
         character(1L)
     )
     if (anyDuplicated(ids)) {
@@ -525,7 +521,6 @@ signal__resolve_profiles <- function(
     }
     overrides <- signal__overrides(overrides, variables)
 
-    # lapply callback {{{
     resolved <- lapply(variables, function(variable) {
         profile <- profiles[[variable]]
         if (
@@ -546,7 +541,6 @@ signal__resolve_profiles <- function(
             )
         )
     })
-    # }}}
     stats::setNames(resolved, variables)
 }
 # }}}
@@ -646,9 +640,7 @@ signal__diagnostic <- function(
         evidence = paste(
             unique(vapply(
                 profiles[group@variables],
-                # vapply callback {{{
                 function(resolved) resolved$profile@evidence,
-                # }}}
                 character(1L)
             )),
             collapse = ","
@@ -662,7 +654,6 @@ signal__diagnostic <- function(
 # settings used after overrides as well as their original provenance.
 # signal__profile_records {{{
 signal__profile_records <- function(profiles) {
-    # lapply callback {{{
     lapply(profiles, function(resolved) {
         list(
             variable_id = resolved$profile@variable_id,
@@ -672,7 +663,6 @@ signal__profile_records <- function(profiles) {
             metadata = resolved$profile@metadata
         )
     })
-    # }}}
 }
 # }}}
 
@@ -710,9 +700,7 @@ signal__execute_groups <- function(
     }
     error_policy <- match.arg(error_policy)
     variables <- unique(unlist(
-        # lapply callback {{{
         lapply(groups, function(group) group@variables),
-        # }}}
         use.names = FALSE
     ))
     resolved <- signal__resolve_profiles(
@@ -736,9 +724,7 @@ signal__execute_groups <- function(
                     inputs = group@inputs,
                     settings = lapply(
                         group_profiles,
-                        # lapply callback {{{
                         function(item) item$settings
-                        # }}}
                     ),
                     key = group@key
                 )
@@ -749,7 +735,6 @@ signal__execute_groups <- function(
                     profiles = group_profiles
                 )
             },
-            # error {{{
             error = function(error) {
                 list(
                     ok = FALSE,
@@ -757,7 +742,6 @@ signal__execute_groups <- function(
                     profiles = resolved[group@variables]
                 )
             }
-            # }}}
         )
         if (
             !isTRUE(attempt$ok) &&
@@ -840,7 +824,6 @@ signal__component <- function(
 
     # Executable functions stay process-local, while profile summaries in
     # metadata remain inspectable and serializable.
-    # lapply callback {{{
     metadata$signal_profiles <- lapply(profiles, function(profile) {
         list(
             variable_id = profile@variable_id,
@@ -850,9 +833,7 @@ signal__component <- function(
             metadata = profile@metadata
         )
     })
-    # }}}
     state <- new.env(parent = emptyenv())
-    # apply {{{
     apply <- function(
         inputs,
         groups,
@@ -870,7 +851,6 @@ signal__component <- function(
             warn_experimental = warn_experimental
         )
     }
-    # }}}
     component <- component__spec(
         name = name,
         stage = "signal",

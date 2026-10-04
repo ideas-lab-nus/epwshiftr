@@ -1,8 +1,6 @@
 # dict__nest {{{
 dict__nest <- function(json) {
-    # lapply callback {{{
     transposed <- lapply(names(json[[1L]]), function(nm) lapply(json, "[[", nm))
-    # }}}
     data.table::setnames(
         data.table::as.data.table(transposed),
         names(json[[1L]])

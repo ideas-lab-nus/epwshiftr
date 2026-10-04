@@ -48,7 +48,6 @@ test_that("checkmate_validator()", {
 })
 
 test_that("checkmate_property()", {
-    # CountHolderForTest {{{
     CountHolderForTest <- S7::new_class(
         "CountHolderForTest",
         properties = list(
@@ -61,7 +60,6 @@ test_that("checkmate_property()", {
             )
         )
     )
-    # }}}
 
     expect_identical(CountHolderForTest()@n, 1L)
     expect_identical(CountHolderForTest(5L)@n, 5L)
@@ -121,9 +119,7 @@ test_that("checkmate_class_match() handles S7 base classes", {
     expect_true(checkmate_class_match(expression(x), S7::class_expression))
     expect_true(checkmate_class_match(as.name("x"), S7::class_name))
     expect_true(checkmate_class_match(quote(f(x)), S7::class_call))
-    # checkmate_class_match callback {{{
     expect_true(checkmate_class_match(function() NULL, S7::class_function))
-    # }}}
     expect_true(checkmate_class_match(sum, S7::class_function))
     expect_true(checkmate_class_match(`if`, S7::class_function))
     expect_true(checkmate_class_match(new.env(), S7::class_environment))
@@ -178,7 +174,6 @@ test_that("checkmate_class_match() handles S3 and S4 class boundaries", {
 })
 
 test_that("checkmate_property() supports union specs", {
-    # UnionHolderForTest {{{
     UnionHolderForTest <- S7::new_class(
         "UnionHolderForTest",
         properties = list(
@@ -201,7 +196,6 @@ test_that("checkmate_property() supports union specs", {
             )
         )
     )
-    # }}}
 
     expect_identical(UnionHolderForTest()@value, 1L)
     expect_identical(UnionHolderForTest(2L)@value, 2L)
@@ -213,7 +207,6 @@ test_that("checkmate_property() supports union specs", {
 })
 
 test_that("checkmate_property() union spec accepts double branches", {
-    # NumericHolderForTest {{{
     NumericHolderForTest <- S7::new_class(
         "NumericHolderForTest",
         properties = list(
@@ -233,7 +226,6 @@ test_that("checkmate_property() union spec accepts double branches", {
             )
         )
     )
-    # }}}
 
     expect_identical(NumericHolderForTest(2L)@value, 2L)
     expect_identical(NumericHolderForTest(2)@value, 2)
@@ -241,17 +233,12 @@ test_that("checkmate_property() union spec accepts double branches", {
 })
 
 test_that("checkmate_property() union spec uses first matching branch", {
-    # PriorityParentForTest {{{
     PriorityParentForTest <- S7::new_class("PriorityParentForTest")
-    # }}}
-    # PriorityChildForTest {{{
     PriorityChildForTest <- S7::new_class(
         "PriorityChildForTest",
         parent = PriorityParentForTest
     )
-    # }}}
 
-    # PriorityHolderForTest {{{
     PriorityHolderForTest <- S7::new_class(
         "PriorityHolderForTest",
         properties = list(
@@ -259,23 +246,18 @@ test_that("checkmate_property() union spec uses first matching branch", {
                 checkmate_any(
                     checkmate_rule(
                         PriorityChildForTest,
-                        # checkmate_rule callback {{{
                         function(x) "child branch failed",
-                        # }}}
                         branch = "child"
                     ),
                     checkmate_rule(
                         PriorityParentForTest,
-                        # checkmate_rule callback {{{
                         function(x) TRUE,
-                        # }}}
                         branch = "parent"
                     )
                 )
             )
         )
     )
-    # }}}
 
     expect_error(PriorityHolderForTest(PriorityChildForTest()), "\\[child\\]")
     expect_error(
@@ -289,7 +271,6 @@ test_that("checkmate_property() union spec uses first matching branch", {
 })
 
 test_that("checkmate_property() union spec supports NULL branches", {
-    # OptionalHolderForTest {{{
     OptionalHolderForTest <- S7::new_class(
         "OptionalHolderForTest",
         properties = list(
@@ -311,7 +292,6 @@ test_that("checkmate_property() union spec supports NULL branches", {
             )
         )
     )
-    # }}}
 
     expect_null(OptionalHolderForTest()@value)
     expect_null(OptionalHolderForTest(NULL)@value)

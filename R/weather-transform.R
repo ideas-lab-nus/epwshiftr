@@ -470,14 +470,12 @@ transform__records <- function() {
     )
     # Attach user-facing labels in the same registry that owns the selectable
     # reconstruction keys, so printing never exposes implementation-style IDs.
-    # lapply callback {{{
     records <- lapply(records, function(record) {
         keys <- record$reconstructions
         labels <- unname(reconstruction_labels[keys])
         record$reconstruction_labels <- stats::setNames(labels, keys)
         record
     })
-    # }}}
     if (!isTRUE(WEATHER_TRANSFORM_REGISTRY_STATE$validated)) {
         transform__validate_records(records)
         WEATHER_TRANSFORM_REGISTRY_STATE$validated <- TRUE
@@ -658,11 +656,9 @@ transform__validate_records <- function(records) {
                 "Method and signal component identity disagree for {.val {recipe_name}}."
             )
         }
-        # lapply callback {{{
         components <- lapply(WEATHER_COMPONENT_STAGES, function(stage) {
             component__get(stage, recipe@components[[stage]])
         })
-        # }}}
         for (component_index in seq_len(length(components) - 1L)) {
             component__assert_compatible(
                 components[[component_index]],
@@ -688,20 +684,16 @@ transform__record <- function(scale, method, reconstruction = NULL) {
     method <- tolower(method)
     registry <- transform__records()
     records <- Filter(
-        # Filter callback {{{
         function(record) {
             identical(record$scale, scale) &&
                 identical(record$method, method)
         },
-        # }}}
         registry
     )
     if (!length(records)) {
         available <- unique(vapply(
             Filter(
-                # Filter callback {{{
                 function(record) identical(record$scale, scale),
-                # }}}
                 registry
             ),
             `[[`,
@@ -764,7 +756,6 @@ transform__validated_signal_settings <- function(
         )
     }
 
-    # lapply callback {{{
     resolved <- lapply(variables, function(variable) {
         defaults <- method@parameters[[variable]]
         if (is.null(defaults)) {
@@ -783,7 +774,6 @@ transform__validated_signal_settings <- function(
         complete <- utils::modifyList(defaults, override, keep.null = TRUE)
         validator(stats::setNames(list(complete), variable))
     })
-    # }}}
     stats::setNames(resolved, variables)
 }
 # }}}
@@ -871,15 +861,11 @@ transform__variable_sets <- function(requirements) {
     variable_sets <- list(character())
     for (alternatives in unname(requirements)) {
         variable_sets <- unlist(
-            # lapply callback {{{
             lapply(variable_sets, function(current) {
-                # lapply callback {{{
                 lapply(alternatives, function(alternative) {
                     unique(c(current, as.character(alternative)))
                 })
-                # }}}
             }),
-            # }}}
             recursive = FALSE
         )
     }
@@ -948,7 +934,6 @@ transform__source_frequencies <- function(requirements) {
     requirements <- requirements[
         setdiff(names(requirements), "weather_template")
     ]
-    # lapply callback {{{
     lapply(requirements, function(requirement) {
         if (length(requirement@variable_frequencies)) {
             required_variables <- unique(unlist(
@@ -965,7 +950,6 @@ transform__source_frequencies <- function(requirements) {
         }
         requirement@frequencies
     })
-    # }}}
 }
 # }}}
 
@@ -978,7 +962,6 @@ transform__optional_variables <- function(recipe, inputs) {
         c("model_historical", "model_future"),
         c(names(inputs$required_inputs), names(inputs$optional_inputs))
     )
-    # lapply callback {{{
     values <- lapply(model_roles, function(role) {
         requirement <- shift_stage__coalesce(
             inputs$required_inputs[[role]],
@@ -990,7 +973,6 @@ transform__optional_variables <- function(recipe, inputs) {
         ))
         setdiff(all_variables, required)
     })
-    # }}}
     values <- stats::setNames(values, model_roles)
     Filter(length, values)
 }
@@ -1008,14 +990,12 @@ transform__optional_variable_frequencies <- function(
         return(list())
     }
     recipe_frequencies <- morpher__recipe_required_frequency(recipe)
-    # lapply callback {{{
     values <- lapply(names(optional_variables), function(role) {
         requirement <- shift_stage__coalesce(
             inputs$required_inputs[[role]],
             inputs$optional_inputs[[role]]
         )
         variables <- optional_variables[[role]]
-        # lapply callback {{{
         values <- lapply(variables, function(variable) {
             mapped <- requirement@variable_frequencies[[variable]]
             if (!is.null(mapped)) {
@@ -1029,10 +1009,8 @@ transform__optional_variable_frequencies <- function(
             }
             as.character(recipe_frequencies)
         })
-        # }}}
         stats::setNames(values, variables)
     })
-    # }}}
     stats::setNames(values, names(optional_variables))
 }
 # }}}
@@ -1227,20 +1205,16 @@ transform__variable_sets_from_value <- function(variable_sets) {
         return(list())
     }
     if (is.matrix(variable_sets)) {
-        # lapply callback {{{
         return(lapply(seq_len(nrow(variable_sets)), function(index) {
             as.character(variable_sets[index, , drop = TRUE])
         }))
-        # }}}
     }
     if (is.character(variable_sets)) {
         return(list(as.character(variable_sets)))
     }
-    # lapply callback {{{
     lapply(variable_sets, function(variable_set) {
         as.character(unlist(variable_set, use.names = FALSE))
     })
-    # }}}
 }
 # }}}
 
@@ -1251,17 +1225,14 @@ transform__input_contract_from_value <- function(contract) {
     if (is.null(contract) || !length(contract)) {
         return(list())
     }
-    # lapply callback {{{
     lapply(contract, function(requirement) {
         frequencies <- requirement$variable_frequencies
         if (is.atomic(frequencies) && length(frequencies)) {
             frequencies <- as.list(frequencies)
         }
-        # lapply callback {{{
         frequencies <- lapply(frequencies, function(value) {
             as.character(unlist(value, use.names = FALSE))
         })
-        # }}}
         list(
             role = as.character(requirement$role),
             representations = as.character(unlist(
@@ -1282,7 +1253,6 @@ transform__input_contract_from_value <- function(contract) {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -1335,7 +1305,6 @@ transform__options_to_spec <- function(value) {
         return(value)
     }
     encoded <- as.list(value)
-    # lapply callback {{{
     encoded <- lapply(encoded, function(element) {
         if (is.infinite(element) && element > 0) {
             return("__epwshiftr_positive_infinity__")
@@ -1345,7 +1314,6 @@ transform__options_to_spec <- function(value) {
         }
         element
     })
-    # }}}
     unlist(encoded, use.names = FALSE)
 }
 # }}}
@@ -1644,9 +1612,7 @@ hourly_transform <- function(method, reconstruction = NULL, ...) {
 #' @export
 # weather_transforms {{{
 weather_transforms <- function() {
-    # lapply callback {{{
     rows <- lapply(transform__records(), function(record) {
-        # lapply callback {{{
         lapply(record$reconstructions, function(reconstruction) {
             selected <- transform__record(
                 record$scale,
@@ -1708,9 +1674,7 @@ weather_transforms <- function() {
                 status = transform@status
             )
         })
-        # }}}
     })
-    # }}}
     data.table::rbindlist(
         unlist(rows, recursive = FALSE),
         use.names = TRUE,
@@ -1724,9 +1688,7 @@ weather_transforms <- function() {
 # transform__format_variable_sets {{{
 transform__format_variable_sets <- function(requirements) {
     requirements <- Filter(
-        # Filter callback {{{
         function(requirement) length(requirement@variable_sets),
-        # }}}
         requirements
     )
     if (!length(requirements)) {
@@ -1734,20 +1696,16 @@ transform__format_variable_sets <- function(requirements) {
     }
     values <- vapply(
         names(requirements),
-        # vapply callback {{{
         function(role) {
             sets <- vapply(
                 requirements[[role]]@variable_sets,
-                # vapply callback {{{
                 function(variables) {
                     paste(variables, collapse = " + ")
                 },
-                # }}}
                 character(1L)
             )
             sprintf("%s: %s", role, paste(sets, collapse = " or "))
         },
-        # }}}
         character(1L)
     )
     paste(values, collapse = "; ")
@@ -1763,7 +1721,6 @@ transform__format_source_frequencies <- function(source_frequencies) {
     }
     values <- vapply(
         names(source_frequencies),
-        # vapply callback {{{
         function(role) {
             frequency <- source_frequencies[[role]]
             if (
@@ -1777,11 +1734,9 @@ transform__format_source_frequencies <- function(source_frequencies) {
                         names(frequency),
                         vapply(
                             frequency,
-                            # vapply callback {{{
                             function(value) {
                                 paste(value, collapse = "/")
                             },
-                            # }}}
                             character(1L)
                         )
                     ),
@@ -1795,7 +1750,6 @@ transform__format_source_frequencies <- function(source_frequencies) {
             }
             sprintf("%s: %s", role, frequency)
         },
-        # }}}
         character(1L)
     )
     paste(values, collapse = "; ")
@@ -1832,7 +1786,6 @@ S7::method(print, WeatherTransformSpec) <- function(x, ...) {
             paste(
                 vapply(
                     names(x@optional_variables),
-                    # vapply callback {{{
                     function(role) {
                         sprintf(
                             "%s: %s",
@@ -1843,7 +1796,6 @@ S7::method(print, WeatherTransformSpec) <- function(x, ...) {
                             )
                         )
                     },
-                    # }}}
                     character(1L)
                 ),
                 collapse = "; "

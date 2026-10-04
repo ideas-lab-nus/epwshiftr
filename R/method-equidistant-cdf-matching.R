@@ -52,7 +52,6 @@ edcdf__profiles <- function() {
             "beta_four_parameter"
         )
     )
-    # lapply callback {{{
     lapply(EDCDF_LI_VARIABLES, function(variable) {
         signal__variable_profile(
             variable,
@@ -68,7 +67,6 @@ edcdf__profiles <- function() {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -211,11 +209,9 @@ edcdf__inputs <- function(inputs, variable, distribution_model) {
             "Equidistant CDF Matching requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -232,9 +228,7 @@ edcdf__inputs <- function(inputs, variable, distribution_model) {
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -246,9 +240,7 @@ edcdf__inputs <- function(inputs, variable, distribution_model) {
         identical(distribution_model, "mixed_gamma") &&
             any(vapply(
                 series,
-                # vapply callback {{{
                 function(data) any(data[["value"]] < 0),
-                # }}}
                 logical(1L)
             ))
     ) {
@@ -374,7 +366,6 @@ edcdf__fit_beta4 <- function(
 
     # Optimizing log-shapes guarantees positive parameters without changing
     # the fixed range selected from the publication.
-    # objective {{{
     objective <- function(log_shape) {
         shape <- exp(log_shape)
         value <- -sum(stats::dbeta(
@@ -385,7 +376,6 @@ edcdf__fit_beta4 <- function(
         ))
         if (is.finite(value)) value else .Machine$double.xmax
     }
-    # }}}
     optimization <- stats::optim(
         par = log(initial_shape),
         fn = objective,
@@ -594,25 +584,19 @@ edcdf__quantile <- function(fit, probability) {
 # value before fitting, recording role-specific occurrence counts.
 # edcdf__prepared_values {{{
 edcdf__prepared_values <- function(series, resolved) {
-    # lapply callback {{{
     values <- lapply(series, function(data) data[["value"]])
-    # }}}
     if (!identical(resolved$distribution_model, "mixed_gamma")) {
         return(list(values = values, precipitation = NULL))
     }
     dry_counts <- vapply(
         values,
-        # vapply callback {{{
         function(value) sum(value <= resolved$dry_threshold),
-        # }}}
         integer(1L)
     )
-    # lapply callback {{{
     values <- lapply(values, function(value) {
         value[value <= resolved$dry_threshold] <- 0
         value
     })
-    # }}}
     list(
         values = values,
         precipitation = list(
@@ -761,48 +745,36 @@ edcdf__adjust_values <- function(series, resolved) {
         observed_month_samples = c(
             minimum = min(vapply(
                 records,
-                # vapply callback {{{
                 function(record) record$observed_samples,
-                # }}}
                 integer(1L)
             )),
             maximum = max(vapply(
                 records,
-                # vapply callback {{{
                 function(record) record$observed_samples,
-                # }}}
                 integer(1L)
             ))
         ),
         historical_month_samples = c(
             minimum = min(vapply(
                 records,
-                # vapply callback {{{
                 function(record) record$historical_samples,
-                # }}}
                 integer(1L)
             )),
             maximum = max(vapply(
                 records,
-                # vapply callback {{{
                 function(record) record$historical_samples,
-                # }}}
                 integer(1L)
             ))
         ),
         future_month_samples = c(
             minimum = min(vapply(
                 records,
-                # vapply callback {{{
                 function(record) record$future_samples,
-                # }}}
                 integer(1L)
             )),
             maximum = max(vapply(
                 records,
-                # vapply callback {{{
                 function(record) record$future_samples,
-                # }}}
                 integer(1L)
             ))
         ),

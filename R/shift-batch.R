@@ -15,16 +15,12 @@ ShiftBatch <- S7::new_class("ShiftBatch", parent = ShiftStage)
 # shift_batch__transform_from_method {{{
 shift_batch__transform_from_method <- function(method, records) {
     matches <- Filter(
-        # Filter callback {{{
         function(record) identical(record$method, method),
-        # }}}
         records
     )
     configurations <- sum(vapply(
         matches,
-        # vapply callback {{{
         function(record) length(record$reconstructions),
-        # }}}
         integer(1L)
     ))
     if (!configurations) {
@@ -64,11 +60,9 @@ shift_batch__transforms <- function(methods = NULL, transform = NULL) {
                 length(transform) &&
                 all(vapply(
                     transform,
-                    # vapply callback {{{
                     function(value) {
                         S7::S7_inherits(value, WeatherTransformSpec)
                     },
-                    # }}}
                     logical(1L)
                 ))
         ) {
@@ -102,11 +96,9 @@ shift_batch__transforms <- function(methods = NULL, transform = NULL) {
             )
         }
         records <- transform__records()
-        # lapply callback {{{
         values <- lapply(values, function(method) {
             shift_batch__transform_from_method(method, records)
         })
-        # }}}
     } else {
         cli::cli_abort(
             "`methods` must contain one or more method keys."
@@ -199,7 +191,6 @@ shift_batch__receipt_read <- function(batch_root, batch_id) {
 shift_batch__receipt_write <- function(x) {
     path <- shift_batch__receipt_path(x@store_path)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-    # lapply callback {{{
     children <- lapply(names(x@meta$children), function(child_key) {
         child <- x@meta$children[[child_key]]
         list(
@@ -219,7 +210,6 @@ shift_batch__receipt_write <- function(x) {
             shared_inputs = child@meta$shared_inputs
         )
     })
-    # }}}
     receipt <- list(
         version = 1L,
         batch_id = x@ids$batch_id,
@@ -281,7 +271,6 @@ shift_batch_get <- function(batch_id, store = NULL) {
             "No readable batch receipt for {.val {batch_id}} in {.path {root}}."
         )
     }
-    # lapply callback {{{
     children <- lapply(receipt$children, function(child) {
         if (!is.na(store__chr1(child$run_id))) {
             run <- shift_run_get(child$run_id, store = child$store_path)
@@ -298,7 +287,6 @@ shift_batch_get <- function(batch_id, store = NULL) {
             "The batch receipt contains a child without a plan or run ID."
         )
     })
-    # }}}
     names(children) <- vapply(
         receipt$children,
         `[[`,
@@ -315,9 +303,7 @@ shift_batch_get <- function(batch_id, store = NULL) {
         store_path = batch_root,
         ids = list(
             batch_id = batch_id,
-            # lapply callback {{{
             child_ids = lapply(children, function(child) child@ids)
-            # }}}
         ),
         meta = list(
             children = children,
@@ -332,11 +318,9 @@ shift_batch_get <- function(batch_id, store = NULL) {
             output_dir = receipt$output_dir,
             dry_run = all(vapply(
                 children,
-                # vapply callback {{{
                 function(child) {
                     S7::S7_inherits(child, ShiftPlan)
                 },
-                # }}}
                 logical(1L)
             ))
         ),
@@ -377,9 +361,7 @@ shift_batch__restore_child <- function(reference) {
             on.exit(try(child_store$close(), silent = TRUE), add = TRUE)
             run <- tryCatch(
                 shift_run_get(run_id, store = child_store),
-                # error {{{
                 error = function(error) NULL
-                # }}}
             )
             if (is.null(run)) {
                 return(NULL)
@@ -399,9 +381,7 @@ shift_batch__restore_child <- function(reference) {
     # existing path-based lookup, including its live-snapshot coordination.
     run <- tryCatch(
         shift_run_get(run_id, store = store_path),
-        # error {{{
         error = function(error) NULL
-        # }}}
     )
     if (is.null(run)) {
         return(NULL)
@@ -454,9 +434,7 @@ shift_batch__restore <- function(
         store_path = batch_root,
         ids = list(
             batch_id = receipt$batch_id,
-            # lapply callback {{{
             child_ids = lapply(children, function(child) child@ids)
-            # }}}
         ),
         meta = list(
             children = children,
@@ -529,12 +507,10 @@ shift_batch__candidate_reader <- function(
     }
     historical <- vapply(
         references,
-        # vapply callback {{{
         function(value) {
             S7::S7_inherits(value$reference, ShiftReferenceSpec) &&
                 identical(value$reference@mode, "historical")
         },
-        # }}}
         logical(1L)
     )
     names(historical) <- names(transforms)
@@ -581,7 +557,6 @@ shift_batch__candidate_reader <- function(
         )
     )
     cache <- list()
-    # { callback {{{
     function(transform_key, alternative, index_node) {
         if (is.null(cache[[index_node]])) {
             cache[[index_node]] <<- tryCatch(
@@ -664,7 +639,6 @@ shift_batch__candidate_reader <- function(
         choice <- alternative
         result[transform_key == key & alternative == choice]
     }
-    # }}}
 }
 # }}}
 
@@ -704,9 +678,7 @@ shift_batch__available_alternative <- function(
         }
         current <- tryCatch(
             read_candidates(node),
-            # error {{{
             error = function(error) error
-            # }}}
         )
         if (inherits(current, "error")) {
             errors <- c(errors, conditionMessage(current))
@@ -744,7 +716,6 @@ shift_batch__available_alternative <- function(
                         list(seq_len(nrow(current)))
                     }
                     data.table::rbindlist(
-                        # lapply callback {{{
                         lapply(groups, function(rows) {
                             candidates <- current[rows]
                             selected_frequency <- if (
@@ -776,14 +747,11 @@ shift_batch__available_alternative <- function(
                             }
                             do.call(coverage, args)
                         }),
-                        # }}}
                         use.names = TRUE,
                         fill = TRUE
                     )
                 },
-                # error {{{
                 error = function(error) error
-                # }}}
             )
             if (inherits(current, "error")) {
                 errors <- c(errors, conditionMessage(current))
@@ -855,7 +823,6 @@ shift_batch__discover_candidates <- function(
     # Reuse exact File requests and their coverage reductions across methods.
     # The cache exists only for this discovery call, never across stores/runs.
     coverage_cache <- new.env(parent = emptyenv())
-    # lapply callback {{{
     by_transform <- lapply(names(transforms), function(transform_key) {
         transform <- transforms[[transform_key]]
         method_ui <- ui
@@ -869,7 +836,6 @@ shift_batch__discover_candidates <- function(
         requirement <- shift_batch__future_requirement(transform)
         alternatives <- lapply(
             seq_along(requirement@variable_sets),
-            # lapply callback {{{
             function(index) {
                 variables <- as.character(requirement@variable_sets[[index]])
                 shift_batch_ui__discovery_update(
@@ -894,11 +860,9 @@ shift_batch__discover_candidates <- function(
                     reference = reference,
                     store = store,
                     ui = method_ui,
-                    # read_candidates {{{
                     read_candidates = function(node) {
                         read_candidates(transform_key, index, node)
                     },
-                    # }}}
                     coverage_cache = coverage_cache
                 )
                 if (nrow(result)) {
@@ -918,7 +882,6 @@ shift_batch__discover_candidates <- function(
                 )
                 result
             }
-            # }}}
         )
         candidates <- data.table::rbindlist(
             alternatives,
@@ -947,7 +910,6 @@ shift_batch__discover_candidates <- function(
         )
         candidates[!duplicated(identity)]
     })
-    # }}}
     names(by_transform) <- names(transforms)
     empty <- names(by_transform)[!vapply(by_transform, nrow, integer(1L))]
     if (length(empty)) {
@@ -1002,7 +964,6 @@ shift_batch__discover_candidates <- function(
             reset = TRUE
         )
     } else {
-        # lapply callback {{{
         pools <- lapply(names(by_transform), function(key) {
             shift_batch__select_models(
                 data.table::copy(by_transform[[key]]),
@@ -1010,16 +971,13 @@ shift_batch__discover_candidates <- function(
                 key
             )
         })
-        # }}}
     }
     names(pools) <- names(transforms)
     # One explicit row per child avoids filling unavailable method/model cells.
     selection <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(pools, function(rows) {
             rows[, .(identity, source_id, variant_label, grid_label)]
         }),
-        # }}}
         idcol = "transform_key"
     )
     identities <- unique(
@@ -1241,9 +1199,7 @@ shift_batch__sites <- function(sites) {
             "`sites` must be a shift_site() object or a non-empty list of shift_site() objects."
         )
     }
-    # vapply callback {{{
     ids <- vapply(sites, function(site) site@id, character(1L))
-    # }}}
     checkmate::assert_character(
         ids,
         any.missing = FALSE,
@@ -1255,7 +1211,6 @@ shift_batch__sites <- function(sites) {
     }
     paths <- vapply(
         sites,
-        # vapply callback {{{
         function(site) {
             if (is.null(site@epw)) {
                 cli::cli_abort(
@@ -1269,14 +1224,12 @@ shift_batch__sites <- function(sites) {
             }
             normalizePath(path.expand(path), winslash = "/", mustWork = TRUE)
         },
-        # }}}
         character(1L)
     )
     unique_paths <- unique(paths)
     # This is bounded file I/O, not a per-model or per-method operation.
     checksums <- vapply(
         unique_paths,
-        # vapply callback {{{
         function(path) {
             location <- epw_file_location(readLines(path, n = 1L, warn = FALSE))
             checkmate::assert_number(
@@ -1293,7 +1246,6 @@ shift_batch__sites <- function(sites) {
             )
             store_hash_file(path, "sha256")
         },
-        # }}}
         character(1L)
     )
     result <- data.table::data.table(
@@ -1342,7 +1294,6 @@ shift_batch__future_epw <- function(
     )
     store_root <- shift_batch__store_root(store)
     shift_path__validate_delivery_store_paths(output_root, store_root)
-    # lapply callback {{{
     references <- lapply(transforms, function(transform) {
         shift_spec__validate_transform_periods(transform, periods)
         if (!is.null(climate@frequency)) {
@@ -1353,8 +1304,6 @@ shift_batch__future_epw <- function(
         }
         shift_batch__references(transform, reference, calibration)
     })
-    # }}}
-    # lapply callback {{{
     reference_intent <- lapply(references, function(value) {
         list(
             model_historical = shift_persist__reference_spec_value(
@@ -1367,14 +1316,11 @@ shift_batch__future_epw <- function(
             )
         )
     })
-    # }}}
-    # lapply callback {{{
     site_identity <- lapply(seq_len(nrow(sites)), function(index) {
         value <- shift_persist__site_ref(sites$site[[index]])
         value$epw <- sites$checksum[[index]]
         value
     })
-    # }}}
     # Result-affecting controls and acceptance/delivery policies must not reuse
     # an older, differently configured batch. Runtime/UI switches stay outside.
     batch_id <- store__hash(
@@ -1412,11 +1358,9 @@ shift_batch__future_epw <- function(
         if (!is.null(restored)) {
             statuses <- vapply(
                 restored@meta$children,
-                # vapply callback {{{
                 function(child) {
                     shift_status(child, refresh = FALSE)
                 },
-                # }}}
                 character(1L)
             )
             if (
@@ -1503,19 +1447,13 @@ shift_batch__future_epw <- function(
     manifest <- data.table::data.table(
         method = vapply(
             selected_transforms,
-            # vapply callback {{{
             function(x) x@method,
-            # }}}
             character(1L)
         ),
-        # vapply callback {{{
         scale = vapply(selected_transforms, function(x) x@scale, character(1L)),
-        # }}}
         reconstruction = vapply(
             selected_transforms,
-            # vapply callback {{{
             function(x) x@reconstruction,
-            # }}}
             character(1L)
         ),
         model = identities$source_id,
@@ -1523,9 +1461,7 @@ shift_batch__future_epw <- function(
         grid = identities$grid_label,
         calibration_used = vapply(
             selected_references,
-            # vapply callback {{{
             function(x) !is.null(x$observed_reference),
-            # }}}
             logical(1L)
         )
     )
@@ -1616,9 +1552,7 @@ shift_batch__future_epw <- function(
         store_path = batch_root,
         ids = list(
             batch_id = batch_id,
-            # lapply callback {{{
             child_ids = lapply(children, function(child) child@ids)
-            # }}}
         ),
         meta = list(
             children = children,
@@ -1681,12 +1615,10 @@ shift_batch__decorate <- function(data, row) {
 # Run one inspector for every child and combine only non-empty tabular results.
 # shift_batch__inspect {{{
 shift_batch__inspect <- function(children, manifest, fun) {
-    # lapply callback {{{
     rows <- lapply(seq_along(children), function(index) {
         value <- fun(children[[index]])
         shift_batch__decorate(value, manifest[index])
     })
-    # }}}
     data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
 # }}}
@@ -1700,7 +1632,6 @@ shift_batch__diagnostics <- function(
     refresh = TRUE,
     shared_failure = NULL
 ) {
-    # lapply callback {{{
     rows <- lapply(seq_along(children), function(index) {
         diagnostics <- tryCatch(
             shift_diagnostics(
@@ -1708,7 +1639,6 @@ shift_batch__diagnostics <- function(
                 severity = severity,
                 refresh = refresh
             ),
-            # error {{{
             error = function(error) {
                 shift_stage__diagnostic(
                     "batch",
@@ -1718,11 +1648,9 @@ shift_batch__diagnostics <- function(
                     action = "Inspect or resume the affected child run."
                 )
             }
-            # }}}
         )
         shift_batch__decorate(diagnostics, manifest[index])
     })
-    # }}}
     diagnostics <- data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
     if (nrow(manifest)) {
         pools <- unique(manifest[,
@@ -1788,7 +1716,6 @@ shift_batch__refresh <- function(x) {
     if (!is.null(shift_batch_execution__job_read(x@store_path))) {
         x <- shift_batch_get(x@ids$batch_id, store = x@store_path)
     }
-    # lapply callback {{{
     children <- lapply(seq_along(x@meta$children), function(index) {
         child <- x@meta$children[[index]]
         tryCatch(
@@ -1797,7 +1724,6 @@ shift_batch__refresh <- function(x) {
                 refreshed@meta$shared_inputs <- child@meta$shared_inputs
                 refreshed
             },
-            # error {{{
             error = function(error) {
                 row <- x@meta$manifest[index]
                 child@diagnostics <- shift_stage__bind_diagnostics(
@@ -1816,10 +1742,8 @@ shift_batch__refresh <- function(x) {
                 )
                 child
             }
-            # }}}
         )
     })
-    # }}}
     names(children) <- names(x@meta$children)
     x@meta$children <- children
     x@diagnostics <- shift_batch__diagnostics(
@@ -1828,9 +1752,7 @@ shift_batch__refresh <- function(x) {
         refresh = FALSE,
         shared_failure = x@meta[["shared_failure"]]
     )
-    # lapply callback {{{
     x@ids$child_ids <- lapply(children, function(child) child@ids)
-    # }}}
     x
 }
 # }}}
@@ -1857,11 +1779,9 @@ shift_batch__status <- function(x, refresh = TRUE) {
     }
     statuses <- vapply(
         x@meta$children,
-        # vapply callback {{{
         function(child) {
             shift_status(child, refresh = FALSE)
         },
-        # }}}
         character(1L)
     )
     if (!length(statuses)) {
@@ -1897,11 +1817,9 @@ shift_batch__run <- function(x, background = FALSE, ui = shift_ui()) {
     }
     plans <- vapply(
         x@meta$children,
-        # vapply callback {{{
         function(child) {
             S7::S7_inherits(child, ShiftPlan)
         },
-        # }}}
         logical(1L)
     )
     if (!all(plans)) {
@@ -1922,14 +1840,12 @@ shift_batch__run <- function(x, background = FALSE, ui = shift_ui()) {
 shift_batch__run_child <- function(expr) {
     tryCatch(
         force(expr),
-        # epwshiftr_shift_error {{{
         epwshiftr_shift_error = function(error) {
             if (is.null(error$run_id) || is.null(error$store)) {
                 stop(error)
             }
             shift_run_get(error$run_id, store = error$store)
         }
-        # }}}
     )
 }
 # }}}
@@ -2043,11 +1959,9 @@ shift_batch__execute <- function(
         started <- Sys.time()
         statuses <- vapply(
             x@meta$children,
-            # vapply callback {{{
             function(value) {
                 shift_status(value, refresh = FALSE)
             },
-            # }}}
             character(1L)
         )
         child_ui <- ui
@@ -2136,7 +2050,6 @@ shift_batch__cancel <- function(x, force = FALSE) {
         }
         return(shift_batch__refresh(x))
     }
-    # lapply callback {{{
     children <- lapply(x@meta$children, function(child) {
         if (!S7::S7_inherits(child, ShiftRun)) {
             return(child)
@@ -2147,7 +2060,6 @@ shift_batch__cancel <- function(x, force = FALSE) {
         }
         shift_cancel(child, force = force)
     })
-    # }}}
     x@meta$children <- children
     shift_batch__refresh(x)
 }
@@ -2162,11 +2074,9 @@ S7::method(print, ShiftBatch) <- function(x, ...) {
     manifest[,
         status := vapply(
             x@meta$children,
-            # vapply callback {{{
             function(child) {
                 shift_status(child, refresh = FALSE)
             },
-            # }}}
             character(1L)
         )
     ]

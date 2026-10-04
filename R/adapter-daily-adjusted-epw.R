@@ -104,12 +104,10 @@ daily_adjustment__preprocess_apply <- function(
 ) {
     morpher__validate_context(context)
     options <- daily_adjustment__options(options)
-    # lapply callback {{{
     sources <- lapply(SIGNAL_THREE_INPUT_ROLES, function(role) {
         input <- weather__get_input(inputs, role)
         daily_adjustment__temperature_table(input@source, role)
     })
-    # }}}
     names(sources) <- SIGNAL_THREE_INPUT_ROLES
     list(sources = sources, options = options)
 }
@@ -438,7 +436,6 @@ daily_adjustment__pipeline <- function(method) {
 # temperature-to-EPW adapter without duplicating its logic.
 # daily_adjustment__backend_specs {{{
 daily_adjustment__backend_specs <- function() {
-    # lapply callback {{{
     specs <- lapply(
         names(DAILY_ADJUSTMENT_METHOD_COMPONENTS),
         function(method) {
@@ -454,7 +451,6 @@ daily_adjustment__backend_specs <- function() {
             )
         }
     )
-    # }}}
     names(specs) <- unname(DAILY_ADJUSTMENT_BACKENDS)
     specs
 }

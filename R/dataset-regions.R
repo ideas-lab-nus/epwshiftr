@@ -161,11 +161,9 @@ dataset__region_runs <- function(indices, max_time) {
         cumsum(c(1L, as.integer(diff(indices) != 1L)))
     )
     unlist(
-        # lapply callback {{{
         lapply(contiguous, function(run) {
             split(run, ceiling(seq_along(run) / max_time))
         }),
-        # }}}
         recursive = FALSE
     )
 }
@@ -224,7 +222,6 @@ dataset__read_regions_one <- function(
             sep = "/"
         )
         first <- which(!duplicated(window_key))
-        # lapply callback {{{
         unique_times <- lapply(first, function(site_index) {
             intersect(
                 base_selected,
@@ -238,7 +235,6 @@ dataset__read_regions_one <- function(
                 )
             )
         })
-        # }}}
         unique_times[match(window_key, window_key[first])]
     } else {
         rep(list(base_selected), nrow(sites))
@@ -312,7 +308,6 @@ dataset__read_regions_one <- function(
     # A group's time demand is the union of its consumers. Limit the source
     # matrix to 250000 values even when site windows barely overlap.
     point_users <- split(sources$site_id, sources$point_index)
-    # lapply callback {{{
     point_times <- lapply(point_users, function(users) {
         using <- unique(users)
         sort(unique(unlist(
@@ -320,44 +315,33 @@ dataset__read_regions_one <- function(
             use.names = FALSE
         )))
     })
-    # }}}
-    # lapply callback {{{
     group_times <- lapply(groups, function(group) {
         sort(unique(unlist(point_times[group$members], use.names = FALSE)))
     })
-    # }}}
     # Single-cell groups can use the full native-value allowance. The working
     # matrix has its own limit; each spatial group splits runs independently.
     max_times <- vapply(
         groups,
-        # vapply callback {{{
         function(group) {
             DATASET_REQUEST_MAX_VALUES %/% (group$lat_count * group$lon_count)
         },
-        # }}}
         integer(1L)
     )
     block_time <- min(max(max_times), max(1L, 250000L %/% nrow(points)))
     blocks <- split(selected, ceiling(seq_along(selected) / block_time))
-    # lapply callback {{{
     requests <- lapply(blocks, function(block) {
-        # lapply callback {{{
         lapply(seq_along(groups), function(index) {
             dataset__region_runs(
                 intersect(block, group_times[[index]]),
                 max_time = max_times[[index]]
             )
         })
-        # }}}
     })
-    # }}}
     request_count <- sum(vapply(
         requests,
-        # vapply callback {{{
         function(block) {
             sum(lengths(block))
         },
-        # }}}
         integer(1L)
     ))
     if (request_count > 4096L) {

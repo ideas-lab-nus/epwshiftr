@@ -14,7 +14,6 @@ bws_btws_epw__target_diagnostics <- function(factors, context) {
         return(morpher__empty_diagnostics())
     }
     case <- data.table::as.data.table(context$case)
-    # case_value {{{
     case_value <- function(name) {
         if (name %in% names(case)) {
             store__chr1(case[[name]][[1L]])
@@ -22,7 +21,6 @@ bws_btws_epw__target_diagnostics <- function(factors, context) {
             NA_character_
         }
     }
-    # }}}
     source_id <- case_value("source_id")
     experiment_id <- case_value("experiment_id")
     variant_label <- case_value("variant_label")
@@ -137,29 +135,23 @@ bws_btws_epw__hourly_reconstruct <- function(
     }
     ghi_mean <- vapply(
         seq_len(12L),
-        # vapply callback {{{
         function(calendar_month) {
             mean(baseline_ghi[month == calendar_month])
         },
-        # }}}
         numeric(1L)
     )
     ghi_upper <- vapply(
         seq_len(12L),
-        # vapply callback {{{
         function(calendar_month) {
             max(baseline_ghi[month == calendar_month])
         },
-        # }}}
         numeric(1L)
     )
     cover_mean <- vapply(
         seq_len(12L),
-        # vapply callback {{{
         function(calendar_month) {
             mean(baseline_cover[month == calendar_month])
         },
-        # }}}
         numeric(1L)
     )
 

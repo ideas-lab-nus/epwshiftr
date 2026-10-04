@@ -24,7 +24,6 @@ shift_resolve__catalog_fill_time_ranges <- function(catalog) {
         return(catalog)
     }
     n <- nrow(catalog)
-    # query_result__fill_time_ranges callback {{{
     ranges <- query_result__fill_time_ranges(catalog, function() {
         labels <- query_result__character_column(catalog, "title", n)
         fallback <- query_result__character_column(catalog, "filename", n)
@@ -35,7 +34,6 @@ shift_resolve__catalog_fill_time_ranges <- function(catalog) {
             fallback[is.na(labels) | !nzchar(labels)]
         labels
     })
-    # }}}
     catalog[["datetime_start"]] <-
         query_result__time_iso(ranges$datetime_start)
     catalog[["datetime_end"]] <- query_result__time_iso(ranges$datetime_end)
@@ -303,9 +301,7 @@ shift_resolve__cmip6_candidates <- function(
     )
     if (is.null(requirements)) {
         requirements <- stats::setNames(
-            # lapply callback {{{
             lapply(variables, function(variable) list(variable)),
-            # }}}
             variables
         )
     }
@@ -398,11 +394,9 @@ shift_resolve__cmip6_candidates <- function(
                 for (alternative in alternatives) {
                     input_ok <- vapply(
                         experiments,
-                        # vapply callback {{{
                         function(experiment) {
                             all(vapply(
                                 alternative,
-                                # vapply callback {{{
                                 function(input) {
                                     partition_id <- shift_resolve__cmip6_partition_id(
                                         frequency_map[[input]],
@@ -419,11 +413,9 @@ shift_resolve__cmip6_candidates <- function(
                                         years
                                     )
                                 },
-                                # }}}
                                 logical(1L)
                             ))
                         },
-                        # }}}
                         logical(1L)
                     )
                     if (all(input_ok)) {
@@ -464,14 +456,12 @@ shift_resolve__cmip6_candidates <- function(
                 table_id = unname(table_map[required_variables]),
                 grid_label = unname(vapply(
                     required_variables,
-                    # vapply callback {{{
                     function(variable) {
                         grid_map[[shift_resolve__cmip6_partition_id(
                             frequency_map[[variable]],
                             table_map[[variable]]
                         )]]
                     },
-                    # }}}
                     character(1L)
                 )),
                 required = TRUE
@@ -531,15 +521,12 @@ shift_resolve__cmip6_candidates <- function(
                 if (!length(optional_grids) || all(is.na(optional_grids))) {
                     next
                 }
-                # lapply callback {{{
                 scored <- lapply(optional_grids, function(optional_grid) {
                     complete_variables <- table_variables[vapply(
                         table_variables,
-                        # vapply callback {{{
                         function(variable) {
                             all(vapply(
                                 experiments,
-                                # vapply callback {{{
                                 function(experiment) {
                                     shift_resolve__cmip6_input_complete(
                                         catalog,
@@ -552,11 +539,9 @@ shift_resolve__cmip6_candidates <- function(
                                         years
                                     )
                                 },
-                                # }}}
                                 logical(1L)
                             ))
                         },
-                        # }}}
                         logical(1L)
                     )]
                     list(
@@ -565,7 +550,6 @@ shift_resolve__cmip6_candidates <- function(
                         score = length(complete_variables)
                     )
                 })
-                # }}}
                 scores <- vapply(scored, `[[`, integer(1L), "score")
                 if (!length(scores) || max(scores) == 0L) {
                     next
@@ -578,7 +562,6 @@ shift_resolve__cmip6_candidates <- function(
                 }
                 preferred <- vapply(
                     scored,
-                    # vapply callback {{{
                     function(value) {
                         if (
                             !is.na(primary_grid) &&
@@ -588,7 +571,6 @@ shift_resolve__cmip6_candidates <- function(
                         }
                         if (identical(value$grid, "gn")) 2L else 3L
                     },
-                    # }}}
                     integer(1L)
                 )
                 chosen <- scored[[order(
@@ -661,7 +643,6 @@ shift_resolve__cmip6_candidates <- function(
             requirement_key <- paste(
                 vapply(
                     names(selected_sources),
-                    # vapply callback {{{
                     function(canonical) {
                         sprintf(
                             "%s=%s",
@@ -669,7 +650,6 @@ shift_resolve__cmip6_candidates <- function(
                             paste(selected_sources[[canonical]], collapse = "+")
                         )
                     },
-                    # }}}
                     character(1L)
                 ),
                 collapse = ";"
@@ -838,9 +818,7 @@ shift_resolve__cmip6_candidate_file_count <- function(
     }
     logical_ids <- tryCatch(
         store__logical_file_id(files),
-        # error {{{
         error = function(error) NULL
-        # }}}
     )
     if (!is.null(logical_ids)) {
         return(as.integer(data.table::uniqueN(logical_ids)))
@@ -907,7 +885,6 @@ shift_resolve__cmip6_coverage_candidates <- function(
     candidates <- candidates[complete %in% TRUE]
     counts <- vapply(
         seq_len(nrow(candidates)),
-        # vapply callback {{{
         function(index) {
             shift_resolve__cmip6_candidate_file_count(
                 catalog,
@@ -916,7 +893,6 @@ shift_resolve__cmip6_coverage_candidates <- function(
                 years
             )
         },
-        # }}}
         integer(1L)
     )
     data.table::set(candidates, j = "source_file_count", value = counts)
@@ -1158,13 +1134,11 @@ shift_resolve__choose_cmip6_candidates <- function(
             }
             common_partitions <- Reduce(
                 intersect,
-                # lapply callback {{{
                 lapply(member, function(value) {
                     unique(
                         available[variant_label == value]$required_partition_key
                     )
                 })
-                # }}}
             )
             common_partitions <- common_partitions[
                 !is.na(common_partitions) & nzchar(common_partitions)
@@ -1172,7 +1146,6 @@ shift_resolve__choose_cmip6_candidates <- function(
             if (is.null(grid) && length(common_partitions) > 1L) {
                 native <- common_partitions[vapply(
                     common_partitions,
-                    # vapply callback {{{
                     function(value) {
                         all(grepl(
                             "=gn$",
@@ -1183,7 +1156,6 @@ shift_resolve__choose_cmip6_candidates <- function(
                             )[[1L]]
                         ))
                     },
-                    # }}}
                     logical(1L)
                 )]
                 if (length(native)) {
@@ -1252,7 +1224,6 @@ shift_resolve__cmip6_partial_candidates <- function(
     requirements = NULL,
     grid = NULL
 ) {
-    # lapply callback {{{
     parts <- lapply(experiments, function(experiment) {
         rows <- shift_resolve__cmip6_candidates(
             catalog,
@@ -1268,7 +1239,6 @@ shift_resolve__cmip6_partial_candidates <- function(
         rows[, requested_experiment := experiment]
         rows
     })
-    # }}}
     rows <- data.table::rbindlist(parts, use.names = TRUE, fill = TRUE)
     if (!nrow(rows)) {
         return(rows)
@@ -1445,7 +1415,6 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
         # data.table symbols that should be registered as global variables.
         combined[["future_items"]] <- lapply(
             seq_len(nrow(combined)),
-            # lapply callback {{{
             function(i) {
                 if (is.na(combined[["future_complete"]][[i]])) {
                     "future: identity unavailable"
@@ -1460,11 +1429,9 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
                     )
                 }
             }
-            # }}}
         )
         combined[["reference_items"]] <- lapply(
             seq_len(nrow(combined)),
-            # lapply callback {{{
             function(i) {
                 if (!isTRUE(reference_required)) {
                     character()
@@ -1481,7 +1448,6 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
                     )
                 }
             }
-            # }}}
         )
         combined[["missing_count"]] <- lengths(combined[["future_items"]]) +
             lengths(combined[["reference_items"]])
@@ -1495,14 +1461,12 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
             combined[["variant_label"]] %in% "r1i1p1f1"
         combined[["preferred_grid"]] <- vapply(
             combined[["required_partition_key"]],
-            # vapply callback {{{
             function(value) {
                 if (is.na(value) || !nzchar(value)) {
                     return(FALSE)
                 }
                 all(grepl("=gn$", strsplit(value, ";", fixed = TRUE)[[1L]]))
             },
-            # }}}
             logical(1L)
         )
         data.table::setorderv(
@@ -2115,7 +2079,6 @@ shift_resolve__with_query_reporter <- function(reporter, query, phase, expr) {
     records <- 0L
     # libcurl's download vector contains total bytes and bytes received. Count
     # responses only after successful parsing, including empty count queries.
-    # callback {{{
     callback <- function(progress) {
         state <- shift_stage__coalesce(progress$state, "transfer")
         now <- as.numeric(Sys.time())
@@ -2171,7 +2134,6 @@ shift_resolve__with_query_reporter <- function(reporter, query, phase, expr) {
         )
         invisible(TRUE)
     }
-    # }}}
     query_private <- priv(query)
     old <- query_private$progress_callback
     query_private$progress_callback <- callback
@@ -2186,37 +2148,27 @@ shift_resolve__with_query_reporter <- function(reporter, query, phase, expr) {
 # shift_resolve__resolver_failure_diagnostic {{{
 shift_resolve__resolver_failure_diagnostic <- function(records) {
     records <- Filter(Negate(is.null), records)
-    # vapply callback {{{
     kinds <- vapply(records, function(record) record$kind, character(1L))
-    # }}}
     # Count one or several normalized failure categories without repeatedly
     # exposing table mechanics throughout the aggregate constructor.
-    # count {{{
     count <- function(kind) sum(kinds %in% kind)
-    # }}}
-    # Filter callback {{{
     structured <- Filter(function(record) !is.null(record$resolution), records)
-    # }}}
     useful <- Filter(
-        # Filter callback {{{
         function(record) {
             !is.null(record$resolution$closest)
         },
-        # }}}
         structured
     )
     closest_record <- NULL
     if (length(useful)) {
         missing_counts <- vapply(
             useful,
-            # vapply callback {{{
             function(record) {
                 length(shift_stage__coalesce(
                     record$resolution$missing,
                     character()
                 ))
             },
-            # }}}
             integer(1L)
         )
         closest_record <- useful[[which.min(missing_counts)]]
@@ -2251,7 +2203,6 @@ shift_resolve__resolver_failure_diagnostic <- function(records) {
     } else {
         "inspect"
     }
-    # lapply callback {{{
     attempts <- lapply(records, function(record) {
         list(
             node = record$node,
@@ -2260,7 +2211,6 @@ shift_resolve__resolver_failure_diagnostic <- function(records) {
             reference_files = record$reference_files
         )
     })
-    # }}}
     list(
         kind = "resolver_exhausted",
         summary = "No ESGF index node resolved a complete CMIP6 input set.",
@@ -2342,7 +2292,6 @@ shift_resolve__abort_resolver_exhausted <- function(records) {
 # no catalog discovery or service selection is repeated for another city.
 # shift_resolve__import_shared_inputs {{{
 shift_resolve__import_shared_inputs <- function(inputs, store) {
-    # lapply callback {{{
     stages <- lapply(c("files", "reference_files"), function(role) {
         ref <- inputs[[role]]
         if (is.null(ref)) {
@@ -2374,7 +2323,6 @@ shift_resolve__import_shared_inputs <- function(inputs, store) {
             query_id
         )
     })
-    # }}}
     list(
         files = stages[[1L]],
         reference_files = stages[[2L]],
@@ -2677,9 +2625,7 @@ shift_resolve__collect_resolved_inputs <- function(
                     index_node = node
                 )
             },
-            # error {{{
             error = function(e) e
-            # }}}
         )
         if (!inherits(attempt, "error")) {
             if (!is.null(reporter)) {
@@ -2964,12 +2910,10 @@ shift_resolve__files_for_partitions <- function(
         files@ids$query_id,
         result_type = "File"
     )
-    # result$filter callback {{{
     selected <- result$filter(function(rows) {
         shift_resolve__partition_row_match(rows, partitions, experiments) &
             shift_resolve__file_year_match(rows, years)
     })
-    # }}}
     if (!selected$count()) {
         cli::cli_abort(
             "Resolved {role} CMIP6 partitions contain no downloadable File records."

@@ -95,7 +95,6 @@ shift_batch_window__windows <- function(axis, acquisition, consumer_count) {
         j = "window_id",
         value = vapply(
             seq_len(nrow(windows)),
-            # vapply callback {{{
             function(index) {
                 store__hash(
                     acquisition$acquisition_id[[1L]],
@@ -103,7 +102,6 @@ shift_batch_window__windows <- function(axis, acquisition, consumer_count) {
                     windows$last_index[[index]]
                 )
             },
-            # }}}
             character(1L)
         )
     )
@@ -158,7 +156,6 @@ shift_batch_window__window_read <- function(path, identity, demand_ids) {
     chunks <- stats::setNames(
         vapply(
             selected,
-            # vapply callback {{{
             function(chunk) {
                 expected <- paste0(
                     store__hash(
@@ -184,7 +181,6 @@ shift_batch_window__window_read <- function(path, identity, demand_ids) {
                 }
                 file
             },
-            # }}}
             character(1L)
         ),
         as.character(demand_ids)
@@ -232,7 +228,6 @@ shift_batch_window__window_write <- function(
     value_groups <- split(values, by = "demand_id", keep.by = TRUE)
     sources <- attr(values, "grid_sources", exact = TRUE)
     source_groups <- split(sources, by = "demand_id", keep.by = TRUE)
-    # lapply callback {{{
     chunks <- lapply(as.character(demand_ids), function(demand_id) {
         filename <- paste0(
             store__hash(
@@ -262,7 +257,6 @@ shift_batch_window__window_write <- function(
         }
         list(demand_id = demand_id, file = filename, sha256 = sha)
     })
-    # }}}
     receipt_path <- paste0(path, ".json")
     receipt_tmp <- tempfile(pattern = "receipt-", tmpdir = dirname(path))
     on.exit(if (file.exists(receipt_tmp)) unlink(receipt_tmp), add = TRUE)
@@ -301,7 +295,6 @@ shift_batch_window__source_metadata <- function(
     ])
     counts <- vapply(
         seq_len(nrow(requested)),
-        # vapply callback {{{
         function(index) {
             length(cf_time__range_indices(
                 axis$values,
@@ -312,7 +305,6 @@ shift_batch_window__source_metadata <- function(
                 )
             ))
         },
-        # }}}
         integer(1L)
     )
     match_index <- match(
@@ -398,11 +390,9 @@ shift_batch_window__seed_consumer <- function(
 ) {
     wanted_id <- as.character(consumer$demand_id[[1L]])
     pieces <- Filter(
-        # Filter callback {{{
         function(piece) {
             !is.null(piece) && !is.null(piece[[wanted_id]])
         },
-        # }}}
         pieces
     )
     if (!length(pieces)) {
@@ -411,7 +401,6 @@ shift_batch_window__seed_consumer <- function(
             call = NULL
         )
     }
-    # lapply callback {{{
     chunks <- lapply(pieces, function(piece) {
         payload <- tryCatch(
             readRDS(piece[[wanted_id]]),
@@ -430,7 +419,6 @@ shift_batch_window__seed_consumer <- function(
         }
         payload
     })
-    # }}}
     values <- data.table::rbindlist(
         lapply(chunks, `[[`, "data"),
         use.names = TRUE
@@ -560,7 +548,6 @@ shift_batch_window__seed_pending <- function(
 shift_batch_window__cache_paths <- function(acquisition, consumers) {
     vapply(
         seq_len(nrow(consumers)),
-        # vapply callback {{{
         function(index) {
             consumer <- consumers[index]
             plan <- data.table::data.table(
@@ -573,7 +560,6 @@ shift_batch_window__cache_paths <- function(acquisition, consumers) {
             )
             store__extract_cache_path(plan, acquisition)
         },
-        # }}}
         character(1L)
     )
 }
@@ -736,9 +722,7 @@ shift_batch_window__prefetch_acquisition <- function(
                 "units",
                 index = 1L
             ))[[1L]],
-            # error {{{
             error = function(error) NA_character_
-            # }}}
         )
         # Resolve this acquisition's bounds once, then subset them in each
         # value window. This avoids extra network round trips for long periods
@@ -912,11 +896,9 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
     }
     statuses <- vapply(
         batch@meta$children,
-        # vapply callback {{{
         function(child) {
             shift_status(child, refresh = FALSE)
         },
-        # }}}
         character(1L)
     )
     if (all(statuses == "completed")) {
@@ -941,7 +923,6 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
         by = "acquisition_id",
         keep.by = TRUE
     )
-    # lapply callback {{{
     jobs <- lapply(seq_len(nrow(shared$acquisitions)), function(index) {
         acquisition <- shared$acquisitions[index]
         consumers <- links[[acquisition$acquisition_id[[1L]]]]
@@ -975,12 +956,10 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
             cached = cached
         )
     })
-    # }}}
     source__apply(
         Filter(Negate(is.null), jobs),
         source__read_acquisition,
         reporter = reporter,
-        # on_error {{{
         on_error = function(job, error) {
             failures[[job$acquisition$acquisition_id[[1L]]]] <<- list(
                 file = job$acquisition$filename[[1L]],
@@ -989,8 +968,6 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
                 occurred_at = Sys.time()
             )
         },
-        # }}}
-        # collect {{{
         collect = function(job, outcome) {
             if (is.list(outcome) && !is.null(outcome$unavailable)) {
                 skip_count <<- skip_count + 1L
@@ -1003,7 +980,6 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
                 completed <<- completed + 1L
             }
         }
-        # }}}
     )
     if (skip_count) {
         cli::cli_warn(c(

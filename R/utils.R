@@ -67,11 +67,9 @@ verbose <- function(...) {
     msg <- paste0(
         vapply(
             exprs,
-            # vapply callback {{{
             function(expr) {
                 as.character(eval(expr, parent.frame()))
             },
-            # }}}
             character(1L)
         ),
         collapse = ""
@@ -131,11 +129,9 @@ checkmate_validator <- function(check, ..., label = NULL) {
     args <- list(...)
     force(label)
 
-    # { callback {{{
     function(value) {
         checkmate_result(do.call(check, c(list(value), args)), label = label)
     }
-    # }}}
 }
 # }}}
 
@@ -311,7 +307,6 @@ checkmate_property <- function(
             class = spec$class,
             getter = getter,
             setter = setter,
-            # validator {{{
             validator = function(value) {
                 idx <- checkmate_match_rule(value, spec$rules)
 
@@ -321,7 +316,6 @@ checkmate_property <- function(
 
                 checkmate_validate_rule(value, spec$rules[[idx]])
             },
-            # }}}
             default = default,
             name = name
         ))
@@ -391,7 +385,6 @@ eval_with_bang <- function(..., .env = parent.frame()) {
     }
     checkmate::assert_list(dots, .var.name = "Input", min.len = 1L)
 
-    # lapply callback {{{
     lapply(dots, function(expr) {
         negate <- !is.symbol(expr) &&
             !is.null(expr) &&
@@ -403,7 +396,6 @@ eval_with_bang <- function(..., .env = parent.frame()) {
 
         list(value = eval(expr, .env), negate = negate)
     })
-    # }}}
 }
 # }}}
 
@@ -540,7 +532,6 @@ format.epwshiftr_bytes <- function(x, digits = 2L, ...) {
     labels <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
     vapply(
         as.numeric(x),
-        # vapply callback {{{
         function(value) {
             if (is.na(value)) {
                 return(NA_character_)
@@ -567,7 +558,6 @@ format.epwshiftr_bytes <- function(x, digits = 2L, ...) {
                 )
             }
         },
-        # }}}
         character(1L)
     )
 }
@@ -863,14 +853,12 @@ manifest_acquire_lock <- function(path, timeout = 30, stale_after = 24 * 3600) {
                 ),
                 silent = TRUE
             )
-            # return callback {{{
             return(function() {
                 if (dir.exists(lock_dir)) {
                     unlink(lock_dir, recursive = TRUE, force = TRUE)
                 }
                 invisible(NULL)
             })
-            # }}}
         }
 
         if (manifest_lock_stale(lock_dir, stale_after)) {
@@ -1017,9 +1005,7 @@ mirai_worker_bindings <- function(symbols = character()) {
     bindings <- mget(symbols, envir = ns, inherits = FALSE)
     local <- vapply(
         bindings,
-        # vapply callback {{{
         function(x) is.function(x) && identical(environment(x), ns),
-        # }}}
         logical(1L)
     )
     attr(bindings, "local_symbols") <- names(bindings)[local]
@@ -1051,9 +1037,7 @@ mirai_lapply <- function(
     dot_args <- list(...)
 
     if (workers <= 1L) {
-        # lapply callback {{{
         return(lapply(X, function(x) do.call(FUN, c(list(x), dot_args))))
-        # }}}
     }
 
     compute_profile <- sprintf(
@@ -1065,7 +1049,6 @@ mirai_lapply <- function(
     on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
 
     worker_symbols <- mirai_worker_bindings(symbols)
-    # lapply callback {{{
     tasks <- lapply(X, function(x) {
         mirai::mirai(
             {
@@ -1095,7 +1078,6 @@ mirai_lapply <- function(
             .compute = compute_profile
         )
     })
-    # }}}
 
     results <- lapply(tasks, mirai::collect_mirai)
     errors <- vapply(results, mirai_error_message, character(1L))
@@ -1137,14 +1119,10 @@ mirai_map <- function(
         stop("Mapped inputs must have the same length.", call. = FALSE)
     }
 
-    # lapply callback {{{
     items <- lapply(seq_len(lens[[1L]]), function(i) lapply(args, `[[`, i))
-    # }}}
     mirai_lapply(
         items,
-        # mirai_lapply callback {{{
         function(item) do.call(FUN, item),
-        # }}}
         workers = workers,
         symbols = symbols,
         label = label
@@ -1288,9 +1266,7 @@ store_cmip6_index_active_path <- function() {
 
     tryCatch(
         store$artifact_path(artifact_id),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
 }
 # }}}

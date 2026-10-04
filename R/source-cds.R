@@ -265,22 +265,18 @@ cds__http <- function(
     do.call(curl::handle_setopt, c(list(handle = handle), options))
     response <- tryCatch(
         curl::curl_fetch_memory(url, handle = handle),
-        # error {{{
         error = function(error) {
             cli::cli_abort(
                 "CDS request failed: {cds__redact(conditionMessage(error), key)}",
                 class = "epwshiftr_cds_request_error"
             )
         }
-        # }}}
     )
     text <- rawToChar(response$content)
     parsed <- if (nzchar(text)) {
         tryCatch(
             jsonlite::fromJSON(text, simplifyVector = FALSE),
-            # error {{{
             error = function(error) list(message = text)
-            # }}}
         )
     } else {
         list()
@@ -326,13 +322,11 @@ cds__link <- function(response, relation, required = TRUE) {
     checkmate::assert_flag(required)
     links <- shift_stage__coalesce(response$links, list())
     matches <- Filter(
-        # Filter callback {{{
         function(link) {
             identical(as.character(link$rel), relation) &&
                 !is.null(link$href) &&
                 nzchar(as.character(link$href))
         },
-        # }}}
         links
     )
     if (length(matches) == 1L) {
@@ -365,7 +359,6 @@ cds__submit <- function(dataset_id, request, config = cds__config()) {
             key = config$key,
             body = list(inputs = request)
         ),
-        # epwshiftr_cds_license_error {{{
         epwshiftr_cds_license_error = function(error) {
             cli::cli_abort(
                 c(
@@ -381,7 +374,6 @@ cds__submit <- function(dataset_id, request, config = cds__config()) {
                 provider_message = error$provider_message
             )
         }
-        # }}}
     )
     monitor <- cds__absolute_url(
         cds__link(response$body, "monitor"),
@@ -545,14 +537,12 @@ cds__extract_netcdf_archive <- function(archive, directory) {
     checkmate::assert_directory_exists(directory)
     manifest <- tryCatch(
         utils::unzip(archive, list = TRUE),
-        # error {{{
         error = function(error) {
             cli::cli_abort(
                 "CDS returned an unreadable ZIP archive: {conditionMessage(error)}",
                 class = "epwshiftr_cds_response_error"
             )
         }
-        # }}}
     )
     members <- manifest$Name[grepl("[.]nc$", manifest$Name, ignore.case = TRUE)]
     safe_member <- length(members) == 1L &&
@@ -571,14 +561,12 @@ cds__extract_netcdf_archive <- function(archive, directory) {
             exdir = directory,
             junkpaths = TRUE
         ),
-        # error {{{
         error = function(error) {
             cli::cli_abort(
                 "CDS NetCDF extraction failed: {conditionMessage(error)}",
                 class = "epwshiftr_cds_response_error"
             )
         }
-        # }}}
     )
     if (length(extracted) != 1L || !file.exists(extracted)) {
         cli::cli_abort(
@@ -612,14 +600,12 @@ cds__download <- function(asset, target, config = cds__config()) {
             mode = "wb",
             handle = handle
         ),
-        # error {{{
         error = function(error) {
             cli::cli_abort(
                 "CDS result download failed: {cds__redact(conditionMessage(error), config$key)}",
                 class = "epwshiftr_cds_download_error"
             )
         }
-        # }}}
     )
     if (
         length(asset$size) &&
@@ -688,12 +674,10 @@ cds__retrieve <- function(
             poll_interval = poll_interval,
             reporter = reporter
         ),
-        # epwshiftr_shift_cancelled {{{
         epwshiftr_shift_cancelled = function(error) {
             try(cds__cancel(submitted, config = config), silent = TRUE)
             stop(error)
         }
-        # }}}
     )
     asset <- cds__result(completed, config = config)
     path <- cds__download(asset, target, config = config)

@@ -45,9 +45,7 @@ edcdf_test__settings <- function(variable) {
     profiles <- edcdf__profiles()
     index <- which(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
-        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings
@@ -400,26 +398,22 @@ test_that("profiles expose monthly evidence and daily adaptation", {
     )
     expect_true(all(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) {
             identical(
                 profile$evidence,
                 "experimental"
             )
         },
-        # }}}
         logical(1L)
     )))
     expect_true(all(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) {
             identical(
                 profile$metadata$method_variable_source,
                 "li_2010_monthly"
             )
         },
-        # }}}
         logical(1L)
     )))
     expect_identical(

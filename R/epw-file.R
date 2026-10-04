@@ -192,7 +192,6 @@ epw_file__parse_headers <- function(lines, path = NULL) {
             "An EPW file must contain exactly eight header records before hourly data."
         )
     }
-    # lapply callback {{{
     records <- lapply(lines, function(line) {
         fields <- epw_file__split_header(line)
         if (!length(fields) || !nzchar(trimws(fields[[1L]]))) {
@@ -206,7 +205,6 @@ epw_file__parse_headers <- function(lines, path = NULL) {
             dirty = FALSE
         )
     })
-    # }}}
     names_found <- vapply(records, `[[`, character(1L), "name")
     if (!identical(names_found, EPW_FILE_HEADER_NAMES)) {
         location <- if (is.null(path)) "the input" else path
@@ -503,26 +501,22 @@ epw_file_coerce <- function(epw, dir = NULL) {
     } else {
         snapshot <- tryCatch(
             epw$clone(deep = TRUE),
-            # error {{{
             error = function(e) {
                 cli::cli_abort(
                     "An external {.cls Epw} object must provide `$clone(deep = TRUE)`.",
                     parent = e
                 )
             }
-            # }}}
         )
         path <- tempfile("epwshiftr-external-epw-", fileext = ".epw")
         tryCatch(
             snapshot$save(path = path, overwrite = TRUE),
-            # error {{{
             error = function(e) {
                 cli::cli_abort(
                     "Failed to save the external {.cls Epw} object as an internal EPW snapshot.",
                     parent = e
                 )
             }
-            # }}}
         )
         if (!file.exists(path)) {
             cli::cli_abort(
@@ -695,7 +689,6 @@ epw_file__missing_summary <- function(weather, fields = NULL) {
     } else {
         rep.int(NA_integer_, nrow(weather))
     }
-    # lapply callback {{{
     rows <- lapply(fields, function(field) {
         if (field %in% names(EPW_FILE_FIELD_SPECS)) {
             spec <- EPW_FILE_FIELD_SPECS[[field]]
@@ -717,7 +710,6 @@ epw_file__missing_summary <- function(weather, fields = NULL) {
             by = "month"
         ][, epw_field := field]
     })
-    # }}}
     out <- data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
     data.table::setcolorder(
         out,
@@ -789,7 +781,6 @@ epw_file__ground_properties <- function(fields) {
     if (is.na(count) || count <= 0L || length(fields) < 1L + count * width) {
         return(data.table::data.table())
     }
-    # lapply callback {{{
     rows <- lapply(seq_len(count), function(i) {
         start <- 2L + (i - 1L) * width
         values <- suppressWarnings(as.numeric(fields[start:(start + 3L)]))
@@ -805,7 +796,6 @@ epw_file__ground_properties <- function(fields) {
             specific_heat = values[[4L]]
         )
     })
-    # }}}
     rows <- Filter(Negate(is.null), rows)
     if (!length(rows)) {
         data.table::data.table()
@@ -939,7 +929,6 @@ epw_file__select_week <- function(
         daily,
         data.table::copy(daily[seq_len(6L)])
     ))
-    # lapply callback {{{
     rows <- lapply(seq_len(count), function(start) {
         window <- extended[start:(start + 6L)]
         if (!all(window$month %in% months)) {
@@ -951,7 +940,6 @@ epw_file__select_week <- function(
             temperature = mean(window$temperature)
         )
     })
-    # }}}
     rows <- Filter(Negate(is.null), rows)
     if (!length(rows)) {
         return(NULL)

@@ -46,9 +46,7 @@ sdm_test__settings <- function(variable) {
     profiles <- sdm__profiles()
     index <- which(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
-        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings
@@ -316,9 +314,7 @@ test_that("temperature SDM preserves identity across native CF calendars", {
 })
 
 test_that("precipitation SDM adjusts wet frequency on future ranks", {
-    # mm_per_day {{{
     mm_per_day <- function(value) value / 86400
-    # }}}
     observed <- sdm_test__series(
         "pr",
         2001L,
@@ -367,9 +363,7 @@ test_that("precipitation SDM adjusts wet frequency on future ranks", {
 })
 
 test_that("precipitation SDM records unsupported wet-day increases", {
-    # mm_per_day {{{
     mm_per_day <- function(value) value / 86400
-    # }}}
     observed <- sdm_test__series(
         "pr",
         2001L,
@@ -454,14 +448,12 @@ test_that("SDM rejects incompatible settings and invalid inputs", {
 
     precipitation <- lapply(
         boundary$group@inputs,
-        # lapply callback {{{
         function(data) {
             data$variable_id <- "pr"
             data$units <- "kg m-2 s-1"
             data$value <- abs(data$value) / 86400
             data
         }
-        # }}}
     )
     precipitation$model_future$value[[1L]] <- -1
     precipitation_settings <- sdm_test__settings("pr")

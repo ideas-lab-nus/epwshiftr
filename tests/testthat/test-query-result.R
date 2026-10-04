@@ -285,9 +285,7 @@ test_that("EsgResult$load() restores dynamic fields", {
         query_result_test_dataset_docs()
     )
     testthat::local_mocked_bindings(
-        # query__load {{{
         query__load = function(file, schema = NULL) state,
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -313,9 +311,7 @@ test_that("EsgResult$load() validates result type", {
         query_result_test_params("File")
     )
     testthat::local_mocked_bindings(
-        # query__load {{{
         query__load = function(file, schema = NULL) state,
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -614,36 +610,26 @@ test_that("EsgResult$filter() filters with predicates", {
         query_result_test_params("File")
     )
 
-    # result$filter callback {{{
     filtered <- result$filter(function(dt) grepl("2050", dt$title))
-    # }}}
     expect_s3_class(filtered, "EsgResultFile")
     expect_identical(filtered$id, result$id[1L])
     expect_identical(filtered$selection()$source_indices, 1L)
 
-    # result$filter callback {{{
     formatted <- result$filter(
         function(dt) rep(TRUE, nrow(dt)),
         formatted = TRUE
     )
-    # }}}
     expect_identical(formatted$id, result$id)
 
-    # result$filter callback {{{
     expect_error(result$filter(function(dt) TRUE), "predicate result")
-    # }}}
-    # result$filter callback {{{
     expect_error(
         result$filter(function(dt) c(TRUE, NA, FALSE)),
         "predicate result"
     )
-    # }}}
-    # result$filter callback {{{
     expect_error(
         result$filter(function(dt) seq_len(nrow(dt))),
         "predicate result"
     )
-    # }}}
 })
 # }}}
 # EsgResult$slice() / EsgResult$selection() {{{
@@ -719,9 +705,7 @@ test_that("concurrent URL check wrappers preserve their HTTP semantics", {
         probe_concurrency = 2L
     )
     expect_named(node, c(ok_url, missing_url))
-    # vapply callback {{{
     expect_true(all(vapply(node, function(x) isTRUE(x$reachable), logical(1L))))
-    # }}}
     expect_identical(node[[ok_url]]$probe_url, ok_url)
     expect_identical(node[[missing_url]]$probe_url, missing_url)
 
@@ -741,20 +725,16 @@ test_that("concurrent URL check wrappers preserve their HTTP semantics", {
         probe_concurrency = 2L
     )
     expect_named(latency, c(ok_url, missing_url))
-    # vapply callback {{{
     expect_true(all(vapply(
         latency,
         function(x) is.finite(x$latency),
         logical(1L)
     )))
-    # }}}
-    # vapply callback {{{
     expect_true(all(vapply(
         latency,
         function(x) is.na(x$throughput),
         logical(1L)
     )))
-    # }}}
 })
 
 test_that("OPeNDAP URL checks require a valid DDS response", {
@@ -827,7 +807,6 @@ test_that("EsgResult$reachable() returns per-record service diagnostics", {
     timeouts <- numeric()
     agents <- character()
     testthat::local_mocked_bindings(
-        # query_result__reach_service_urls {{{
         query_result__reach_service_urls = function(
             urls,
             service,
@@ -867,7 +846,6 @@ test_that("EsgResult$reachable() returns per-record service diagnostics", {
                 probe_cached = FALSE
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -986,7 +964,6 @@ test_that("EsgResult$reachable() probes data node root URLs by default", {
 
     calls <- character()
     testthat::local_mocked_bindings(
-        # query_result__reach_node_urls {{{
         query_result__reach_node_urls = function(
             urls,
             timeout = 5,
@@ -994,7 +971,6 @@ test_that("EsgResult$reachable() probes data node root URLs by default", {
             probe_concurrency = 1L
         ) {
             calls <<- c(calls, urls)
-            # lapply callback {{{
             stats::setNames(
                 lapply(urls, function(url) {
                     list(
@@ -1010,9 +986,7 @@ test_that("EsgResult$reachable() probes data node root URLs by default", {
                 }),
                 urls
             )
-            # }}}
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1093,7 +1067,6 @@ test_that("EsgResult$repair_urls() repairs unreachable OPeNDAP URLs using reacha
     probe_calls <- list()
     collect_calls <- list()
     testthat::local_mocked_bindings(
-        # query_result__reach_nodes {{{
         query_result__reach_nodes = function(
             data_node,
             timeout = 5,
@@ -1127,8 +1100,6 @@ test_that("EsgResult$repair_urls() repairs unreachable OPeNDAP URLs using reacha
                 probe_cached = FALSE
             )
         },
-        # }}}
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1169,7 +1140,6 @@ test_that("EsgResult$repair_urls() repairs unreachable OPeNDAP URLs using reacha
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1205,36 +1175,26 @@ test_that("EsgResult$repair_urls() repairs unreachable OPeNDAP URLs using reacha
     expect_equal(length(collect_calls), 1L)
     expect_equal(length(probe_calls), 2L)
     expect_true(all(
-        # vapply callback {{{
         vapply(probe_calls, function(x) x$timeout, numeric(1L)) == 11
-        # }}}
     ))
     expect_true(all(
-        # vapply callback {{{
         vapply(probe_calls, function(x) x$probe_concurrency, integer(1L)) == 2L
-        # }}}
     ))
     expect_true(all(
         vapply(
             probe_calls,
-            # vapply callback {{{
             function(x) x$network_policy$useragent,
-            # }}}
             character(1L)
         ) ==
             "repair-test"
     ))
     expect_true(all(
-        # vapply callback {{{
         vapply(probe_calls, function(x) x$cache_seconds, integer(1L)) == 3600L
-        # }}}
     ))
     expect_true(all(
         vapply(
             probe_calls,
-            # vapply callback {{{
             function(x) x$cache_failures_seconds,
-            # }}}
             integer(1L)
         ) ==
             0L
@@ -1272,7 +1232,6 @@ test_that("EsgResult$repair_urls() prefers reachable replicas already present in
     )
 
     testthat::local_mocked_bindings(
-        # query_result__reach_nodes {{{
         query_result__reach_nodes = function(
             data_node,
             timeout = 5,
@@ -1298,12 +1257,9 @@ test_that("EsgResult$repair_urls() prefers reachable replicas already present in
                 probe_cached = FALSE
             )
         },
-        # }}}
-        # query__collect {{{
         query__collect = function(...) {
             stop("current result replica should avoid an external query")
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1339,7 +1295,6 @@ test_that("EsgResult$expand_replicas() falls back to master and version without 
     candidate_docs$version <- c(20260101L, 20270101L)
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1362,7 +1317,6 @@ test_that("EsgResult$expand_replicas() falls back to master and version without 
                 context = list(query_url = "https://example.org/master-version")
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1398,7 +1352,6 @@ test_that("EsgResult$repair_urls() repairs HTTPServer URLs independently", {
 
     probed <- character()
     testthat::local_mocked_bindings(
-        # query_result__reach_service_urls {{{
         query_result__reach_service_urls = function(
             urls,
             service,
@@ -1421,8 +1374,6 @@ test_that("EsgResult$repair_urls() repairs HTTPServer URLs independently", {
                 probe_cached = FALSE
             )
         },
-        # }}}
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1447,7 +1398,6 @@ test_that("EsgResult$repair_urls() repairs HTTPServer URLs independently", {
                 context = list(query_url = "https://example.org/http-replicas")
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1508,7 +1458,6 @@ test_that("File service resolution composes compatible replica URLs", {
     )
 
     testthat::local_mocked_bindings(
-        # query_result__reach_service_urls {{{
         query_result__reach_service_urls = function(
             urls,
             service,
@@ -1531,8 +1480,6 @@ test_that("File service resolution composes compatible replica URLs", {
                 probe_cached = FALSE
             )
         },
-        # }}}
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1550,7 +1497,6 @@ test_that("File service resolution composes compatible replica URLs", {
                 context = list(query_url = "https://example.org/replicas")
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1620,7 +1566,6 @@ test_that("File service resolution retains unchecked HTTP recovery candidates", 
     )
 
     testthat::local_mocked_bindings(
-        # query_result__repair_urls {{{
         query_result__repair_urls = function(
             result,
             service = c("OPENDAP", "HTTPServer"),
@@ -1629,8 +1574,6 @@ test_that("File service resolution retains unchecked HTTP recovery candidates", 
         ) {
             result
         },
-        # }}}
-        # query_result__reach_service_urls {{{
         query_result__reach_service_urls = function(
             urls,
             service,
@@ -1650,7 +1593,6 @@ test_that("File service resolution retains unchecked HTTP recovery candidates", 
                 probe_cached = FALSE
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1700,7 +1642,6 @@ test_that("File service resolution collapses compatible distributed replicas", {
     )
 
     testthat::local_mocked_bindings(
-        # query_result__repair_urls {{{
         query_result__repair_urls = function(
             result,
             service = c("OPENDAP", "HTTPServer"),
@@ -1709,8 +1650,6 @@ test_that("File service resolution collapses compatible distributed replicas", {
         ) {
             result
         },
-        # }}}
-        # query_result__reach_service_urls {{{
         query_result__reach_service_urls = function(
             urls,
             service,
@@ -1733,7 +1672,6 @@ test_that("File service resolution collapses compatible distributed replicas", {
                 probe_cached = FALSE
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1786,7 +1724,6 @@ test_that("EsgResult$repair_urls() repairs Aggregation URLs with replica queries
     candidate_docs$data_node <- "agg-replica.example.org"
 
     testthat::local_mocked_bindings(
-        # query_result__reach_nodes {{{
         query_result__reach_nodes = function(
             data_node,
             timeout = 5,
@@ -1812,8 +1749,6 @@ test_that("EsgResult$repair_urls() repairs Aggregation URLs with replica queries
                 probe_cached = FALSE
             )
         },
-        # }}}
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1843,7 +1778,6 @@ test_that("EsgResult$repair_urls() repairs Aggregation URLs with replica queries
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1889,7 +1823,6 @@ test_that("EsgResult$repair_urls() keeps original records when repair is impossi
     candidate_docs$data_node <- "still-bad.example.org"
 
     testthat::local_mocked_bindings(
-        # query_result__reach_nodes {{{
         query_result__reach_nodes = function(
             data_node,
             timeout = 5,
@@ -1907,8 +1840,6 @@ test_that("EsgResult$repair_urls() keeps original records when repair is impossi
                 probe_cached = FALSE
             )
         },
-        # }}}
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1931,19 +1862,16 @@ test_that("EsgResult$repair_urls() keeps original records when repair is impossi
                 context = list(query_url = "https://example.org/no-replica")
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
     warnings <- character()
     repaired <- withCallingHandlers(
         result$repair_urls(),
-        # warning {{{
         warning = function(w) {
             warnings <<- c(warnings, conditionMessage(w))
             invokeRestart("muffleWarning")
         }
-        # }}}
     )
 
     expect_true(any(grepl("instance_id", warnings)))
@@ -1988,7 +1916,6 @@ test_that("time-range helpers normalize columns and preserve paired fallback", {
     )
     calls <- new.env(parent = emptyenv())
     calls$count <- 0L
-    # query_result__fill_time_ranges callback {{{
     ranges <- query_result__fill_time_ranges(docs, function() {
         calls$count <- calls$count + 1L
         c(
@@ -1997,7 +1924,6 @@ test_that("time-range helpers normalize columns and preserve paired fallback", {
             "tas_day_Model_x_unknown.nc"
         )
     })
-    # }}}
 
     expect_identical(calls$count, 1L)
     expect_s3_class(ranges$datetime_start, "POSIXct")
@@ -2019,9 +1945,7 @@ test_that("time-range helpers normalize columns and preserve paired fallback", {
     complete <- docs[1L, , drop = FALSE]
     untouched <- expect_silent(query_result__fill_time_ranges(
         complete,
-        # query_result__fill_time_ranges callback {{{
         function() stop("complete metadata must not resolve labels")
-        # }}}
     ))
     expect_identical(
         format(untouched$datetime_start, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
@@ -2041,12 +1965,10 @@ test_that("EsgResult$filter_time() filters File and Aggregation results using DR
         warnings <- character()
         filtered <- withCallingHandlers(
             result$filter_time("2050-06-01", "2050-06-30", method = "drs"),
-            # warning {{{
             warning = function(w) {
                 warnings <<- c(warnings, conditionMessage(w))
                 invokeRestart("muffleWarning")
             }
-            # }}}
         )
         expect_identical(
             warnings,
@@ -2112,12 +2034,10 @@ test_that("EsgResult$filter_time() auto mode preserves metadata and fills DRS ga
     warnings <- character()
     filtered <- withCallingHandlers(
         result$filter_time("2050-06-01", "2050-06-30", method = "auto"),
-        # warning {{{
         warning = function(w) {
             warnings <<- c(warnings, conditionMessage(w))
             invokeRestart("muffleWarning")
         }
-        # }}}
     )
     ranges <- filtered$to_data_table(
         c("id", "datetime_start", "datetime_end")
@@ -2159,29 +2079,21 @@ test_that("EsgResult$filter_time() context persists through save/load", {
 })
 
 test_that("EsgResult$filter_time() filters File results using OPeNDAP time axes", {
-    # FakeEsgDataset {{{
     FakeEsgDataset <- R6::R6Class(
         "FakeEsgDataset",
         public = list(
             target = NULL,
-            # initialize {{{
             initialize = function(target) {
                 self$target <- target
             },
-            # }}}
-            # open {{{
             open = function() {
                 private$opened <- TRUE
                 self
             },
-            # }}}
-            # close {{{
             close = function() {
                 private$opened <- FALSE
                 invisible(self)
             },
-            # }}}
-            # get_time_axis {{{
             get_time_axis = function(...) {
                 if (grepl("unknown", self$target)) {
                     stop("no time axis", call. = FALSE)
@@ -2199,18 +2111,14 @@ test_that("EsgResult$filter_time() filters File results using OPeNDAP time axes"
                 }
                 list(values = values)
             }
-            # }}}
         ),
         active = list(
-            # is_open {{{
             is_open = function() private$opened
-            # }}}
         ),
         private = list(
             opened = FALSE
         )
     )
-    # }}}
     testthat::local_mocked_bindings(
         EsgDataset = FakeEsgDataset,
         .package = "epwshiftr"
@@ -2224,12 +2132,10 @@ test_that("EsgResult$filter_time() filters File results using OPeNDAP time axes"
     warnings <- character()
     filtered <- withCallingHandlers(
         result$filter_time("2050-06-01", "2050-06-30", method = "opendap"),
-        # warning {{{
         warning = function(w) {
             warnings <<- c(warnings, conditionMessage(w))
             invokeRestart("muffleWarning")
         }
-        # }}}
     )
 
     expect_true(any(grepl("OPeNDAP time axes", warnings)))
@@ -2398,11 +2304,9 @@ test_that("EsgResultDataset$collect() handles empty child results without queryi
     datasets <- query_result_test_object("Dataset", docs)
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(...) {
             stop("query__collect should not be called")
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -2448,7 +2352,6 @@ test_that("EsgResultDataset$collect() inherits controls and normalizes limit", {
 
     calls <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -2478,7 +2381,6 @@ test_that("EsgResultDataset$collect() inherits controls and normalizes limit", {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -2558,7 +2460,6 @@ test_that("EsgResultDataset$collect() accepts data node scope and clears datetim
 
     calls <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -2581,7 +2482,6 @@ test_that("EsgResultDataset$collect() accepts data node scope and clears datetim
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -2622,7 +2522,6 @@ test_that("EsgResultDataset$collect() ignores record index node metadata", {
 
     calls <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -2668,7 +2567,6 @@ test_that("EsgResultDataset$collect() ignores record index node metadata", {
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -2712,7 +2610,6 @@ test_that("EsgResultDataset$collect() batches large child queries", {
     # Mock child collection so the test can inspect per-batch query inputs
     # without issuing ESGF requests.
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -2764,7 +2661,6 @@ test_that("EsgResultDataset$collect() batches large child queries", {
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -2775,9 +2671,7 @@ test_that("EsgResultDataset$collect() batches large child queries", {
 
     expect_length(calls, 3L)
     expect_equal(
-        # vapply callback {{{
         vapply(calls, function(call) length(call$dataset_id), integer(1L)),
-        # }}}
         c(50L, 50L, 5L)
     )
     expect_identical(
@@ -2817,7 +2711,6 @@ test_that("EsgResultDataset$collect() keeps limit global across child batches", 
     # Mock child collection so the test can verify the public `limit` remains
     # global instead of being applied independently to every batch.
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -2866,7 +2759,6 @@ test_that("EsgResultDataset$collect() keeps limit global across child batches", 
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -2902,15 +2794,12 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
         query_result_test_params("Dataset")
     )
 
-    # callback {{{
     callback <- function(event) invisible(event)
-    # }}}
     priv(datasets)$progress_callback <- callback
     calls <- list()
     # Mock child collection so the test can inspect progress forwarding
     # without issuing ESGF requests.
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -2939,7 +2828,6 @@ test_that("EsgResultDataset$collect() passes progress to child query only for no
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -2991,7 +2879,6 @@ test_that("EsgResultDataset$collect() labels progress for child query batches", 
     # Mock child collection so the test can inspect per-batch progress inputs
     # without issuing ESGF requests.
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -3042,7 +2929,6 @@ test_that("EsgResultDataset$collect() labels progress for child query batches", 
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -3078,7 +2964,6 @@ test_that("EsgResultDataset$expand_replicas() queries dataset replicas by identi
 
     calls <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -3133,7 +3018,6 @@ test_that("EsgResultDataset$expand_replicas() queries dataset replicas by identi
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -3356,7 +3240,6 @@ test_that("EsgResultFile$download_plan() deduplicates URL probes", {
     )
     calls <- 0L
     testthat::local_mocked_bindings(
-        # query_result__latency_url {{{
         query_result__latency_url = function(
             url,
             timeout = 5,
@@ -3365,7 +3248,6 @@ test_that("EsgResultFile$download_plan() deduplicates URL probes", {
             calls <<- calls + 1L
             list(latency = 0.5, throughput = NA_real_)
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -3403,11 +3285,9 @@ test_that("EsgResultFile$download_plan() reuses fresh data node probe cache", {
         updated_at = Sys.time()
     )
     testthat::local_mocked_bindings(
-        # query_result__latency_url {{{
         query_result__latency_url = function(...) {
             stop("cached probe should not hit the network")
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -3523,9 +3403,7 @@ test_that("EsgResultFile$download_plan() ranks cooling data nodes after availabl
 # EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() {{{
 test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() validates fallback before side effects", {
     testthat::local_mocked_bindings(
-        # menu {{{
         menu = function(...) 2L,
-        # }}}
         .package = "utils"
     )
 
@@ -3572,9 +3450,7 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() va
 
 test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() falls back to HTTP after OPeNDAP open failures", {
     testthat::local_mocked_bindings(
-        # menu {{{
         menu = function(...) 2L,
-        # }}}
         .package = "utils"
     )
 
@@ -3583,20 +3459,16 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
     calls$downloads <- character()
     calls$closed <- list()
 
-    # FakeEsgDataset {{{
     FakeEsgDataset <- R6::R6Class(
         "FakeEsgDataset",
         lock_objects = FALSE,
         public = list(
             target = NULL,
-            # initialize {{{
             initialize = function(target) {
                 self$target <- target
                 private$nc_handles <- vector("list", length(target))
                 private$opened <- FALSE
             },
-            # }}}
-            # open {{{
             open = function(
                 progress = getOption("epwshiftr.progress", interactive())
             ) {
@@ -3614,22 +3486,17 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
                 private$opened <- TRUE
                 self
             },
-            # }}}
-            # close {{{
             close = function() {
                 calls$closed[[length(calls$closed) + 1L]] <- private$nc_handles
                 private$nc_handles <- vector("list", length(self$target))
                 private$opened <- FALSE
                 invisible(self)
             }
-            # }}}
         ),
         active = list(
-            # is_open {{{
             is_open = function() {
                 private$opened
             }
-            # }}}
         ),
         private = list(
             nc_handles = NULL,
@@ -3637,21 +3504,15 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
             context = list()
         )
     )
-    # }}}
-    # FakeDownloader {{{
     FakeDownloader <- R6::R6Class(
         "FakeDownloader",
         public = list(
             plan = NULL,
-            # enqueue {{{
             enqueue = function(plan, session_label = NULL) {
                 self$plan <- data.table::as.data.table(plan)
                 "session-1"
             },
-            # }}}
-            # run {{{
             run = function(session_id = NULL, ...) {
-                # vapply callback {{{
                 paths <- vapply(
                     self$plan$url,
                     function(url) {
@@ -3662,7 +3523,6 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
                     },
                     character(1L)
                 )
-                # }}}
                 data.table::data.table(
                     task_id = paste0("task-", seq_along(paths)),
                     session_id = session_id,
@@ -3672,15 +3532,12 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
                     selected_url = self$plan$url
                 )
             }
-            # }}}
         )
     )
-    # }}}
 
     testthat::local_mocked_bindings(
         EsgDataset = FakeEsgDataset,
         Downloader = FakeDownloader,
-        # query_result__repair_urls {{{
         query_result__repair_urls = function(
             result,
             service = c("OPENDAP", "HTTPServer"),
@@ -3689,7 +3546,6 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
         ) {
             result
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -3702,12 +3558,10 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
         query_result_test_params("File")
     )
 
-    # error {{{
     err <- tryCatch(
         file_result$open_dataset(fallback = "error"),
         error = function(e) e
     )
-    # }}}
     expect_s3_class(err, "error")
     expect_match(conditionMessage(err), "OPeNDAP is not available")
     expect_match(conditionMessage(err$parent), "remote boom")
@@ -3884,17 +3738,14 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
         query_result_test_params("Aggregation")
     )
 
-    # error {{{
     err <- tryCatch(
         agg_fail_result$open_dataset(fallback = "error"),
         error = function(e) e
     )
-    # }}}
     expect_s3_class(err, "error")
     expect_match(conditionMessage(err), "OPeNDAP is not available")
     expect_match(conditionMessage(err), "record 2 \\(id: file-2\\)")
     expect_match(conditionMessage(err$parent), "remote boom")
-    # vapply callback {{{
     expect_true(any(vapply(
         calls$closed,
         function(handles) {
@@ -3905,7 +3756,6 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
         },
         logical(1L)
     )))
-    # }}}
 
     downloads_before <- calls$downloads
     expect_message(
@@ -3949,7 +3799,6 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
         query_result_test_params("File")
     )
     testthat::local_mocked_bindings(
-        # query_result__repair_urls {{{
         query_result__repair_urls = function(
             result,
             service = c("OPENDAP", "HTTPServer"),
@@ -3958,7 +3807,6 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() fa
         ) {
             repaired
         },
-        # }}}
         .package = "epwshiftr"
     )
     repaired_ds <- expect_s3_class(
@@ -3980,20 +3828,16 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() re
     calls$open_progress <- logical()
     calls$fallback_progress <- list()
 
-    # FakeEsgDataset {{{
     FakeEsgDataset <- R6::R6Class(
         "FakeEsgDataset",
         lock_objects = FALSE,
         public = list(
             target = NULL,
-            # initialize {{{
             initialize = function(target) {
                 self$target <- target
                 private$nc_handles <- vector("list", length(target))
                 private$opened <- FALSE
             },
-            # }}}
-            # open {{{
             open = function(
                 progress = getOption("epwshiftr.progress", interactive())
             ) {
@@ -4006,21 +3850,16 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() re
                 private$opened <- TRUE
                 invisible(self)
             },
-            # }}}
-            # close {{{
             close = function() {
                 private$nc_handles <- vector("list", length(self$target))
                 private$opened <- FALSE
                 invisible(self)
             }
-            # }}}
         ),
         active = list(
-            # is_open {{{
             is_open = function() {
                 private$opened
             }
-            # }}}
         ),
         private = list(
             nc_handles = NULL,
@@ -4028,14 +3867,12 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() re
             context = list()
         )
     )
-    # }}}
 
     bars <- list()
     updates <- list()
     dones <- list()
     testthat::local_mocked_bindings(
         EsgDataset = FakeEsgDataset,
-        # query_result__http_fallback {{{
         query_result__http_fallback = function(
             result,
             indices,
@@ -4049,26 +3886,19 @@ test_that("EsgResultFile$open_dataset() / EsgResultAggregation$open_dataset() re
             ]] <<- progress
             sprintf("/tmp/fallback-%d.nc", indices)
         },
-        # }}}
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(name = NULL, total = NA, ...) {
             bars[[length(bars) + 1L]] <<- list(name = name, total = total)
             paste0("progress-", length(bars))
         },
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(id = NULL, set = NULL, ...) {
             updates[[length(updates) + 1L]] <<- list(id = id, set = set)
         },
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(id = NULL, result = "done", ...) {
             dones[[length(dones) + 1L]] <<- list(id = id, result = result)
         },
-        # }}}
         .package = "cli"
     )
 
@@ -4328,7 +4158,6 @@ test_that("EsgResultDataset$collect() uses offline child fixtures", {
 
     calls <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -4370,7 +4199,6 @@ test_that("EsgResultDataset$collect() uses offline child fixtures", {
             )
             list(response = response, docs = docs, parameter = params)
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -4493,14 +4321,10 @@ test_that("EsgResult$print_contents() batches content output", {
 
     cat_lines <- list()
     testthat::local_mocked_bindings(
-        # cli_rule {{{
         cli_rule = function(...) NULL,
-        # }}}
-        # cat_line {{{
         cat_line = function(...) {
             cat_lines[[length(cat_lines) + 1L]] <<- list(...)
         },
-        # }}}
         .package = "cli"
     )
 

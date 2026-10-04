@@ -76,13 +76,10 @@ shift_batch_ui__discover_models <- function(
             )
             result
         },
-        # error {{{
         error = function(error) {
             reporter$operation_failed(conditionMessage(error))
             stop(error)
         },
-        # }}}
-        # interrupt {{{
         interrupt = function(error) {
             reporter$operation_failed(
                 "Model discovery interrupted.",
@@ -90,7 +87,6 @@ shift_batch_ui__discover_models <- function(
             )
             stop(error)
         }
-        # }}}
     )
 }
 # }}}
@@ -160,7 +156,6 @@ shift_batch_ui__discovery_lines <- function(state, width, motion, frame) {
     outer <- shift_ui__ui_dashboard_width(width)
     inner <- if (panel) outer - 4L else outer
     # Wrap facts with the shared display-width-aware label formatter.
-    # row {{{
     row <- function(label, value) {
         if (!length(value)) {
             return(character())
@@ -171,7 +166,6 @@ shift_batch_ui__discovery_lines <- function(state, width, motion, frame) {
             inner
         )
     }
-    # }}}
     title <- paste(
         cli::style_bold("Discover CMIP6 models"),
         shift_ui_view__ui_status_style(status),
@@ -345,11 +339,9 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
     children <- data.table::copy(x@meta$manifest)
     statuses <- vapply(
         x@meta$children,
-        # vapply callback {{{
         function(child) {
             shift_status(child, refresh = FALSE)
         },
-        # }}}
         character(1L)
     )
     children[, status := statuses]
@@ -358,11 +350,9 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         j = "run_id",
         value = vapply(
             x@meta$children,
-            # vapply callback {{{
             function(child) {
                 store__chr1(child@ids$run_id)
             },
-            # }}}
             character(1L)
         )
     )
@@ -371,17 +361,14 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         j = "current_stage",
         value = vapply(
             x@meta$children,
-            # vapply callback {{{
             function(child) {
                 store__chr1(child@meta$run$current_stage)
             },
-            # }}}
             character(1L)
         )
     )
     # Reuse the same live state as single-run watch. Older stores can still
     # reconstruct it from durable events; planned children have no activity yet.
-    # lapply callback {{{
     activity <- lapply(x@meta$children, function(child) {
         if (!S7::S7_inherits(child, ShiftRun)) {
             return(list())
@@ -404,7 +391,6 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         }
         state
     })
-    # }}}
     names(activity) <- children$child_key
     cases <- shift_cases(x, refresh = FALSE)
     outputs <- shift_outputs(x, refresh = FALSE)
@@ -414,7 +400,6 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         j = "method_status",
         value = vapply(
             seq_len(nrow(children)),
-            # vapply callback {{{
             function(index) {
                 record <- transform__record(
                     children$scale[[index]],
@@ -422,21 +407,18 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
                 )
                 recipe__get(record$recipe)@status
             },
-            # }}}
             character(1L)
         )
     )
     events <- shift_batch__inspect(
         x@meta$children,
         x@meta$manifest,
-        # shift_batch__inspect callback {{{
         function(child) {
             data.table::as.data.table(shift_stage__coalesce(
                 child@meta$events,
                 data.table::data.table()
             ))
         }
-        # }}}
     )
     if (nrow(events)) {
         data.table::setorderv(
@@ -446,17 +428,14 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
     }
     starts <- vapply(
         x@meta$children,
-        # vapply callback {{{
         function(child) {
             value <- child@meta$run$started_at
             if (length(value)) as.numeric(value[[1L]]) else NA_real_
         },
-        # }}}
         numeric(1L)
     )
     ends <- vapply(
         x@meta$children,
-        # vapply callback {{{
         function(child) {
             value <- child@meta$run$completed_at
             if (!length(value) || is.na(value[[1L]])) {
@@ -464,7 +443,6 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
             }
             if (length(value)) as.numeric(value[[1L]]) else NA_real_
         },
-        # }}}
         numeric(1L)
     )
     active <- any(statuses %in% c("queued", "running", "stopping"))
@@ -542,7 +520,6 @@ shift_batch_ui__diagnostic_lines <- function(
     rows <- rows[order(match(rows$severity, c("error", "warning")))]
     shown <- min(nrow(rows), limit)
     # Compact fields consume exactly one row for deterministic height budgets.
-    # field {{{
     field <- function(label, value) {
         if (compact) {
             shift_ui_view__ui_fit(
@@ -553,7 +530,6 @@ shift_batch_ui__diagnostic_lines <- function(
             shift_ui_view__ui_labeled_lines(label, value, width)
         }
     }
-    # }}}
     lines <- character()
     for (index in seq_len(shown)) {
         row <- rows[index]
@@ -602,7 +578,6 @@ shift_batch_ui__child_lines <- function(
     frame
 ) {
     # Compact fields do not wrap beyond the dynamic viewport budget.
-    # field {{{
     field <- function(label, value) {
         if (compact) {
             shift_ui_view__ui_fit(
@@ -613,7 +588,6 @@ shift_batch_ui__child_lines <- function(
             shift_ui_view__ui_labeled_lines(label, value, width)
         }
     }
-    # }}}
     identity <- c(child$site_id, child$method, child$model)
     identity <- identity[!is.na(identity) & nzchar(identity)]
     label <- sprintf(
@@ -699,7 +673,6 @@ shift_batch_ui__view <- function(
     compact <- is.finite(height)
     content_width <- if (panel) max(1L, width - 4L) else width
     # Preserve long paths and identifiers outside the finite dynamic viewport.
-    # field {{{
     field <- function(label, value) {
         if (compact) {
             shift_ui_view__ui_fit(
@@ -710,7 +683,6 @@ shift_batch_ui__view <- function(
             shift_ui_view__ui_labeled_lines(label, value, content_width)
         }
     }
-    # }}}
     header <- paste(
         cli::style_bold("Future EPW Batch"),
         shift_ui_view__ui_status_style(summary$status),
@@ -765,7 +737,6 @@ shift_batch_ui__view <- function(
         )
     }
     children <- snapshot$children
-    # lapply callback {{{
     groups <- lapply(seq_len(nrow(children)), function(index) {
         child <- children[index]
         rows <- shift_batch_ui__child_lines(
@@ -790,7 +761,6 @@ shift_batch_ui__view <- function(
         }
         rows
     })
-    # }}}
     results <- c(
         field(
             "Summary",
@@ -1064,11 +1034,9 @@ shift_batch_ui__event_delta <- function(
 shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
     mode <- shift_ui__ui_mode(ui)
     motion <- shift_ui__ui_motion(ui, mode)
-    # error {{{
     renderer <- tryCatch(shift_tui__ui_renderer(mode), error = function(error) {
         NULL
     })
-    # }}}
     if (identical(mode, "dynamic") && is.null(renderer)) {
         mode <- "log"
     }
@@ -1186,7 +1154,6 @@ shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
             first <- FALSE
             shift_job__watch_sleep(frame_interval)
         },
-        # interrupt {{{
         interrupt = function(error) {
             if (!is.null(renderer)) {
                 renderer$close(result = "cancelled")
@@ -1197,7 +1164,6 @@ shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
                 )
             }
         }
-        # }}}
     )
     x
 }

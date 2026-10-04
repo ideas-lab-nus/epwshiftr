@@ -38,7 +38,6 @@ shift_test__normalize_print <- function(x) {
 # shift_test__mock_collect {{{
 shift_test__mock_collect <- function(file_docs, calls) {
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -77,7 +76,6 @@ shift_test__mock_collect <- function(file_docs, calls) {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )
@@ -87,9 +85,7 @@ shift_test__mock_collect <- function(file_docs, calls) {
 # Read a serialized query facet for offline catalog filtering.
 # shift_test__param_value {{{
 shift_test__param_value <- function(params, name) {
-    # error {{{
     state <- tryCatch(params$serialize(null = TRUE), error = function(e) list())
-    # }}}
     value <- state[[name]]
     if (is.null(value)) {
         return(NULL)
@@ -105,7 +101,6 @@ shift_test__param_value <- function(params, name) {
 # shift_test__mock_collect_filtered {{{
 shift_test__mock_collect_filtered <- function(file_docs, calls) {
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -183,7 +178,6 @@ shift_test__mock_collect_filtered <- function(file_docs, calls) {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )
@@ -196,7 +190,6 @@ shift_test__mock_collect_sequence <- function(file_doc_sets, calls) {
     calls$file_calls <- 0L
     calls$collect_times <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -266,7 +259,6 @@ shift_test__mock_collect_sequence <- function(file_doc_sets, calls) {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )
@@ -281,7 +273,6 @@ ui_workflows__states <- function() {
         monthly_transform("original_morphing"),
         daily_transform("qdm")
     )
-    # lapply callback {{{
     children <- data.table::rbindlist(lapply(transforms, function(transform) {
         record <- transform__record(transform@scale, transform@method)
         data.table::data.table(
@@ -294,7 +285,6 @@ ui_workflows__states <- function() {
             current_stage = NA_character_
         )
     }))
-    # }}}
     children[, child_key := paste0("child_ui", seq_len(.N))]
     children[1:2, `:=`(status = "running", current_stage = "extract_future")]
     summary <- data.table::data.table(

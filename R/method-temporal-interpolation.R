@@ -422,7 +422,6 @@ temporal__linear_role <- function(
         keep.by = TRUE,
         drop = TRUE
     )
-    # lapply callback {{{
     results <- lapply(groups, function(group) {
         # Frequency is part of the group identity, allowing one role to retain
         # variables drawn from different supported CMIP6 sub-daily tables.
@@ -447,11 +446,8 @@ temporal__linear_role <- function(
             anchors = anchors
         )
     })
-    # }}}
     data <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(results, function(result) result$data),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -477,9 +473,7 @@ temporal__linear_role <- function(
         target_step_seconds = 3600,
         daily_extrema_anchors = sum(vapply(
             results,
-            # vapply callback {{{
             function(result) result$diagnostic$anchor_samples[[1L]],
-            # }}}
             integer(1L)
         )),
         boundary_policy = "bounded_by_source",
@@ -506,9 +500,7 @@ temporal__linear_role <- function(
         )
     )
     diagnostics <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(results, function(result) result$diagnostic),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -543,7 +535,6 @@ temporal__linear_apply <- function(inputs, context, options) {
         )
     }
     roles <- c("model_historical", "model_future")
-    # lapply callback {{{
     results <- lapply(roles, function(role) {
         temporal__linear_role(
             weather__get_input(inputs, role),
@@ -551,7 +542,6 @@ temporal__linear_apply <- function(inputs, context, options) {
             context
         )
     })
-    # }}}
     names(results) <- roles
     output_inputs <- weather__new_inputs(
         weather_template = weather__get_input(
@@ -566,9 +556,7 @@ temporal__linear_apply <- function(inputs, context, options) {
         model_future = results$model_future$input
     )
     diagnostics <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(results, function(result) result$diagnostics),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -577,15 +565,11 @@ temporal__linear_apply <- function(inputs, context, options) {
         roles = roles,
         source_frequencies = lapply(
             results,
-            # lapply callback {{{
             function(result) result$provenance$source_frequencies
-            # }}}
         ),
         source_step_seconds = lapply(
             results,
-            # lapply callback {{{
             function(result) result$provenance$source_step_seconds
-            # }}}
         ),
         target_frequency = "hour",
         target_step_seconds = 3600,
@@ -611,7 +595,6 @@ temporal__linear_apply <- function(inputs, context, options) {
 # temporal__linear_component {{{
 temporal__linear_component <- function() {
     variables <- lapply(TEMPORAL_LINEAR_VARIABLES, identity)
-    # requirement {{{
     requirement <- function(role) {
         component__input_requirement(
             role,
@@ -621,7 +604,6 @@ temporal__linear_component <- function() {
             variable_sets = variables
         )
     }
-    # }}}
     component__spec(
         name = "linear_temporal_interpolation",
         stage = "preprocess",

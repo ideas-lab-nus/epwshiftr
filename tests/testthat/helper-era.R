@@ -63,14 +63,12 @@ test_cmip6_availability <- function(
     tables <- stats::setNames(
         vapply(
             frequency,
-            # vapply callback {{{
             function(value) {
                 shift_stage__coalesce(
                     shift_spec__cmip6_table_id(value),
                     "unknown"
                 )
             },
-            # }}}
             character(1L)
         ),
         names(frequency)

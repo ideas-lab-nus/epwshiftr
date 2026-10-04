@@ -29,13 +29,11 @@ test_that("EsgDict$save() writes typed schema-validated JSON", {
     expect_equal(payload$format_version, "2")
     expect_equal(payload$project, "CMIP6")
     expect_equal(payload$profile, "cmip6")
-    # vapply callback {{{
     expect_true(all(vapply(
         payload$payload$request$columns,
         function(col) all(c("name", "type") %in% names(col)),
         logical(1L)
     )))
-    # }}}
 
     store <- EsgStore$new(dir, create = FALSE)
     withr::defer(store$close())

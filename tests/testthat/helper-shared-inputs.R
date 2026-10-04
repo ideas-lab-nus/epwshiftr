@@ -16,7 +16,6 @@ shared_inputs_test__fixture <- function(env = parent.frame()) {
         experiment = c("historical", "ssp585"),
         variable = c("tas", "tasmin", "tasmax")
     )
-    # lapply callback {{{
     docs <- data.table::rbindlist(lapply(seq_len(nrow(specs)), function(i) {
         variable <- specs$variable[[i]]
         experiment <- specs$experiment[[i]]
@@ -39,7 +38,6 @@ shared_inputs_test__fixture <- function(env = parent.frame()) {
         data.table::set(rows, j = "size", value = file.size(path))
         rows
     }))
-    # }}}
     sites <- list(
         shift_site(id = "one", lon = 104, lat = 1, epw = get_cache_epw()),
         shift_site(id = "two", lon = 254, lat = 41, epw = get_cache_epw())

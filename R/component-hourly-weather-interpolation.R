@@ -209,7 +209,6 @@ weather_interp__observed_modes <- function(input) {
         ))
     }
     sites <- split(tas, by = ".weather_site_id", keep.by = TRUE)
-    # lapply callback {{{
     daily <- lapply(sites, function(site) {
         canonical <- data.table::as.data.table(bias__subdaily_table(
             as.data.frame(site, stringsAsFactors = FALSE),
@@ -246,7 +245,6 @@ weather_interp__observed_modes <- function(input) {
         )
         data.table::rbindlist(list(maximum, minimum), use.names = TRUE)
     })
-    # }}}
     daily <- data.table::rbindlist(daily, use.names = TRUE, fill = TRUE)
     modes <- daily[,
         .(
@@ -411,7 +409,6 @@ weather_interp__anchors <- function(
         "cf_day"
     )
     days <- split(group, by = day_columns, keep.by = TRUE, drop = TRUE)
-    # lapply callback {{{
     anchors <- lapply(days, function(day) {
         # A single padding sample may bracket a requested period boundary but
         # cannot define a within-day extreme insertion interval.
@@ -442,7 +439,6 @@ weather_interp__anchors <- function(
             )
         }
 
-        # lapply callback {{{
         day_anchors <- lapply(
             HOURLY_WEATHER_EXTREMA_VARIABLES,
             function(
@@ -495,7 +491,6 @@ weather_interp__anchors <- function(
                 )
             }
         )
-        # }}}
         day_anchors <- data.table::rbindlist(day_anchors)
         if (anyDuplicated(day_anchors[["native_second"]])) {
             cli::cli_abort(
@@ -504,7 +499,6 @@ weather_interp__anchors <- function(
         }
         day_anchors
     })
-    # }}}
     anchors <- anchors[lengths(anchors) > 0L]
     if (!length(anchors)) {
         return(NULL)
@@ -538,11 +532,9 @@ weather_interp__state_role <- function(
     anchor_factory <- if (is.null(extrema)) {
         NULL
     } else {
-        # { callback {{{
         function(group, group_columns) {
             weather_interp__anchors(group, extrema, modes, role)
         }
-        # }}}
     }
     temporal__linear_role(
         state_input,
@@ -564,11 +556,9 @@ weather_interp__complete_years <- function(data, group_columns, role) {
         drop = TRUE
     )
     diagnostics <- list()
-    # lapply callback {{{
     complete_sets <- lapply(groups, function(group) {
         label <- temporal__group_label(group, group_columns)
         years <- sort(unique(as.integer(group[["cf_year"]])))
-        # vapply callback {{{
         complete <- vapply(
             years,
             function(year) {
@@ -590,7 +580,6 @@ weather_interp__complete_years <- function(data, group_columns, role) {
             },
             logical(1L)
         )
-        # }}}
         diagnostics[[length(diagnostics) + 1L]] <<- data.table::data.table(
             role = role,
             group = label,
@@ -601,7 +590,6 @@ weather_interp__complete_years <- function(data, group_columns, role) {
         )
         years[complete]
     })
-    # }}}
     retained <- sort(Reduce(intersect, complete_sets))
     diagnostics <- data.table::rbindlist(
         diagnostics,
@@ -632,9 +620,7 @@ weather_interp__complete_years <- function(data, group_columns, role) {
 weather_interp__combine_role <- function(input, role, pieces) {
     pieces <- pieces[lengths(pieces) > 0L]
     data <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(pieces, function(piece) piece$input@source),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -646,11 +632,9 @@ weather_interp__combine_role <- function(input, role, pieces) {
         "cf_second_of_day"
     )
     data.table::setorderv(data, unique(order_columns))
-    # lapply callback {{{
     group_columns <- lapply(pieces, function(piece) {
         piece$input@metadata$group_columns
     })
-    # }}}
     group_columns <- group_columns[lengths(group_columns) > 0L]
     common_groups <- if (length(group_columns)) {
         Reduce(intersect, group_columns)
@@ -675,9 +659,7 @@ weather_interp__combine_role <- function(input, role, pieces) {
             list(
                 hourly_weather_interpolation = lapply(
                     pieces,
-                    # lapply callback {{{
                     function(piece) piece$provenance
-                    # }}}
                 ),
                 hourly_weather_years = list(
                     policy = "shared_complete_native_years",
@@ -725,7 +707,6 @@ weather_interp__hourly_coordinates <- function(input, role) {
         keep.by = TRUE,
         drop = TRUE
     )
-    # lapply callback {{{
     diagnostics <- lapply(groups, function(group) {
         label <- temporal__group_label(group, group_columns)
         canonical <- bias__subdaily_table(
@@ -767,7 +748,6 @@ weather_interp__hourly_coordinates <- function(input, role) {
             last_native_second = native_seconds[[length(native_seconds)]]
         )
     })
-    # }}}
     data.table::rbindlist(diagnostics, use.names = TRUE, fill = TRUE)
 }
 # }}}
@@ -818,14 +798,12 @@ weather_interp__apply_core <- function(
     }
     modes <- weather_interp__observed_modes(observed)
     roles <- c("model_historical", "model_future")
-    # lapply callback {{{
     sources <- lapply(roles, function(role) {
         weather_interp__model_source(
             weather__get_input(inputs, role),
             role
         )
     })
-    # }}}
     names(sources) <- roles
     if (
         !identical(
@@ -847,7 +825,6 @@ weather_interp__apply_core <- function(
             "Historical and future model roles must provide daily extrema anchors consistently."
         )
     }
-    # lapply callback {{{
     results <- lapply(roles, function(role) {
         input <- weather__get_input(inputs, role)
         source <- sources[[role]]
@@ -880,7 +857,6 @@ weather_interp__apply_core <- function(
             pieces = pieces
         )
     })
-    # }}}
     names(results) <- roles
 
     if (!is.null(model_transform)) {
@@ -898,11 +874,9 @@ weather_interp__apply_core <- function(
             transformations[[role]] <- transformed
         }
     }
-    # lapply callback {{{
     target_sets <- lapply(results, function(result) {
         sort(unique(as.character(result$input@source[["variable_id"]])))
     })
-    # }}}
     if (!identical(target_sets$model_historical, target_sets$model_future)) {
         cli::cli_abort(
             "Historical and future model transformations must produce identical hourly target variable sets."
@@ -941,9 +915,7 @@ weather_interp__apply_core <- function(
     )
     transformation_diagnostics <- lapply(
         transformations,
-        # lapply callback {{{
         function(result) result$diagnostics
-        # }}}
     )
     transformation_diagnostics <- transformation_diagnostics[
         lengths(transformation_diagnostics) > 0L
@@ -957,24 +929,20 @@ weather_interp__apply_core <- function(
     coordinate_diagnostics <- data.table::rbindlist(
         lapply(
             c("observed_reference", roles),
-            # lapply callback {{{
             function(role) {
                 weather_interp__hourly_coordinates(
                     weather__get_input(output, role),
                     role
                 )
             }
-            # }}}
         ),
         use.names = TRUE,
         fill = TRUE
     )
     year_diagnostics <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(roles, function(role) {
             weather__get_input(output, role)@metadata$hourly_weather_years
         }),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -1038,7 +1006,6 @@ weather_interp__apply <- function(inputs, context, options) {
 # weather_interp__component {{{
 weather_interp__component <- function() {
     target_sets <- lapply(HOURLY_WEATHER_TARGET_VARIABLES, identity)
-    # model_requirement {{{
     model_requirement <- function(role) {
         component__input_requirement(
             role,
@@ -1048,7 +1015,6 @@ weather_interp__component <- function() {
             variable_sets = target_sets
         )
     }
-    # }}}
     component__spec(
         name = "hourly_weather_interpolation",
         stage = "preprocess",

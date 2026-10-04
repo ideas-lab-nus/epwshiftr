@@ -170,7 +170,6 @@ isimip__profiles <- function() {
         tasskew = c("tasmin", "tasmax")
     )
 
-    # lapply callback {{{
     lapply(ISIMIP_VARIABLES, function(variable) {
         derived <- variable %in% ISIMIP_DERIVED_VARIABLES
         signal__variable_profile(
@@ -193,7 +192,6 @@ isimip__profiles <- function() {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -492,7 +490,6 @@ isimip__inputs <- function(inputs, variable, resolved) {
             "ISIMIP3BASD requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         isimip__input_table(
             inputs[[role]],
@@ -500,7 +497,6 @@ isimip__inputs <- function(inputs, variable, resolved) {
             allow_missing = resolved$impute_missing
         )
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -517,9 +513,7 @@ isimip__inputs <- function(inputs, variable, resolved) {
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -529,7 +523,6 @@ isimip__inputs <- function(inputs, variable, resolved) {
     }
     if (
         is.finite(resolved$bounds[[1L]]) &&
-            # vapply callback {{{
             any(vapply(
                 series,
                 function(data) {
@@ -538,7 +531,6 @@ isimip__inputs <- function(inputs, variable, resolved) {
                 logical(1L)
             ))
     ) {
-        # }}}
         cli::cli_abort(
             "ISIMIP3BASD inputs for {.val {variable}} contain values below the declared physical lower bound."
         )
@@ -681,7 +673,6 @@ isimip__upper_bound_cycle <- function(
 # clipped to a positive numerical floor before final rescaling.
 # isimip__scale_upper_bounds {{{
 isimip__scale_upper_bounds <- function(series, resolved) {
-    # lapply callback {{{
     cycles <- lapply(series, function(data) {
         isimip__upper_bound_cycle(
             data,
@@ -689,8 +680,6 @@ isimip__scale_upper_bounds <- function(series, resolved) {
             resolved$target_year_days
         )
     })
-    # }}}
-    # Map callback {{{
     scaled <- Map(
         function(data, cycle) {
             day <- isimip__target_day(
@@ -705,7 +694,6 @@ isimip__scale_upper_bounds <- function(series, resolved) {
         series,
         cycles
     )
-    # }}}
     names(scaled) <- names(series)
 
     observed <- cycles$observed_reference$value
@@ -726,7 +714,6 @@ isimip__scale_upper_bounds <- function(series, resolved) {
         series = scaled,
         target = target,
         diagnostics = list(
-            # lapply callback {{{
             role_cycles = lapply(cycles, function(cycle) {
                 cycle[c(
                     "missing_target_days",
@@ -734,7 +721,6 @@ isimip__scale_upper_bounds <- function(series, resolved) {
                     "upper_bound_range"
                 )]
             }),
-            # }}}
             invalid_change_days = as.integer(which(invalid)),
             target_upper_bound_range = range(target)
         )
@@ -1060,7 +1046,6 @@ isimip__fit_weibull <- function(
         )
     }
     log_values <- log(shifted)
-    # objective {{{
     objective <- function(log_shape) {
         shape <- exp(log_shape)
         powered <- shape * log_values
@@ -1078,7 +1063,6 @@ isimip__fit_weibull <- function(
             .Machine$double.xmax
         }
     }
-    # }}}
     optimization <- stats::optim(
         par = 0,
         fn = objective,
@@ -1182,9 +1166,7 @@ isimip__try_fit <- function(values, resolved) {
     }
     fit <- tryCatch(
         suppressWarnings(isimip__fit_distribution(values, resolved)),
-        # error {{{
         error = function(error) error
-        # }}}
     )
     if (inherits(fit, "error")) {
         return(list(
@@ -1269,7 +1251,6 @@ isimip__map_empirical <- function(
     target_quantile <- quantile__inverse_cdf(target, probability)
     groups <- split(seq_along(source_quantile), source_quantile)
     source_anchor <- as.numeric(names(groups))
-    # vapply callback {{{
     target_anchor <- vapply(
         groups,
         function(index) {
@@ -1277,7 +1258,6 @@ isimip__map_empirical <- function(
         },
         numeric(1L)
     )
-    # }}}
     order_index <- order(source_anchor)
     source_anchor <- source_anchor[order_index]
     target_anchor <- target_anchor[order_index]
@@ -1429,7 +1409,6 @@ isimip__target_frequencies <- function(
 ) {
     frequencies <- list(lower = 0, upper = 0)
     if (!is.null(resolved$lower_threshold)) {
-        # vapply callback {{{
         probability <- vapply(
             original,
             function(values) {
@@ -1437,7 +1416,6 @@ isimip__target_frequencies <- function(
             },
             numeric(1L)
         )
-        # }}}
         frequencies$lower <- isimip__transfer_frequency(
             probability[["observed_reference"]],
             probability[["model_historical"]],
@@ -1446,7 +1424,6 @@ isimip__target_frequencies <- function(
         )
     }
     if (!is.null(resolved$upper_threshold)) {
-        # vapply callback {{{
         probability <- vapply(
             original,
             function(values) {
@@ -1454,7 +1431,6 @@ isimip__target_frequencies <- function(
             },
             numeric(1L)
         )
-        # }}}
         frequencies$upper <- isimip__transfer_frequency(
             probability[["observed_reference"]],
             probability[["model_historical"]],
@@ -1743,7 +1719,6 @@ isimip__adjust_window <- function(
     key,
     variable
 ) {
-    # lapply callback {{{
     rows <- lapply(series, function(data) {
         daily__phase_window(
             data[["annual_phase"]],
@@ -1752,14 +1727,12 @@ isimip__adjust_window <- function(
             resolved$target_year_days
         )
     })
-    # }}}
     counts <- vapply(rows, sum, integer(1L))
     if (any(counts < resolved$min_samples)) {
         cli::cli_abort(
             "ISIMIP3BASD target day {target_day} has fewer than {resolved$min_samples} observed, historical, or future daily values in its running window."
         )
     }
-    # Map callback {{{
     window <- Map(
         function(data, keep) {
             data[keep, , drop = FALSE]
@@ -1767,8 +1740,6 @@ isimip__adjust_window <- function(
         series,
         rows
     )
-    # }}}
-    # Map callback {{{
     prepared <- Map(
         function(data, role) {
             isimip__prepare_window_role(
@@ -1783,7 +1754,6 @@ isimip__adjust_window <- function(
         window,
         names(window)
     )
-    # }}}
     names(prepared) <- names(window)
 
     pseudo <- isimip__pseudo_future(
@@ -1795,9 +1765,7 @@ isimip__adjust_window <- function(
     mapped <- isimip__map_window(
         prepared$model_future$value,
         pseudo$value,
-        # lapply callback {{{
         lapply(prepared, function(role) role$original),
-        # }}}
         resolved
     )
     restored <- mapped$value + prepared$model_future$trend
@@ -1819,9 +1787,7 @@ isimip__adjust_window <- function(
             samples = counts,
             role_preparation = lapply(
                 prepared,
-                # lapply callback {{{
                 function(role) role$diagnostics
-                # }}}
             ),
             change_transfer = pseudo$diagnostics,
             distribution_mapping = mapped$diagnostics,
@@ -1895,9 +1861,7 @@ isimip__adjust_values <- function(
             target_days = as.integer(target_days),
             native_calendars = vapply(
                 series,
-                # vapply callback {{{
                 function(data) unique(data[["cf_calendar"]]),
-                # }}}
                 character(1L)
             ),
             calendar_adapter = list(

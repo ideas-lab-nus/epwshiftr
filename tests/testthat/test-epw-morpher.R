@@ -17,13 +17,11 @@ test_that("get_cache_epw() prepares a stable local EPW fixture", {
 
     stale_lines <- readLines(path, warn = FALSE)
     stale_weather <- strsplit(stale_lines[-seq_len(8L)], ",", fixed = TRUE)
-    # lapply callback {{{
     stale_weather <- lapply(stale_weather, function(x) {
         x[[34L]] <- "0.0"
         x[[35L]] <- "0.0"
         x
     })
-    # }}}
     writeLines(
         c(
             stale_lines[seq_len(8L)],
@@ -373,7 +371,6 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
     on.exit(unlink(nc), add = TRUE)
     store <- EsgStore$new(tempfile("isolated-morph-case-store-"))
     on.exit(store$close(), add = TRUE)
-    # lapply callback {{{
     docs <- data.table::rbindlist(
         lapply(names(nc), function(experiment) {
             rows <- epw_morpher_test_file_docs(
@@ -389,7 +386,6 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
         }),
         fill = TRUE
     )
-    # }}}
     query_id <- store$add_files(epw_morpher_test_result(docs))
     extraction <- store$plan_region(
         query_id = query_id,
@@ -427,7 +423,6 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
 
     original_run <- morpher__run_context
     testthat::local_mocked_bindings(
-        # morpher__run_context {{{
         morpher__run_context = function(context) {
             if (
                 identical(
@@ -439,7 +434,6 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
             }
             original_run(context)
         },
-        # }}}
         .package = "epwshiftr"
     )
     results <- morpher$run(plan$morph_id, overwrite = TRUE)
@@ -710,7 +704,6 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
 
     variables <- epw_morph_variables("recommended")
     nc <- stats::setNames(
-        # vapply callback {{{
         vapply(
             variables,
             function(variable_id) {
@@ -725,7 +718,6 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
             },
             character(1L)
         ),
-        # }}}
         variables
     )
     on.exit(unlink(nc), add = TRUE)
@@ -734,7 +726,6 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    # lapply callback {{{
     docs <- data.table::rbindlist(
         lapply(variables, function(variable_id) {
             epw_morpher_test_file_docs(
@@ -747,7 +738,6 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         }),
         fill = TRUE
     )
-    # }}}
     query_id <- store$add_files(epw_morpher_test_result(as.data.frame(docs)))
     plan <- store$plan_region(
         query_id = query_id,
@@ -902,11 +892,9 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
 
     resumed_results <- testthat::with_mocked_bindings(
         morpher$run(strict$morph_id, overwrite = FALSE, resume = TRUE),
-        # morpher__run_context {{{
         morpher__run_context = function(...) {
             stop("recomputed a complete morphing case")
         },
-        # }}}
         .package = "epwshiftr"
     )
     expect_equal(resumed_results$result_id, results$result_id)

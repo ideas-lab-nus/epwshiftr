@@ -35,7 +35,6 @@ shift_export_epw <- function(
                 resume = resume
             ),
             auto_complete = TRUE,
-            # code {{{
             code = function(reporter, task_store) {
                 shift_run__with_reporter(
                     reporter,
@@ -48,7 +47,6 @@ shift_export_epw <- function(
                     )
                 )
             }
-            # }}}
         ))
     }
 

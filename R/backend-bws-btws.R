@@ -609,7 +609,6 @@ bws_btws__component_specs <- function() {
     reference <- "https://doi.org/10.1177/01436244231218861"
     profiles <- lapply(
         c("tas", "tasmin", "tasmax", "rsds", "clt"),
-        # lapply callback {{{
         function(variable) {
             signal__variable_profile(
                 variable,
@@ -627,7 +626,6 @@ bws_btws__component_specs <- function() {
                 )
             )
         }
-        # }}}
     )
 
     list(

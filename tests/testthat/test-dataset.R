@@ -40,7 +40,6 @@ local_dataset_table_file <- function(
 
 # local_dataset_cmip6_files {{{
 local_dataset_cmip6_files <- function(years) {
-    # vapply callback {{{
     paths <- vapply(
         years,
         function(year) {
@@ -50,7 +49,6 @@ local_dataset_cmip6_files <- function(years) {
         },
         character(1L)
     )
-    # }}}
     withr::defer(unlink(paths), envir = parent.frame())
     paths
 }
@@ -111,11 +109,9 @@ start_mirai_dataset_runtime <- function(workers) {
                 stop("mirai readiness probe returned a non-TRUE result.")
             }
         },
-        # error {{{
         error = function(err) {
             startup_error <<- err
         }
-        # }}}
     )
 
     if (!is.null(startup_error)) {
@@ -155,7 +151,6 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
         inherits = FALSE
     )
     dot_args <- list(...)
-    # lapply callback {{{
     tasks <- lapply(X, function(x) {
         mirai::mirai(
             {
@@ -177,7 +172,6 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
             .compute = runtime$compute_profile
         )
     })
-    # }}}
 
     lapply(tasks, mirai::collect_mirai)
 }
@@ -254,22 +248,16 @@ test_that("EsgDataset$open() reports progress while opening handles", {
     updates <- list()
     dones <- list()
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(name = NULL, total = NA, ...) {
             bars[[length(bars) + 1L]] <<- list(name = name, total = total)
             "progress-id"
         },
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(id = NULL, set = NULL, ...) {
             updates[[length(updates) + 1L]] <<- list(id = id, set = set)
         },
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(id = NULL, result = "done", ...) {
             dones[[length(dones) + 1L]] <<- list(id = id, result = result)
         },
-        # }}}
         .package = "cli"
     )
 
@@ -292,20 +280,14 @@ test_that("EsgDataset$open() updates progress for already adopted handles", {
     bars <- list()
     updates <- list()
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(name = NULL, total = NA, ...) {
             bars[[length(bars) + 1L]] <<- list(name = name, total = total)
             "progress-id"
         },
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(id = NULL, set = NULL, ...) {
             updates[[length(updates) + 1L]] <<- list(id = id, set = set)
         },
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(...) NULL,
-        # }}}
         .package = "cli"
     )
 
@@ -323,18 +305,12 @@ test_that("EsgDataset$open(progress = FALSE) does not report progress", {
     path <- local_dataset_cmip6_files(2060L)
     bars <- list()
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(...) {
             bars[[length(bars) + 1L]] <<- list(...)
             "progress-id"
         },
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(...) NULL,
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(...) NULL,
-        # }}}
         .package = "cli"
     )
 
@@ -353,17 +329,11 @@ test_that("EsgDataset$open() closes progress on failures", {
 
     dones <- list()
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(...) "progress-id",
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(...) NULL,
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(id = NULL, result = "done", ...) {
             dones[[length(dones) + 1L]] <<- list(id = id, result = result)
         },
-        # }}}
         .package = "cli"
     )
 
@@ -472,16 +442,12 @@ test_that("EsgDataset metadata names preserve direct inquiry order by file", {
         info <- ds$file_inq(index)
         expected_variables <- vapply(
             seq_len(info$nvars) - 1L,
-            # vapply callback {{{
             function(id) ds$var_inq(id, index)$name,
-            # }}}
             character(1L)
         )
         expected_dimensions <- vapply(
             seq_len(info$ndims) - 1L,
-            # vapply callback {{{
             function(id) ds$dim_inq(id, index)$name,
-            # }}}
             character(1L)
         )
 
@@ -611,13 +577,11 @@ test_that("EsgDataset$read_data_table()", {
     expect_equal(nrow(dt), prod(count))
 
     vinfo <- ds$var_inq("tas")
-    # vapply callback {{{
     dim_names <- vapply(
         vinfo$dimids,
         function(id) ds$dim_inq(id)$name,
         character(1L)
     )
-    # }}}
     expect_true(all(dim_names %in% names(dt)))
     for (j in seq_along(dim_names)) {
         nm <- dim_names[[j]]
@@ -656,22 +620,18 @@ test_that("EsgDataset$read_data_table() handles multiple files", {
     dt_list <- ds$read_data_table("tas", start = start, count = count)
     expect_type(dt_list, "list")
     expect_length(dt_list, 2L)
-    # vapply callback {{{
     expect_true(all(vapply(
         dt_list,
         function(x) inherits(x, "data.table"),
         logical(1L)
     )))
-    # }}}
 
     vinfo <- ds$var_inq("tas")
-    # vapply callback {{{
     dim_names <- vapply(
         vinfo$dimids,
         function(id) ds$dim_inq(id)$name,
         character(1L)
     )
-    # }}}
     for (i in 1:2) {
         dti <- dt_list[[i]]
         for (j in seq_along(dim_names)) {
@@ -1075,17 +1035,14 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
-    # expected_values {{{
     expected_values <- function(sources) {
         lat_vals <- c(1.0, 2.0, 41.0)
         lon_vals <- c(103.5, 104.0, 104.5, 254.0)
         time_vals <- c(1.5, 2.5)
-        # vapply callback {{{
         vapply(
             time_vals,
             function(time) {
                 phase <- 2 * pi * time / 366
-                # vapply callback {{{
                 source_values <- vapply(
                     seq_len(nrow(sources)),
                     function(i) {
@@ -1096,14 +1053,11 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
                     },
                     numeric(1L)
                 )
-                # }}}
                 sum(source_values * sources$weight)
             },
             numeric(1L)
         )
-        # }}}
     }
-    # }}}
 
     for (method in ESG_GRID_METHOD_CHOICES) {
         dt <- ds$read_region(
@@ -1179,20 +1133,16 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
     )
     expect_type(dt_list, "list")
     expect_length(dt_list, 2L)
-    # vapply callback {{{
     expect_true(all(vapply(
         dt_list,
         function(x) inherits(x, "data.table"),
         logical(1L)
     )))
-    # }}}
-    # vapply callback {{{
     expect_true(all(vapply(
         dt_list,
         function(x) inherits(attr(x, "grid_sources"), "data.table"),
         logical(1L)
     )))
-    # }}}
 
     dt_neg_lon <- ds$read_region(
         variable = "tas",
@@ -1590,7 +1540,6 @@ test_that("EsgDataset$reachable() probes current remote data nodes without cache
 
     seen <- NULL
     testthat::local_mocked_bindings(
-        # query_result__reach_nodes {{{
         query_result__reach_nodes = function(
             data_node,
             timeout = 5,
@@ -1616,7 +1565,6 @@ test_that("EsgDataset$reachable() probes current remote data nodes without cache
                 probe_cached = FALSE
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1689,17 +1637,11 @@ test_that("EsgDataset$open(async = TRUE) reports progress during caller-owned re
 
     updates <- list()
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(...) "progress-id",
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(id = NULL, set = NULL, ...) {
             updates[[length(updates) + 1L]] <<- list(id = id, set = set)
         },
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(...) NULL,
-        # }}}
         .package = "cli"
     )
 
@@ -1860,7 +1802,6 @@ test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
     )
     on.exit(unlink(paths), add = TRUE)
 
-    # mirai_dataset_lapply callback {{{
     results <- mirai_dataset_lapply(
         seq_along(paths),
         function(i, paths) {
@@ -1879,7 +1820,6 @@ test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
         },
         paths = paths
     )
-    # }}}
 
     expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
     expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
@@ -1914,7 +1854,6 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
 
     start <- c(2L, 1L, 1L)
     count <- c(2L, 1L, 1L)
-    # mirai_dataset_lapply callback {{{
     results <- mirai_dataset_lapply(
         seq_along(paths),
         function(i, paths, start, count) {
@@ -1949,7 +1888,6 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
         start = start,
         count = count
     )
-    # }}}
 
     expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
     expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
@@ -2099,7 +2037,6 @@ test_that("private$start_async_operation() / private$collect_async_task() keep s
 
     task <- private$start_async_operation(
         operation = "read variable data",
-        # handler {{{
         handler = function(urls, nc_handles, variable, start, count, collapse) {
             RNetCDF::var.get.nc(
                 nc_handles[[1L]],
@@ -2109,7 +2046,6 @@ test_that("private$start_async_operation() / private$collect_async_task() keep s
                 collapse = collapse
             )
         },
-        # }}}
         handler_args = list(
             variable = "tas",
             start = c(1L, 1L, 1L),
@@ -2143,12 +2079,10 @@ test_that("private$collect_async_task() surfaces timeout errors and clears lifec
 
     task <- private$start_async_operation(
         operation = "simulate timeout",
-        # handler {{{
         handler = function(urls, nc_handles) {
             Sys.sleep(0.3)
             TRUE
         },
-        # }}}
         timeout = 0.05
     )
 
@@ -2172,12 +2106,10 @@ test_that("EsgDataset$close() best-effort cancels pending internal async work", 
 
     task <- private$start_async_operation(
         operation = "simulate cancellation",
-        # handler {{{
         handler = function(urls, nc_handles) {
             Sys.sleep(5)
             TRUE
         },
-        # }}}
         timeout = 10
     )
 
@@ -2203,12 +2135,10 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
 
     task <- private$start_async_operation(
         operation = "cancel-race task",
-        # handler {{{
         handler = function(urls, nc_handles) {
             Sys.sleep(5)
             TRUE
         },
-        # }}}
         timeout = 10
     )
 

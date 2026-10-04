@@ -347,18 +347,12 @@ query_result__download <- function(
     # with explicit calls to $download_plan().
     node_stats <- tryCatch(
         downloader$data_nodes(service = service),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
-    # error {{{
     network_policy <- tryCatch(downloader$network_policy, error = function(e) {
         NULL
     })
-    # }}}
-    # error {{{
     node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
-    # }}}
     if (is.null(probe_concurrency)) {
         probe_concurrency <- min(max(downloader$n_workers, 1L), 8L)
     }
@@ -377,9 +371,7 @@ query_result__download <- function(
     )
     tryCatch(
         downloader$record_probes(plan, probed = probe),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     session_id <- downloader$enqueue(plan, session_label = session_label)
     if (isTRUE(run)) {

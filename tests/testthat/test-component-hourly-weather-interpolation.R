@@ -104,7 +104,6 @@ weather_interp_test__observed <- function() {
     temperature <- 295 + 5 * cos((seq_len(24L) - 15) * pi / 12)
     temperature[[8L]] <- min(temperature) - 1
     temperature[[15L]] <- max(temperature) + 1
-    # one_variable {{{
     one_variable <- function(variable, value, units) {
         data.frame(
             site_id = "A",
@@ -117,7 +116,6 @@ weather_interp_test__observed <- function() {
             stringsAsFactors = FALSE
         )
     }
-    # }}}
     data.table::rbindlist(
         list(
             one_variable("tas", temperature, "K"),
@@ -137,7 +135,6 @@ weather_interp_test__observed <- function() {
 # interval-mean rows in each model input.
 # weather_interp_test__inputs {{{
 weather_interp_test__inputs <- function(include_extrema = TRUE) {
-    # model {{{
     model <- function(value_offset, radiation_offset) {
         pieces <- list(
             weather_interp_test__tas(value_offset),
@@ -152,7 +149,6 @@ weather_interp_test__inputs <- function(include_extrema = TRUE) {
         }
         data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
     }
-    # }}}
     weather__new_inputs(
         observed_reference = weather__new_input(
             "observed_reference",

@@ -64,7 +64,6 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
         derived = FALSE,
         method_choices = list(c("offset", "plus_two"))
     )
-    # runner {{{
     runner <- function(context, backend) {
         epw <- context$epw$clone()
         suppressMessages(epw$drop_unit())
@@ -80,7 +79,6 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
         )]
         epw_morph_result(context, epw = epw, data = data)
     }
-    # }}}
     custom <- EpwMorphBackend$new(
         name = backend_name,
         methods = c(dry = "offset"),
@@ -169,11 +167,9 @@ test_that("complete default backend registration avoids rebuilding specs", {
     registered <- epw_morph_backends()
     expect_true(all(EPW_MORPH_BACKEND_DEFAULTS %in% registered))
     testthat::local_mocked_bindings(
-        # morpher__default_backend_specs {{{
         morpher__default_backend_specs = function() {
             stop("Default backend specifications were rebuilt.")
         },
-        # }}}
         .package = "epwshiftr"
     )
 

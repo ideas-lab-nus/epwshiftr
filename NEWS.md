@@ -1,13 +1,14 @@
 # epwshiftr (development version)
 
-* Keep Downloader copyable as a single source module, with local checksum,
+* Publish `standalone-downloader.R` for `usethis::use_standalone()`, with local checksum,
   manifest, validation and process helpers. Host cache and Store integration
   stay in package adapters. Downloader instances own separate worker pools.
   Coverage includes complete parent and worker traces
   and rejects unfinished trace writes before upload (#278).
 
 * Handwritten R sources, tests and tools include Vim marker folds for functions,
-  classes and methods; closing markers ignore braces inside CLI strings (#278).
+  classes and methods, without nested callback folds inside function bodies;
+  closing markers ignore braces inside CLI strings (#278).
 
 * Background batch tests collect process logs only on failure; an exclusively
   open Windows log cannot mask the task receipt (#278).

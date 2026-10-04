@@ -197,7 +197,6 @@ vignette__trim_trailing_whitespace <- function(path) {
 # Find embedded rendering failures before a new checksum manifest is trusted.
 # vignette__render_errors {{{
 vignette__render_errors <- function(article_paths) {
-    # lapply callback {{{
     errors <- lapply(article_paths, function(path) {
         lines <- readLines(path, warn = FALSE)
         index <- grep("^#> Error", lines)
@@ -211,7 +210,6 @@ vignette__render_errors <- function(article_paths) {
             stringsAsFactors = FALSE
         )
     })
-    # }}}
     errors <- errors[lengths(errors) > 0L]
     if (!length(errors)) {
         return(NULL)

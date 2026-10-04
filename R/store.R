@@ -213,9 +213,7 @@ store__extract_cache_available <- function(path) {
     }
     record <- tryCatch(
         jsonlite::read_json(receipt, simplifyVector = TRUE),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     is.list(record) && identical(record[["sha256"]], checksum_file(path))
 }
@@ -303,11 +301,9 @@ store__reset_path <- function(path) {
     prefix <- if (endsWith(path, "/")) path else paste0(path, "/")
     contains_protected <- vapply(
         protected,
-        # vapply callback {{{
         function(candidate) {
             identical(path, candidate) || startsWith(candidate, prefix)
         },
-        # }}}
         logical(1L)
     )
     project_root <- dir.exists(file.path(path, ".git")) ||
@@ -418,9 +414,7 @@ store__reset_backup_path <- function(path, version = NA_character_) {
 store__reset_command <- function(path) {
     default <- tryCatch(
         store_normalize_path(store_dir(init = FALSE)),
-        # error {{{
         error = function(e) NA_character_
-        # }}}
     )
     if (!is.na(default) && identical(store_normalize_path(path), default)) {
         return("store_reset()")
@@ -987,7 +981,6 @@ EsgStore <- R6::R6Class(
             artifacts[, exists := file.exists(expected_path)]
             artifacts[,
                 checksum_ok := mapply(
-                    # mapply callback {{{
                     function(path, ok, checksum, checksum_type) {
                         if (
                             !isTRUE(ok) || is.na(checksum) || !nzchar(checksum)
@@ -999,7 +992,6 @@ EsgStore <- R6::R6Class(
                             tolower(checksum)
                         )
                     },
-                    # }}}
                     expected_path,
                     exists,
                     checksum,
@@ -1008,7 +1000,6 @@ EsgStore <- R6::R6Class(
             ]
             artifacts[,
                 size_ok := mapply(
-                    # mapply callback {{{
                     function(path, ok, size) {
                         if (!isTRUE(ok) || is.na(size)) {
                             return(NA)
@@ -1020,7 +1011,6 @@ EsgStore <- R6::R6Class(
                             as.numeric(size)
                         )
                     },
-                    # }}}
                     expected_path,
                     exists,
                     size
@@ -1169,9 +1159,7 @@ EsgStore <- R6::R6Class(
                 rows <- data.frame(
                     tag_id = vapply(
                         tag,
-                        # vapply callback {{{
                         function(value) store__hash(query_id, value),
-                        # }}}
                         character(1L)
                     ),
                     query_id = query_id,
@@ -1733,24 +1721,18 @@ EsgStore <- R6::R6Class(
             node_stats <- if (!is.null(downloader)) {
                 tryCatch(
                     downloader$data_nodes(service = service),
-                    # error {{{
                     error = function(e) NULL
-                    # }}}
                 )
             } else {
                 NULL
             }
             network_policy <- if (!is.null(downloader)) {
-                # error {{{
                 tryCatch(downloader$network_policy, error = function(e) NULL)
-                # }}}
             } else {
                 NULL
             }
             node_policy <- if (!is.null(downloader)) {
-                # error {{{
                 tryCatch(downloader$node_policy, error = function(e) NULL)
-                # }}}
             } else {
                 NULL
             }
@@ -2024,9 +2006,7 @@ EsgStore <- R6::R6Class(
             files <- private$read_table("esg_file")
             tasks <- tryCatch(
                 data.table::as.data.table(downloader$tasks()),
-                # error {{{
                 error = function(e) data.table::data.table()
-                # }}}
             )
             private$summarise_query_status(queries, links, files, tasks)
         },
@@ -2201,11 +2181,9 @@ EsgStore <- R6::R6Class(
                 names(status)
             )
             if (length(retry_cols)) {
-                # lapply callback {{{
                 retry_values <- as.data.frame(lapply(retry_cols, function(col) {
                     suppressWarnings(as.numeric(status[[col]]))
                 }))
-                # }}}
                 status[,
                     download_retryable := rowSums(retry_values, na.rm = TRUE)
                 ]
@@ -2224,9 +2202,7 @@ EsgStore <- R6::R6Class(
             if (length(incomplete_cols)) {
                 incomplete_values <- as.data.frame(lapply(
                     incomplete_cols,
-                    # lapply callback {{{
                     function(col) suppressWarnings(as.numeric(status[[col]]))
-                    # }}}
                 ))
                 status[,
                     download_incomplete := rowSums(
@@ -2355,9 +2331,7 @@ EsgStore <- R6::R6Class(
             )
             nodes <- tryCatch(
                 data.table::as.data.table(downloader$data_nodes()),
-                # error {{{
                 error = function(e) data.table::data.table()
-                # }}}
             )
 
             list(
@@ -2461,9 +2435,7 @@ EsgStore <- R6::R6Class(
                 out[,
                     removed_file_links := vapply(
                         query_id,
-                        # vapply callback {{{
                         function(id) sum(touched$query_id == id),
-                        # }}}
                         integer(1L)
                     )
                 ]
@@ -2652,7 +2624,6 @@ EsgStore <- R6::R6Class(
             checkmate::assert_flag(dry_run)
             cutoff <- private$cleanup_cutoff(older_than)
             report <- private$download_storage_report()
-            # collect_actions {{{
             collect_actions <- function() {
                 actions <- list()
                 if ("tmp" %in% scope) {
@@ -2685,7 +2656,6 @@ EsgStore <- R6::R6Class(
                 }
                 data.table::rbindlist(actions, fill = TRUE)
             }
-            # }}}
             if (isTRUE(dry_run)) {
                 collect_actions()
             } else {
@@ -2953,21 +2923,15 @@ EsgStore <- R6::R6Class(
                 })
                 node_stats <- tryCatch(
                     downloader$data_nodes(service = service),
-                    # error {{{
                     error = function(e) NULL
-                    # }}}
                 )
                 network_policy <- tryCatch(
                     downloader$network_policy,
-                    # error {{{
                     error = function(e) NULL
-                    # }}}
                 )
                 node_policy <- tryCatch(
                     downloader$node_policy,
-                    # error {{{
                     error = function(e) NULL
-                    # }}}
                 )
                 resolved_probe_concurrency <- private$downloader_probe_concurrency(
                     downloader,
@@ -3001,9 +2965,7 @@ EsgStore <- R6::R6Class(
             # Downloader manifest/probe operations must not hold the store lock.
             tryCatch(
                 downloader$record_probes(plan, probed = probe),
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             session_id <- downloader$enqueue(
                 plan,
@@ -3257,7 +3219,6 @@ EsgStore <- R6::R6Class(
             out <- data.frame(
                 plan_id = vapply(
                     seq_len(nrow(plan)),
-                    # vapply callback {{{
                     function(i) {
                         store__hash(
                             plan$file_key[[i]],
@@ -3270,7 +3231,6 @@ EsgStore <- R6::R6Class(
                             time_range$stop
                         )
                     },
-                    # }}}
                     character(1L)
                 ),
                 query_id = query_id,
@@ -3408,7 +3368,6 @@ EsgStore <- R6::R6Class(
             file_rows <- match(plans$file_key, catalog$file_key)
             # Persist and report each result only in the manifest-owning process.
             finished <- 0L
-            # process {{{
             process <- function(i, resolved = NULL) {
                 # Source files can finish out of order; UI counts follow actual
                 # processing, while result rows retain their original indices.
@@ -3502,14 +3461,12 @@ EsgStore <- R6::R6Class(
                         reporter = reporter,
                         resolved = resolved
                     ),
-                    # error {{{
                     error = function(e) {
                         if (inherits(e, "epwshiftr_store_extract_conflict")) {
                             stop(e)
                         }
                         private$mark_plan_failed(plan, conditionMessage(e))
                     }
-                    # }}}
                 )
                 if (!is.null(reporter)) {
                     result_status <- processed[[i]]$status[[1L]]
@@ -3551,7 +3508,6 @@ EsgStore <- R6::R6Class(
                     )
                 }
             }
-            # }}}
 
             # Only uncached remote work enters the pool. Local reads, complete
             # plans and cached payloads keep their inexpensive synchronous path.
@@ -3620,38 +3576,29 @@ EsgStore <- R6::R6Class(
                 } else {
                     vapply(
                         jobs,
-                        # vapply callback {{{
                         function(job) job$file$file_key[[1L]],
-                        # }}}
                         character(1L)
                     )
                 }
                 groups <- split(seq_along(jobs), group)
-                # lapply callback {{{
                 jobs <- lapply(groups, function(rows) {
                     list(
                         indices = vapply(
                             jobs[rows],
-                            # vapply callback {{{
                             function(job) job$index,
-                            # }}}
                             integer(1L)
                         ),
                         plans = data.table::rbindlist(lapply(
                             jobs[rows],
-                            # lapply callback {{{
                             function(job) job$plan
-                            # }}}
                         )),
                         file = jobs[[rows[[1L]]]]$file
                     )
                 })
-                # }}}
             }
             source__apply(
                 jobs,
                 store__read_task,
-                # collect {{{
                 collect = function(job, value) {
                     for (index in seq_along(job$indices)) {
                         row <- job$indices[[index]]
@@ -3673,7 +3620,6 @@ EsgStore <- R6::R6Class(
                         }
                     }
                 },
-                # }}}
                 reporter = reporter
             )
             # HTTP fallback owns the store manifest and starts only after the
@@ -3855,7 +3801,6 @@ EsgStore <- R6::R6Class(
             out[,
                 output_files_exist := vapply(
                     output_files,
-                    # vapply callback {{{
                     function(paths) {
                         paths <- unlist(paths, use.names = FALSE)
                         length(paths) > 0L &&
@@ -3864,7 +3809,6 @@ EsgStore <- R6::R6Class(
                                 paths
                             )))
                     },
-                    # }}}
                     logical(1L)
                 )
             ]
@@ -4049,9 +3993,7 @@ EsgStore <- R6::R6Class(
                     simplifyVector = TRUE,
                     simplifyMatrix = FALSE
                 ),
-                # error {{{
                 error = function(e) list()
-                # }}}
             )
             private$normalize_download_layout_policy(policy)
         },
@@ -4085,20 +4027,16 @@ EsgStore <- R6::R6Class(
             } else {
                 subdirs <- vapply(
                     seq_len(nrow(plan)),
-                    # vapply callback {{{
                     function(i) {
                         private$download_layout_subdir(plan[i], policy)
                     },
-                    # }}}
                     character(1L)
                 )
                 missing <- vapply(
                     seq_len(nrow(plan)),
-                    # vapply callback {{{
                     function(i) {
                         private$download_layout_missing_fields(plan[i], policy)
                     },
-                    # }}}
                     character(1L)
                 )
                 plan[["subdir"]] <- subdirs
@@ -4280,7 +4218,6 @@ EsgStore <- R6::R6Class(
             }
             missing <- required[vapply(
                 required,
-                # vapply callback {{{
                 function(field) {
                     value <- if (field %in% names(row)) {
                         row[[field]]
@@ -4289,7 +4226,6 @@ EsgStore <- R6::R6Class(
                     }
                     is.na(private$download_layout_component(value))
                 },
-                # }}}
                 logical(1L)
             )]
             paste(missing, collapse = ",")
@@ -4313,7 +4249,6 @@ EsgStore <- R6::R6Class(
                 rep(NA_character_, nrow(plan))
             }
             target_rel <- mapply(
-                # mapply callback {{{
                 function(subdir, filename) {
                     filename <- private$download_layout_component(filename)
                     if (is.na(filename)) {
@@ -4325,7 +4260,6 @@ EsgStore <- R6::R6Class(
                         file.path(subdir, filename)
                     }
                 },
-                # }}}
                 plan$subdir,
                 plan$filename,
                 USE.NAMES = FALSE
@@ -4366,7 +4300,6 @@ EsgStore <- R6::R6Class(
             disambiguators[,
                 disambiguator := vapply(
                     seq_len(.N),
-                    # vapply callback {{{
                     function(i) {
                         if (identical(policy$collision, "checksum")) {
                             checksum <- private$download_layout_component(checksum[[
@@ -4392,7 +4325,6 @@ EsgStore <- R6::R6Class(
                             )
                         )
                     },
-                    # }}}
                     character(1L)
                 )
             ]
@@ -4404,7 +4336,6 @@ EsgStore <- R6::R6Class(
             plan[
                 hit,
                 subdir := mapply(
-                    # mapply callback {{{
                     function(subdir, logical_file_id) {
                         extra <- map[[logical_file_id]]
                         if (is.na(subdir) || !nzchar(subdir)) {
@@ -4413,7 +4344,6 @@ EsgStore <- R6::R6Class(
                             file.path(subdir, extra)
                         }
                     },
-                    # }}}
                     subdir,
                     logical_file_id,
                     USE.NAMES = FALSE
@@ -4733,9 +4663,7 @@ EsgStore <- R6::R6Class(
             if (is.null(downloader)) {
                 return(1L)
             }
-            # error {{{
             workers <- tryCatch(downloader$n_workers, error = function(e) 1L)
-            # }}}
             workers <- suppressWarnings(as.integer(workers))
             if (is.na(workers) || workers < 1L) {
                 workers <- 1L
@@ -4852,9 +4780,7 @@ EsgStore <- R6::R6Class(
             if (!is.null(downloader)) {
                 space <- tryCatch(
                     downloader$preflight(plan = candidates, overwrite = FALSE),
-                    # error {{{
                     error = function(e) NULL
-                    # }}}
                 )
                 if (!is.null(space) && nrow(space)) {
                     add <- c(
@@ -4913,9 +4839,7 @@ EsgStore <- R6::R6Class(
             if (ddb_is_valid(private$conn)) {
                 tryCatch(
                     ddb_disconnect(private$conn, shutdown = TRUE),
-                    # error {{{
                     error = function(e) ddb_disconnect(private$conn)
-                    # }}}
                 )
             }
             private$conn <- NULL
@@ -5287,9 +5211,7 @@ EsgStore <- R6::R6Class(
         store_schema_version = function() {
             meta <- tryCatch(
                 private$read_table("store_meta"),
-                # error {{{
                 error = function(e) data.table::data.table()
-                # }}}
             )
             if (!nrow(meta)) {
                 return(NA_character_)
@@ -6031,9 +5953,7 @@ EsgStore <- R6::R6Class(
         workflow_downloads = function(query_id, downloader) {
             tasks <- tryCatch(
                 data.table::as.data.table(downloader$tasks()),
-                # error {{{
                 error = function(e) data.table::data.table()
-                # }}}
             )
             if (!nrow(tasks)) {
                 return(tasks)
@@ -6233,23 +6153,18 @@ EsgStore <- R6::R6Class(
         # query_update_preview_summary
         # query_update_preview_summary {{{
         query_update_preview_summary = function(row, changes) {
-            # count_type {{{
             count_type <- function(type) {
                 if (!nrow(changes)) {
                     return(0L)
                 }
                 as.integer(sum(changes$change_type == type, na.rm = TRUE))
             }
-            # }}}
-            # count_flag {{{
             count_flag <- function(column) {
                 if (!nrow(changes) || !column %in% names(changes)) {
                     return(0L)
                 }
                 as.integer(sum(changes[[column]] %in% TRUE, na.rm = TRUE))
             }
-            # }}}
-            # sum_size {{{
             sum_size <- function(rows) {
                 if (!nrow(rows) || !"current_size" %in% names(rows)) {
                     return(0)
@@ -6259,7 +6174,6 @@ EsgStore <- R6::R6Class(
                     na.rm = TRUE
                 )
             }
-            # }}}
 
             active <- if (nrow(changes)) {
                 changes[changes[["current_status"]] == "current"]
@@ -6574,21 +6488,15 @@ EsgStore <- R6::R6Class(
             # Use the committed current-file snapshot supplied by the caller.
             node_stats <- tryCatch(
                 downloader$data_nodes(service = service),
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             network_policy <- tryCatch(
                 downloader$network_policy,
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             node_policy <- tryCatch(
                 downloader$node_policy,
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             probe_concurrency <- private$downloader_probe_concurrency(
                 downloader,
@@ -6620,9 +6528,7 @@ EsgStore <- R6::R6Class(
             }
             tryCatch(
                 downloader$record_probes(plan, probed = probe),
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             downloader$enqueue(plan, session_label = session_label)
         },
@@ -6790,9 +6696,7 @@ EsgStore <- R6::R6Class(
             rows <- data.table::data.table(
                 link_id = vapply(
                     current_keys,
-                    # vapply callback {{{
                     function(file_key) store__hash(qid, file_key),
-                    # }}}
                     character(1L)
                 ),
                 query_id = qid,
@@ -7068,14 +6972,12 @@ EsgStore <- R6::R6Class(
             local_path <- store__chr(catalog$local_path)
             actual_path <- vapply(
                 local_path,
-                # vapply callback {{{
                 function(path) {
                     if (is.na(path) || !nzchar(path)) {
                         return(NA_character_)
                     }
                     store_abs_path(path, root = private$store_path)
                 },
-                # }}}
                 character(1L)
             )
             exists <- !is.na(actual_path) & file.exists(actual_path)
@@ -7402,7 +7304,6 @@ EsgStore <- R6::R6Class(
             out[,
                 action_id := vapply(
                     seq_len(.N),
-                    # vapply callback {{{
                     function(i) {
                         store__hash(
                             action[[i]],
@@ -7413,7 +7314,6 @@ EsgStore <- R6::R6Class(
                             reason[[i]]
                         )
                     },
-                    # }}}
                     character(1L)
                 )
             ]
@@ -7455,13 +7355,10 @@ EsgStore <- R6::R6Class(
             }
             vapply(
                 seq_len(n),
-                # vapply callback {{{
                 function(i) {
                     hit <- names(flags)[vapply(
                         flags,
-                        # vapply callback {{{
                         function(x) x[[i]] %in% TRUE,
-                        # }}}
                         logical(1L)
                     )]
                     if (!length(hit)) {
@@ -7469,7 +7366,6 @@ EsgStore <- R6::R6Class(
                     }
                     paste(hit, collapse = ",")
                 },
-                # }}}
                 character(1L)
             )
         },
@@ -7569,14 +7465,12 @@ EsgStore <- R6::R6Class(
                 )
             }
             data.table::rbindlist(
-                # lapply callback {{{
                 lapply(seq_len(nrow(actions)), function(i) {
                     private$repair_download_action(
                         actions[i],
                         dry_run = dry_run
                     )
                 }),
-                # }}}
                 fill = TRUE
             )
         },
@@ -7626,11 +7520,9 @@ EsgStore <- R6::R6Class(
                         )
                     )
                 ),
-                # error {{{
                 error = function(e) {
                     list(done = FALSE, message = conditionMessage(e))
                 }
-                # }}}
             )
             base$done <- isTRUE(result$done)
             base$message <- store__chr1(result$message)
@@ -7997,14 +7889,12 @@ EsgStore <- R6::R6Class(
             out[,
                 path := vapply(
                     relative_path,
-                    # vapply callback {{{
                     function(path) {
                         if (is.na(path) || !nzchar(path)) {
                             return(NA_character_)
                         }
                         store_abs_path(path, root = private$store_path)
                     },
-                    # }}}
                     character(1L)
                 )
             ]
@@ -8259,14 +8149,12 @@ EsgStore <- R6::R6Class(
             out[,
                 local_file := vapply(
                     orphan_local_path,
-                    # vapply callback {{{
                     function(path) {
                         if (is.na(path) || !nzchar(path)) {
                             return(NA_character_)
                         }
                         store_abs_path(path, root = private$store_path)
                     },
-                    # }}}
                     character(1L)
                 )
             ]
@@ -8330,14 +8218,12 @@ EsgStore <- R6::R6Class(
 
             local_file <- vapply(
                 local_path[keys],
-                # vapply callback {{{
                 function(path) {
                     if (is.na(path) || !nzchar(path)) {
                         return(NA_character_)
                     }
                     store_abs_path(path, root = private$store_path)
                 },
-                # }}}
                 character(1L)
             )
             deleted_local <- rep(FALSE, length(keys))
@@ -8370,9 +8256,7 @@ EsgStore <- R6::R6Class(
                 deleted_local = deleted_local,
                 removed_links = vapply(
                     keys,
-                    # vapply callback {{{
                     function(key) sum(linked$file_key == key),
-                    # }}}
                     integer(1L)
                 )
             )
@@ -8508,7 +8392,6 @@ EsgStore <- R6::R6Class(
             ) {
                 stop(source_error)
             }
-            # generate {{{
             generate <- function() {
                 opened <- private$open_plan_dataset(
                     file,
@@ -8565,7 +8448,6 @@ EsgStore <- R6::R6Class(
                             overwrite = overwrite,
                             reporter = reporter
                         ),
-                        # error {{{
                         error = function(error) {
                             store__access_error(
                                 error,
@@ -8575,7 +8457,6 @@ EsgStore <- R6::R6Class(
                                 started_at = download_started
                             )
                         }
-                        # }}}
                     )
                     if (
                         inherits(
@@ -8696,7 +8577,6 @@ EsgStore <- R6::R6Class(
                     recovery_error = recovery_error
                 )
             }
-            # }}}
             if (is.null(resolved) || !is.null(source_error)) {
                 resolved <- store__extract_cache_resolve(plan, file, generate)
             }
@@ -8715,7 +8595,6 @@ EsgStore <- R6::R6Class(
                     opened,
                     overwrite = overwrite
                 )),
-                # error {{{
                 error = function(error) {
                     if (
                         inherits(
@@ -8757,7 +8636,6 @@ EsgStore <- R6::R6Class(
                     }
                     stop(classified)
                 }
-                # }}}
             )
         },
         # }}}
@@ -8939,7 +8817,6 @@ EsgStore <- R6::R6Class(
                     overwrite = overwrite,
                     reporter = reporter
                 ),
-                # error {{{
                 error = function(error) {
                     store__access_error(
                         error,
@@ -8949,7 +8826,6 @@ EsgStore <- R6::R6Class(
                         started_at = download_started
                     )
                 }
-                # }}}
             )
             if (inherits(local_path, "epwshiftr_store_access_error")) {
                 store__report_access_failure(
@@ -9194,7 +9070,6 @@ EsgStore <- R6::R6Class(
             sources[,
                 source_row_id := vapply(
                     seq_len(.N),
-                    # vapply callback {{{
                     function(i) {
                         store__hash(
                             plan_id[[i]],
@@ -9204,7 +9079,6 @@ EsgStore <- R6::R6Class(
                             source_index[[i]]
                         )
                     },
-                    # }}}
                     character(1L)
                 )
             ]
@@ -9779,7 +9653,6 @@ store__file_keys <- function(dt) {
 
     vapply(
         seq_len(nrow(dt)),
-        # vapply callback {{{
         function(i) {
             master_id <- store__cell(dt, "master_id", i)
             if (!is.na(master_id) && nzchar(master_id)) {
@@ -9828,7 +9701,6 @@ store__file_keys <- function(dt) {
             }
             paste0("fallback:", store__hash(pieces))
         },
-        # }}}
         character(1L)
     )
 }

@@ -181,11 +181,9 @@ shift_run__task_store_value <- function(x, store = NULL) {
     candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
     normalized <- unique(vapply(
         candidates,
-        # vapply callback {{{
         function(path) {
             normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
         },
-        # }}}
         character(1L)
     ))
     if (length(normalized) > 1L) {
@@ -217,9 +215,7 @@ shift_run__run_task_history <- function(store, run_id, seen = character()) {
     }
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
-        # error {{{
         error = function(e) list()
-        # }}}
     )
     parent <- store__chr1(spec$parent_run_id)
     inherited <- shift_run__run_task_history(store, parent, c(seen, run_id))
@@ -284,9 +280,7 @@ shift_run__task_run_context <- function(x, store) {
         latest$status[[1L]] %in% c("completed", "partial")
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
-        # error {{{
         error = function(e) list()
-        # }}}
     )
     lineage_id <- as.character(shift_stage__coalesce(
         spec$lineage_id,
@@ -687,7 +681,6 @@ shift_run__task_execute <- function(
                 }
                 result
             },
-            # interrupt {{{
             interrupt = function(e) {
                 message <- sprintf(
                     "%s was cancelled.",
@@ -732,8 +725,6 @@ shift_run__task_execute <- function(
                 reporter$operation_failed(message, cancelled = TRUE)
                 stop(shift_run__task_condition(e, run_id, step_id, opened$path))
             },
-            # }}}
-            # error {{{
             error = function(e) {
                 message <- conditionMessage(e)
                 cancelled <- inherits(e, "epwshiftr_shift_cancelled")
@@ -782,7 +773,6 @@ shift_run__task_execute <- function(
                 )
                 stop(shift_run__task_condition(e, run_id, step_id, opened$path))
             }
-            # }}}
         )
     )
 }
@@ -1187,7 +1177,6 @@ shift_datasets <- function(
                 ui = ui,
                 spec = list(all = all, limit = limit),
                 auto_complete = TRUE,
-                # code {{{
                 code = function(reporter, task_store) {
                     result <- shift_run__with_reporter(
                         reporter,
@@ -1200,7 +1189,6 @@ shift_datasets <- function(
                     )
                     shift_run__datasets_stage(result, x, task_store)
                 }
-                # }}}
             )
             return(shift_run__datasets_attach_run(
                 shift_run__datasets_result(stage),
@@ -1413,9 +1401,7 @@ shift_run__download_metrics <- function(
 ) {
     tasks <- tryCatch(
         downloader$tasks(session_id = session_id),
-        # error {{{
         error = function(e) data.frame()
-        # }}}
     )
     total <- nrow(tasks)
     completed <- if (total) sum(tasks$status %in% c("done", "skipped")) else 0L
@@ -1531,7 +1517,6 @@ shift_run__download_reporter_bind <- function(
 ) {
     checkmate::assert_flag(nested)
     tokens <- character()
-    # callback {{{
     callback <- function(event, dl) {
         metrics <- shift_run__download_metrics(
             dl,
@@ -1653,18 +1638,15 @@ shift_run__download_reporter_bind <- function(
         )
         invisible(TRUE)
     }
-    # }}}
     for (event in DOWNLOADER_CALLBACK_EVENTS) {
         tokens <- c(tokens, downloader$on(event, callback))
     }
-    # { callback {{{
     function() {
         for (token in tokens) {
             try(downloader$off(token), silent = TRUE)
         }
         invisible(NULL)
     }
-    # }}}
 }
 # }}}
 
@@ -1911,7 +1893,6 @@ shift_run__extract_plans_task <- function(
         store = store,
         ui = ui,
         spec = spec,
-        # code {{{
         code = function(reporter, task_store) {
             processed <- task_store$extract(
                 plan_id = plan_id,
@@ -1938,7 +1919,6 @@ shift_run__extract_plans_task <- function(
                 diagnostics = shift_stage__diagnostics_from_coverage(coverage)
             )
         }
-        # }}}
     )
 }
 # }}}
@@ -2042,7 +2022,6 @@ shift_run__case_fulfilment <- function(
             character(nrow(reference_coverage))
         }
     }
-    # match_identity {{{
     match_identity <- function(rows, case, include_experiment = TRUE) {
         keep <- shift_resolve__catalog_match(
             rows$source_id,
@@ -2064,7 +2043,6 @@ shift_run__case_fulfilment <- function(
         }
         rows[keep]
     }
-    # }}}
 
     for (i in seq_len(nrow(cases))) {
         case <- cases[i]
@@ -2349,7 +2327,6 @@ shift_run__plan_run <- function(
         as.integer(identical(control@download, "always")) +
         as.integer(reference_expected)
     stage_index <- 0L
-    # next_stage {{{
     next_stage <- function(stage, message) {
         stage_index <<- stage_index + 1L
         reporter$check_cancel(stage)
@@ -2363,7 +2340,6 @@ shift_run__plan_run <- function(
             total = stage_total
         )
     }
-    # }}}
     # Reopen the elapsed-time clock for a resumed attempt while preserving the
     # original run start and all prior immutable scientific selections.
     shift_job__run_update(
@@ -2376,16 +2352,13 @@ shift_run__plan_run <- function(
 
     # Both terminal paths persist one status and event. Interrupts retain their
     # condition class; ordinary errors retain the original source condition.
-    # failed {{{
     failed <- function(e) {
         interrupted <- inherits(e, "interrupt")
         requested <- interrupted &&
             !is.null(job_id) &&
             tryCatch(
                 shift_job__job_cancel_requested(store, job_id),
-                # error {{{
                 error = function(err) FALSE
-                # }}}
             )
         message <- if (requested) {
             "Cancellation requested by user."
@@ -2483,7 +2456,6 @@ shift_run__plan_run <- function(
             debug = shift_ui__ui_at_least(reporter$ui(), "debug")
         )
     }
-    # }}}
 
     result <- tryCatch(
         {
@@ -3194,9 +3166,7 @@ S7::method(shift_epw, ShiftMorphed) <- function(
 # shift_run__combine_climate_stages {{{
 shift_run__combine_climate_stages <- function(stages) {
     stages <- Filter(
-        # Filter callback {{{
         function(stage) S7::S7_inherits(stage, ShiftClimate),
-        # }}}
         stages
     )
     if (!length(stages)) {
@@ -3209,24 +3179,17 @@ shift_run__combine_climate_stages <- function(stages) {
     }
     first <- stages[[1L]]
     plan_id <- unique(unlist(
-        # lapply callback {{{
         lapply(stages, function(stage) stage@ids$plan_id),
-        # }}}
         use.names = FALSE
     ))
     query_id <- unique(unlist(
-        # lapply callback {{{
         lapply(stages, function(stage) stage@ids$query_id),
-        # }}}
         use.names = FALSE
     ))
     store <- shift_store(first)
     coverage <- store$coverage(plan_id = plan_id)
-    # bind_meta {{{
     bind_meta <- function(name) {
-        # lapply callback {{{
         values <- lapply(stages, function(stage) stage@meta[[name]])
-        # }}}
         values <- Filter(is.data.frame, values)
         if (!length(values)) {
             NULL
@@ -3234,7 +3197,6 @@ shift_run__combine_climate_stages <- function(stages) {
             data.table::rbindlist(values, use.names = TRUE, fill = TRUE)
         }
     }
-    # }}}
     upstream_name <- if (S7::S7_inherits(first@meta$download, ShiftDownload)) {
         "download"
     } else {
@@ -3252,9 +3214,7 @@ shift_run__combine_climate_stages <- function(stages) {
                 site = first@meta$site,
                 periods = first@meta$periods,
                 variables = unique(unlist(
-                    # lapply callback {{{
                     lapply(stages, function(stage) stage@meta$variables),
-                    # }}}
                     use.names = FALSE
                 )),
                 plan = bind_meta("plan"),

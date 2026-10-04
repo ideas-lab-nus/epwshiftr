@@ -19,9 +19,7 @@ query_result__identity <- function(docs) {
     # retaining a standard DRS filename that is stable across replica rows.
     logical_id <- tryCatch(
         query_result__file_key(data.table::as.data.table(docs)),
-        # error {{{
         error = function(error) rep(NA_character_, nrow(docs))
-        # }}}
     )
     has_logical <- !has_instance &
         !has_master_version &
@@ -141,9 +139,7 @@ query_result__compatible_file_groups <- function(docs) {
     }
     logical_id <- tryCatch(
         query_result__file_key(data.table::as.data.table(docs)),
-        # error {{{
         error = function(error) paste0("row:", seq_len(nrow(docs)))
-        # }}}
     )
     groups <- integer(nrow(docs))
     group_count <- 0L
@@ -163,14 +159,12 @@ query_result__compatible_file_groups <- function(docs) {
             )
             reverse <- vapply(
                 members,
-                # vapply callback {{{
                 function(member) {
                     query_result__compatible_content(
                         docs[member, , drop = FALSE],
                         docs[i, , drop = FALSE]
                     )[[1L]]
                 },
-                # }}}
                 logical(1L)
             )
             if (all(forward) && all(reverse)) {
@@ -257,7 +251,6 @@ query_result__collect_identity <- function(
         stores[[1L]] <- query_result__replica_store(type, list())
     }
 
-    # lapply callback {{{
     collected_parts <- lapply(stores, function(store) {
         query__collect(
             index_node,
@@ -268,7 +261,6 @@ query_result__collect_identity <- function(
             constraints = FALSE
         )
     })
-    # }}}
     collected <- query_result__merge_collects(collected_parts, stores[[1L]])
     response <- collected$response
     response$response$docs <- collected$docs
@@ -458,11 +450,9 @@ query_result__merge_collects <- function(results, params) {
     response$response$numFound <- nrow(docs)
     response$response$start <- 0L
 
-    # lapply callback {{{
     contexts <- lapply(results, function(result) {
         query_result__context(result$context)
     })
-    # }}}
     urls <- unlist(lapply(contexts, .subset2, "query_url"), use.names = FALSE)
 
     list(
@@ -628,11 +618,9 @@ query_result__set_service_url <- function(value, service, url) {
     parsed <- strsplit(value, "|", fixed = TRUE)
     keep <- !vapply(
         parsed,
-        # vapply callback {{{
         function(parts) {
             length(parts) == 3L && identical(parts[[3L]], service)
         },
-        # }}}
         logical(1L)
     )
     value <- value[keep]
@@ -791,11 +779,9 @@ query_result__resolve_file_services <- function(
         original_docs[0L, , drop = FALSE]
     }
     context_urls <- unique(unlist(
-        # lapply callback {{{
         lapply(contexts, function(context) {
             unname(query_result__context(context)$query_url)
         }),
-        # }}}
         use.names = FALSE
     ))
     context <- query_result__context(priv(result)$context)
@@ -835,19 +821,15 @@ query_result__http_fallback <- function(
     # Check the exact recovery subset here and search compatible replicas only
     # for files that genuinely require a full download.
     selected <- result$slice(as.integer(indices))
-    # error {{{
     workers <- tryCatch(as.integer(downloader$n_workers), error = function(e) {
         1L
     })
-    # }}}
     if (length(workers) != 1L || is.na(workers) || workers < 1L) {
         workers <- 1L
     }
-    # error {{{
     network_policy <- tryCatch(downloader$network_policy, error = function(e) {
         NULL
     })
-    # }}}
     selected <- query_result__repair_urls(
         selected,
         service = "HTTPServer",
@@ -899,7 +881,6 @@ query_result__http_fallback <- function(
     by_logical_file <- stats::setNames(tasks$target_path, tasks$logical_file_id)
     paths <- vapply(
         selected_indices,
-        # vapply callback {{{
         function(index) {
             row <- plan[record_index == index][1L]
             path <- by_logical_file[[row$logical_file_id[[1L]]]]
@@ -915,7 +896,6 @@ query_result__http_fallback <- function(
             }
             path
         },
-        # }}}
         character(1L)
     )
     unname(paths)
@@ -980,7 +960,6 @@ query_result__open_dataset <- function(
 
     # If any later validation or fallback step aborts, close handles that were
     # already opened during the preflight loop.
-    # close_preopened_handles {{{
     close_preopened_handles <- function() {
         open_pos <- base::which(!vapply(nc_handles, is.null, logical(1L)))
         if (!length(open_pos)) {
@@ -991,7 +970,6 @@ query_result__open_dataset <- function(
         nc_handles[open_pos] <<- vector("list", length(open_pos))
         invisible(NULL)
     }
-    # }}}
     cleanup_preopened <- TRUE
     on.exit(
         if (isTRUE(cleanup_preopened)) {
@@ -1007,7 +985,6 @@ query_result__open_dataset <- function(
         sprintf("Opening %s records", result_label),
         length(urls)
     )
-    # finish_opendap_progress {{{
     finish_opendap_progress <- function(ok) {
         if (!is.null(progress_id)) {
             dataset__progress_done(progress_id, ok)
@@ -1015,7 +992,6 @@ query_result__open_dataset <- function(
         }
         invisible(NULL)
     }
-    # }}}
     on.exit(finish_opendap_progress(FALSE), add = TRUE)
 
     for (j in seq_along(urls)) {
@@ -1039,7 +1015,6 @@ query_result__open_dataset <- function(
                 nc_handles[j] <- handles[1L]
                 TRUE
             },
-            # error {{{
             error = function(e) {
                 if (!is.null(d) && is.function(d$close)) {
                     d$close()
@@ -1047,7 +1022,6 @@ query_result__open_dataset <- function(
                 opendap_errors[[j]] <<- e
                 FALSE
             }
-            # }}}
         )
         failed[[j]] <- !ok
         dataset__progress_update(progress_id, j)

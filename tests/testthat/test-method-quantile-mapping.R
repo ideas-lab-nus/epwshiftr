@@ -47,9 +47,7 @@ qm_test__settings <- function(variable) {
     profiles <- qm__profiles()
     index <- which(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
-        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings
@@ -350,13 +348,11 @@ test_that("Quantile Mapping rejects unsupported or insufficient inputs", {
 
     precipitation <- lapply(
         boundary$group@inputs,
-        # lapply callback {{{
         function(data) {
             data$variable_id <- "pr"
             data$units <- "kg m-2 s-1"
             data
         }
-        # }}}
     )
     precipitation$model_future$value[[1L]] <- -1
     pr_settings <- qm_test__settings("pr")

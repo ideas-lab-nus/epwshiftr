@@ -87,11 +87,9 @@ result_schema__allow_provider_fields <- function(path) {
         missing <- RESULT_SCHEMA__PROVIDER_FIELDS[
             !vapply(
                 RESULT_SCHEMA__PROVIDER_FIELDS,
-                # vapply callback {{{
                 function(field) {
                     grepl(sprintf('"%s"', field), lines[[target]], fixed = TRUE)
                 },
-                # }}}
                 logical(1L)
             )
         ]

@@ -32,13 +32,11 @@ schema_bootstrap <- function() {
 # schema_direct_child {{{
 schema_direct_child <- function(parent) {
     force(parent)
-    # { callback {{{
     function(path, node) {
         prefix <- paste0(parent, "$")
         startsWith(path, prefix) &&
             !grepl("$", substring(path, nchar(prefix) + 1L), fixed = TRUE)
     }
-    # }}}
 }
 # }}}
 
@@ -181,9 +179,7 @@ schema_relax_parameters <- function(schema, path = "$parameter") {
     schema <- schema_replace_children(schema, path, param_schema)
     schema <- tryCatch(
         schema_replace(schema, paste0(path, "$`fields`"), param_schema),
-        # error {{{
         error = function(e) schema
-        # }}}
     )
     schema_set_rest(schema, param_schema, path = path)
 }

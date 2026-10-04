@@ -119,11 +119,9 @@ hourly_calendar__site_values <- function(data, role) {
 # only when every labelled role contains the same single site.
 # hourly_calendar__sites {{{
 hourly_calendar__sites <- function(role_data) {
-    # lapply callback {{{
     sites <- lapply(names(role_data), function(role) {
         hourly_calendar__site_values(role_data[[role]], role)
     })
-    # }}}
     names(sites) <- names(role_data)
     labelled <- sites[lengths(sites) > 0L]
     if (!length(labelled)) {
@@ -260,7 +258,6 @@ hourly_calendar__series <- function(data, role, variable, site) {
         sep = "\r"
     )
     day_offsets <- split(canonical[["cf_second_of_day"]], day_key)
-    # vapply callback {{{
     complete_days <- vapply(
         day_offsets,
         function(value) {
@@ -268,7 +265,6 @@ hourly_calendar__series <- function(data, role, variable, site) {
         },
         logical(1L)
     )
-    # }}}
     if (!all(complete_days)) {
         cli::cli_abort(
             "Hourly series {.val {label}} contains incomplete native-calendar day(s)."
@@ -381,17 +377,13 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
             "`hourly_calendar_grouping` does not accept component options."
         )
     }
-    # lapply callback {{{
     role_data <- lapply(HOURLY_CALENDAR_ROLES, function(role) {
         hourly_calendar__role_data(weather__get_input(data, role), role)
     })
-    # }}}
     names(role_data) <- HOURLY_CALENDAR_ROLES
-    # lapply callback {{{
     variable_sets <- lapply(role_data, function(value) {
         sort(unique(as.character(value[["variable_id"]])))
     })
-    # }}}
     if (
         !all(vapply(
             variable_sets[-1L],
@@ -420,7 +412,6 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
     for (site in sites) {
         site_data <- lapply(role_data, hourly_calendar__site_rows, site = site)
         for (variable in variables) {
-            # lapply callback {{{
             series <- lapply(names(site_data), function(role) {
                 rows <- site_data[[role]][["variable_id"]] == variable
                 if (!any(rows)) {
@@ -436,13 +427,10 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
                     site
                 )
             })
-            # }}}
             names(series) <- names(site_data)
             units <- vapply(
                 series,
-                # vapply callback {{{
                 function(value) unique(value$data[["units"]]),
-                # }}}
                 character(1L)
             )
             if (length(unique(units)) != 1L) {
@@ -506,7 +494,6 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
 # one bias-adjustment method or complete future-weather recipe.
 # hourly_calendar__component {{{
 hourly_calendar__component <- function() {
-    # lapply callback {{{
     requirements <- lapply(HOURLY_CALENDAR_ROLES, function(role) {
         component__input_requirement(
             role,
@@ -514,7 +501,6 @@ hourly_calendar__component <- function() {
             calendars = CF_TIME_CALENDARS
         )
     })
-    # }}}
     names(requirements) <- HOURLY_CALENDAR_ROLES
     component__spec(
         name = "hourly_calendar_grouping",

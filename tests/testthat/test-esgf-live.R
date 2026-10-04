@@ -12,14 +12,12 @@ test_that("esg_query() live smoke covers Dataset and File contracts", {
 
     datasets <- tryCatch(
         allow_live_esgf_dict_warnings(q$collect()),
-        # error {{{
         error = function(e) {
             skip(sprintf(
                 "Live ESGF Dataset query failed: %s",
                 conditionMessage(e)
             ))
         }
-        # }}}
     )
     if (!datasets$count()) {
         skip("Live ESGF Dataset query returned no records.")
@@ -32,14 +30,12 @@ test_that("esg_query() live smoke covers Dataset and File contracts", {
 
     files <- tryCatch(
         datasets$collect(type = "File", limit = 1L),
-        # error {{{
         error = function(e) {
             skip(sprintf(
                 "Live ESGF File query failed: %s",
                 conditionMessage(e)
             ))
         }
-        # }}}
     )
     if (!files$count()) {
         skip("Live ESGF File query returned no records.")
@@ -57,14 +53,12 @@ test_that("esg_query() live smoke keeps empty result behavior stable", {
         allow_live_esgf_dict_warnings(esg_query(INDEX_NODES[[
             "DKRZ"
         ]])$source_id("NONSENSE")$limit(1L)$collect()),
-        # error {{{
         error = function(e) {
             skip(sprintf(
                 "Live ESGF empty query failed: %s",
                 conditionMessage(e)
             ))
         }
-        # }}}
     )
     expect_s3_class(empty, "EsgResultDataset")
     expect_identical(empty$count(), 0L)

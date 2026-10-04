@@ -123,9 +123,7 @@ direct_epw__sequence_error <- function(self) {
     }
     years <- vapply(
         self@members,
-        # vapply callback {{{
         function(member) member@weather_year,
-        # }}}
         integer(1L)
     )
     error <- sequence__ordered_years_error(
@@ -137,9 +135,7 @@ direct_epw__sequence_error <- function(self) {
     }
     sequence_ids <- vapply(
         self@members,
-        # vapply callback {{{
         function(member) member@sequence_id,
-        # }}}
         character(1L)
     )
     error <- sequence__shared_values_error(
@@ -179,9 +175,7 @@ direct_epw__variables <- function(member) {
     variables <- unlist(
         lapply(
             member@series,
-            # lapply callback {{{
             function(series) series@variables
-            # }}}
         ),
         use.names = FALSE
     )
@@ -190,12 +184,9 @@ direct_epw__variables <- function(member) {
             "Weather year {member@weather_year} contains duplicate mapped variable groups: {.val {unique(variables[duplicated(variables)])}}."
         )
     }
-    # lapply callback {{{
     tables <- lapply(variables, function(variable) {
         containing <- Filter(
-            # Filter callback {{{
             function(series) variable %in% series@variables,
-            # }}}
             member@series
         )
         rows <- containing[[1L]]@data[
@@ -205,7 +196,6 @@ direct_epw__variables <- function(member) {
         ]
         rows[order(rows[["epw_row"]]), , drop = FALSE]
     })
-    # }}}
     names(tables) <- variables
     tables
 }
@@ -537,9 +527,7 @@ direct_epw__apply <- function(data, inputs, context, options) {
         constructed_fields = unique(unlist(
             lapply(
                 members,
-                # lapply callback {{{
                 function(member) member@provenance$constructed_fields
-                # }}}
             ),
             use.names = FALSE
         )),

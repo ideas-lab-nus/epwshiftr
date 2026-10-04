@@ -22,13 +22,11 @@ is_live_esgf_dict_warning <- function(message) {
 allow_live_esgf_dict_warnings <- function(expr) {
     withCallingHandlers(
         force(expr),
-        # warning {{{
         warning = function(w) {
             if (is_live_esgf_dict_warning(conditionMessage(w))) {
                 invokeRestart("muffleWarning")
             }
         }
-        # }}}
     )
 }
 # }}}
@@ -57,13 +55,11 @@ is_live_esgf_transient_warning <- function(message) {
 allow_live_esgf_transient_warnings <- function(expr) {
     withCallingHandlers(
         force(expr),
-        # warning {{{
         warning = function(w) {
             if (is_live_esgf_transient_warning(conditionMessage(w))) {
                 invokeRestart("muffleWarning")
             }
         }
-        # }}}
     )
 }
 # }}}

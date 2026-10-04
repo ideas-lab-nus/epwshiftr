@@ -309,14 +309,12 @@ test_that("EsgQuery$list_facets()", {
     calls <- character()
 
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             calls <<- c(calls, url)
             local_query_listing_response(
                 params = list(facet.field = c("activity_id", "source_id"))
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -338,13 +336,11 @@ test_that("EsgQuery$list_fields()", {
     fields <- c("id", "activity_id", "source_id")
 
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             local_query_listing_response(
                 docs = list(stats::setNames(as.list(seq_along(fields)), fields))
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -361,11 +357,9 @@ test_that("EsgQuery$list_shards()", {
     shards <- "localhost:8983/solr/datasets,esgf.example.org/solr/datasets"
 
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             local_query_listing_response(params = list(shards = shards))
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -394,14 +388,12 @@ test_that("EsgQuery$list_values()", {
     )
 
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             local_query_listing_response(
                 facet_fields = facet_fields,
                 num_found = 4L
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -442,12 +434,10 @@ test_that("query_listing_cached() respects max_age", {
     calls <- 0L
     fetched <- list(timestamp = Sys.time(), value = "new")
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(...) {
             calls <<- calls + 1L
             fetched
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1100,7 +1090,6 @@ test_that("EsgQuery$count()", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             decoded <- utils::URLdecode(url)
             facet_fields <- if (
@@ -1115,7 +1104,6 @@ test_that("EsgQuery$count()", {
                 num_found = 3L
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1137,11 +1125,9 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     )$limit(3L)
 
     calls <- list()
-    # local_response {{{
     local_response <- function(docs) {
         esgf_test__response(docs, timestamp = Sys.time())
     }
-    # }}}
     local_dataset_docs <- data.frame(
         id = c("dataset-1", "dataset-2"),
         source_id = c("source-a", "source-b"),
@@ -1167,7 +1153,6 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
     )))
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1205,7 +1190,6 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1243,7 +1227,6 @@ test_that("EsgQuery$collect(type=) collects child results through Dataset workfl
 test_that("EsgQuery$collect() passes progress to Dataset and child collection", {
     calls <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1265,7 +1248,6 @@ test_that("EsgQuery$collect() passes progress to Dataset and child collection", 
             )
             esgf_fixture_collect(params)
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1303,7 +1285,6 @@ test_that("EsgQuery$collect() passes progress to Dataset and child collection", 
 test_that("query__collect() includes only result-field constraints in fields", {
     captured_url <- character()
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             captured_url <<- c(captured_url, url)
             list(
@@ -1321,7 +1302,6 @@ test_that("query__collect() includes only result-field constraints in fields", {
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1379,7 +1359,6 @@ test_that("query__collect() includes only result-field constraints in fields", {
 test_that("query__collect() returns normalized effective parameters", {
     captured_url <- character()
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             captured_url <<- c(captured_url, url)
             list(
@@ -1393,7 +1372,6 @@ test_that("query__collect() returns normalized effective parameters", {
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1425,7 +1403,6 @@ test_that("query__collect() returns normalized effective parameters", {
 test_that("query__collect() records actual page query URLs", {
     captured_url <- character()
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             captured_url <<- c(captured_url, url)
             docs <- if (length(captured_url) == 1L) {
@@ -1439,7 +1416,6 @@ test_that("query__collect() records actual page query URLs", {
             }
             list(response = list(numFound = 3L, docs = docs))
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1467,7 +1443,6 @@ test_that("query__collect() records actual page query URLs", {
 test_that("query__collect() warns and returns partial docs when pagination does not progress", {
     captured_url <- character()
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             captured_url <<- c(captured_url, url)
             docs <- if (length(captured_url) == 1L) {
@@ -1485,7 +1460,6 @@ test_that("query__collect() warns and returns partial docs when pagination does 
             }
             list(response = list(numFound = 3L, docs = docs))
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1522,7 +1496,6 @@ test_that("query__collect() reports progress across collected pages", {
     updates <- list()
     dones <- list()
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             reads <<- reads + 1L
             events <<- c(events, sprintf("read:%d", reads))
@@ -1537,17 +1510,13 @@ test_that("query__collect() reports progress across collected pages", {
             }
             list(response = list(numFound = 3L, docs = docs))
         },
-        # }}}
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(name = NULL, total = NA, ...) {
             bars[[length(bars) + 1L]] <<- list(name = name, total = total)
             "progress-id"
         },
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(
             id = NULL,
             set = NULL,
@@ -1563,12 +1532,9 @@ test_that("query__collect() reports progress across collected pages", {
                 force = isTRUE(force)
             )
         },
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(id = NULL, result = "done", ...) {
             dones[[length(dones) + 1L]] <<- list(id = id, result = result)
         },
-        # }}}
         .package = "cli"
     )
 
@@ -1601,19 +1567,14 @@ test_that("query__collect() reports progress across collected pages", {
 test_that("query__collect() updates progress once for a single request", {
     updates <- list()
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             docs <- data.frame(id = "dataset-1", score = 1, check.names = FALSE)
             list(response = list(numFound = 3L, docs = docs))
         },
-        # }}}
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
-        # cli_progress_bar {{{
         cli_progress_bar = function(...) "progress-id",
-        # }}}
-        # cli_progress_update {{{
         cli_progress_update = function(
             id = NULL,
             set = NULL,
@@ -1628,10 +1589,7 @@ test_that("query__collect() updates progress once for a single request", {
                 force = isTRUE(force)
             )
         },
-        # }}}
-        # cli_progress_done {{{
         cli_progress_done = function(...) NULL,
-        # }}}
         .package = "cli"
     )
 
@@ -1654,9 +1612,7 @@ test_that("query__collect() updates progress once for a single request", {
 test_that("EsgQuery$collect() validates local dictionary constraints", {
     local_esgdict_default(local_query_test_esgdict())
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) local_query_test_response(),
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1675,9 +1631,7 @@ test_that("EsgQuery$collect() skips dictionary validation without a local dictio
     local_esgdict_default(NULL)
     withr::local_options(epwshiftr.dir_store = withr::local_tempdir())
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) local_query_test_response(),
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1693,7 +1647,6 @@ test_that("EsgQuery$collect() collects fixture-backed Dataset results", {
     index_node <- "https://example.org"
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1706,7 +1659,6 @@ test_that("EsgQuery$collect() collects fixture-backed Dataset results", {
         ) {
             esgf_fixture_collect(params)
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1834,11 +1786,9 @@ test_that("EsgQuery$save() / EsgQuery$load() round-trip without network", {
 test_that("EsgQuery$save() / EsgQuery$load()", {
     index_node <- INDEX_NODES[["CEDA"]]
     testthat::local_mocked_bindings(
-        # cache__read_json {{{
         cache__read_json = function(url, ...) {
             esgf_fixture_response("dataset-success.json")
         },
-        # }}}
         .package = "epwshiftr"
     )
 

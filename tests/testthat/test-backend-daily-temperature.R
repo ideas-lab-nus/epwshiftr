@@ -19,7 +19,6 @@ daily_backend_test__climate <- function(
 ) {
     years <- as.integer(years)
     phase <- daily__phase_grid(365L)
-    # lapply callback {{{
     rows <- lapply(years, function(year) {
         time <- as.POSIXct(
             as.Date(sprintf("%04d-01-01", year)) + seq.int(0L, 364L),
@@ -32,7 +31,6 @@ daily_backend_test__climate <- function(
             values$tasmin <- 20 + seasonal - 4 + minimum_shift
             values$tasmax <- 20 + seasonal + 5 + maximum_shift
         }
-        # lapply callback {{{
         data.table::rbindlist(lapply(names(values), function(variable_id) {
             data.table::data.table(
                 activity_id = if (identical(experiment, "historical")) {
@@ -57,9 +55,7 @@ daily_backend_test__climate <- function(
                 value = values[[variable_id]] + 273.15
             )
         }))
-        # }}}
     })
-    # }}}
     data.table::rbindlist(rows)
 }
 # }}}

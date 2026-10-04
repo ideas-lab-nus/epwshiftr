@@ -2,12 +2,10 @@
 # compatibility can be tested without declaring eplusr in Suggests.
 # test_external_epw {{{
 test_external_epw <- function(path) {
-    # generator {{{
     generator <- R6::R6Class(
         "Epw",
         public = list(
             source_path = NULL,
-            # initialize {{{
             initialize = function(path) {
                 self$source_path <- normalizePath(
                     path,
@@ -15,18 +13,12 @@ test_external_epw <- function(path) {
                     mustWork = TRUE
                 )
             },
-            # }}}
-            # path {{{
             path = function() {
                 self$source_path
             },
-            # }}}
-            # location {{{
             location = function() {
                 epw_file_read(self$source_path)$location()
             },
-            # }}}
-            # save {{{
             save = function(path, overwrite = FALSE) {
                 if (file.exists(path) && !isTRUE(overwrite)) {
                     stop("Target exists.")
@@ -52,10 +44,8 @@ test_external_epw <- function(path) {
                 )
                 invisible(self$source_path)
             }
-            # }}}
         )
     )
-    # }}}
     generator$new(path)
 }
 # }}}

@@ -88,7 +88,6 @@ epwphys_test__sequence <- function(
 ) {
     stopifnot(identical(names(values), names(units)))
     series <- Map(
-        # Map callback {{{
         function(variable, value, unit) {
             epwphys_test__series(
                 variable,
@@ -103,7 +102,6 @@ epwphys_test__sequence <- function(
                 }
             )
         },
-        # }}}
         names(values),
         values,
         units
@@ -494,13 +492,11 @@ test_that("direct-model output retains every physically closed weather year", {
     expect_s7_class(result, WeatherSequenceResult)
     expect_identical(result@output_type, "multi_year")
     expect_identical(
-        # vapply callback {{{
         vapply(
             result@members,
             function(member) member@weather_year,
             integer(1L)
         ),
-        # }}}
         c(2061L, 2062L)
     )
     expect_identical(result@provenance$method, "direct_model_epw_result")

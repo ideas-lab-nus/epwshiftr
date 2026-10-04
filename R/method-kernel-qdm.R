@@ -61,7 +61,6 @@ kqdm__profiles <- function() {
         psl = list("additive", c(0, Inf)),
         rlds = list("multiplicative", c(0, Inf))
     )
-    # lapply callback {{{
     lapply(names(specifications), function(variable) {
         specification <- specifications[[variable]]
         published_variable <- variable %in% KQDM_PUBLISHED_VARIABLES
@@ -101,7 +100,6 @@ kqdm__profiles <- function() {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -230,7 +228,6 @@ kqdm__inputs <- function(inputs, variable, transformation) {
             "Kernel-density Quantile Delta Mapping requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__subdaily_table(
             inputs[[role]],
@@ -239,7 +236,6 @@ kqdm__inputs <- function(inputs, variable, transformation) {
             name = role
         )
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -256,9 +252,7 @@ kqdm__inputs <- function(inputs, variable, transformation) {
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -270,9 +264,7 @@ kqdm__inputs <- function(inputs, variable, transformation) {
         identical(transformation, "multiplicative") &&
             any(vapply(
                 series,
-                # vapply callback {{{
                 function(data) any(data[["value"]] < 0),
-                # }}}
                 logical(1L)
             ))
     ) {
@@ -326,13 +318,11 @@ kqdm__density_cdf <- function(values, resolved, label) {
             cut = 3,
             na.rm = FALSE
         ),
-        # error {{{
         error = function(error) {
             cli::cli_abort(
                 "Kernel-density Quantile Delta Mapping could not fit {.val {label}} with bandwidth method {.val {resolved$bandwidth_method}}: {conditionMessage(error)}"
             )
         }
-        # }}}
     )
     bandwidth <- estimate$bw
     if (!is.finite(bandwidth) || bandwidth <= 0) {
@@ -557,12 +547,10 @@ kqdm__adjust_values <- function(series, resolved) {
     month_diagnostics <- do.call(rbind, diagnostics)
     month_diagnostics$clipped_values <- vapply(
         month_diagnostics$center_month,
-        # vapply callback {{{
         function(center_month) {
             index <- future[["cf_month"]] == center_month
             sum(bounded[index] != adjusted[index])
         },
-        # }}}
         integer(1L)
     )
     rownames(month_diagnostics) <- NULL

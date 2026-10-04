@@ -310,19 +310,15 @@ cli_shift__output_metadata <- function(outputs) {
     if (!nrow(outputs) || !"provenance_json" %in% names(outputs)) {
         return(outputs)
     }
-    # lapply callback {{{
     roles <- lapply(outputs$provenance_json, function(value) {
         if (is.na(value) || !nzchar(value)) {
             return(list())
         }
         tryCatch(
             jsonlite::fromJSON(value)$weather_field_roles,
-            # error {{{
             error = function(error) list()
-            # }}}
         )
     })
-    # }}}
     for (name in c(
         "transformed_fields",
         "derived_fields",
@@ -332,11 +328,9 @@ cli_shift__output_metadata <- function(outputs) {
         data.table::set(
             outputs,
             j = name,
-            # lapply callback {{{
             value = lapply(roles, function(role) {
                 as.character(shift_stage__coalesce(role[[name]], character()))
             })
-            # }}}
         )
     }
     outputs
@@ -482,11 +476,9 @@ epwshiftr_cli_periods_from_cli <- function(values) {
 # Share year syntax with the R API while retaining CLI usage-error reporting.
 # epwshiftr_cli_years {{{
 epwshiftr_cli_years <- function(value) {
-    # error {{{
     tryCatch(shift_spec__years_value(value), error = function(error) {
         epwshiftr_cli_usage_abort(conditionMessage(error))
     })
-    # }}}
 }
 # }}}
 
@@ -536,9 +528,7 @@ epwshiftr_cli_config_plan <- function(
     ui = shift_ui()
 ) {
     shift_future_epw(
-        # lapply callback {{{
         sites = lapply(config$sites, function(site) do.call(shift_site, site)),
-        # }}}
         climate = epwshiftr_cli_config_climate(config$climate),
         periods = config$periods,
         transform = cli_shift__config_transform(config$transform),
@@ -1103,9 +1093,7 @@ epwshiftr_cli_query_status <- function(store, query_id = NULL) {
     query_id <- epwshiftr_cli_ids(query_id, "--query", required = FALSE)
     native <- tryCatch(
         store$workflow_status(query_id = query_id),
-        # error {{{
         error = function(e) data.table::data.table()
-        # }}}
     )
     native_ids <- if (nrow(native) && "query_id" %in% names(native)) {
         native$query_id
@@ -1115,9 +1103,7 @@ epwshiftr_cli_query_status <- function(store, query_id = NULL) {
     fallback_ids <- if (is.null(query_id)) {
         rows <- tryCatch(
             store$query("SELECT DISTINCT query_id FROM file_catalog"),
-            # error {{{
             error = function(e) data.table::data.table()
-            # }}}
         )
         if (nrow(rows)) rows$query_id else character()
     } else {
@@ -1317,14 +1303,12 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
         cli::cli_abort("Morph ID {.val {morph_id}} has no climate summary.")
     }
     period_rows <- unique(summary[, .(period, years_json)])
-    # lapply callback {{{
     period_values <- lapply(seq_len(nrow(period_rows)), function(i) {
         as.integer(jsonlite::fromJSON(
             period_rows$years_json[[i]],
             simplifyVector = TRUE
         ))
     })
-    # }}}
     names(period_values) <- period_rows$period
     periods <- do.call(epw_morph_periods, period_values)
     epw <- store_abs_path(row$path[[1L]], root = store$path)
@@ -1375,14 +1359,12 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             reference_rows <- unique(reference[, .(period, years_json)])
             reference_values <- lapply(
                 seq_len(nrow(reference_rows)),
-                # lapply callback {{{
                 function(i) {
                     as.integer(jsonlite::fromJSON(
                         reference_rows$years_json[[i]],
                         simplifyVector = TRUE
                     ))
                 }
-                # }}}
             )
             names(reference_values) <- reference_rows$period
             reference_periods <- do.call(epw_morph_periods, reference_values)
@@ -1413,14 +1395,12 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             observed_rows <- unique(observed[, .(period, years_json)])
             observed_values <- lapply(
                 seq_len(nrow(observed_rows)),
-                # lapply callback {{{
                 function(i) {
                     as.integer(jsonlite::fromJSON(
                         observed_rows$years_json[[i]],
                         simplifyVector = TRUE
                     ))
                 }
-                # }}}
             )
             names(observed_values) <- observed_rows$period
             observed_periods <- do.call(epw_morph_periods, observed_values)
@@ -1431,11 +1411,9 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             row$by_json[[1L]],
             simplifyVector = TRUE
         )),
-        # error {{{
         error = function(e) {
             c("source_id", "experiment_id", "variant_label", "period")
         }
-        # }}}
     )
     recipe <- cli_shift__recipe_from_json(row$recipe_json[[1L]])
     transform <- transform__from_recipe_object(recipe)
@@ -1487,9 +1465,7 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
 cli_shift__recipe_from_json <- function(json) {
     parsed <- tryCatch(
         jsonlite::fromJSON(json, simplifyVector = TRUE),
-        # error {{{
         error = function(error) NULL
-        # }}}
     )
     required <- c(
         "name",
@@ -1606,9 +1582,7 @@ epwshiftr_cli_morph_diagnostics <- function(store, morph_id = NULL) {
         id <- status$morph_id[[i]]
         morpher <- tryCatch(
             epwshiftr_cli_morpher_from_morph_id(store, id),
-            # error {{{
             error = function(e) NULL
-            # }}}
         )
         diagnostics[[i]] <- if (is.null(morpher)) {
             shift_stage__diagnostic(
@@ -1620,7 +1594,6 @@ epwshiftr_cli_morph_diagnostics <- function(store, morph_id = NULL) {
                 action = "Inspect `morph status` and the `epw_source` manifest rows."
             )
         } else {
-            # error {{{
             tryCatch(morpher$diagnose(id), error = function(e) {
                 shift_stage__diagnostic(
                     "morph",
@@ -1631,7 +1604,6 @@ epwshiftr_cli_morph_diagnostics <- function(store, morph_id = NULL) {
                     action = "Inspect `morph status` and rerun `morph run` if needed."
                 )
             })
-            # }}}
         }
     }
     do.call(shift_stage__bind_diagnostics, diagnostics)

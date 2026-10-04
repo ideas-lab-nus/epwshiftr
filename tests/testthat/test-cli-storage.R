@@ -15,7 +15,6 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
 
     file_docs <- cli_test_file_docs()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -37,7 +36,6 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 

@@ -77,7 +77,6 @@ cdft__profiles <- function() {
         rsds = cdft__default_settings(c(0, Inf)),
         sfcWind = cdft__default_settings(c(0, Inf))
     )
-    # lapply callback {{{
     lapply(CDFT_FAMIEN_VARIABLES, function(variable) {
         signal__variable_profile(
             variable,
@@ -94,7 +93,6 @@ cdft__profiles <- function() {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -221,11 +219,9 @@ cdft__inputs <- function(inputs, variable, distribution_model) {
             "CDF-t requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -242,9 +238,7 @@ cdft__inputs <- function(inputs, variable, distribution_model) {
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -256,9 +250,7 @@ cdft__inputs <- function(inputs, variable, distribution_model) {
         identical(distribution_model, "precipitation_ssr") &&
             any(vapply(
                 series,
-                # vapply callback {{{
                 function(data) any(data[["value"]] < 0),
-                # }}}
                 logical(1L)
             ))
     ) {
@@ -710,12 +702,10 @@ cdft__adjust_values <- function(series, resolved, key, variable) {
         ),
         truncated_edge_windows = sum(vapply(
             records,
-            # vapply callback {{{
             function(record) {
                 isTRUE(record$truncated_left) ||
                     isTRUE(record$truncated_right)
             },
-            # }}}
             logical(1L)
         )),
         clipped_values = bounded_result$clipped,

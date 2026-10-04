@@ -91,7 +91,6 @@ sdm__profiles <- function() {
         )
     )
     variables <- c(SDM_PUBLISHED_VARIABLES, SDM_EXPERIMENTAL_VARIABLES)
-    # lapply callback {{{
     lapply(variables, function(variable) {
         published <- variable %in% SDM_PUBLISHED_VARIABLES
         signal__variable_profile(
@@ -111,7 +110,6 @@ sdm__profiles <- function() {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -266,11 +264,9 @@ sdm__inputs <- function(inputs, variable, mapping_type) {
             "Scaled Distribution Mapping requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -287,9 +283,7 @@ sdm__inputs <- function(inputs, variable, mapping_type) {
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -301,9 +295,7 @@ sdm__inputs <- function(inputs, variable, mapping_type) {
         identical(mapping_type, "relative") &&
             any(vapply(
                 series,
-                # vapply callback {{{
                 function(data) any(data[["value"]] < 0),
-                # }}}
                 logical(1L)
             ))
     ) {
@@ -954,12 +946,10 @@ sdm__adjust_values <- function(series, resolved) {
         ),
         truncated_edge_windows = sum(vapply(
             records,
-            # vapply callback {{{
             function(record) {
                 isTRUE(record$truncated_left) ||
                     isTRUE(record$truncated_right)
             },
-            # }}}
             logical(1L)
         )),
         clipped_values = clipped,
@@ -988,13 +978,11 @@ sdm__adjust_values <- function(series, resolved) {
             ),
             wet_day_increase_not_supported_windows = sum(vapply(
                 records,
-                # vapply callback {{{
                 function(record) {
                     isTRUE(
                         record$expected_wet_days$increase_not_supported
                     )
                 },
-                # }}}
                 logical(1L)
             ))
         )

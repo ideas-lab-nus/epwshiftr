@@ -726,7 +726,6 @@ ek__component_specs <- function() {
     )
     profiles <- lapply(
         c("tasmin", "tasmax"),
-        # lapply callback {{{
         function(variable) {
             signal__variable_profile(
                 variable,
@@ -737,7 +736,6 @@ ek__component_specs <- function() {
                 )
             )
         }
-        # }}}
     )
 
     list(

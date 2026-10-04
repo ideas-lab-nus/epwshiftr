@@ -20,7 +20,6 @@ ek_test__climate <- function(
     years <- as.integer(years)
     calendar_days <- as.integer(calendar_days)
     phase <- (seq_len(calendar_days) - 0.5) / calendar_days
-    # lapply callback {{{
     rows <- lapply(seq_along(years), function(index) {
         replicate_offset <- (index - mean(seq_along(years))) * 0.2
         mean_temperature <- 12 +
@@ -39,7 +38,6 @@ ek_test__climate <- function(
         )
         data.table::rbindlist(lapply(
             setdiff(names(values), omit),
-            # lapply callback {{{
             function(variable_id) {
                 data.table::data.table(
                     activity_id = if (
@@ -73,10 +71,8 @@ ek_test__climate <- function(
                     value = values[[variable_id]]
                 )
             }
-            # }}}
         ))
     })
-    # }}}
     data.table::rbindlist(rows)
 }
 # }}}

@@ -26,7 +26,6 @@ hourly_kqdm_test__series <- function(
         rsds = "W m-2",
         rsdsdiff = "W m-2"
     )
-    # lapply callback {{{
     rows <- lapply(seq_along(years), function(index) {
         year <- as.integer(years[[index]])
         year_days <- cf_time__year_days(year, calendar)[[1L]]
@@ -121,7 +120,6 @@ hourly_kqdm_test__series <- function(
             stringsAsFactors = FALSE
         )
     })
-    # }}}
     data.table::rbindlist(rows, use.names = TRUE)
 }
 # }}}
@@ -162,7 +160,6 @@ hourly_kqdm_test__model_role <- function(
         EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES,
         SOLAR_RADIATION_VARIABLES
     )
-    # lapply callback {{{
     point <- lapply(point_variables, function(variable) {
         source <- hourly_kqdm_test__series(
             variable,
@@ -187,8 +184,6 @@ hourly_kqdm_test__model_role <- function(
             native_second[[1L]]
         source
     })
-    # }}}
-    # lapply callback {{{
     radiation <- lapply(SOLAR_RADIATION_VARIABLES, function(variable) {
         source <- hourly_kqdm_test__series(
             variable,
@@ -225,7 +220,6 @@ hourly_kqdm_test__model_role <- function(
         source$lat <- 0
         source
     })
-    # }}}
     data.table::rbindlist(c(point, radiation), use.names = TRUE, fill = TRUE)
 }
 # }}}
@@ -235,11 +229,9 @@ hourly_kqdm_test__model_role <- function(
 # hourly_kqdm_test__overrides {{{
 hourly_kqdm_test__overrides <- function() {
     stats::setNames(
-        # lapply callback {{{
         lapply(EPW_MORPH_HOURLY_KQDM_VARIABLES, function(variable) {
             list(grid_points = 128L, min_samples = 3L)
         }),
-        # }}}
         EPW_MORPH_HOURLY_KQDM_VARIABLES
     )
 }
@@ -447,18 +439,14 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     expect_identical(
         vapply(
             result@members,
-            # vapply callback {{{
             function(member) member@weather_year,
-            # }}}
             integer(1L)
         ),
         2061:2062
     )
     expect_true(all(vapply(
         result@members,
-        # vapply callback {{{
         function(member) nrow(member@data) == 8760L,
-        # }}}
         logical(1L)
     )))
     expect_true(all(
@@ -473,7 +461,6 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     )
     expect_true(all(vapply(
         result@members,
-        # vapply callback {{{
         function(member) {
             weather <- member@data
             all(
@@ -485,16 +472,13 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
                 all(weather$wind_direction >= 0) &&
                 all(weather$wind_direction < 360)
         },
-        # }}}
         logical(1L)
     )))
     expect_true(all(vapply(
         result@members,
-        # vapply callback {{{
         function(member) {
             "wind_direction" %in% member@provenance$constructed_fields
         },
-        # }}}
         logical(1L)
     )))
 })

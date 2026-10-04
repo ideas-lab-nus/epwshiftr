@@ -239,19 +239,15 @@ daily__temperature_target_changes <- function(
     )
     complete_extrema <- Reduce(
         `&`,
-        # lapply callback {{{
         lapply(extrema_columns, function(column) {
             is.finite(targets[[column]])
         })
-        # }}}
     ) &
         Reduce(
             `&`,
-            # lapply callback {{{
             lapply(extrema_counts, function(column) {
                 !is.na(targets[[column]]) & targets[[column]] > 0L
             })
-            # }}}
         )
 
     invalid_extrema <- complete_extrema &
@@ -420,11 +416,9 @@ daily__temperature_shape <- function(normalized, target_mean, tolerance) {
         return(list(value = normalized, exponent = 1))
     }
 
-    # objective {{{
     objective <- function(log_exponent) {
         mean(normalized^exp(log_exponent)) - target_mean
     }
-    # }}}
     log_exponent <- stats::uniroot(
         objective,
         interval = c(-40, 40),

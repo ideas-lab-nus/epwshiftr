@@ -57,7 +57,6 @@ test_that("daily phase windows wrap and retain their requested odd width", {
 
 test_that("daily climatology maps native calendars onto one target grid", {
     calendar_days <- c(`360_day` = 360L, `365_day` = 365L, `366_day` = 366L)
-    # lapply callback {{{
     source <- data.table::rbindlist(lapply(
         names(calendar_days),
         function(calendar) {
@@ -70,7 +69,6 @@ test_that("daily climatology maps native calendars onto one target grid", {
             )
         }
     ))
-    # }}}
 
     mapped <- daily__climatology(
         source,

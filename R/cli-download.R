@@ -620,9 +620,7 @@ epwshiftr_cli_download_last_session_id <- function(
     }
     sessions <- data.table::as.data.table(tryCatch(
         downloader$sessions(),
-        # error {{{
         error = function(e) data.frame()
-        # }}}
     ))
     if (!nrow(sessions) || !"session_id" %in% names(sessions)) {
         return(NA_character_)
@@ -722,9 +720,7 @@ epwshiftr_cli_download_emit_jsonl_snapshot <- function(snapshot) {
 # epwshiftr_cli_row_object {{{
 epwshiftr_cli_row_object <- function(x, i) {
     row <- as.data.frame(x[i, , drop = FALSE], stringsAsFactors = FALSE)
-    # lapply callback {{{
     out <- lapply(row, function(value) value[[1L]])
-    # }}}
     names(out) <- names(row)
     out
 }
@@ -873,9 +869,7 @@ epwshiftr_cli_download_config <- function(store, args) {
 
 # epwshiftr_cli_downloader_paths {{{
 epwshiftr_cli_downloader_paths <- function(store) {
-    # error {{{
     private <- tryCatch(store$.__enclos_env__$private, error = function(e) NULL)
-    # }}}
     if (
         is.null(private) ||
             is.null(private$download_dir) ||
@@ -926,7 +920,6 @@ epwshiftr_cli_downloader_config <- function(downloader) {
 
 # epwshiftr_cli_apply_download_config_options {{{
 epwshiftr_cli_apply_download_config_options <- function(params, options) {
-    # set_count {{{
     set_count <- function(option, target, positive = TRUE) {
         if (!is.null(options[[option]])) {
             params[[target]] <<- epwshiftr_cli_count(
@@ -936,8 +929,6 @@ epwshiftr_cli_apply_download_config_options <- function(params, options) {
             )
         }
     }
-    # }}}
-    # set_nullable_count {{{
     set_nullable_count <- function(option, policy, field, positive = TRUE) {
         if (!is.null(options[[option]])) {
             params[[policy]][[field]] <<- epwshiftr_cli_count_or_null(
@@ -947,7 +938,6 @@ epwshiftr_cli_apply_download_config_options <- function(params, options) {
             )
         }
     }
-    # }}}
     set_count("--workers", "n_workers", positive = FALSE)
     set_count("--retries", "retries")
     set_count("--timeout", "timeout")

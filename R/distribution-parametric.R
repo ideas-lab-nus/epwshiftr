@@ -136,11 +136,9 @@ distribution__fit_gamma <- function(
         )
     }
 
-    # score {{{
     score <- function(shape) {
         log(shape) - digamma(shape) - log_gap
     }
-    # }}}
     lower <- 1e-8
     upper <- max(1, 1 / (2 * log_gap))
     while (score(upper) > 0 && upper < 1e12) {

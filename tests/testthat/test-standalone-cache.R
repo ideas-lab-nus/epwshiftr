@@ -313,9 +313,7 @@ test_that("DiskCache$set() stores different data types", {
     cache$set("mat", mat)
     expect_equal(cache$get("mat"), mat)
 
-    # fn {{{
     fn <- function(x) x + 1
-    # }}}
     cache$set("fn", fn)
     expect_equal(cache$get("fn")(5), 6)
 
@@ -779,7 +777,6 @@ test_that("DiskCache$print()", {
 
     expect_snapshot(
         print(cache),
-        # transform {{{
         transform = function(lines) {
             lines <- gsub("^(\\s*)dir: .+$", "\\1dir: <cache-dir>", lines)
             lines <- gsub(
@@ -789,7 +786,6 @@ test_that("DiskCache$print()", {
             )
             gsub("^(\\s*)set_count: .+$", "\\1set_count: <count>", lines)
         }
-        # }}}
     )
 })
 # }}}
@@ -888,7 +884,6 @@ test_that("cache__read_json() parses long HTTP URLs through curl", {
     states <- character()
 
     testthat::local_mocked_bindings(
-        # curl_fetch_memory {{{
         curl_fetch_memory = function(url, handle) {
             seen <<- list(url = url, handle = handle)
             list(
@@ -898,7 +893,6 @@ test_that("cache__read_json() parses long HTTP URLs through curl", {
                 url = url
             )
         },
-        # }}}
         .package = "curl"
     )
 
@@ -906,11 +900,9 @@ test_that("cache__read_json() parses long HTTP URLs through curl", {
     res <- cache__read_json(
         long_url,
         simplifyVector = FALSE,
-        # progress_callback {{{
         progress_callback = function(progress) {
             states <<- c(states, progress$state)
         }
-        # }}}
     )
     expect_equal(seen$url, long_url)
     expect_s3_class(seen$handle, "curl_handle")
@@ -958,12 +950,10 @@ test_that("cache__url() bypasses cache in off mode", {
     local_cache_mode("off")
 
     call_count <- 0L
-    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         list(data = 42)
     }
-    # }}}
 
     result <- cache__url("test", "key1", fn)
     expect_equal(result$data, 42)
@@ -979,12 +969,10 @@ test_that("cache__url() works in normal mode", {
     local_cache_mode("normal")
 
     call_count <- 0L
-    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         list(data = 42)
     }
-    # }}}
 
     result1 <- cache__url("test", "key1", fn)
     expect_equal(result1$data, 42)
@@ -1003,25 +991,19 @@ test_that("cache__url() works in offline mode", {
     cache <- local_test_cache()
 
     local_cache_mode("normal")
-    # cache__url callback {{{
     cache__url("test", "existing_key", function() "cached_value")
-    # }}}
 
     local_cache_mode("offline")
 
-    # cache__url callback {{{
     result <- cache__url("test", "existing_key", function() {
         stop("should not be called")
     })
-    # }}}
     expect_equal(result, "cached_value")
 
     expect_error(
-        # cache__url callback {{{
         cache__url("test", "missing_key", function() {
             stop("should not be called")
         }),
-        # }}}
         "offline"
     )
 })
@@ -1031,26 +1013,20 @@ test_that("cache__url() validate parameter controls caching", {
     local_cache_mode("normal")
 
     call_count <- 0L
-    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         NULL
     }
-    # }}}
 
-    # validate {{{
     result1 <- cache__url("test", "validate_key", fn, validate = function(x) {
         !is.null(x)
     })
-    # }}}
     expect_null(result1)
     expect_equal(call_count, 1L)
 
-    # validate {{{
     result2 <- cache__url("test", "validate_key", fn, validate = function(x) {
         !is.null(x)
     })
-    # }}}
     expect_null(result2)
     expect_equal(call_count, 2L)
 })
@@ -1060,12 +1036,10 @@ test_that("cache__url() validate=NULL caches everything (default)", {
     local_cache_mode("normal")
 
     call_count <- 0L
-    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         NULL
     }
-    # }}}
 
     result1 <- cache__url("test", "null_key", fn)
     expect_null(result1)
@@ -1085,13 +1059,11 @@ test_that("cache__download() bypasses cache in off mode", {
     on.exit(unlink(destfile), add = TRUE)
 
     call_count <- 0L
-    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         writeBin(charToRaw("file content"), destfile)
         destfile
     }
-    # }}}
 
     result <- cache__download("http://example.com/file.txt", destfile, fn)
     expect_equal(result, destfile)
@@ -1108,13 +1080,11 @@ test_that("cache__download() works in normal mode", {
     on.exit(unlink(c(destfile1, destfile2)), add = TRUE)
 
     call_count <- 0L
-    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         writeBin(charToRaw("downloaded data"), destfile1)
         destfile1
     }
-    # }}}
 
     result1 <- cache__download("http://example.com/data.bin", destfile1, fn)
     expect_equal(result1, destfile1)
@@ -1123,7 +1093,6 @@ test_that("cache__download() works in normal mode", {
 
     unlink(destfile1)
 
-    # cache__download callback {{{
     result2 <- cache__download(
         "http://example.com/data.bin",
         destfile2,
@@ -1131,7 +1100,6 @@ test_that("cache__download() works in normal mode", {
             stop("should not be called")
         }
     )
-    # }}}
     expect_equal(result2, destfile2)
     expect_equal(call_count, 1L)
     expect_equal(readBin(destfile2, "raw", 100), charToRaw("downloaded data"))
@@ -1144,12 +1112,10 @@ test_that("cache__download() works in offline mode", {
     on.exit(unlink(destfile), add = TRUE)
 
     local_cache_mode("normal")
-    # fn_populate {{{
     fn_populate <- function() {
         writeBin(charToRaw("cached file"), destfile)
         destfile
     }
-    # }}}
     cache__download("http://example.com/cached.bin", destfile, fn_populate)
 
     unlink(destfile)
@@ -1158,7 +1124,6 @@ test_that("cache__download() works in offline mode", {
 
     destfile2 <- tempfile("dl-offline2-")
     on.exit(unlink(destfile2), add = TRUE)
-    # cache__download callback {{{
     result <- cache__download(
         "http://example.com/cached.bin",
         destfile2,
@@ -1166,12 +1131,10 @@ test_that("cache__download() works in offline mode", {
             stop("should not be called")
         }
     )
-    # }}}
     expect_equal(result, destfile2)
     expect_equal(readBin(destfile2, "raw", 100), charToRaw("cached file"))
 
     expect_error(
-        # cache__download callback {{{
         cache__download(
             "http://example.com/missing.bin",
             tempfile(),
@@ -1179,7 +1142,6 @@ test_that("cache__download() works in offline mode", {
                 stop("should not be called")
             }
         ),
-        # }}}
         "offline"
     )
 })

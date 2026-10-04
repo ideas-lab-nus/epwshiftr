@@ -53,7 +53,6 @@ capture_live_warnings <- function(expr) {
     warnings <- character()
     value <- withCallingHandlers(
         force(expr),
-        # warning {{{
         warning = function(w) {
             message <- conditionMessage(w)
             if (is_live_esgf_transient_warning(message)) {
@@ -61,7 +60,6 @@ capture_live_warnings <- function(expr) {
                 invokeRestart("muffleWarning")
             }
         }
-        # }}}
     )
     list(value = value, warnings = warnings)
 }
@@ -71,7 +69,6 @@ capture_live_warnings <- function(expr) {
 skip_live_download_error <- function(expr) {
     tryCatch(
         allow_live_esgf_transient_warnings(force(expr)),
-        # error {{{
         error = function(e) {
             msg <- conditionMessage(e)
             pattern <- paste(
@@ -91,7 +88,6 @@ skip_live_download_error <- function(expr) {
             }
             stop(e)
         }
-        # }}}
     )
 }
 # }}}
@@ -99,11 +95,9 @@ skip_live_download_error <- function(expr) {
 test_that("Downloader$enqueue() / Downloader$run() / Downloader$verify() live ESGF workflow covers persistent methods and resume", {
     skip_live_esgf()
 
-    # error {{{
     live <- tryCatch(live_esgf_files(), error = function(e) {
         skip(conditionMessage(e))
     })
-    # }}}
     files <- live$files
     plan <- live$plan
     bad_url <- "http://127.0.0.1:1/epwshiftr-live-missing.nc"

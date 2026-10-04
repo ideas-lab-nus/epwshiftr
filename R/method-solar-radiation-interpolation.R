@@ -512,7 +512,6 @@ solar__role <- function(input, role, context) {
         keep.by = TRUE,
         drop = TRUE
     )
-    # lapply callback {{{
     results <- lapply(groups, function(group) {
         frequency <- unique(as.character(group[["frequency"]]))
         if (length(frequency) != 1L) {
@@ -529,11 +528,8 @@ solar__role <- function(input, role, context) {
             )
         )
     })
-    # }}}
     data <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(results, function(result) result$data),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -591,9 +587,7 @@ solar__role <- function(input, role, context) {
         )
     )
     diagnostics <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(results, function(result) result$diagnostic),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -628,7 +622,6 @@ solar__apply <- function(inputs, context, options) {
         )
     }
     roles <- c("model_historical", "model_future")
-    # lapply callback {{{
     results <- lapply(roles, function(role) {
         solar__role(
             weather__get_input(inputs, role),
@@ -636,7 +629,6 @@ solar__apply <- function(inputs, context, options) {
             context
         )
     })
-    # }}}
     names(results) <- roles
     output_inputs <- weather__new_inputs(
         weather_template = weather__get_input(inputs, "weather_template"),
@@ -648,9 +640,7 @@ solar__apply <- function(inputs, context, options) {
         model_future = results$model_future$input
     )
     diagnostics <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(results, function(result) result$diagnostics),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -660,17 +650,13 @@ solar__apply <- function(inputs, context, options) {
         roles = roles,
         source_frequencies = lapply(
             results,
-            # lapply callback {{{
             function(result) result$provenance$source_frequencies
-            # }}}
         ),
         published_source_frequency = "3hr",
         adapted_source_frequencies = "6hr",
         source_step_seconds = lapply(
             results,
-            # lapply callback {{{
             function(result) result$provenance$source_step_seconds
-            # }}}
         ),
         target_frequency = "hour",
         target_step_seconds = 3600,
@@ -699,7 +685,6 @@ solar__apply <- function(inputs, context, options) {
 # solar__component {{{
 solar__component <- function() {
     variables <- lapply(SOLAR_RADIATION_VARIABLES, identity)
-    # requirement {{{
     requirement <- function(role) {
         component__input_requirement(
             role,
@@ -709,7 +694,6 @@ solar__component <- function() {
             variable_sets = variables
         )
     }
-    # }}}
     component__spec(
         name = "solar_radiation_interpolation",
         stage = "preprocess",

@@ -110,7 +110,6 @@ cli_morph__option_rows <- function(transform) {
     data.table::data.table(
         option = names(options),
         type = vapply(options, typeof, character(1L)),
-        # vapply callback {{{
         value = vapply(
             options,
             function(value) {
@@ -125,7 +124,6 @@ cli_morph__option_rows <- function(transform) {
             },
             character(1L)
         )
-        # }}}
     )
 }
 # }}}
@@ -201,14 +199,12 @@ cli_morph__option_value <- function(value) {
     if (grepl("^[[:space:]]*[\\[{]", value)) {
         parsed <- tryCatch(
             jsonlite::fromJSON(value, simplifyVector = TRUE),
-            # error {{{
             error = function(error) {
                 epwshiftr_cli_usage_abort(sprintf(
                     "Invalid JSON transform option: %s",
                     conditionMessage(error)
                 ))
             }
-            # }}}
         )
         return(parsed)
     }

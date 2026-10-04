@@ -29,7 +29,6 @@ bws_btws_monthly_test__climate <- function(
     )
     stopifnot(all(lengths(shifts) == 12L))
 
-    # lapply callback {{{
     data.table::rbindlist(lapply(years, function(year) {
         month <- seq_len(12L)
         time <- as.POSIXct(
@@ -48,7 +47,6 @@ bws_btws_monthly_test__climate <- function(
         if (!isTRUE(include_extrema)) {
             values <- values["tas"]
         }
-        # lapply callback {{{
         data.table::rbindlist(lapply(names(values), function(variable_id) {
             data.table::data.table(
                 activity_id = if (identical(experiment, "historical")) {
@@ -91,9 +89,7 @@ bws_btws_monthly_test__climate <- function(
                 }
             )
         }))
-        # }}}
     }))
-    # }}}
 }
 # }}}
 

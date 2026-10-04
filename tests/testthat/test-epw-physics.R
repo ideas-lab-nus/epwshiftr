@@ -31,7 +31,6 @@ epwphys_test__geometry <- function(projection = c(0, 0.5)) {
 
 test_that("all registered complete recipes resolve a physical policy", {
     recipes <- epw_morph_recipes()
-    # lapply callback {{{
     resolved <- lapply(seq_len(nrow(recipes)), function(index) {
         recipe <- epw_morph_recipe(
             recipes$name[[index]],
@@ -39,7 +38,6 @@ test_that("all registered complete recipes resolve a physical policy", {
         )
         epwphys__recipe_policy(recipe)
     })
-    # }}}
 
     expect_length(resolved, nrow(recipes))
     expect_true(all(vapply(
@@ -51,12 +49,10 @@ test_that("all registered complete recipes resolve a physical policy", {
     expected <- stats::setNames(
         vapply(
             seq_len(nrow(recipes)),
-            # vapply callback {{{
             function(index) {
                 spec <- epw_morph_recipe_spec(recipes$name[[index]])
                 unname(spec@physical_policies[[spec@default_policy]])
             },
-            # }}}
             character(1L)
         ),
         recipes$name
@@ -65,9 +61,7 @@ test_that("all registered complete recipes resolve a physical policy", {
         stats::setNames(
             vapply(
                 resolved,
-                # vapply callback {{{
                 function(policy) policy@name,
-                # }}}
                 character(1L)
             ),
             recipes$name

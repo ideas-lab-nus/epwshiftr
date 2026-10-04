@@ -110,7 +110,6 @@ morpher__epw_output_root <- function(dir, store_path) {
             store_rel_path(root, root = store_path)
             root
         },
-        # error {{{
         error = function(e) {
             cli::cli_abort(c(
                 "EPW output directory must be inside the epwshiftr store root.",
@@ -118,7 +117,6 @@ morpher__epw_output_root <- function(dir, store_path) {
                 "i" = "Use a store under your desired output root, or pass a store-relative `dir` such as {.val outputs/future-epw}."
             ))
         }
-        # }}}
     )
 }
 # }}}
@@ -136,7 +134,6 @@ morpher__hash_rows <- function(...) {
     if (!n) {
         return(character())
     }
-    # lapply callback {{{
     args <- lapply(args, function(x) {
         if (length(x) == n) {
             return(x)
@@ -148,14 +145,11 @@ morpher__hash_rows <- function(...) {
             "Cannot recycle morphing hash input of length {length(x)} to {n}."
         )
     })
-    # }}}
     vapply(
         seq_len(n),
-        # vapply callback {{{
         function(i) {
             do.call(morpher__hash, lapply(args, `[[`, i))
         },
-        # }}}
         character(1L)
     )
 }
@@ -466,9 +460,7 @@ morpher__stat_rows <- function(dt) {
 # morpher__field_units {{{
 morpher__field_units <- function(data, fields) {
     stats::setNames(
-        # lapply callback {{{
         lapply(fields, function(field) morpher__units_label(data[[field]])),
-        # }}}
         fields
     )
 }
@@ -476,9 +468,7 @@ morpher__field_units <- function(data, fields) {
 
 # morpher__get_epw_path {{{
 morpher__get_epw_path <- function(epw) {
-    # error {{{
     path <- tryCatch(epw$path(), error = function(e) NULL)
-    # }}}
     if (
         is.null(path) ||
             !length(path) ||
@@ -1634,7 +1624,6 @@ EpwMorpher <- R6::R6Class(
             ]
             complete_cases <- cases[vapply(
                 cases,
-                # vapply callback {{{
                 function(case_id) {
                     rows <- complete_existing[
                         complete_existing[["case_id"]] == case_id
@@ -1644,7 +1633,6 @@ EpwMorpher <- R6::R6Class(
                         store_root = private$store$path
                     )
                 },
-                # }}}
                 logical(1L)
             )]
             private$reset_case_statuses(
@@ -1914,7 +1902,6 @@ EpwMorpher <- R6::R6Class(
                     )
                     morpher__order_result_rows(results, cases)
                 },
-                # error {{{
                 error = function(e) {
                     private$set_plan_status(
                         morph_id,
@@ -1923,7 +1910,6 @@ EpwMorpher <- R6::R6Class(
                     )
                     stop(e)
                 }
-                # }}}
             )
         },
         # }}}
@@ -2242,7 +2228,6 @@ EpwMorpher <- R6::R6Class(
                     )
                     outputs[]
                 },
-                # error {{{
                 error = function(e) {
                     private$set_plan_status(
                         morph_id,
@@ -2251,7 +2236,6 @@ EpwMorpher <- R6::R6Class(
                     )
                     stop(e)
                 }
-                # }}}
             )
         },
         # }}}
@@ -2791,14 +2775,12 @@ EpwMorpher <- R6::R6Class(
                 )
             }
             period_rows <- unique(climate[, .(period, years_json)])
-            # lapply callback {{{
             rows <- lapply(seq_len(nrow(period_rows)), function(i) {
                 data.table::data.table(
                     period = period_rows$period[[i]],
                     year = morpher__json_int_vector(period_rows$years_json[[i]])
                 )
             })
-            # }}}
             data.table::rbindlist(rows, use.names = TRUE)
         },
         # }}}
@@ -2907,14 +2889,12 @@ EpwMorpher <- R6::R6Class(
             }
             case_ids <- vapply(
                 seq_len(nrow(cases)),
-                # vapply callback {{{
                 function(i) {
                     morpher__hash(
                         plan$morph_id[[1L]],
                         morpher__json(as.list(cases[i]))
                     )
                 },
-                # }}}
                 character(1L)
             )
             cases[, case_id := case_ids]
@@ -3035,9 +3015,7 @@ EpwMorpher <- R6::R6Class(
                 )
                 dt <- tryCatch(
                     morpher__parquet_read(private$store, path),
-                    # error {{{
                     error = function(e) e
-                    # }}}
                 )
                 if (inherits(dt, "error")) {
                     diagnostics[[
@@ -3833,7 +3811,6 @@ EpwMorpher <- R6::R6Class(
         ) {
             case <- data.table::as.data.table(case)
             case_id <- case$case_id[[1L]]
-            # pick {{{
             pick <- function(name) {
                 if (name %in% names(case)) {
                     store__chr1(case[[name]][[1L]])
@@ -3841,7 +3818,6 @@ EpwMorpher <- R6::R6Class(
                     NA_character_
                 }
             }
-            # }}}
             data.frame(
                 morph_case_id = morpher__hash(morph_id, case_id),
                 morph_id = morph_id,
@@ -3901,9 +3877,7 @@ EpwMorpher <- R6::R6Class(
             rows[,
                 diagnostic_id := vapply(
                     seq_len(.N),
-                    # vapply callback {{{
                     function(i) morpher__hash(as.list(rows[i])),
-                    # }}}
                     character(1L)
                 )
             ]
@@ -4126,7 +4100,6 @@ EpwMorpher <- R6::R6Class(
 
         # case_metadata_from_case {{{
         case_metadata_from_case = function(case, data) {
-            # pick {{{
             pick <- function(case_name, data_name = case_name) {
                 if (case_name %in% names(case)) {
                     return(store__chr1(case[[case_name]][[1L]]))
@@ -4136,7 +4109,6 @@ EpwMorpher <- R6::R6Class(
                 }
                 NA_character_
             }
-            # }}}
             list(
                 source_id = pick("source_id"),
                 experiment_id = pick("experiment_id"),

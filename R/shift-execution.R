@@ -20,11 +20,9 @@ shift_execution__options <- function() {
     )
     # Read only supported settings; unrelated session options stay outside
     # the persisted configuration, including when a default is NULL.
-    # lapply callback {{{
     defaults[] <- lapply(names(defaults), function(name) {
         getOption(name, defaults[[name]])
     })
-    # }}}
     checkmate::assert_count(defaults$epwshiftr.mirai_workers, positive = TRUE)
     for (name in c(
         "epwshiftr.cache_max_size",
@@ -259,7 +257,6 @@ shift_execution__run <- function(context, code) {
             }
             force(code)
         },
-        # interrupt {{{
         interrupt = function(error) {
             try(
                 shift_execution__update(
@@ -271,8 +268,6 @@ shift_execution__run <- function(context, code) {
             )
             stop(error)
         },
-        # }}}
-        # error {{{
         error = function(error) {
             status <- if (inherits(error, "epwshiftr_shift_cancelled")) {
                 "cancelled"
@@ -290,7 +285,6 @@ shift_execution__run <- function(context, code) {
             )
             stop(error)
         }
-        # }}}
     )
     outcome <- if (
         S7::S7_inherits(value, ShiftRun) &&

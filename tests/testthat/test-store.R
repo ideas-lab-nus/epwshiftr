@@ -142,41 +142,29 @@ store_test__planned_extract <- function() {
 # store_test__failing_dataset {{{
 store_test__failing_dataset <- function(phase, time_info = NULL) {
     checkmate::assert_choice(phase, c("metadata", "read"))
-    # R6::R6Class( private = list(progress_callback = NULL), lock_objects = FALSE ) callback {{{
     ds <- R6::R6Class(
         private = list(progress_callback = NULL),
         lock_objects = FALSE
     )$new()
-    # }}}
     ds$is_open <- TRUE
-    # ds$close {{{
     ds$close <- function() {
         ds$is_open <- FALSE
         invisible(NULL)
     }
-    # }}}
     private <- priv(ds)
     private$nc_handles <- list()
     private$opened <- TRUE
-    # private$check_open {{{
     private$check_open <- function() {
         if (identical(phase, "metadata")) {
             stop("remote metadata timed out", call. = FALSE)
         }
     }
-    # }}}
-    # private$check_index {{{
     private$check_index <- function(index) invisible(NULL)
-    # }}}
     private$metadata_cache <- list(time_coordinates_1 = time_info)
-    # ds$read_region {{{
     ds$read_region <- function(...) {
         stop("remote read timed out", call. = FALSE)
     }
-    # }}}
-    # ds$att_get {{{
     ds$att_get <- function(...) "K"
-    # }}}
     ds
 }
 # }}}
@@ -187,7 +175,6 @@ store_test__failing_dataset <- function(phase, time_info = NULL) {
 store_test__access_reporter <- function() {
     reporter <- new.env(parent = emptyenv())
     reporter$events <- list()
-    # reporter$notice {{{
     reporter$notice <- function(message, outcome, details) {
         reporter$events[[length(reporter$events) + 1L]] <- list(
             message = message,
@@ -196,13 +183,8 @@ store_test__access_reporter <- function() {
         )
         invisible(NULL)
     }
-    # }}}
-    # reporter$detail {{{
     reporter$detail <- function(...) invisible(NULL)
-    # }}}
-    # reporter$heartbeat {{{
     reporter$heartbeat <- function(...) invisible(NULL)
-    # }}}
     reporter
 }
 # }}}
@@ -234,7 +216,6 @@ store_test__mock_private <- function(store, name, value, env = parent.frame()) {
 store_test__lock_check_downloader <- function(store) {
     # This R6 class mimics the small downloader surface EsgStore needs in the
     # lock-boundary tests without starting real downloads or background jobs.
-    # R6::R6Class( "StoreLockCheckDownloader", public = list( n_workers = 1L, network_policy = NULL, node_policy = NULL, calls = character(), plan = NULL, # Every downloader-side operation in these tests should happen after # the store lock has been released. assert_unlocked = function(where) { self$calls <- c(self$calls, where) testthat::expect_identical(priv(store)$lock_depth, 0L, info = where) }, # EsgStore reads node history before ranking candidates. data_nodes = function(service = "HTTPServer") { self$assert_unlocked("data_nodes") NULL }, # Probe recording writes to the downloader manifest, not the store. record_probes = function(plan, probed = TRUE) { self$assert_unlocked("record_probes") invisible(NULL) }, # Capture the plan so later fake run() calls can return matching task rows. enqueue = function(plan, session_label = NULL) { self$assert_unlocked("enqueue") self$plan <- data.table::as.data.table(plan) "session-lock-check" }, # Return a completed task row without touching the filesystem. run = function(session_id = NULL, progress = TRUE, overwrite = FALSE, resume = TRUE, ...) { self$assert_unlocked("run") data.table::data.table( task_id = "task-lock-check", session_id = session_id, file_key = self$plan$file_key[[1L]], logical_file_id = self$plan$logical_file_id[[1L]], status = "done", target_path = NA_character_, selected_url = self$plan$url[[1L]], checksum = self$plan$checksum[[1L]], checksum_type = self$plan$checksum_type[[1L]], filename = self$plan$filename[[1L]] ) }, # Return a queued job row for background-download branches. start = function(session_id = NULL, overwrite = FALSE, resume = TRUE, mode = c("process", "daemon"), store_path = NULL) { self$assert_unlocked("start") data.table::data.table( job_id = "job-lock-check", session_id = session_id, status = "queued" ) }, # sync_downloads() may ask for completed tasks; return none so the # lock-boundary tests stay focused on call placement. tasks = function(...) { data.table::data.table() } ) ) callback {{{
     R6::R6Class(
         "StoreLockCheckDownloader",
         public = list(
@@ -246,7 +227,6 @@ store_test__lock_check_downloader <- function(store) {
 
             # Every downloader-side operation in these tests should happen after
             # the store lock has been released.
-            # assert_unlocked {{{
             assert_unlocked = function(where) {
                 self$calls <- c(self$calls, where)
                 testthat::expect_identical(
@@ -255,35 +235,27 @@ store_test__lock_check_downloader <- function(store) {
                     info = where
                 )
             },
-            # }}}
 
             # EsgStore reads node history before ranking candidates.
-            # data_nodes {{{
             data_nodes = function(service = "HTTPServer") {
                 self$assert_unlocked("data_nodes")
                 NULL
             },
-            # }}}
 
             # Probe recording writes to the downloader manifest, not the store.
-            # record_probes {{{
             record_probes = function(plan, probed = TRUE) {
                 self$assert_unlocked("record_probes")
                 invisible(NULL)
             },
-            # }}}
 
             # Capture the plan so later fake run() calls can return matching task rows.
-            # enqueue {{{
             enqueue = function(plan, session_label = NULL) {
                 self$assert_unlocked("enqueue")
                 self$plan <- data.table::as.data.table(plan)
                 "session-lock-check"
             },
-            # }}}
 
             # Return a completed task row without touching the filesystem.
-            # run {{{
             run = function(
                 session_id = NULL,
                 progress = TRUE,
@@ -305,10 +277,8 @@ store_test__lock_check_downloader <- function(store) {
                     filename = self$plan$filename[[1L]]
                 )
             },
-            # }}}
 
             # Return a queued job row for background-download branches.
-            # start {{{
             start = function(
                 session_id = NULL,
                 overwrite = FALSE,
@@ -323,18 +293,14 @@ store_test__lock_check_downloader <- function(store) {
                     status = "queued"
                 )
             },
-            # }}}
 
             # sync_downloads() may ask for completed tasks; return none so the
             # lock-boundary tests stay focused on call placement.
-            # tasks {{{
             tasks = function(...) {
                 data.table::data.table()
             }
-            # }}}
         )
     )$new()
-    # }}}
 }
 # }}}
 
@@ -373,7 +339,6 @@ store_test__with_downloaded_query <- function(code) {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -402,7 +367,6 @@ store_test__with_downloaded_query <- function(code) {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -457,7 +421,6 @@ store_test__with_updated_query <- function(code) {
     second_files <- data.table::rbindlist(list(file_one), fill = TRUE)
     file_calls <- 0L
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -486,7 +449,6 @@ store_test__with_updated_query <- function(code) {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -624,7 +586,6 @@ test_that("site extraction cache is shared without store-local identities", {
         actual_end = as.POSIXct("2060-12-31", tz = "UTC")
     )
     calls <- 0L
-    # generate {{{
     generate <- function() {
         calls <<- calls + 1L
         list(
@@ -633,7 +594,6 @@ test_that("site extraction cache is shared without store-local identities", {
             recovery_error = NULL
         )
     }
-    # }}}
 
     first <- store__extract_cache_resolve(plan, file, generate)
     second_plan <- data.table::copy(plan)[, `:=`(
@@ -1117,7 +1077,6 @@ test_that("EsgStore$preview_update_queries()", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1146,7 +1105,6 @@ test_that("EsgStore$preview_update_queries()", {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1185,7 +1143,6 @@ test_that("EsgStore$preview_update_queries()", {
 test_that("EsgStore$update_queries()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_updated_query callback {{{
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1244,7 +1201,6 @@ test_that("EsgStore$update_queries()", {
         )
         expect_false(is.na(store$queries()$last_checked_at[[1L]]))
     })
-    # }}}
 })
 
 test_that("EsgStore query update and download workflows release store lock around external work", {
@@ -1252,7 +1208,6 @@ test_that("EsgStore query update and download workflows release store lock aroun
 
     # Create a minimal tracked-query store and inject a collect mock that fails
     # if ESGF collection happens while EsgStore's manifest lock is held.
-    # with_lock_check_store {{{
     with_lock_check_store <- function(code) {
         dir <- tempfile("esg-store-")
         store <- EsgStore$new(dir)
@@ -1280,7 +1235,6 @@ test_that("EsgStore query update and download workflows release store lock aroun
         testthat::local_mocked_bindings(
             # Collection is the network-facing part of these workflows and must
             # remain outside the store lock.
-            # query__collect {{{
             query__collect = function(
                 index_node,
                 params,
@@ -1314,15 +1268,12 @@ test_that("EsgStore query update and download workflows release store lock aroun
                     parameter = params
                 )
             },
-            # }}}
             .package = "epwshiftr"
         )
 
         code(store, query_id)
     }
-    # }}}
 
-    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
         links <- store$update_queries(
@@ -1341,9 +1292,7 @@ test_that("EsgStore query update and download workflows release store lock aroun
         update <- store$query_updates(query_id, latest = TRUE)
         expect_equal(update$download_session_id, "session-lock-check")
     })
-    # }}}
 
-    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
         session_id <- store$download_query(
@@ -1362,9 +1311,7 @@ test_that("EsgStore query update and download workflows release store lock aroun
         update <- store$query_updates(query_id, latest = TRUE)
         expect_equal(update$download_session_id, "session-lock-check")
     })
-    # }}}
 
-    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
         session_id <- store$download_query(
@@ -1378,9 +1325,7 @@ test_that("EsgStore query update and download workflows release store lock aroun
         expect_equal(session_id, "session-lock-check")
         expect_true(all(c("record_probes", "enqueue", "run") %in% dl$calls))
     })
-    # }}}
 
-    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
         job <- store$download_query(
@@ -1396,14 +1341,12 @@ test_that("EsgStore query update and download workflows release store lock aroun
         expect_true(all(c("record_probes", "enqueue", "start") %in% dl$calls))
         expect_false("run" %in% dl$calls)
     })
-    # }}}
 })
 # }}}
 # EsgStore$query_files() {{{
 test_that("EsgStore$query_files()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_updated_query callback {{{
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1421,14 +1364,12 @@ test_that("EsgStore$query_files()", {
         expect_equal(nrow(first_current), 1L)
         expect_equal(nrow(first_retracted), 1L)
     })
-    # }}}
 })
 # }}}
 # EsgStore$query_updates() {{{
 test_that("EsgStore$query_updates()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_updated_query callback {{{
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1446,14 +1387,12 @@ test_that("EsgStore$query_updates()", {
         expect_equal(nrow(updates), 2L)
         expect_equal(latest$stale_count, 1L)
     })
-    # }}}
 })
 # }}}
 # EsgStore$query_changes() {{{
 test_that("EsgStore$query_changes()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_updated_query callback {{{
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1470,7 +1409,6 @@ test_that("EsgStore$query_changes()", {
     ) {
         expect_equal(nrow(stale_changes), 1L)
     })
-    # }}}
 })
 # }}}
 # EsgStore$download_preflight() {{{
@@ -1509,7 +1447,6 @@ test_that("EsgStore$download_preflight()", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1538,7 +1475,6 @@ test_that("EsgStore$download_preflight()", {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1618,7 +1554,6 @@ test_that("EsgStore$set_download_layout()", {
     )
     file_docs <- store_test__file_docs(path = "layout.nc")
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1647,7 +1582,6 @@ test_that("EsgStore$set_download_layout()", {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1712,7 +1646,6 @@ test_that("EsgStore$download_preflight() reports layout issues", {
     file_docs <- rbind(first, second)
 
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1741,7 +1674,6 @@ test_that("EsgStore$download_preflight() reports layout issues", {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -1774,7 +1706,6 @@ test_that("EsgStore$download_preflight() reports layout issues", {
 test_that("EsgStore$download_query()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_downloaded_query callback {{{
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1789,14 +1720,12 @@ test_that("EsgStore$download_query()", {
         expect_true(file.exists(file.path(store$path, qfiles$local_path[[1L]])))
         expect_false(is.na(qfiles$local_artifact_id[[1L]]))
     })
-    # }}}
 })
 # }}}
 # EsgStore$download_status() {{{
 test_that("EsgStore$download_status()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_downloaded_query callback {{{
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1807,14 +1736,12 @@ test_that("EsgStore$download_status()", {
         expect_equal(status$status, "done")
         expect_equal(status$query_file_status, "current")
     })
-    # }}}
 })
 # }}}
 # EsgStore$query_status() {{{
 test_that("EsgStore$query_status()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_downloaded_query callback {{{
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1828,14 +1755,12 @@ test_that("EsgStore$query_status()", {
         expect_equal(query_status$local_available, 1L)
         expect_true(query_status$complete)
     })
-    # }}}
 })
 # }}}
 # EsgStore$workflow_status() {{{
 test_that("EsgStore$workflow_status()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_downloaded_query callback {{{
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1853,14 +1778,12 @@ test_that("EsgStore$workflow_status()", {
         expect_equal(workflow$new_count, 1L)
         expect_true("bytes_missing" %in% names(workflow))
     })
-    # }}}
 })
 # }}}
 # EsgStore$workflow_report() {{{
 test_that("EsgStore$workflow_report()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_downloaded_query callback {{{
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1879,14 +1802,12 @@ test_that("EsgStore$workflow_report()", {
         expect_equal(report$downloads$status, "done")
         expect_equal(report$downloads$query_file_status, "current")
     })
-    # }}}
 })
 # }}}
 # EsgStore$retry_downloads() {{{
 test_that("EsgStore$retry_downloads()", {
     skip_if_not_installed("duckdb")
 
-    # store_test__with_downloaded_query callback {{{
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1898,7 +1819,6 @@ test_that("EsgStore$retry_downloads()", {
             0L
         )
     })
-    # }}}
 })
 # }}}
 # EsgStore$remove_query() {{{
@@ -3176,12 +3096,10 @@ test_that("EsgStore open failures use HTTP fallback only in auto mode", {
     store_test__mock_private(
         store,
         "download_plan_file",
-        # store_test__mock_private callback {{{
         function(file, overwrite = FALSE, reporter = NULL) {
             download_calls <<- download_calls + 1L
             fixture$nc
         }
-        # }}}
     )
 
     opened <- priv(store)$open_plan_dataset(file, fallback = "auto")
@@ -3219,7 +3137,6 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
         store_test__mock_private(
             store,
             "open_plan_dataset",
-            # store_test__mock_private callback {{{
             function(
                 file,
                 fallback = "auto",
@@ -3233,17 +3150,14 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
                     access_method = "OPeNDAP"
                 )
             }
-            # }}}
         )
         store_test__mock_private(
             store,
             "download_plan_file",
-            # store_test__mock_private callback {{{
             function(file, overwrite = FALSE, reporter = NULL) {
                 download_calls <<- download_calls + 1L
                 fixture$nc
             }
-            # }}}
         )
 
         result <- priv(store)$extract_one(
@@ -3296,23 +3210,19 @@ test_that("EsgStore fallback errors retain both attempts in last_error", {
     on.exit(unlink(fixture$nc), add = TRUE)
     remote <- store_test__failing_dataset("metadata")
     download_calls <- 0L
-    # store__open_dataset {{{
     testthat::local_mocked_bindings(store__open_dataset = function(
         target,
         service
     ) {
         list(dataset = remote, target = target, access_method = service)
     })
-    # }}}
     store_test__mock_private(
         store,
         "download_plan_file",
-        # store_test__mock_private callback {{{
         function(file, overwrite = FALSE, reporter = NULL) {
             download_calls <<- download_calls + 1L
             stop("HTTP download timed out", call. = FALSE)
         }
-        # }}}
     )
 
     processed <- store$extract(
@@ -3344,7 +3254,6 @@ test_that("EsgStore fallback error mode does not download after read failure", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
-        # store_test__mock_private callback {{{
         function(
             file,
             fallback = "auto",
@@ -3358,17 +3267,14 @@ test_that("EsgStore fallback error mode does not download after read failure", {
                 access_method = "OPeNDAP"
             )
         }
-        # }}}
     )
     store_test__mock_private(
         store,
         "download_plan_file",
-        # store_test__mock_private callback {{{
         function(...) {
             download_calls <<- download_calls + 1L
             fixture$nc
         }
-        # }}}
     )
 
     error <- expect_error(
@@ -3398,7 +3304,6 @@ test_that("EsgStore classifies persistence failures without another read", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
-        # store_test__mock_private callback {{{
         function(
             file,
             fallback = "auto",
@@ -3412,12 +3317,10 @@ test_that("EsgStore classifies persistence failures without another read", {
                 access_method = "HTTPServer"
             )
         }
-        # }}}
     )
     store_test__mock_private(
         store,
         "read_extract_dataset",
-        # store_test__mock_private callback {{{
         function(ds, plan, file, opened, reporter = NULL) {
             read_calls <<- read_calls + 1L
             list(
@@ -3428,14 +3331,11 @@ test_that("EsgStore classifies persistence failures without another read", {
                 actual_end = as.POSIXct("2060-12-31", tz = "UTC")
             )
         }
-        # }}}
     )
     store_test__mock_private(
         store,
         "persist_extract_payload",
-        # store_test__mock_private callback {{{
         function(...) stop("manifest write failed", call. = FALSE)
-        # }}}
     )
 
     error <- expect_error(
@@ -3499,7 +3399,6 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
     expect_true(grepl("year=2060", results$output_path[[1L]], fixed = TRUE))
     expect_true(grepl("year=2061", results$output_path[[2L]], fixed = TRUE))
 
-    # lapply callback {{{
     rows <- data.table::rbindlist(lapply(results$output_path, function(path) {
         parquet <- store_abs_path(path, root = dir)
         ddb_query(
@@ -3514,7 +3413,6 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
             )
         )
     }))
-    # }}}
     data.table::setorder(rows, cf_year)
 
     expect_equal(rows$year, c(2060L, 2061L))
@@ -3702,7 +3600,6 @@ test_that("worker access failures preserve fallback without remote resubmission"
     on.exit(store$close(), add = TRUE)
     withr::local_options(epwshiftr.cache = FALSE)
     original <- store__open_dataset
-    # store__open_dataset {{{
     testthat::local_mocked_bindings(store__open_dataset = function(
         target,
         service
@@ -3712,12 +3609,9 @@ test_that("worker access failures preserve fallback without remote resubmission"
         }
         original(target, service)
     })
-    # }}}
-    # store_test__mock_private callback {{{
     store_test__mock_private(store, "download_plan_file", function(...) {
         fixture$nc
     })
-    # }}}
     error <- store__access_error(
         simpleError("source disconnected"),
         "read",
@@ -3759,7 +3653,6 @@ test_that("uncached source tasks return one site plan at a time", {
         site_id = "USA"
     )
     task_count <- 0L
-    # source__apply {{{
     testthat::local_mocked_bindings(source__apply = function(
         jobs,
         read,
@@ -3773,22 +3666,15 @@ test_that("uncached source tasks return one site plan at a time", {
             collect(job, read(job))
         }
     })
-    # }}}
     reporter <- store_test__access_reporter()
     progress <- integer(2L)
     count <- 0L
-    # reporter$check_cancel {{{
     reporter$check_cancel <- function(...) invisible(NULL)
-    # }}}
-    # reporter$unit_started {{{
     reporter$unit_started <- function(...) invisible(NULL)
-    # }}}
-    # reporter$unit_completed {{{
     reporter$unit_completed <- function(message, current, ...) {
         count <<- count + 1L
         progress[[count]] <<- current
     }
-    # }}}
     expected_order <- store$query("SELECT plan_id FROM extraction_plan")$plan_id
     result <- store$extract(fallback = "error", reporter = reporter)
     expect_identical(progress, 1:2)
@@ -3820,11 +3706,9 @@ test_that("extraction persistence rolls back manifest changes on failure", {
         opened
     )
     original <- store$query("SELECT * FROM file_catalog")
-    # store_test__mock_private callback {{{
     store_test__mock_private(store, "mark_plan_status", function(...) {
         stop("injected late manifest failure", call. = FALSE)
     })
-    # }}}
     expect_error(
         priv(store)$persist_extract_payload(
             payload,

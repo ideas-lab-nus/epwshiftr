@@ -209,18 +209,15 @@ epwshiftr_cli_shift_watch_follow <- function(
     motion <- shift_ui__ui_motion(ui, progress)
     i <- 0L
     frame <- 0L
-    # error {{{
     renderer <- tryCatch(shift_tui__ui_renderer(progress), error = function(e) {
         NULL
     })
-    # }}}
     if (identical(progress, "dynamic") && is.null(renderer)) {
         progress <- "log"
         motion <- "none"
     }
     event_cursor <- if (is.null(batch_id)) NA_character_ else list()
     event_cursor_initialized <- FALSE
-    # update_dynamic {{{
     update_dynamic <- function(snapshot) {
         if (!is.null(snapshot$batch)) {
             view <- shift_batch_ui__view(
@@ -259,15 +256,12 @@ epwshiftr_cli_shift_watch_follow <- function(
         }
         ok
     }
-    # }}}
-    # close_dynamic {{{
     close_dynamic <- function(result = "done") {
         if (!is.null(renderer)) {
             renderer$close(result = result)
         }
         invisible(NULL)
     }
-    # }}}
     on.exit(close_dynamic(), add = TRUE)
     repeat {
         i <- i + 1L

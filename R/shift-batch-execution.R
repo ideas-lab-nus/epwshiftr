@@ -132,14 +132,12 @@ shift_batch_execution__resume <- function(
             if (background) {
                 tryCatch(
                     shift_batch_execution__launch(x@store_path, job),
-                    # error {{{
                     error = function(error) {
                         job$status <- "failed"
                         job$message <- conditionMessage(error)
                         store_write_json_atomic(job, path)
                         stop(error)
                     }
-                    # }}}
                 )
                 x
             } else {

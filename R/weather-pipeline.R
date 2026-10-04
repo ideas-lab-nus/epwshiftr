@@ -64,7 +64,6 @@ WeatherPipelineSpec <- S7::new_class(
                 "`components` must contain one entry for every ordered component stage."
             )
         }
-        # vapply callback {{{
         valid <- vapply(
             self@components,
             function(component) {
@@ -75,7 +74,6 @@ WeatherPipelineSpec <- S7::new_class(
             },
             logical(1L)
         )
-        # }}}
         if (!all(valid)) {
             return(
                 "Every pipeline component must be one lower snake_case name."
@@ -219,13 +217,11 @@ pipeline__compile <- function(spec, inputs) {
     if (!S7::S7_inherits(inputs, WeatherInputs)) {
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
     }
-    # lapply callback {{{
     components <- lapply(WEATHER_COMPONENT_STAGES, function(stage) {
         component <- component__get(stage, spec@components[[stage]])
         component__validate_inputs(component, inputs)
         component
     })
-    # }}}
     names(components) <- WEATHER_COMPONENT_STAGES
     for (index in seq_len(length(components) - 1L)) {
         component__assert_compatible(
@@ -418,7 +414,6 @@ pipeline__operation_args <- function(
 # result without serializing process-local component functions.
 # pipeline__stage_table {{{
 pipeline__stage_table <- function(stages) {
-    # lapply callback {{{
     data.table::rbindlist(
         lapply(stages, function(result) {
             status <- "ok"
@@ -446,7 +441,6 @@ pipeline__stage_table <- function(stages) {
         use.names = TRUE,
         fill = TRUE
     )
-    # }}}
 }
 # }}}
 

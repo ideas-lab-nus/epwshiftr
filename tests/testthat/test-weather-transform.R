@@ -22,9 +22,7 @@ test_that("weather transform registry exposes every canonical method once", {
 
     resolved_recipes <- unlist(lapply(
         transform__records(),
-        # lapply callback {{{
         function(record) unname(record$recipe)
-        # }}}
     ))
     expect_setequal(resolved_recipes, epw_morph_recipes()$name)
     expect_false(any(grepl("_", transforms$reconstruction_label)))
@@ -404,25 +402,19 @@ test_that("resolved options update the public input contract", {
     )
     precipitation_off <- lapply(
         c("original_morphing", "epwshiftr"),
-        # lapply callback {{{
         function(method) {
             monthly_transform(method, precipitation = "off")
         }
-        # }}}
     )
 
     expect_true(all(vapply(
         required_snow@required_inputs$model_future@variable_sets,
-        # vapply callback {{{
         function(variables) "snd" %in% variables,
-        # }}}
         logical(1L)
     )))
     expect_true(all(vapply(
         required_snow@optional_inputs$model_historical@variable_sets,
-        # vapply callback {{{
         function(variables) "snd" %in% variables,
-        # }}}
         logical(1L)
     )))
     expect_identical(
@@ -442,9 +434,7 @@ test_that("resolved options update the public input contract", {
     for (transform in precipitation_off) {
         expect_false(any(vapply(
             transform@required_inputs$model_future@variable_sets,
-            # vapply callback {{{
             function(variables) "pr" %in% variables,
-            # }}}
             logical(1L)
         )))
         recipe <- transform__recipe(transform)

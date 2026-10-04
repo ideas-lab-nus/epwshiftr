@@ -150,7 +150,6 @@ shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
         cli::cli_abort("Unsupported standalone shift task: {.val {task}}.")
     )
     # Remove JSON nulls restored as NA scalar strings before public validation.
-    # lapply callback {{{
     call$args <- lapply(call$args, function(value) {
         if (is.character(value) && length(value) == 1L && is.na(value)) {
             NULL
@@ -158,7 +157,6 @@ shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
             value
         }
     })
-    # }}}
     shift_run__with_run_override(run@ids$run_id, do.call(call$what, call$args))
 }
 # }}}
@@ -269,7 +267,6 @@ shift_job__resume_one <- function(
                 ui = ui,
                 background = background
             ),
-            # error {{{
             error = function(e) {
                 latest_run <- shift_job__run_handle(run_store, run@ids$run_id)
                 if (
@@ -288,7 +285,6 @@ shift_job__resume_one <- function(
                 }
                 stop(e)
             }
-            # }}}
         ))
     }
     spec <- jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE)
@@ -389,9 +385,7 @@ shift_watch <- function(
     mode <- shift_ui__ui_mode(ui)
     motion <- shift_ui__ui_motion(ui, mode)
     terminal <- c("waiting", "completed", "partial", "failed", "cancelled")
-    # error {{{
     renderer <- tryCatch(shift_tui__ui_renderer(mode), error = function(e) NULL)
-    # }}}
     if (identical(mode, "dynamic") && is.null(renderer)) {
         mode <- "log"
         motion <- "none"
@@ -401,7 +395,6 @@ shift_watch <- function(
     event_cursor_initialized <- FALSE
     # Keep one atomic framebuffer alive for the same dashboard used by
     # foreground runs; constrained IDE consoles receive its compact form.
-    # update_dynamic {{{
     update_dynamic <- function(view) {
         ok <- !is.null(renderer) &&
             isTRUE(renderer$draw(view$lines, compact = view$compact))
@@ -415,17 +408,13 @@ shift_watch <- function(
         }
         ok
     }
-    # }}}
-    # close_dynamic {{{
     close_dynamic <- function(result = "done") {
         if (!is.null(renderer)) {
             renderer$close(result = result)
         }
         invisible(NULL)
     }
-    # }}}
     on.exit(close_dynamic(), add = TRUE)
-    # emit_snapshot {{{
     emit_snapshot <- function(snapshot, initial = FALSE, final = FALSE) {
         view <- shift_ui_view__ui_run_view(
             snapshot,
@@ -472,7 +461,6 @@ shift_watch <- function(
         }
         invisible(snapshot)
     }
-    # }}}
     if (!isTRUE(follow)) {
         if (!identical(mode, "none")) {
             shift_ui_view__ui_print_view(
@@ -521,7 +509,6 @@ shift_watch <- function(
                 shift_job__watch_sleep(frame_interval)
             }
         },
-        # interrupt {{{
         interrupt = function(e) {
             close_dynamic(result = "cancelled")
             if (!identical(mode, "none")) {
@@ -530,7 +517,6 @@ shift_watch <- function(
                 )
             }
         }
-        # }}}
     )
     shift_run_get(run_id, store = store_path)
 }
@@ -654,9 +640,7 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
     # cooperative signal and the live handle is updated in memory immediately.
     run_store <- tryCatch(
         EsgStore$new(run@store_path, create = FALSE),
-        # error {{{
         error = function(e) e
-        # }}}
     )
     if (inherits(run_store, "error")) {
         if (!shift_job__manifest_locked(run_store)) {
@@ -684,9 +668,7 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
             }
             refreshed <- tryCatch(
                 shift_run_get(run@ids$run_id, run@store_path),
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             if (!is.null(refreshed)) {
                 return(refreshed)
@@ -774,9 +756,7 @@ shift_job__background_download_context <- function(
             step$output_stage_json[[1L]],
             simplifyVector = FALSE
         ),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     if (is.null(ref)) {
         return(NULL)
@@ -1296,7 +1276,6 @@ shift_job__validate_background_plan <- function(plan) {
     spec <- shift_persist__plan_spec(plan)
     tryCatch(
         shift_persist__plan_from_spec(spec, store = plan@store_path),
-        # error {{{
         error = function(e) {
             cli::cli_abort(
                 c(
@@ -1307,7 +1286,6 @@ shift_job__validate_background_plan <- function(plan) {
                 parent = e
             )
         }
-        # }}}
     )
     invisible(TRUE)
 }
@@ -1327,9 +1305,7 @@ shift_job__launch_job <- function(store_path, run_id, job_id, log_path) {
             ),
             log_path
         ),
-        # error {{{
         error = function(e) e
-        # }}}
     )
     if (inherits(status, "error")) {
         failed_store <- EsgStore$new(store_path, create = FALSE)
@@ -1370,9 +1346,7 @@ shift_job__job_store_open <- function(
     repeat {
         store <- tryCatch(
             EsgStore$new(store_path, create = FALSE),
-            # error {{{
             error = function(e) e
-            # }}}
         )
         if (!inherits(store, "error")) {
             return(store)
@@ -1529,9 +1503,7 @@ shift_job__run_cases_write <- function(store, run_id, cases) {
     rows <- data.table::data.table(
         run_case_id = vapply(
             cases$case_id,
-            # vapply callback {{{
             function(value) store__hash(run_id, value),
-            # }}}
             character(1L)
         ),
         run_id = run_id,
@@ -1543,9 +1515,7 @@ shift_job__run_cases_write <- function(store, run_id, cases) {
         period = cases$period,
         years_json = vapply(
             cases$years,
-            # vapply callback {{{
             function(value) shift_persist__spec_json(as.integer(value)),
-            # }}}
             character(1L)
         ),
         required = as.logical(cases$required),
@@ -1836,17 +1806,13 @@ shift_job__run_event_diagnostic <- function(event, run_id, store_path) {
     ) {
         tryCatch(
             jsonlite::fromJSON(event$details_json[[1L]], simplifyVector = TRUE),
-            # error {{{
             error = function(e) list()
-            # }}}
         )
     } else {
         list()
     }
     if (identical(as.character(details$kind), "scientific_diagnostic")) {
-        # field {{{
         field <- function(name) store__chr1(details[[name]])
-        # }}}
         return(shift_stage__diagnostic(
             field("stage"),
             field("severity"),
@@ -1942,11 +1908,9 @@ shift_job__run_handle <- function(
     )
     if (nrow(cases)) {
         cases[,
-            # lapply callback {{{
             years := lapply(years_json, function(value) {
                 as.integer(jsonlite::fromJSON(value, simplifyVector = TRUE))
             })
-            # }}}
         ]
     }
     events <- shift_inspect__rows(
@@ -1974,7 +1938,6 @@ shift_job__run_handle <- function(
             shift_stage__bind_diagnostics,
             lapply(
                 seq_len(nrow(diagnostic_events)),
-                # lapply callback {{{
                 function(i) {
                     shift_job__run_event_diagnostic(
                         diagnostic_events[i],
@@ -1982,7 +1945,6 @@ shift_job__run_handle <- function(
                         store$path
                     )
                 }
-                # }}}
             )
         )
     }
@@ -2187,9 +2149,7 @@ shift_job__live_run_get <- function(run_id, store_path) {
             simplifyVector = TRUE,
             simplifyDataFrame = TRUE
         ),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     if (
         is.null(snapshot) || !identical(as.character(snapshot$run_id), run_id)
@@ -2207,11 +2167,9 @@ shift_job__live_run_get <- function(run_id, store_path) {
         return(NULL)
     }
     if (nrow(cases) && "years_json" %in% names(cases)) {
-        # lapply callback {{{
         years <- lapply(cases$years_json, function(value) {
             as.integer(jsonlite::fromJSON(value, simplifyVector = TRUE))
         })
-        # }}}
         data.table::set(cases, j = "years", value = years)
     }
     diagnostic_events <- events[
@@ -2224,7 +2182,6 @@ shift_job__live_run_get <- function(run_id, store_path) {
             shift_stage__bind_diagnostics,
             lapply(
                 seq_len(nrow(diagnostic_events)),
-                # lapply callback {{{
                 function(i) {
                     shift_job__run_event_diagnostic(
                         diagnostic_events[i],
@@ -2232,7 +2189,6 @@ shift_job__live_run_get <- function(run_id, store_path) {
                         store_path
                     )
                 }
-                # }}}
             )
         )
     }
@@ -2328,9 +2284,7 @@ shift_job__live_cancel_mark <- function(store_path, run_id, job_id, status) {
     path <- shift_job__live_path(store_path, run_id)
     snapshot <- tryCatch(
         jsonlite::fromJSON(path, simplifyDataFrame = TRUE),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     if (is.null(snapshot)) {
         return(NULL)
@@ -2381,9 +2335,7 @@ shift_job__cancel_request_exists <- function(store_path, run_id, job_id) {
     }
     request <- tryCatch(
         jsonlite::fromJSON(path, simplifyVector = TRUE),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     !is.null(request) &&
         identical(as.character(request$job_id), as.character(job_id))
@@ -2397,9 +2349,7 @@ shift_job__update_row <- function(store, table, key, row, fields) {
     conn <- morpher__private_store(store)$conn
     values <- vapply(
         fields,
-        # vapply callback {{{
         function(field) ddb_literal(conn, row[[field]]),
-        # }}}
         character(1L)
     )
     sql <- sprintf(

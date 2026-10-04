@@ -47,9 +47,7 @@ qdm_test__settings <- function(variable) {
     profiles <- qdm__profiles()
     index <- which(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
-        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings

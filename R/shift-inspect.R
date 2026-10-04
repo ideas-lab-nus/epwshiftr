@@ -102,14 +102,12 @@ shift_inspect__history_batch <- function(path, type) {
     checkmate::assert_list(receipt$children, types = "list", min.len = 1L)
     child_keys <- vapply(
         receipt$children,
-        # vapply callback {{{
         function(child) {
             checkmate::assert_string(child$child_key, min.chars = 1L)
             checkmate::assert_string(child$store_path, min.chars = 1L)
             checkmate::assert_character(child$run_id, len = 1L, null.ok = TRUE)
             child$child_key
         },
-        # }}}
         character(1L)
     )
     if (
@@ -125,11 +123,9 @@ shift_inspect__history_batch <- function(path, type) {
     child_paths <- vapply(receipt$children, `[[`, character(1L), "store_path")
     run_ids <- vapply(
         receipt$children,
-        # vapply callback {{{
         function(child) {
             store__chr1(child$run_id)
         },
-        # }}}
         character(1L)
     )
     registered <- data.table::data.table(path = child_paths, run_id = run_ids)
@@ -139,7 +135,6 @@ shift_inspect__history_batch <- function(path, type) {
     # A lock fallback remains read-only; refresh/reconciliation is deliberately
     # excluded from history inspection.
     runs <- stats::setNames(
-        # lapply callback {{{
         lapply(paths, function(path) {
             tryCatch(
                 {
@@ -151,7 +146,6 @@ shift_inspect__history_batch <- function(path, type) {
                 error = identity
             )
         }),
-        # }}}
         paths
     )
     identities <- manifest[match(child_keys, manifest$child_key)]
@@ -303,7 +297,6 @@ shift_history <- function(
         # nested structures, while keeping filters and healthy rows intact.
         pieces[[length(pieces) + 1L]] <- tryCatch(
             shift_inspect__history_batch(path, type),
-            # error {{{
             error = function(error) {
                 id <- basename(path)
                 data.table::data.table(
@@ -318,7 +311,6 @@ shift_history <- function(
                     error = conditionMessage(error)
                 )
             }
-            # }}}
         )
     }
     out <- data.table::rbindlist(
@@ -442,9 +434,7 @@ shift_inspect__summary_child <- function(child, identity, weather) {
     if (standalone) {
         # The root spec describes the first task (often collect). Restore the
         # result's own morphing stage to recover the transform that made it.
-        # error {{{
         result <- tryCatch(shift_result(child), error = function(error) NULL)
-        # }}}
         outputs <- if (S7::S7_inherits(result, ShiftOutputs)) {
             shift_outputs(result, refresh = FALSE)
         } else {
@@ -592,15 +582,12 @@ shift_inspect__summary_child <- function(child, identity, weather) {
             linked$diagnostic_row,
             factor(linked$summary_group, levels = partitions$summary_group)
         )
-        # lapply callback {{{
         check_rows <- lapply(check_rows, function(rows) {
             sort(unique(c(global, rows)))
         })
-        # }}}
     } else {
         check_rows <- rep(list(seq_len(nrow(diagnostics))), nrow(partitions))
     }
-    # lapply callback {{{
     rows <- lapply(seq_len(nrow(partitions)), function(index) {
         group <- cases[partitions$rows[[index]]]
         indices <- file_rows[[index]]
@@ -619,11 +606,9 @@ shift_inspect__summary_child <- function(child, identity, weather) {
             grid = "grid_label",
             period = "period"
         )
-        # lapply callback {{{
         row[names(fields)] <- lapply(fields, function(field) {
             store__chr1(group[[field]])
         })
-        # }}}
         row <- c(
             row,
             list(
@@ -647,7 +632,6 @@ shift_inspect__summary_child <- function(child, identity, weather) {
         }
         row
     })
-    # }}}
     data.table::rbindlist(rows, fill = TRUE)
 }
 # }}}
@@ -700,14 +684,12 @@ shift_summary <- function(
         return(shift_reporter__ui_check(
             ui,
             "Summarize EPWs",
-            # shift_reporter__ui_check callback {{{
             function(reporter) {
                 shift_run__with_reporter(
                     reporter,
                     shift_summary(x, refresh = FALSE, weather = TRUE, ui = ui)
                 )
             }
-            # }}}
         ))
     }
     if (S7::S7_inherits(x, ShiftBatch)) {
@@ -720,7 +702,6 @@ shift_summary <- function(
             "model"
         )
         manifest <- x@meta$manifest[, columns, with = FALSE]
-        # lapply callback {{{
         rows <- lapply(seq_along(x@meta$children), function(index) {
             identity <- lapply(manifest, `[[`, index)
             identity$batch_id <- x@ids$batch_id
@@ -730,7 +711,6 @@ shift_summary <- function(
                 weather
             )
         })
-        # }}}
         return(data.table::rbindlist(rows, fill = TRUE))
     }
     spec <- if (S7::S7_inherits(x, ShiftPlan)) {
@@ -964,9 +944,7 @@ shift_inspect__read_parquet <- function(store, path, n = Inf, columns = NULL) {
         paste(
             vapply(
                 columns,
-                # vapply callback {{{
                 function(column) ddb_ident(conn, column),
-                # }}}
                 character(1L)
             ),
             collapse = ", "
@@ -1070,12 +1048,9 @@ shift_inspect__read_morph_data <- function(store, results, n, columns) {
         n = n,
         columns = columns,
         path_column = "output_path",
-        # reader {{{
         reader = function(path, limit, columns) {
             shift_inspect__read_parquet(store, path, n = limit)
         },
-        # }}}
-        # metadata {{{
         metadata = function(records, i) {
             list(
                 result_id = records$result_id[[i]],
@@ -1089,7 +1064,6 @@ shift_inspect__read_morph_data <- function(store, results, n, columns) {
                 stochastic_seed = records$stochastic_seed[[i]]
             )
         },
-        # }}}
         missing = c(
             "Morphed Parquet data file is missing.",
             "x" = "{.path {path}}",
@@ -1109,7 +1083,6 @@ shift_inspect__read_epw_output_data <- function(store, outputs, n, columns) {
         n = n,
         columns = columns,
         path_column = "path",
-        # reader {{{
         reader = function(path, limit, columns) {
             dt <- epw_file_read(path)$data()
             if (!is.infinite(limit)) {
@@ -1117,8 +1090,6 @@ shift_inspect__read_epw_output_data <- function(store, outputs, n, columns) {
             }
             dt
         },
-        # }}}
-        # metadata {{{
         metadata = function(records, i) {
             list(
                 output_id = records$output_id[[i]],
@@ -1136,7 +1107,6 @@ shift_inspect__read_epw_output_data <- function(store, outputs, n, columns) {
                 path = records$path[[i]]
             )
         },
-        # }}}
         missing = c(
             "EPW output file is missing.",
             "x" = "{.path {path}}",
@@ -1220,9 +1190,7 @@ shift_explain <- function(x, ...) {
         return(shift_batch__inspect(
             x@meta$children,
             x@meta$manifest,
-            # shift_batch__inspect callback {{{
             function(child) shift_explain(child, ...)
-            # }}}
         ))
     }
     shift_stage__assert_stage(x)
@@ -1334,9 +1302,7 @@ shift_cases <- function(x, refresh = TRUE) {
         return(shift_batch__inspect(
             x@meta$children,
             x@meta$manifest,
-            # shift_batch__inspect callback {{{
             function(child) shift_cases(child, refresh = FALSE)
-            # }}}
         ))
     }
     if (S7::S7_inherits(x, ShiftPlan)) {
@@ -1389,9 +1355,7 @@ shift_inspect__runs <- function(store, run_ids = NULL) {
     }
     opened <- tryCatch(
         shift_store(store_value, create = FALSE),
-        # error {{{
         error = function(e) e
-        # }}}
     )
     if (!inherits(opened, "error")) {
         if (!inherits(store_value, "EsgStore")) {
@@ -1416,20 +1380,14 @@ shift_inspect__runs <- function(store, run_ids = NULL) {
     if (!is.null(run_ids)) {
         live <- live[basename(live) %in% paste0(run_ids, ".live.json")]
     }
-    # lapply callback {{{
     rows <- lapply(live, function(path) {
         value <- tryCatch(
             jsonlite::fromJSON(path, simplifyDataFrame = TRUE),
-            # error {{{
             error = function(e) NULL
-            # }}}
         )
         if (is.null(value)) NULL else shift_job__live_table(value$run)
     })
-    # }}}
-    # Filter callback {{{
     rows <- Filter(function(x) !is.null(x) && nrow(x), rows)
-    # }}}
     if (!length(rows)) {
         stop(opened)
     }
@@ -1497,9 +1455,7 @@ shift_run_get <- function(run_id, store = NULL) {
     }
     opened <- tryCatch(
         shift_store(store_value, create = FALSE),
-        # error {{{
         error = function(e) e
-        # }}}
     )
     if (inherits(opened, "error")) {
         if (!shift_job__manifest_locked(opened)) {
@@ -1592,14 +1548,12 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
         return(shift_batch__inspect(
             x@meta$children,
             x@meta$manifest,
-            # shift_batch__inspect callback {{{
             function(child) {
                 if (S7::S7_inherits(child, ShiftPlan)) {
                     return(data.table::data.table())
                 }
                 shift_logs(child, tail = tail)
             }
-            # }}}
         ))
     }
     run <- shift_job__as_run(x, store = store)
@@ -1656,13 +1610,10 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
                     )
                     as.character(shift_stage__coalesce(value$detail, "normal"))
                 },
-                # error {{{
                 error = function(e) "normal"
-                # }}}
             )
             vapply(
                 seq_len(nrow(event_rows)),
-                # vapply callback {{{
                 function(i) {
                     shift_ui_view__ui_persisted_event_line(
                         event_rows[i],
@@ -1670,7 +1621,6 @@ shift_logs <- function(x, store = NULL, tail = 100L) {
                         width = NULL
                     )
                 },
-                # }}}
                 character(1L)
             )
         }
@@ -1820,15 +1770,11 @@ shift_data <- function(
             return(data.table::data.table())
         }
         if (!identical(as.character(x@meta$run$task[[1L]]), "future_epw")) {
-            # error {{{
             stage <- tryCatch(shift_result(x), error = function(e) NULL)
-            # }}}
             supported <- !is.null(stage) &&
                 any(vapply(
                     list(ShiftClimate, ShiftMorphed, ShiftOutputs),
-                    # vapply callback {{{
                     function(class) S7::S7_inherits(stage, class),
-                    # }}}
                     logical(1L)
                 ))
             if (!isTRUE(supported)) {
@@ -1907,7 +1853,6 @@ shift_data <- function(
             n = n,
             columns = columns,
             path_column = "output_path",
-            # reader {{{
             reader = function(path, limit, columns) {
                 shift_inspect__read_parquet(
                     store,
@@ -1916,7 +1861,6 @@ shift_data <- function(
                     columns = columns
                 )
             },
-            # }}}
             missing = c(
                 "Extracted Parquet data file is missing.",
                 "x" = "{.path {path}}",
@@ -2049,9 +1993,7 @@ shift_target <- function(x) {
     for (name in c("download", "files", "climate", "morphed")) {
         value <- meta[[name]]
         if (S7::S7_inherits(value, ShiftStage)) {
-            # error {{{
             target <- tryCatch(shift_target(value), error = function(e) NULL)
-            # }}}
             if (!is.null(target)) {
                 return(target)
             }
@@ -2101,9 +2043,7 @@ shift_outputs <- function(x, refresh = TRUE) {
         return(shift_batch__inspect(
             x@meta$children,
             x@meta$manifest,
-            # shift_batch__inspect callback {{{
             function(child) shift_outputs(child, refresh = FALSE)
-            # }}}
         ))
     }
     if (S7::S7_inherits(x, ShiftRun)) {
@@ -2111,9 +2051,7 @@ shift_outputs <- function(x, refresh = TRUE) {
             x <- shift_refresh(x)
         }
         if (!identical(as.character(x@meta$run$task[[1L]]), "future_epw")) {
-            # error {{{
             stage <- tryCatch(shift_result(x), error = function(e) NULL)
-            # }}}
             if (!S7::S7_inherits(stage, ShiftOutputs)) {
                 return(data.table::data.table())
             }
@@ -2123,9 +2061,7 @@ shift_outputs <- function(x, refresh = TRUE) {
         if (is.na(morph_id) || !nzchar(morph_id)) {
             return(data.table::data.table())
         }
-        # error {{{
         run_store <- tryCatch(shift_store(x), error = function(e) NULL)
-        # }}}
         outputs <- if (is.null(run_store)) {
             data.table::as.data.table(shift_stage__coalesce(
                 x@meta$outputs,
@@ -2243,9 +2179,7 @@ shift_status <- function(x, refresh = TRUE) {
     }
 
     ids <- shift_ids(x)
-    # error {{{
     store <- tryCatch(shift_store(x), error = function(e) NULL)
-    # }}}
     if (is.null(store)) {
         return("partial")
     }
@@ -2281,9 +2215,7 @@ shift_status <- function(x, refresh = TRUE) {
         tasks <- if (!is.null(ids$session_id) && !is.na(ids$session_id)) {
             tryCatch(
                 store$download_status(session_id = ids$session_id),
-                # error {{{
                 error = function(e) data.table::data.table()
-                # }}}
             )
         } else {
             data.table::data.table()
@@ -2297,9 +2229,7 @@ shift_status <- function(x, refresh = TRUE) {
     if (S7::S7_inherits(x, ShiftClimate)) {
         coverage <- tryCatch(
             store$coverage(plan_id = ids$plan_id),
-            # error {{{
             error = function(e) data.table::data.table()
-            # }}}
         )
         if (!nrow(coverage)) {
             return("partial")
@@ -2364,9 +2294,7 @@ S7::method(summary, ShiftStage) <- function(object, ...) {
     data.table::data.table(
         class = class(object)[[1L]],
         stage = object@stage,
-        # error {{{
         status = tryCatch(shift_status(object), error = function(e) "unknown"),
-        # }}}
         diagnostic_count = nrow(shift_diagnostics(object))
     )
 }
@@ -2413,9 +2341,7 @@ shift_inspect__stage_as_data_table <- function(x, ...) {
         ))
     }
 
-    # error {{{
     store <- tryCatch(shift_store(x), error = function(e) NULL)
-    # }}}
     ids <- shift_ids(x)
     if (S7::S7_inherits(x, ShiftFiles) && !is.null(store)) {
         return(shift_inspect__file_catalog(store, ids$query_id))
@@ -2424,9 +2350,7 @@ shift_inspect__stage_as_data_table <- function(x, ...) {
         tasks <- if (!is.null(ids$session_id) && !is.na(ids$session_id)) {
             tryCatch(
                 store$download_status(session_id = ids$session_id),
-                # error {{{
                 error = function(e) data.table::data.table()
-                # }}}
             )
         } else {
             data.table::data.table()
@@ -2457,9 +2381,7 @@ shift_inspect__completion <- function(cases, outputs, diagnostics) {
             jsonlite::fromJSON(outputs$provenance_json[[
                 1L
             ]])$weather_field_roles,
-            # error {{{
             error = function(error) NULL
-            # }}}
         )
     } else {
         NULL

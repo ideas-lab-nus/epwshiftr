@@ -150,9 +150,7 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     )
     # The synthetic backend exercises only the sequence/output contract; its
     # two year members deliberately reuse one EPW template.
-    # runner {{{
     runner <- function(context, backend) {
-        # lapply callback {{{
         members <- lapply(seq.int(2061L, 2062L), function(year) {
             target_year <- year
             weather <- context$epw$data()
@@ -171,7 +169,6 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
                 provenance = list(source_year = target_year)
             )
         })
-        # }}}
         sequence__result(
             context,
             members,
@@ -179,7 +176,6 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
             provenance = list(backend = backend$name)
         )
     }
-    # }}}
     backend <- EpwMorphBackend$new(
         name = backend_name,
         methods = c(dry = "offset"),
@@ -262,11 +258,9 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     expect_identical(
         unname(vapply(
             output_paths,
-            # vapply callback {{{
             function(path) {
                 unique(epw_file_read(path)$data()$year)
             },
-            # }}}
             integer(1L)
         )),
         c(2061L, 2062L)

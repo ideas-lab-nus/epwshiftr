@@ -76,7 +76,6 @@ qdm__profiles <- function() {
         tasmax = qdm__default_settings(c(-Inf, Inf), "absolute")
     )
     variables <- c(QDM_PUBLISHED_VARIABLES, QDM_EXPERIMENTAL_VARIABLES)
-    # lapply callback {{{
     lapply(variables, function(variable) {
         published <- variable %in% QDM_PUBLISHED_VARIABLES
         signal__variable_profile(
@@ -95,7 +94,6 @@ qdm__profiles <- function() {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -232,11 +230,9 @@ qdm__inputs <- function(inputs, variable, distribution_model) {
             "Quantile Delta Mapping requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -253,9 +249,7 @@ qdm__inputs <- function(inputs, variable, distribution_model) {
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -267,9 +261,7 @@ qdm__inputs <- function(inputs, variable, distribution_model) {
         identical(distribution_model, "precipitation_censored") &&
             any(vapply(
                 series,
-                # vapply callback {{{
                 function(data) any(data[["value"]] < 0),
-                # }}}
                 logical(1L)
             ))
     ) {

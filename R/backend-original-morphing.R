@@ -150,7 +150,6 @@ EPW_MORPH_ORIGINAL_RULES <- data.table::data.table(
 # Temperature alone accepts the automatic combined-to-shift fallback. Other
 # user-selectable fields retain the three published transformation types.
 EPW_MORPH_ORIGINAL_RULES[,
-    # lapply callback {{{
     method_choices := lapply(step, function(step_name) {
         if (identical(step_name, "tdb")) {
             c("auto", EPW_MORPH_ORIGINAL_METHOD_CHOICES)
@@ -163,7 +162,6 @@ EPW_MORPH_ORIGINAL_RULES[,
             method[step == step_name]
         }
     })
-    # }}}
 ]
 
 # Validate one complete original-morphing option list before it enters a recipe. Keeping
@@ -445,7 +443,6 @@ original_morphing__epw_monthly_dtr <- function(data_epw, var) {
 # field unit before monthly morphing factors are calculated.
 # original_morphing__align_units {{{
 original_morphing__align_units <- function(data, target_units) {
-    # lapply callback {{{
     converted <- lapply(seq_len(nrow(data)), function(i) {
         morpher__convert_value_checked(
             data$value[[i]],
@@ -453,7 +450,6 @@ original_morphing__align_units <- function(data, target_units) {
             target_units
         )
     })
-    # }}}
     ok <- vapply(converted, `[[`, logical(1L), "ok")
     if (any(!ok)) {
         messages <- unique(vapply(
@@ -601,7 +597,6 @@ original_morphing__humidity_source <- function(context) {
         source <- "hurs"
     }
     has_reference <- !is.null(context$reference_climate)
-    # complete {{{
     complete <- function(variable_id) {
         morpher__humidity_variable_complete(context, variable_id) &&
             (!has_reference ||
@@ -611,7 +606,6 @@ original_morphing__humidity_source <- function(context) {
                     reference = TRUE
                 ))
     }
-    # }}}
     huss_complete <- all(vapply(c("huss", "tas", "ps"), complete, logical(1L)))
     hurs_complete <- complete("hurs")
     if (identical(source, "huss")) {
@@ -1165,9 +1159,7 @@ illuminance__perez_1990 <- function(ghi, dhi, dni, geometry, dew_point) {
     clearness[!is.finite(clearness)] <- 6.201
     bin <- illuminance__perez_bin(clearness)
     water <- exp(0.07 * as.numeric(dew_point) - 0.075)
-    # coefficient {{{
     coefficient <- function(table) table[bin, , drop = FALSE]
-    # }}}
     global_coef <- coefficient(ILLUMINANCE__PEREZ_GLOBAL)
     diffuse_coef <- coefficient(ILLUMINANCE__PEREZ_DIFFUSE)
     direct_coef <- coefficient(ILLUMINANCE__PEREZ_DIRECT)
@@ -1713,21 +1705,17 @@ morpher__constrained_month_series <- function(month, target, transition_hours) {
     basis <- morpher__cyclic_month_basis(month, transition_hours)
     constraint <- vapply(
         1:12,
-        # vapply callback {{{
         function(target_month) {
             colMeans(basis[month == target_month, , drop = FALSE])
         },
-        # }}}
         numeric(12L)
     )
     constraint <- t(constraint)
     coefficients <- tryCatch(
         solve(constraint, as.numeric(target)),
-        # error {{{
         error = function(e) {
             qr.solve(constraint, as.numeric(target), tol = 1e-12)
         }
-        # }}}
     )
     as.numeric(basis %*% coefficients)
 }
@@ -1897,7 +1885,6 @@ morpher__smooth_enhanced_factors <- function(
             anomaly <- as.numeric(rows[[var]]) - as.numeric(rows$epw_mean)
             covariance <- vapply(
                 1:12,
-                # vapply callback {{{
                 function(target_month) {
                     mean(
                         alpha[month == target_month] *
@@ -1905,7 +1892,6 @@ morpher__smooth_enhanced_factors <- function(
                         na.rm = TRUE
                     )
                 },
-                # }}}
                 numeric(1L)
             )
             delta_target <- delta_target - covariance
@@ -2524,14 +2510,12 @@ original_morphing__from_monthly_change_enhanced <- function(
         strict = strict
     )
 
-    # align_optional {{{
     align_optional <- function(data) {
         if (is.null(data) || !nrow(data)) {
             return(NULL)
         }
         original_morphing__align_units(data.table::copy(data), units)
     }
-    # }}}
     data_mean <- morpher__attach_extreme_value(
         data_mean,
         align_optional(data_max),
@@ -3352,7 +3336,6 @@ morpher__precip_month_days <- function(year, month) {
         return(integer())
     }
     mapply(
-        # mapply callback {{{
         function(y, m) {
             start <- as.Date(sprintf("%04d-%02d-01", y, m))
             next_year <- y + as.integer(m == 12L)
@@ -3361,7 +3344,6 @@ morpher__precip_month_days <- function(year, month) {
                 as.Date(sprintf("%04d-%02d-01", next_year, next_month)) - start
             )
         },
-        # }}}
         year,
         month
     )
@@ -3405,9 +3387,7 @@ morpher__precip_summary_depth_checked <- function(
 ) {
     years <- tryCatch(
         morpher__json_int_vector(years_json),
-        # error {{{
         error = function(e) integer()
-        # }}}
     )
     if (!length(years)) {
         years <- 2001L
@@ -3487,7 +3467,6 @@ original_morphing__monthly_precip_variable <- function(
 
     values <- vapply(
         seq_len(nrow(out)),
-        # vapply callback {{{
         function(i) {
             days <- morpher__precip_month_days(out$years[[i]], out$month[[i]])
             converted <- morpher__precip_depth_checked(
@@ -3502,7 +3481,6 @@ original_morphing__monthly_precip_variable <- function(
             }
             converted$value
         },
-        # }}}
         numeric(1L)
     )
     out[, `:=`(
@@ -3834,7 +3812,6 @@ morpher__enhanced_factor_metadata <- function(context, parts) {
         data.table::data.table()
     }
     bad <- if (nrow(factors)) factors[factor_status != "ok"] else factors
-    # lapply callback {{{
     diagnostics <- lapply(seq_len(nrow(bad)), function(i) {
         status <- bad$factor_status[[i]]
         message <- switch(
@@ -3879,7 +3856,6 @@ morpher__enhanced_factor_metadata <- function(context, parts) {
             action = "Inspect the persisted factor status and input coverage for this month."
         )
     })
-    # }}}
     list(
         factors = factors,
         diagnostics = morpher__bind_diagnostics(diagnostics)

@@ -81,7 +81,6 @@ shift_batch_read__read_acquisition <- function(
     slices <- attr(values, "read_slices", exact = TRUE)
     # The positional IDs are internal to this read; both value and provenance
     # tables must restore the same consumer columns, including on empty reads.
-    # restore_consumers {{{
     restore_consumers <- function(table) {
         position <- match(table$site_id, read_id)
         data.table::setnames(table, "site_id", "consumer_id")
@@ -94,7 +93,6 @@ shift_batch_read__read_acquisition <- function(
         }
         table
     }
-    # }}}
     values <- restore_consumers(values)
     # The value table records the consumer's future/historical role. Grid
     # provenance retains its spatial role, such as nearest or a corner.

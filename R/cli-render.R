@@ -1369,11 +1369,9 @@ cli_morph__render_inputs <- function(inputs, title) {
         if (length(input$variable_sets)) {
             alternatives <- vapply(
                 input$variable_sets,
-                # vapply callback {{{
                 function(variables) {
                     paste0("(", paste(variables, collapse = " + "), ")")
                 },
-                # }}}
                 character(1L)
             )
             items <- c(
@@ -1607,13 +1605,11 @@ esg__print_facts <- function(x) {
     checkmate::assert_list(x, names = "named")
     keep <- vapply(
         x,
-        # vapply callback {{{
         function(value) {
             length(value) &&
                 !all(is.na(value)) &&
                 any(nzchar(as.character(value)))
         },
-        # }}}
         logical(1L)
     )
     x <- x[keep]
@@ -1690,7 +1686,6 @@ epwshiftr_cli_render_table <- function(
     }
     shown <- x[seq_len(min(nrow(x), max_rows)), columns, drop = FALSE]
     display <- as.data.frame(
-        # lapply callback {{{
         lapply(names(shown), function(name) {
             value <- epwshiftr_cli_format_named_cell(shown[[name]], name)
             epwshiftr_cli_truncate_cell(
@@ -1698,7 +1693,6 @@ epwshiftr_cli_render_table <- function(
                 epwshiftr_cli_column_max_width(name)
             )
         }),
-        # }}}
         stringsAsFactors = FALSE
     )
     names(display) <- names(shown)
@@ -1824,12 +1818,10 @@ epwshiftr_cli_table_lines <- function(
     header <- rep_len(header, ncol(body))
     widths <- vapply(
         seq_along(body),
-        # vapply callback {{{
         function(i) {
             label <- c(header[[i]], if (!is.null(types)) types[[i]], body[[i]])
             max(cli::ansi_nchar(label, type = "width"), na.rm = TRUE)
         },
-        # }}}
         integer(1L)
     )
 
@@ -1938,7 +1930,6 @@ epwshiftr_cli_table_types <- function(x) {
     )
     vapply(
         x,
-        # vapply callback {{{
         function(col) {
             class <- class(col)[[1L]]
             label <- unname(class_abbr[[class]])
@@ -1947,7 +1938,6 @@ epwshiftr_cli_table_types <- function(x) {
             }
             label
         },
-        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
@@ -1988,7 +1978,6 @@ epwshiftr_cli_progress_bar <- function(done, total, width = 8L) {
     filled <- pmin(width, pmax(0L, round(ratio * width)))
     out[ok] <- vapply(
         seq_along(ratio),
-        # vapply callback {{{
         function(i) {
             paste0(
                 "[",
@@ -1998,7 +1987,6 @@ epwshiftr_cli_progress_bar <- function(done, total, width = 8L) {
                 sprintf("%3.0f%%", ratio[[i]] * 100)
             )
         },
-        # }}}
         character(1L)
     )
     out
@@ -2068,9 +2056,7 @@ epwshiftr_cli_table_rule <- function(
     cell_widths <- widths + chars$margin * 2L
     cells <- vapply(
         cell_widths,
-        # vapply callback {{{
         function(width) paste(rep(chars$horizontal, width), collapse = ""),
-        # }}}
         character(1L)
     )
     paste0(
@@ -2086,7 +2072,6 @@ epwshiftr_cli_table_row <- function(values, widths, align, chars) {
     values <- as.character(values)
     cells <- vapply(
         seq_along(values),
-        # vapply callback {{{
         function(i) {
             padded <- epwshiftr_cli_table_pad(
                 values[[i]],
@@ -2099,7 +2084,6 @@ epwshiftr_cli_table_row <- function(values, widths, align, chars) {
                 paste(rep(" ", chars$margin), collapse = "")
             )
         },
-        # }}}
         character(1L)
     )
     paste0(
@@ -2130,7 +2114,6 @@ epwshiftr_cli_table_pad <- function(value, width, align = "left") {
 epwshiftr_cli_table_alignments <- function(x) {
     vapply(
         names(x),
-        # vapply callback {{{
         function(name) {
             value <- x[[name]]
             if (is.numeric(value) || is.integer(value)) {
@@ -2147,7 +2130,6 @@ epwshiftr_cli_table_alignments <- function(x) {
             }
             "left"
         },
-        # }}}
         character(1L)
     )
 }
@@ -2161,7 +2143,6 @@ epwshiftr_cli_table_row_styles <- function(x) {
     value <- epwshiftr_cli_table_status_values(x)
     vapply(
         value,
-        # vapply callback {{{
         function(status) {
             group <- epwshiftr_cli_status_group(status)
             switch(
@@ -2171,7 +2152,6 @@ epwshiftr_cli_table_row_styles <- function(x) {
                 "none"
             )
         },
-        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
@@ -2212,14 +2192,12 @@ epwshiftr_cli_truncate_cell <- function(x, width) {
     }
     vapply(
         x,
-        # vapply callback {{{
         function(value) {
             if (is.na(value) || nchar(value, type = "width") <= width) {
                 return(value)
             }
             paste0(substr(value, 1L, width - 3L), "...")
         },
-        # }}}
         character(1L)
     )
 }
@@ -2270,7 +2248,6 @@ epwshiftr_cli_is_boolean_indicator <- function(name) {
 epwshiftr_cli_color_status <- function(x) {
     vapply(
         x,
-        # vapply callback {{{
         function(value) {
             group <- epwshiftr_cli_status_group(value)
             switch(
@@ -2283,7 +2260,6 @@ epwshiftr_cli_color_status <- function(x) {
                 value
             )
         },
-        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
@@ -2372,7 +2348,6 @@ epwshiftr_cli_color_boolean <- function(x, name) {
     )
     vapply(
         value,
-        # vapply callback {{{
         function(item) {
             if (item %in% c("yes", "true", "1")) {
                 return(
@@ -2394,7 +2369,6 @@ epwshiftr_cli_color_boolean <- function(x, name) {
             }
             cli::col_grey(item)
         },
-        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
@@ -2412,11 +2386,9 @@ epwshiftr_cli_format_cell <- function(x) {
     if (is.list(x) && !is.data.frame(x)) {
         return(vapply(
             x,
-            # vapply callback {{{
             function(value) {
                 paste(epwshiftr_cli_format_cell(value), collapse = ",")
             },
-            # }}}
             character(1L)
         ))
     }
@@ -2480,7 +2452,6 @@ epwshiftr_cli_title <- function(x) {
     x <- gsub("-", " ", x, fixed = TRUE)
     vapply(
         strsplit(x, " ", fixed = TRUE),
-        # vapply callback {{{
         function(parts) {
             parts <- parts[nzchar(parts)]
             if (!length(parts)) {
@@ -2492,7 +2463,6 @@ epwshiftr_cli_title <- function(x) {
             )
             paste(parts, collapse = " ")
         },
-        # }}}
         character(1L)
     )
 }

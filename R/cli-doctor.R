@@ -25,7 +25,6 @@ epwshiftr_cli_doctor <- function(
     }
 
     checks <- list()
-    # add {{{
     add <- function(check, status, message, detail = NA_character_) {
         checks[[length(checks) + 1L]] <<- data.frame(
             check = check,
@@ -35,7 +34,6 @@ epwshiftr_cli_doctor <- function(
             stringsAsFactors = FALSE
         )
     }
-    # }}}
 
     add(
         "r_version",
@@ -62,9 +60,7 @@ epwshiftr_cli_doctor <- function(
     )
     version <- tryCatch(
         as.character(utils::packageVersion("epwshiftr")),
-        # error {{{
         error = function(e) NA_character_
-        # }}}
     )
     add(
         "package",
@@ -207,12 +203,10 @@ epwshiftr_cli_doctor <- function(
         network <- shift_reporter__ui_check(
             ui,
             "Network readiness",
-            # shift_reporter__ui_check callback {{{
             function(reporter) {
                 reporter$stage_started("check", paste("Checking", index_node))
                 epwshiftr_cli_doctor_network(index_node, timeout)
             }
-            # }}}
         )
         add("index_node", network$status, network$message, network$detail)
     } else {
@@ -240,7 +234,6 @@ epwshiftr_cli_doctor <- function(
             diagnostics <- shift_reporter__ui_check(
                 ui,
                 "Calibration readiness",
-                # shift_reporter__ui_check callback {{{
                 function(reporter) {
                     reporter$stage_started(
                         "check",
@@ -251,7 +244,6 @@ epwshiftr_cli_doctor <- function(
                         network = isTRUE(parsed$flags[["--network"]])
                     )
                 }
-                # }}}
             )
             if (!nrow(diagnostics)) {
                 add(
@@ -350,7 +342,6 @@ epwshiftr_cli_doctor_manifest_meta <- function(path, table) {
                 data = as.data.frame(data, stringsAsFactors = FALSE)
             )
         },
-        # error {{{
         error = function(e) {
             list(
                 status = "error",
@@ -358,7 +349,6 @@ epwshiftr_cli_doctor_manifest_meta <- function(path, table) {
                 data = data.frame()
             )
         },
-        # }}}
         finally = {
             if (!is.null(conn)) {
                 try(ddb_disconnect(conn, shutdown = TRUE), silent = TRUE)
@@ -420,11 +410,9 @@ epwshiftr_cli_doctor_downloader_config <- function(path) {
             downloader__config_unflatten(rows, manifest = path)
             list(status = "ok", message = "Downloader config is readable.")
         },
-        # error {{{
         error = function(e) {
             list(status = "error", message = conditionMessage(e))
         },
-        # }}}
         finally = {
             if (!is.null(conn)) {
                 try(ddb_disconnect(conn, shutdown = TRUE), silent = TRUE)
@@ -465,7 +453,6 @@ epwshiftr_cli_doctor_network <- function(index_node, timeout = 10L) {
                 )
             }
         },
-        # error {{{
         error = function(e) {
             list(
                 status = "error",
@@ -473,7 +460,6 @@ epwshiftr_cli_doctor_network <- function(index_node, timeout = 10L) {
                 detail = index_node
             )
         }
-        # }}}
     )
 }
 # }}}

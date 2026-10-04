@@ -7,7 +7,6 @@ daily_adjustment_test__climate <- function(
     experiment,
     offset = 0
 ) {
-    # lapply callback {{{
     rows <- lapply(as.integer(years), function(year) {
         fields <- cf_time_offset2date(
             0:364,
@@ -54,7 +53,6 @@ daily_adjustment_test__climate <- function(
             coordinates
         )
     })
-    # }}}
     data.table::rbindlist(rows, use.names = TRUE)
 }
 # }}}

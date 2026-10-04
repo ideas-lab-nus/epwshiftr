@@ -22,17 +22,13 @@ test_that("reanalysis checks keep local and remote authentication explicit", {
     source <- shift_era5(2000)
     calls <- 0L
     testthat::local_mocked_bindings(
-        # cds__config {{{
         cds__config = function(...) {
             list(url = "https://example.test/api", key = "secret")
         },
-        # }}}
-        # cds__check_authentication {{{
         cds__check_authentication = function(config, timeout = 120) {
             calls <<- calls + 1L
             TRUE
         },
-        # }}}
         .package = "epwshiftr"
     )
 
@@ -45,14 +41,12 @@ test_that("reanalysis checks keep local and remote authentication explicit", {
 test_that("reanalysis checks diagnose missing and invalid credentials", {
     source <- shift_era5(2000)
     testthat::local_mocked_bindings(
-        # cds__config {{{
         cds__config = function(...) {
             cli::cli_abort(
                 "A Copernicus Data Store API key is required.",
                 class = "epwshiftr_cds_auth_error"
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
     missing <- shift_check(source)
@@ -61,12 +55,9 @@ test_that("reanalysis checks diagnose missing and invalid credentials", {
     expect_error(shift_check(source, strict = TRUE))
 
     testthat::local_mocked_bindings(
-        # cds__config {{{
         cds__config = function(...) {
             list(url = "https://example.test/api", key = "secret")
         },
-        # }}}
-        # cds__check_authentication {{{
         cds__check_authentication = function(...) {
             cli::cli_abort(
                 "CDS returned HTTP 401.",
@@ -76,7 +67,6 @@ test_that("reanalysis checks diagnose missing and invalid credentials", {
                 )
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
     invalid <- shift_check(source, network = TRUE)

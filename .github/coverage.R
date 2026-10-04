@@ -21,13 +21,11 @@ coverage__register <- function(directory) {
     mirai_ns <- asNamespace("mirai")
     original <- get("daemons", envir = mirai_ns)
     if (!isTRUE(attr(original, "coverage_graceful"))) {
-        # graceful_daemons {{{
         graceful_daemons <- function(...) {
             args <- list(...)
             args$autoexit <- NA
             do.call(original, args)
         }
-        # }}}
         attr(graceful_daemons, "coverage_graceful") <- TRUE
         unlockBinding("daemons", mirai_ns)
         assign("daemons", graceful_daemons, envir = mirai_ns)
@@ -46,13 +44,11 @@ coverage__register <- function(directory) {
 coverage__save_trace <- function(directory) {
     pending <- tempfile("pending-trace-", tmpdir = directory)
     complete <- file.path(directory, paste0("covr_trace_", Sys.getpid()))
-    # vapply callback {{{
     values <- vapply(
         as.list(get(".counters", asNamespace("covr"))),
         function(counter) counter$value,
         numeric(1L)
     )
-    # }}}
     saveRDS(values, pending, compress = FALSE)
     if (!file.rename(pending, complete)) {
         stop("Could not publish a complete coverage trace.")
@@ -69,7 +65,6 @@ coverage__run <- function(path = ".", ...) {
     original <- get("add_hooks", asNamespace("covr"))
     library_path <- NULL
     # Replace the temporary loader's exit hook and register each participating process.
-    # add_hooks {{{
     add_hooks <- function(pkg_name, lib, ...) {
         original(pkg_name, lib, ...)
         library_path <<- lib
@@ -102,9 +97,7 @@ coverage__run <- function(path = ".", ...) {
         )
         writeLines(lines, loader)
     }
-    # }}}
     # Refuse interrupted workers or source-key changes before reporting coverage.
-    # merge_traces {{{
     merge_traces <- function(files) {
         # Detached workers may publish their final counters just after the test
         # process exits. Wait only for registered receipts, with a fixed bound.
@@ -173,7 +166,6 @@ coverage__run <- function(path = ".", ...) {
         )
         counters
     }
-    # }}}
     testthat::local_mocked_bindings(
         add_hooks = add_hooks,
         merge_coverage = merge_traces,

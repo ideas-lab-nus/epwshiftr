@@ -390,11 +390,9 @@ dict__expand <- function(dt, fields) {
 
     rows <- vector("list", nrow(dt))
     for (i in seq_len(nrow(dt))) {
-        # lapply callback {{{
         args <- lapply(fields, function(field) {
             dict__cell_values(dt[[field]], i)
         })
-        # }}}
         names(args) <- fields
         args$sorted <- FALSE
         rows[[i]] <- do.call(data.table::CJ, args)
@@ -654,7 +652,6 @@ dict__check_relations <- function(dict, args, relationship) {
 
 # dict__unchecked_row {{{
 dict__unchecked_row <- function(idx_name, fields, args) {
-    # vapply callback {{{
     value <- paste(
         sprintf(
             "%s=%s",
@@ -669,7 +666,6 @@ dict__unchecked_row <- function(idx_name, fields, args) {
         ),
         collapse = ", "
     )
-    # }}}
 
     dict__check_row(
         field = paste(fields, collapse = "+"),
@@ -692,11 +688,9 @@ dict__unchecked_row <- function(idx_name, fields, args) {
 # dict__check_any {{{
 dict__check_any <- function(idx, idx_name, fields, args) {
     rows <- list()
-    # lapply callback {{{
     valid_args <- lapply(fields, function(field) {
         intersect(args[[field]], unique(idx[[field]]))
     })
-    # }}}
     names(valid_args) <- fields
     if (any(lengths(valid_args) == 0L)) {
         return(rows)
@@ -737,11 +731,9 @@ dict__check_any <- function(idx, idx_name, fields, args) {
 
 # dict__check_all_pairs {{{
 dict__check_all_pairs <- function(idx, idx_name, fields, args) {
-    # lapply callback {{{
     grids <- lapply(fields, function(field) {
         intersect(args[[field]], unique(idx[[field]]))
     })
-    # }}}
     names(grids) <- fields
     if (any(lengths(grids) == 0L)) {
         return(list())

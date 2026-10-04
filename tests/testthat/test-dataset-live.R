@@ -10,21 +10,17 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$file_inq() / EsgDat
     expect_false(ds$is_aggregated)
     expect_false(ds$is_open)
 
-    # error {{{
     tryCatch(ds$open(), error = function(e) {
         skip(paste("Cannot open live OPeNDAP dataset:", e$message))
     })
-    # }}}
     expect_true(ds$is_open)
 
     ds$close()
     expect_false(ds$is_open)
 
-    # error {{{
     tryCatch(ds$open(), error = function(e) {
         skip(paste("Cannot open live OPeNDAP dataset:", e$message))
     })
-    # }}}
     on.exit(ds$close(), add = TRUE)
 
     info <- ds$file_inq()
@@ -92,11 +88,9 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / E
     expect_true(ds$is_aggregated)
     expect_false(ds$is_open)
 
-    # error {{{
     tryCatch(ds$open(), error = function(e) {
         skip(paste("Cannot open live OPeNDAP dataset:", e$message))
     })
-    # }}}
     on.exit(ds$close(), add = TRUE)
 
     expect_s3_class(ds$get_time_axis(2)$values, "POSIXct")
@@ -106,13 +100,11 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / E
     dt_list <- ds$read_data_table("tas", start = start, count = count)
     expect_type(dt_list, "list")
     expect_length(dt_list, 2L)
-    # vapply callback {{{
     expect_true(all(vapply(
         dt_list,
         function(x) inherits(x, "data.table"),
         logical(1L)
     )))
-    # }}}
 
     dt_all <- ds$read_data_table(
         "tas",

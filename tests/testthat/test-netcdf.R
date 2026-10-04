@@ -129,7 +129,6 @@ test_that("parse_cf_time() preserves fixed-calendar boundaries and aliases", {
     )
 
     for (case in cases) {
-        # lapply callback {{{
         alias_coordinates <- lapply(case$calendars, function(calendar) {
             time <- parse_cf_time(
                 case$offsets,
@@ -154,7 +153,6 @@ test_that("parse_cf_time() preserves fixed-calendar boundaries and aliases", {
 
             coordinates[c("cf_year", "cf_month", "cf_day", "cf_day_of_year")]
         })
-        # }}}
 
         expect_identical(alias_coordinates[[1L]], alias_coordinates[[2L]])
     }
@@ -481,7 +479,6 @@ test_that("get_nc_time()", {
         # can stop if invalid calendar found
         testthat::with_mocked_bindings(
             expect_error(get_nc_time(path), "Invalid calendar specification"),
-            # get_nc_atts {{{
             get_nc_atts = function(...) {
                 data.table(
                     variable = c("time", "time"),
@@ -489,14 +486,12 @@ test_that("get_nc_time()", {
                     value = list("invalid", "days since 1850-01-01")
                 )
             },
-            # }}}
             .package = "epwshiftr"
         )
 
         # can work with only date specification
         testthat::with_mocked_bindings(
             expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct"),
-            # get_nc_atts {{{
             get_nc_atts = function(...) {
                 data.table(
                     variable = c("time", "time"),
@@ -504,14 +499,12 @@ test_that("get_nc_time()", {
                     value = list("standard", "days since 1850-01-01")
                 )
             },
-            # }}}
             .package = "epwshiftr"
         )
 
         # can parse months resolution with the internal CF time parser
         testthat::with_mocked_bindings(
             expect_s3_class(get_nc_time(path, range = TRUE), "POSIXct"),
-            # get_nc_atts {{{
             get_nc_atts = function(...) {
                 data.table(
                     variable = c("time", "time"),
@@ -519,7 +512,6 @@ test_that("get_nc_time()", {
                     value = list("standard", "months since 1850-01")
                 )
             },
-            # }}}
             .package = "epwshiftr"
         )
 
@@ -529,7 +521,6 @@ test_that("get_nc_time()", {
                 get_nc_time(path, range = TRUE),
                 "CF-compliant time coordinate"
             ),
-            # get_nc_atts {{{
             get_nc_atts = function(...) {
                 data.table(
                     variable = c("time", "time"),
@@ -537,7 +528,6 @@ test_that("get_nc_time()", {
                     value = list("standard", "months 1850-01")
                 )
             },
-            # }}}
             .package = "epwshiftr"
         )
     }

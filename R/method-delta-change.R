@@ -46,7 +46,6 @@ bias__delta_change_profiles <- function() {
         bounds = c(0, Inf),
         zero_tolerance = sqrt(.Machine$double.eps)
     )
-    # lapply callback {{{
     temperature <- lapply(c("tas", "tasmin", "tasmax"), function(variable) {
         signal__variable_profile(
             variable,
@@ -59,7 +58,6 @@ bias__delta_change_profiles <- function() {
             )
         )
     })
-    # }}}
     precipitation <- signal__variable_profile(
         "pr",
         settings = precipitation_settings,

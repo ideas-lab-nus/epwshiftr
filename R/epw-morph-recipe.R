@@ -119,9 +119,7 @@ epw_morph_variables <- function(
 morpher__variable_requirements <- function(recipe) {
     canonical <- epw_morph_variables(recipe)
     requirements <- stats::setNames(
-        # lapply callback {{{
         lapply(canonical, function(variable) list(variable)),
-        # }}}
         canonical
     )
     if (
@@ -483,7 +481,6 @@ epw_morph_periods <- function(...) {
         cli::cli_abort("All EPW morphing periods must be named.")
     }
 
-    # lapply callback {{{
     rows <- lapply(seq_along(periods), function(i) {
         years <- periods[[i]]
         checkmate::assert_integerish(
@@ -498,7 +495,6 @@ epw_morph_periods <- function(...) {
             year = as.integer(sort(years))
         )
     })
-    # }}}
     data.table::rbindlist(rows)
 }
 # }}}
@@ -707,11 +703,9 @@ morpher__frequency_diagnostic <- function(
         matches <- length(checked) > 0L &&
             all(vapply(
                 checked,
-                # vapply callback {{{
                 function(variable) {
                     identical(actual[[variable]], unname(required[[variable]]))
                 },
-                # }}}
                 logical(1L)
             ))
     } else {

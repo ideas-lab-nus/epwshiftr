@@ -126,14 +126,12 @@ availability__summarize <- function(
         ]
         defaults <- vapply(
             unique(unname(frequencies)),
-            # vapply callback {{{
             function(value) {
                 shift_stage__coalesce(
                     shift_spec__cmip6_table_id(value),
                     NA_character_
                 )
             },
-            # }}}
             character(1L)
         )
         preferred <- unname(defaults[scores$frequency])
@@ -465,14 +463,12 @@ shift_cmip6_avail <- function(
         transforms <- shift_batch__transforms(methods, transform)
         historical <- vapply(
             transforms,
-            # vapply callback {{{
             function(value) {
                 "model_historical" %in%
                     names(value@required_inputs) ||
                     (include_optional_historical &&
                         "model_historical" %in% names(value@optional_inputs))
             },
-            # }}}
             logical(1L)
         )
         requirements <- eligibility__requirements(

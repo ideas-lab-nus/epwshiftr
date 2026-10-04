@@ -198,7 +198,6 @@ morpher__derive_hurs_rows <- function(climate) {
 
     # Collapse identical rows from overlapping source files, but fail when two
     # files disagree at the same identity and timestamp.
-    # prepare {{{
     prepare <- function(variable_id) {
         target_variable <- variable_id
         rows <- climate[climate[["variable_id"]] == target_variable]
@@ -222,7 +221,6 @@ morpher__derive_hurs_rows <- function(climate) {
         }
         rows[!duplicated(rows, by = key)]
     }
-    # }}}
     huss <- prepare("huss")
     tas <- prepare("tas")[, c(key, "value_si"), with = FALSE]
     data.table::setnames(tas, "value_si", "tas_si")
@@ -377,13 +375,11 @@ morpher__decorate_case_diagnostics <- function(
         return(diagnostics)
     }
     case <- data.table::as.data.table(case)
-    # fill {{{
     fill <- function(column, value) {
         missing <- is.na(diagnostics[[column]]) |
             !nzchar(as.character(diagnostics[[column]]))
         diagnostics[[column]][missing] <<- store__chr1(value)
     }
-    # }}}
     fill("morph_id", morph_id)
     fill("case_id", case_id)
     if ("period" %in% names(case)) {
@@ -398,7 +394,6 @@ morpher__decorate_case_diagnostics <- function(
 # morpher__case_error_diagnostic {{{
 morpher__case_error_diagnostic <- function(error, morph_id, case_id, case) {
     case <- data.table::as.data.table(case)
-    # pick {{{
     pick <- function(name) {
         if (name %in% names(case)) {
             store__chr1(case[[name]][[1L]])
@@ -406,7 +401,6 @@ morpher__case_error_diagnostic <- function(error, morph_id, case_id, case) {
             NA_character_
         }
     }
-    # }}}
     morpher__diagnostic(
         stage = "runtime",
         severity = "error",
@@ -571,7 +565,6 @@ morpher__resolve_calendar_columns <- function(
 
     # Resolve one field without replacing usable legacy values when a mixed
     # collection contains both old and current Parquet schemas.
-    # resolve {{{
     resolve <- function(target, canonical, fallback) {
         value <- if (target %in% names(climate)) {
             as.integer(climate[[target]])
@@ -587,7 +580,6 @@ morpher__resolve_calendar_columns <- function(
         }
         data.table::set(climate, j = target, value = value)
     }
-    # }}}
 
     if (any(c("year", "cf_year") %in% names(climate)) || !is.null(time)) {
         fallback_year <- if (is.null(time)) {
@@ -809,11 +801,9 @@ morpher__context_year_labels <- function(context) {
     years <- sort(unique(period_years$year))
     labels <- vapply(
         years,
-        # vapply callback {{{
         function(year) {
             period_years$period[match(year, period_years$year)]
         },
-        # }}}
         character(1L)
     )
     list(years = years, labels = labels)
@@ -1074,7 +1064,6 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
         return(data.table::data.table())
     }
 
-    # lapply callback {{{
     parts <- lapply(parts, function(dt) {
         dt <- data.table::copy(dt)
         drop <- intersect(c("delta", "alpha"), names(dt))
@@ -1083,7 +1072,6 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
         }
         dt
     })
-    # }}}
 
     cols_dt <- c("datetime", "year", "month", "day", "hour", "minute")
     cols_by <- intersect(
@@ -1100,9 +1088,7 @@ morpher__engine_complete_data <- function(epw, parts, by = character()) {
     }
 
     merge_by <- c(cols_by, cols_dt)
-    # Reduce callback {{{
     merged <- Reduce(function(x, y) merge(x, y, by = merge_by), parts)
-    # }}}
     merged <- merged[, lapply(.SD, mean), by = merge_by]
 
     if ("total_sky_cover" %in% names(merged)) {

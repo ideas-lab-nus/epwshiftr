@@ -19,9 +19,7 @@ isimip_test__settings <- function(variable) {
     profiles <- isimip__profiles()
     index <- which(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
-        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings
@@ -76,21 +74,17 @@ test_that("published profiles cover direct and reconstructed components", {
     )
     expect_true(all(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile$evidence, "published"),
-        # }}}
         logical(1L)
     )))
     expect_true(all(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) {
             identical(
                 profile$references,
                 ISIMIP_REFERENCES
             )
         },
-        # }}}
         logical(1L)
     )))
     expect_identical(

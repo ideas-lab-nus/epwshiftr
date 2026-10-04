@@ -83,7 +83,6 @@ EsgResult <- R6::R6Class(
             }
 
             res <- stats::setNames(
-                # lapply callback {{{
                 lapply(fields, function(field) {
                     private$normalize_output_field(
                         private$get_output_field(
@@ -92,7 +91,6 @@ EsgResult <- R6::R6Class(
                         )
                     )
                 }),
-                # }}}
                 fields
             )
 
@@ -367,7 +365,6 @@ EsgResult <- R6::R6Class(
                 return(NULL)
             }
 
-            # lapply callback {{{
             lapply(urls, function(url) {
                 if (!length(url)) {
                     return(NULL)
@@ -388,7 +385,6 @@ EsgResult <- R6::R6Class(
                 data.table::setnames(res, c("service", "url", "mime_type"))
                 res
             })
-            # }}}
         },
         # }}}
         # size
@@ -798,11 +794,9 @@ EsgResult <- R6::R6Class(
         # fields, while local fixtures and some providers already supply them.
         # filter_time_ranges_auto {{{
         filter_time_ranges_auto = function(docs, result_label = "file") {
-            # query_result__fill_time_ranges callback {{{
             ranges <- query_result__fill_time_ranges(docs, function() {
                 query_result__drs_labels(docs)$value
             })
-            # }}}
             unknown <- is.na(ranges$datetime_start) |
                 is.na(ranges$datetime_end)
             if (any(unknown)) {
@@ -861,9 +855,7 @@ EsgResult <- R6::R6Class(
                         end[[i]] <- max(time_axis)
                         TRUE
                     },
-                    # error {{{
                     error = function(e) FALSE,
-                    # }}}
                     finally = {
                         if (!is.null(ds) && isTRUE(ds$is_open)) {
                             ds$close()
@@ -958,7 +950,6 @@ EsgResult <- R6::R6Class(
                     field,
                     local({
                         field <- field
-                        # { callback {{{
                         function(value) {
                             if (!missing(value)) {
                                 stop(
@@ -968,7 +959,6 @@ EsgResult <- R6::R6Class(
                             }
                             private$get_field(field)
                         }
-                        # }}}
                     }),
                     self
                 )
@@ -997,9 +987,7 @@ EsgResult <- R6::R6Class(
                 access <- c(access, rep(list(character()), n - length(access)))
             }
 
-            # vapply callback {{{
             vapply(access[seq_len(n)], function(acc) type %in% acc, logical(1L))
-            # }}}
         },
         # }}}
         # get_url
@@ -1012,7 +1000,6 @@ EsgResult <- R6::R6Class(
 
             vapply(
                 seq_along(urls),
-                # vapply callback {{{
                 function(i) {
                     dt_url <- urls[[i]]
                     # nocov start
@@ -1039,7 +1026,6 @@ EsgResult <- R6::R6Class(
 
                     res
                 },
-                # }}}
                 character(1L)
             )
         },
@@ -1141,11 +1127,9 @@ EsgResult <- R6::R6Class(
                 return(NULL)
             }
 
-            # error {{{
             value <- tryCatch(as.character(value), error = function(e) {
                 character()
             })
-            # }}}
             value <- value[!is.na(value) & nzchar(value)]
             if (!length(value)) {
                 return(NULL)
@@ -1320,14 +1304,12 @@ EsgResult <- R6::R6Class(
                         vapply(
                             url[ind],
                             FUN.VALUE = character(1),
-                            # vapply callback {{{
                             function(url) {
                                 if (is.null(url)) {
                                     return("NONE")
                                 }
                                 paste0(url$service, collapse = ", ")
                             }
-                            # }}}
                         )
                     }
                 )
@@ -1553,9 +1535,7 @@ query_result__drs_url <- function(url) {
 
     parsed <- vapply(
         strsplit(url, "|", fixed = TRUE),
-        # vapply callback {{{
         function(parts) parts[[1L]],
-        # }}}
         character(1L)
     )
     parsed <- sub("[?#].*$", "", parsed)
@@ -1592,7 +1572,6 @@ query_result__drs_labels <- function(docs) {
     labels <- rep(NA_character_, n)
     source <- rep(NA_character_, n)
 
-    # scalar_field {{{
     scalar_field <- function(field, i) {
         value <- docs[[field]]
         if (is.null(value) || length(value) < i) {
@@ -1609,7 +1588,6 @@ query_result__drs_labels <- function(docs) {
 
         value[[1L]]
     }
-    # }}}
 
     for (i in seq_len(n)) {
         title <- scalar_field("title", i)
@@ -1874,7 +1852,6 @@ query_result__merge_child_collects <- function(
     response <- results[[length(results)]]$response
     num_found <- vapply(
         results,
-        # vapply callback {{{
         function(result) {
             value <- result$response$response$numFound
             if (is.null(value) || !length(value) || is.na(value[[1L]])) {
@@ -1882,7 +1859,6 @@ query_result__merge_child_collects <- function(
             }
             as.numeric(value[[1L]])
         },
-        # }}}
         numeric(1L)
     )
 
@@ -1891,9 +1867,7 @@ query_result__merge_child_collects <- function(
     response$response$start <- 0L
 
     query_urls <- unlist(
-        # lapply callback {{{
         lapply(results, function(result) result$context$query_url),
-        # }}}
         use.names = FALSE
     )
 
@@ -2132,7 +2106,6 @@ EsgResultDataset <- R6::R6Class(
             } else {
                 # Collect one child query batch. The caller decides whether the
                 # batch is the original full request or a subset of Dataset IDs.
-                # collect_one {{{
                 collect_one <- function(
                     batch_params,
                     batch_limit,
@@ -2165,7 +2138,6 @@ EsgResultDataset <- R6::R6Class(
                     }
                     do.call(query__collect, collect_args)
                 }
-                # }}}
 
                 if (
                     length(selected_dataset_id) >
@@ -2404,7 +2376,6 @@ EsgResultDataset <- R6::R6Class(
                     }
                 }
                 extra_params <- stats::setNames(
-                    # lapply callback {{{
                     lapply(seq_along(extra_params), function(i) {
                         param <- extra_params[[i]]
                         if (is.null(param$value)) {
@@ -2416,7 +2387,6 @@ EsgResultDataset <- R6::R6Class(
                             encoded = FALSE
                         )
                     }),
-                    # }}}
                     names(extra_params)
                 )
                 extra_params <- extra_params[
@@ -2428,9 +2398,7 @@ EsgResultDataset <- R6::R6Class(
                     length(overrides) &&
                         any(vapply(
                             overrides,
-                            # vapply callback {{{
                             function(param) isTRUE(param$negate),
-                            # }}}
                             logical(1L)
                         ))
                 ) {
@@ -2441,7 +2409,6 @@ EsgResultDataset <- R6::R6Class(
                 }
             }
 
-            # param_value {{{
             param_value <- function(param) {
                 if (is.null(param)) {
                     return(NULL)
@@ -2451,15 +2418,12 @@ EsgResultDataset <- R6::R6Class(
                 }
                 param$value
             }
-            # }}}
-            # inherited_value {{{
             inherited_value <- function(name) {
                 if (name %in% names(overrides)) {
                     return(param_value(overrides[[name]]))
                 }
                 param_value(.subset2(private$parameter, name)())
             }
-            # }}}
 
             controls <- list(
                 shards = inherited_value("shards"),

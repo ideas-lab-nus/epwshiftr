@@ -99,7 +99,6 @@ shift_print__format_years <- function(years) {
     paste(
         vapply(
             ranges,
-            # vapply callback {{{
             function(value) {
                 if (length(value) == 1L) {
                     as.character(value)
@@ -107,7 +106,6 @@ shift_print__format_years <- function(years) {
                     sprintf("%d\u2013%d", value[[1L]], value[[length(value)]])
                 }
             },
-            # }}}
             character(1L)
         ),
         collapse = ", "
@@ -132,7 +130,6 @@ shift_print__format_periods <- function(periods) {
         return(paste(
             vapply(
                 names(periods),
-                # vapply callback {{{
                 function(name) {
                     sprintf(
                         "%s %s",
@@ -140,7 +137,6 @@ shift_print__format_periods <- function(periods) {
                         shift_print__format_years(periods[[name]])
                     )
                 },
-                # }}}
                 character(1L)
             ),
             collapse = " \u00b7 "
@@ -154,7 +150,6 @@ shift_print__format_periods <- function(periods) {
     paste(
         vapply(
             labels,
-            # vapply callback {{{
             function(label) {
                 sprintf(
                     "%s %s",
@@ -162,7 +157,6 @@ shift_print__format_periods <- function(periods) {
                     shift_print__format_years(periods[period == label, year])
                 )
             },
-            # }}}
             character(1L)
         ),
         collapse = " \u00b7 "
@@ -351,7 +345,6 @@ shift_print__format_options <- function(x) {
     }
     values <- vapply(
         names(x),
-        # vapply callback {{{
         function(name) {
             value <- x[[name]]
             if (is.atomic(value)) {
@@ -367,7 +360,6 @@ shift_print__format_options <- function(x) {
                 sprintf("%s=<%s>", name, class(value)[[1L]])
             }
         },
-        # }}}
         character(1L)
     )
     paste(values, collapse = " \u00b7 ")
@@ -443,9 +435,7 @@ shift_print__print_stage_intro <- function(x, title, facts = list()) {
     shift_print__print_header(title)
     shift_print__print_facts(c(
         list(
-            # error {{{
             "Status" = tryCatch(shift_status(x), error = function(e) "unknown")
-            # }}}
         ),
         facts
     ))
@@ -461,9 +451,7 @@ shift_print__print_workflow <- function(x, verbose = FALSE) {
     if (isTRUE(verbose)) {
         cli::cli_rule("Workflow")
         esg__print_facts(list(
-            # error {{{
             "Status" = tryCatch(shift_status(x), error = function(e) "unknown"),
-            # }}}
             "Store" = shift_print__display_path(x@store_path),
             "Query ID" = ids$query_id,
             "Run ID" = ids$run_id,
@@ -646,9 +634,7 @@ shift_print__format_epw <- function(epw, full = FALSE) {
     path <- if (is.character(epw) && length(epw) == 1L) {
         epw
     } else {
-        # error {{{
         tryCatch(epw_file_coerce(epw)$path(), error = function(e) NULL)
-        # }}}
     }
     if (is.null(path)) {
         return(class(epw)[[1L]])
@@ -807,14 +793,12 @@ shift_print__print_download <- function(
     read <- if (nrow(cached)) {
         list(data = cached, error = NULL)
     } else {
-        # shift_print__print_store_read callback {{{
         shift_print__print_store_read(x, function(store) {
             if (is.null(ids$session_id) || is.na(ids$session_id)) {
                 return(data.table::data.table())
             }
             store$download_status(session_id = ids$session_id)
         })
-        # }}}
     }
     tasks <- read$data
     counts <- if (nrow(tasks) && "status" %in% names(tasks)) {
@@ -916,16 +900,12 @@ shift_print__print_climate <- function(
         list(data = cached, error = NULL)
     } else {
         ids <- shift_ids(x)
-        # shift_print__print_store_read callback {{{
         shift_print__print_store_read(x, function(store) {
             store$coverage(plan_id = ids$plan_id)
         })
-        # }}}
     }
     coverage <- read$data
-    # error {{{
     site <- tryCatch(shift_target(x), error = function(e) NULL)
-    # }}}
     complete <- if (nrow(coverage) && "complete" %in% names(coverage)) {
         sum(coverage$complete %in% TRUE)
     } else {
@@ -998,11 +978,9 @@ shift_print__morph_print_rows <- function(x) {
         return(list(data = cached, error = NULL))
     }
     ids <- shift_ids(x)
-    # shift_print__print_store_read callback {{{
     persisted <- shift_print__print_store_read(x, function(store) {
         shift_inspect__morph_result_rows(store, ids$morph_id)
     })
-    # }}}
     if (nrow(persisted$data)) {
         return(persisted)
     }
@@ -1098,11 +1076,9 @@ shift_print__print_outputs_stage <- function(
     ))
     read_error <- NULL
     if (!nrow(outputs)) {
-        # shift_print__print_store_read callback {{{
         read <- shift_print__print_store_read(x, function(store) {
             shift_inspect__epw_output_rows(store, shift_ids(x)$morph_id)
         })
-        # }}}
         outputs <- read$data
         read_error <- read$error
     }
@@ -1278,12 +1254,10 @@ shift_print__print_reference <- function(x, width = NULL, verbose = FALSE) {
         if (
             any(vapply(
                 details,
-                # vapply callback {{{
                 function(value) {
                     !is.null(value) &&
                         nzchar(value)
                 },
-                # }}}
                 logical(1L)
             ))
         ) {
@@ -1561,12 +1535,9 @@ shift_print__display_path <- function(path, temp_root = tempdir()) {
 
     # Use one separator for lexical comparison. Drive-letter paths are
     # case-insensitive even when this pure branch is exercised on Unix CI.
-    # lexical {{{
     lexical <- function(value) {
         sub("/+$", "", gsub("\\\\", "/", path.expand(value)))
     }
-    # }}}
-    # compact {{{
     compact <- function(candidate, root) {
         windows_path <- grepl("^[A-Za-z]:/", candidate) ||
             grepl("^[A-Za-z]:/", root)
@@ -1579,7 +1550,6 @@ shift_print__display_path <- function(path, temp_root = tempdir()) {
         }
         paste0("<tempdir>", substring(candidate, nchar(root) + 1L))
     }
-    # }}}
 
     expanded <- lexical(path)
     temp_expanded <- lexical(temp_root)
@@ -1652,24 +1622,20 @@ shift_print__plan_explain <- function(x) {
                 unique(reference@periods$period),
                 vapply(
                     unique(reference@periods$period),
-                    # vapply callback {{{
                     function(value) {
                         min(reference@periods$year[
                             reference@periods$period == value
                         ])
                     },
-                    # }}}
                     integer(1L)
                 ),
                 vapply(
                     unique(reference@periods$period),
-                    # vapply callback {{{
                     function(value) {
                         max(reference@periods$year[
                             reference@periods$period == value
                         ])
                     },
-                    # }}}
                     integer(1L)
                 )
             ),
@@ -1789,12 +1755,10 @@ shift_print__resolution_evidence <- function(diagnostic) {
     # Resolution conditions from custom or older workflow components may omit
     # aggregate node counters. Normalize them here so the presentation layer
     # never replaces the original scientific error with a formatting error.
-    # number {{{
     number <- function(name) {
         value <- suppressWarnings(as.integer(diagnostic[[name]]))
         if (!length(value) || is.na(value[[1L]])) 0L else value[[1L]]
     }
-    # }}}
     counts <- c(
         if (number("coverage_failures") > 0L) {
             sprintf(
@@ -1874,7 +1838,6 @@ shift_print__failure_context <- function(details, debug = FALSE) {
     )
     values <- vapply(
         names(fields),
-        # vapply callback {{{
         function(name) {
             value <- details[[name]]
             if (
@@ -1891,7 +1854,6 @@ shift_print__failure_context <- function(details, debug = FALSE) {
             }
             sprintf("%s=%s", fields[[name]], shown)
         },
-        # }}}
         character(1L)
     )
     values <- unique(values[!is.na(values)])

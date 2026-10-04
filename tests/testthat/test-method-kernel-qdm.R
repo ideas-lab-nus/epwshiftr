@@ -115,9 +115,7 @@ kqdm_test__settings <- function(variable) {
     profiles <- kqdm__profiles()
     index <- which(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
-        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings
@@ -362,9 +360,7 @@ test_that("hourly kernel QDM is registered with frequency-aware contracts", {
     )
     expect_true(all(vapply(
         component@required_inputs,
-        # vapply callback {{{
         function(requirement) !length(requirement@frequencies),
-        # }}}
         logical(1L)
     )))
     expect_identical(component@output_kinds, "subdaily_adjusted_series")
@@ -379,9 +375,7 @@ test_that("hourly kernel QDM is registered with frequency-aware contracts", {
     )
     expect_true(all(vapply(
         profiles,
-        # vapply callback {{{
         function(profile) identical(profile$evidence, "experimental"),
-        # }}}
         logical(1L)
     )))
     expect_identical(

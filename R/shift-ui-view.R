@@ -38,7 +38,6 @@ S7::method(print, ShiftUiOptions) <- function(x, ...) {
 shift__ui_terminal_height <- local({
     checked <- as.POSIXct(NA)
     value <- NULL
-    # { callback {{{
     function() {
         if (
             .Platform$OS.type == "windows" ||
@@ -63,9 +62,7 @@ shift__ui_terminal_height <- local({
                 stdout = TRUE,
                 stderr = FALSE
             )),
-            # error {{{
             error = function(error) character()
-            # }}}
         )
         rows <- if (length(size)) {
             suppressWarnings(as.integer(
@@ -77,7 +74,6 @@ shift__ui_terminal_height <- local({
         value <<- if (!is.na(rows) && rows >= 2L) rows else NULL
         value
     }
-    # }}}
 })
 
 # Fit plain user-facing text into one terminal row without relying on colour or
@@ -271,14 +267,12 @@ shift_ui_view__ui_plan_lines <- function(
     values <- shift_ui_view__ui_pack_items(items, value_width)
     vapply(
         seq_along(values),
-        # vapply callback {{{
         function(i) {
             shift_ui_view__ui_labeled_line(
                 if (i == 1L) "Plan" else "",
                 values[[i]]
             )
         },
-        # }}}
         character(1L)
     )
 }
@@ -304,7 +298,6 @@ shift_ui_view__ui_periods <- function(periods) {
     paste(
         vapply(
             labels,
-            # vapply callback {{{
             function(label) {
                 years <- periods[period == label]$year
                 if (length(unique(years)) == 1L) {
@@ -313,7 +306,6 @@ shift_ui_view__ui_periods <- function(periods) {
                     sprintf("%s (%d\u2013%d)", label, min(years), max(years))
                 }
             },
-            # }}}
             character(1L)
         ),
         collapse = ", "
@@ -1101,7 +1093,6 @@ shift_ui_view__ui_stage_rail <- function(
     )
     labels <- vapply(
         sequence,
-        # vapply callback {{{
         function(stage) {
             if (stage %in% names(short)) {
                 short[[stage]]
@@ -1109,7 +1100,6 @@ shift_ui_view__ui_stage_rail <- function(
                 shift_ui_view__ui_stage_label(stage)
             }
         },
-        # }}}
         character(1L)
     )
     completed <- as.character(shift_stage__coalesce(
@@ -1122,7 +1112,6 @@ shift_ui_view__ui_stage_rail <- function(
     current_index <- match(current, sequence)
     values <- vapply(
         seq_along(sequence),
-        # vapply callback {{{
         function(i) {
             stage <- sequence[[i]]
             stage_status <- if (
@@ -1160,7 +1149,6 @@ shift_ui_view__ui_stage_rail <- function(
                 label
             )
         },
-        # }}}
         character(1L)
     )
     connector <- cli::style_dim("  \u203a  ")
@@ -1193,11 +1181,9 @@ shift_ui_view__ui_stage_rail <- function(
     )
     rows <- vapply(
         candidates,
-        # vapply callback {{{
         function(value) {
             shift_ui_view__ui_labeled_line("Flow", value)
         },
-        # }}}
         character(1L)
     )
     fitting <- which(cli::ansi_nchar(rows, type = "width") <= width)
@@ -1254,7 +1240,6 @@ shift_ui_view__ui_recent_lines <- function(
         outcomes <- "pending"
     }
     values <- unlist(
-        # lapply callback {{{
         lapply(seq_along(values), function(i) {
             prefix <- paste0(
                 "  ",
@@ -1263,7 +1248,6 @@ shift_ui_view__ui_recent_lines <- function(
             )
             shift_ui_view__ui_prefixed_lines(prefix, values[[i]], width)
         }),
-        # }}}
         use.names = FALSE
     )
     values <- c(values, rep("", max(0L, 2L - length(values))))
@@ -1398,12 +1382,10 @@ shift_ui_view__ui_failure_lines <- function(
     failure <- shift_stage__coalesce(state$failure_details, list())
     # Missing counters are valid for non-resolver failures and render as zero
     # rather than leaking NA into the fixed terminal row.
-    # number {{{
     number <- function(name) {
         value <- suppressWarnings(as.integer(failure[[name]]))
         if (!length(value) || is.na(value[[1L]])) 0L else value[[1L]]
     }
-    # }}}
     counts <- c(
         if (number("coverage_failures")) {
             sprintf(
@@ -1535,7 +1517,6 @@ shift_ui_view__ui_live_node_lines <- function(
     if (nrow(rows)) {
         rows <- utils::tail(rows, 2L)
         values <- unlist(
-            # lapply callback {{{
             lapply(seq_len(nrow(rows)), function(i) {
                 outcome <- if ("outcome" %in% names(rows)) {
                     as.character(shift_stage__coalesce(
@@ -1587,7 +1568,6 @@ shift_ui_view__ui_live_node_lines <- function(
                     width
                 )
             }),
-            # }}}
             use.names = FALSE
         )
     }
@@ -2083,35 +2063,27 @@ shift_ui_view__ui_bytes <- function(bytes) {
 # shift_ui_view__node_label {{{
 shift_ui_view__node_label <- function(node) {
     node <- as.character(shift_stage__coalesce(node, "unknown"))[[1L]]
-    # error {{{
     normalized <- tryCatch(query__normalize_node(node), error = function(e) {
         node
     })
-    # }}}
     known <- vapply(
         INDEX_NODES,
-        # vapply callback {{{
         function(value) {
             identical(
-                # error {{{
                 tryCatch(query__normalize_node(value), error = function(e) {
                     value
                 }),
-                # }}}
                 normalized
             )
         },
-        # }}}
         logical(1L)
     )
     if (any(known)) {
         return(names(INDEX_NODES)[which(known)[[1L]]])
     }
-    # error {{{
     parsed <- tryCatch(curl::curl_parse_url(normalized), error = function(e) {
         NULL
     })
-    # }}}
     if (is.null(parsed) || is.null(parsed$host) || !nzchar(parsed$host)) {
         normalized
     } else {
@@ -2166,13 +2138,11 @@ shift_ui_view__ui_node_table <- function(
     width <- shift_ui__ui_width(width)
     # Persisted resolver events may omit counts or labels. Replace missing cells
     # before measuring widths so the table remains stable.
-    # shift__display_max {{{
     shift__display_max <- function(x) {
         x <- as.character(x)
         x[is.na(x) | !nzchar(x)] <- "\u2014"
         max(cli::ansi_nchar(x, type = "width"))
     }
-    # }}}
     node_width <- min(12L, max(4L, shift__display_max(c("Node", rows$node))))
     include_counts <- width >= 56L
     include_duration <- width >= 72L && "duration" %in% names(rows)
@@ -2189,7 +2159,6 @@ shift_ui_view__ui_node_table <- function(
     result_width <- max(1L, width - 2L - sum(sizes) - 2L * length(sizes))
     columns <- c(columns, "Result")
     sizes <- c(sizes, result_width)
-    # row_line {{{
     row_line <- function(values) {
         shift_ui_view__ui_fit(
             paste0(
@@ -2207,7 +2176,6 @@ shift_ui_view__ui_node_table <- function(
             width
         )
     }
-    # }}}
     lines <- c(
         cli::style_bold("Resolver attempts"),
         cli::style_dim(row_line(columns))
@@ -2276,11 +2244,9 @@ shift_ui_view__ui_case_table <- function(
         for (index in seq_len(nrow(rows))) {
             values <- vapply(
                 columns,
-                # vapply callback {{{
                 function(column) {
                     as.character(rows[[column]][[index]])
                 },
-                # }}}
                 character(1L)
             )
             lines <- c(
@@ -2334,13 +2300,11 @@ shift_ui_view__ui_case_table <- function(
     # Planned cases legitimately carry unresolved member/grid values. Replace
     # them before measuring columns so NA cannot propagate into ansi_align() as
     # a literal "NA" suffix in the static dashboard table.
-    # shift__display_max {{{
     shift__display_max <- function(x) {
         x <- as.character(x)
         x[is.na(x) | !nzchar(x)] <- "\u2014"
         max(cli::ansi_nchar(x, type = "width"))
     }
-    # }}}
     scenario_width <- min(
         14L,
         max(8L, shift__display_max(c("Scenario", scenario)))
@@ -2485,11 +2449,9 @@ shift_ui_view__ui_run_view <- function(
     outputs <- if (is.null(run@store_path) || !nzchar(run@store_path)) {
         run@meta$outputs
     } else {
-        # error {{{
         tryCatch(shift_outputs(run, refresh = FALSE), error = function(error) {
             NULL
         })
-        # }}}
     }
     shift_ui_view__ui_table_view(
         row = run@meta$run,

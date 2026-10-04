@@ -39,9 +39,7 @@ readme__terminal <- function(options) {
         writeLines(options$code, code_path)
         # The child uses this R and its libraries; no shell startup or user
         # profile is needed. The displayed example is the only workflow call.
-        # literal {{{
         literal <- function(x) paste(capture.output(dput(x)), collapse = "\n")
-        # }}}
         writeLines(
             c(
                 paste0(".libPaths(", literal(.libPaths()), ")"),

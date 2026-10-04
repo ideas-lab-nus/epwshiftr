@@ -86,9 +86,7 @@ shift_stage__diagnostic <- function(
 # shift_stage__bind_diagnostics {{{
 shift_stage__bind_diagnostics <- function(...) {
     parts <- list(...)
-    # Filter callback {{{
     parts <- Filter(function(x) !is.null(x) && nrow(x), parts)
-    # }}}
     if (!length(parts)) {
         return(shift_stage__diagnostics_empty())
     }
@@ -450,9 +448,7 @@ shift_stage__sql_string <- function(x) {
 
 # shift_stage__query_maybe {{{
 shift_stage__query_maybe <- function(store, sql) {
-    # error {{{
     tryCatch(store$query(sql), error = function(e) data.table::data.table())
-    # }}}
 }
 # }}}
 
@@ -525,9 +521,7 @@ shift_stage__nested <- function(x, classes = list()) {
         !length(classes) ||
             any(vapply(
                 classes,
-                # vapply callback {{{
                 function(class) S7::S7_inherits(x, class),
-                # }}}
                 logical(1L)
             ))
     ) {
@@ -562,7 +556,6 @@ shift_stage__nested <- function(x, classes = list()) {
 shift_collect <- S7::new_generic(
     "shift_collect",
     "x",
-    # S7::new_generic callback {{{
     function(
         x,
         store = NULL,
@@ -600,7 +593,6 @@ shift_collect <- S7::new_generic(
                     label = label,
                     options = options
                 ),
-                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -620,12 +612,10 @@ shift_collect <- S7::new_generic(
                         )
                     )
                 }
-                # }}}
             ))
         }
         S7::S7_dispatch()
     }
-    # }}}
 )
 
 #' @rdname shift_api
@@ -649,7 +639,6 @@ shift_collect <- S7::new_generic(
 shift_download <- S7::new_generic(
     "shift_download",
     "x",
-    # S7::new_generic callback {{{
     function(
         x,
         downloader = NULL,
@@ -683,7 +672,6 @@ shift_download <- S7::new_generic(
                 } else {
                     "A session-local Downloader instance cannot be reconstructed."
                 },
-                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -704,12 +692,10 @@ shift_download <- S7::new_generic(
                         )
                     )
                 }
-                # }}}
             ))
         }
         S7::S7_dispatch()
     }
-    # }}}
 )
 
 #' @rdname shift_api
@@ -723,7 +709,6 @@ shift_download <- S7::new_generic(
 shift_extract <- S7::new_generic(
     "shift_extract",
     "x",
-    # S7::new_generic callback {{{
     function(
         x,
         site = NULL,
@@ -758,7 +743,6 @@ shift_extract <- S7::new_generic(
                     overwrite = overwrite,
                     resume = resume
                 ),
-                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -776,12 +760,10 @@ shift_extract <- S7::new_generic(
                         )
                     )
                 }
-                # }}}
             ))
         }
         S7::S7_dispatch()
     }
-    # }}}
 )
 
 #' @rdname shift_api
@@ -800,7 +782,6 @@ shift_extract <- S7::new_generic(
 shift_morph <- S7::new_generic(
     "shift_morph",
     "x",
-    # S7::new_generic callback {{{
     function(
         x,
         baseline = NULL,
@@ -854,7 +835,6 @@ shift_morph <- S7::new_generic(
                 } else {
                     "The baseline exists only in this R session."
                 },
-                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -872,12 +852,10 @@ shift_morph <- S7::new_generic(
                         )
                     )
                 }
-                # }}}
             ))
         }
         S7::S7_dispatch()
     }
-    # }}}
 )
 
 #' @rdname shift_api
@@ -891,7 +869,6 @@ shift_morph <- S7::new_generic(
 shift_epw <- S7::new_generic(
     "shift_epw",
     "x",
-    # S7::new_generic callback {{{
     function(
         x,
         dir = NULL,
@@ -915,7 +892,6 @@ shift_epw <- S7::new_generic(
                     resume = resume
                 ),
                 auto_complete = !is.null(export_dir),
-                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -929,12 +905,10 @@ shift_epw <- S7::new_generic(
                         )
                     )
                 }
-                # }}}
             ))
         }
         S7::S7_dispatch()
     }
-    # }}}
 )
 
 #' @rdname shift_api
@@ -946,7 +920,6 @@ shift_epw <- S7::new_generic(
 shift_check <- S7::new_generic(
     "shift_check",
     "x",
-    # S7::new_generic callback {{{
     function(
         x,
         strict = FALSE,
@@ -955,7 +928,6 @@ shift_check <- S7::new_generic(
     ) {
         S7::S7_dispatch()
     }
-    # }}}
 )
 
 # check methods
@@ -1019,9 +991,7 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
     diagnostics <- shift_stage__diagnostics_empty()
     config <- tryCatch(
         cds__config(),
-        # epwshiftr_cds_auth_error {{{
         epwshiftr_cds_auth_error = function(error) error
-        # }}}
     )
     if (inherits(config, "epwshiftr_cds_auth_error")) {
         diagnostics <- shift_stage__diagnostic(
@@ -1040,12 +1010,8 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
                 cds__check_authentication(config = config)
                 NULL
             },
-            # epwshiftr_cds_auth_error {{{
             epwshiftr_cds_auth_error = function(error) error,
-            # }}}
-            # epwshiftr_cds_request_error {{{
             epwshiftr_cds_request_error = function(error) error
-            # }}}
         )
         if (!is.null(remote_error)) {
             diagnostics <- shift_stage__diagnostic(
@@ -1092,9 +1058,7 @@ S7::method(shift_check, ShiftFiles) <- function(
     checkmate::assert_flag(strict)
     checkmate::assert_flag(network)
     diagnostics <- shift_stage__diagnostics_empty()
-    # error {{{
     store <- tryCatch(shift_store(x), error = function(e) NULL)
-    # }}}
     if (is.null(store)) {
         diagnostics <- shift_stage__diagnostic(
             "files",
@@ -1135,16 +1099,12 @@ S7::method(shift_check, ShiftDownload) <- function(
     checkmate::assert_flag(strict)
     checkmate::assert_flag(network)
     diagnostics <- shift_stage__diagnostics_empty()
-    # error {{{
     store <- tryCatch(shift_store(x), error = function(e) NULL)
-    # }}}
     if (!is.null(store)) {
         tasks <- if (!is.null(x@ids$session_id) && !is.na(x@ids$session_id)) {
             tryCatch(
                 store$download_status(session_id = x@ids$session_id),
-                # error {{{
                 error = function(e) data.table::data.table()
-                # }}}
             )
         } else {
             data.table::data.table()

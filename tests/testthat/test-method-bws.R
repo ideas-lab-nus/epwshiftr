@@ -73,7 +73,6 @@ test_that("BWS makes unattainable requested means explicit and reproducible", {
 test_that("monthly BWS preserves ordering and returns equation parameters", {
     month <- rep(seq_len(12L), each = 24L)
     source <- rep(c(0, 10, seq(1, 9, length.out = 22L)), 12L)
-    # vapply callback {{{
     baseline <- vapply(
         seq_len(12L),
         function(calendar_month) {
@@ -81,7 +80,6 @@ test_that("monthly BWS preserves ordering and returns equation parameters", {
         },
         numeric(1L)
     )
-    # }}}
     projected <- bws__project_monthly(
         source,
         month,

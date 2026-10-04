@@ -63,7 +63,6 @@ eligibility__catalog <- function(datasets) {
     # Build only these eight columns, with consistent types, then discard the
     # member alias. The input and its unrelated metadata remain untouched.
     catalog <- data.table::as.data.table(stats::setNames(
-        # lapply callback {{{
         lapply(fields, function(field) {
             value <- datasets[[field]]
             if (is.null(value)) {
@@ -72,7 +71,6 @@ eligibility__catalog <- function(datasets) {
                 as.character(value)
             }
         }),
-        # }}}
         fields
     ))
     fallback <- which(
@@ -148,19 +146,15 @@ eligibility__requirements <- function(
         role_rows <- list()
         # The execution resolver pins one variable combination across model
         # periods. Match alternatives by variables, not their declaration order.
-        # lapply callback {{{
         alternatives <- lapply(requirements, function(requirement) {
             vapply(
                 requirement@variable_sets,
-                # vapply callback {{{
                 function(variables) {
                     paste(sort(as.character(variables)), collapse = "\r")
                 },
-                # }}}
                 character(1L)
             )
         })
-        # }}}
         for (role in names(requirements)) {
             requirement <- requirements[[role]]
             if (!length(requirement@variable_sets)) {
@@ -171,7 +165,6 @@ eligibility__requirements <- function(
             variables <- unlist(requirement@variable_sets, use.names = FALSE)
             unique_variables <- unique(variables)
             frequencies <- stats::setNames(
-                # lapply callback {{{
                 lapply(unique_variables, function(variable) {
                     allowed <- requirement@variable_frequencies[[variable]]
                     if (is.null(allowed)) {
@@ -184,7 +177,6 @@ eligibility__requirements <- function(
                     }
                     as.character(allowed)
                 }),
-                # }}}
                 unique_variables
             )
             counts <- lengths(requirement@variable_sets)
@@ -381,12 +373,10 @@ eligibility__match <- function(catalog, requirements) {
     frequencies <- unique(scores$frequency)
     conventional <- vapply(
         frequencies,
-        # vapply callback {{{
         function(value) {
             table <- shift_spec__cmip6_table_id(value)
             if (is.null(table)) NA_character_ else table
         },
-        # }}}
         character(1L)
     )
     conventional <- conventional[match(scores$frequency, frequencies)]

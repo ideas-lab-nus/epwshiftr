@@ -120,7 +120,7 @@ Collate:
     'dict.R'
     'distribution-parametric.R'
     'distribution-quantile.R'
-    'downloader.R'
+    'standalone-downloader.R'
     'epw-output.R'
     'epwshiftr-package.R'
     'geo.R'

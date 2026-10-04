@@ -45,7 +45,6 @@ signal__three_role_requirements <- function(
     frequencies = character(),
     calendars = character()
 ) {
-    # lapply callback {{{
     requirements <- lapply(SIGNAL_THREE_INPUT_ROLES, function(role) {
         component__input_requirement(
             role,
@@ -55,7 +54,6 @@ signal__three_role_requirements <- function(
             variable_sets = variable_sets
         )
     })
-    # }}}
     names(requirements) <- SIGNAL_THREE_INPUT_ROLES
     requirements
 }
@@ -143,7 +141,6 @@ signal__future_blocks <- function(
     }
     flank <- (future_window_years - output_block_years) %/% 2L
     starts <- seq.int(1L, length(years), by = output_block_years)
-    # lapply callback {{{
     lapply(starts, function(start) {
         stop <- min(start + output_block_years - 1L, length(years))
         output_years <- years[start:stop]
@@ -161,7 +158,6 @@ signal__future_blocks <- function(
             truncated_right = max(window_years) < requested_end
         )
     })
-    # }}}
 }
 # }}}
 
@@ -625,7 +621,6 @@ bias__daily_table <- function(data, name = "data") {
 # bias__variable_metadata {{{
 bias__variable_metadata <- function(data, frequency) {
     variables <- unique(data[["variable_id"]])
-    # lapply callback {{{
     metadata <- lapply(variables, function(variable) {
         index <- data[["variable_id"]] == variable
         list(
@@ -634,7 +629,6 @@ bias__variable_metadata <- function(data, frequency) {
             calendars = sort(unique(data[["cf_calendar"]][index]))
         )
     })
-    # }}}
     stats::setNames(metadata, variables)
 }
 # }}}
@@ -852,11 +846,9 @@ bias__mean_change_inputs <- function(
             "{method} requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -874,9 +866,7 @@ bias__mean_change_inputs <- function(
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -888,9 +878,7 @@ bias__mean_change_inputs <- function(
         identical(transformation, "multiplicative") &&
             any(vapply(
                 series,
-                # vapply callback {{{
                 function(data) any(data[["value"]] < 0),
-                # }}}
                 logical(1L)
             ))
     ) {
@@ -911,7 +899,6 @@ bias__mean_change_monthly_means <- function(
     method
 ) {
     output_months <- sort(unique(series[[output_role]][["cf_month"]]))
-    # lapply callback {{{
     monthly <- lapply(series, function(data) {
         means <- tapply(
             data[["value"]],
@@ -926,7 +913,6 @@ bias__mean_change_monthly_means <- function(
         }
         values
     })
-    # }}}
     data.frame(
         cf_month = output_months,
         observed_mean = monthly$observed_reference,

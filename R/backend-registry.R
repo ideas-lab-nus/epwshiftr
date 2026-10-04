@@ -37,7 +37,6 @@ morpher__split_rule_variables <- function(x) {
 
 # morpher__rule_list_column {{{
 morpher__rule_list_column <- function(rules, list_col, scalar_col) {
-    # lapply callback {{{
     lapply(seq_len(nrow(rules)), function(i) {
         if (list_col %in% names(rules)) {
             out <- morpher__split_rule_variables(rules[[list_col]][i])
@@ -50,7 +49,6 @@ morpher__rule_list_column <- function(rules, list_col, scalar_col) {
         }
         character()
     })
-    # }}}
 }
 # }}}
 
@@ -69,11 +67,9 @@ morpher__rules_required_variables <- function(rules) {
     if (!nrow(rules)) {
         return(character())
     }
-    # lapply callback {{{
     vars <- lapply(seq_len(nrow(rules)), function(i) {
         morpher__split_rule_variables(rules[["required_variables"]][i])
     })
-    # }}}
     unique(unlist(vars, use.names = FALSE))
 }
 # }}}
@@ -174,7 +170,6 @@ morpher__normalize_backend_rules <- function(
     } else {
         method_choices
     }
-    # lapply callback {{{
     rule_method_choices <- lapply(seq_len(nrow(rules)), function(i) {
         if ("method_choices" %in% names(rules)) {
             choices <- morpher__split_rule_variables(rules[["method_choices"]][
@@ -189,7 +184,6 @@ morpher__normalize_backend_rules <- function(
         }
         rules$method[[i]]
     })
-    # }}}
     data.table::set(rules, j = "required_variables", value = required_variables)
     data.table::set(rules, j = "optional_variables", value = optional_variables)
     data.table::set(rules, j = "method_choices", value = rule_method_choices)
@@ -199,9 +193,7 @@ morpher__normalize_backend_rules <- function(
             j = "derived",
             value = vapply(
                 required_variables,
-                # vapply callback {{{
                 function(x) !length(x),
-                # }}}
                 logical(1L)
             )
         )

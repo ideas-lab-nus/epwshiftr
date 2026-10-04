@@ -383,7 +383,6 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
     file_docs <- cli_test_file_docs()
     collect_calls <- list()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -411,7 +410,6 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr"
     )
 

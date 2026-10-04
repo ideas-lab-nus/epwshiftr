@@ -112,7 +112,6 @@ shift_ui_state__ui_event_details <- function(events) {
     if (!"details_json" %in% names(events)) {
         return(rep(list(list()), nrow(events)))
     }
-    # lapply callback {{{
     lapply(events$details_json, function(value) {
         if (
             is.null(value) || !length(value) || is.na(value) || !nzchar(value)
@@ -121,12 +120,9 @@ shift_ui_state__ui_event_details <- function(events) {
         }
         tryCatch(
             jsonlite::fromJSON(value, simplifyVector = TRUE),
-            # error {{{
             error = function(e) list()
-            # }}}
         )
     })
-    # }}}
 }
 # }}}
 
@@ -145,9 +141,7 @@ shift_ui_state__ui_stage_sequence_from_row <- function(row) {
     }
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     if (is.null(spec)) {
         return(character())
@@ -211,7 +205,6 @@ shift_ui_state__ui_periods_from_spec <- function(periods) {
     paste(
         vapply(
             seq_along(periods),
-            # vapply callback {{{
             function(i) {
                 years <- suppressWarnings(as.integer(periods[[i]]))
                 years <- years[!is.na(years)]
@@ -229,7 +222,6 @@ shift_ui_state__ui_periods_from_spec <- function(periods) {
                     )
                 }
             },
-            # }}}
             character(1L)
         ),
         collapse = ", "
@@ -281,9 +273,7 @@ shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     }
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     if (is.null(spec)) {
         return(list())
@@ -401,12 +391,10 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     stage <- row$current_stage[[1L]]
     stage_indices <- which(vapply(
         details,
-        # vapply callback {{{
         function(x) {
             isTRUE(x$phase %in% c("stage", "operation")) &&
                 identical(x$stage, stage)
         },
-        # }}}
         logical(1L)
     ))
     stage_index <- if (length(stage_indices)) {
@@ -416,11 +404,9 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     }
     unit_indices <- which(vapply(
         details,
-        # vapply callback {{{
         function(x) {
             identical(x$phase, "unit") && identical(x$stage, stage)
         },
-        # }}}
         logical(1L)
     ))
     unit_index <- if (length(unit_indices)) {
@@ -454,7 +440,6 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     recent_indices <- utils::tail(milestone_indices, 3L)
     completed_stages <- unique(vapply(
         seq_along(details),
-        # vapply callback {{{
         function(i) {
             operation_done <- identical(details[[i]]$phase, "operation") &&
                 isTRUE(details[[i]]$outcome %in% c("completed", "partial"))
@@ -468,7 +453,6 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
                 NA_character_
             }
         },
-        # }}}
         character(1L)
     ))
     completed_stages <- completed_stages[!is.na(completed_stages)]
@@ -542,7 +526,6 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     # Older snapshots retain their available path evidence when no such event exists.
     exported <- vapply(
         details,
-        # vapply callback {{{
         function(value) {
             if (
                 identical(value$unit_type, "epw_export") &&
@@ -553,7 +536,6 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
                 0L
             }
         },
-        # }}}
         integer(1L)
     )
     exported <- max(c(
@@ -635,7 +617,6 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
 shift_ui_state__ui_event_nodes <- function(events) {
     events <- data.table::as.data.table(events)
     details <- shift_ui_state__ui_event_details(events)
-    # lapply callback {{{
     rows <- lapply(seq_along(details), function(i) {
         value <- details[[i]]
         if (
@@ -670,7 +651,6 @@ shift_ui_state__ui_event_nodes <- function(events) {
             }
         )
     })
-    # }}}
     data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
 # }}}

@@ -5,7 +5,6 @@ cli_shift_test_mock_collect <- function(
 ) {
     calls$types <- character()
     testthat::local_mocked_bindings(
-        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -38,7 +37,6 @@ cli_shift_test_mock_collect <- function(
                 parameter = params
             )
         },
-        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )

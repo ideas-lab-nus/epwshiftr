@@ -39,9 +39,7 @@ test_that("actual optional inputs are resolved once and pinned across cities", {
     # The restored selection must also work without opening another child's
     # store, as required when background processes own separate databases.
     testthat::local_mocked_bindings(
-        # shift_store {{{
         shift_store = function(...) stop("Unexpected shared database access"),
-        # }}}
         .package = "epwshiftr"
     )
     expect_equal(
@@ -81,12 +79,8 @@ test_that("actual optional inputs are resolved once and pinned across cities", {
         ]
         cols <- intersect(names(ordinary), names(observed))
         expect_equal(
-            # lapply callback {{{
             lapply(cols, function(column) observed[[column]]),
-            # }}}
-            # lapply callback {{{
             lapply(cols, function(column) ordinary[[column]])
-            # }}}
         )
         sources <- attr(shared, "grid_sources")
         sources <- sources[sources$consumer_id == as.character(i)]
@@ -96,12 +90,8 @@ test_that("actual optional inputs are resolved once and pinned across cities", {
             "site_id"
         )
         expect_equal(
-            # lapply callback {{{
             lapply(source_cols, function(column) sources[[column]]),
-            # }}}
-            # lapply callback {{{
             lapply(source_cols, function(column) expected_sources[[column]])
-            # }}}
         )
     }
 })
@@ -241,11 +231,9 @@ test_that("shared resolution failures preserve child diagnostics and explicit re
     # permanently pinned to the first attempt's failure.
     retry <- cli_shift_test_mock_collect(fixture$docs)
     testthat::local_mocked_bindings(
-        # shift_job__latest_job {{{
         shift_job__latest_job = function(...) {
             data.table::data.table(attempt = 2L)
         }
-        # }}}
     )
     resolved <- shift_resolve__collect_resolved_inputs(
         batch@meta$children[[1L]],

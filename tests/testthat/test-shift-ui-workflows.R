@@ -310,14 +310,10 @@ test_that("frame renderers never paint more rows than the viewport", {
     renderer <- ShiftFrameRenderer$new(
         output,
         backend = "frame",
-        # writer {{{
         writer = function(text) writes <<- c(writes, text)
-        # }}}
     )
     renderer$draw(paste("row", 1:30), compact = "safe compact status")
-    # renderer$suspend callback {{{
     renderer$suspend(function() writes <<- c(writes, "diagnostic\n"))
-    # }}}
     expect_match(utils::tail(writes, 1L), "safe compact status", fixed = TRUE)
     expect_false(grepl("row 30", utils::tail(writes, 1L), fixed = TRUE))
     renderer$commit()
@@ -335,15 +331,11 @@ test_that("foreground completion retains every output after viewport fallback", 
     renderer <- ShiftFrameRenderer$new(
         output,
         backend = "frame",
-        # writer {{{
         writer = function(text) writes <<- c(writes, text)
-        # }}}
     )
-    # shift_tui__ui_renderer {{{
     testthat::local_mocked_bindings(shift_tui__ui_renderer = function(...) {
         renderer
     })
-    # }}}
     reporter <- shift_reporter__reporter(
         shift_ui("dynamic", detail = "detail", motion = "none"),
         run_id = "multi-year-receipt"
@@ -381,18 +373,14 @@ test_that("R batch watch leaves a complete final receipt in every human mode", {
         index <- 0L
         calls <- character()
         renderer <- list(
-            # draw {{{
             draw = function(...) {
                 calls <<- c(calls, "draw")
                 TRUE
             },
-            # }}}
-            # close {{{
             close = function(...) {
                 calls <<- c(calls, "close")
                 invisible(NULL)
             }
-            # }}}
         )
         testthat::with_mocked_bindings(
             {
@@ -407,26 +395,16 @@ test_that("R batch watch leaves a complete final receipt in every human mode", {
                     type = "message"
                 )
             },
-            # shift_tui__ui_renderer {{{
             shift_tui__ui_renderer = function(...) renderer,
-            # }}}
-            # shift_batch__refresh {{{
             shift_batch__refresh = function(x) x,
-            # }}}
-            # shift_job__watch_sleep {{{
             shift_job__watch_sleep = function(...) NULL,
-            # }}}
-            # shift_job__watch_now {{{
             shift_job__watch_now = function() {
                 as.POSIXct(index * 10, origin = "1970-01-01")
             },
-            # }}}
-            # shift_batch_ui__snapshot {{{
             shift_batch_ui__snapshot = function(...) {
                 index <<- index + 1L
                 if (follow && index == 1L) states[[1L]] else states[[3L]]
             },
-            # }}}
             .package = "epwshiftr"
         )
         expect_match(
@@ -445,21 +423,11 @@ test_that("R batch watch leaves a complete final receipt in every human mode", {
 test_that("CLI count-limited dynamic watch keeps its final snapshot", {
     snapshot <- ui_workflows__states()[[1L]]
     testthat::local_mocked_bindings(
-        # shift_batch_get {{{
         shift_batch_get = function(...) NULL,
-        # }}}
-        # shift_batch_ui__snapshot {{{
         shift_batch_ui__snapshot = function(...) snapshot,
-        # }}}
-        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
-            # draw {{{
-            # close {{{
             list(draw = function(...) TRUE, close = function(...) NULL)
-            # }}}
-            # }}}
         }
-        # }}}
     )
     output <- capture.output(
         invisible(epwshiftr_cli_shift_watch_follow(
@@ -484,22 +452,16 @@ test_that("download resume and partial flag sets respect global output policy", 
         "none"
     )
     seen <- logical()
-    # resume {{{
     downloader <- list(resume = function(...) {
         seen <<- c(seen, list(...)$progress)
         data.table::data.table()
     })
-    # }}}
-    # epwshiftr_cli_downloader {{{
     testthat::local_mocked_bindings(epwshiftr_cli_downloader = function(...) {
         downloader
     })
-    # }}}
     for (mode in c("quiet", "json", "jsonl")) {
         args <- list(
-            # sync_downloads {{{
             store = list(sync_downloads = function(...) NULL),
-            # }}}
             command = "resume",
             args = c("--session", "test")
         )
@@ -568,7 +530,6 @@ test_that("weather comparison excludes missing codes and weights valid hourly ro
     baseline <- epw_file_read(original)$data()
     paths <- vapply(
         c(2L, 3L),
-        # vapply callback {{{
         function(n) {
             path <- tempfile(fileext = ".epw")
             writeLines(readLines(original, n = 8L), path)
@@ -585,7 +546,6 @@ test_that("weather comparison excludes missing codes and weights valid hourly ro
             )
             path
         },
-        # }}}
         character(1L)
     )
     withr::defer(unlink(paths))
@@ -774,12 +734,8 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     # Older sidecars and snapshots may still carry a pre-cancellation frame.
     run@meta$ui_state$status <- "running"
     testthat::local_mocked_bindings(
-        # shift_outputs {{{
         shift_outputs = function(...) data.table::data.table(),
-        # }}}
-        # shift_job__watch_now {{{
         shift_job__watch_now = function() stamp + 60
-        # }}}
     )
     view <- shift_ui_view__ui_run_view(run)
     expect_identical(view$state$status, "stopping")
@@ -802,24 +758,16 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     expect_match(paste(cli::ansi_strip(output), collapse = " "), "STOPPING")
     frames <- character()
     testthat::local_mocked_bindings(
-        # epwshiftr_cli_shift_watch_snapshot {{{
         epwshiftr_cli_shift_watch_snapshot = function(...) snapshot,
-        # }}}
-        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
-                # draw {{{
                 draw = function(lines, compact) {
                     frames <<- c(frames, lines, compact)
                     TRUE
                 },
-                # }}}
-                # close {{{
                 close = function(...) NULL
-                # }}}
             )
         }
-        # }}}
     )
     invisible(capture.output(
         invisible(epwshiftr_cli_shift_watch_follow(
@@ -908,7 +856,6 @@ test_that("batch event cursors retain interleaved and reordered child events", {
 test_that("R and CLI batch watchers emit late and terminal events exactly once", {
     events <- ui_workflows__interleaved_events()
     states <- ui_workflows__states()
-    # lapply callback {{{
     snapshots <- lapply(seq_len(4L), function(index) {
         snapshot <- states[[if (index == 4L) 3L else 1L]]
         snapshot$events <- events[0]
@@ -921,29 +868,18 @@ test_that("R and CLI batch watchers emit late and terminal events exactly once",
         }
         snapshot
     })
-    # }}}
     index <- 0L
     testthat::local_mocked_bindings(
-        # shift_batch_get {{{
         shift_batch_get = function(...) NULL,
-        # }}}
-        # shift_batch__refresh {{{
         shift_batch__refresh = function(x) x,
-        # }}}
-        # shift_job__watch_sleep {{{
         shift_job__watch_sleep = function(...) NULL,
-        # }}}
-        # shift_job__watch_now {{{
         shift_job__watch_now = function() {
             as.POSIXct(index * 10, origin = "1970-01-01")
         },
-        # }}}
-        # shift_batch_ui__snapshot {{{
         shift_batch_ui__snapshot = function(...) {
             index <<- index + 1L
             snapshots[[index]]
         }
-        # }}}
     )
     output <- capture.output(invisible(epwshiftr_cli_shift_watch_follow(
         NULL,
@@ -960,9 +896,7 @@ test_that("R and CLI batch watchers emit late and terminal events exactly once",
         c("snapshot", "event", "event", "event", "terminal")
     )
     expect_identical(
-        # vapply callback {{{
         vapply(records[2:4], function(x) x$event$event_id, character(1L)),
-        # }}}
         c("a2", "a3", "a4")
     )
     for (interface in c("R", "CLI")) {
@@ -1036,16 +970,9 @@ test_that("single-run show detail retains all rows and long fields without chang
         path = c(paste0("/outputs/", seq_len(24L), ".epw"), long_path)
     )
     testthat::local_mocked_bindings(
-        # cli_shift__target {{{
         cli_shift__target = function(...) run,
-        # }}}
-        # shift_cases {{{
         shift_cases = function(...) data.table::data.table(),
-        # }}}
-        # shift_outputs {{{
         shift_outputs = function(...) outputs,
-        # }}}
-        # shift_diagnostics {{{
         shift_diagnostics = function(...) {
             data.table::data.table(
                 stage = "morph",
@@ -1053,29 +980,22 @@ test_that("single-run show detail retains all rows and long fields without chang
                 action = action
             )
         },
-        # }}}
-        # shift_explain {{{
         shift_explain = function(...) {
             data.table::data.table(stage = "morph", status = "ready")
         }
-        # }}}
     )
     snapshots <- lapply(
         list(character(), "--verbose", "--debug"),
-        # lapply callback {{{
         function(flag) {
             epwshiftr_cli_shift_show(NULL, c("--run", "show-detail", flag))
         }
-        # }}}
     )
-    # lapply callback {{{
     output <- lapply(snapshots, function(value) {
         cli::ansi_strip(capture.output(
             epwshiftr_cli_render_shift_show(value),
             type = "message"
         ))
     })
-    # }}}
     expect_identical(
         vapply(snapshots, attr, character(1L), "shift_ui_detail"),
         c("normal", "detail", "debug")
@@ -1107,11 +1027,9 @@ test_that("single-run show detail retains all rows and long fields without chang
 })
 
 test_that("config templates do not initialize the default store", {
-    # store_dir {{{
     testthat::local_mocked_bindings(store_dir = function(...) {
         stop("Unexpected store initialization")
     })
-    # }}}
     out <- epwshiftr_cli(c(
         "--quiet",
         "shift",

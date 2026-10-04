@@ -37,7 +37,6 @@ gh <- function(path, token = NULL) {
     base_url <- "https://api.github.com"
     link <- file.path(base_url, path)
 
-    # cache__url callback {{{
     cache__url("gh", link, function() {
         # use GitHub token if possible
         headers <- c("Accept" = "application/vnd.github+json")
@@ -48,7 +47,6 @@ gh <- function(path, token = NULL) {
 
         jsonlite::fromJSON(base::url(link, headers = headers))
     })
-    # }}}
 }
 # }}}
 
@@ -69,7 +67,6 @@ download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
     )
     dest <- file.path(dir, file)
 
-    # cache__download callback {{{
     cache__download(url, dest, function() {
         utils::download.file(
             url,
@@ -80,7 +77,6 @@ download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
         )
         dest
     })
-    # }}}
 }
 # }}}
 
@@ -93,7 +89,6 @@ download_gh_tag <- function(repo, tag, dir = tempdir(), token = NULL) {
     )
     dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), tag))
 
-    # cache__download callback {{{
     cache__download(url, dest, function() {
         utils::download.file(
             url,
@@ -104,7 +99,6 @@ download_gh_tag <- function(repo, tag, dir = tempdir(), token = NULL) {
         )
         dest
     })
-    # }}}
 }
 # }}}
 
@@ -114,7 +108,6 @@ download_gh_ref <- function(repo, ref, dir = tempdir(), token = NULL) {
     ref_file <- gsub("[/\\\\]", "-", ref)
     dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), ref_file))
 
-    # cache__download callback {{{
     cache__download(url, dest, function() {
         utils::download.file(
             url,
@@ -125,7 +118,6 @@ download_gh_ref <- function(repo, ref, dir = tempdir(), token = NULL) {
         )
         dest
     })
-    # }}}
 }
 # }}}
 

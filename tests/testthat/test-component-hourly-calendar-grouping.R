@@ -125,9 +125,7 @@ test_that("hourly calendar grouping preserves role-native calendars", {
     expect_identical(
         vapply(
             group@inputs,
-            # vapply callback {{{
             function(value) unique(value$cf_calendar),
-            # }}}
             character(1L)
         ),
         c(
@@ -155,7 +153,6 @@ test_that("hourly calendar grouping preserves role-native calendars", {
 })
 
 test_that("hourly calendar grouping separates variables and sites", {
-    # role_series {{{
     role_series <- function(role, year, offset) {
         source <- if (identical(role, "observed")) {
             "station"
@@ -167,7 +164,6 @@ test_that("hourly calendar grouping separates variables and sites", {
         } else {
             role
         }
-        # lapply callback {{{
         do.call(
             rbind,
             lapply(c("A", "B"), function(site) {
@@ -191,9 +187,7 @@ test_that("hourly calendar grouping separates variables and sites", {
                 )
             })
         )
-        # }}}
     }
-    # }}}
     result <- hourly_calendar_test__apply(hourly_calendar_test__inputs(
         role_series("observed", 2001L, -1),
         role_series("historical", 1991L, 0),
@@ -202,15 +196,11 @@ test_that("hourly calendar grouping separates variables and sites", {
 
     expect_length(result@value, 4L)
     expect_identical(
-        # vapply callback {{{
         vapply(result@value, function(group) group@key$site_id, character(1L)),
-        # }}}
         c("A", "A", "B", "B")
     )
     expect_identical(
-        # vapply callback {{{
         vapply(result@value, function(group) group@variables, character(1L)),
-        # }}}
         c("hurs", "tas", "hurs", "tas")
     )
     expect_identical(
@@ -409,7 +399,6 @@ test_that("three-hour source roles compile through the real hourly bridge", {
 
     # Minimal descriptors prove compilation uses the preprocessed intermediate
     # kind instead of requiring raw model sources to be hourly already.
-    # source {{{
     source <- function(role, frequency, calendar, experiment) {
         weather__new_input(
             role,
@@ -424,7 +413,6 @@ test_that("three-hour source roles compile through the real hourly bridge", {
             )
         )
     }
-    # }}}
     inputs <- weather__new_inputs(
         observed_reference = source(
             "observed_reference",

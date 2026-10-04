@@ -294,9 +294,7 @@ method__from_signal_component <- function(
     profile_output_roles <- unique(unlist(
         lapply(
             profiles,
-            # lapply callback {{{
             function(profile) profile$metadata$output_role
-            # }}}
         ),
         use.names = FALSE
     ))
@@ -704,7 +702,6 @@ method__list <- function(registry = WEATHER_METHOD_REGISTRY) {
         method__register_defaults()
     }
     names <- sort(ls(envir = registry, all.names = FALSE))
-    # lapply callback {{{
     data.table::rbindlist(
         lapply(names, function(name) {
             spec <- get(name, envir = registry, inherits = FALSE)
@@ -734,7 +731,6 @@ method__list <- function(registry = WEATHER_METHOD_REGISTRY) {
         use.names = TRUE,
         fill = TRUE
     )
-    # }}}
 }
 # }}}
 

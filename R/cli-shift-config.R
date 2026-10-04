@@ -46,14 +46,12 @@ epwshiftr_cli_read_shift_config <- function(path) {
             simplifyVector = TRUE,
             simplifyDataFrame = FALSE
         ),
-        # error {{{
         error = function(e) {
             epwshiftr_cli_usage_abort(sprintf(
                 "Failed to read JSON config: %s",
                 conditionMessage(e)
             ))
         }
-        # }}}
     )
     tryCatch(
         {
@@ -64,14 +62,12 @@ epwshiftr_cli_read_shift_config <- function(path) {
             )
             epwshiftr_cli_validate_shift_config(config)
         },
-        # error {{{
         error = function(e) {
             epwshiftr_cli_usage_abort(sprintf(
                 "Invalid shift workflow config: %s",
                 conditionMessage(e)
             ))
         }
-        # }}}
     )
     invisible(config)
 }
@@ -231,7 +227,6 @@ epwshiftr_cli_shift_config_validate <- function(
         "observed_reference"
     )
     periods <- shift_spec__periods_from_input(config$periods)
-    # lapply callback {{{
     references <- lapply(transforms, function(transform) {
         shift_spec__validate_transform_periods(transform, periods)
         if (!is.null(climate@frequency)) {
@@ -242,12 +237,9 @@ epwshiftr_cli_shift_config_validate <- function(
         }
         shift_batch__references(transform, reference, observed)
     })
-    # }}}
-    # lapply callback {{{
     locations <- shift_batch__sites(lapply(config$sites, function(site) {
         do.call(shift_site, site)
     }))
-    # }}}
     shift_path__validate_delivery_store_paths(config$dir, store)
     network <- isTRUE(parsed$flags[["--network"]])
     ui <- epwshiftr_cli_task_ui(
@@ -260,7 +252,6 @@ epwshiftr_cli_shift_config_validate <- function(
         shift_reporter__ui_check(
             ui,
             "Calibration readiness",
-            # shift_reporter__ui_check callback {{{
             function(reporter) {
                 reporter$stage_started(
                     "check",
@@ -272,7 +263,6 @@ epwshiftr_cli_shift_config_validate <- function(
                 )
                 shift_check(observed, network = network)
             }
-            # }}}
         )
     } else {
         shift_stage__diagnostics_empty()
@@ -307,7 +297,6 @@ epwshiftr_cli_shift_config_validate <- function(
                 paste(
                     vapply(
                         transforms,
-                        # vapply callback {{{
                         function(transform) {
                             paste(
                                 transform@scale,
@@ -315,7 +304,6 @@ epwshiftr_cli_shift_config_validate <- function(
                                 transform@reconstruction
                             )
                         },
-                        # }}}
                         character(1L)
                     ),
                     collapse = "; "
@@ -365,11 +353,9 @@ cli_shift__config_intent <- function(config) {
         Baseline = paste(
             vapply(
                 config$sites,
-                # vapply callback {{{
                 function(site) {
                     paste0(site$id, ": ", site$epw)
                 },
-                # }}}
                 character(1L)
             ),
             collapse = "; "
@@ -377,7 +363,6 @@ cli_shift__config_intent <- function(config) {
         Methods = paste(
             vapply(
                 transforms,
-                # vapply callback {{{
                 function(transform) {
                     sprintf(
                         "%s / %s / %s [%s]",
@@ -387,7 +372,6 @@ cli_shift__config_intent <- function(config) {
                         transform@status
                     )
                 },
-                # }}}
                 character(1L)
             ),
             collapse = "; "

@@ -72,9 +72,7 @@ ShiftReporter <- R6::R6Class(
             private$motion_value <- shift_ui__ui_motion(ui, private$mode_value)
             private$renderer <- tryCatch(
                 shift_tui__ui_renderer(private$mode_value),
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             # An explicitly requested dynamic mode still degrades safely when
             # the current output connection has no live rendering capability.
@@ -956,9 +954,7 @@ ShiftReporter <- R6::R6Class(
             renderer_backend <- if (is.null(private$renderer)) {
                 NULL
             } else {
-                # error {{{
                 tryCatch(private$renderer$backend(), error = function(e) NULL)
-                # }}}
             }
             committed_frame <- identical(private$mode_value, "dynamic") &&
                 identical(renderer_backend, "frame")
@@ -1188,7 +1184,6 @@ ShiftReporter <- R6::R6Class(
             if (identical(private$mode_value, "none")) {
                 return(invisible(NULL))
             }
-            # emit_one {{{
             emit_one <- function() {
                 tryCatch(
                     switch(
@@ -1201,12 +1196,9 @@ ShiftReporter <- R6::R6Class(
                         path = cli::cli_text("  {.path {message}}"),
                         cli::cli_text("{message}")
                     ),
-                    # error {{{
                     error = function(e) invisible(NULL)
-                    # }}}
                 )
             }
-            # }}}
             private$with_output(emit_one)
             invisible(NULL)
         },
@@ -1415,9 +1407,7 @@ ShiftReporter <- R6::R6Class(
             renderer_backend <- if (is.null(private$renderer)) {
                 NULL
             } else {
-                # error {{{
                 tryCatch(private$renderer$backend(), error = function(e) NULL)
-                # }}}
             }
             committed_frame <- identical(private$mode_value, "dynamic") &&
                 identical(renderer_backend, "frame")
@@ -1635,7 +1625,6 @@ ShiftReporter <- R6::R6Class(
             if (is.null(rows) || !nrow(rows)) {
                 return(invisible(NULL))
             }
-            # private$with_output callback {{{
             private$with_output(function() {
                 for (line in shift_ui_view__ui_node_table(
                     rows,
@@ -1645,7 +1634,6 @@ ShiftReporter <- R6::R6Class(
                     private$emit("verbatim", line)
                 }
             })
-            # }}}
             invisible(NULL)
         },
         # }}}
@@ -1666,7 +1654,6 @@ ShiftReporter <- R6::R6Class(
             ) {
                 return(invisible(NULL))
             }
-            # private$with_output callback {{{
             private$with_output(function() {
                 for (line in shift_ui_view__ui_case_table(
                     rows,
@@ -1676,7 +1663,6 @@ ShiftReporter <- R6::R6Class(
                     private$emit("verbatim", line)
                 }
             })
-            # }}}
             invisible(NULL)
         }
         # }}}
@@ -1720,18 +1706,14 @@ shift_reporter__ui_check <- function(ui, label, code) {
     )
     tryCatch(
         code(reporter),
-        # error {{{
         error = function(error) {
             reporter$operation_failed(conditionMessage(error))
             stop(error)
         },
-        # }}}
-        # interrupt {{{
         interrupt = function(error) {
             reporter$operation_failed("Check interrupted.", cancelled = TRUE)
             stop(error)
         }
-        # }}}
     )
 }
 # }}}

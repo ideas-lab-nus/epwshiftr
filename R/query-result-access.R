@@ -199,7 +199,6 @@ query_result__node_try <- function(url, timeout = 5, network_policy = NULL) {
                 probe_url = url
             )
         },
-        # error {{{
         error = function(e) {
             list(
                 reachable = FALSE,
@@ -208,7 +207,6 @@ query_result__node_try <- function(url, timeout = 5, network_policy = NULL) {
                 probe_url = url
             )
         }
-        # }}}
     )
 }
 # }}}
@@ -248,23 +246,17 @@ query_result__run_url_checks <- function(
     concurrency,
     serial_check,
     done_result,
-    # function callback {{{
     clock = function() proc.time()[["elapsed"]],
-    # }}}
     failonerror = NULL,
     nobody = TRUE,
-    # function callback {{{
     request_url = function(url) url,
-    # }}}
     retry_failed = TRUE
 ) {
     checkmate::assert_flag(retry_failed)
     # Keep serial execution authoritative for one target and as the fallback path.
-    # serial {{{
     serial <- function(targets) {
         stats::setNames(lapply(targets, serial_check), targets)
     }
-    # }}}
     if (!length(urls)) {
         return(stats::setNames(list(), character()))
     }
@@ -319,7 +311,6 @@ query_result__run_url_checks <- function(
                     )
                     curl::multi_add(
                         handle,
-                        # done {{{
                         done = function(response) {
                             out[[j]] <<- done_result(
                                 response = response,
@@ -327,8 +318,6 @@ query_result__run_url_checks <- function(
                                 started_at = started_at
                             )
                         },
-                        # }}}
-                        # fail {{{
                         fail = function(error) {
                             failed[[j]] <<- TRUE
                             failure_messages[[j]] <<- if (
@@ -342,7 +331,6 @@ query_result__run_url_checks <- function(
                                 as.character(error)[[1L]]
                             }
                         },
-                        # }}}
                         pool = pool
                     )
                 })
@@ -354,9 +342,7 @@ query_result__run_url_checks <- function(
             )
             TRUE
         },
-        # error {{{
         error = function(e) FALSE
-        # }}}
     )
 
     if (!isTRUE(ok)) {
@@ -376,7 +362,6 @@ query_result__run_url_checks <- function(
         if (isTRUE(retry_failed)) {
             out[failed] <- lapply(urls[failed], serial_check)
         } else {
-            # lapply callback {{{
             out[failed] <- lapply(which(failed), function(index) {
                 message <- failure_messages[[index]]
                 if (is.na(message) || !nzchar(message)) {
@@ -388,7 +373,6 @@ query_result__run_url_checks <- function(
                     error = message
                 )
             })
-            # }}}
         }
     }
 
@@ -411,7 +395,6 @@ query_result__reach_node_urls <- function(
         network_policy = network_policy,
         concurrency = probe_concurrency,
         # Keep data-node response handling independent of HTTP status.
-        # serial_check {{{
         serial_check = function(url) {
             query_result__reach_node_url(
                 url,
@@ -419,9 +402,7 @@ query_result__reach_node_urls <- function(
                 network_policy = network_policy
             )
         },
-        # }}}
         # Retain millisecond timing and the actual node URL in successful checks.
-        # done_result {{{
         done_result = function(response, url, started_at) {
             list(
                 reachable = TRUE,
@@ -430,7 +411,6 @@ query_result__reach_node_urls <- function(
                 probe_url = url
             )
         },
-        # }}}
         failonerror = FALSE
     )
 }
@@ -581,11 +561,9 @@ query_result__url_try <- function(
                 error = NA_character_
             )
         },
-        # error {{{
         error = function(e) {
             list(ok = FALSE, latency_ms = NA_real_, error = conditionMessage(e))
         }
-        # }}}
     )
 }
 # }}}
@@ -675,9 +653,7 @@ query_result__valid_dds <- function(content) {
     if (is.null(content) || !length(content)) {
         return(FALSE)
     }
-    # error {{{
     text <- tryCatch(rawToChar(content), error = function(error) "")
-    # }}}
     isTRUE(grepl("^[[:space:]]*Dataset[[:space:]]*\\{", text)) &&
         isTRUE(grepl(
             "\\}[[:space:]]*[^;[:space:]]+[[:space:]]*;[[:space:]]*$",
@@ -741,7 +717,6 @@ query_result__check_opendap_url <- function(
                 error = NA_character_
             )
         },
-        # error {{{
         error = function(error) {
             list(
                 reachable = FALSE,
@@ -749,7 +724,6 @@ query_result__check_opendap_url <- function(
                 error = conditionMessage(error)
             )
         }
-        # }}}
     )
 }
 # }}}
@@ -770,7 +744,6 @@ query_result__check_opendap_urls <- function(
         timeout = timeout,
         network_policy = network_policy,
         concurrency = concurrency,
-        # serial_check {{{
         serial_check = function(url) {
             query_result__check_opendap_url(
                 url,
@@ -778,8 +751,6 @@ query_result__check_opendap_urls <- function(
                 network_policy = network_policy
             )
         },
-        # }}}
-        # done_result {{{
         done_result = function(response, url, started_at) {
             if (!query_result__valid_dds(response$content)) {
                 return(list(
@@ -794,7 +765,6 @@ query_result__check_opendap_urls <- function(
                 error = NA_character_
             )
         },
-        # }}}
         failonerror = TRUE,
         nobody = FALSE,
         request_url = query_result__opendap_dds_url,
@@ -818,7 +788,6 @@ query_result__reach_http_urls <- function(
         network_policy = network_policy,
         concurrency = probe_concurrency,
         # Retain the HEAD-then-Range behavior for failed service URL checks.
-        # serial_check {{{
         serial_check = function(url) {
             query_result__reach_url(
                 url,
@@ -826,9 +795,7 @@ query_result__reach_http_urls <- function(
                 network_policy = network_policy
             )
         },
-        # }}}
         # Successful HTTP service checks retain the reachability result schema.
-        # done_result {{{
         done_result = function(response, url, started_at) {
             list(
                 reachable = TRUE,
@@ -836,7 +803,6 @@ query_result__reach_http_urls <- function(
                 error = NA_character_
             )
         },
-        # }}}
         failonerror = TRUE
     )
 }
@@ -1086,11 +1052,9 @@ query_result__reach_nodes <- function(
         node_urls <- lapply(node_values, query_result__node_urls)
         first_urls <- vapply(
             node_urls,
-            # vapply callback {{{
             function(urls) {
                 if (length(urls)) urls[[1L]] else NA_character_
             },
-            # }}}
             character(1L)
         )
         first_probes <- query_result__reach_node_urls(
@@ -1393,9 +1357,7 @@ query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
             curl::curl_fetch_memory(url, handle = handle)
             TRUE
         },
-        # error {{{
         error = function(e) FALSE
-        # }}}
     )
     if (!ok) {
         start <- Sys.time()
@@ -1412,9 +1374,7 @@ query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
                 curl::curl_fetch_memory(url, handle = handle)
                 TRUE
             },
-            # error {{{
             error = function(e) FALSE
-            # }}}
         )
     }
     if (!ok) {
@@ -1442,7 +1402,6 @@ query_result__latency_urls <- function(
         network_policy = network_policy,
         concurrency = probe_concurrency,
         # Retain the existing latency check and its Range fallback.
-        # serial_check {{{
         serial_check = function(url) {
             query_result__latency_url(
                 url,
@@ -1450,9 +1409,7 @@ query_result__latency_urls <- function(
                 network_policy = network_policy
             )
         },
-        # }}}
         # Latency remains measured in seconds with an unavailable throughput.
-        # done_result {{{
         done_result = function(response, url, started_at) {
             list(
                 latency = as.numeric(difftime(
@@ -1463,7 +1420,6 @@ query_result__latency_urls <- function(
                 throughput = NA_real_
             )
         },
-        # }}}
         clock = Sys.time
     )
 }

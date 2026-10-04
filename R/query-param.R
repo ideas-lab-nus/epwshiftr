@@ -306,12 +306,10 @@ QueryParamDate <- S7::new_class(
 # render
 # Dispatch query parameter objects to their URL/query-string representation.
 # Methods choose the syntax for facets, controls, and structured query clauses.
-# S7::new_generic callback {{{
 render <- S7::new_generic("render", "x", function(x, name, ...) {
     checkmate::assert_string(name, null.ok = TRUE)
     S7::S7_dispatch()
 })
-# }}}
 
 #' Render a facet query parameter.
 #'
@@ -352,13 +350,11 @@ S7::method(render, QueryParamFacet) <- function(
             strsplit(value, ""),
             FUN.VALUE = character(1L),
             USE.NAMES = FALSE,
-            # vapply callback {{{
             function(s) {
                 ind <- grep(reg, s)
                 if (length(ind)) {
                     esc <- vapply(
                         s[ind],
-                        # vapply callback {{{
                         function(char) {
                             paste0(
                                 "%",
@@ -366,7 +362,6 @@ S7::method(render, QueryParamFacet) <- function(
                                 collapse = ""
                             )
                         },
-                        # }}}
                         character(1L)
                     )
                     s[ind] <- esc
@@ -374,7 +369,6 @@ S7::method(render, QueryParamFacet) <- function(
 
                 paste(s, collapse = "")
             }
-            # }}}
         )
     } else {
         # directly return for already encoded values
@@ -413,7 +407,6 @@ query_param__quote_bound <- function(x) {
 query_param__quote_range <- function(x) {
     vapply(
         x,
-        # vapply callback {{{
         function(value) {
             match <- regexec(
                 "^([\\[{])\\s*(.*?)\\s+TO\\s+(.*?)\\s*([\\]}])$",
@@ -434,7 +427,6 @@ query_param__quote_range <- function(x) {
                 parts[[5L]]
             )
         },
-        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
@@ -575,9 +567,7 @@ query_param__names <- function(
 
     names(QUERY_PARAM__DEF)[vapply(
         QUERY_PARAM__DEF,
-        # vapply callback {{{
         function(def) identical(def$type, type),
-        # }}}
         logical(1L)
     )]
 }
@@ -713,7 +703,6 @@ query_param__as_store <- function(params) {
 
     checkmate::assert_list(params, names = "named")
     state <- stats::setNames(
-        # lapply callback {{{
         lapply(seq_along(params), function(i) {
             name <- names(params)[[i]]
             value <- params[[i]]
@@ -726,7 +715,6 @@ query_param__as_store <- function(params) {
             }
             query_param__as(name, value)
         }),
-        # }}}
         names(params)
     )
 
@@ -1906,7 +1894,6 @@ QueryParamStore <- R6::R6Class(
 
             # Convert a datetime boundary into the range form expected by ESGF.
             # Point values become half-open Solr ranges, while `*` clears the bound.
-            # ensure_bound {{{
             ensure_bound <- function(name, value) {
                 if (is.null(value)) {
                     return(NULL)
@@ -1933,7 +1920,6 @@ QueryParamStore <- R6::R6Class(
 
                 bound
             }
-            # }}}
 
             start_bound <- if (!missing(start)) {
                 ensure_bound("start", start)
@@ -2017,7 +2003,6 @@ QueryParamStore <- R6::R6Class(
 
             # Convert a timestamp boundary into a single `QueryParamDate`.
             # Timestamp helpers accept point-like dates only; full range syntax is rejected.
-            # ensure_bound {{{
             ensure_bound <- function(name, value) {
                 if (is.null(value)) {
                     return(NULL)
@@ -2042,7 +2027,6 @@ QueryParamStore <- R6::R6Class(
 
                 bound
             }
-            # }}}
 
             from_bound <- if (!missing(from)) {
                 ensure_bound("from", from)
@@ -2130,7 +2114,6 @@ QueryParamStore <- R6::R6Class(
             # helper: parse and validate a version boundary string.
             # Accepts dates (incl. simplified) and converts to YYYYMMDD.
             # Rejects Range syntax and Date Math expressions.
-            # ensure_bound {{{
             ensure_bound <- function(name, value) {
                 if (is.null(value)) {
                     return(NULL)
@@ -2177,7 +2160,6 @@ QueryParamStore <- R6::R6Class(
 
                 bound
             }
-            # }}}
 
             if (!missing(min)) {
                 private$set("version_min", ensure_bound("min", min))
@@ -2325,11 +2307,9 @@ QueryParamStore <- R6::R6Class(
         ) {
             params <- self$state(name = name, null = null)
             out <- stats::setNames(
-                # lapply callback {{{
                 lapply(names(params), function(name) {
                     private$serialize_one(params[[name]], name = name)
                 }),
-                # }}}
                 names(params)
             )
 
@@ -2391,12 +2371,10 @@ QueryParamStore <- R6::R6Class(
                         private$restore_one(name, state[[name]])
                     }
                 },
-                # error {{{
                 error = function(e) {
                     private$items <- original
                     stop(e)
                 }
-                # }}}
             )
 
             invisible(self)
@@ -2444,11 +2422,9 @@ QueryParamStore <- R6::R6Class(
         # init {{{
         init = function() {
             private$items <- stats::setNames(
-                # lapply callback {{{
                 lapply(names(QUERY_PARAM__DEF), function(name) {
                     query_param__as(name, QUERY_PARAM__DEF[[name]]$default)
                 }),
-                # }}}
                 names(QUERY_PARAM__DEF)
             )
         },
@@ -2673,9 +2649,7 @@ QueryParamStore <- R6::R6Class(
             if (length(params_oth)) {
                 clear <- vapply(
                     params_oth,
-                    # vapply callback {{{
                     function(param) is.null(param$value),
-                    # }}}
                     logical(1L)
                 )
                 if (any(clear)) {
@@ -2743,11 +2717,9 @@ QueryParamStore <- R6::R6Class(
                 tryCatch(
                     {
                         # restore the original parameter values in case of errors
-                        # lapply callback {{{
                         params_base_ori <- lapply(names_base, function(name) {
                             private$items[[name]]
                         })
-                        # }}}
 
                         for (i in seq_along(params_base)) {
                             name <- names_base[[i]]
@@ -2788,7 +2760,6 @@ QueryParamStore <- R6::R6Class(
                             }
                         }
                     },
-                    # error {{{
                     error = function(e) {
                         for (i in seq_along(names_base)) {
                             name <- names_base[[i]]
@@ -2796,7 +2767,6 @@ QueryParamStore <- R6::R6Class(
                         }
                         stop(e)
                     }
-                    # }}}
                 )
             }
             self

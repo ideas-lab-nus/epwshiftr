@@ -147,13 +147,10 @@ test_that("different signal kernels share one execution lifecycle", {
         "additive_test",
         required_inputs = list(model_future = requirement),
         profiles = list(profile),
-        # apply_group {{{
         apply_group = function(inputs, settings, key) {
             inputs$model_future + settings$tas$offset
         },
-        # }}}
         operations = list(
-            # validate_result {{{
             validate_result = function(value, inputs, key) {
                 if (
                     is.numeric(value) &&
@@ -163,18 +160,15 @@ test_that("different signal kernels share one execution lifecycle", {
                 }
                 "Signal result must match the future input length."
             }
-            # }}}
         )
     )
     multiplicative <- signal__component(
         "multiplicative_test",
         required_inputs = list(model_future = requirement),
         profiles = list(profile),
-        # apply_group {{{
         apply_group = function(inputs, settings, key) {
             inputs$model_future * settings$tas$factor
         }
-        # }}}
     )
     inputs <- weather__new_inputs(
         model_future = weather__new_input(
@@ -243,11 +237,9 @@ test_that("signal execution resolves overrides without changing provenance", {
             settings = list(offset = 1),
             evidence = "experimental"
         )),
-        # apply_group {{{
         apply_group = function(inputs, settings, key) {
             inputs$model_future + settings$tas$offset
         }
-        # }}}
     )
     inputs <- weather__new_inputs(
         model_future = weather__new_input(
@@ -304,14 +296,12 @@ test_that("signal group failures are explicit instead of silent NaN output", {
             evidence = "published",
             references = "doi:10.1000/example"
         )),
-        # apply_group {{{
         apply_group = function(inputs, settings, key) {
             if (any(inputs$model_future < 0)) {
                 stop("negative input")
             }
             inputs$model_future
         }
-        # }}}
     )
     inputs <- weather__new_inputs(
         model_future = weather__new_input(
@@ -378,11 +368,9 @@ test_that("signal execution validates source and group role contracts", {
             evidence = "published",
             references = "doi:10.1000/example"
         )),
-        # apply_group {{{
         apply_group = function(inputs, settings, key) {
             inputs$model_future - mean(inputs$observed_reference)
         }
-        # }}}
     )
     inputs <- weather__new_inputs(
         observed_reference = weather__new_input(

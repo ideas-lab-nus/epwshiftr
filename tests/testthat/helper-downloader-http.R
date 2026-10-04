@@ -21,11 +21,8 @@ downloader_http_app <- function(ok, range, slow) {
     app$locals$slow <- slow
     app$locals$flaky_count <- 0L
 
-    # request_header {{{
     request_header <- function(req, name) {
-        # error {{{
         value <- tryCatch(req$get_header(name), error = function(e) NULL)
-        # }}}
         if (!is.null(value)) {
             return(value)
         }
@@ -36,9 +33,7 @@ downloader_http_app <- function(ok, range, slow) {
         hit <- match(tolower(name), tolower(names(headers)))
         if (is.na(hit)) NULL else headers[[hit]]
     }
-    # }}}
 
-    # parse_range {{{
     parse_range <- function(req, size) {
         header <- request_header(req, "Range")
         if (is.null(header) || !length(header) || !nzchar(header[[1L]])) {
@@ -62,9 +57,7 @@ downloader_http_app <- function(ok, range, slow) {
         }
         c(start = start, end = min(end, size - 1L))
     }
-    # }}}
 
-    # send_bytes {{{
     send_bytes <- function(req, res, bytes, range = TRUE) {
         size <- length(bytes)
         res$set_header(
@@ -91,29 +84,19 @@ downloader_http_app <- function(ok, range, slow) {
 
         res$set_status(200L)$set_header("Content-Length", size)$send(bytes)
     }
-    # }}}
 
-    # app$all callback {{{
     app$all("/files/ok.bin", function(req, res, locals) {
         send_bytes(req, res, locals$ok, range = FALSE)
     })
-    # }}}
-    # app$all callback {{{
     app$all("/files/range.bin", function(req, res, locals) {
         send_bytes(req, res, locals$range, range = TRUE)
     })
-    # }}}
-    # app$all callback {{{
     app$all("/files/range-copy.bin", function(req, res, locals) {
         send_bytes(req, res, locals$range, range = TRUE)
     })
-    # }}}
-    # app$all callback {{{
     app$all("/files/no-range.bin", function(req, res, locals) {
         send_bytes(req, res, locals$range, range = FALSE)
     })
-    # }}}
-    # app$all callback {{{
     app$all("/files/flaky.bin", function(req, res, locals) {
         locals$flaky_count <- locals$flaky_count + 1L
         if (locals$flaky_count == 1L) {
@@ -122,13 +105,9 @@ downloader_http_app <- function(ok, range, slow) {
             send_bytes(req, res, locals$ok, range = FALSE)
         }
     })
-    # }}}
-    # app$all callback {{{
     app$all("/files/missing.bin", function(req, res) {
         res$set_status(404L)$send("missing")
     })
-    # }}}
-    # app$all callback {{{
     app$all("/files/slow.bin", function(req, res, locals) {
         res$set_status(200L)$set_header(
             "Content-Type",
@@ -138,41 +117,28 @@ downloader_http_app <- function(ok, range, slow) {
         Sys.sleep(0.05)
         res$send_chunk(locals$slow[1025:2048])
     })
-    # }}}
-    # app$all callback {{{
     app$all("/redirect/range.bin", function(req, res) {
         res$redirect("/files/range.bin")
     })
-    # }}}
-    # app$all callback {{{
     app$all("/dods/valid.nc", function(req, res) {
         res$set_status(200L)$send("dataset landing page")
     })
-    # }}}
-    # app$all callback {{{
     app$all("/dods/valid.nc.dds", function(req, res) {
         res$set_status(200L)$set_header("Content-Type", "text/plain")$send(
             "Dataset { Float32 tas[time = 1]; } valid.nc;"
         )
     })
-    # }}}
-    # app$all callback {{{
     app$all("/dods/html.nc", function(req, res) {
         res$set_status(200L)$send("dataset landing page")
     })
-    # }}}
-    # app$all callback {{{
     app$all("/dods/html.nc.dds", function(req, res) {
         res$set_status(200L)$set_header("Content-Type", "text/html")$send(
             "<html><body>temporary error</body></html>"
         )
     })
-    # }}}
-    # app$all callback {{{
     app$all("/dods/missing.nc.dds", function(req, res) {
         res$set_status(404L)$send("missing")
     })
-    # }}}
 
     app
 }

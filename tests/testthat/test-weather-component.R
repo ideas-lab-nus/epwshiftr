@@ -1,11 +1,8 @@
 test_that("all seven future-weather component stages have executable contracts", {
-    # lapply callback {{{
     specs <- lapply(WEATHER_COMPONENT_STAGES, function(stage) {
         primary <- WEATHER_COMPONENT_PRIMARY_OPERATIONS[[stage]]
         operations <- stats::setNames(
-            # list callback {{{
             list(function(value) value),
-            # }}}
             primary
         )
         component__spec(
@@ -16,12 +13,9 @@ test_that("all seven future-weather component stages have executable contracts",
             operations = operations
         )
     })
-    # }}}
 
     expect_identical(
-        # vapply callback {{{
         vapply(specs, function(spec) spec@stage, character(1L)),
-        # }}}
         WEATHER_COMPONENT_STAGES
     )
     for (spec in specs) {
@@ -41,9 +35,7 @@ test_that("component registries retain metadata but not serialized operations", 
         label = "Daily delta",
         input_kinds = "calendar_indexed",
         output_kinds = "seasonal_change",
-        # apply {{{
         operations = list(apply = function(value) value)
-        # }}}
     )
 
     expect_identical(
@@ -83,9 +75,7 @@ test_that("built-in registration preserves process-local component extensions", 
         label = "Extension implementation",
         input_kinds = "calendar_indexed",
         output_kinds = "seasonal_change",
-        # apply {{{
         operations = list(apply = function(value) value)
-        # }}}
     )
     builtin <- component__spec(
         name = "daily_delta",
@@ -93,9 +83,7 @@ test_that("built-in registration preserves process-local component extensions", 
         label = "Package implementation",
         input_kinds = "calendar_indexed",
         output_kinds = "seasonal_change",
-        # apply {{{
         operations = list(apply = function(value) value)
-        # }}}
     )
 
     component__register(extension, registry = registry)
@@ -117,18 +105,14 @@ test_that("built-in registration applies one policy to component collections", {
             stage = "calendar",
             input_kinds = "prepared_inputs",
             output_kinds = "calendar_indexed",
-            # apply {{{
             operations = list(apply = function(value) value)
-            # }}}
         ),
         component__spec(
             name = "daily_delta",
             stage = "signal",
             input_kinds = "calendar_indexed",
             output_kinds = "seasonal_change",
-            # apply {{{
             operations = list(apply = function(value) value)
-            # }}}
         )
     )
 
@@ -151,27 +135,21 @@ test_that("component compatibility uses stage order and intermediate kinds", {
         stage = "calendar",
         input_kinds = "prepared_inputs",
         output_kinds = "calendar_indexed",
-        # apply {{{
         operations = list(apply = function(value) value)
-        # }}}
     )
     signal <- component__spec(
         name = "qdm",
         stage = "signal",
         input_kinds = "calendar_indexed",
         output_kinds = "corrected_series",
-        # apply {{{
         operations = list(apply = function(value) value)
-        # }}}
     )
     incompatible <- component__spec(
         name = "monthly_only",
         stage = "signal",
         input_kinds = "monthly_summary",
         output_kinds = "seasonal_change",
-        # apply {{{
         operations = list(apply = function(value) value)
-        # }}}
     )
 
     expect_true(component__compatible(calendar, signal))
@@ -206,9 +184,7 @@ test_that("component input requirements keep inner AND and outer OR semantics", 
         input_kinds = "calendar_indexed",
         output_kinds = "corrected_series",
         scopes = "multivariate",
-        # apply {{{
         operations = list(apply = function(value) value)
-        # }}}
     )
     valid <- weather__new_inputs(
         model_future = weather__new_input(
@@ -271,12 +247,8 @@ test_that("component input validation distinguishes required and optional roles"
         input_kinds = "calendar_indexed",
         output_kinds = "corrected_series",
         operations = list(
-            # fit {{{
             fit = function(value) value,
-            # }}}
-            # apply {{{
             apply = function(value) value
-            # }}}
         )
     )
     inputs <- weather__new_inputs(
@@ -342,9 +314,7 @@ test_that("component specs reject missing or stage-inappropriate operations", {
             "signal",
             input_kinds = "calendar_indexed",
             output_kinds = "corrected_series",
-            # fit {{{
             operations = list(fit = function(value) value)
-            # }}}
         ),
         "require a named `apply` operation"
     )
@@ -354,9 +324,7 @@ test_that("component specs reject missing or stage-inappropriate operations", {
             "output",
             input_kinds = "physical_weather",
             output_kinds = "weather_artifact",
-            # apply {{{
             operations = list(apply = function(value) value)
-            # }}}
         ),
         "Unknown `output` operation"
     )

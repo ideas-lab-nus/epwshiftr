@@ -195,7 +195,6 @@ test_that("grouped BTWS projection retains method diagnostics and row order", {
 test_that("BTWS monthly factors close the published temperature statistics", {
     hours <- 1:24
     days <- 1:28
-    # lapply callback {{{
     template <- data.table::rbindlist(lapply(days, function(day) {
         amplitude <- 4 + day / 28
         offset <- 10 + day / 14
@@ -206,7 +205,6 @@ test_that("BTWS monthly factors close the published temperature statistics", {
                 amplitude * sin(2 * pi * (hours - 1) / 24)
         )
     }))
-    # }}}
     targets <- data.table::data.table(
         target_day = days,
         mean_delta = 2,

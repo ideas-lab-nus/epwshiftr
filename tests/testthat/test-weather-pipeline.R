@@ -3,7 +3,6 @@
 # pipeline_test__plan {{{
 pipeline_test__plan <- function(signal) {
     stages <- WEATHER_COMPONENT_STAGES
-    # lapply callback {{{
     components <- lapply(stages, function(stage) {
         if (identical(stage, "signal")) {
             return(signal)
@@ -15,19 +14,14 @@ pipeline_test__plan <- function(signal) {
             input_kinds = paste0(stage, "_input"),
             output_kinds = paste0(stage, "_output"),
             operations = stats::setNames(
-                # list callback {{{
                 list(function(...) NULL),
-                # }}}
                 operation
             )
         )
     })
-    # }}}
     names(components) <- stages
     records <- stats::setNames(
-        # lapply callback {{{
         lapply(components, function(component) component@name),
-        # }}}
         stages
     )
     inputs <- weather__new_inputs(
@@ -61,11 +55,9 @@ test_that("pipeline signal options reach the selected component", {
             evidence = "published",
             references = "doi:10.1000/pipeline-test"
         )),
-        # apply_group {{{
         apply_group = function(inputs, settings, key) {
             inputs$model_future + settings$tas$offset
         }
-        # }}}
     )
     plan <- pipeline_test__plan(signal)
     groups <- list(signal__group(

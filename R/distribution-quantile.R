@@ -94,11 +94,9 @@ quantile__group_seed <- function(seed, key, variable) {
             variable,
             unlist(
                 Map(
-                    # Map callback {{{
                     function(name, value) {
                         paste0(name, "=", as.character(value))
                     },
-                    # }}}
                     names(key),
                     key
                 ),

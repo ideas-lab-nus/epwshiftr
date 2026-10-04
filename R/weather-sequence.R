@@ -333,9 +333,7 @@ DirectModelSequenceMember <- S7::new_class(
         }
         group_ids <- vapply(
             self@series,
-            # vapply callback {{{
             function(item) item@group_id,
-            # }}}
             character(1L)
         )
         error <- sequence__unique_values_error(
@@ -403,9 +401,7 @@ DirectModelSequence <- S7::new_class(
         }
         years <- vapply(
             self@members,
-            # vapply callback {{{
             function(member) member@weather_year,
-            # }}}
             integer(1L)
         )
         error <- sequence__ordered_years_error(
@@ -417,16 +413,12 @@ DirectModelSequence <- S7::new_class(
         }
         sequence_ids <- vapply(
             self@members,
-            # vapply callback {{{
             function(member) member@sequence_id,
-            # }}}
             character(1L)
         )
         calendars <- vapply(
             self@members,
-            # vapply callback {{{
             function(member) member@calendar,
-            # }}}
             character(1L)
         )
         error <- sequence__shared_values_error(
@@ -443,17 +435,13 @@ DirectModelSequence <- S7::new_class(
         if (!is.null(error)) {
             return(error)
         }
-        # lapply callback {{{
         group_ids <- lapply(self@members, function(member) {
             sort(vapply(
                 member@series,
-                # vapply callback {{{
                 function(item) item@group_id,
-                # }}}
                 character(1L)
             ))
         })
-        # }}}
         error <- sequence__shared_sets_error(
             group_ids,
             "Every direct-model year must contain the same signal groups."
@@ -521,9 +509,7 @@ sequence__slice_adjusted <- function(adjusted, year) {
 sequence__direct_member <- function(series, weather_year, calendar) {
     group_ids <- vapply(
         series,
-        # vapply callback {{{
         function(item) item@group_id,
-        # }}}
         character(1L)
     )
     DirectModelSequenceMember(
@@ -593,7 +579,6 @@ sequence__direct_model_generate <- function(
             "Direct model realization received duplicate signal-group identities."
         )
     }
-    # lapply callback {{{
     year_sets <- lapply(data@values, function(adjusted) {
         if (!identical(adjusted@output_role, "model_future")) {
             cli::cli_abort(
@@ -608,7 +593,6 @@ sequence__direct_model_generate <- function(
         }
         sort(unique(as.integer(adjusted@data[["cf_year"]])))
     })
-    # }}}
     if (
         !all(vapply(
             year_sets[-1L],
@@ -623,9 +607,7 @@ sequence__direct_model_generate <- function(
     }
     calendars <- vapply(
         data@values,
-        # vapply callback {{{
         function(adjusted) unique(adjusted@data[["cf_calendar"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(calendars)) != 1L) {
@@ -635,16 +617,12 @@ sequence__direct_model_generate <- function(
     }
     frequencies <- vapply(
         data@values,
-        # vapply callback {{{
         function(adjusted) adjusted@frequency,
-        # }}}
         character(1L)
     )
     time_steps <- vapply(
         data@values,
-        # vapply callback {{{
         function(adjusted) adjusted@time_step_seconds,
-        # }}}
         numeric(1L)
     )
     if (
@@ -657,9 +635,7 @@ sequence__direct_model_generate <- function(
     }
 
     years <- year_sets[[1L]]
-    # lapply callback {{{
     members <- lapply(years, function(year) {
-        # lapply callback {{{
         series <- lapply(seq_along(data@values), function(index) {
             DirectModelSeries(
                 group_id = group_ids[[index]],
@@ -671,10 +647,8 @@ sequence__direct_model_generate <- function(
                 )
             )
         })
-        # }}}
         sequence__direct_member(series, year, calendars[[1L]])
     })
-    # }}}
     DirectModelSequence(
         members = members,
         frequency = frequencies[[1L]],
@@ -859,7 +833,6 @@ WeatherSequenceResult <- S7::new_class(
         ) {
             return("A `multi_year` result must contain at least two members.")
         }
-        # vapply callback {{{
         keys <- vapply(
             self@members,
             function(member) {
@@ -867,7 +840,6 @@ WeatherSequenceResult <- S7::new_class(
             },
             character(1L)
         )
-        # }}}
         error <- sequence__unique_values_error(
             keys,
             "Sequence member `sequence_id` and `weather_year` pairs must be unique."
@@ -877,7 +849,6 @@ WeatherSequenceResult <- S7::new_class(
         }
         template <- self@epw$data()
         required <- setdiff(names(template), "datetime")
-        # vapply callback {{{
         valid_data <- vapply(
             self@members,
             function(member) {
@@ -886,7 +857,6 @@ WeatherSequenceResult <- S7::new_class(
             },
             logical(1L)
         )
-        # }}}
         if (!all(valid_data)) {
             return(
                 "Every sequence member must contain a complete baseline-shaped EPW year."
@@ -997,7 +967,6 @@ sequence__epw_output_write <- function(
 
     # Preserve every source-model year as an independently addressable member
     # while retaining physical and calendar provenance from the earlier stages.
-    # lapply callback {{{
     members <- lapply(data@members, function(member) {
         sequence__member(
             data = member@data,
@@ -1007,13 +976,10 @@ sequence__epw_output_write <- function(
             provenance = member@provenance
         )
     })
-    # }}}
     diagnostics <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(data@members, function(member) {
             data.table::as.data.table(member@diagnostics)
         }),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -1098,7 +1064,6 @@ sequence__records <- function(result) {
             "A weather backend result must be an {.cls epw_morph_result} or {.cls WeatherSequenceResult}."
         )
     }
-    # lapply callback {{{
     lapply(result@members, function(member) {
         list(
             output_type = result@output_type,
@@ -1113,7 +1078,6 @@ sequence__records <- function(result) {
             data = data.table::as.data.table(data.table::copy(member@data))
         )
     })
-    # }}}
 }
 # }}}
 

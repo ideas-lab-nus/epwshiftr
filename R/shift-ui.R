@@ -119,9 +119,7 @@ shift_ui__ui_at_least <- function(ui, level = c("normal", "detail", "debug")) {
 # shift_ui__ui_width {{{
 shift_ui__ui_width <- function(width = NULL) {
     if (is.null(width)) {
-        # error {{{
         width <- tryCatch(cli::console_width(), error = function(e) 80L)
-        # }}}
     }
     width <- suppressWarnings(as.integer(width[[1L]]))
     if (!length(width) || is.na(width) || width < 1L) 80L else width

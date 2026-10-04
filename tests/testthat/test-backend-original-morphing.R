@@ -60,7 +60,6 @@ enhanced_test__legacy_climate <- function() {
         clt = list(units = "%", value = 65 + 5 * sin(phase)),
         pr = list(units = "kg m-2 s-1", value = 2e-5 + 2e-6 * cos(phase))
     )
-    # lapply callback {{{
     data.table::rbindlist(lapply(names(spec), function(variable_id) {
         data.table::data.table(
             activity_drs = "ScenarioMIP",
@@ -80,7 +79,6 @@ enhanced_test__legacy_climate <- function() {
             value = spec[[variable_id]]$value
         )
     }))
-    # }}}
 }
 # }}}
 
@@ -93,7 +91,6 @@ enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
         EPW_FILE_COLUMNS,
         with = FALSE
     ]
-    # lapply callback {{{
     encoded <- lapply(weather, function(value) {
         missing <- is.na(value)
         if (is.numeric(value) || is.integer(value)) {
@@ -109,7 +106,6 @@ enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
         output[missing] <- "<NA>"
         output
     })
-    # }}}
     rows <- do.call(paste, c(encoded, sep = "\u001f"))
     checksum_bytes(charToRaw(paste(rows, collapse = "\n")), "sha256")
 }
@@ -125,7 +121,6 @@ original_morphing_test__canonical_column <- function(
     if (is.list(value) && !is.data.frame(value)) {
         return(vapply(
             value,
-            # vapply callback {{{
             function(item) {
                 jsonlite::toJSON(
                     item,
@@ -134,7 +129,6 @@ original_morphing_test__canonical_column <- function(
                     na = "string"
                 )
             },
-            # }}}
             character(1L)
         ))
     }
@@ -189,7 +183,6 @@ original_morphing_test__table_behavior <- function(
     data <- data.table::as.data.table(data)
     schema <- vapply(
         seq_along(data),
-        # vapply callback {{{
         function(index) {
             value <- data[[index]]
             details <- character()
@@ -223,7 +216,6 @@ original_morphing_test__table_behavior <- function(
                 suffix
             )
         },
-        # }}}
         character(1L)
     )
     encoded <- lapply(
@@ -242,11 +234,9 @@ original_morphing_test__table_behavior <- function(
         names(data),
         vapply(
             data,
-            # vapply callback {{{
             function(value) {
                 paste(class(value), collapse = "/")
             },
-            # }}}
             character(1L)
         ),
         rows
@@ -352,7 +342,6 @@ enhanced_test__change_climate <- function(reference = FALSE) {
         snd = list("m", 0.1 + 0.02 * offset + phase * 0)
     )
     year <- if (isTRUE(reference)) 1995L else 2060L
-    # lapply callback {{{
     data.table::rbindlist(lapply(names(spec), function(variable_id) {
         data.table::data.table(
             activity_drs = if (isTRUE(reference)) "CMIP" else "ScenarioMIP",
@@ -372,7 +361,6 @@ enhanced_test__change_climate <- function(reference = FALSE) {
             value = spec[[variable_id]][[2L]]
         )
     }))
-    # }}}
 }
 # }}}
 
@@ -1141,7 +1129,6 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
-    # file_doc {{{
     file_doc <- function(path, variable_id) {
         data.frame(
             id = sprintf("%s|dataset", basename(path)),
@@ -1177,8 +1164,6 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
             check.names = FALSE
         )
     }
-    # }}}
-    # file_result {{{
     file_result <- function(docs) {
         params <- query_param__as_store(list(
             project = "CMIP6",
@@ -1195,7 +1180,6 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
             result = response
         )
     }
-    # }}}
 
     paths <- c(tas = tempfile(fileext = ".nc"), snd = tempfile(fileext = ".nc"))
     write_local_cmip6_netcdf_fixture(paths[["tas"]], 2060L, "tas")
@@ -1210,7 +1194,6 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
         grid_label = c("gn", "gr", "gr", "gn")
     )
     docs <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(seq_len(nrow(combinations)), function(i) {
             variable_id <- combinations$variable_id[[i]]
             row <- file_doc(paths[[variable_id]], variable_id)
@@ -1232,7 +1215,6 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
             row$title <- paste0(suffix, ".nc")
             row
         }),
-        # }}}
         fill = TRUE
     )
 
@@ -1646,7 +1628,6 @@ test_that("Original morphing combined temperature uses average daily EPW range",
         minute = 60L,
         dry_bulb_temperature = c(10, 20, 0, 30)
     )
-    # climate {{{
     climate <- function(value, variable_id) {
         data.table::data.table(
             activity_drs = "ScenarioMIP",
@@ -1664,7 +1645,6 @@ test_that("Original morphing combined temperature uses average daily EPW range",
             interval = "future"
         )
     }
-    # }}}
     future_mean <- climate(302, "tas")
     reference_mean <- climate(300, "tas")
     future_max <- climate(310, "tasmax")

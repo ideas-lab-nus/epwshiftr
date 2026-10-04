@@ -7,7 +7,6 @@ daily_test__temperature_source <- function(
     maximum_shift = 0,
     include_extrema = TRUE
 ) {
-    # lapply callback {{{
     data.table::rbindlist(lapply(names(calendar_days), function(calendar) {
         phase <- daily__phase_grid(calendar_days[[calendar]])
         mean_value <- 15 + 7 * sin(2 * pi * phase)
@@ -18,7 +17,6 @@ daily_test__temperature_source <- function(
             values$tasmin <- mean_value - 4 + minimum_shift
             values$tasmax <- mean_value + 5 + maximum_shift
         }
-        # lapply callback {{{
         data.table::rbindlist(lapply(names(values), function(variable_id) {
             data.table::data.table(
                 calendar = calendar,
@@ -27,9 +25,7 @@ daily_test__temperature_source <- function(
                 value = values[[variable_id]]
             )
         }))
-        # }}}
     }))
-    # }}}
 }
 # }}}
 

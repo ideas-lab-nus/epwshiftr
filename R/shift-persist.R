@@ -489,11 +489,9 @@ shift_persist__stage_from_ref <- function(ref) {
     } else {
         as.character(ref$store_path)
     }
-    # lapply callback {{{
     ids <- lapply(shift_stage__coalesce(ref$ids, list()), function(value) {
         unlist(value, use.names = FALSE)
     })
-    # }}}
     meta <- shift_stage__coalesce(ref$meta, list())
     if (identical(stage, "request")) {
         return(do.call(shift_request, meta))

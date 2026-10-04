@@ -75,13 +75,11 @@ reanalysis__variables <- function(spec, recipe) {
     # alternative, so satisfiability must be checked before applying the
     # registry's deterministic first-alternative preference.
     candidates <- Filter(
-        # Filter callback {{{
         function(variables) {
             variables <- as.character(variables)
             all(variables %in% supported) &&
                 (is.null(spec@variables) || all(variables %in% spec@variables))
         },
-        # }}}
         alternatives
     )
     selected <- if (length(candidates)) {
@@ -162,11 +160,9 @@ era__netcdf_variables <- function(handle) {
     }
     vapply(
         0:(info$nvars - 1L),
-        # vapply callback {{{
         function(id) {
             RNetCDF::var.inq.nc(handle, id)$name
         },
-        # }}}
         character(1L)
     )
 }
@@ -178,9 +174,7 @@ era__netcdf_variables <- function(handle) {
 era__netcdf_attribute <- function(handle, variable, attribute, default = NULL) {
     tryCatch(
         RNetCDF::att.get.nc(handle, variable, attribute),
-        # error {{{
         error = function(error) default
-        # }}}
     )
 }
 # }}}
@@ -253,19 +247,15 @@ era__read_netcdf <- function(path, source_variable, site) {
     }
     data_name <- data_name[[1L]]
     info <- RNetCDF::var.inq.nc(handle, data_name)
-    # lapply callback {{{
     dimensions <- lapply(info$dimids, function(id) {
         RNetCDF::dim.inq.nc(handle, id)
     })
-    # }}}
     dimension_names <- vapply(dimensions, `[[`, character(1L), "name")
     dimension_lengths <- vapply(
         dimensions,
-        # vapply callback {{{
         function(value) {
             as.integer(value$length)
         },
-        # }}}
         integer(1L)
     )
     values <- RNetCDF::var.get.nc(handle, data_name, collapse = FALSE)
@@ -436,16 +426,13 @@ era__convert_source <- function(source, source_variable) {
 # wind variables required by weather transformations.
 # era__canonical_hourly {{{
 era__canonical_hourly <- function(raw, variables) {
-    # lapply callback {{{
     converted <- lapply(names(raw), function(variable) {
         data <- era__convert_source(raw[[variable]], variable)
         data.table::setnames(data, "value", variable)
         data[, c("utc_time", variable), with = FALSE]
     })
-    # }}}
     names(converted) <- names(raw)
     common <- Reduce(
-        # Reduce callback {{{
         function(left, right) {
             merge(
                 left,
@@ -456,7 +443,6 @@ era__canonical_hourly <- function(raw, variables) {
                 suffixes = c("", ".source")
             )
         },
-        # }}}
         converted
     )
     if (!nrow(common)) {
@@ -660,7 +646,6 @@ era__aggregate_variable <- function(
 era__normalize <- function(raw, variables, frequencies, site, years) {
     hourly <- era__canonical_hourly(raw, variables)
     timezone <- era__site_timezone(site)
-    # lapply callback {{{
     rows <- lapply(variables, function(variable) {
         era__aggregate_variable(
             hourly$data,
@@ -672,7 +657,6 @@ era__normalize <- function(raw, variables, frequencies, site, years) {
             lat = site@lat
         )
     })
-    # }}}
     list(
         data = data.table::rbindlist(rows, use.names = TRUE, fill = TRUE),
         grid = hourly$grid,
@@ -701,11 +685,9 @@ reanalysis__identities <- function(spec, site, variables, frequencies, access) {
     file_keys <- stats::setNames(
         vapply(
             variables,
-            # vapply callback {{{
             function(variable) {
                 store__hash("reanalysis-file-v1", request_id, variable)
             },
-            # }}}
             character(1L)
         ),
         variables
@@ -713,7 +695,6 @@ reanalysis__identities <- function(spec, site, variables, frequencies, access) {
     plan_ids <- stats::setNames(
         vapply(
             variables,
-            # vapply callback {{{
             function(variable) {
                 store__hash(
                     "reanalysis-plan-v1",
@@ -723,7 +704,6 @@ reanalysis__identities <- function(spec, site, variables, frequencies, access) {
                     frequencies[[variable]]
                 )
             },
-            # }}}
             character(1L)
         ),
         variables
@@ -747,9 +727,7 @@ reanalysis__existing_climate <- function(
 ) {
     coverage <- tryCatch(
         store$coverage(plan_id = unname(identities$plan_ids)),
-        # error {{{
         error = function(error) data.table::data.table()
-        # }}}
     )
     if (
         nrow(coverage) != length(identities$plan_ids) ||
@@ -881,9 +859,7 @@ reanalysis__persist <- function(
                 access = access,
                 request_ids = unname(vapply(
                     raw[source_variables],
-                    # vapply callback {{{
                     function(value) as.character(value$request_id),
-                    # }}}
                     character(1L)
                 )),
                 source_variables = source_variables,
@@ -981,9 +957,7 @@ reanalysis__persist <- function(
         plan_ids <- c(plan_ids, plan$plan_id)
         jobs[[variable]] <- unname(vapply(
             raw[source_variables],
-            # vapply callback {{{
             function(value) as.character(value$request_id),
-            # }}}
             character(1L)
         ))
     }

@@ -25,13 +25,11 @@ ShiftFrameRenderer <- R6::R6Class(
             }
             private$output <- output
             private$backend_value <- backend
-            # shift_stage__coalesce callback {{{
             private$writer <- shift_stage__coalesce(writer, function(text) {
                 cat(text, file = output, sep = "")
                 flush.console()
                 invisible(NULL)
             })
-            # }}}
         },
         # }}}
 
@@ -229,9 +227,7 @@ ShiftFrameRenderer <- R6::R6Class(
                     private$writer(text)
                     TRUE
                 },
-                # error {{{
                 error = function(e) FALSE
-                # }}}
             )
         },
         # }}}
@@ -337,9 +333,7 @@ ShiftFrameRenderer <- R6::R6Class(
                         auto_terminate = FALSE,
                         .auto_close = FALSE
                     ),
-                    # error {{{
                     error = function(e) NULL
-                    # }}}
                 )
             }
             if (!length(private$compact_id)) {
@@ -355,9 +349,7 @@ ShiftFrameRenderer <- R6::R6Class(
                     )
                     TRUE
                 },
-                # error {{{
                 error = function(e) FALSE
-                # }}}
             )
             private$active_value <- isTRUE(ok)
             ok
@@ -422,18 +414,14 @@ shift_tui__ui_renderer_backend <- function(
 ) {
     ansi <- tryCatch(
         isTRUE(base::isatty(output)) && isTRUE(cli::is_ansi_tty(output)),
-        # error {{{
         error = function(e) FALSE
-        # }}}
     )
     if (isTRUE(ansi)) {
         return("frame")
     }
     dynamic <- tryCatch(
         isTRUE(cli::is_dynamic_tty(output)),
-        # error {{{
         error = function(e) FALSE
-        # }}}
     )
     if (isTRUE(dynamic)) "compact" else "log"
 }

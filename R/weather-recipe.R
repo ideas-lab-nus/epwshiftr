@@ -146,14 +146,12 @@ WeatherRecipeSpec <- S7::new_class(
         }
         valid_components <- vapply(
             self@components,
-            # vapply callback {{{
             function(component) {
                 is.character(component) &&
                     length(component) == 1L &&
                     !is.na(component) &&
                     grepl("^[a-z][a-z0-9_]*$", component)
             },
-            # }}}
             logical(1L)
         )
         if (!all(valid_components)) {
@@ -330,12 +328,10 @@ recipe__spec <- function(
             "{.arg source} must contain {.field type} and {.field citation}."
         )
     }
-    # lapply callback {{{
     source <- lapply(source, function(value) {
         checkmate::assert_character(value, any.missing = FALSE)
         as.character(value)
     })
-    # }}}
     for (property in c("type", "citation")) {
         checkmate::assert_character(
             source[[property]],
@@ -571,7 +567,6 @@ recipe__daily_adjustment_inputs <- function() {
 # recipe__daily_adjustment_specs {{{
 recipe__daily_adjustment_specs <- function() {
     inputs <- recipe__daily_adjustment_inputs()
-    # lapply callback {{{
     specs <- lapply(names(DAILY_ADJUSTMENT_METHOD_COMPONENTS), function(key) {
         method_name <- DAILY_ADJUSTMENT_METHOD_COMPONENTS[[key]]
         method <- method__get(method_name)
@@ -628,10 +623,7 @@ recipe__daily_adjustment_specs <- function() {
             status = "experimental"
         )
     })
-    # }}}
-    # vapply callback {{{
     names(specs) <- vapply(specs, function(spec) spec@name, character(1L))
-    # }}}
     specs
 }
 # }}}
@@ -1319,11 +1311,9 @@ recipe__validate_registration <- function(spec) {
                 "Recipe {.val {spec@name}} components do not match backend {.val {spec@backend}}."
             )
         }
-        # lapply callback {{{
         components <- lapply(WEATHER_COMPONENT_STAGES, function(stage) {
             component__get(stage, spec@components[[stage]])
         })
-        # }}}
         for (index in seq_len(length(components) - 1L)) {
             component__assert_compatible(
                 components[[index]],
@@ -1471,7 +1461,6 @@ recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
             provenance = list()
         ))
     }
-    # lapply callback {{{
     data.table::rbindlist(
         lapply(names, function(name) {
             spec <- get(name, envir = registry, inherits = FALSE)
@@ -1512,7 +1501,6 @@ recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
         use.names = TRUE,
         fill = TRUE
     )
-    # }}}
 }
 # }}}
 
@@ -1561,9 +1549,7 @@ recipe__frequency_choices <- function(
     requirements <- c(spec@required_inputs, spec@optional_inputs)
     choices <- lapply(
         intersect(roles, names(requirements)),
-        # lapply callback {{{
         function(role) requirements[[role]]@frequencies
-        # }}}
     )
     choices <- Filter(length, choices)
     if (!length(choices)) {
@@ -1595,9 +1581,7 @@ recipe__variable_frequencies <- function(
     requirements <- c(spec@required_inputs, spec@optional_inputs)
     mappings <- lapply(
         intersect(roles, names(requirements)),
-        # lapply callback {{{
         function(role) requirements[[role]]@variable_frequencies
-        # }}}
     )
     weather__combine_variable_frequencies(
         mappings,

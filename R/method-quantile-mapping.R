@@ -71,7 +71,6 @@ qm__profiles <- function() {
         tasmax = qm__default_settings(c(-Inf, Inf))
     )
     variables <- c(QM_PUBLISHED_VARIABLES, QM_EXPERIMENTAL_VARIABLES)
-    # lapply callback {{{
     lapply(variables, function(variable) {
         published <- variable %in% QM_PUBLISHED_VARIABLES
         signal__variable_profile(
@@ -90,7 +89,6 @@ qm__profiles <- function() {
             )
         )
     })
-    # }}}
 }
 # }}}
 
@@ -191,11 +189,9 @@ qm__inputs <- function(inputs, variable, distribution_model) {
             "Quantile Mapping requires observed, historical-model, and future-model role payloads."
         )
     }
-    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
-    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -212,9 +208,7 @@ qm__inputs <- function(inputs, variable, distribution_model) {
     }
     units <- vapply(
         series,
-        # vapply callback {{{
         function(data) unique(data[["units"]]),
-        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -226,9 +220,7 @@ qm__inputs <- function(inputs, variable, distribution_model) {
         identical(distribution_model, "precipitation_hurdle") &&
             any(vapply(
                 series,
-                # vapply callback {{{
                 function(data) any(data[["value"]] < 0),
-                # }}}
                 logical(1L)
             ))
     ) {

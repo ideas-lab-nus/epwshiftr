@@ -206,12 +206,10 @@ temporal__group_columns <- function(data, input, context, role) {
 temporal__group_label <- function(data, group_columns) {
     values <- vapply(
         group_columns,
-        # vapply callback {{{
         function(column) {
             value <- data[[column]][[1L]]
             if (is.na(value)) "<NA>" else as.character(value)
         },
-        # }}}
         character(1L)
     )
     paste(sprintf("%s=%s", group_columns, values), collapse = ",")

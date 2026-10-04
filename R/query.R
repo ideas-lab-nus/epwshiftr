@@ -133,7 +133,6 @@ cache__read_json <- function(
             curl::handle_setopt(
                 handle,
                 noprogress = FALSE,
-                # progressfunction {{{
                 progressfunction = function(down, up) {
                     progress_callback(list(
                         state = "transfer",
@@ -143,15 +142,12 @@ cache__read_json <- function(
                     ))
                     TRUE
                 }
-                # }}}
             )
             progress_callback(list(state = "started", url = url))
         }
         fetched <- tryCatch(
             curl::curl_fetch_memory(url, handle = handle),
-            # error {{{
             error = function(e) e
-            # }}}
         )
         if (inherits(fetched, "error")) {
             json_source <- fetched
@@ -173,12 +169,8 @@ cache__read_json <- function(
     } else {
         tryCatch(
             jsonlite::fromJSON(json_source, bigint_as_char = TRUE, ...),
-            # warning {{{
             warning = function(w) w,
-            # }}}
-            # error {{{
             error = function(e) e
-            # }}}
         )
     }
     timestamp <- Sys.time()
@@ -639,7 +631,6 @@ EsgQuery <- R6::R6Class(
                 ))
             }
 
-            # vapply callback {{{
             vapply(shards_parts, FUN.VALUE = "", function(shard) {
                 shard <- shard[-1L]
                 # replace localhost
@@ -662,7 +653,6 @@ EsgQuery <- R6::R6Class(
                     shard[[3L]]
                 )
             })
-            # }}}
         },
         # }}}
         # list_values
@@ -1409,7 +1399,6 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(progress)
             dots <- eval(substitute(alist(...)))
 
-            # collect_dataset {{{
             collect_dataset <- function(
                 all,
                 limit,
@@ -1449,7 +1438,6 @@ EsgQuery <- R6::R6Class(
                     context = result$context
                 )
             }
-            # }}}
 
             if (identical(type, "Dataset")) {
                 if (length(dots)) {
@@ -1896,9 +1884,7 @@ query__build <- function(index_node, params, type = "search") {
 
     is_negate <- vapply(
         params,
-        # vapply callback {{{
         function(param) isTRUE(query_param__negate(param)),
-        # }}}
         logical(1L)
     )
     # facet queries without any negated inputs
@@ -1906,9 +1892,7 @@ query__build <- function(index_node, params, type = "search") {
         rendered <- c(
             vapply(
                 names(params),
-                # vapply callback {{{
                 function(name) query_param__render(params[[name]], name),
-                # }}}
                 FUN.VALUE = ""
             ),
             if (length(query_clauses)) {
@@ -1930,9 +1914,7 @@ query__build <- function(index_node, params, type = "search") {
     facets <- paste(
         vapply(
             names(params[!is_negate]),
-            # vapply callback {{{
             function(name) query_param__render(params[[name]], name),
-            # }}}
             FUN.VALUE = ""
         ),
         collapse = "&"
@@ -1940,7 +1922,6 @@ query__build <- function(index_node, params, type = "search") {
     negate_query <- paste(
         vapply(
             names(params[is_negate]),
-            # vapply callback {{{
             function(name) {
                 param <- params[[name]]
                 value <- query__glob_value(query_param__value(param))
@@ -1951,7 +1932,6 @@ query__build <- function(index_node, params, type = "search") {
                 }
                 sprintf("NOT (%s:%s)", name, value)
             },
-            # }}}
             FUN.VALUE = ""
         ),
         collapse = " AND "
@@ -1992,9 +1972,7 @@ query__dict_project <- function(store) {
             dict__assert_project(project)
             project
         },
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
 }
 # }}}
@@ -2012,9 +1990,7 @@ query__dict_load <- function(project) {
             suppressWarnings(suppressMessages(dict$load()))
             if (dict$has_data()) dict else NULL
         },
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
 }
 # }}}
@@ -2038,9 +2014,7 @@ query__dict_args <- function(store, dict) {
             next
         }
 
-        # error {{{
         field <- tryCatch(dict__field(name, dict), error = function(e) NULL)
-        # }}}
         if (is.null(field)) {
             next
         }
@@ -2063,7 +2037,6 @@ query__dict_warning <- function(invalid, n = 5L) {
     n <- min(n, nrow(invalid))
     lines <- vapply(
         seq_len(n),
-        # vapply callback {{{
         function(i) {
             msg <- invalid$message[[i]]
             suggestions <- invalid$suggestions[[i]]
@@ -2076,7 +2049,6 @@ query__dict_warning <- function(invalid, n = 5L) {
             }
             sprintf("- %s", msg)
         },
-        # }}}
         character(1L)
     )
 
@@ -2118,9 +2090,7 @@ query__warn_dict <- function(params) {
             suggest = TRUE,
             relationship = "any"
         ),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     if (is.null(result) || !nrow(result)) {
         return(invisible(result))
@@ -2258,7 +2228,6 @@ query__collect <- function(
     docs <- response$response$docs
     doc_pages <- list(docs)
 
-    # warn_no_progress {{{
     warn_no_progress <- function(offset) {
         cli::cli_warn(c(
             "!" = "ESGF pagination stopped before all reported records were collected.",
@@ -2267,7 +2236,6 @@ query__collect <- function(
         ))
         invisible(NULL)
     }
-    # }}}
 
     # check if the total number is less that the limit
     total <- response$response$numFound

@@ -89,7 +89,6 @@ test_that("shared adjusted result validation retains diagnostic contracts", {
         output_role = "model_future",
         transformation = "test_adjustment"
     )
-    # validate_daily {{{
     validate_daily <- function(value, output_role = "model_future") {
         signal__validate_adjusted_result(
             value,
@@ -99,7 +98,6 @@ test_that("shared adjusted result validation retains diagnostic contracts", {
             "Test method"
         )
     }
-    # }}}
 
     expect_true(validate_daily(daily))
     expect_identical(

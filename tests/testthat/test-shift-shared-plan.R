@@ -282,7 +282,6 @@ test_that("child demands retain site and historical source roles", {
         shift_site("Harbin", lon = 126.6, lat = 45.8, epw = epw),
         shift_site("Guangzhou", lon = 113.3, lat = 23.1, epw = epw)
     )
-    # lapply callback {{{
     children <- lapply(sites, function(site) {
         child <- shift_plan(
             request,
@@ -295,7 +294,6 @@ test_that("child demands retain site and historical source roles", {
         child@meta$climate <- climate
         child
     })
-    # }}}
     manifest <- data.table::data.table(
         child_key = c("Harbin--daily", "Guangzhou--daily"),
         site_id = c("Harbin", "Guangzhou"),
@@ -516,11 +514,9 @@ test_that("batch windows seed child caches and resume verified native reads", {
     # Recovery reads only the verified windows and reconstructs the missing
     # site cache without issuing another source-value request.
     testthat::local_mocked_bindings(
-        # shift_batch_read__read_acquisition {{{
         shift_batch_read__read_acquisition = function(...) {
             stop("Unexpected source-value read")
         }
-        # }}}
     )
     expect_gt(
         shift_batch_window__prefetch_acquisition(
@@ -633,7 +629,6 @@ test_that("partial site recovery excludes cached consumers", {
     original_read <- shift_batch_read__read_acquisition
     counts <- integer()
     testthat::local_mocked_bindings(
-        # shift_batch_read__read_acquisition {{{
         shift_batch_read__read_acquisition = function(
             dataset,
             acquisition,
@@ -642,7 +637,6 @@ test_that("partial site recovery excludes cached consumers", {
             counts <<- c(counts, nrow(consumers))
             original_read(dataset, acquisition, consumers)
         }
-        # }}}
     )
     expect_equal(
         shift_batch_window__prefetch_acquisition(root, acquisition, consumers),
@@ -731,12 +725,10 @@ test_that("shared acquisition partitions large site collections", {
     original_dataset <- EsgDataset
     opens <- 0L
     testthat::local_mocked_bindings(
-        # new {{{
         EsgDataset = list(new = function(...) {
             opens <<- opens + 1L
             original_dataset$new(...)
         })
-        # }}}
     )
     expect_equal(
         shift_batch_window__prefetch_acquisition(

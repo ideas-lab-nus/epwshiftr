@@ -89,9 +89,7 @@ dict__vocab_times <- function(vocab) {
         return(NULL)
     }
 
-    # lapply callback {{{
     out <- lapply(vocab, function(cv) attr(cv, "version", TRUE)$CV_modified)
-    # }}}
     if (!is.null(vocab$drs)) {
         out <- c(
             list(
@@ -344,14 +342,12 @@ dict__payload_cols <- function(payload) {
     if (is.null(payload) || is.null(payload$columns)) {
         return(character())
     }
-    # vapply callback {{{
     vapply(
         payload$columns,
         function(col) as.character(col$name),
         character(1L),
         USE.NAMES = FALSE
     )
-    # }}}
 }
 # }}}
 
@@ -558,11 +554,9 @@ dict__enc_table <- function(x, include_class = TRUE) {
 
 # dict__cols {{{
 dict__cols <- function(x) {
-    # lapply callback {{{
     lapply(names(x), function(col) {
         list(name = col, type = dict__col_type(x[[col]]))
     })
-    # }}}
 }
 # }}}
 
@@ -599,17 +593,13 @@ dict__enc_rows <- function(x) {
         return(list())
     }
 
-    # lapply callback {{{
     lapply(seq_len(nrow(x)), function(i) {
-        # lapply callback {{{
         row <- lapply(names(x), function(col) {
             dict__enc(dict__cell(x[[col]], i))
         })
-        # }}}
         names(row) <- names(x)
         row
     })
-    # }}}
 }
 # }}}
 
@@ -630,9 +620,7 @@ dict__dec_vocab <- function(vocab) {
         return(NULL)
     }
 
-    # lapply callback {{{
     out <- lapply(names(vocab), function(nm) dict__dec_cv(nm, vocab[[nm]]))
-    # }}}
     names(out) <- names(vocab)
     out
 }
@@ -703,15 +691,11 @@ dict__dec_table <- function(payload, class = NULL) {
 
     columns <- dict__dec_cols(payload$columns)
     rows <- payload$rows
-    # lapply callback {{{
     values <- lapply(columns$name, function(col) {
-        # lapply callback {{{
         lapply(rows, function(row) {
             if (col %in% names(row)) row[[col]] else NULL
         })
-        # }}}
     })
-    # }}}
     names(values) <- columns$name
 
     for (i in seq_len(nrow(columns))) {
@@ -734,14 +718,12 @@ dict__dec_cols <- function(columns) {
         return(data.table::data.table(name = character(), type = character()))
     }
 
-    # lapply callback {{{
     data.table::rbindlist(lapply(columns, function(col) {
         data.table::data.table(
             name = as.character(col$name),
             type = as.character(col$type)
         )
     }))
-    # }}}
 }
 # }}}
 

@@ -200,9 +200,7 @@ epwphys__candidate_error <- function(values, allowed, rows, label) {
     }
     invalid <- names(values)[vapply(
         values,
-        # vapply callback {{{
         function(value) length(value) != rows,
-        # }}}
         logical(1L)
     )]
     if (length(invalid)) {
@@ -1247,13 +1245,11 @@ epwphys__apply_groups <- function(
         # Use an explicit character-column selection so package checks do not
         # depend on data.table's `..` lookup in this internal adapter.
         interaction(
-            # lapply callback {{{
             lapply(weather[, group_columns, with = FALSE], function(value) {
                 value <- as.character(value)
                 value[is.na(value)] <- "<NA>"
                 value
             }),
-            # }}}
             drop = TRUE,
             lex.order = TRUE
         )
@@ -1261,7 +1257,6 @@ epwphys__apply_groups <- function(
         factor(rep.int("case", nrow(weather)))
     }
     rows <- split(seq_len(nrow(weather)), indices)
-    # lapply callback {{{
     results <- lapply(rows, function(index) {
         if (!is.null(expected_rows) && length(index) != expected_rows) {
             cli::cli_abort(
@@ -1273,13 +1268,10 @@ epwphys__apply_groups <- function(
             policy
         )
     })
-    # }}}
     output <- data.table::rbindlist(
-        # lapply callback {{{
         lapply(results, function(result) {
             result@weather
         }),
-        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -1292,9 +1284,7 @@ epwphys__apply_groups <- function(
 # Shared EPW location and interval-solar helpers
 # morpher__epw_location_numeric {{{
 morpher__epw_location_numeric <- function(epw, names, default = NA_real_) {
-    # error {{{
     loc <- tryCatch(epw$location(), error = function(e) NULL)
-    # }}}
     if (is.null(loc)) {
         return(default)
     }

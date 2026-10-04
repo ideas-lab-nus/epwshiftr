@@ -29,11 +29,9 @@
     DOWNLOADER_RUNTIME$source <- NULL
     DOWNLOADER_RUNTIME$offline <- cache__offline
     # Host logging policy is read lazily for each message.
-    # DOWNLOADER_RUNTIME$verbose {{{
     DOWNLOADER_RUNTIME$verbose <- function() {
         getOption("epwshiftr.verbose", FALSE)
     }
-    # }}}
     DOWNLOADER_RUNTIME$sync_store <- store__sync_download_job
     # Register standalone scientific components at load time so downstream
     # pipelines can resolve them without constructing a complete EPW recipe.

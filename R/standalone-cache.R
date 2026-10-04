@@ -249,20 +249,16 @@ DiskCache <- R6::R6Class(
 
             value <- tryCatch(
                 readRDS(path),
-                # error {{{
                 error = function(e) private$missing
-                # }}}
             )
 
             if (cache__missing(value)) {
                 return(value)
             }
 
-            # error {{{
             tryCatch(Sys.setFileTime(path, Sys.time()), error = function(e) {
                 NULL
             })
-            # }}}
             value
         },
         # }}}
@@ -402,7 +398,6 @@ DiskCache <- R6::R6Class(
 
             info_is_sorted <- FALSE
 
-            # ensure_sorted {{{
             ensure_sorted <- function() {
                 if (info_is_sorted) {
                     return()
@@ -415,7 +410,6 @@ DiskCache <- R6::R6Class(
                 ]
                 info_is_sorted <<- TRUE
             }
-            # }}}
 
             if (!is.infinite(private$max_age)) {
                 now <- Sys.time()
@@ -540,11 +534,9 @@ DiskCache <- R6::R6Class(
                         stop("Failed to rename temporary file.")
                     }
                 },
-                # error {{{
                 error = function(e) {
                     stop(sprintf("Failed to write to cache: %s", e$message))
                 }
-                # }}}
             )
         },
         # }}}
@@ -602,7 +594,6 @@ DiskCache <- R6::R6Class(
                         NULL
                     }
                 },
-                # error {{{
                 error = function(e) {
                     warning(
                         "Failed to load cache metadata. ",
@@ -610,7 +601,6 @@ DiskCache <- R6::R6Class(
                     )
                     NULL
                 }
-                # }}}
             )
 
             current <- list(
@@ -662,14 +652,12 @@ DiskCache <- R6::R6Class(
             if (to_write) {
                 tryCatch(
                     saveRDS(current, metadata),
-                    # error {{{
                     error = function(e) {
                         warning(
                             "Failed to save cache metadata. ",
                             conditionMessage(e)
                         )
                     }
-                    # }}}
                 )
             }
 

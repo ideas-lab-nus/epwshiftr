@@ -1,9 +1,30 @@
+# ---
+# repo: ideas-lab-nus/epwshiftr
+# file: standalone-downloader.R
+# last-updated: 2026-10-05
+# copyright: Copyright (c) 2019-2026 Hongyuan Jia and Adrian Chong
+# SPDX-License-Identifier: MIT
+# license: MIT
+# imports: [checkmate (>= 2.0.0), cli (>= 3.4.0), curl, duckdb, jsonlite, mirai, R6]
+# ---
+#
+# # Standalone Changelog
+#
+# ## 2026-10-05
+# - Publish the independently copyable Downloader and its local helpers.
+# - Include checksum verification, persistent manifests, resumable transfers,
+#   background jobs and independent asynchronous worker pools.
+# - Keep host cache policy and store synchronization optional.
+#
+# Import with usethis::use_standalone("ideas-lab-nus/epwshiftr", "downloader").
+# Package dependencies above are installed by the receiving project. No other
+# source files are required. Retain the MIT copyright and license when copying.
+#
 # This file is a copyable downloader module. It requires its explicitly qualified
 # R packages, but no other epwshiftr source file. Optional host integration is
 # supplied by the owning package after load; standalone defaults perform downloads.
 # Remember a sourced file for detached workers without serializing the caller's
 # environment. Installed packages resolve their own namespace at launch time.
-# DOWNLOADER_RUNTIME local callback {{{
 DOWNLOADER_RUNTIME <- local({
     runtime <- new.env(parent = emptyenv())
     runtime$source <- NULL
@@ -19,7 +40,6 @@ DOWNLOADER_RUNTIME <- local({
     }
     runtime
 })
-# }}}
 DOWNLOADER_RUNTIME$offline <- NULL
 DOWNLOADER_RUNTIME$verbose <- NULL
 DOWNLOADER_RUNTIME$sync_store <- NULL
@@ -267,14 +287,12 @@ downloader__manifest_acquire_lock <- function(
                 ),
                 silent = TRUE
             )
-            # return callback {{{
             return(function() {
                 if (dir.exists(lock_dir)) {
                     unlink(lock_dir, recursive = TRUE, force = TRUE)
                 }
                 invisible(NULL)
             })
-            # }}}
         }
 
         if (downloader__manifest_lock_stale(lock_dir, stale_after)) {
@@ -502,14 +520,12 @@ downloader__now <- function() {
 downloader__hash <- function(...) {
     values <- vapply(
         list(...),
-        # vapply callback {{{
         function(x) {
             if (is.null(x) || length(x) == 0L || all(is.na(x))) {
                 return("")
             }
             paste(as.character(x), collapse = "\r")
         },
-        # }}}
         character(1L)
     )
     downloader__checksum_bytes(
@@ -564,16 +580,12 @@ downloader__pid_alive <- function(pid) {
                 stdout = TRUE,
                 stderr = FALSE
             )),
-            # error {{{
             error = function(error) character()
-            # }}}
         )
         # CSV field positions are stable across Windows display languages.
         return(any(grepl(sprintf('^"[^"]*","%d",', pid), rows)))
     }
-    # error {{{
     out <- tryCatch(tools::pskill(pid, 0), error = function(e) FALSE)
-    # }}}
     isTRUE(out)
 }
 # }}}
@@ -584,9 +596,7 @@ downloader__pid_kill <- function(pid) {
     if (is.na(pid) || pid <= 0L || pid == Sys.getpid()) {
         return(FALSE)
     }
-    # error {{{
     tryCatch(tools::pskill(pid), error = function(e) FALSE)
-    # }}}
 }
 # }}}
 
@@ -649,14 +659,11 @@ downloader__as_df <- function(x) {
 
 # downloader__rbind_fill {{{
 downloader__rbind_fill <- function(rows) {
-    # vapply callback {{{
     rows <- rows[vapply(rows, function(x) !is.null(x) && nrow(x), logical(1L))]
-    # }}}
     if (!length(rows)) {
         return(data.frame())
     }
     cols <- unique(unlist(lapply(rows, names), use.names = FALSE))
-    # lapply callback {{{
     rows <- lapply(rows, function(row) {
         missing <- setdiff(cols, names(row))
         for (col in missing) {
@@ -664,7 +671,6 @@ downloader__rbind_fill <- function(rows) {
         }
         row[, cols, drop = FALSE]
     })
-    # }}}
     out <- do.call(rbind, rows)
     rownames(out) <- NULL
     out
@@ -1167,9 +1173,7 @@ downloader__disk_free_bytes <- function(path) {
     }
     out <- tryCatch(
         system2("df", c("-Pk", root), stdout = TRUE, stderr = FALSE),
-        # error {{{
         error = function(e) character()
-        # }}}
     )
     if (length(out) < 2L) {
         return(NA_real_)
@@ -1293,9 +1297,7 @@ downloader__resume_supported <- function(
     curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
     response <- tryCatch(
         curl::curl_fetch_memory(url, handle = handle),
-        # error {{{
         error = function(e) NULL
-        # }}}
     )
     if (
         is.null(response) || !identical(as.integer(response$status_code), 206L)
@@ -1431,9 +1433,7 @@ downloader__range_probe_url <- function(
     curl::handle_setopt(handle, failonerror = FALSE)
     response <- tryCatch(
         curl::curl_fetch_memory(url, handle = handle),
-        # error {{{
         error = function(e) e
-        # }}}
     )
     if (inherits(response, "error")) {
         return(list(
@@ -1479,14 +1479,11 @@ downloader__range_probe_url <- function(
 # downloader__worker_dependencies {{{
 downloader__worker_dependencies <- function() {
     # Normalize tabular worker inputs without requiring package helpers.
-    # as_df {{{
     as_df <- function(x) {
         as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE)
     }
-    # }}}
 
     # Read one usable scalar string from worker input or return a missing value.
-    # one_chr {{{
     one_chr <- function(x) {
         if (is.null(x) || !length(x)) {
             return(NA_character_)
@@ -1494,20 +1491,16 @@ downloader__worker_dependencies <- function() {
         value <- as.character(x[[1L]])
         if (is.na(value) || !nzchar(value)) NA_character_ else value
     }
-    # }}}
 
     # Normalize optional numeric transfer settings inside an isolated process.
-    # normalize_count {{{
     normalize_count <- function(x) {
         if (is.null(x) || length(x) == 0L || is.na(x)) {
             return(NULL)
         }
         as.numeric(x)
     }
-    # }}}
 
     # Resolve the common worker transfer settings and optional piece concurrency.
-    # normalize_transfer_policy {{{
     normalize_transfer_policy <- function(
         policy,
         include_piece_concurrency = FALSE
@@ -1530,10 +1523,8 @@ downloader__worker_dependencies <- function() {
         }
         out
     }
-    # }}}
 
     # Calculate the checksum algorithms accepted by downloader workers.
-    # checksum_file {{{
     checksum_file <- function(path, algo = "sha256") {
         out <- if (identical(algo, "sha256")) {
             tools::sha256sum(path)
@@ -1542,10 +1533,8 @@ downloader__worker_dependencies <- function() {
         }
         unname(as.character(out))
     }
-    # }}}
 
     # Treat an absent checksum as valid and otherwise verify the completed file.
-    # verify_checksum {{{
     verify_checksum <- function(path, expected, algo = "sha256") {
         if (is.null(expected) || is.na(expected) || !nzchar(expected)) {
             return(TRUE)
@@ -1558,10 +1547,8 @@ downloader__worker_dependencies <- function() {
             tolower(expected)
         )
     }
-    # }}}
 
     # Convert empty optional worker settings to NULL before curl configuration.
-    # null_if_empty {{{
     null_if_empty <- function(x) {
         if (is.null(x)) {
             return(NULL)
@@ -1571,10 +1558,8 @@ downloader__worker_dependencies <- function() {
         }
         x
     }
-    # }}}
 
     # Create a curl handle from the normalized transfer policy used by either worker.
-    # curl_handle {{{
     curl_handle <- function(
         timeout,
         connect_timeout,
@@ -1621,27 +1606,21 @@ downloader__worker_dependencies <- function() {
         do.call(curl::handle_setopt, c(list(handle = handle), opts))
         handle
     }
-    # }}}
 
     # Format byte offsets without scientific notation for HTTP Range headers.
-    # format_byte {{{
     format_byte <- function(x) {
         format(as.numeric(x), scientific = FALSE, trim = TRUE)
     }
-    # }}}
 
     # Convert raw or character response headers to searchable text.
-    # headers_text {{{
     headers_text <- function(headers) {
         if (is.raw(headers)) {
             return(rawToChar(headers))
         }
         paste(headers, collapse = "\n")
     }
-    # }}}
 
     # Confirm that an interrupted HTTP transfer can resume at the requested byte.
-    # resume_supported {{{
     resume_supported <- function(
         url,
         start_byte,
@@ -1670,9 +1649,7 @@ downloader__worker_dependencies <- function() {
         )
         response <- tryCatch(
             curl::curl_fetch_memory(url, handle = handle),
-            # error {{{
             error = function(e) NULL
-            # }}}
         )
         if (
             is.null(response) ||
@@ -1686,10 +1663,8 @@ downloader__worker_dependencies <- function() {
         )
         grepl(pattern, tolower(headers_text(response$headers)), perl = TRUE)
     }
-    # }}}
 
     # Copy one byte range from a local file URL into an atomic piece file.
-    # copy_file_range {{{
     copy_file_range <- function(
         url,
         start_byte,
@@ -1746,10 +1721,8 @@ downloader__worker_dependencies <- function() {
         }
         invisible(path)
     }
-    # }}}
 
     # Merge completed piece files in byte-range order into one atomic result.
-    # merge_piece_files {{{
     merge_piece_files <- function(pieces, tmp_done, chunk_size = 1024L^2L) {
         pieces <- pieces[order(as.integer(pieces$piece_index)), , drop = FALSE]
         dir.create(dirname(tmp_done), recursive = TRUE, showWarnings = FALSE)
@@ -1779,10 +1752,8 @@ downloader__worker_dependencies <- function() {
         }
         invisible(tmp_done)
     }
-    # }}}
 
     # Resolve the final download target from its optional relative subdirectory.
-    # target_path {{{
     target_path <- function(dest, subdir, filename) {
         if (is.null(subdir) || is.na(subdir) || !nzchar(subdir)) {
             file.path(dest, filename)
@@ -1790,17 +1761,13 @@ downloader__worker_dependencies <- function() {
             file.path(dest, subdir, filename)
         }
     }
-    # }}}
 
     # Move a verified temporary file into place with a copy fallback across filesystems.
-    # finalize {{{
     finalize <- function(tmp_done, target_path) {
         dir.create(dirname(target_path), recursive = TRUE, showWarnings = FALSE)
         renamed <- tryCatch(
             file.rename(tmp_done, target_path),
-            # error {{{
             error = function(e) FALSE
-            # }}}
         )
         if (!isTRUE(renamed)) {
             file.copy(tmp_done, target_path, overwrite = TRUE)
@@ -1808,7 +1775,6 @@ downloader__worker_dependencies <- function() {
         }
         normalizePath(target_path, mustWork = TRUE, winslash = "/")
     }
-    # }}}
 
     list(
         as_df = as_df,
@@ -1907,7 +1873,6 @@ downloader__worker_segmented_download <- function(
         ))
     }
 
-    # valid_piece {{{
     valid_piece <- function(row) {
         path <- row$path[[1L]]
         file.exists(path) &&
@@ -1916,7 +1881,6 @@ downloader__worker_segmented_download <- function(
                 as.numeric(row$byte_count[[1L]])
             )
     }
-    # }}}
     for (i in seq_len(nrow(pieces))) {
         if (valid_piece(pieces[i, , drop = FALSE])) {
             pieces$status[[i]] <- "done"
@@ -1943,7 +1907,6 @@ downloader__worker_segmented_download <- function(
             mode_used = mode_used
         ))
     }
-    # choose_candidate {{{
     choose_candidate <- function(piece_index, attempts) {
         candidate_ids[
             ((as.integer(piece_index) + as.integer(attempts)) %%
@@ -1951,7 +1914,6 @@ downloader__worker_segmented_download <- function(
                 1L
         ]
     }
-    # }}}
     piece_concurrency <- max(1L, as.integer(transfer_policy$piece_concurrency))
     piece_chunk_size <- transfer_policy$chunk_size
     if (is.null(piece_chunk_size) || is.na(piece_chunk_size)) {
@@ -1959,7 +1921,6 @@ downloader__worker_segmented_download <- function(
     }
     used_candidate_id <- character()
 
-    # download_http_batch {{{
     download_http_batch <- function(batch) {
         out <- vector("list", nrow(batch))
         pool <- curl::new_pool(
@@ -1967,7 +1928,6 @@ downloader__worker_segmented_download <- function(
             host_con = piece_concurrency
         )
         conns <- list()
-        # close_conn {{{
         close_conn <- function(key) {
             con <- conns[[key]]
             if (!is.null(con)) {
@@ -1975,7 +1935,6 @@ downloader__worker_segmented_download <- function(
                 conns[[key]] <<- NULL
             }
         }
-        # }}}
         for (i in seq_len(nrow(batch))) {
             local({
                 j <- i
@@ -2012,13 +1971,10 @@ downloader__worker_segmented_download <- function(
                 )
                 curl::multi_add(
                     handle,
-                    # data {{{
                     data = function(chunk, ...) {
                         writeBin(chunk, con)
                         TRUE
                     },
-                    # }}}
-                    # done {{{
                     done = function(response, ...) {
                         close_conn(as.character(j))
                         size <- if (file.exists(tmp)) {
@@ -2056,8 +2012,6 @@ downloader__worker_segmented_download <- function(
                             )
                         }
                     },
-                    # }}}
-                    # fail {{{
                     fail = function(error, ...) {
                         close_conn(as.character(j))
                         unlink(tmp)
@@ -2067,7 +2021,6 @@ downloader__worker_segmented_download <- function(
                             error = as.character(error)
                         )
                     },
-                    # }}}
                     pool = pool
                 )
             })
@@ -2096,14 +2049,12 @@ downloader__worker_segmented_download <- function(
                 }
                 TRUE
             },
-            # error {{{
             error = function(e) {
                 for (key in names(conns)) {
                     close_conn(key)
                 }
                 FALSE
             }
-            # }}}
         )
         for (key in names(conns)) {
             close_conn(key)
@@ -2121,7 +2072,6 @@ downloader__worker_segmented_download <- function(
         }
         out
     }
-    # }}}
 
     while (any(!pieces$status %in% "done")) {
         pending <- which(!pieces$status %in% "done")
@@ -2190,7 +2140,6 @@ downloader__worker_segmented_download <- function(
                             error = NA_character_
                         )
                     },
-                    # error {{{
                     error = function(e) {
                         list(
                             ok = FALSE,
@@ -2198,7 +2147,6 @@ downloader__worker_segmented_download <- function(
                             error = conditionMessage(e)
                         )
                     }
-                    # }}}
                 )
             }
         }
@@ -2319,7 +2267,6 @@ downloader__worker_download <- function(
     normalize_transfer_policy <- worker_dependencies$normalize_transfer_policy
     curl_handle <- worker_dependencies$curl_handle
     resume_supported <- worker_dependencies$resume_supported
-    # stream {{{
     stream <- function(
         url,
         tmp_part,
@@ -2369,12 +2316,10 @@ downloader__worker_download <- function(
         on.exit(close(con), add = TRUE)
         curl::curl_fetch_stream(
             url,
-            # curl::curl_fetch_stream callback {{{
             function(chunk) {
                 writeBin(chunk, con)
                 TRUE
             },
-            # }}}
             handle = handle
         )
         close(con)
@@ -2382,7 +2327,6 @@ downloader__worker_download <- function(
         file.rename(tmp_part, tmp_done)
         invisible(tmp_done)
     }
-    # }}}
 
     target_path <- worker_dependencies$target_path(dest, subdir, filename)
     tmp_part <- file.path(temp, paste0(tmp_id, ".part"))
@@ -2437,12 +2381,10 @@ downloader__worker_download <- function(
                 )
                 TRUE
             },
-            # error {{{
             error = function(e) {
                 last_error <<- conditionMessage(e)
                 FALSE
             }
-            # }}}
         )
         if (ok) {
             if (verify_checksum(tmp_done, checksum, checksum_type)) {
@@ -2521,7 +2463,7 @@ downloader__daemon_main <- function(manifest, daemon_id) {
 #'
 #' @description
 #'
-#' The implementation in `R/downloader.R` can be copied and sourced on its own,
+#' The implementation in `R/standalone-downloader.R` can be copied and sourced on its own,
 #' with its qualified package dependencies installed. Detached jobs retain the
 #' copied source path, so keep that file available until the jobs finish.
 #' Integration with a host's cache policy and store is optional and supplied by
@@ -2992,12 +2934,10 @@ Downloader <- R6::R6Class(
                         )
                         TRUE
                     },
-                    # error {{{
                     error = function(e) {
                         last_error <<- e
                         FALSE
                     }
-                    # }}}
                 )
 
                 if (result) {
@@ -3333,14 +3273,12 @@ Downloader <- R6::R6Class(
                     )
                     TRUE
                 },
-                # error {{{
                 error = function(e) {
                     job$status <- "error"
                     job$error <- conditionMessage(e)
                     private$update_job(job)
                     FALSE
                 }
-                # }}}
             )
             if (!isTRUE(ok)) {
                 cli::cli_abort(
@@ -3522,14 +3460,12 @@ Downloader <- R6::R6Class(
                     )
                     TRUE
                 },
-                # error {{{
                 error = function(e) {
                     daemon$status <- "error"
                     daemon$error <- conditionMessage(e)
                     private$update_daemon(daemon)
                     FALSE
                 }
-                # }}}
             )
             if (!isTRUE(ok)) {
                 cli::cli_abort(
@@ -3982,7 +3918,6 @@ Downloader <- R6::R6Class(
                 tasks$checksum_ok <- if (nrow(tasks)) {
                     vapply(
                         seq_len(nrow(tasks)),
-                        # vapply callback {{{
                         function(i) {
                             path <- tasks$target_path[[i]]
                             checksum <- downloader__one_chr(tasks$checksum[[i]])
@@ -4001,7 +3936,6 @@ Downloader <- R6::R6Class(
                                 checksum_type
                             )
                         },
-                        # }}}
                         logical(1L)
                     )
                 } else {
@@ -4376,7 +4310,6 @@ Downloader <- R6::R6Class(
                 ))
             }
 
-            # process_files {{{
             process_files <- function(files, status_label) {
                 if (length(files) == 0) {
                     return(NULL)
@@ -4391,7 +4324,6 @@ Downloader <- R6::R6Class(
                     stringsAsFactors = FALSE
                 )
             }
-            # }}}
 
             result <- rbind(
                 process_files(part_files, "downloading"),
@@ -4618,16 +4550,12 @@ Downloader <- R6::R6Class(
             }
             is_set <- tryCatch(
                 isTRUE(mirai::daemons_set(.compute = private$compute_profile)),
-                # error {{{
                 error = function(e) FALSE
-                # }}}
             )
-            # error {{{
             status <- tryCatch(
                 mirai::status(.compute = private$compute_profile),
                 error = function(e) NULL
             )
-            # }}}
             daemon_count <- if (
                 is.list(status) && !is.null(status$connections)
             ) {
@@ -4664,9 +4592,7 @@ Downloader <- R6::R6Class(
             }
             rows <- tryCatch(
                 private$read_table("download_config"),
-                # error {{{
                 error = function(e) data.frame()
-                # }}}
             )
             if (!nrow(rows) || !"config_id" %in% names(rows)) {
                 return(NULL)
@@ -4725,9 +4651,7 @@ Downloader <- R6::R6Class(
             if (!is.null(private$manifest_conn)) {
                 valid <- tryCatch(
                     downloader__ddb_is_valid(private$manifest_conn),
-                    # error {{{
                     error = function(e) FALSE
-                    # }}}
                 )
                 if (isTRUE(valid)) {
                     tryCatch(
@@ -4735,11 +4659,9 @@ Downloader <- R6::R6Class(
                             private$manifest_conn,
                             shutdown = TRUE
                         ),
-                        # error {{{
                         error = function(e) {
                             downloader__ddb_disconnect(private$manifest_conn)
                         }
-                        # }}}
                     )
                 }
                 private$manifest_conn <- NULL
@@ -4758,9 +4680,7 @@ Downloader <- R6::R6Class(
             if (!is.null(private$manifest_conn)) {
                 valid <- tryCatch(
                     downloader__ddb_is_valid(private$manifest_conn),
-                    # error {{{
                     error = function(e) FALSE
-                    # }}}
                 )
                 if (!isTRUE(valid)) {
                     private$manifest_conn <- NULL
@@ -5033,9 +4953,7 @@ Downloader <- R6::R6Class(
         manifest_schema_version = function() {
             meta <- tryCatch(
                 private$read_table("download_meta"),
-                # error {{{
                 error = function(e) data.frame()
-                # }}}
             )
             if (!nrow(meta)) {
                 return(NA_character_)
@@ -5070,9 +4988,7 @@ Downloader <- R6::R6Class(
             if (!is.na(current)) {
                 cmp <- tryCatch(
                     utils::compareVersion(current, DOWNLOADER_SCHEMA_VERSION),
-                    # error {{{
                     error = function(e) -1L
-                    # }}}
                 )
                 if (cmp > 0L) {
                     cli::cli_abort(
@@ -5561,9 +5477,7 @@ Downloader <- R6::R6Class(
                         open = "r+",
                         timeout = 2
                     ),
-                    # error {{{
                     error = function(e) NULL
-                    # }}}
                 )
                 if (!is.null(con)) {
                     on.exit(close(con), add = TRUE)
@@ -5578,9 +5492,7 @@ Downloader <- R6::R6Class(
                     flush(con)
                     ack <- tryCatch(
                         readLines(con, n = 1L, warn = FALSE),
-                        # error {{{
                         error = function(e) character()
-                        # }}}
                     )
                     return(length(ack) && identical(ack[[1L]], "OK"))
                 }
@@ -5776,13 +5688,11 @@ Downloader <- R6::R6Class(
                         }
                     }
                 },
-                # error {{{
                 error = function(e) {
                     status <<- "error"
                     error <<- conditionMessage(e)
                     exit_code <<- 1L
                 }
-                # }}}
             )
             private$complete_job(
                 job_id,
@@ -5961,18 +5871,14 @@ Downloader <- R6::R6Class(
         daemon_accept_wake = function(server, daemon, timeout = 1) {
             ready <- tryCatch(
                 socketSelect(list(server), timeout = timeout),
-                # error {{{
                 error = function(e) FALSE
-                # }}}
             )
             if (!isTRUE(ready[[1L]])) {
                 return(invisible(FALSE))
             }
             con <- tryCatch(
                 socketAccept(server, blocking = TRUE, open = "r+"),
-                # error {{{
                 error = function(e) NULL
-                # }}}
             )
             if (is.null(con)) {
                 return(invisible(FALSE))
@@ -5980,9 +5886,7 @@ Downloader <- R6::R6Class(
             on.exit(close(con), add = TRUE)
             line <- tryCatch(
                 readLines(con, n = 1L, warn = FALSE),
-                # error {{{
                 error = function(e) character()
-                # }}}
             )
             parts <- strsplit(
                 if (length(line)) line[[1L]] else "",
@@ -6026,7 +5930,6 @@ Downloader <- R6::R6Class(
                     server <- serverSocket(port = as.integer(daemon$port[[1L]]))
                     opened <- TRUE
                 },
-                # error {{{
                 error = function(e) {
                     private$daemon_mark_stopped(
                         daemon_id,
@@ -6035,7 +5938,6 @@ Downloader <- R6::R6Class(
                     )
                     stop(e)
                 }
-                # }}}
             )
             on.exit(
                 {
@@ -6118,7 +6020,6 @@ Downloader <- R6::R6Class(
         },
         # }}}
         # callbacks
-        # callback_event_name {{{
         callback_event_name = function(event) {
             switch(
                 event,
@@ -6133,9 +6034,7 @@ Downloader <- R6::R6Class(
                 NA_character_
             )
         },
-        # }}}
 
-        # emit_callback_event {{{
         emit_callback_event = function(
             event,
             session_id = NA_character_,
@@ -6162,7 +6061,6 @@ Downloader <- R6::R6Class(
                 }
                 tryCatch(
                     callback$fun(payload, self),
-                    # error {{{
                     error = function(e) {
                         private$log_event(
                             payload$session_id,
@@ -6172,14 +6070,11 @@ Downloader <- R6::R6Class(
                             emit = FALSE
                         )
                     }
-                    # }}}
                 )
             }
             invisible(NULL)
         },
-        # }}}
 
-        # callback_payload {{{
         callback_payload = function(
             event,
             session_id = NA_character_,
@@ -6193,12 +6088,9 @@ Downloader <- R6::R6Class(
             if (!is.na(task_id) && nzchar(task_id)) {
                 task <- tryCatch(
                     private$select_tasks(task_id = task_id),
-                    # error {{{
                     error = function(e) data.frame()
-                    # }}}
                 )
             }
-            # task_value {{{
             task_value <- function(column, default = NA_character_) {
                 if (!nrow(task) || !column %in% names(task)) {
                     return(default)
@@ -6209,7 +6101,6 @@ Downloader <- R6::R6Class(
                 }
                 value
             }
-            # }}}
             status <- downloader__one_chr(task_value("status", NA_character_))
             if (is.na(status) && identical(event, "session_done")) {
                 status <- message
@@ -6275,7 +6166,6 @@ Downloader <- R6::R6Class(
                 message = message
             )
         },
-        # }}}
         # plan and task helpers
         # new_session_id {{{
         new_session_id = function() {
@@ -6372,7 +6262,6 @@ Downloader <- R6::R6Class(
             }
             vapply(
                 seq_len(nrow(task)),
-                # vapply callback {{{
                 function(i) {
                     target <- task$target_path[[i]]
                     if (!file.exists(target)) {
@@ -6391,7 +6280,6 @@ Downloader <- R6::R6Class(
                         checksum_type
                     )
                 },
-                # }}}
                 logical(1L)
             )
         },
@@ -6420,14 +6308,12 @@ Downloader <- R6::R6Class(
             dest_free <- downloader__disk_free_bytes(private$dest)
             tmp_free <- downloader__disk_free_bytes(private$temp)
             min_free <- private$resource_policy_config$min_free_space
-            # check_one {{{
             check_one <- function(free) {
                 if (is.na(free)) {
                     return(NA)
                 }
                 (free - required_bytes) >= min_free
             }
-            # }}}
             dest_ok <- check_one(dest_free)
             tmp_ok <- check_one(tmp_free)
             disk_preflight <- isTRUE(
@@ -6502,7 +6388,6 @@ Downloader <- R6::R6Class(
             )
             task$task_id <- vapply(
                 seq_len(nrow(task)),
-                # vapply callback {{{
                 function(i) {
                     downloader__hash(
                         session_id,
@@ -6510,7 +6395,6 @@ Downloader <- R6::R6Class(
                         task$target_path[[i]]
                     )
                 },
-                # }}}
                 character(1L)
             )
             task$session_id <- session_id
@@ -6595,11 +6479,9 @@ Downloader <- R6::R6Class(
             candidate$.downloader_row <- NULL
             candidate$candidate_id <- vapply(
                 seq_len(nrow(candidate)),
-                # vapply callback {{{
                 function(i) {
                     downloader__hash(candidate$task_id[[i]], candidate$url[[i]])
                 },
-                # }}}
                 character(1L)
             )
             candidate <- downloader__df(
@@ -6859,12 +6741,10 @@ Downloader <- R6::R6Class(
             }
             hosts <- vapply(
                 running,
-                # vapply callback {{{
                 function(item) {
                     host <- downloader__one_chr(item$host)
                     if (is.na(host)) "" else host
                 },
-                # }}}
                 character(1L)
             )
             hosts <- hosts[nzchar(hosts)]
@@ -7603,11 +7483,9 @@ Downloader <- R6::R6Class(
             pieces <- downloader__df(
                 piece_id = vapply(
                     seq_along(starts),
-                    # vapply callback {{{
                     function(i) {
                         downloader__hash(task_id, i, starts[[i]], ends[[i]])
                     },
-                    # }}}
                     character(1L)
                 ),
                 task_id = task_id,
@@ -7699,12 +7577,10 @@ Downloader <- R6::R6Class(
             require_checksum <- isTRUE(
                 private$transfer_policy_config$require_checksum_for_multisource
             )
-            # same_size {{{
             same_size <- function(x) {
                 size <- suppressWarnings(as.numeric(x$range_size))
                 all(abs(size - size[[1L]]) < 1)
             }
-            # }}}
             if (
                 mode %in%
                     c("multi", "auto") &&
@@ -7861,22 +7737,18 @@ Downloader <- R6::R6Class(
                 on.exit(cli::cli_progress_done(id = progress_id), add = TRUE)
             }
 
-            # tick {{{
             tick <- function() {
                 completed <<- completed + 1L
                 if (!is.null(progress_id)) {
                     cli::cli_progress_update(id = progress_id)
                 }
             }
-            # }}}
 
-            # add_running {{{
             add_running <- function(item) {
                 running[[item$task_id]] <<- item
                 private$persistent_tasks[[item$task_id]] <- item
                 active_targets <<- unique(c(active_targets, item$target_path))
             }
-            # }}}
 
             while (nrow(pending) || length(running)) {
                 blocked <- rep(FALSE, nrow(pending))
@@ -7922,32 +7794,26 @@ Downloader <- R6::R6Class(
                 done <- names(running)[
                     !vapply(
                         running,
-                        # vapply callback {{{
                         function(item) {
                             mirai::unresolved(item$mirai)
                         },
-                        # }}}
                         logical(1L)
                     )
                 ]
                 if (!length(done)) {
                     private$ensure_mirai_daemons()
-                    # lapply callback {{{
                     mirai::race_mirai(
                         lapply(running, function(item) {
                             item$mirai
                         }),
                         .compute = private$compute_profile
                     )
-                    # }}}
                     done <- names(running)[
                         !vapply(
                             running,
-                            # vapply callback {{{
                             function(item) {
                                 mirai::unresolved(item$mirai)
                             },
-                            # }}}
                             logical(1L)
                         )
                     ]
@@ -7962,9 +7828,7 @@ Downloader <- R6::R6Class(
                     private$persistent_tasks[[id]] <- NULL
                     active_targets <- setdiff(active_targets, item$target_path)
 
-                    # error {{{
                     result <- tryCatch(item$mirai[], error = function(e) e)
-                    # }}}
                     error <- downloader__worker_error(result)
                     if (nzchar(error)) {
                         result <- list(ok = FALSE, error = error)
@@ -8162,11 +8026,9 @@ Downloader <- R6::R6Class(
 
             candidate_hosts <- vapply(
                 seq_len(nrow(candidates)),
-                # vapply callback {{{
                 function(i) {
                     private$candidate_host(candidates[i, , drop = FALSE])
                 },
-                # }}}
                 character(1L)
             )
             has_capacity <- vapply(
@@ -8281,11 +8143,9 @@ Downloader <- R6::R6Class(
                                 worker_dependencies = worker_dependencies
                             )
                         },
-                        # error {{{
                         error = function(e) {
                             list(ok = FALSE, error = conditionMessage(e))
                         }
-                        # }}}
                     )
                 },
                 .compute = private$compute_profile,
@@ -8534,12 +8394,10 @@ Downloader <- R6::R6Class(
                             block = TRUE,
                             .tmp_id = task_id
                         ),
-                        # error {{{
                         error = function(e) {
                             last_error <<- conditionMessage(e)
                             NULL
                         }
-                        # }}}
                     )
                 }
 
@@ -8653,9 +8511,7 @@ Downloader <- R6::R6Class(
                     file.rename(tmp_done, dest)
                     TRUE
                 },
-                # error {{{
                 error = function(e) FALSE
-                # }}}
             )
 
             if (!renamed) {
@@ -8837,9 +8693,7 @@ Downloader <- R6::R6Class(
             }
             task <- tryCatch(
                 private$select_tasks(task_id = task_id),
-                # error {{{
                 error = function(e) data.frame()
-                # }}}
             )
             if (!nrow(task) || !"size" %in% names(task)) {
                 return(NA_real_)
@@ -8893,7 +8747,6 @@ Downloader <- R6::R6Class(
             manifest_progress <- !is.null(task_id) &&
                 !is.null(private$manifest_path)
 
-            # write_progress {{{
             write_progress <- function(force = FALSE) {
                 if (!isTRUE(manifest_progress)) {
                     return(invisible(NULL))
@@ -8939,7 +8792,6 @@ Downloader <- R6::R6Class(
                 last_manifest_update <<- current_time
                 invisible(NULL)
             }
-            # }}}
 
             progress_id <- NULL
             if (progress) {
@@ -8953,7 +8805,6 @@ Downloader <- R6::R6Class(
             # Download with streaming
             curl::curl_fetch_stream(
                 url,
-                # curl::curl_fetch_stream callback {{{
                 function(chunk) {
                     # Write chunk to file
                     writeBin(chunk, con)
@@ -8995,7 +8846,6 @@ Downloader <- R6::R6Class(
 
                     TRUE # Continue download
                 },
-                # }}}
                 handle = handle
             )
 

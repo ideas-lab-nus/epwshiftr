@@ -15,7 +15,6 @@ btws_test__climate <- function(
     maximum_shift = 0
 ) {
     phase <- daily__phase_grid(365L)
-    # lapply callback {{{
     data.table::rbindlist(lapply(as.integer(years), function(year) {
         time <- as.POSIXct(
             as.Date(sprintf("%04d-01-01", year)) + seq.int(0L, 364L),
@@ -28,7 +27,6 @@ btws_test__climate <- function(
             tasmin = 16 + seasonal + minimum_shift,
             tasmax = 25 + seasonal + maximum_shift
         )
-        # lapply callback {{{
         data.table::rbindlist(lapply(names(values), function(variable_id) {
             data.table::data.table(
                 activity_id = if (identical(experiment, "historical")) {
@@ -53,9 +51,7 @@ btws_test__climate <- function(
                 value = values[[variable_id]] + 273.15
             )
         }))
-        # }}}
     }))
-    # }}}
 }
 # }}}
 

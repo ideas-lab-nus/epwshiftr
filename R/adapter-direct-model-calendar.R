@@ -181,9 +181,7 @@ hourmap__member_error <- function(self) {
     }
     group_ids <- vapply(
         self@series,
-        # vapply callback {{{
         function(series) series@group_id,
-        # }}}
         character(1L)
     )
     error <- sequence__unique_values_error(
@@ -196,9 +194,7 @@ hourmap__member_error <- function(self) {
     variables <- unlist(
         lapply(
             self@series,
-            # lapply callback {{{
             function(series) series@variables
-            # }}}
         ),
         use.names = FALSE
     )
@@ -209,14 +205,12 @@ hourmap__member_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
-    # lapply callback {{{
     years <- unique(unlist(
         lapply(self@series, function(series) {
             as.integer(series@data[["year"]])
         }),
         use.names = FALSE
     ))
-    # }}}
     if (!identical(years, self@weather_year)) {
         return("Every mapped hourly row must match `weather_year`.")
     }
@@ -269,9 +263,7 @@ hourmap__sequence_error <- function(self) {
     }
     years <- vapply(
         self@members,
-        # vapply callback {{{
         function(member) member@weather_year,
-        # }}}
         integer(1L)
     )
     error <- sequence__ordered_years_error(
@@ -283,9 +275,7 @@ hourmap__sequence_error <- function(self) {
     }
     sequence_ids <- vapply(
         self@members,
-        # vapply callback {{{
         function(member) member@sequence_id,
-        # }}}
         character(1L)
     )
     error <- sequence__shared_values_error(
@@ -295,19 +285,15 @@ hourmap__sequence_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
-    # lapply callback {{{
     variable_sets <- lapply(self@members, function(member) {
         sort(unlist(
             lapply(
                 member@series,
-                # lapply callback {{{
                 function(series) series@variables
-                # }}}
             ),
             use.names = FALSE
         ))
     })
-    # }}}
     error <- sequence__shared_sets_error(
         variable_sets,
         "Every mapped hourly member must contain the same variables."
@@ -484,7 +470,6 @@ hourmap__circular_point_values <- function(data, target_days) {
     hourmap__map_daily_slots(
         data,
         target_days,
-        # mapper {{{
         mapper = function(source_rows, target_phase) {
             source_phase <- as.numeric(data[["annual_phase"]][source_rows])
             source_value <- as.numeric(data[["value"]][source_rows])
@@ -497,7 +482,6 @@ hourmap__circular_point_values <- function(data, target_days) {
                 target_phase
             )
         }
-        # }}}
     )
 }
 # }}}
@@ -509,14 +493,12 @@ hourmap__conservative_interval_values <- function(data, target_days) {
     hourmap__map_daily_slots(
         data,
         target_days,
-        # mapper {{{
         mapper = function(source_rows, target_phase) {
             hourmap__conservative_interval_mean(
                 data[["value"]][source_rows],
                 length(target_phase)
             )
         }
-        # }}}
     )
 }
 # }}}
@@ -701,7 +683,6 @@ hourmap__variable <- function(data, variable, member, target) {
 # identity or upstream signal provenance into the hourly table.
 # hourmap__series {{{
 hourmap__series <- function(series, member, target) {
-    # lapply callback {{{
     mapped <- lapply(series@variables, function(variable) {
         hourmap__variable(
             series@adjusted@data,
@@ -710,7 +691,6 @@ hourmap__series <- function(series, member, target) {
             target
         )
     })
-    # }}}
     MappedHourlyClimateSeries(
         group_id = series@group_id,
         key = series@key,
@@ -765,14 +745,11 @@ hourmap__reconstruct <- function(data, inputs, context, options) {
     }
     target <- hourmap__target_grid(template_input@source)
 
-    # lapply callback {{{
     members <- lapply(data@members, function(member) {
         variables <- unlist(
             lapply(
                 member@series,
-                # lapply callback {{{
                 function(series) series@variables
-                # }}}
             ),
             use.names = FALSE
         )
@@ -803,7 +780,6 @@ hourmap__reconstruct <- function(data, inputs, context, options) {
             )
         )
     })
-    # }}}
     MappedHourlyClimateSequence(
         members = members,
         frequency = "hour",

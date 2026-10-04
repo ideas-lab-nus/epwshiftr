@@ -127,7 +127,6 @@ hourly_kqdm_input__wind_rows <- function(data, role) {
 
     # Duplicate rows from overlapping source files are harmless only when
     # their component values agree exactly at the same identity and time.
-    # prepare {{{
     prepare <- function(variable) {
         rows <- data[data[["variable_id"]] == variable]
         conflicts <- rows[,
@@ -141,7 +140,6 @@ hourly_kqdm_input__wind_rows <- function(data, role) {
         }
         rows[!duplicated(rows, by = key)]
     }
-    # }}}
     eastward <- prepare("uas")
     northward <- prepare("vas")[, c(key, "value"), with = FALSE]
     data.table::setnames(northward, "value", ".northward")

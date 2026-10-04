@@ -35,9 +35,7 @@ test_local_dependencies <- function(..., .local_envir = parent.frame()) {
     if ("query_time" %in% names(values)) {
         instant <- values$query_time
         values["query_time"] <- NULL
-        # values$query__now {{{
         values$query__now <- function() instant
-        # }}}
     }
     bindings <- intersect(names(values), names(test_dependency_originals))
     if (length(bindings)) {
@@ -61,21 +59,17 @@ test_local_dependencies <- function(..., .local_envir = parent.frame()) {
 # test_candidate_reader {{{
 test_candidate_reader <- function(adapter) {
     force(adapter)
-    # { callback {{{
     function(climate, transforms, references, store, ui) {
         member <- shift_stage__coalesce(climate@member, "r1i1p1f1")
         historical <- vapply(
             references,
-            # vapply callback {{{
             function(value) {
                 S7::S7_inherits(value$reference, ShiftReferenceSpec) &&
                     identical(value$reference@mode, "historical")
             },
-            # }}}
             logical(1L)
         )
         names(historical) <- names(transforms)
-        # return callback {{{
         return(function(transform_key, alternative, index_node) {
             transform <- transforms[[transform_key]]
             variables <- as.character(shift_batch__future_requirement(
@@ -102,9 +96,7 @@ test_candidate_reader <- function(adapter) {
                 ui = ui
             )
         })
-        # }}}
     }
-    # }}}
 }
 # }}}
 

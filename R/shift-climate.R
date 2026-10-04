@@ -50,11 +50,9 @@ shift_climate__derive_hurs_climate <- function(
         is.null(humidity_alternatives) ||
             !any(vapply(
                 humidity_alternatives,
-                # vapply callback {{{
                 function(value) {
                     identical(as.character(value), c("huss", "tas", "ps"))
                 },
-                # }}}
                 logical(1L)
             ))
     ) {
@@ -100,11 +98,9 @@ shift_climate__derive_hurs_climate <- function(
             next
         }
         inputs <- c("huss", "tas", "ps")
-        # lapply callback {{{
         source_rows <- lapply(inputs, function(variable) {
             rows[variable_id == variable & complete %in% TRUE]
         })
-        # }}}
         # A zero-row data.table still has a non-zero length because `length()`
         # counts columns. Check rows so optional table partitions without the
         # three humidity inputs are skipped instead of being derived.
@@ -112,9 +108,7 @@ shift_climate__derive_hurs_climate <- function(
             next
         }
         source_plan_ids <- sort(unique(unlist(
-            # lapply callback {{{
             lapply(source_rows, function(value) value$plan_id),
-            # }}}
             use.names = FALSE
         )))
         derived_plan_id <- store__hash(
@@ -123,9 +117,7 @@ shift_climate__derive_hurs_climate <- function(
         )
         existing <- tryCatch(
             store$coverage(plan_id = derived_plan_id),
-            # error {{{
             error = function(e) data.table::data.table()
-            # }}}
         )
         if (
             !isTRUE(overwrite) &&

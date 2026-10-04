@@ -193,10 +193,7 @@ dict__resolve_tag_cache <- function(repo, tag = NULL, token = NULL, policy) {
         cache__url(
             "esgdict-tag",
             list(repo = repo),
-            # fn {{{
             fn = function() dict__resolve_tag(repo, tag, token),
-            # }}}
-            # validate {{{
             validate = function(x) {
                 is.list(x) &&
                     is.character(x$tag) &&
@@ -204,9 +201,7 @@ dict__resolve_tag_cache <- function(repo, tag = NULL, token = NULL, policy) {
                     !is.na(x$tag) &&
                     nzchar(x$tag)
             }
-            # }}}
         ),
-        # error {{{
         error = function(e) {
             if (isTRUE(policy$offline)) {
                 stop(
@@ -222,7 +217,6 @@ dict__resolve_tag_cache <- function(repo, tag = NULL, token = NULL, policy) {
             }
             stop(e)
         }
-        # }}}
     )
 }
 # }}}
@@ -611,14 +605,12 @@ dict__archive_paths <- function(files) {
         common <- i
     }
     common <- max(common - 1L, 0L)
-    # vapply callback {{{
     vapply(
         parts,
         function(x) paste(x[(common + 1L):length(x)], collapse = "/"),
         character(1L),
         USE.NAMES = FALSE
     )
-    # }}}
 }
 # }}}
 
@@ -632,7 +624,6 @@ dict__parse_voc <- function(files, project) {
 
     all <- unique(data.table::rbindlist(rows, use.names = TRUE, fill = TRUE))
     split <- split(all, all$field)
-    # lapply callback {{{
     out <- lapply(names(split), function(field) {
         dt <- data.table::as.data.table(split[[field]])
         dt[, field := NULL]
@@ -641,7 +632,6 @@ dict__parse_voc <- function(files, project) {
         }
         unique(dt)
     })
-    # }}}
     names(out) <- names(split)
     out
 }
@@ -649,9 +639,7 @@ dict__parse_voc <- function(files, project) {
 
 # dict__parse_voc_file {{{
 dict__parse_voc_file <- function(file) {
-    # error {{{
     json <- tryCatch(jsonlite::read_json(file), error = function(e) NULL)
-    # }}}
     if (is.null(json) || !length(json)) {
         return(NULL)
     }
@@ -736,11 +724,9 @@ dict__voc_rows <- function(field, values) {
         ))
     }
 
-    # lapply callback {{{
     rows <- lapply(values, function(term) {
         dict__voc_term_rows(field, term, NULL)
     })
-    # }}}
     data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
 # }}}
