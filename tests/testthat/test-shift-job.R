@@ -366,6 +366,64 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
     )))
 })
 
+# Replay the Windows CI sharing violation through the public reader on every
+# platform. Permission and corruption failures must never return a live snapshot.
+test_that("run readers distinguish Windows sharing violations from IO errors", {
+    fixture <- shared_inputs_test__fixture()
+    plan <- fixture$batch@meta$children[[1L]]
+    test_local_dependencies(list(shift_job__launch_job = function(...) {
+        invisible(0L)
+    }))
+    run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
+    run_id <- shift_ids(run, refresh = FALSE)$run_id
+    failure <- simpleError(paste(
+        'IO Error: Cannot open file "C:\\store\\manifest.duckdb":',
+        "The process cannot access the file because it is being used by another process.",
+        "\n\nFile is already open in \nC:\\R\\bin\\x64\\Rscript.exe (PID 6724)"
+    ))
+    # Force the manifest-open path, as when a batch child has no active process
+    # job of its own. A standalone queued job otherwise uses its startup grace.
+    local_mocked_bindings(
+        shift_job__live_process_is_active = function(...) FALSE,
+        shift_store = function(...) stop(failure)
+    )
+    restored <- shift_run_get(run_id, store = run@store_path)
+    expect_s7_class(restored, ShiftRun)
+    expect_identical(restored@ids$run_id, run_id)
+    expect_identical(restored@meta$run$status, "queued")
+    expect_error(
+        shift_run_get("missing-run", store = run@store_path),
+        "File is already open in"
+    )
+
+    # DuckDB's owner text is locale-independent; do not depend on the localized
+    # Windows system message between the path and that diagnostic.
+    for (message in c(
+        "IO Error: Cannot open file 'manifest.duckdb': localized system error\nFile is already open in Rscript.exe (PID 6724)",
+        "IO Error: Could not set lock on file 'manifest.duckdb': Conflicting lock is held"
+    )) {
+        failure <- simpleError(message)
+        expect_identical(
+            shift_run_get(run_id, store = run@store_path)@ids$run_id,
+            run_id
+        )
+    }
+    for (message in c(
+        "IO Error: Cannot open file 'manifest.duckdb': Permission denied",
+        "IO Error: Cannot open file 'manifest.duckdb': No such file or directory",
+        "IO Error: The file exists, but it is not a valid DuckDB database file"
+    )) {
+        failure <- simpleError(message)
+        expect_identical(
+            tryCatch(
+                shift_run_get(run_id, store = run@store_path),
+                error = identity
+            ),
+            failure
+        )
+    }
+})
+
 test_that("background workers retry transient DuckDB launch locks", {
     skip_if_not_installed("duckdb")
     skip_on_os("windows")

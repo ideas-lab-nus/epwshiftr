@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Windows run readers recognize DuckDB sharing violations and use existing live
+  snapshots while the worker owns the manifest. Other file-open errors remain
+  visible (#278).
+
 * Checking a background process on Windows no longer sends a termination signal.
   Async lifecycle tests allow for instrumented worker startup and retain
   coordinator diagnostics on failure. Coverage measures the main test process;

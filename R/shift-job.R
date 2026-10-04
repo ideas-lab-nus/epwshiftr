@@ -1912,9 +1912,16 @@ shift_job__live_path <- function(store_path, run_id, suffix = "live.json") {
 shift_job__manifest_locked <- function(error) {
     inherits(error, "error") &&
         grepl(
-            "Could not set lock|Conflicting lock",
+            # Windows reports sharing violations while opening the file, before
+            # reaching the POSIX lock path. Require DuckDB's owner diagnostic
+            # as well, so other file-open failures do not use stale snapshots.
+            paste0(
+                "Could not set lock|Conflicting lock|",
+                "Cannot open file[\\s\\S]*File is already open in"
+            ),
             conditionMessage(error),
-            ignore.case = TRUE
+            ignore.case = TRUE,
+            perl = TRUE
         )
 }
 
