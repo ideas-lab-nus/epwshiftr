@@ -3738,3 +3738,78 @@ test_that("extraction persistence rolls back manifest changes on failure", {
 })
 
 # vim: fdm=marker :
+
+test_that("EsgStore$plan_region() keeps identical files scoped to the current query", {
+    skip_if_not_installed("duckdb")
+
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+
+    docs <- store_test__file_docs()
+    first <- store_test__result(docs = docs)
+    second <- query_result__new(
+        EsgResultFile,
+        index_node = "https://mirror.example.org",
+        params = store_test__params("File"),
+        result = store_test__response(docs)
+    )
+    first_query_id <- store$add_files(first)
+    second_query_id <- store$add_files(second)
+    expect_false(identical(first_query_id, second_query_id))
+
+    first_plan <- store$plan_region(
+        query_id = first_query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01", "2060-12-31")
+    )
+    second_plan <- store$plan_region(
+        query_id = second_query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01", "2060-12-31")
+    )
+
+    expect_identical(unique(first_plan$query_id), first_query_id)
+    expect_identical(unique(second_plan$query_id), second_query_id)
+    expect_false(any(first_plan$plan_id %in% second_plan$plan_id))
+    repeated <- store$plan_region(
+        query_id = second_query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2060-01-01", "2060-12-31")
+    )
+    expect_identical(repeated$plan_id, second_plan$plan_id)
+    expect_identical(first_plan$file_key, second_plan$file_key)
+    expect_equal(nrow(ddb_read_table(priv(store)$conn, "extraction_plan")), 2L)
+
+    # Real query-scoped plans still share the scientific source cache identity.
+    cache_dir <- withr::local_tempdir()
+    withr::local_options(list(epwshiftr.dir_cache = cache_dir))
+    file <- data.table::as.data.table(ddb_read_table(
+        priv(store)$conn,
+        "file_catalog"
+    ))[1L]
+    calls <- 0L
+    generate <- function() {
+        calls <<- calls + 1L
+        list(
+            payload = list(
+                data = data.table::data.table(value = 280),
+                grid_sources = NULL,
+                available_time_count = 1L,
+                actual_start = first_plan$time_start,
+                actual_end = first_plan$time_stop
+            ),
+            opened = list(access_method = "OPeNDAP", target = "remote"),
+            recovery_error = NULL
+        )
+    }
+    initial <- store__extract_cache_resolve(first_plan, file, generate)
+    cached <- store__extract_cache_resolve(second_plan, file, generate)
+    expect_false(initial$cache_reused)
+    expect_true(cached$cache_reused)
+    expect_identical(calls, 1L)
+    expect_identical(cached$payload$data$value, 280)
+})

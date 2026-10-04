@@ -3220,7 +3220,11 @@ EsgStore <- R6::R6Class(
                 plan_id = vapply(
                     seq_len(nrow(plan)),
                     function(i) {
+                        # Manifest ownership belongs to the current catalog query.
+                        # The source cache deliberately excludes query and plan IDs,
+                        # so query isolation does not duplicate source reads.
                         store__hash(
+                            query_id,
                             plan$file_key[[i]],
                             site_id,
                             plan$variable_id[[i]],

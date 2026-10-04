@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Scope extraction plan identities to their catalog query so refreshed catalogs
+  retain correct ownership while reusing the shared source extraction cache.
+
 * Coverage CI prints the total line coverage and retains per-file reports and
   merged counters independently of Codecov. Upload errors produce a warning without
   failing the job (#279).
