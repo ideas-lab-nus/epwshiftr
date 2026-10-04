@@ -1653,8 +1653,18 @@ variables in the query are used.</p></dd>
 </div>
 
 </div><p></p><hr><a id="method-EsgStore-extract"></a><div class="section">
-<h3 id="method-extract-">Method <code>extract()</code><a class="anchor" aria-label="anchor" href="#method-extract-"></a></h3>
-<p>Execute pending or failed regional extraction plans.</p><div class="section">
+<h3 id="esgstore-extract-"><code>EsgStore$extract()</code><a class="anchor" aria-label="anchor" href="#esgstore-extract-"></a></h3>
+<p>Execute pending or failed regional extraction plans.</p>
+<p>Independent remote reads run concurrently, with at most
+<code>getOption("epwshiftr.mirai_workers", 4L)</code> source tasks per call.
+Set <code>options(epwshiftr.mirai_workers = 1L)</code> for serial reads. The same
+limit applies to shared batch acquisition; separate R sessions have
+separate limits. The calling process owns manifest and Parquet writes.
+With shared caching enabled, pending plans for one physical file
+reuse its connection. With caching disabled, workers return one plan
+at a time to bound memory. Complete ordinary extraction caches are
+consumed directly without starting workers. Speedup depends on the
+number of independent tasks and the remote service.</p><div class="section">
 <h4 id="usage-43">Usage<a class="anchor" aria-label="anchor" href="#usage-43"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgStore</span><span class="op">$</span><span class="fu">extract</span><span class="op">(</span></span>
 <span>  plan_id <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -1664,48 +1674,42 @@ variables in the query are used.</p></dd>
 <span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  reporter <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
+</div><p></p><div class="section">
 <h4 id="arguments-40">Arguments<a class="anchor" aria-label="anchor" href="#arguments-40"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>plan_id</code></dt>
 <dd><p>Optional plan IDs to run.</p></dd>
 
-
-<dt><code>status</code></dt>
+      <dt><code>status</code></dt>
 <dd><p>Plan statuses to run when <code>plan_id</code> is <code>NULL</code>.
 Default: <code>c("pending", "failed")</code>.</p></dd>
 
-
-<dt><code>fallback</code></dt>
+      <dt><code>fallback</code></dt>
 <dd><p>What to do when OPeNDAP open, metadata, or read
 access fails. <code>"auto"</code> downloads through HTTPServer and
 retries once when possible; <code>"error"</code> marks the plan failed
 without downloading. Default: <code>"auto"</code>.</p></dd>
 
-
-<dt><code>overwrite</code></dt>
+      <dt><code>overwrite</code></dt>
 <dd><p>If <code>TRUE</code>, overwrite existing Parquet outputs.
 Default: <code>FALSE</code>.</p></dd>
 
-
-<dt><code>resume</code></dt>
+      <dt><code>resume</code></dt>
 <dd><p>Whether to reuse complete existing extraction outputs.
 Default: <code>TRUE</code>.</p></dd>
 
-
-<dt><code>reporter</code></dt>
+      <dt><code>reporter</code></dt>
 <dd><p>Optional workflow reporter used by task-level runs.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
+</div><p></p><div class="section">
 <h4 id="returns-43">Returns<a class="anchor" aria-label="anchor" href="#returns-43"></a></h4>
 <p>A data.table of processed extraction plan rows.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgStore-query"></a><div class="section">
+</div>
+
+<p></p><hr><a id="method-EsgStore-query"></a><div class="section">
 <h3 id="method-query-">Method <code>query()</code><a class="anchor" aria-label="anchor" href="#method-query-"></a></h3>
 <p>Run a DuckDB SQL query against the extraction manifest.</p><div class="section">
 <h4 id="usage-44">Usage<a class="anchor" aria-label="anchor" href="#usage-44"></a></h4>

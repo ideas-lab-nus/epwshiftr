@@ -124,7 +124,20 @@ requests are made. Default: <code>TRUE</code></p></li>
 <li><p><code>epwshiftr.dir_cache</code>: The directory for disposable cache entries. Deleting
 this directory can require re-fetching or re-parsing data, but should not
 invalidate a persistent store.</p></li>
-</ul></div>
+<li><p><code>epwshiftr.mirai_workers</code>: Maximum concurrent source readers, default <code>4</code>.
+Set to <code>1</code> for serial reads. Single-task and batch workflows share this limit.</p></li>
+<li><p><code>epwshiftr.ui_height</code>: Optional terminal display height; unset by default.</p></li>
+<li><p><code>epwshiftr.cache_max_size</code>: Disposable cache capacity in bytes, default 1 GiB.</p></li>
+<li><p><code>epwshiftr.cache_max_age</code>: Disposable cache lifetime in seconds, default 1800.</p></li>
+<li><p><code>epwshiftr.cache_max_n</code>: Maximum cache entries, default <code>Inf</code>.
+Cache limits are applied when the session's cache is first initialized.</p></li>
+<li><p><code>epwshiftr.query.timeout</code>: Catalog request timeout in seconds, default 300.</p></li>
+<li><p><code>epwshiftr.query.connect_timeout</code>: Catalog connection timeout in seconds,
+default 30.</p></li>
+</ul><p>Execution settings are captured when a workflow attempt starts and forwarded
+to detached processes and source workers. They do not change scientific plan
+identities. Development and test dependency substitutions are not options.</p>
+    </div>
     <div id="see-also">
     <h2>See also</h2>
     <div class="dont-index"><p>Useful links:</p><ul><li><p><a href="https://ideas-lab-nus.github.io/epwshiftr/">https://ideas-lab-nus.github.io/epwshiftr/</a></p></li>
