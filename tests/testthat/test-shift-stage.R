@@ -111,4 +111,4 @@ test_that("shift_extract() fallback policy is available from collected files", {
     expect_true(all(shift_coverage(local_fallback)$complete))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

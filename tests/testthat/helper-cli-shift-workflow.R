@@ -139,4 +139,4 @@ cli_shift_test_store_with_extract <- function(nc) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

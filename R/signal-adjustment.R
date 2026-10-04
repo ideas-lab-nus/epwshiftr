@@ -922,4 +922,4 @@ bias__mean_change_monthly_means <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

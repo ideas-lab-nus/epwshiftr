@@ -521,4 +521,4 @@ test_that("direct-model output retains every physically closed weather year", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

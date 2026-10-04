@@ -2912,4 +2912,4 @@ QueryParamStore <- R6::R6Class(
 )
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

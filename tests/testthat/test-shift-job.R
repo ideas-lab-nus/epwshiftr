@@ -505,4 +505,4 @@ test_that("run updates preserve other runs and explicit nullable fields", {
     expect_identical(shift_runs(store)$run_id, c(second, first))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

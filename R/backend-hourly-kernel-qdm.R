@@ -117,4 +117,4 @@ hourly_kqdm__pipeline <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

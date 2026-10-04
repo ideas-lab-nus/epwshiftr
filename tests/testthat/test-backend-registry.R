@@ -177,4 +177,4 @@ test_that("complete default backend registration avoids rebuilding specs", {
     expect_silent(epw_morph_backend("original_morphing"))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

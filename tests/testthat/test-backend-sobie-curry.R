@@ -414,4 +414,4 @@ test_that("Sobie-Curry rejects incomplete daily thermodynamic inputs", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

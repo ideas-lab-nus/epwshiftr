@@ -771,4 +771,4 @@ test_that("shared acquisition partitions large site collections", {
     expect_identical(opens, 1L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

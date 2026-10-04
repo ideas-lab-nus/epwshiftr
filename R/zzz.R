@@ -79,4 +79,4 @@
 # }}}
 # nocov end
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

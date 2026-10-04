@@ -277,4 +277,4 @@ temperature__epw_template <- function(epw) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

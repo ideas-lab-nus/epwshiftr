@@ -1081,4 +1081,4 @@ sequence__records <- function(result) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

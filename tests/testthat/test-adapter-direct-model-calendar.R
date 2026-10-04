@@ -519,4 +519,4 @@ test_that("hourly calendar mapping rejects ambiguous source contracts", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

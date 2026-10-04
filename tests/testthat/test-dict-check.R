@@ -123,4 +123,4 @@ test_that("esgdict_check() returns rich value and relationship diagnostics", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

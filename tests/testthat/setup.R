@@ -28,4 +28,4 @@ if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
     )
 }
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -385,4 +385,4 @@ epwshiftr_cli_shift_watch_active <- function(snapshot) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -395,4 +395,4 @@ bws_btws_epw__register_components <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

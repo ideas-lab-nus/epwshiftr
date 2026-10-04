@@ -544,4 +544,4 @@ test_that("required and optional source frequencies remain distinguishable", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

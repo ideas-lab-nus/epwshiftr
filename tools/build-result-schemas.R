@@ -273,4 +273,4 @@ for (path in schema_files) {
 response_path <- file.path(schema_dir, "response.json")
 result_schema__allow_provider_fields(response_path)
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

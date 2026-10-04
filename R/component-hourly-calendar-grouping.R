@@ -534,4 +534,4 @@ hourly_calendar__register_component <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

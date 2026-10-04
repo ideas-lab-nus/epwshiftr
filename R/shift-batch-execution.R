@@ -181,4 +181,4 @@ shift_batch_execution__register_child <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

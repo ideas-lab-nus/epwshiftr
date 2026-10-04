@@ -464,4 +464,4 @@ test_that("experimental daily profile warning and contracts are retained", {
     expect_true(component__compatible(component, sequence))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

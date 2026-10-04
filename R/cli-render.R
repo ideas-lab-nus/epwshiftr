@@ -2498,4 +2498,4 @@ epwshiftr_cli_string_default <- function(x, y) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

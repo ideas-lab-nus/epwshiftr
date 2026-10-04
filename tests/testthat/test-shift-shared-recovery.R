@@ -201,4 +201,4 @@ test_that("invalid cache receipt shapes remain cache misses", {
     expect_false(store__extract_cache_available(path))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

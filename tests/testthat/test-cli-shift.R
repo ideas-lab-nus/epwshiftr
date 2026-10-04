@@ -880,4 +880,4 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     expect_true(any(grepl("Shift workflow run", rendered)))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

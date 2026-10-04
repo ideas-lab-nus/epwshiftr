@@ -285,4 +285,4 @@ test_that("solar radiation interpolation is registered and compatible", {
     expect_true(component__compatible(component, calendar))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

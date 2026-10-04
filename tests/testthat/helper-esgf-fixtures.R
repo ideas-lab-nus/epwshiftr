@@ -171,4 +171,4 @@ esgf_test__file_result <- function(docs) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

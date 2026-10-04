@@ -60,4 +60,4 @@ cli_test_store <- function(label = "cli query", track = TRUE) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

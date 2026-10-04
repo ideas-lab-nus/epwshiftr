@@ -420,4 +420,4 @@ test_that("Quantile Mapping profiles retain evidence and registration", {
     expect_true(component__compatible(component, sequence))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

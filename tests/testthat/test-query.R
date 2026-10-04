@@ -1893,4 +1893,4 @@ test_that("EsgQuery$print()", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

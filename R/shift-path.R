@@ -168,4 +168,4 @@ shift_path__store_path_value <- function(store) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -178,4 +178,4 @@ bias__register_linear_scaling_component <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

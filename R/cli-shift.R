@@ -1824,4 +1824,4 @@ cli_shift__summary <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

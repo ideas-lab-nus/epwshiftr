@@ -629,4 +629,4 @@ test_that("R and CLI reject invalid method periods before discovery", {
     expect_false(dir.exists(root))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

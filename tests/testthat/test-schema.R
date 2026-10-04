@@ -521,4 +521,4 @@ test_that("SCHEMA_RESULT_DATASET validates local minimal results", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

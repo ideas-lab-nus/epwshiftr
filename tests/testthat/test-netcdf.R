@@ -578,4 +578,4 @@ test_that("match_nc_time()", {
     }
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

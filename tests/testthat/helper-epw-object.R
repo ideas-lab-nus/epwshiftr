@@ -50,4 +50,4 @@ test_external_epw <- function(path) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

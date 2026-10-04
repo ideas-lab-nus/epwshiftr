@@ -4195,4 +4195,4 @@ morpher__identical_match <- function(x, value) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

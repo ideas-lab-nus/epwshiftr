@@ -118,4 +118,4 @@ bias_adjustment_test__inputs <- function(observed, historical, future) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

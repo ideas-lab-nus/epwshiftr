@@ -36,4 +36,4 @@ cli_retry__prepare_candidates <- function(candidates, statuses, run) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

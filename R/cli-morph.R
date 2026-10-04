@@ -673,4 +673,4 @@ epwshiftr_cli_morph_workflow_result <- function(workflow) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

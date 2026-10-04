@@ -325,4 +325,4 @@ distribution__interpolate_ordered <- function(values, length_out) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

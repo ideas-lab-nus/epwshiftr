@@ -63,4 +63,4 @@ shared_inputs_test__fixture <- function(env = parent.frame()) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

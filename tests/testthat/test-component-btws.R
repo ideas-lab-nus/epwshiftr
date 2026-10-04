@@ -256,4 +256,4 @@ test_that("daily temperature reconstruction selects one hourly component", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -142,4 +142,4 @@ test_that("shared weather backends cannot treat EPW sentinels as temperature", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

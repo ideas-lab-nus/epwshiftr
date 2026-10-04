@@ -15,4 +15,4 @@ test_that("gh_token() works", {
     expect_null(names(gh_token(header = FALSE)))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

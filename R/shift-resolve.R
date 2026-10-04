@@ -3070,4 +3070,4 @@ shift_resolve__morph_complete_plan_selection <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

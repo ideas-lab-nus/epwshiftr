@@ -3316,4 +3316,4 @@ shift_run__extract_selected_partitions <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

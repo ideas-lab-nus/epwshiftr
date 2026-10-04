@@ -150,4 +150,4 @@ test_that("epwshiftr_cli_help() resolves root, group, and command topics", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

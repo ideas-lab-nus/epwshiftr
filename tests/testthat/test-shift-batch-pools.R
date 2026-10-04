@@ -1003,4 +1003,4 @@ test_that("File coverage reuse respects identity and protects cached evidence", 
     expect_identical(calls, 14L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

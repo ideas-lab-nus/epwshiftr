@@ -569,4 +569,4 @@ shift_cmip6_avail <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

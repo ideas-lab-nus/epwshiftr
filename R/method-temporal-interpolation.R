@@ -639,4 +639,4 @@ temporal__register_linear_component <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

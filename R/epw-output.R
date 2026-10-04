@@ -23,4 +23,4 @@ disclaimer_comment <- function(case) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

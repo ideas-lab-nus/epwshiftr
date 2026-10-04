@@ -293,4 +293,4 @@ if (sys.nframe() == 0L) {
     vignette__main()
 }
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

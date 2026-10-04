@@ -405,4 +405,4 @@ test_that("hourly kernel QDM is registered with frequency-aware contracts", {
     expect_true(component__compatible(component, sequence))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

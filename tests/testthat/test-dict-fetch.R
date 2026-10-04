@@ -87,4 +87,4 @@ test_that("EsgDict$build() uses parsed cache in offline mode", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

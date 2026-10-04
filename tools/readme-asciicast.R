@@ -145,4 +145,4 @@ readme__terminal <- function(options) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

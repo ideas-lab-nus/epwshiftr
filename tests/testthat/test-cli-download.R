@@ -448,4 +448,4 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

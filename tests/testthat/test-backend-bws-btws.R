@@ -520,4 +520,4 @@ test_that("BWS/BTWS public transform survives dry-run plan reconstruction", {
     expect_silent(shift_job__validate_background_plan(plan))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

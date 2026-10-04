@@ -184,4 +184,4 @@ test_that("an identical interrupted workflow resumes its original run ID", {
     expect_equal(nrow(runs), 1L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

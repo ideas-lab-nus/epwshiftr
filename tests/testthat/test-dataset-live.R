@@ -117,4 +117,4 @@ test_that("EsgDataset$new() / EsgDataset$open() / EsgDataset$get_time_axis() / E
     expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

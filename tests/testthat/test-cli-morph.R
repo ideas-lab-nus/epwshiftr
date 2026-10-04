@@ -267,4 +267,4 @@ test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outp
     expect_true(nrow(jsonlite::fromJSON(jsonl_text[[1L]])) >= 1L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

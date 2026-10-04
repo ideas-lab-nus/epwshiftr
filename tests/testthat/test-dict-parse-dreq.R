@@ -18,4 +18,4 @@ test_that("dict__parse_dreq() parses local request table fixtures", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

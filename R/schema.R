@@ -38,4 +38,4 @@ schema__load_lazy("SCHEMA_ESG_DICT", "esg-dict.json")
 schema__load_lazy("SCHEMA_DOWNLOADER_CONFIG", "downloader-config.json")
 schema__load_lazy("SCHEMA_SHIFT_WORKFLOW_CONFIG", "shift-workflow-config.json")
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

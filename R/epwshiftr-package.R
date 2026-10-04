@@ -68,4 +68,4 @@ this$index_db <- NULL
 this$dicts <- new.env(parent = emptyenv())
 this$data_max_limit <- 10000L
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

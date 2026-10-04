@@ -439,4 +439,4 @@ epwshiftr_cli_shift_example_config <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

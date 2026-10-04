@@ -965,4 +965,4 @@ reorganize_nc_dims <- function(nc) {
 # }}}
 # nocov end
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

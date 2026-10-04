@@ -8,7 +8,8 @@
 
 * Handwritten R sources, tests and tools include Vim marker folds for functions,
   classes and methods, without nested callback folds inside function bodies;
-  closing markers ignore braces inside CLI strings (#278).
+  modelines use the default Vim markers, with CLI string braces split to avoid
+  ending folds prematurely (#278).
 
 * Background batch tests collect process logs only on failure; an exclusively
   open Windows log cannot mask the task receipt (#278).

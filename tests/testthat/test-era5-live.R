@@ -46,4 +46,4 @@ test_that("ERA5 can be retrieved, normalized, persisted, and reused", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

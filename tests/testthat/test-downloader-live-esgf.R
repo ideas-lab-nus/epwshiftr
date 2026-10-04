@@ -306,4 +306,4 @@ test_that("Downloader$enqueue() / Downloader$run() / Downloader$verify() live ES
     }
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

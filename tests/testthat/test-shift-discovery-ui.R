@@ -338,4 +338,4 @@ test_that("frame writes isolate ANSI state and respect no-color output", {
     }
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

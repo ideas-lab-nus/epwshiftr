@@ -206,4 +206,4 @@ epwshiftr_cli_bin_in_path <- function(bin_dir) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -132,4 +132,4 @@ test_that("daily hourly projection ignores signal-owned options", {
     expect_false("signal_overrides" %in% names(projection))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

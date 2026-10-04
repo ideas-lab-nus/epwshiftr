@@ -234,4 +234,4 @@ test_that("dict__cache() follows package cache mode", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

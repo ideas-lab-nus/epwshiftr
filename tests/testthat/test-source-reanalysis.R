@@ -149,4 +149,4 @@ test_that("ERA5 variables are constrained by product semantics", {
     expect_identical(era5__resolve_access(land, "rlds"), "cds")
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -183,4 +183,4 @@ bias__register_delta_change_component <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

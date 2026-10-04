@@ -1041,4 +1041,4 @@ test_that("config templates do not initialize the default store", {
     expect_equal(out$status, 0L, info = out$error)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

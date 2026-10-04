@@ -451,4 +451,4 @@ shift_tui__ui_renderer <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

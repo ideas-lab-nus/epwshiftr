@@ -48,4 +48,4 @@ dict__parse_dreq <- function(file) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

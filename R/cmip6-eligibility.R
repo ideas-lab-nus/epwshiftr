@@ -597,4 +597,4 @@ eligibility__select <- function(future, scenarios, common) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

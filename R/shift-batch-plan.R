@@ -654,4 +654,4 @@ shift_batch_plan__child_plan <- function(child) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

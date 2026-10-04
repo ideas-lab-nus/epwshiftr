@@ -1129,4 +1129,4 @@ query_result__open_dataset <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

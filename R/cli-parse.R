@@ -202,4 +202,4 @@ epwshiftr_cli_empty_to_null <- function(value) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -433,4 +433,4 @@ test_that("EpwMorpher persists and executes the observed reference separately", 
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

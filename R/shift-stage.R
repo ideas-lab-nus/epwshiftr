@@ -1258,4 +1258,4 @@ shift_stage__diagnostics_from_coverage <- function(coverage) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

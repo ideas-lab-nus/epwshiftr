@@ -828,4 +828,4 @@ component__execute <- function(component, operation, ...) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

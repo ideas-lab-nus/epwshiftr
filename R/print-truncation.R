@@ -22,4 +22,4 @@ print__truncation_footer <- function(x, n, newline_before = is.data.frame(x)) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

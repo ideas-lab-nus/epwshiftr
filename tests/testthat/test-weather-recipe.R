@@ -387,4 +387,4 @@ test_that("registered recipe identity survives JSON and transform persistence", 
     expect_identical(aliased_roundtrip$policy, "harmonized")
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

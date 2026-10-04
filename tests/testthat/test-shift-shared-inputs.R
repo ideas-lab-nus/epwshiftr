@@ -243,4 +243,4 @@ test_that("shared resolution failures preserve child diagnostics and explicit re
     expect_equal(sum(retry$types == "File"), 2L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

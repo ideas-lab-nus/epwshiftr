@@ -1962,4 +1962,4 @@ test_that("auto mode uses logs in CI and dumb terminals", {
     expect_identical(shift_ui__ui_mode(shift_ui("auto")), "log")
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -442,4 +442,4 @@ test_that("ddb_connect() opens persisted databases read-only after closing write
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

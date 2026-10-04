@@ -263,4 +263,4 @@ test_that("reanalysis identities include the EPW fixed time zone", {
     expect_false(identical(original_ids$query_id, shifted_ids$query_id))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -2868,4 +2868,4 @@ dataset__close_handles <- function(urls, handles) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

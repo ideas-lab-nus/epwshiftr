@@ -1649,4 +1649,4 @@ epw_morph_recipe_spec <- function(name) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

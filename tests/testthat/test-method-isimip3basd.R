@@ -527,4 +527,4 @@ test_that("component remains compatible with calendar and sequence stages", {
     expect_true(component__compatible(component, sequence))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

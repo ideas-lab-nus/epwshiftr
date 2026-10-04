@@ -487,4 +487,4 @@ test_that("QDM profiles retain evidence and component registration", {
     expect_true(component__compatible(component, sequence))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

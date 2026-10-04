@@ -175,4 +175,4 @@ coverage__run <- function(path = ".", ...) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

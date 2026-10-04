@@ -768,4 +768,4 @@ test_that("query_param__display() / query_param__print()", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

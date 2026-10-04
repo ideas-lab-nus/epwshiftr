@@ -217,4 +217,4 @@ test_that("live ESGF HTTP recovery downloads one bounded real file", {
     expect_true(is.finite(value))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

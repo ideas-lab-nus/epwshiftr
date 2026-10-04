@@ -406,4 +406,4 @@ test_that("availability preserves explicit replica filters", {
     }
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

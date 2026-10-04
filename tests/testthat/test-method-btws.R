@@ -252,4 +252,4 @@ test_that("BTWS monthly factors close the published temperature statistics", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

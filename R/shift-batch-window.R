@@ -992,4 +992,4 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

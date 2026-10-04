@@ -108,4 +108,4 @@ shift_batch_read__read_acquisition <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

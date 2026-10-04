@@ -4572,4 +4572,4 @@ test_that("esg_result() constructs typed empty query results", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

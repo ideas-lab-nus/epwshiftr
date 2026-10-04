@@ -2506,4 +2506,4 @@ test_that("Downloader reports asynchronous worker failures", {
     expect_false(file.exists(file.path(root, "absent.bin")))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -1393,4 +1393,4 @@ solar__relative_air_mass <- function(zenith_radian) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

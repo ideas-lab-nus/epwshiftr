@@ -310,4 +310,4 @@ test_that("process liveness checks do not terminate a worker", {
     expect_false(downloader__pid_alive(0L))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

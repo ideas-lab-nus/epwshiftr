@@ -4089,4 +4089,4 @@ original_morphing__run <- function(context, backend = NULL) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

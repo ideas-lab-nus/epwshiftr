@@ -2125,4 +2125,4 @@ S7::method(shift_check, ShiftBatch) <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

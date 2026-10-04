@@ -732,4 +732,4 @@ shift_ui_state__ui_event_delta <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

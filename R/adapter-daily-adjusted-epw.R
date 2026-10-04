@@ -456,4 +456,4 @@ daily_adjustment__backend_specs <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -173,4 +173,4 @@ test_that("CLI watch follows shared reads before any child is registered", {
     expect_true(epwshiftr_cli_shift_watch_active(snapshot))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

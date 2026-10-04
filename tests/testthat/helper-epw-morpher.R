@@ -73,4 +73,4 @@ epw_morpher_test_file_docs <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

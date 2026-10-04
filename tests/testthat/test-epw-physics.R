@@ -368,4 +368,4 @@ test_that("grouped physical execution preserves case and row order", {
     expect_length(result$results, 2L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

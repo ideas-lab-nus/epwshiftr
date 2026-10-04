@@ -41,4 +41,4 @@ test_that("epwshiftr_cli() emits JSON output and dispatch errors", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -276,4 +276,4 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     expect_identical(resumed_outputs$output_id, outputs$output_id)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

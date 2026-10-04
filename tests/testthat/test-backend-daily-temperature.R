@@ -480,4 +480,4 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
     expect_identical(resumed$result_id, workflow$results$result_id)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

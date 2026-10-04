@@ -384,4 +384,4 @@ local_cache_mode_for_test <- function(value, env = parent.frame()) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

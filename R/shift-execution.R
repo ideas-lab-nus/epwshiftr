@@ -307,4 +307,4 @@ shift_execution__run <- function(context, code) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

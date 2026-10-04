@@ -2190,4 +2190,4 @@ test_that("EsgDataset$print()", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

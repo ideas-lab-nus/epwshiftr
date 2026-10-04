@@ -555,4 +555,4 @@ test_that("ShiftReporter falls back to logs when frame painting fails", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

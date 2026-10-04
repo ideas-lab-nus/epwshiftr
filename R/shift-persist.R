@@ -776,4 +776,4 @@ shift_persist__plan_from_spec <- function(spec, store = NULL) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

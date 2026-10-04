@@ -225,4 +225,4 @@ test_that("solrdate__eval() evaluates Solr Date Math for bridge rendering", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

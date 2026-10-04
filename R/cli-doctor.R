@@ -464,4 +464,4 @@ epwshiftr_cli_doctor_network <- function(index_node, timeout = 10L) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

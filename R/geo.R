@@ -21,4 +21,4 @@ tunnel_dist <- function(lat1, lon1, lat2, lon2) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

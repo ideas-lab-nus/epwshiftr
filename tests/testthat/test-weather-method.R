@@ -157,4 +157,4 @@ test_that("all daily adjustment methods produce the same output contract", {
     )))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

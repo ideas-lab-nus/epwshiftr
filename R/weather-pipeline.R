@@ -500,4 +500,4 @@ pipeline__run <- function(spec, context) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

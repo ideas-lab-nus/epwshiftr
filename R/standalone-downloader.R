@@ -8954,4 +8954,4 @@ downloader__launch_process <- function(kind, id, manifest, log_path) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

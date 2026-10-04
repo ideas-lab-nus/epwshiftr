@@ -343,4 +343,4 @@ schema_write_all <- function() {
 
 schema_write_all()
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

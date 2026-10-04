@@ -238,4 +238,4 @@ test_that("daily temperature projection rejects infeasible targets and incomplet
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

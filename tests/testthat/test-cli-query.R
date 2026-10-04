@@ -610,4 +610,4 @@ test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -483,4 +483,4 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     )))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

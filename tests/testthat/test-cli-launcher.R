@@ -44,4 +44,4 @@ test_that("install_cli() / uninstall_cli() manage generated launchers", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

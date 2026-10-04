@@ -137,4 +137,4 @@ test_that("shift_future_epw rejects an overlapping delivery and store tree", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

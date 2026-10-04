@@ -566,4 +566,4 @@ epwshiftr_cli_help_registry <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

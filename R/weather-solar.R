@@ -62,4 +62,4 @@ radiation__preserved_diffuse <- function(data_epw, ghi) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

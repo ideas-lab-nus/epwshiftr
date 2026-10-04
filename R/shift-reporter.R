@@ -1718,4 +1718,4 @@ shift_reporter__ui_check <- function(ui, label, code) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

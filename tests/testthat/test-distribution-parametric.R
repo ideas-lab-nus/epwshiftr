@@ -44,4 +44,4 @@ test_that("parametric distribution validation rejects incomplete fits", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

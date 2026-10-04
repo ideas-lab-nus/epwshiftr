@@ -1973,4 +1973,4 @@ shift_print__abort_run <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

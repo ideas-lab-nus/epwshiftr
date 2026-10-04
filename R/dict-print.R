@@ -107,7 +107,10 @@ dict__cv_table <- function(cv, n = 3L) {
             )
         )
         cli::cli_h2(
-            "[{to_title_case(cols[1])}: {.strong {.val {dt[[cols[1]]]}}}]"
+            paste0(
+                "[{to_title_case(cols[1])}: {.strong {.val {dt[[cols[1]]]}",
+                "}}]"
+            )
         )
         ul <- cli::cli_ul()
         for (col in cols[-1L]) {
@@ -268,4 +271,4 @@ print.Cmip6DReq <- function(x, n = 3L, ...) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

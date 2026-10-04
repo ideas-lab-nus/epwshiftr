@@ -32,4 +32,4 @@ test_that("sub-daily lattice supports explicit non-hourly expectations", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

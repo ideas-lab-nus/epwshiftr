@@ -853,4 +853,4 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

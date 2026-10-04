@@ -2367,4 +2367,4 @@ shift_job__update_row <- function(store, table, key, row, fields) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

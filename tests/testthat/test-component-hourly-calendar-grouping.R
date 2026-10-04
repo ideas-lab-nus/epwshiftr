@@ -446,4 +446,4 @@ test_that("three-hour source roles compile through the real hourly bridge", {
     expect_s7_class(pipeline__compile(spec, inputs), WeatherPipelinePlan)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

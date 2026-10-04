@@ -633,4 +633,4 @@ test_that("eligibility summaries preserve matched evidence by reference", {
     expect_true(result$matrix$selected)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

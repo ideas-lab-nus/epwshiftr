@@ -424,4 +424,4 @@ test_that("CDF-t profiles separate published and package provenance", {
     expect_true(component__compatible(component, sequence))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

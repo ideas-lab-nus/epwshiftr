@@ -258,4 +258,4 @@ test_that("file isolation callbacks allow independent sources to finish", {
     }
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

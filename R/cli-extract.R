@@ -228,4 +228,4 @@ epwshiftr_cli_extract_artifacts <- function(store, args) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

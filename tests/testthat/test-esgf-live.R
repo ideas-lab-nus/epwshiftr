@@ -64,4 +64,4 @@ test_that("esg_query() live smoke keeps empty result behavior stable", {
     expect_identical(empty$count(), 0L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

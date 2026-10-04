@@ -1019,4 +1019,4 @@ epwshiftr_cli_apply_download_config_options <- function(params, options) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

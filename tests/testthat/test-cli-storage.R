@@ -185,4 +185,4 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

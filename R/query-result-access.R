@@ -1529,4 +1529,4 @@ query_result__latency_table <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

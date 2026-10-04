@@ -1252,4 +1252,4 @@ as.character.SolrDate <- function(x, ...) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

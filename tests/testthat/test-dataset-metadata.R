@@ -363,4 +363,4 @@ test_that("concurrent dataset tasks in one process retain separate backends", {
     )))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -3387,4 +3387,4 @@ esg_result <- function(type = c("dataset", "file", "aggregation")) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

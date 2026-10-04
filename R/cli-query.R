@@ -527,4 +527,4 @@ epwshiftr_cli_added_query_id <- function(store, query_id, before) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

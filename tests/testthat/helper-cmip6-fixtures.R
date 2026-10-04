@@ -343,4 +343,4 @@ write_local_morph_tas_fixture <- function(path, year = 2060L) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

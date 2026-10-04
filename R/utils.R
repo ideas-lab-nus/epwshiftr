@@ -1526,4 +1526,4 @@ compact_list <- function(x) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

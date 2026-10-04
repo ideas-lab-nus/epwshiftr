@@ -272,4 +272,4 @@ test_that("hourly weather interpolation rejects incomplete extrema and registers
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

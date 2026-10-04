@@ -1116,4 +1116,4 @@ epw_file_fill_abnormal <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

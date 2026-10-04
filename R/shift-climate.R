@@ -253,4 +253,4 @@ shift_climate__derive_hurs_climate <- function(
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

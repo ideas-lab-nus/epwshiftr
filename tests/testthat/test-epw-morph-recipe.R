@@ -20,4 +20,4 @@ test_that("epw_morph_recipe() accepts morph.R statistical downscaling method ove
     expect_error(epw_morph_recipe(methods = c(tdb = "scale")), "Unsupported")
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

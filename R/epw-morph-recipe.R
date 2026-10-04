@@ -772,4 +772,4 @@ morpher__recipe_method_overrides <- function(recipe) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

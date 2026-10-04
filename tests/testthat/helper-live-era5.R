@@ -18,4 +18,4 @@ era5_live__skip_unless_enabled <- function() {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

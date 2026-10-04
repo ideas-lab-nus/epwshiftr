@@ -817,4 +817,4 @@ test_that("File coverage applies the same year kernel to historical reference", 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

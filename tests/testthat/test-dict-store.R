@@ -110,4 +110,4 @@ test_that("EsgDict$load() handles missing entries and malformed JSON", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

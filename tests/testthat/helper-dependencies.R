@@ -100,4 +100,4 @@ test_candidate_reader <- function(adapter) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

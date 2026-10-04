@@ -147,4 +147,4 @@ test_that("integer BWS uses the closest attainable monthly mean", {
     ))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

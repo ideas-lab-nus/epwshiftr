@@ -121,4 +121,4 @@ download_gh_ref <- function(repo, ref, dir = tempdir(), token = NULL) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

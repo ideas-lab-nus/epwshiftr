@@ -145,4 +145,4 @@ transform_print <- function(lines) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

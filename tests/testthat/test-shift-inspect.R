@@ -280,4 +280,4 @@ test_that("staged summaries preserve output identities, transforms and weather g
     expect_equal(summary$temperature_hours, c(2L, 1L))
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

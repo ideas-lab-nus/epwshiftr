@@ -40,4 +40,4 @@ test_that("dict__parse_cv_table_id() parses local CMIP6 CV fixtures", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

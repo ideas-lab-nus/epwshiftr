@@ -2424,4 +2424,4 @@ shift_inspect__rows <- function(store, table, key, ids) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -771,4 +771,4 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     expect_true(sum(calls$values %in% "File") >= 2L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

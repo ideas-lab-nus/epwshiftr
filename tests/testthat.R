@@ -3,4 +3,4 @@ library(epwshiftr)
 
 test_check("epwshiftr")
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

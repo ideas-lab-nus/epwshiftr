@@ -387,4 +387,4 @@ test_that("linear temporal interpolation is registered and compatible", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -313,4 +313,4 @@ test_that("CDS retrieval reuses files unless overwrite is explicit", {
     expect_identical(file.info(target)$size, 4)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

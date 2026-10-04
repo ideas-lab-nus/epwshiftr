@@ -450,4 +450,4 @@ epwshiftr_cli_has_flag <- function(args, flag) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

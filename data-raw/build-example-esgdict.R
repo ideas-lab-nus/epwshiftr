@@ -329,4 +329,4 @@ esgdict__save(
 
 message("Wrote ", normalizePath(out, winslash = "/", mustWork = TRUE))
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

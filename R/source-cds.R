@@ -698,4 +698,4 @@ cds__cancel <- function(job, config = cds__config()) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

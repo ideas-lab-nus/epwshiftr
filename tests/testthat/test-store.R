@@ -3737,4 +3737,4 @@ test_that("extraction persistence rolls back manifest changes on failure", {
     expect_equal(store$query("SELECT 1 AS value")$value, 1L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

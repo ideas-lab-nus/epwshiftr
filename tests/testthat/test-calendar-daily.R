@@ -132,4 +132,4 @@ test_that("daily climatology validates phases, windows, and columns", {
     expect_error(daily__climatology(valid, by = "annual_phase"), "cannot use")
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

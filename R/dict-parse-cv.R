@@ -247,4 +247,4 @@ dict__parse_cv_table_id <- function(file) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

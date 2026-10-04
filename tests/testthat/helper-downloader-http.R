@@ -160,4 +160,4 @@ local_downloader_http_server <- function(env = parent.frame()) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

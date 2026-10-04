@@ -640,4 +640,4 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     expect_identical(tools::md5sum(output), hash)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

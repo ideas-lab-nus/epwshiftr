@@ -382,4 +382,4 @@ test_that("daily adjusted series enforces canonical calendar-native data", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

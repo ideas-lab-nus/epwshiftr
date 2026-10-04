@@ -50,4 +50,4 @@ test_that("epwshiftr_cli_empty_to_null() validates scalar inputs", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

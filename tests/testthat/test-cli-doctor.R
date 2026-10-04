@@ -64,4 +64,4 @@ test_that("epwshiftr_cli_doctor() reports missing and valid stores", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

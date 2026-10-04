@@ -9828,4 +9828,4 @@ store__sync_download_job <- function(path, downloader) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

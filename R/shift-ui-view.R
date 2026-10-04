@@ -2540,4 +2540,4 @@ shift_ui_view__format_elapsed <- function(seconds) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

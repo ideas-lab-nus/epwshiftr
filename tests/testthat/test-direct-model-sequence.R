@@ -576,4 +576,4 @@ test_that("direct model sequence rejects wrong roles, duplicates, and failures",
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

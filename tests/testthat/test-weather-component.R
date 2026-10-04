@@ -330,4 +330,4 @@ test_that("component specs reject missing or stage-inappropriate operations", {
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

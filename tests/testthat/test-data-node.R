@@ -70,4 +70,4 @@ test_that("data_node_status() returns an empty table when status lookup fails", 
     expect_equal(nrow(res), 0L)
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

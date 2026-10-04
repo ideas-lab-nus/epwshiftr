@@ -1281,4 +1281,4 @@ morpher__run_context <- function(context) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

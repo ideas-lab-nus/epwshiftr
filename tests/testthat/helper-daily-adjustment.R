@@ -89,4 +89,4 @@ daily_adjustment_test__context <- function(recipe) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -156,4 +156,4 @@ shift_ui__ui_height <- function(height = NULL) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -23,4 +23,4 @@ test_that("shift reference specs validate manual and automatic reference inputs"
     expect_error(shift_reference_plan(character(), periods), "length >= 1")
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

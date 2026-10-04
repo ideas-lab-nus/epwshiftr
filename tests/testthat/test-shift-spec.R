@@ -447,4 +447,4 @@ test_that("CMIP6 fields remain valid after construction", {
     expect_error(shift_cmip6("", "ssp245"), "model")
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

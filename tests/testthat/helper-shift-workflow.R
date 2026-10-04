@@ -370,4 +370,4 @@ ui_workflows__batch <- function(root) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

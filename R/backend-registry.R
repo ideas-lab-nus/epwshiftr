@@ -642,4 +642,4 @@ epw_morph_register_backend <- function(name, backend, overwrite = FALSE) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

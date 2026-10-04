@@ -64,4 +64,4 @@ allow_live_esgf_transient_warnings <- function(expr) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

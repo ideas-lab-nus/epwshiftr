@@ -1694,4 +1694,4 @@ test_that("Original morphing combined temperature uses average daily EPW range",
     )
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -1169,4 +1169,4 @@ shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

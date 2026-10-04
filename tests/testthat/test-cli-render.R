@@ -253,4 +253,4 @@ test_that("epwshiftr_cli_render_table() renders progress", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

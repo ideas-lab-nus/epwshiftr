@@ -417,4 +417,4 @@ source__read_acquisition <- function(job) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

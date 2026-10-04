@@ -1234,4 +1234,4 @@ test_that("cache__reset() sets cache to NULL", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

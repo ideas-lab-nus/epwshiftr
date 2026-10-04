@@ -468,4 +468,4 @@ shift_reference__infer_field <- function(field, catalog, request) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

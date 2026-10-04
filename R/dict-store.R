@@ -795,4 +795,4 @@ dict__dec_scalar <- function(x) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

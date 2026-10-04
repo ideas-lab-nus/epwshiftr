@@ -233,4 +233,4 @@ temporal__target_coordinates <- function(target_seconds, calendar) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

@@ -609,4 +609,4 @@ test_that("availability ignores invalid partitions and preserves empty types", {
     }
 })
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

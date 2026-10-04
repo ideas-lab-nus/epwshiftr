@@ -135,4 +135,4 @@ quantile__uniform <- function(n, seed) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

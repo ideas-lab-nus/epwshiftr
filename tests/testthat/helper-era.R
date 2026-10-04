@@ -105,4 +105,4 @@ test_cmip6_period_coverage <- function(candidates, ...) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

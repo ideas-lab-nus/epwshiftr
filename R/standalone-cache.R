@@ -935,4 +935,4 @@ cache__download <- function(url, destfile, fn) {
 }
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :

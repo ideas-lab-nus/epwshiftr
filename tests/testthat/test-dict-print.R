@@ -18,4 +18,4 @@ test_that("print.Cmip6CV() / print.Cmip6DReq()", {
 })
 # }}}
 
-# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
+# vim: fdm=marker :
