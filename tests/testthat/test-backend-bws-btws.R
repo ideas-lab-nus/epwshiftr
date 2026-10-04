@@ -6,6 +6,7 @@ test_local_dependencies(list(
 
 # Build deterministic monthly CMIP6 rows whose future changes vary by calendar
 # month and whose temperature extrema retain their monthly CMIP definitions.
+# bws_btws_monthly_test__climate {{{
 bws_btws_monthly_test__climate <- function(
     years,
     period,
@@ -28,6 +29,7 @@ bws_btws_monthly_test__climate <- function(
     )
     stopifnot(all(lengths(shifts) == 12L))
 
+    # lapply callback {{{
     data.table::rbindlist(lapply(years, function(year) {
         month <- seq_len(12L)
         time <- as.POSIXct(
@@ -46,6 +48,7 @@ bws_btws_monthly_test__climate <- function(
         if (!isTRUE(include_extrema)) {
             values <- values["tas"]
         }
+        # lapply callback {{{
         data.table::rbindlist(lapply(names(values), function(variable_id) {
             data.table::data.table(
                 activity_id = if (identical(experiment, "historical")) {
@@ -88,10 +91,14 @@ bws_btws_monthly_test__climate <- function(
                 }
             )
         }))
+        # }}}
     }))
+    # }}}
 }
+# }}}
 
 # Assemble one direct context for the complete registered BWS/BTWS recipe.
+# bws_btws_monthly_test__context {{{
 bws_btws_monthly_test__context <- function(
     mean_shift = seq(0.5, 1.6, by = 0.1),
     minimum_shift = seq(0.3, 1.4, by = 0.1),
@@ -122,6 +129,7 @@ bws_btws_monthly_test__context <- function(
         recipe = epw_morph_recipe(recipe_name, policy = "harmonized")
     )
 }
+# }}}
 
 test_that("BWS/BTWS monthly sources produce 12 month-constant target sets", {
     mean_shift <- seq(0.5, 1.6, by = 0.1)
@@ -515,3 +523,5 @@ test_that("BWS/BTWS public transform survives dry-run plan reconstruction", {
     )
     expect_silent(shift_job__validate_background_plan(plan))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

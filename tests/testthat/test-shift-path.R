@@ -110,6 +110,7 @@ test_that("path comparison follows case-insensitive filesystem semantics", {
 test_that("shift_future_epw rejects an overlapping delivery and store tree", {
     root <- withr::local_tempdir()
     common <- file.path(root, "workflow")
+    # make_plan {{{
     make_plan <- function(dir, store) {
         shift_future_epw(
             sites = shift_site(epw = get_cache_epw()),
@@ -121,6 +122,7 @@ test_that("shift_future_epw rejects an overlapping delivery and store tree", {
             dry_run = TRUE
         )
     }
+    # }}}
 
     expect_error(
         make_plan(common, common),
@@ -136,3 +138,5 @@ test_that("shift_future_epw rejects an overlapping delivery and store tree", {
         ShiftBatch
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

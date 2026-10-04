@@ -1,5 +1,6 @@
 # Build interval-mean shortwave series with exact native CF coordinates and
 # explicit POSIX surrogates for both interval bounds.
+# solar_test__series {{{
 solar_test__series <- function(
     calendar = "noleap",
     frequency = "3hr",
@@ -19,7 +20,9 @@ solar_test__series <- function(
         year_start,
         data.frame(year = 1L, month = 1L, day = 1L),
         calendar
-    )) * 86400 + interval_starts
+    )) *
+        86400 +
+        interval_starts
     absolute_end <- absolute_start + step
     absolute_sample <- absolute_start + coordinate_position * step
     target <- temporal__target_coordinates(absolute_sample, calendar)
@@ -48,8 +51,10 @@ solar_test__series <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Assemble the two model roles required by the standalone radiation component.
+# solar_test__inputs {{{
 solar_test__inputs <- function(
     historical = solar_test__series(),
     future = solar_test__series(value_offset = 100),
@@ -64,6 +69,7 @@ solar_test__inputs <- function(
         model_future = weather__new_input("model_future", future)
     )
 }
+# }}}
 
 test_that("solar radiation interpolation conserves every source interval", {
     source <- solar_test__series(value_offset = 100)
@@ -278,3 +284,5 @@ test_that("solar radiation interpolation is registered and compatible", {
     )
     expect_true(component__compatible(component, calendar))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

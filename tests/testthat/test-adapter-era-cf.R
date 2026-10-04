@@ -26,6 +26,7 @@ test_that("ERA normalization closes humidity, wind, flux, and local-day fields",
         as.POSIXct("2000-01-03 23:00:00", tz = "UTC"),
         by = "hour"
     )
+    # row {{{
     row <- function(value) {
         list(
             data = data.table::data.table(
@@ -38,6 +39,7 @@ test_that("ERA normalization closes humidity, wind, flux, and local-day fields",
             units = ""
         )
     }
+    # }}}
     raw <- list(
         tas = row(273.15 + rep(0:23, length.out = length(utc_time))),
         tdps = row(268.15 + rep(0:23, length.out = length(utc_time))),
@@ -109,6 +111,7 @@ test_that("reanalysis materialization persists and reuses ShiftClimate data", {
     recipe <- transform__recipe(daily_transform("isimip3basd"))
     source <- shift_era5(1999:2000)
     calls <- 0L
+    # retrieve {{{
     retrieve <- function(dataset_id, request, target, reporter = NULL, ...) {
         calls <<- calls + 1L
         dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
@@ -119,6 +122,8 @@ test_that("reanalysis materialization persists and reuses ShiftClimate data", {
             reused = FALSE
         )
     }
+    # }}}
+    # reader {{{
     reader <- function(path, source_variable, site) {
         time <- seq(
             as.POSIXct("1998-12-31 00:00:00", tz = "UTC"),
@@ -137,6 +142,7 @@ test_that("reanalysis materialization persists and reuses ShiftClimate data", {
             )
         )
     }
+    # }}}
     test_local_dependencies(list(
         cds__retrieve = retrieve,
         era__read_netcdf = reader,
@@ -176,6 +182,7 @@ test_that("identical reanalysis requests are reused across child stores", {
         year = c("1999", "2000")
     )
     calls <- 0L
+    # retrieve {{{
     retrieve <- function(dataset_id, request, target, reporter = NULL, ...) {
         calls <<- calls + 1L
         dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
@@ -186,6 +193,7 @@ test_that("identical reanalysis requests are reused across child stores", {
             reused = FALSE
         )
     }
+    # }}}
     first_target <- file.path(tempfile("era-child-a-"), "tas.nc")
     second_target <- file.path(tempfile("era-child-b-"), "tas.nc")
 
@@ -262,3 +270,5 @@ test_that("reanalysis identities include the EPW fixed time zone", {
 
     expect_false(identical(original_ids$query_id, shifted_ids$query_id))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

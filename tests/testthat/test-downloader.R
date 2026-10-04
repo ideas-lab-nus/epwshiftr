@@ -1,14 +1,19 @@
 # downloader_test_df() / downloader_test_file_url() / downloader_test_queued_job() / downloader_test_async_task() {{{
+# downloader_test_df {{{
 downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
 }
+# }}}
 
+# downloader_test_file_url {{{
 downloader_test_file_url <- function(root, filename, size) {
     path <- file.path(root, filename)
     writeBin(as.raw(rep(0:255, length.out = size)), path)
     paste0("file://", normalizePath(path, winslash = "/"))
 }
+# }}}
 
+# downloader_test_queued_job {{{
 downloader_test_queued_job <- function(label = "job") {
     root <- tempfile("downloader-job-")
     withr::defer(unlink(root, recursive = TRUE), envir = parent.frame())
@@ -34,9 +39,11 @@ downloader_test_queued_job <- function(label = "job") {
         priority = 1L
     ))
 
+    # downloader__launch_process {{{
     test_local_dependencies(list(downloader__launch_process = function(...) {
         TRUE
     }))
+    # }}}
     job <- dl$run(session_id = session_id, block = FALSE, progress = FALSE)
     task_id <- dl$tasks(job_id = job$job_id[[1L]])$task_id[[1L]]
 
@@ -48,13 +55,16 @@ downloader_test_queued_job <- function(label = "job") {
         job = job
     )
 }
+# }}}
 
+# downloader_test_async_task {{{
 downloader_test_async_task <- function(dl, task_id = "async-task") {
     task <- DownloadTask$new("file:///tmp/async-source.bin", "async-target.bin")
     task$update_progress(5L, 10L)
     priv(dl)$async_tasks[[task_id]] <- task
     task_id
 }
+# }}}
 # }}}
 # Downloader$new() {{{
 test_that("Downloader$new()", {
@@ -112,7 +122,10 @@ test_that("Downloader$new()", {
         cleanup = FALSE
     )
     expect_equal(dl$data_dir, normalizePath(temp_dir, winslash = "/"))
-    expect_equal(dl$tmp_dir, normalizePath(temp, mustWork = FALSE, winslash = "/"))
+    expect_equal(
+        dl$tmp_dir,
+        normalizePath(temp, mustWork = FALSE, winslash = "/")
+    )
     expect_equal(dl$max_retries, 5L)
     expect_equal(dl$timeout, 7200L)
     expect_identical(dl$network_policy$ssl_verifypeer, FALSE)
@@ -214,10 +227,17 @@ test_that("Downloader$enqueue() creates sessions and tasks", {
     expect_setequal(
         ddb_list_tables(conn),
         c(
-            "download_candidate", "download_config", "download_control",
-            "download_daemon", "download_event", "download_job",
-            "download_meta", "download_node", "download_piece",
-            "download_session", "download_task"
+            "download_candidate",
+            "download_config",
+            "download_control",
+            "download_daemon",
+            "download_event",
+            "download_job",
+            "download_meta",
+            "download_node",
+            "download_piece",
+            "download_session",
+            "download_task"
         )
     )
 })
@@ -235,13 +255,22 @@ test_that("Downloader$sessions()", {
     src <- tempfile()
     writeLines("session content", src)
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
-    session_id <- dl$enqueue(downloader_test_df(
-        logical_file_id = "tracking:sessions",
-        filename = "sessions.txt",
-        url = paste0("file://", normalizePath(src, winslash = "/")),
-        priority = 1L
-    ), session_label = "session-list")
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
+    session_id <- dl$enqueue(
+        downloader_test_df(
+            logical_file_id = "tracking:sessions",
+            filename = "sessions.txt",
+            url = paste0("file://", normalizePath(src, winslash = "/")),
+            priority = 1L
+        ),
+        session_label = "session-list"
+    )
 
     sessions <- dl$sessions()
     expect_equal(nrow(sessions), 1L)
@@ -263,7 +292,13 @@ test_that("Downloader$tasks()", {
     src <- tempfile()
     writeLines("task content", src)
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
     session_id <- dl$enqueue(downloader_test_df(
         logical_file_id = "tracking:tasks",
         filename = "tasks.txt",
@@ -292,7 +327,13 @@ test_that("Downloader$status()", {
     src <- tempfile()
     writeLines("status content", src)
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 1L, n_workers = 0L)
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 1L,
+        n_workers = 0L
+    )
     session_id <- dl$enqueue(downloader_test_df(
         logical_file_id = "tracking:status",
         filename = "status.txt",
@@ -377,8 +418,14 @@ test_that("Downloader$run() downloads enqueued local files", {
 
     restored <- Downloader$new(manifest = manifest)
     expect_equal(restored$data_dir, normalizePath(dest, winslash = "/"))
-    expect_equal(restored$tmp_dir, normalizePath(temp, mustWork = FALSE, winslash = "/"))
-    expect_equal(restored$manifest, normalizePath(manifest, mustWork = FALSE, winslash = "/"))
+    expect_equal(
+        restored$tmp_dir,
+        normalizePath(temp, mustWork = FALSE, winslash = "/")
+    )
+    expect_equal(
+        restored$manifest,
+        normalizePath(manifest, mustWork = FALSE, winslash = "/")
+    )
     expect_identical(restored$network_policy$ssl_verifypeer, FALSE)
     expect_equal(restored$network_policy$connect_timeout, 2L)
     expect_equal(restored$network_policy$useragent, "epwshiftr-test")
@@ -431,7 +478,10 @@ test_that("Downloader$verify() reports checksum status for completed sessions", 
         priority = 1L
     )
     session_id <- dl$enqueue(plan, session_label = "unit-test")
-    expect_equal(dl$run(session_id = session_id, progress = FALSE)$status, "done")
+    expect_equal(
+        dl$run(session_id = session_id, progress = FALSE)$status,
+        "done"
+    )
     expect_true(dl$verify(session_id = session_id)$checksum_ok)
 })
 # }}}
@@ -449,10 +499,22 @@ test_that("Downloader$run() supports block = FALSE", {
     writeLines("background content", src)
 
     launched <- list()
-    test_local_dependencies(list(downloader__launch_process = function(kind, id, manifest, log_path) {
-        launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
+    # downloader__launch_process {{{
+    test_local_dependencies(list(downloader__launch_process = function(
+        kind,
+        id,
+        manifest,
+        log_path
+    ) {
+        launched[[length(launched) + 1L]] <<- list(
+            kind = kind,
+            id = id,
+            manifest = manifest,
+            log_path = log_path
+        )
         TRUE
     }))
+    # }}}
 
     dl <- Downloader$new(
         dest = dest,
@@ -560,9 +622,11 @@ test_that("Downloader$start() / Downloader$job_status()", {
     dir.create(dirname(src), recursive = TRUE, showWarnings = FALSE)
     writeLines(rep("job content", 20L), src)
 
+    # downloader__launch_process {{{
     test_local_dependencies(list(downloader__launch_process = function(...) {
         TRUE
     }))
+    # }}}
     dl <- Downloader$new(
         dest = dest,
         temp = temp,
@@ -600,10 +664,22 @@ test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$d
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
     launched <- list()
-    test_local_dependencies(list(downloader__launch_process = function(kind, id, manifest, log_path) {
-        launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
+    # downloader__launch_process {{{
+    test_local_dependencies(list(downloader__launch_process = function(
+        kind,
+        id,
+        manifest,
+        log_path
+    ) {
+        launched[[length(launched) + 1L]] <<- list(
+            kind = kind,
+            id = id,
+            manifest = manifest,
+            log_path = log_path
+        )
         TRUE
     }))
+    # }}}
 
     dl <- Downloader$new(
         dest = file.path(root, "downloads"),
@@ -640,14 +716,28 @@ test_that("serialized downloader worker dependencies support both worker algorit
     checksum <- as.character(tools::md5sum(src))
     file_url <- paste0("file://", normalizePath(src, winslash = "/"))
 
-    dependencies <- unserialize(serialize(downloader__worker_dependencies(), NULL))
+    dependencies <- unserialize(serialize(
+        downloader__worker_dependencies(),
+        NULL
+    ))
     expect_named(
         dependencies,
         c(
-            "as_df", "one_chr", "normalize_count", "normalize_transfer_policy",
-            "checksum_file", "verify_checksum", "null_if_empty", "curl_handle",
-            "format_byte", "headers_text", "resume_supported", "copy_file_range",
-            "merge_piece_files", "target_path", "finalize"
+            "as_df",
+            "one_chr",
+            "normalize_count",
+            "normalize_transfer_policy",
+            "checksum_file",
+            "verify_checksum",
+            "null_if_empty",
+            "curl_handle",
+            "format_byte",
+            "headers_text",
+            "resume_supported",
+            "copy_file_range",
+            "merge_piece_files",
+            "target_path",
+            "finalize"
         )
     )
     expect_true(dependencies$verify_checksum(src, checksum, "md5"))
@@ -717,12 +807,18 @@ test_that("downloader__range_probe_url() probes local files", {
     src <- file.path(root, "source.bin")
     writeBin(as.raw(seq_len(64L) - 1L), src)
 
-    probe <- downloader__range_probe_url(paste0("file://", normalizePath(src, winslash = "/")))
+    probe <- downloader__range_probe_url(paste0(
+        "file://",
+        normalizePath(src, winslash = "/")
+    ))
     expect_true(probe$range_supported)
     expect_equal(probe$range_size, 64)
     expect_true(is.na(probe$range_probe_error))
 
-    missing <- downloader__range_probe_url(paste0("file://", file.path(root, "missing.bin")))
+    missing <- downloader__range_probe_url(paste0(
+        "file://",
+        file.path(root, "missing.bin")
+    ))
     expect_false(missing$range_supported)
     expect_match(missing$range_probe_error, "does not exist")
 })
@@ -784,12 +880,21 @@ test_that("Downloader$run() downloads manifest-backed single-source pieces", {
     tasks <- dl$run(session_id = session_id, progress = FALSE)
 
     expect_equal(tasks$status, "done")
-    expect_equal(readBin(file.path(dest, "single.bin"), "raw", n = 8193L), downloader_http_bytes(8193L))
+    expect_equal(
+        readBin(file.path(dest, "single.bin"), "raw", n = 8193L),
+        downloader_http_bytes(8193L)
+    )
     candidates <- ddb_read_table(priv(dl)$manifest_conn, "download_candidate")
     expect_true(candidates$range_supported[[1L]])
     expect_equal(candidates$range_size[[1L]], 8193)
-    expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
-    expect_false(dir.exists(file.path(temp, paste0(tasks$task_id[[1L]], ".pieces"))))
+    expect_equal(
+        nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")),
+        0L
+    )
+    expect_false(dir.exists(file.path(
+        temp,
+        paste0(tasks$task_id[[1L]], ".pieces")
+    )))
 })
 
 test_that("Downloader$run() downloads pieces inside a persistent worker", {
@@ -823,7 +928,10 @@ test_that("Downloader$run() downloads pieces inside a persistent worker", {
         )
     )
     plan <- downloader_test_df(
-        logical_file_id = c("tracking:segmented-worker", "tracking:plain-worker"),
+        logical_file_id = c(
+            "tracking:segmented-worker",
+            "tracking:plain-worker"
+        ),
         filename = c("worker.bin", "plain.bin"),
         url = paste0("file://", normalizePath(src, winslash = "/")),
         checksum = checksum,
@@ -838,7 +946,10 @@ test_that("Downloader$run() downloads pieces inside a persistent worker", {
     expect_true(all(tasks$status == "done"))
     expect_equal(readBin(file.path(dest, "worker.bin"), "raw", n = 389L), bytes)
     expect_equal(readBin(file.path(dest, "plain.bin"), "raw", n = 389L), bytes)
-    expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
+    expect_equal(
+        nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")),
+        0L
+    )
 })
 
 test_that("Downloader$run() downloads multi-source range pieces", {
@@ -871,7 +982,10 @@ test_that("Downloader$run() downloads multi-source range pieces", {
     plan <- downloader_test_df(
         logical_file_id = "tracking:segmented-multi",
         filename = "multi.bin",
-        url = c(server$url("/files/range.bin"), server$url("/files/range-copy.bin")),
+        url = c(
+            server$url("/files/range.bin"),
+            server$url("/files/range-copy.bin")
+        ),
         checksum = checksum,
         checksum_type = "md5",
         data_node = c("local-http-a", "local-http-b"),
@@ -884,7 +998,10 @@ test_that("Downloader$run() downloads multi-source range pieces", {
     expect_equal(readBin(file.path(dest, "multi.bin"), "raw", n = 8193L), bytes)
     candidates <- ddb_read_table(priv(dl)$manifest_conn, "download_candidate")
     expect_true(all(candidates$range_supported))
-    expect_equal(nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")), 0L)
+    expect_equal(
+        nrow(ddb_read_table(priv(dl)$manifest_conn, "download_piece")),
+        0L
+    )
     nodes <- dl$data_nodes()
     expect_true(all(c("local-http-a", "local-http-b") %in% nodes$data_node))
 })
@@ -912,7 +1029,12 @@ test_that("Downloader$preflight()", {
         priority = 1L
     )
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        n_workers = 0L
+    )
     plan_check <- dl$preflight(plan = plan)
     expect_equal(plan_check$task_count, 1L)
     expect_equal(plan_check$needs_download, 1L)
@@ -924,8 +1046,14 @@ test_that("Downloader$preflight()", {
     session_check <- dl$preflight(session_id = session_id)
     expect_equal(session_check$required_bytes, size)
 
-    free <- suppressWarnings(min(c(plan_check$dest_free_bytes, plan_check$tmp_free_bytes), na.rm = TRUE))
-    skip_if(!is.finite(free), "Disk free-space check is not available on this platform")
+    free <- suppressWarnings(min(
+        c(plan_check$dest_free_bytes, plan_check$tmp_free_bytes),
+        na.rm = TRUE
+    ))
+    skip_if(
+        !is.finite(free),
+        "Disk free-space check is not available on this platform"
+    )
 
     blocker <- Downloader$new(
         dest = file.path(root, "blocked-downloads"),
@@ -951,25 +1079,62 @@ test_that("Downloader$new() migrates older manifests", {
     temp <- file.path(root, "tmp")
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        n_workers = 0L
+    )
     rm(dl)
     gc()
 
     conn <- ddb_connect(manifest, read_only = FALSE)
-    on.exit(if (!is.null(conn) && ddb_is_valid(conn)) ddb_disconnect(conn, shutdown = TRUE), add = TRUE)
+    on.exit(
+        if (!is.null(conn) && ddb_is_valid(conn)) {
+            ddb_disconnect(conn, shutdown = TRUE)
+        },
+        add = TRUE
+    )
     ddb_exec(conn, "DELETE FROM download_meta WHERE key = 'schema_version'")
-    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS probe_success_count")
-    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS probe_failure_count")
-    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS last_probe_at")
-    ddb_exec(conn, "ALTER TABLE download_node DROP COLUMN IF EXISTS cooldown_until")
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_node DROP COLUMN IF EXISTS probe_success_count"
+    )
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_node DROP COLUMN IF EXISTS probe_failure_count"
+    )
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_node DROP COLUMN IF EXISTS last_probe_at"
+    )
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_node DROP COLUMN IF EXISTS cooldown_until"
+    )
     ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS speed_bps")
-    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS eta_seconds")
-    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS progress_updated_at")
-    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS current_url")
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_task DROP COLUMN IF EXISTS eta_seconds"
+    )
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_task DROP COLUMN IF EXISTS progress_updated_at"
+    )
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_task DROP COLUMN IF EXISTS current_url"
+    )
     ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS job_id")
     ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS owner_id")
-    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS lease_until")
-    ddb_exec(conn, "ALTER TABLE download_task DROP COLUMN IF EXISTS heartbeat_at")
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_task DROP COLUMN IF EXISTS lease_until"
+    )
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_task DROP COLUMN IF EXISTS heartbeat_at"
+    )
     ddb_exec(conn, "ALTER TABLE download_event DROP COLUMN IF EXISTS job_id")
     ddb_exec(conn, "DROP TABLE IF EXISTS download_job")
     ddb_exec(conn, "DROP TABLE IF EXISTS download_daemon")
@@ -977,7 +1142,12 @@ test_that("Downloader$new() migrates older manifests", {
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
-    restored <- Downloader$new(dest = dest, temp = temp, manifest = manifest, n_workers = 0L)
+    restored <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        n_workers = 0L
+    )
     rm(restored)
     gc()
 
@@ -990,14 +1160,36 @@ test_that("Downloader$new() migrates older manifests", {
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
-    expect_equal(meta[meta$key == "schema_version", "value", drop = TRUE], DOWNLOADER_SCHEMA_VERSION)
-    expect_true(all(c("probe_success_count", "probe_failure_count", "last_probe_at", "cooldown_until") %in% names(nodes)))
-    expect_true(all(c(
-        "speed_bps", "eta_seconds", "progress_updated_at", "current_url",
-        "job_id", "owner_id", "lease_until", "heartbeat_at"
-    ) %in% names(tasks)))
+    expect_equal(
+        meta[meta$key == "schema_version", "value", drop = TRUE],
+        DOWNLOADER_SCHEMA_VERSION
+    )
+    expect_true(all(
+        c(
+            "probe_success_count",
+            "probe_failure_count",
+            "last_probe_at",
+            "cooldown_until"
+        ) %in%
+            names(nodes)
+    ))
+    expect_true(all(
+        c(
+            "speed_bps",
+            "eta_seconds",
+            "progress_updated_at",
+            "current_url",
+            "job_id",
+            "owner_id",
+            "lease_until",
+            "heartbeat_at"
+        ) %in%
+            names(tasks)
+    ))
     expect_true("job_id" %in% names(events))
-    expect_true(all(c("download_job", "download_daemon", "download_control") %in% tables))
+    expect_true(all(
+        c("download_job", "download_daemon", "download_control") %in% tables
+    ))
 })
 
 test_that("Downloader$new() stores typed config in the manifest", {
@@ -1022,16 +1214,24 @@ test_that("Downloader$new() stores typed config in the manifest", {
     )
 
     expect_true(file.exists(manifest))
-    expect_true(schema_validate(SCHEMA_DOWNLOADER_CONFIG, dl$config, mode = "test", name = "downloader-config"))
+    expect_true(schema_validate(
+        SCHEMA_DOWNLOADER_CONFIG,
+        dl$config,
+        mode = "test",
+        name = "downloader-config"
+    ))
 
     rm(dl)
     gc()
     conn <- ddb_connect(manifest, read_only = TRUE)
-    on.exit({
-        if (!is.null(conn)) {
-            ddb_disconnect(conn, shutdown = TRUE)
-        }
-    }, add = TRUE)
+    on.exit(
+        {
+            if (!is.null(conn)) {
+                ddb_disconnect(conn, shutdown = TRUE)
+            }
+        },
+        add = TRUE
+    )
     config <- ddb_read_table(conn, "download_config")
     expect_equal(nrow(config), 1L)
     expect_equal(config$config_id, "default")
@@ -1142,11 +1342,14 @@ test_that("Downloader$run() cancels stale downloading tasks", {
     session_id <- dl$enqueue(plan, session_label = "stale")
     task_id <- dl$tasks(session_id = session_id)$task_id[[1L]]
     conn <- priv(dl)$manifest_conn
-    ddb_exec(conn, sprintf(
-        "UPDATE download_task SET status = 'downloading', updated_at = %s WHERE task_id = %s",
-        ddb_literal(conn, as.POSIXct("2000-01-01 00:00:00", tz = "UTC")),
-        ddb_literal(conn, task_id)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE download_task SET status = 'downloading', updated_at = %s WHERE task_id = %s",
+            ddb_literal(conn, as.POSIXct("2000-01-01 00:00:00", tz = "UTC")),
+            ddb_literal(conn, task_id)
+        )
+    )
 
     tasks <- dl$run(session_id = session_id, progress = FALSE)
     expect_equal(tasks$status, "cancelled")
@@ -1196,7 +1399,10 @@ test_that("Downloader$cancel() / Downloader$retry()", {
     expect_equal(cancelled$status, "cancelled")
     expect_match(cancelled$last_error, "Cancelled by user")
     sessions <- dl$sessions()
-    expect_equal(sessions[sessions$session_id == session_id, , drop = FALSE]$status, "cancelled")
+    expect_equal(
+        sessions[sessions$session_id == session_id, , drop = FALSE]$status,
+        "cancelled"
+    )
 
     retried <- dl$retry(session_id = session_id)
     expect_equal(retried$status, "queued")
@@ -1240,11 +1446,14 @@ test_that("Downloader$cancel() cancels by task_id", {
     session_id <- dl$enqueue(plan, session_label = "cancel-downloading")
     task_id <- dl$tasks(session_id = session_id)$task_id[[1L]]
     conn <- priv(dl)$manifest_conn
-    ddb_exec(conn, sprintf(
-        "UPDATE download_task SET status = 'downloading', updated_at = %s WHERE task_id = %s",
-        ddb_literal(conn, downloader__now()),
-        ddb_literal(conn, task_id)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE download_task SET status = 'downloading', updated_at = %s WHERE task_id = %s",
+            ddb_literal(conn, downloader__now()),
+            ddb_literal(conn, task_id)
+        )
+    )
 
     cancelled <- dl$cancel(task_id = task_id)
     expect_equal(cancelled$status, "cancelled")
@@ -1294,8 +1503,22 @@ test_that("Downloader$run() falls back across candidate URLs", {
     expect_equal(tasks$status, "done")
     expect_identical(tasks$selected_url, plan$url[[2L]])
     nodes <- dl$data_nodes()
-    expect_equal(nodes[nodes$data_node == "bad-node.example.test", , drop = FALSE]$failure_count, 1L)
-    expect_equal(nodes[nodes$data_node == "good-node.example.test", , drop = FALSE]$success_count, 1L)
+    expect_equal(
+        nodes[
+            nodes$data_node == "bad-node.example.test",
+            ,
+            drop = FALSE
+        ]$failure_count,
+        1L
+    )
+    expect_equal(
+        nodes[
+            nodes$data_node == "good-node.example.test",
+            ,
+            drop = FALSE
+        ]$success_count,
+        1L
+    )
 
     rm(dl)
     gc()
@@ -1305,7 +1528,10 @@ test_that("Downloader$run() falls back across candidate URLs", {
         conn,
         "download_candidate"
     )
-    expect_equal(candidates[order(candidates$priority), , drop = FALSE]$failed_count, c(1L, 0L))
+    expect_equal(
+        candidates[order(candidates$priority), , drop = FALSE]$failed_count,
+        c(1L, 0L)
+    )
 })
 
 test_that("Downloader$run() retries transient HTTP failures", {
@@ -1319,7 +1545,13 @@ test_that("Downloader$run() retries transient HTTP failures", {
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
     server <- local_downloader_http_server()
 
-    dl <- Downloader$new(dest = dest, temp = temp, manifest = manifest, retries = 2L, n_workers = 0L)
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        retries = 2L,
+        n_workers = 0L
+    )
     plan <- downloader_test_df(
         logical_file_id = "tracking:flaky-test",
         filename = "flaky.bin",
@@ -1374,7 +1606,10 @@ test_that("Downloader$run() keeps candidate URLs task-scoped", {
     expect_equal(tasks$status, c("done", "done"))
     expect_identical(tasks$selected_url, urls)
     expect_equal(readLines(file.path(dest, "first.txt")), "first task content")
-    expect_equal(readLines(file.path(dest, "second.txt")), "second task content")
+    expect_equal(
+        readLines(file.path(dest, "second.txt")),
+        "second task content"
+    )
 })
 # }}}
 # Downloader$record_probes() {{{
@@ -1400,7 +1635,10 @@ test_that("Downloader$record_probes()", {
     plan <- downloader_test_df(
         logical_file_id = c("tracking:probe-ok", "tracking:probe-fail"),
         filename = c("ok.nc", "fail.nc"),
-        url = c("https://ok.example.org/file.nc", "https://fail.example.org/file.nc"),
+        url = c(
+            "https://ok.example.org/file.nc",
+            "https://fail.example.org/file.nc"
+        ),
         service = "HTTPServer",
         data_node = c("ok.example.org", "fail.example.org"),
         priority = c(1L, 1L),
@@ -1409,14 +1647,41 @@ test_that("Downloader$record_probes()", {
     )
 
     nodes <- dl$record_probes(plan, probed = TRUE)
-    expect_equal(nodes[nodes$data_node == "ok.example.org", , drop = FALSE]$probe_success_count, 1L)
-    expect_equal(nodes[nodes$data_node == "fail.example.org", , drop = FALSE]$probe_failure_count, 1L)
-    expect_false(is.na(nodes[nodes$data_node == "fail.example.org", , drop = FALSE]$cooldown_until))
+    expect_equal(
+        nodes[
+            nodes$data_node == "ok.example.org",
+            ,
+            drop = FALSE
+        ]$probe_success_count,
+        1L
+    )
+    expect_equal(
+        nodes[
+            nodes$data_node == "fail.example.org",
+            ,
+            drop = FALSE
+        ]$probe_failure_count,
+        1L
+    )
+    expect_false(is.na(
+        nodes[
+            nodes$data_node == "fail.example.org",
+            ,
+            drop = FALSE
+        ]$cooldown_until
+    ))
 
     cached <- plan[1L, , drop = FALSE]
     cached$probe_cached <- TRUE
     nodes <- dl$record_probes(cached, probed = TRUE)
-    expect_equal(nodes[nodes$data_node == "ok.example.org", , drop = FALSE]$probe_success_count, 1L)
+    expect_equal(
+        nodes[
+            nodes$data_node == "ok.example.org",
+            ,
+            drop = FALSE
+        ]$probe_success_count,
+        1L
+    )
 })
 # }}}
 # Downloader$data_nodes() {{{
@@ -1442,7 +1707,10 @@ test_that("Downloader$data_nodes()", {
     plan <- downloader_test_df(
         logical_file_id = c("tracking:probe-ok", "tracking:probe-fail"),
         filename = c("ok.nc", "fail.nc"),
-        url = c("https://ok.example.org/file.nc", "https://fail.example.org/file.nc"),
+        url = c(
+            "https://ok.example.org/file.nc",
+            "https://fail.example.org/file.nc"
+        ),
         service = "HTTPServer",
         data_node = c("ok.example.org", "fail.example.org"),
         priority = c(1L, 1L),
@@ -1452,9 +1720,25 @@ test_that("Downloader$data_nodes()", {
 
     dl$record_probes(plan, probed = TRUE)
     nodes <- dl$data_nodes()
-    expect_true(all(c("ok.example.org", "fail.example.org") %in% nodes$data_node))
-    expect_equal(nodes[nodes$data_node == "ok.example.org", , drop = FALSE]$probe_success_count, 1L)
-    expect_equal(nodes[nodes$data_node == "fail.example.org", , drop = FALSE]$probe_failure_count, 1L)
+    expect_true(all(
+        c("ok.example.org", "fail.example.org") %in% nodes$data_node
+    ))
+    expect_equal(
+        nodes[
+            nodes$data_node == "ok.example.org",
+            ,
+            drop = FALSE
+        ]$probe_success_count,
+        1L
+    )
+    expect_equal(
+        nodes[
+            nodes$data_node == "fail.example.org",
+            ,
+            drop = FALSE
+        ]$probe_failure_count,
+        1L
+    )
 })
 # }}}
 # Downloader$reset_data_nodes() {{{
@@ -1480,7 +1764,10 @@ test_that("Downloader$reset_data_nodes()", {
     plan <- downloader_test_df(
         logical_file_id = c("tracking:probe-ok", "tracking:probe-fail"),
         filename = c("ok.nc", "fail.nc"),
-        url = c("https://ok.example.org/file.nc", "https://fail.example.org/file.nc"),
+        url = c(
+            "https://ok.example.org/file.nc",
+            "https://fail.example.org/file.nc"
+        ),
         service = "HTTPServer",
         data_node = c("ok.example.org", "fail.example.org"),
         priority = c(1L, 1L),
@@ -1519,9 +1806,19 @@ test_that("Downloader$on() / Downloader$off()", {
     done_payload <- NULL
     session_payload <- NULL
     callback_fields <- c(
-        "event", "session_id", "task_id", "file_key", "status", "target_path",
-        "selected_url", "data_node", "bytes_done", "error", "created_at"
+        "event",
+        "session_id",
+        "task_id",
+        "file_key",
+        "status",
+        "target_path",
+        "selected_url",
+        "data_node",
+        "bytes_done",
+        "error",
+        "created_at"
     )
+    # dl$on callback {{{
     done_token <- dl$on("task_done", function(event, downloader) {
         seen <<- c(seen, event$event)
         done_payload <<- event
@@ -1534,6 +1831,8 @@ test_that("Downloader$on() / Downloader$off()", {
         expect_true(is.na(event$error))
         expect_s3_class(downloader, "Downloader")
     })
+    # }}}
+    # dl$on callback {{{
     session_token <- dl$on("session_done", function(event, downloader) {
         seen <<- c(seen, event$event)
         session_payload <<- event
@@ -1541,9 +1840,12 @@ test_that("Downloader$on() / Downloader$off()", {
         expect_equal(event$status, "done")
         expect_true(is.na(event$task_id))
     })
+    # }}}
+    # dl$on callback {{{
     dl$on("task_done", function(event, downloader) {
         stop("callback boom", call. = FALSE)
     })
+    # }}}
 
     plan <- downloader_test_df(
         logical_file_id = "tracking:event-test",
@@ -1589,9 +1891,11 @@ test_that("Downloader$events()", {
         retries = 1L,
         n_workers = 0L
     )
+    # dl$on callback {{{
     dl$on("task_done", function(event, downloader) {
         stop("callback boom", call. = FALSE)
     })
+    # }}}
 
     plan <- downloader_test_df(
         logical_file_id = "tracking:event-test",
@@ -1607,9 +1911,14 @@ test_that("Downloader$events()", {
     tasks <- dl$run(session_id = session_id, progress = FALSE)
 
     events <- dl$events(session_id = session_id)
-    expect_true(all(c("enqueue", "start", "done", "session_done", "callback_error") %in% events$event))
+    expect_true(all(
+        c("enqueue", "start", "done", "session_done", "callback_error") %in%
+            events$event
+    ))
     task_events <- dl$events(task_id = tasks$task_id[[1L]])
-    expect_true(all(c("start", "done", "callback_error") %in% task_events$event))
+    expect_true(all(
+        c("start", "done", "callback_error") %in% task_events$event
+    ))
 })
 # }}}
 # Downloader$run() {{{
@@ -1638,7 +1947,10 @@ test_that("Downloader$run() uses worker concurrency", {
         n_workers = 2L
     )
     plan <- downloader_test_df(
-        logical_file_id = c("tracking:parallel-first", "tracking:parallel-second"),
+        logical_file_id = c(
+            "tracking:parallel-first",
+            "tracking:parallel-second"
+        ),
         filename = c("parallel-first.txt", "parallel-second.txt"),
         url = paste0("file://", normalizePath(c(src_1, src_2), winslash = "/")),
         checksum = as.character(tools::md5sum(c(src_1, src_2))),
@@ -1652,10 +1964,19 @@ test_that("Downloader$run() uses worker concurrency", {
 
     expect_equal(tasks$status, c("done", "done"))
     expect_equal(tasks$attempts, c(1L, 1L))
-    expect_equal(readLines(file.path(dest, "parallel-first.txt")), "parallel first")
-    expect_equal(readLines(file.path(dest, "parallel-second.txt")), "parallel second")
+    expect_equal(
+        readLines(file.path(dest, "parallel-first.txt")),
+        "parallel first"
+    )
+    expect_equal(
+        readLines(file.path(dest, "parallel-second.txt")),
+        "parallel second"
+    )
     sessions <- dl$sessions()
-    expect_equal(sessions[sessions$session_id == session_id, , drop = FALSE]$status, "done")
+    expect_equal(
+        sessions[sessions$session_id == session_id, , drop = FALSE]$status,
+        "done"
+    )
 })
 
 test_that("Downloader$run() defers tasks beyond per-host capacity", {
@@ -1699,10 +2020,19 @@ test_that("Downloader$run() defers tasks beyond per-host capacity", {
 
     expect_equal(tasks$status, c("done", "done"))
     expect_equal(tasks$attempts, c(1L, 1L))
-    expect_equal(readLines(file.path(dest, "host-first.txt")), "host limited first")
-    expect_equal(readLines(file.path(dest, "host-second.txt")), "host limited second")
+    expect_equal(
+        readLines(file.path(dest, "host-first.txt")),
+        "host limited first"
+    )
+    expect_equal(
+        readLines(file.path(dest, "host-second.txt")),
+        "host limited second"
+    )
     sessions <- dl$sessions()
-    expect_equal(sessions[sessions$session_id == session_id, , drop = FALSE]$status, "done")
+    expect_equal(
+        sessions[sessions$session_id == session_id, , drop = FALSE]$status,
+        "done"
+    )
 })
 
 test_that("Downloader$run() serializes tasks for the same target path", {
@@ -1742,7 +2072,10 @@ test_that("Downloader$run() serializes tasks for the same target path", {
 
     expect_setequal(tasks$status, c("done", "skipped"))
     expect_true(file.exists(file.path(dest, "shared.txt")))
-    expect_equal(readLines(file.path(dest, "shared.txt")), "shared target content")
+    expect_equal(
+        readLines(file.path(dest, "shared.txt")),
+        "shared target content"
+    )
 })
 # }}}
 # Downloader$download() {{{
@@ -1778,7 +2111,10 @@ test_that("Downloader$download() honors subdir", {
 
     expect_true(file.exists(path))
     expect_equal(basename(path), "data.bin")
-    expect_equal(dirname(path), normalizePath(file.path(temp_dir, "docs"), winslash = "/"))
+    expect_equal(
+        dirname(path),
+        normalizePath(file.path(temp_dir, "docs"), winslash = "/")
+    )
 
     unlink(temp_dir, recursive = TRUE)
 })
@@ -1800,7 +2136,12 @@ test_that("Downloader$download() honors overwrite = FALSE", {
 
     Sys.sleep(0.1)
 
-    path <- dl$download(url, filename = "dest.txt", progress = FALSE, overwrite = FALSE)
+    path <- dl$download(
+        url,
+        filename = "dest.txt",
+        progress = FALSE,
+        overwrite = FALSE
+    )
     expect_true(file.exists(dest_file))
     expect_equal(normalizePath(path), normalizePath(dest_file))
     mtime2 <- file.info(dest_file)$mtime
@@ -1860,7 +2201,11 @@ test_that("Downloader$download() verifies checksum", {
 
     expect_true(file.exists(path))
 
-    is_valid <- epwshiftr:::downloader__verify_checksum(path, file_checksum, "sha256")
+    is_valid <- epwshiftr:::downloader__verify_checksum(
+        path,
+        file_checksum,
+        "sha256"
+    )
     expect_true(is_valid)
 
     unlink(temp_dir, recursive = TRUE)
@@ -1968,7 +2313,10 @@ test_that("Downloader$get_task_status()", {
     expect_null(status$error)
     expect_s3_class(status$completed_at, "POSIXct")
 
-    expect_error(dl$get_task_status("missing-task"), "Task ID 'missing-task' not found")
+    expect_error(
+        dl$get_task_status("missing-task"),
+        "Task ID 'missing-task' not found"
+    )
 })
 # }}}
 # Downloader$wait_for_tasks() {{{
@@ -1993,7 +2341,10 @@ test_that("Downloader$cancel_task()", {
 
     cancelled <- suppressMessages(dl$cancel_task(task_id))
     expect_false(cancelled)
-    expect_error(dl$cancel_task("missing-task"), "Task ID 'missing-task' not found")
+    expect_error(
+        dl$cancel_task("missing-task"),
+        "Task ID 'missing-task' not found"
+    )
 })
 # }}}
 # Downloader$list_incomplete() {{{
@@ -2078,13 +2429,19 @@ test_that("Downloader$verify()", {
         priority = 1L
     )
     session_id <- dl$enqueue(plan, session_label = "verify-error")
-    expect_equal(dl$run(session_id = session_id, progress = FALSE)$status, "done")
+    expect_equal(
+        dl$run(session_id = session_id, progress = FALSE)$status,
+        "done"
+    )
 
     writeLines("corrupted content", file.path(dest, "verify-error.txt"))
     verified <- dl$verify(session_id = session_id)
     expect_false(verified$checksum_ok)
     expect_equal(dl$status(session_id = session_id)$status, "error")
-    expect_match(dl$status(session_id = session_id)$last_error, "Checksum verification failed")
+    expect_match(
+        dl$status(session_id = session_id)$last_error,
+        "Checksum verification failed"
+    )
 
     events <- ddb_read_table(priv(dl)$manifest_conn, "download_event")
     expect_true("verify_error" %in% events$event)
@@ -2096,17 +2453,29 @@ test_that("Downloader$print()", {
 
     expect_snapshot(
         print(dl),
+        # transform {{{
         transform = function(lines) {
-            unlist(lapply(lines, function(line) {
-                inline_path <- regexec("^(\\s*\\* (Data|Temporary) directory:)\\s+/.+", line)
-                match <- regmatches(line, inline_path)[[1]]
-                if (length(match)) {
-                    return(c(match[[2]], "<path>"))
-                }
+            # lapply callback {{{
+            unlist(
+                lapply(lines, function(line) {
+                    inline_path <- regexec(
+                        "^(\\s*\\* (Data|Temporary) directory:)\\s+/.+",
+                        line
+                    )
+                    match <- regmatches(line, inline_path)[[1]]
+                    if (length(match)) {
+                        return(c(match[[2]], "<path>"))
+                    }
 
-                gsub("^\\s*/.+", "<path>", line)
-            }), use.names = FALSE)
+                    gsub("^\\s*/.+", "<path>", line)
+                }),
+                use.names = FALSE
+            )
+            # }}}
         }
+        # }}}
     )
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

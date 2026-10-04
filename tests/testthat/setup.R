@@ -27,3 +27,5 @@ if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
         envir = testthat::teardown_env()
     )
 }
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

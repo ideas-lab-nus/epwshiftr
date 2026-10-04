@@ -42,6 +42,7 @@ EPW_MORPH_SOBIE_CURRY_OPTIONS <- list(
 
 # Validate JSON-safe Sobie-Curry settings before either recipe persistence or
 # pipeline execution so resumed workflows cannot reinterpret their options.
+# sobie__backend_options {{{
 sobie__backend_options <- function(options = NULL) {
     temperature__backend_options(
         options,
@@ -49,9 +50,11 @@ sobie__backend_options <- function(options = NULL) {
         label = "Sobie-Curry"
     )
 }
+# }}}
 
 # Convert one required CMIP variable to the SI representation used by the
 # thermodynamic derivations while rejecting duplicate, conflicting timestamps.
+# sobie__variable_rows {{{
 sobie__variable_rows <- function(data, variable_id) {
     target_variable <- variable_id
     rows <- data.table::as.data.table(data.table::copy(data))[
@@ -109,9 +112,11 @@ sobie__variable_rows <- function(data, variable_id) {
     data.table::setnames(out, ".sobie_value", variable_id)
     out[]
 }
+# }}}
 
 # Normalize daily CMIP rows and derive daily relative humidity and dew point
 # from aligned tas, huss, and surface pressure before factor estimation.
+# sobie__climate {{{
 sobie__climate <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -147,6 +152,7 @@ sobie__climate <- function(data, name) {
 
     variables <- c("tas", "tasmin", "tasmax", "huss", "ps")
     wide <- Reduce(
+        # Reduce callback {{{
         function(left, right) {
             merge(
                 left,
@@ -156,9 +162,12 @@ sobie__climate <- function(data, name) {
                 sort = FALSE
             )
         },
+        # }}}
+        # lapply callback {{{
         lapply(variables, function(variable_id) {
             sobie__variable_rows(data, variable_id)
         })
+        # }}}
     )
     incomplete <- !stats::complete.cases(wide[, variables, with = FALSE])
     if (any(incomplete)) {
@@ -213,10 +222,12 @@ sobie__climate <- function(data, name) {
         pressure = wide[["ps"]]
     )
 }
+# }}}
 
 # Estimate one unsmoothed statistic for every calendar-neutral target day.
 # Native 360-, 365-, and 366-day phases are mapped to their nearest containing
 # interval on the shared 365-day grid before interannual statistics are taken.
+# sobie__daily_statistics {{{
 sobie__daily_statistics <- function(
     data,
     value,
@@ -266,9 +277,11 @@ sobie__daily_statistics <- function(
     data.table::setorderv(out, "target_day")
     out[]
 }
+# }}}
 
 # Calculate every unsmoothed, calendar-aligned thermodynamic statistic consumed
 # by the Sobie-Curry signal equations.
+# sobie__daily_statistics_set {{{
 sobie__daily_statistics_set <- function(data) {
     variables <- c(
         "dry_mean",
@@ -280,40 +293,49 @@ sobie__daily_statistics_set <- function(data) {
         "pressure"
     )
     stats::setNames(
+        # lapply callback {{{
         lapply(variables, function(variable) {
             sobie__daily_statistics(
                 data,
                 value = variable
             )
         }),
+        # }}}
         variables
     )
 }
+# }}}
 
 # Precompute the 21 target-day indices belonging to every circular smoothing
 # window so the signal kernel receives alignment, not calendar semantics.
+# sobie__smoothing_windows {{{
 sobie__smoothing_windows <- function(
     window_days,
     target_year_days = 365L
 ) {
     phase <- daily__phase_grid(target_year_days)
     spec <- daily__window_spec(window_days, target_year_days)
+    # lapply callback {{{
     lapply(phase, function(center) {
         which(
             daily__phase_distance(phase, center) <=
                 spec$half_width + 8 * .Machine$double.eps
         )
     })
+    # }}}
 }
+# }}}
 
 # Apply pre-aligned circular moving averages to one raw factor vector and fail
 # explicitly if a target window contains no estimable daily factor.
+# sobie__smooth_factor {{{
 sobie__smooth_factor <- function(value, windows, name) {
     checkmate::assert_numeric(value, any.missing = TRUE)
     checkmate::assert_list(windows, min.len = 1L)
     checkmate::assert_string(name, min.chars = 1L)
     out <- vapply(
         windows,
+        # vapply callback {{{
         function(index) {
             values <- value[index]
             values <- values[is.finite(values)]
@@ -322,6 +344,7 @@ sobie__smooth_factor <- function(value, windows, name) {
             }
             mean(values)
         },
+        # }}}
         numeric(1L)
     )
     if (any(!is.finite(out))) {
@@ -331,12 +354,15 @@ sobie__smooth_factor <- function(value, windows, name) {
     }
     out
 }
+# }}}
 
 # Reduce raw zero-denominator states over each circular smoothing window while
 # keeping a fallback visible whenever any contributing daily factor used it.
+# sobie__smooth_status {{{
 sobie__smooth_status <- function(status, windows) {
     vapply(
         windows,
+        # vapply callback {{{
         function(index) {
             values <- status[index]
             values <- values[!is.na(values) & values != "missing_alignment"]
@@ -352,12 +378,15 @@ sobie__smooth_status <- function(status, windows) {
             }
             "ok"
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
 # Form a multiplicative ratio with an explicit identity fallback when the
 # historical denominator is zero and the published equation is undefined.
+# sobie__ratio {{{
 sobie__ratio <- function(future, historical, tolerance) {
     future <- as.numeric(future)
     historical <- as.numeric(historical)
@@ -375,9 +404,11 @@ sobie__ratio <- function(future, historical, tolerance) {
     status[regular] <- "ok"
     list(value = ratio, status = status)
 }
+# }}}
 
 # Apply the published daily mean, DTR, humidity, pressure, and dew-point signal
 # definitions after both climate periods share one 365-day phase grid.
+# sobie__signal_factors {{{
 sobie__signal_factors <- function(
     future,
     historical,
@@ -394,10 +425,12 @@ sobie__signal_factors <- function(
     annual_phase <- future$dry_mean[["annual_phase"]]
     aligned <- vapply(
         metrics,
+        # vapply callback {{{
         function(metric) {
             identical(future[[metric]][["target_day"]], target_day) &&
                 identical(historical[[metric]][["target_day"]], target_day)
         },
+        # }}}
         logical(1L)
     )
     if (!all(aligned)) {
@@ -490,23 +523,29 @@ sobie__signal_factors <- function(
         ),
         n_future = vapply(
             windows,
+            # vapply callback {{{
             function(index) {
                 sum(future$dry_mean[["n"]][index], na.rm = TRUE)
             },
+            # }}}
             integer(1L)
         ),
         n_historical = vapply(
             windows,
+            # vapply callback {{{
             function(index) {
                 sum(historical$dry_mean[["n"]][index], na.rm = TRUE)
             },
+            # }}}
             integer(1L)
         )
     )
 }
+# }}}
 
 # Normalize the three role-addressable sources and construct the complete EPW
 # template shared by the subsequent Sobie-Curry component stages.
+# sobie__preprocess_apply {{{
 sobie__preprocess_apply <- function(inputs, context, options) {
     morpher__validate_context(context)
     options <- sobie__backend_options(options)
@@ -525,9 +564,11 @@ sobie__preprocess_apply <- function(inputs, context, options) {
         options = options
     )
 }
+# }}}
 
 # Map both model periods to the shared circular 365-day grid before the signal
 # kernel is allowed to inspect their values.
+# sobie__calendar_apply {{{
 sobie__calendar_apply <- function(data, inputs, context, options) {
     future <- sobie__daily_statistics_set(data$future)
     historical <- sobie__daily_statistics_set(data$historical)
@@ -543,9 +584,11 @@ sobie__calendar_apply <- function(data, inputs, context, options) {
         variables = c("tas", "tasmin", "tasmax", "huss", "ps")
     ))
 }
+# }}}
 
 # Execute only the factor equations; calendar mapping and hourly EPW
 # interpretation are deliberately outside this signal-stage kernel.
+# sobie__signal_apply_group {{{
 sobie__signal_apply_group <- function(inputs, settings, key) {
     list(
         baseline = inputs$weather_template,
@@ -557,17 +600,21 @@ sobie__signal_apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Preserve the baseline CWEC/EPW sequence exactly, as the published method
 # changes hourly values but does not synthesize a new event sequence.
+# sobie__sequence_generate {{{
 sobie__sequence_generate <- function(data, inputs, context, options) {
     value <- signal__single_value(data, "Sobie-Curry")
     value$options <- sobie__backend_options(options)
     value
 }
+# }}}
 
 # Resolve an EPW daily-range denominator with a traceable identity fallback for
 # a flat baseline day, where the published temperature equation is undefined.
+# sobie__temperature_alpha {{{
 sobie__temperature_alpha <- function(dtr_delta, baseline_dtr, tolerance) {
     dtr_delta <- as.numeric(dtr_delta)
     baseline_dtr <- as.numeric(baseline_dtr)
@@ -580,9 +627,11 @@ sobie__temperature_alpha <- function(dtr_delta, baseline_dtr, tolerance) {
     status[!regular & !unchanged] <- "inherited_flat_baseline"
     list(value = alpha, status = status)
 }
+# }}}
 
 # Apply equations (1)-(6) independently to each preserved EPW day. Temperature
 # and dew-point anomaly changes are centered on their own baseline daily means.
+# sobie__hourly_reconstruct {{{
 sobie__hourly_reconstruct <- function(data, inputs, context, options) {
     baseline <- data$baseline
     factors <- data.table::copy(data$factors)
@@ -757,9 +806,11 @@ sobie__hourly_reconstruct <- function(data, inputs, context, options) {
         options = data$options
     )
 }
+# }}}
 
 # Calculate the Sobie-Curry target HUSS independently of its physical closure
 # so the published climate signal remains owned by the method adapter.
+# sobie__specific_humidity_target {{{
 sobie__specific_humidity_target <- function(hourly) {
     temperature <- as.numeric(hourly[["temperature_projected"]])
     pressure <- as.numeric(hourly[["pressure_projected"]])
@@ -796,9 +847,11 @@ sobie__specific_humidity_target <- function(hourly) {
         target_specific_humidity = baseline_huss + delta
     )
 }
+# }}}
 
 # Close the method-defined Sobie-Curry HUSS target through the shared physical
 # kernel while retaining the established helper result used by diagnostics.
+# sobie__harmonized_humidity {{{
 sobie__harmonized_humidity <- function(hourly) {
     target <- sobie__specific_humidity_target(hourly)
     humidity <- epwphys__close_specific_humidity(
@@ -820,10 +873,12 @@ sobie__harmonized_humidity <- function(hourly) {
         )
     )
 }
+# }}}
 
 # Select the paper-faithful independent thermodynamic transforms or the
 # harmonized HUSS-state closure without changing the preceding Sobie-Curry
 # climate signal, sequence, or hourly temperature stages.
+# sobie__physics_apply {{{
 sobie__physics_apply <- function(data, inputs, context, options) {
     baseline <- data$baseline
     hourly <- data$hourly
@@ -1010,9 +1065,11 @@ sobie__physics_apply <- function(data, inputs, context, options) {
         settings = settings
     )
 }
+# }}}
 
 # Assemble a complete backend result while retaining factor rows, actual
 # settings, and the source-formula interpretation for user inspection.
+# sobie__output_write {{{
 sobie__output_write <- function(
     data,
     inputs,
@@ -1032,9 +1089,11 @@ sobie__output_write <- function(
         factors = data$factors
     )
 }
+# }}}
 
 # Build seven method-neutral component specifications while retaining the
 # Sobie-Curry publication identity in profiles and the complete recipe.
+# sobie__component_specs {{{
 sobie__component_specs <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -1062,6 +1121,7 @@ sobie__component_specs <- function() {
     reference <- "https://doi.org/10.1016/j.dib.2025.111667"
     profiles <- lapply(
         c("tas", "tasmin", "tasmax", "huss", "ps"),
+        # lapply callback {{{
         function(variable_id) {
             signal__variable_profile(
                 variable_id,
@@ -1074,6 +1134,7 @@ sobie__component_specs <- function() {
                 )
             )
         }
+        # }}}
     )
 
     list(
@@ -1155,15 +1216,19 @@ sobie__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the built-in Sobie-Curry components once without replacing an
 # extension that has already claimed the same stable registry identifier.
+# sobie__register_components {{{
 sobie__register_components <- function() {
     component__register_builtins(sobie__component_specs())
 }
+# }}}
 
 # Return the stable seven-stage pipeline persisted by the registered
 # `sobie_curry_daily` complete-recipe definition.
+# sobie__pipeline {{{
 sobie__pipeline <- function() {
     sobie__register_components()
     pipeline__spec(list(
@@ -1176,3 +1241,6 @@ sobie__pipeline <- function() {
         output = "daily_thermodynamic_epw_result"
     ))
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

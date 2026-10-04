@@ -1,3 +1,4 @@
+# local_data_node_status_response {{{
 local_data_node_status_response <- function() {
     list(
         status = "success",
@@ -12,10 +13,13 @@ local_data_node_status_response <- function() {
         )
     )
 }
+# }}}
 
 test_that("data_node_status() returns node states from metagrid status", {
     testthat::with_mocked_bindings(
+        # cache__url {{{
         cache__url = function(...) local_data_node_status_response(),
+        # }}}
         {
             res <- data_node_status(index_node = INDEX_NODES[["ORNL"]])
         },
@@ -30,14 +34,22 @@ test_that("data_node_status() returns node states from metagrid status", {
 
 test_that("data_node_status() probes UP nodes when requested", {
     testthat::with_mocked_bindings(
+        # cache__url {{{
         cache__url = function(...) local_data_node_status_response(),
+        # }}}
+        # data_node_http_probe {{{
         data_node_http_probe = function(node, timeout = 3) {
             expect_equal(node, "node-up.example")
             expect_equal(timeout, 0.25)
             12.5
         },
+        # }}}
         {
-            res <- data_node_status(speed_test = TRUE, timeout = 0.25, index_node = INDEX_NODES[["ORNL"]])
+            res <- data_node_status(
+                speed_test = TRUE,
+                timeout = 0.25,
+                index_node = INDEX_NODES[["ORNL"]]
+            )
         },
         .package = "epwshiftr"
     )
@@ -49,7 +61,9 @@ test_that("data_node_status() probes UP nodes when requested", {
 
 test_that("data_node_status() returns an empty table when status lookup fails", {
     testthat::with_mocked_bindings(
+        # cache__url {{{
         cache__url = function(...) list(status = "error"),
+        # }}}
         {
             expect_message(
                 res <- data_node_status(index_node = INDEX_NODES[["ORNL"]]),
@@ -63,3 +77,5 @@ test_that("data_node_status() returns an empty table when status lookup fails", 
     expect_named(res, c("data_node", "status"))
     expect_equal(nrow(res), 0L)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

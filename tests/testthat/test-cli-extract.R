@@ -161,3 +161,5 @@ test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
     expect_equal(missing$status, 2L)
     expect_match(missing$error, "--site-id")
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

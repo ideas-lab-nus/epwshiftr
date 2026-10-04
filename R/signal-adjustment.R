@@ -38,12 +38,14 @@ SIGNAL_THREE_INPUT_ROLES <- c(
 
 # Construct the common observed/historical/future input requirements while
 # leaving each method responsible for its supported variables and frequency.
+# signal__three_role_requirements {{{
 signal__three_role_requirements <- function(
     variable_sets,
     representations = "series",
     frequencies = character(),
     calendars = character()
 ) {
+    # lapply callback {{{
     requirements <- lapply(SIGNAL_THREE_INPUT_ROLES, function(role) {
         component__input_requirement(
             role,
@@ -53,12 +55,15 @@ signal__three_role_requirements <- function(
             variable_sets = variable_sets
         )
     })
+    # }}}
     names(requirements) <- SIGNAL_THREE_INPUT_ROLES
     requirements
 }
+# }}}
 
 # Validate the adjusted-series class, optional temporal lattice, and output
 # role through one contract while preserving method-specific diagnostic text.
+# signal__validate_adjusted_result {{{
 signal__validate_adjusted_result <- function(
     value,
     result_class,
@@ -113,9 +118,11 @@ signal__validate_adjusted_result <- function(
     }
     TRUE
 }
+# }}}
 
 # Partition contiguous projected years into retained output blocks and
 # symmetric fitting windows while reporting truncation at available-data edges.
+# signal__future_blocks {{{
 signal__future_blocks <- function(
     year,
     future_window_years,
@@ -136,6 +143,7 @@ signal__future_blocks <- function(
     }
     flank <- (future_window_years - output_block_years) %/% 2L
     starts <- seq.int(1L, length(years), by = output_block_years)
+    # lapply callback {{{
     lapply(starts, function(start) {
         stop <- min(start + output_block_years - 1L, length(years))
         output_years <- years[start:stop]
@@ -153,10 +161,13 @@ signal__future_blocks <- function(
             truncated_right = max(window_years) < requested_end
         )
     })
+    # }}}
 }
+# }}}
 
 # Apply method-declared signal bounds and return the exact number of changed
 # values without coupling statistical methods to EPW field specifications.
+# signal__bound_values {{{
 signal__bound_values <- function(value, bounds) {
     # Infinite method outputs remain valid inputs here because finite bounds
     # intentionally convert them to the declared endpoint.
@@ -173,23 +184,29 @@ signal__bound_values <- function(value, bounds) {
         clipped = as.integer(sum(bounded != value))
     )
 }
+# }}}
 
+# bias__named_list_error {{{
 bias__named_list_error <- function(value, name) {
     if (!is.list(value)) {
         return(sprintf("`%s` must be a list.", name))
     }
-    if (length(value) &&
-        (is.null(names(value)) ||
-            anyNA(names(value)) ||
-            any(!nzchar(names(value))) ||
-            anyDuplicated(names(value)))) {
+    if (
+        length(value) &&
+            (is.null(names(value)) ||
+                anyNA(names(value)) ||
+                any(!nzchar(names(value))) ||
+                anyDuplicated(names(value)))
+    ) {
         return(sprintf("`%s` must be a uniquely named list.", name))
     }
     NULL
 }
+# }}}
 
 # Validate the calendar-native fields shared by daily and sub-daily signal
 # results before applying frequency-specific sampling rules.
+# bias__calendar_data_error {{{
 bias__calendar_data_error <- function(
     data,
     required_columns,
@@ -211,31 +228,43 @@ bias__calendar_data_error <- function(
     if (!nrow(data)) {
         return(sprintf("`data` must contain at least one %s value.", label))
     }
-    if (!is.character(data[["variable_id"]]) ||
-        anyNA(data[["variable_id"]]) ||
-        any(!grepl(
-            "^[A-Za-z][A-Za-z0-9_]*$",
-            data[["variable_id"]]
-        ))) {
+    if (
+        !is.character(data[["variable_id"]]) ||
+            anyNA(data[["variable_id"]]) ||
+            any(
+                !grepl(
+                    "^[A-Za-z][A-Za-z0-9_]*$",
+                    data[["variable_id"]]
+                )
+            )
+    ) {
         return("`variable_id` must contain CMIP-style identifiers.")
     }
-    if (!is.numeric(data[["value"]]) ||
-        any(!is.finite(data[["value"]]))) {
+    if (
+        !is.numeric(data[["value"]]) ||
+            any(!is.finite(data[["value"]]))
+    ) {
         return("`value` must contain only finite numeric values.")
     }
-    if (!is.character(data[["units"]]) ||
-        anyNA(data[["units"]]) ||
-        any(!nzchar(data[["units"]]))) {
+    if (
+        !is.character(data[["units"]]) ||
+            anyNA(data[["units"]]) ||
+            any(!nzchar(data[["units"]]))
+    ) {
         return("`units` must contain non-missing, non-empty strings.")
     }
-    if (!is.character(data[["frequency"]]) ||
-        anyNA(data[["frequency"]]) ||
-        any(!nzchar(data[["frequency"]]))) {
+    if (
+        !is.character(data[["frequency"]]) ||
+            anyNA(data[["frequency"]]) ||
+            any(!nzchar(data[["frequency"]]))
+    ) {
         return("`frequency` must contain non-missing, non-empty strings.")
     }
-    if (!is.character(data[["cf_calendar"]]) ||
-        anyNA(data[["cf_calendar"]]) ||
-        any(!data[["cf_calendar"]] %in% CF_TIME_CALENDARS)) {
+    if (
+        !is.character(data[["cf_calendar"]]) ||
+            anyNA(data[["cf_calendar"]]) ||
+            any(!data[["cf_calendar"]] %in% CF_TIME_CALENDARS)
+    ) {
         return("`cf_calendar` contains an unsupported CF calendar.")
     }
 
@@ -248,9 +277,11 @@ bias__calendar_data_error <- function(
     )
     for (column in integer_columns) {
         value <- data[[column]]
-        if (!is.numeric(value) ||
-            any(!is.finite(value)) ||
-            any(value != as.integer(value))) {
+        if (
+            !is.numeric(value) ||
+                any(!is.finite(value)) ||
+                any(value != as.integer(value))
+        ) {
             return(sprintf(
                 "`%s` must contain finite integer values.",
                 column
@@ -258,9 +289,11 @@ bias__calendar_data_error <- function(
         }
     }
     phase <- data[["annual_phase"]]
-    if (!is.numeric(phase) ||
-        any(!is.finite(phase)) ||
-        any(phase < 0 | phase >= 1)) {
+    if (
+        !is.numeric(phase) ||
+            any(!is.finite(phase)) ||
+            any(phase < 0 | phase >= 1)
+    ) {
         return("`annual_phase` must contain finite values in [0, 1).")
     }
 
@@ -300,8 +333,12 @@ bias__calendar_data_error <- function(
         lower <- (expected_day - 1) / expected_days
         upper <- expected_day / expected_days
         tolerance <- sqrt(.Machine$double.eps)
-        if (any(phase[index] < lower - tolerance |
-            phase[index] >= upper + tolerance)) {
+        if (
+            any(
+                phase[index] < lower - tolerance |
+                    phase[index] >= upper + tolerance
+            )
+        ) {
             return(
                 "`annual_phase` is inconsistent with the calendar-native day."
             )
@@ -323,9 +360,11 @@ bias__calendar_data_error <- function(
     }
     NULL
 }
+# }}}
 
 # Validate the calendar-native daily table at the boundary shared by all
 # existing daily bias-adjustment methods.
+# bias__daily_data_error {{{
 bias__daily_data_error <- function(data) {
     error <- bias__calendar_data_error(
         data,
@@ -348,9 +387,11 @@ bias__daily_data_error <- function(data) {
     }
     NULL
 }
+# }}}
 
 # Validate exact sub-day positions and their regular timestep without reducing
 # native CF dates to Gregorian timestamps.
+# bias__subdaily_data_error {{{
 bias__subdaily_data_error <- function(data, frequency, time_step_seconds) {
     error <- bias__calendar_data_error(
         data,
@@ -376,17 +417,18 @@ bias__subdaily_data_error <- function(data, frequency, time_step_seconds) {
         return("`data` frequency must match the declared `frequency`.")
     }
     seconds <- data[["cf_second_of_day"]]
-    if (!is.numeric(seconds) ||
-        any(!is.finite(seconds)) ||
-        any(seconds < 0 | seconds >= 86400)) {
+    if (
+        !is.numeric(seconds) ||
+            any(!is.finite(seconds)) ||
+            any(seconds < 0 | seconds >= 86400)
+    ) {
         return("`cf_second_of_day` must contain finite values in [0, 86400).")
     }
 
     # The annual phase and explicit time-of-day must describe the same native
     # CF instant; this prevents ambiguous ordering around day boundaries.
-    expected_phase <- (
-        data[["cf_day_of_year"]] - 1 + seconds / 86400
-    ) / data[["cf_year_days"]]
+    expected_phase <- (data[["cf_day_of_year"]] - 1 + seconds / 86400) /
+        data[["cf_year_days"]]
     tolerance <- sqrt(.Machine$double.eps)
     if (any(abs(data[["annual_phase"]] - expected_phase) > tolerance)) {
         return(
@@ -407,33 +449,45 @@ bias__subdaily_data_error <- function(data, frequency, time_step_seconds) {
     }
     NULL
 }
+# }}}
 
 # Validate semantic metadata once for every adjusted-series specialization.
+# bias__adjusted_series_error {{{
 bias__adjusted_series_error <- function(self) {
-    if (length(self@frequency) != 1L ||
-        is.na(self@frequency) ||
-        !grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", self@frequency)) {
+    if (
+        length(self@frequency) != 1L ||
+            is.na(self@frequency) ||
+            !grepl("^[A-Za-z0-9][A-Za-z0-9._-]*$", self@frequency)
+    ) {
         return("`frequency` must be one non-empty frequency identifier.")
     }
-    if (length(self@time_step_seconds) != 1L ||
-        is.na(self@time_step_seconds) ||
-        !is.finite(self@time_step_seconds) ||
-        self@time_step_seconds <= 0) {
+    if (
+        length(self@time_step_seconds) != 1L ||
+            is.na(self@time_step_seconds) ||
+            !is.finite(self@time_step_seconds) ||
+            self@time_step_seconds <= 0
+    ) {
         return("`time_step_seconds` must be one positive finite number.")
     }
-    if (!is.data.frame(self@data) ||
-        !"frequency" %in% names(self@data) ||
-        !identical(unique(self@data[["frequency"]]), self@frequency)) {
+    if (
+        !is.data.frame(self@data) ||
+            !"frequency" %in% names(self@data) ||
+            !identical(unique(self@data[["frequency"]]), self@frequency)
+    ) {
         return("`data` must contain exactly the declared `frequency`.")
     }
-    if (length(self@output_role) != 1L ||
-        is.na(self@output_role) ||
-        !self@output_role %in% WEATHER_INPUT_ROLES) {
+    if (
+        length(self@output_role) != 1L ||
+            is.na(self@output_role) ||
+            !self@output_role %in% WEATHER_INPUT_ROLES
+    ) {
         return("`output_role` must identify one future-weather input role.")
     }
-    if (length(self@transformation) != 1L ||
-        is.na(self@transformation) ||
-        !grepl("^[a-z][a-z0-9_]*$", self@transformation)) {
+    if (
+        length(self@transformation) != 1L ||
+            is.na(self@transformation) ||
+            !grepl("^[a-z][a-z0-9_]*$", self@transformation)
+    ) {
         return("`transformation` must use lower snake_case.")
     }
     variables <- unique(self@data[["variable_id"]])
@@ -441,14 +495,16 @@ bias__adjusted_series_error <- function(self) {
         self@variable_metadata,
         "variable_metadata"
     )
-    if (!is.null(metadata_error) ||
-        !setequal(names(self@variable_metadata), variables) ||
-        length(self@variable_metadata) != length(variables) ||
-        !all(vapply(
-            self@variable_metadata,
-            is.list,
-            logical(1L)
-        ))) {
+    if (
+        !is.null(metadata_error) ||
+            !setequal(names(self@variable_metadata), variables) ||
+            length(self@variable_metadata) != length(variables) ||
+            !all(vapply(
+                self@variable_metadata,
+                is.list,
+                logical(1L)
+            ))
+    ) {
         return(
             "`variable_metadata` must contain one named list per variable."
         )
@@ -461,9 +517,11 @@ bias__adjusted_series_error <- function(self) {
     }
     NULL
 }
+# }}}
 
 # AdjustedWeatherSeries is the package-native, frequency-aware signal result
 # shared by daily and sub-daily methods.
+# AdjustedWeatherSeries {{{
 AdjustedWeatherSeries <- S7::new_class(
     "AdjustedWeatherSeries",
     abstract = TRUE,
@@ -479,15 +537,20 @@ AdjustedWeatherSeries <- S7::new_class(
     ),
     validator = bias__adjusted_series_error
 )
+# }}}
 
 # DailyAdjustedSeries preserves the original strict daily contract while also
 # satisfying the common frequency-aware adjusted-series boundary.
+# DailyAdjustedSeries {{{
 DailyAdjustedSeries <- S7::new_class(
     "DailyAdjustedSeries",
     parent = AdjustedWeatherSeries,
+    # validator {{{
     validator = function(self) {
-        if (!identical(self@frequency, "day") ||
-            !identical(as.numeric(self@time_step_seconds), 86400)) {
+        if (
+            !identical(self@frequency, "day") ||
+                !identical(as.numeric(self@time_step_seconds), 86400)
+        ) {
             return(
                 "DailyAdjustedSeries requires `day` frequency and an 86400-second timestep."
             )
@@ -498,23 +561,31 @@ DailyAdjustedSeries <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # SubdailyAdjustedSeries retains a regular native-calendar time lattice for
 # hourly and multi-hourly signal outputs.
+# SubdailyAdjustedSeries {{{
 SubdailyAdjustedSeries <- S7::new_class(
     "SubdailyAdjustedSeries",
     parent = AdjustedWeatherSeries,
+    # validator {{{
     validator = function(self) {
-        if (identical(self@frequency, "day") ||
-            self@time_step_seconds >= 86400) {
+        if (
+            identical(self@frequency, "day") ||
+                self@time_step_seconds >= 86400
+        ) {
             return(
                 "SubdailyAdjustedSeries requires a sub-daily frequency and timestep."
             )
         }
         samples_per_day <- 86400 / self@time_step_seconds
-        if (abs(samples_per_day - round(samples_per_day)) >
-            sqrt(.Machine$double.eps)) {
+        if (
+            abs(samples_per_day - round(samples_per_day)) >
+                sqrt(.Machine$double.eps)
+        ) {
             return(
                 "`time_step_seconds` must divide one 86400-second day exactly."
             )
@@ -529,10 +600,13 @@ SubdailyAdjustedSeries <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Copy and normalize a canonical daily table without inferring missing dates or
 # calendars inside a signal method.
+# bias__daily_table {{{
 bias__daily_table <- function(data, name = "data") {
     if (!is.data.frame(data)) {
         cli::cli_abort("{.arg {name}} must be a canonical daily data frame.")
@@ -544,11 +618,14 @@ bias__daily_table <- function(data, name = "data") {
     }
     out
 }
+# }}}
 
 # Derive stable per-variable descriptors directly from the validated output
 # table unless a method supplies richer metadata explicitly.
+# bias__variable_metadata {{{
 bias__variable_metadata <- function(data, frequency) {
     variables <- unique(data[["variable_id"]])
+    # lapply callback {{{
     metadata <- lapply(variables, function(variable) {
         index <- data[["variable_id"]] == variable
         list(
@@ -557,11 +634,14 @@ bias__variable_metadata <- function(data, frequency) {
             calendars = sort(unique(data[["cf_calendar"]][index]))
         )
     })
+    # }}}
     stats::setNames(metadata, variables)
 }
+# }}}
 
 # Construct the frequency-aware result type so signal kernels cannot omit its
 # temporal semantics, role, settings, or provenance.
+# bias__adjusted_series {{{
 bias__adjusted_series <- function(
     data,
     frequency,
@@ -586,9 +666,11 @@ bias__adjusted_series <- function(
         data <- bias__daily_table(data)
     } else {
         samples_per_day <- 86400 / time_step_seconds
-        if (time_step_seconds >= 86400 ||
-            abs(samples_per_day - round(samples_per_day)) >
-                sqrt(.Machine$double.eps)) {
+        if (
+            time_step_seconds >= 86400 ||
+                abs(samples_per_day - round(samples_per_day)) >
+                    sqrt(.Machine$double.eps)
+        ) {
             cli::cli_abort(
                 "{.arg time_step_seconds} must divide one 86400-second day exactly."
             )
@@ -627,9 +709,11 @@ bias__adjusted_series <- function(
         provenance = provenance
     )
 }
+# }}}
 
 # Copy and validate a canonical sub-daily table without inferring its timestep
 # from incomplete or gapped observations.
+# bias__subdaily_table {{{
 bias__subdaily_table <- function(
     data,
     frequency,
@@ -652,9 +736,11 @@ bias__subdaily_table <- function(
     }
     out
 }
+# }}}
 
 # Preserve the daily constructor used by all existing signal kernels while
 # routing its metadata through the common adjusted-series class hierarchy.
+# bias__daily_adjusted_series {{{
 bias__daily_adjusted_series <- function(
     data,
     output_role,
@@ -674,9 +760,11 @@ bias__daily_adjusted_series <- function(
         provenance = provenance
     )
 }
+# }}}
 
 # Construct a sub-daily adjusted series only when the caller declares its
 # exact frequency and regular timestep explicitly.
+# bias__subdaily_adjusted_series {{{
 bias__subdaily_adjusted_series <- function(
     data,
     frequency,
@@ -698,12 +786,17 @@ bias__subdaily_adjusted_series <- function(
         provenance = provenance
     )
 }
+# }}}
 
 # Resolve the monthly mean-change settings shared by Linear Scaling and Delta
 # Change while keeping method names in user-facing diagnostics.
+# bias__mean_change_settings {{{
 bias__mean_change_settings <- function(settings, method) {
     expected <- c(
-        "grouping", "statistic", "transformation", "bounds",
+        "grouping",
+        "statistic",
+        "transformation",
+        "bounds",
         "zero_tolerance"
     )
     resolved <- signal__resolve_settings(settings, expected, method)
@@ -738,9 +831,11 @@ bias__mean_change_settings <- function(settings, method) {
     )
     resolved
 }
+# }}}
 
 # Validate role payloads as one calendar-native, univariate unit of work and
 # reject unit changes that would make monthly corrections ambiguous.
+# bias__mean_change_inputs {{{
 bias__mean_change_inputs <- function(
     inputs,
     variable,
@@ -757,9 +852,11 @@ bias__mean_change_inputs <- function(
             "{method} requires observed, historical-model, and future-model role payloads."
         )
     }
+    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
+    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -777,7 +874,9 @@ bias__mean_change_inputs <- function(
     }
     units <- vapply(
         series,
+        # vapply callback {{{
         function(data) unique(data[["units"]]),
+        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -785,27 +884,34 @@ bias__mean_change_inputs <- function(
             "{method} inputs for {.val {variable}} must use identical units."
         )
     }
-    if (identical(transformation, "multiplicative") &&
-        any(vapply(
-            series,
-            function(data) any(data[["value"]] < 0),
-            logical(1L)
-        ))) {
+    if (
+        identical(transformation, "multiplicative") &&
+            any(vapply(
+                series,
+                # vapply callback {{{
+                function(data) any(data[["value"]] < 0),
+                # }}}
+                logical(1L)
+            ))
+    ) {
         cli::cli_abort(
             "Multiplicative {method} requires non-negative input values."
         )
     }
     series
 }
+# }}}
 
 # Calculate one native-calendar monthly mean per role for the months present
 # in the method's declared output backbone.
+# bias__mean_change_monthly_means {{{
 bias__mean_change_monthly_means <- function(
     series,
     output_role,
     method
 ) {
     output_months <- sort(unique(series[[output_role]][["cf_month"]]))
+    # lapply callback {{{
     monthly <- lapply(series, function(data) {
         means <- tapply(
             data[["value"]],
@@ -820,6 +926,7 @@ bias__mean_change_monthly_means <- function(
         }
         values
     })
+    # }}}
     data.frame(
         cf_month = output_months,
         observed_mean = monthly$observed_reference,
@@ -827,3 +934,6 @@ bias__mean_change_monthly_means <- function(
         future_mean = monthly$model_future
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -44,12 +44,15 @@ HOURLY_CALENDAR_KEY_COLUMNS <- c(
 
 # Copy and validate one materialized hourly role before it is split into
 # independent calendar-native signal series.
+# hourly_calendar__role_data {{{
 hourly_calendar__role_data <- function(input, role) {
     if (!S7::S7_inherits(input, WeatherInput)) {
         cli::cli_abort("Role {.val {role}} must contain a WeatherInput object.")
     }
-    if (!identical(input@representation, "series") ||
-        !is.data.frame(input@source)) {
+    if (
+        !identical(input@representation, "series") ||
+            !is.data.frame(input@source)
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must contain a materialized series input."
         )
@@ -70,24 +73,30 @@ hourly_calendar__role_data <- function(input, role) {
             "Role {.val {role}} contains a missing or empty `variable_id`."
         )
     }
-    if (length(input@variables) &&
-        !setequal(input@variables, variables)) {
+    if (
+        length(input@variables) &&
+            !setequal(input@variables, variables)
+    ) {
         cli::cli_abort(
             "Role {.val {role}} variable descriptors do not match its materialized rows."
         )
     }
-    if (!identical(unique(as.character(data[["frequency"]])), "hour") ||
-        (length(input@frequencies) &&
-            !identical(input@frequencies, "hour"))) {
+    if (
+        !identical(unique(as.character(data[["frequency"]])), "hour") ||
+            (length(input@frequencies) &&
+                !identical(input@frequencies, "hour"))
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must contain only hourly data."
         )
     }
     data[]
 }
+# }}}
 
 # Return explicit site identifiers, rejecting partial site labels that could
 # silently merge distinct locations into an implicit singleton group.
+# hourly_calendar__site_values {{{
 hourly_calendar__site_values <- function(data, role) {
     if (!"site_id" %in% names(data)) {
         return(character())
@@ -104,13 +113,17 @@ hourly_calendar__site_values <- function(data, role) {
     }
     sort(unique(values))
 }
+# }}}
 
 # Resolve the shared site groups. A role without `site_id` may be broadcast
 # only when every labelled role contains the same single site.
+# hourly_calendar__sites {{{
 hourly_calendar__sites <- function(role_data) {
+    # lapply callback {{{
     sites <- lapply(names(role_data), function(role) {
         hourly_calendar__site_values(role_data[[role]], role)
     })
+    # }}}
     names(sites) <- names(role_data)
     labelled <- sites[lengths(sites) > 0L]
     if (!length(labelled)) {
@@ -129,9 +142,11 @@ hourly_calendar__sites <- function(role_data) {
     }
     as.list(expected)
 }
+# }}}
 
 # Select one site while allowing an unlabelled singleton role to supply the
 # same reference series for the sole labelled site.
+# hourly_calendar__site_rows {{{
 hourly_calendar__site_rows <- function(data, site) {
     if (is.null(site) || !"site_id" %in% names(data)) {
         return(data)
@@ -143,9 +158,11 @@ hourly_calendar__site_rows <- function(data, site) {
     }
     data[values == site]
 }
+# }}}
 
 # Reduce role-local metadata to atomic scalar identities and reject accidental
 # mixtures of models, members, grids, periods, or geographic points.
+# hourly_calendar__series_identity {{{
 hourly_calendar__series_identity <- function(data, role, variable, site) {
     columns <- intersect(HOURLY_CALENDAR_SERIES_ID_COLUMNS, names(data))
     identity <- list()
@@ -168,9 +185,11 @@ hourly_calendar__series_identity <- function(data, role, variable, site) {
     }
     identity
 }
+# }}}
 
 # Compare the stable historical/future model identity without requiring their
 # experiment, period, table, or native calendar to be identical.
+# hourly_calendar__validate_model_identity {{{
 hourly_calendar__validate_model_identity <- function(
     historical,
     future,
@@ -181,11 +200,13 @@ hourly_calendar__validate_model_identity <- function(
         intersect(names(historical), names(future))
     )
     for (column in columns) {
-        if (!isTRUE(all.equal(
-            historical[[column]],
-            future[[column]],
-            check.attributes = FALSE
-        ))) {
+        if (
+            !isTRUE(all.equal(
+                historical[[column]],
+                future[[column]],
+                check.attributes = FALSE
+            ))
+        ) {
             cli::cli_abort(
                 "Historical and future model identities differ in {.field {column}} for variable {.val {variable}}."
             )
@@ -193,9 +214,11 @@ hourly_calendar__validate_model_identity <- function(
     }
     invisible(TRUE)
 }
+# }}}
 
 # Validate one complete hourly native-calendar series and return rows in exact
 # CF chronological order together with compact coverage diagnostics.
+# hourly_calendar__series {{{
 hourly_calendar__series <- function(data, role, variable, site) {
     label <- paste(
         role,
@@ -237,9 +260,15 @@ hourly_calendar__series <- function(data, role, variable, site) {
         sep = "\r"
     )
     day_offsets <- split(canonical[["cf_second_of_day"]], day_key)
-    complete_days <- vapply(day_offsets, function(value) {
-        identical(sort(as.numeric(value)), offsets)
-    }, logical(1L))
+    # vapply callback {{{
+    complete_days <- vapply(
+        day_offsets,
+        function(value) {
+            identical(sort(as.numeric(value)), offsets)
+        },
+        logical(1L)
+    )
+    # }}}
     if (!all(complete_days)) {
         cli::cli_abort(
             "Hourly series {.val {label}} contains incomplete native-calendar day(s)."
@@ -257,8 +286,10 @@ hourly_calendar__series <- function(data, role, variable, site) {
         expected_days <- unique(as.integer(
             canonical[["cf_year_days"]][rows]
         ))
-        if (length(expected_days) != 1L ||
-            !identical(observed_days, seq_len(expected_days))) {
+        if (
+            length(expected_days) != 1L ||
+                !identical(observed_days, seq_len(expected_days))
+        ) {
             cli::cli_abort(
                 "Hourly series {.val {label}} must cover every native-calendar day in year {year}."
             )
@@ -293,21 +324,29 @@ hourly_calendar__series <- function(data, role, variable, site) {
         )
     )
 }
+# }}}
 
 # Return one scalar case key from the pipeline context and future-model
 # metadata, preferring the explicit future case where both sources provide it.
+# hourly_calendar__group_key {{{
 hourly_calendar__group_key <- function(context, future_identity, site) {
     key <- list()
-    if (inherits(context, "morpher__context") &&
-        is.data.frame(context$case) &&
-        nrow(context$case) == 1L) {
+    if (
+        inherits(context, "morpher__context") &&
+            is.data.frame(context$case) &&
+            nrow(context$case) == 1L
+    ) {
         for (column in intersect(
             HOURLY_CALENDAR_KEY_COLUMNS,
             names(context$case)
         )) {
             value <- context$case[[column]][[1L]]
-            if (is.atomic(value) && length(value) == 1L && !is.na(value) &&
-                (!is.character(value) || nzchar(value))) {
+            if (
+                is.atomic(value) &&
+                    length(value) == 1L &&
+                    !is.na(value) &&
+                    (!is.character(value) || nzchar(value))
+            ) {
                 key[[column]] <- value
             }
         }
@@ -325,9 +364,11 @@ hourly_calendar__group_key <- function(context, future_identity, site) {
         HOURLY_CALENDAR_KEY_COLUMNS %in% names(key)
     ]]
 }
+# }}}
 
 # Convert role-addressable hourly inputs into univariate SignalGroup objects
 # without pairing timestamps or coercing any role to another role's calendar.
+# hourly_calendar__apply {{{
 hourly_calendar__apply <- function(data, inputs, context, options) {
     if (!S7::S7_inherits(data, WeatherInputs)) {
         cli::cli_abort(
@@ -340,19 +381,25 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
             "`hourly_calendar_grouping` does not accept component options."
         )
     }
+    # lapply callback {{{
     role_data <- lapply(HOURLY_CALENDAR_ROLES, function(role) {
         hourly_calendar__role_data(weather__get_input(data, role), role)
     })
+    # }}}
     names(role_data) <- HOURLY_CALENDAR_ROLES
+    # lapply callback {{{
     variable_sets <- lapply(role_data, function(value) {
         sort(unique(as.character(value[["variable_id"]])))
     })
-    if (!all(vapply(
-        variable_sets[-1L],
-        identical,
-        logical(1L),
-        variable_sets[[1L]]
-    ))) {
+    # }}}
+    if (
+        !all(vapply(
+            variable_sets[-1L],
+            identical,
+            logical(1L),
+            variable_sets[[1L]]
+        ))
+    ) {
         details <- paste(
             sprintf(
                 "%s=[%s]",
@@ -373,6 +420,7 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
     for (site in sites) {
         site_data <- lapply(role_data, hourly_calendar__site_rows, site = site)
         for (variable in variables) {
+            # lapply callback {{{
             series <- lapply(names(site_data), function(role) {
                 rows <- site_data[[role]][["variable_id"]] == variable
                 if (!any(rows)) {
@@ -388,10 +436,13 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
                     site
                 )
             })
+            # }}}
             names(series) <- names(site_data)
             units <- vapply(
                 series,
+                # vapply callback {{{
                 function(value) unique(value$data[["units"]]),
+                # }}}
                 character(1L)
             )
             if (length(unique(units)) != 1L) {
@@ -449,10 +500,13 @@ hourly_calendar__apply <- function(data, inputs, context, options) {
         )
     )
 }
+# }}}
 
 # Describe the reusable hourly calendar-grouping boundary independently of any
 # one bias-adjustment method or complete future-weather recipe.
+# hourly_calendar__component {{{
 hourly_calendar__component <- function() {
+    # lapply callback {{{
     requirements <- lapply(HOURLY_CALENDAR_ROLES, function(role) {
         component__input_requirement(
             role,
@@ -460,6 +514,7 @@ hourly_calendar__component <- function() {
             calendars = CF_TIME_CALENDARS
         )
     })
+    # }}}
     names(requirements) <- HOURLY_CALENDAR_ROLES
     component__spec(
         name = "hourly_calendar_grouping",
@@ -482,10 +537,15 @@ hourly_calendar__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the standalone calendar implementation once so hourly signal
 # components can resolve it without constructing a complete recipe.
+# hourly_calendar__register_component {{{
 hourly_calendar__register_component <- function() {
     component__register_builtin(hourly_calendar__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

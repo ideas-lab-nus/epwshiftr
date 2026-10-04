@@ -2,8 +2,15 @@
 
 requireNamespace("jsonlite")
 
-script_path <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1L]])
-repo_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
+script_path <- sub(
+    "^--file=",
+    "",
+    grep("^--file=", commandArgs(FALSE), value = TRUE)[[1L]]
+)
+repo_root <- normalizePath(
+    file.path(dirname(script_path), ".."),
+    mustWork = TRUE
+)
 schema_dir <- file.path(repo_root, "inst", "extdata", "schema")
 schema_files <- file.path(
     schema_dir,
@@ -14,10 +21,18 @@ schema_files <- file.path(
 # when an explicit `fields` request is ignored.
 RESULT_SCHEMA__PROVIDER_FIELDS <- c("datetime_stop", "geo", "mod_time")
 
+# read_schema_json {{{
 read_schema_json <- function(path) {
-    jsonlite::fromJSON(path, simplifyVector = TRUE, simplifyDataFrame = FALSE, simplifyMatrix = FALSE)
+    jsonlite::fromJSON(
+        path,
+        simplifyVector = TRUE,
+        simplifyDataFrame = FALSE,
+        simplifyMatrix = FALSE
+    )
 }
+# }}}
 
+# write_schema_json {{{
 write_schema_json <- function(x, path) {
     jsonlite::write_json(
         x,
@@ -28,18 +43,24 @@ write_schema_json <- function(x, path) {
         na = "null"
     )
 }
+# }}}
 
+# ref {{{
 ref <- function(name) {
     list(`$ref` = paste0("#/$defs/", name))
 }
+# }}}
 
+# ref_name {{{
 ref_name <- function(node) {
     if (!is.list(node) || is.null(node[["$ref"]])) {
         return(NULL)
     }
     sub("^#/\\$defs/", "", node[["$ref"]])
 }
+# }}}
 
+# resolve_ref {{{
 resolve_ref <- function(node, defs) {
     name <- ref_name(node)
     if (is.null(name)) {
@@ -47,25 +68,33 @@ resolve_ref <- function(node, defs) {
     }
     defs[[name]]
 }
+# }}}
 
 # Extend only serialized Solr document-field whitelists, identified by their
 # established id/time/xlink field set, without reformatting checked-in schemas.
+# result_schema__allow_provider_fields {{{
 result_schema__allow_provider_fields <- function(path) {
     lines <- readLines(path, warn = FALSE)
-    targets <- which(grepl('"subset.of":', lines, fixed = TRUE) &
-        grepl('"id"', lines, fixed = TRUE) &
-        grepl('"datetime_start"', lines, fixed = TRUE) &
-        grepl('"xlink"', lines, fixed = TRUE))
+    targets <- which(
+        grepl('"subset.of":', lines, fixed = TRUE) &
+            grepl('"id"', lines, fixed = TRUE) &
+            grepl('"datetime_start"', lines, fixed = TRUE) &
+            grepl('"xlink"', lines, fixed = TRUE)
+    )
     for (target in targets) {
         # Add only absent fields so repeated schema builds remain byte-for-byte
         # stable after a provider field has been introduced.
-        missing <- RESULT_SCHEMA__PROVIDER_FIELDS[!vapply(
-            RESULT_SCHEMA__PROVIDER_FIELDS,
-            function(field) {
-                grepl(sprintf('"%s"', field), lines[[target]], fixed = TRUE)
-            },
-            logical(1L)
-        )]
+        missing <- RESULT_SCHEMA__PROVIDER_FIELDS[
+            !vapply(
+                RESULT_SCHEMA__PROVIDER_FIELDS,
+                # vapply callback {{{
+                function(field) {
+                    grepl(sprintf('"%s"', field), lines[[target]], fixed = TRUE)
+                },
+                # }}}
+                logical(1L)
+            )
+        ]
         if (length(missing)) {
             provider_fields <- paste(
                 sprintf('"%s"', missing),
@@ -82,7 +111,9 @@ result_schema__allow_provider_fields <- function(path) {
     writeLines(lines, path, useBytes = TRUE)
     invisible(path)
 }
+# }}}
 
+# promote_parameter_defs {{{
 promote_parameter_defs <- function(parameter, defs) {
     buckets <- c("facet", "query", "control", "others")
     for (bucket in buckets) {
@@ -98,10 +129,15 @@ promote_parameter_defs <- function(parameter, defs) {
     defs$parameter <- parameter
     defs
 }
+# }}}
 
+# promote_response_defs {{{
 promote_response_defs <- function(response, defs) {
     if (!is.null(response$fields$responseHeader)) {
-        defs$response_header <- resolve_ref(response$fields$responseHeader, defs)
+        defs$response_header <- resolve_ref(
+            response$fields$responseHeader,
+            defs
+        )
         response$fields$responseHeader <- ref("response_header")
     }
     if (!is.null(response$fields$response)) {
@@ -125,7 +161,9 @@ promote_response_defs <- function(response, defs) {
     defs$response <- response
     defs
 }
+# }}}
 
+# promote_context_defs {{{
 promote_context_defs <- function(defs) {
     defs$context <- list(
         check = list(kind = "list"),
@@ -141,13 +179,23 @@ promote_context_defs <- function(defs) {
         check = list(kind = "list"),
         keys = list(
             type = "named",
-            subset.of = c("start", "stop", "method", "unknown", "total", "selected", "unknown_count"),
+            subset.of = c(
+                "start",
+                "stop",
+                "method",
+                "unknown",
+                "total",
+                "selected",
+                "unknown_count"
+            ),
             must.include = c("start", "stop", "method")
         ),
         fields = list(
             start = list(check = list(kind = "string")),
             stop = list(check = list(kind = "string")),
-            method = list(check = list(kind = "choice", choices = c("drs", "opendap"))),
+            method = list(
+                check = list(kind = "choice", choices = c("drs", "opendap"))
+            ),
             unknown = list(check = list(kind = "string")),
             total = list(check = list(kind = "integer", lower = 0)),
             selected = list(check = list(kind = "integer", lower = 0)),
@@ -157,7 +205,9 @@ promote_context_defs <- function(defs) {
 
     defs
 }
+# }}}
 
+# order_defs {{{
 order_defs <- function(defs) {
     preferred <- c(
         "index_node",
@@ -177,7 +227,9 @@ order_defs <- function(defs) {
     )
     defs[c(intersect(preferred, names(defs)), setdiff(names(defs), preferred))]
 }
+# }}}
 
+# build_result_schema {{{
 build_result_schema <- function(schema) {
     defs <- schema[["$defs"]]
     if (is.null(defs)) {
@@ -185,8 +237,14 @@ build_result_schema <- function(schema) {
     }
 
     defs$index_node <- resolve_ref(schema$fields$index_node, defs)
-    defs <- promote_parameter_defs(resolve_ref(schema$fields$parameter, defs), defs)
-    defs <- promote_response_defs(resolve_ref(schema$fields$response, defs), defs)
+    defs <- promote_parameter_defs(
+        resolve_ref(schema$fields$parameter, defs),
+        defs
+    )
+    defs <- promote_response_defs(
+        resolve_ref(schema$fields$response, defs),
+        defs
+    )
     defs <- promote_context_defs(defs)
     defs <- order_defs(defs)
 
@@ -199,6 +257,7 @@ build_result_schema <- function(schema) {
     schema[["$defs"]] <- defs
     schema
 }
+# }}}
 
 for (path in schema_files) {
     schema <- read_schema_json(path)
@@ -215,3 +274,5 @@ for (path in schema_files) {
 # and must accept the same current bridge fields.
 response_path <- file.path(schema_dir, "response.json")
 result_schema__allow_provider_fields(response_path)
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

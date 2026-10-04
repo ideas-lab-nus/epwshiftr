@@ -35,6 +35,7 @@ EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW <- 9L
 EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_PASSES <- 3L
 
 # Validate JSON-safe options used by foreground and resumed method recipes.
+# quantile_mapping_morphing__temperature_options {{{
 quantile_mapping_morphing__temperature_options <- function(options = NULL) {
     temperature__backend_options(
         options,
@@ -42,9 +43,11 @@ quantile_mapping_morphing__temperature_options <- function(options = NULL) {
         label = "Quantile-mapping morphing"
     )
 }
+# }}}
 
 # Declare the TMY, historical model, future model, and observed daily inputs
 # required by the quantile-mapping morphing workflow.
+# quantile_mapping_morphing__temperature_inputs {{{
 quantile_mapping_morphing__temperature_inputs <- function() {
     list(
         weather_template = component__input_requirement(
@@ -73,9 +76,11 @@ quantile_mapping_morphing__temperature_inputs <- function() {
         )
     )
 }
+# }}}
 
 # Normalize one daily temperature source and retain only the month-wise samples
 # used by the published CDF construction.
+# quantile_mapping_morphing__temperature_series {{{
 quantile_mapping_morphing__temperature_series <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -132,9 +137,11 @@ quantile_mapping_morphing__temperature_series <- function(data, name) {
         value = value
     )
 }
+# }}}
 
 # Reduce the hourly TMY to one daily mean while preserving the target-day and
 # calendar-month keys needed to return a factor to all 24 hours.
+# quantile_mapping_morphing__baseline_days {{{
 quantile_mapping_morphing__baseline_days <- function(baseline) {
     template <- data.table::copy(baseline$template)
     data.table::set(
@@ -165,10 +172,12 @@ quantile_mapping_morphing__baseline_days <- function(baseline) {
     data.table::setorderv(days, "target_day")
     days[]
 }
+# }}}
 
 # Apply one pass of the paper's endpoint-aware nine-point moving mean. Interior
 # ranks use centered windows; the four ranks at either end use the fixed mean
 # of the nearest nine ranks rather than a shorter or circular window.
+# quantile_mapping_morphing__smooth_pass {{{
 quantile_mapping_morphing__smooth_pass <- function(
     value,
     window = EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW
@@ -196,9 +205,11 @@ quantile_mapping_morphing__smooth_pass <- function(
     }
     out
 }
+# }}}
 
 # Repeat the endpoint-aware moving mean exactly three times, matching the KZ-
 # like smoothing procedure documented by Arima et al.
+# quantile_mapping_morphing__smooth_change {{{
 quantile_mapping_morphing__smooth_change <- function(
     value,
     window = EPW_MORPH_QUANTILE_MAPPING_SMOOTHING_WINDOW,
@@ -211,10 +222,12 @@ quantile_mapping_morphing__smooth_change <- function(
     }
     out
 }
+# }}}
 
 # Construct one empirical inverse-CDF change function per calendar month. A
 # common midpoint probability grid permits unequal native-calendar sample
 # counts while keeping historical and future quantiles directly comparable.
+# quantile_mapping_morphing__change_functions {{{
 quantile_mapping_morphing__change_functions <- function(
     historical,
     future,
@@ -275,9 +288,11 @@ quantile_mapping_morphing__change_functions <- function(
     }
     data.table::rbindlist(rows)
 }
+# }}}
 
 # Evaluate the observed monthly empirical CDF at each baseline TMY daily mean,
 # then interpolate the smoothed model change function at that percentile.
+# quantile_mapping_morphing__daily_factors {{{
 quantile_mapping_morphing__daily_factors <- function(
     baseline_days,
     observed,
@@ -324,9 +339,11 @@ quantile_mapping_morphing__daily_factors <- function(
     }
     data.table::rbindlist(rows)
 }
+# }}}
 
 # Normalize all four role-addressable inputs before any CDF or percentile
 # interpretation occurs.
+# quantile_mapping_morphing__preprocess_apply {{{
 quantile_mapping_morphing__preprocess_apply <- function(
     inputs,
     context,
@@ -355,10 +372,12 @@ quantile_mapping_morphing__preprocess_apply <- function(
         options = options
     )
 }
+# }}}
 
 # Keep source calendars native and reduce them to monthly distributions. This
 # is the method's calendar strategy: it never pairs model calendar dates
 # directly with the 365 baseline EPW dates.
+# quantile_mapping_morphing__calendar_apply {{{
 quantile_mapping_morphing__calendar_apply <- function(
     data,
     inputs,
@@ -375,9 +394,11 @@ quantile_mapping_morphing__calendar_apply <- function(
         variables = "tas"
     ))
 }
+# }}}
 
 # Calculate the month-wise change functions and select one additive factor for
 # every baseline EPW day from its observed-reference percentile.
+# quantile_mapping_morphing__signal_apply_group {{{
 quantile_mapping_morphing__signal_apply_group <- function(
     inputs,
     settings,
@@ -400,9 +421,11 @@ quantile_mapping_morphing__signal_apply_group <- function(
         )
     )
 }
+# }}}
 
 # Preserve the original TMY day sequence instead of sampling or reordering
 # events after the percentile-dependent climate signal has been estimated.
+# quantile_mapping_morphing__sequence_generate {{{
 quantile_mapping_morphing__sequence_generate <- function(
     data,
     inputs,
@@ -411,9 +434,11 @@ quantile_mapping_morphing__sequence_generate <- function(
 ) {
     signal__single_value(data, "quantile-mapping morphing")
 }
+# }}}
 
 # Apply each daily additive factor to all 24 TMY hours as specified by Arima
 # equation (4)/(7), retaining the original hourly temperature profile shape.
+# quantile_mapping_morphing__hourly_reconstruct {{{
 quantile_mapping_morphing__hourly_reconstruct <- function(
     data,
     inputs,
@@ -463,9 +488,11 @@ quantile_mapping_morphing__hourly_reconstruct <- function(
         options = options
     )
 }
+# }}}
 
 # Apply either paper-faithful humidity preservation or the package's shared
 # specific-humidity closure without changing the quantile-mapping climate signal.
+# quantile_mapping_morphing__physics_apply {{{
 quantile_mapping_morphing__physics_apply <- function(
     data,
     inputs,
@@ -606,9 +633,11 @@ quantile_mapping_morphing__physics_apply <- function(
         settings = settings
     )
 }
+# }}}
 
 # Return the common result while retaining raw/smoothed change functions,
 # selected daily factors, and empirical-CDF conventions as inspectable parts.
+# quantile_mapping_morphing__output_write {{{
 quantile_mapping_morphing__output_write <- function(
     data,
     inputs,
@@ -630,9 +659,11 @@ quantile_mapping_morphing__output_write <- function(
         factors = data$factors
     )
 }
+# }}}
 
 # Define seven method-neutral stages so the monthly percentile-change signal
 # and inherited hourly sequence remain independently inspectable and reusable.
+# quantile_mapping_morphing__component_specs {{{
 quantile_mapping_morphing__component_specs <- function() {
     complete_inputs <- quantile_mapping_morphing__temperature_inputs()
     template <- complete_inputs$weather_template
@@ -731,15 +762,19 @@ quantile_mapping_morphing__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the monthly percentile-temperature components once without replacing
 # process-local implementations already stored under the same stable keys.
+# quantile_mapping_morphing__register_components {{{
 quantile_mapping_morphing__register_components <- function() {
     component__register_builtins(quantile_mapping_morphing__component_specs())
 }
+# }}}
 
 # Compose the temperature-focused quantile-mapping recipe from method-neutral
 # stages while retaining its publication citation at the recipe boundary.
+# quantile_mapping_morphing__pipeline {{{
 quantile_mapping_morphing__pipeline <- function() {
     quantile_mapping_morphing__register_components()
     pipeline__spec(list(
@@ -752,3 +787,6 @@ quantile_mapping_morphing__pipeline <- function() {
         output = "percentile_temperature_epw_result"
     ))
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

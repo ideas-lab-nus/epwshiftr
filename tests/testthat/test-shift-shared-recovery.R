@@ -4,23 +4,31 @@ test_that("batch recovery retries one failed selection for all existing runs", {
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs[fixture$docs$variable_id != "tas"])
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
+    # lapply callback {{{
     batch@meta$children <- lapply(batch@meta$children, function(child) {
         shift_batch__run_child(shift_run(child, ui = shift_ui("none")))
     })
+    # }}}
     expect_true(all(vapply(
         batch@meta$children,
+        # vapply callback {{{
         function(child) S7::S7_inherits(child, ShiftRun),
+        # }}}
         logical(1L)
     )))
+    # lapply callback {{{
     old_specs <- lapply(batch@meta$children, function(child) {
         child@meta$run$spec_json
     })
+    # }}}
     retry <- cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(batch)
     expect_equal(sum(retry$types == "File"), 2L)
     expect_equal(nrow(batch@meta$shared_plan$acquisitions), 6L)
     expect_equal(
+        # lapply callback {{{
         lapply(batch@meta$children, function(child) child@meta$run$spec_json),
+        # }}}
         old_specs
     )
     reopened <- shift_batch_get(batch@ids$batch_id, store = batch@store_path)
@@ -53,19 +61,27 @@ test_that("prefetch excludes completed and active consumers", {
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     seen <- character()
     local_mocked_bindings(
+        # shift_status {{{
         shift_status = function(child, ...) {
             if (child@meta$site@id == "one") "completed" else "planned"
         },
+        # }}}
+        # source__apply {{{
         source__apply = function(jobs, ...) {
+            # lapply callback {{{
             seen <<- unlist(lapply(jobs, function(job) {
                 job$consumers$site_id[!job$cached]
             }))
+            # }}}
         }
+        # }}}
     )
     shift_batch_window__prefetch(batch)
     expect_true(length(seen) > 0L)
     expect_identical(unique(seen), "two")
+    # shift_status {{{
     local_mocked_bindings(shift_status = function(...) "running")
+    # }}}
     seen <- character()
     shift_batch_window__prefetch(batch)
     expect_length(seen, 0L)
@@ -77,6 +93,7 @@ test_that("shared failures retain ownership and do not stop other files", {
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     seen <- character()
     first <- batch@meta$shared_plan$acquisitions$acquisition_id[[1L]]
+    # source__read_acquisition {{{
     local_mocked_bindings(source__read_acquisition = function(job) {
         id <- job$acquisition$acquisition_id[[1L]]
         seen <<- c(seen, id)
@@ -85,6 +102,7 @@ test_that("shared failures retain ownership and do not stop other files", {
         }
         1L
     })
+    # }}}
     result <- shift_batch_window__prefetch(batch)
     expect_length(seen, 6L)
     expect_equal(as.integer(result), 5L)
@@ -101,9 +119,12 @@ test_that("only dependent children are blocked after shared reading", {
     first <- names(batch@meta$children)[[1L]]
     started <- character()
     local_mocked_bindings(
+        # shift_batch_plan__resolve_inputs {{{
         shift_batch_plan__resolve_inputs = function(batch, reporter = NULL) {
             batch
         },
+        # }}}
+        # shift_batch_window__prefetch {{{
         shift_batch_window__prefetch = function(...) {
             structure(
                 1L,
@@ -114,11 +135,16 @@ test_that("only dependent children are blocked after shared reading", {
                 ))
             )
         },
+        # }}}
+        # shift_run__run_one {{{
         shift_run__run_one = function(child, ...) {
             started <<- c(started, child@meta$site@id)
             child
         },
+        # }}}
+        # shift_batch_ui__report {{{
         shift_batch_ui__report = function(...) NULL
+        # }}}
     )
     result <- shift_batch__execute(batch, ui = shift_ui("none"))
     expect_identical(started, "two")
@@ -133,10 +159,14 @@ test_that("warm shared caches need no worker or payload deserialization", {
     shift_batch_window__prefetch(batch)
     unlink(list.files(fixture$root, pattern = "[.]nc$", full.names = TRUE))
     local_mocked_bindings(
+        # store__extract_cache_read {{{
         store__extract_cache_read = function(...) {
             stop("unexpected payload read")
         },
+        # }}}
+        # source__apply {{{
         source__apply = function(jobs, ...) expect_length(jobs, 0L)
+        # }}}
     )
     expect_equal(as.integer(shift_batch_window__prefetch(batch)), 0L)
 })
@@ -167,6 +197,7 @@ test_that("partial resume keeps window identity without completed cache reads", 
     shift_batch_window__prefetch(batch)
     paths <- unlist(lapply(
         seq_len(nrow(batch@meta$shared_plan$acquisitions)),
+        # lapply callback {{{
         function(i) {
             acquisition <- batch@meta$shared_plan$acquisitions[i]
             consumers <- batch@meta$shared_plan$consumers[
@@ -175,12 +206,15 @@ test_that("partial resume keeps window identity without completed cache reads", 
             ]
             shift_batch_window__cache_paths(acquisition, consumers)
         }
+        # }}}
     ))
     unlink(paths)
     unlink(list.files(fixture$root, pattern = "[.]nc$", full.names = TRUE))
+    # shift_status {{{
     local_mocked_bindings(shift_status = function(child, ...) {
         if (child@meta$site@id == "one") "completed" else "planned"
     })
+    # }}}
     result <- shift_batch_window__prefetch(batch)
     expect_length(attr(result, "failures"), 0L)
     expect_equal(sum(file.exists(paths)), 6L)
@@ -200,3 +234,5 @@ test_that("invalid cache receipt shapes remain cache misses", {
     store_write_json_atomic(list(sha256_extra = checksum_file(path)), receipt)
     expect_false(store__extract_cache_available(path))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

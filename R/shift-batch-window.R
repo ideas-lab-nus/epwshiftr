@@ -1,6 +1,7 @@
 # Divide one physical file's native axis at calendar-month boundaries. The
 # next month's first instant closes the preceding window, which also includes
 # day 30 of February in a 360-day calendar without inventing a POSIX date.
+# shift_batch_window__windows {{{
 shift_batch_window__windows <- function(axis, acquisition, consumer_count) {
     checkmate::assert_count(consumer_count, positive = TRUE)
     selected <- cf_time__range_indices(
@@ -94,6 +95,7 @@ shift_batch_window__windows <- function(axis, acquisition, consumer_count) {
         j = "window_id",
         value = vapply(
             seq_len(nrow(windows)),
+            # vapply callback {{{
             function(index) {
                 store__hash(
                     acquisition$acquisition_id[[1L]],
@@ -101,15 +103,18 @@ shift_batch_window__windows <- function(axis, acquisition, consumer_count) {
                     windows$last_index[[index]]
                 )
             },
+            # }}}
             character(1L)
         )
     )
     windows
 }
+# }}}
 
 # Keep each completed native window behind a SHA-256 receipt. A missing receipt
 # is an interrupted write, while a checksum mismatch is an error that must not
 # silently replace evidence or contaminate child extraction caches.
+# shift_batch_window__window_read {{{
 shift_batch_window__window_read <- function(path, identity, demand_ids) {
     receipt_path <- paste0(path, ".json")
     if (!file.exists(receipt_path)) {
@@ -153,6 +158,7 @@ shift_batch_window__window_read <- function(path, identity, demand_ids) {
     chunks <- stats::setNames(
         vapply(
             selected,
+            # vapply callback {{{
             function(chunk) {
                 expected <- paste0(
                     store__hash(
@@ -178,16 +184,19 @@ shift_batch_window__window_read <- function(path, identity, demand_ids) {
                 }
                 file
             },
+            # }}}
             character(1L)
         ),
         as.character(demand_ids)
     )
     chunks
 }
+# }}}
 
 # Split one bounded multi-site result once, then publish small per-consumer
 # chunks. The receipt is written last so interrupted windows cannot seed any
 # child cache, and reconstruction needs only one site's chunks in memory.
+# shift_batch_window__window_write {{{
 shift_batch_window__window_write <- function(
     path,
     identity,
@@ -223,6 +232,7 @@ shift_batch_window__window_write <- function(
     value_groups <- split(values, by = "demand_id", keep.by = TRUE)
     sources <- attr(values, "grid_sources", exact = TRUE)
     source_groups <- split(sources, by = "demand_id", keep.by = TRUE)
+    # lapply callback {{{
     chunks <- lapply(as.character(demand_ids), function(demand_id) {
         filename <- paste0(
             store__hash(
@@ -252,6 +262,7 @@ shift_batch_window__window_write <- function(
         }
         list(demand_id = demand_id, file = filename, sha256 = sha)
     })
+    # }}}
     receipt_path <- paste0(path, ".json")
     receipt_tmp <- tempfile(pattern = "receipt-", tmpdir = dirname(path))
     on.exit(if (file.exists(receipt_tmp)) unlink(receipt_tmp), add = TRUE)
@@ -271,10 +282,12 @@ shift_batch_window__window_write <- function(
         vapply(chunks, `[[`, character(1L), "demand_id")
     )
 }
+# }}}
 
 # Persist the small native-axis facts needed to assemble verified windows when
 # the source service is temporarily unavailable. The identity and content hash
 # prevent a different consumer group from reusing these counts or boundaries.
+# shift_batch_window__source_metadata {{{
 shift_batch_window__source_metadata <- function(
     axis,
     acquisition,
@@ -288,6 +301,7 @@ shift_batch_window__source_metadata <- function(
     ])
     counts <- vapply(
         seq_len(nrow(requested)),
+        # vapply callback {{{
         function(index) {
             length(cf_time__range_indices(
                 axis$values,
@@ -298,6 +312,7 @@ shift_batch_window__source_metadata <- function(
                 )
             ))
         },
+        # }}}
         integer(1L)
     )
     match_index <- match(
@@ -320,9 +335,11 @@ shift_batch_window__source_metadata <- function(
         actual_end = max(axis$values, na.rm = TRUE)
     )
 }
+# }}}
 
 # Read a group's metadata only when its complete content still matches the
 # saved hash; a missing manifest merely requires opening the original source.
+# shift_batch_window__metadata_read {{{
 shift_batch_window__metadata_read <- function(path, identity, demand_ids) {
     if (!file.exists(path)) {
         return(NULL)
@@ -347,9 +364,11 @@ shift_batch_window__metadata_read <- function(path, identity, demand_ids) {
     }
     record$data
 }
+# }}}
 
 # Atomically publish the native-axis summary before any source-value window.
 # Existing valid metadata is left untouched across interrupted attempts.
+# shift_batch_window__metadata_write {{{
 shift_batch_window__metadata_write <- function(path, identity, data) {
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     temporary <- tempfile(pattern = "source-metadata-", tmpdir = dirname(path))
@@ -365,10 +384,12 @@ shift_batch_window__metadata_write <- function(path, identity, data) {
     }
     invisible(path)
 }
+# }}}
 
 # Materialize one consumer in the existing site-extraction cache format. Child
 # stores can then use their ordinary extraction task, provenance and resume
 # logic without knowing that another site shared the source read.
+# shift_batch_window__seed_consumer {{{
 shift_batch_window__seed_consumer <- function(
     acquisition,
     consumer,
@@ -377,9 +398,11 @@ shift_batch_window__seed_consumer <- function(
 ) {
     wanted_id <- as.character(consumer$demand_id[[1L]])
     pieces <- Filter(
+        # Filter callback {{{
         function(piece) {
             !is.null(piece) && !is.null(piece[[wanted_id]])
         },
+        # }}}
         pieces
     )
     if (!length(pieces)) {
@@ -388,6 +411,7 @@ shift_batch_window__seed_consumer <- function(
             call = NULL
         )
     }
+    # lapply callback {{{
     chunks <- lapply(pieces, function(piece) {
         payload <- tryCatch(
             readRDS(piece[[wanted_id]]),
@@ -406,6 +430,7 @@ shift_batch_window__seed_consumer <- function(
         }
         payload
     })
+    # }}}
     values <- data.table::rbindlist(
         lapply(chunks, `[[`, "data"),
         use.names = TRUE
@@ -464,10 +489,12 @@ shift_batch_window__seed_consumer <- function(
     )
     invisible(path)
 }
+# }}}
 
 # Resolve only the uncached consumers in every completed window. A missing
 # receipt means a source read is still needed; an altered chunk remains an
 # error instead of silently being regenerated.
+# shift_batch_window__window_pieces {{{
 shift_batch_window__window_pieces <- function(
     directory,
     identity,
@@ -504,9 +531,11 @@ shift_batch_window__window_pieces <- function(
     }
     list(pieces = pieces, complete = complete)
 }
+# }}}
 
 # Rebuild only missing site caches after the required window chunks are
 # verified, keeping a single consumer's data in memory at any one time.
+# shift_batch_window__seed_pending {{{
 shift_batch_window__seed_pending <- function(
     acquisition,
     consumers,
@@ -524,11 +553,14 @@ shift_batch_window__seed_pending <- function(
     }
     invisible(NULL)
 }
+# }}}
 
 # Use the ordinary cache identity for every demand, including optional inputs.
+# shift_batch_window__cache_paths {{{
 shift_batch_window__cache_paths <- function(acquisition, consumers) {
     vapply(
         seq_len(nrow(consumers)),
+        # vapply callback {{{
         function(index) {
             consumer <- consumers[index]
             plan <- data.table::data.table(
@@ -541,13 +573,16 @@ shift_batch_window__cache_paths <- function(acquisition, consumers) {
             )
             store__extract_cache_path(plan, acquisition)
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
 # Open each physical file once, resume verified windows, and publish complete
 # per-site payloads only after every native window succeeds. Failed reads leave
 # earlier window receipts intact for the next batch resume.
+# shift_batch_window__prefetch_acquisition {{{
 shift_batch_window__prefetch_acquisition <- function(
     batch_root,
     acquisition,
@@ -701,7 +736,9 @@ shift_batch_window__prefetch_acquisition <- function(
                 "units",
                 index = 1L
             ))[[1L]],
+            # error {{{
             error = function(error) NA_character_
+            # }}}
         )
         # Resolve this acquisition's bounds once, then subset them in each
         # value window. This avoids extra network round trips for long periods
@@ -858,10 +895,12 @@ shift_batch_window__prefetch_acquisition <- function(
     )
     invisible(nrow(windows))
 }
+# }}}
 
 # Warm the existing extraction cache before child workflows start. A plan with
 # unmatched source demands stays on the ordinary child path. A failed shared
 # remote read blocks only its dependent children, without per-city retries.
+# shift_batch_window__prefetch {{{
 shift_batch_window__prefetch <- function(batch, reporter = NULL) {
     shared <- batch@meta$shared_plan
     if (
@@ -873,9 +912,11 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
     }
     statuses <- vapply(
         batch@meta$children,
+        # vapply callback {{{
         function(child) {
             shift_status(child, refresh = FALSE)
         },
+        # }}}
         character(1L)
     )
     if (all(statuses == "completed")) {
@@ -900,6 +941,7 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
         by = "acquisition_id",
         keep.by = TRUE
     )
+    # lapply callback {{{
     jobs <- lapply(seq_len(nrow(shared$acquisitions)), function(index) {
         acquisition <- shared$acquisitions[index]
         consumers <- links[[acquisition$acquisition_id[[1L]]]]
@@ -933,10 +975,12 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
             cached = cached
         )
     })
+    # }}}
     source__apply(
         Filter(Negate(is.null), jobs),
         source__read_acquisition,
         reporter = reporter,
+        # on_error {{{
         on_error = function(job, error) {
             failures[[job$acquisition$acquisition_id[[1L]]]] <<- list(
                 file = job$acquisition$filename[[1L]],
@@ -945,6 +989,8 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
                 occurred_at = Sys.time()
             )
         },
+        # }}}
+        # collect {{{
         collect = function(job, outcome) {
             if (is.list(outcome) && !is.null(outcome$unavailable)) {
                 skip_count <<- skip_count + 1L
@@ -957,6 +1003,7 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
                 completed <<- completed + 1L
             }
         }
+        # }}}
     )
     if (skip_count) {
         cli::cli_warn(c(
@@ -967,3 +1014,6 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
     attr(completed, "failures") <- failures
     invisible(completed)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -18,9 +18,8 @@ test_that("BTWS default projection follows equations 7 to 16", {
     baseline_minimum <- min(source)
     baseline_range <- max(source) - baseline_minimum
     normalized <- (source - baseline_minimum) / baseline_range
-    target_normalized_mean <- (
-        mean(source) + 0.5 - baseline_minimum
-    ) / baseline_range
+    target_normalized_mean <- (mean(source) + 0.5 - baseline_minimum) /
+        baseline_range
     scale <- target_normalized_mean / mean(normalized) - 1
     weight <- normalized * (1 - normalized)
     expected_normalized <- normalized +
@@ -155,10 +154,17 @@ test_that("grouped BTWS projection retains method diagnostics and row order", {
         projected[, names(template), with = FALSE],
         template
     )
-    expect_true(all(c(
-        "btws_scale", "btws_m", "btws_n", "btws_fallback_reason",
-        "boundary_jump", "boundary_jump_change"
-    ) %in% names(projected)))
+    expect_true(all(
+        c(
+            "btws_scale",
+            "btws_m",
+            "btws_n",
+            "btws_fallback_reason",
+            "boundary_jump",
+            "boundary_jump_change"
+        ) %in%
+            names(projected)
+    ))
     expect_false("shape_exponent" %in% names(projected))
     expect_true("shape_exponent" %in% names(power))
     expect_false("btws_scale" %in% names(power))
@@ -189,6 +195,7 @@ test_that("grouped BTWS projection retains method diagnostics and row order", {
 test_that("BTWS monthly factors close the published temperature statistics", {
     hours <- 1:24
     days <- 1:28
+    # lapply callback {{{
     template <- data.table::rbindlist(lapply(days, function(day) {
         amplitude <- 4 + day / 28
         offset <- 10 + day / 14
@@ -199,6 +206,7 @@ test_that("BTWS monthly factors close the published temperature statistics", {
                 amplitude * sin(2 * pi * (hours - 1) / 24)
         )
     }))
+    # }}}
     targets <- data.table::data.table(
         target_day = days,
         mean_delta = 2,
@@ -210,17 +218,23 @@ test_that("BTWS monthly factors close the published temperature statistics", {
     # BTWS applies one set of monthly change factors to every baseline day;
     # monthly mean and average daily extrema must then realize those factors.
     projected <- btws__project_temperature(template, targets)
-    baseline_daily <- template[, .(
-        average = mean(value),
-        minimum = min(value),
-        maximum = max(value)
-    ), by = "target_day"]
-    future_daily <- projected[, .(
-        average = mean(temperature_projected),
-        minimum = min(temperature_projected),
-        maximum = max(temperature_projected),
-        fallback = any(!is.na(btws_fallback_reason))
-    ), by = "target_day"]
+    baseline_daily <- template[,
+        .(
+            average = mean(value),
+            minimum = min(value),
+            maximum = max(value)
+        ),
+        by = "target_day"
+    ]
+    future_daily <- projected[,
+        .(
+            average = mean(temperature_projected),
+            minimum = min(temperature_projected),
+            maximum = max(temperature_projected),
+            fallback = any(!is.na(btws_fallback_reason))
+        ),
+        by = "target_day"
+    ]
 
     expect_false(any(future_daily$fallback))
     expect_equal(
@@ -239,3 +253,5 @@ test_that("BTWS monthly factors close the published temperature statistics", {
         tolerance = 1e-8
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

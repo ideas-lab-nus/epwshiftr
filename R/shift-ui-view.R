@@ -5,6 +5,7 @@ NULL
 
 # Render runtime presentation policy separately from scientific workflow intent
 # so users can inspect TUI behaviour without seeing a raw S7 property dump.
+# shift_ui_view__print_ui_options {{{
 shift_ui_view__print_ui_options <- function(x, width = NULL, verbose = FALSE) {
     shift_print__print_use_width(width)
     shift_print__print_header("Shift UI")
@@ -17,9 +18,11 @@ shift_ui_view__print_ui_options <- function(x, width = NULL, verbose = FALSE) {
     ))
     invisible(x)
 }
+# }}}
 
 # ShiftUiOptions participates in the same width/verbose print contract as all
 # other public Shift configuration objects.
+# S7::method(print, ShiftUiOptions) {{{
 S7::method(print, ShiftUiOptions) <- function(x, ...) {
     opts <- shift_print__print_options(list(...))
     shift_ui_view__print_ui_options(
@@ -28,12 +31,14 @@ S7::method(print, ShiftUiOptions) <- function(x, ...) {
         verbose = opts$verbose
     )
 }
+# }}}
 
 # Query POSIX TTY dimensions at most twice a second. Redirected output never
 # opens /dev/tty, and other hosts retain the explicit option / LINES fallback.
 shift__ui_terminal_height <- local({
     checked <- as.POSIXct(NA)
     value <- NULL
+    # { callback {{{
     function() {
         if (
             .Platform$OS.type == "windows" ||
@@ -58,7 +63,9 @@ shift__ui_terminal_height <- local({
                 stdout = TRUE,
                 stderr = FALSE
             )),
+            # error {{{
             error = function(error) character()
+            # }}}
         )
         rows <- if (length(size)) {
             suppressWarnings(as.integer(
@@ -70,21 +77,25 @@ shift__ui_terminal_height <- local({
         value <<- if (!is.na(rows) && rows >= 2L) rows else NULL
         value
     }
+    # }}}
 })
 
 # Fit plain user-facing text into one terminal row without relying on colour or
 # terminal-specific clipping for essential status information. cli performs
 # display-width-aware trimming for ANSI and wide CJK characters.
+# shift_ui_view__ui_fit {{{
 shift_ui_view__ui_fit <- function(x, width = shift_ui__ui_width()) {
     x <- gsub("[\r\n]+", " ", as.character(shift_stage__coalesce(x, "")))
     width <- shift_ui__ui_width(width)
     cli::ansi_strtrim(x, width)
 }
+# }}}
 
 # Split one unbreakable ANSI token by display width while preserving styles and
 # wide Unicode boundaries. cli's prose wrapper intentionally keeps long paths
 # and identifiers intact, so this is the final lossless fallback for dashboard
 # values that would otherwise be trimmed.
+# shift_ui_view__ui_hard_wrap {{{
 shift_ui_view__ui_hard_wrap <- function(x, width) {
     width <- max(1L, shift_ui__ui_width(width))
     remaining <- as.character(shift_stage__coalesce(x, ""))[[1L]]
@@ -118,9 +129,11 @@ shift_ui_view__ui_hard_wrap <- function(x, width) {
     }
     c(lines, remaining)
 }
+# }}}
 
 # Combine cli's word-aware wrapping with the unbreakable-token fallback so
 # prose prefers natural boundaries without ever losing a long identifier.
+# shift_ui_view__ui_wrap_lines {{{
 shift_ui_view__ui_wrap_lines <- function(value, width) {
     width <- max(1L, shift_ui__ui_width(width))
     wrapped <- cli::ansi_strwrap(value, width = width)
@@ -132,10 +145,12 @@ shift_ui_view__ui_wrap_lines <- function(value, width) {
         use.names = FALSE
     )
 }
+# }}}
 
 # Wrap prose after a fixed semantic prefix and align every continuation row
 # beneath its value. Long unbreakable tokens use the lossless hard-wrap helper,
 # so paths and identifiers remain fully available in diagnostic frames.
+# shift_ui_view__ui_prefixed_lines {{{
 shift_ui_view__ui_prefixed_lines <- function(
     prefix,
     value,
@@ -168,19 +183,23 @@ shift_ui_view__ui_prefixed_lines <- function(
     )
     vapply(lines, shift_ui_view__ui_fit, character(1L), width = width)
 }
+# }}}
 
 # Render a title-like dashboard field as one row when possible and as aligned
 # continuation rows when its value grows. The fixed label remains the visual
 # anchor in colour terminals and the plain-text anchor under NO_COLOR.
+# shift_ui_view__ui_labeled_lines {{{
 shift_ui_view__ui_labeled_lines <- function(label, value, width) {
     first_prefix <- shift_ui_view__ui_labeled_line(label, "")
     continuation <- strrep(" ", cli::ansi_nchar(first_prefix, type = "width"))
     shift_ui_view__ui_prefixed_lines(first_prefix, value, width, continuation)
 }
+# }}}
 
 # Pack complete semantic fields into the available value width. Separators are
 # added only when both neighbouring fields fit, so narrow layouts reflow at
 # meaningful boundaries before the final display-width safety trim is needed.
+# shift_ui_view__ui_pack_items {{{
 shift_ui_view__ui_pack_items <- function(items, width, separator = " \u00b7 ") {
     width <- max(1L, as.integer(width))
     items <- as.character(shift_stage__coalesce(items, character()))
@@ -214,10 +233,12 @@ shift_ui_view__ui_pack_items <- function(items, width, separator = " \u00b7 ") {
     }
     c(lines, current)
 }
+# }}}
 
 # Render the scientific plan as one row when it fits and as aligned continuation
 # rows otherwise. The structured `items` form is preferred, while persisted
 # snapshots from earlier runs can still be split on the visible separator.
+# shift_ui_view__ui_plan_lines {{{
 shift_ui_view__ui_plan_lines <- function(
     plan_context,
     width = shift_ui__ui_width()
@@ -250,24 +271,30 @@ shift_ui_view__ui_plan_lines <- function(
     values <- shift_ui_view__ui_pack_items(items, value_width)
     vapply(
         seq_along(values),
+        # vapply callback {{{
         function(i) {
             shift_ui_view__ui_labeled_line(
                 if (i == 1L) "Plan" else "",
                 values[[i]]
             )
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
 # Pad a compact table cell using terminal display width rather than bytes or R
 # character count, which keeps mixed Latin/CJK rows aligned.
+# shift_ui_view__ui_cell {{{
 shift_ui_view__ui_cell <- function(x, width) {
     x <- ifelse(is.na(x), "\u2014", as.character(x))
     cli::ansi_align(shift_ui_view__ui_fit(x, width), width, align = "left")
 }
+# }}}
 
 # Format named workflow periods compactly for the startup summary.
+# shift_ui_view__ui_periods {{{
 shift_ui_view__ui_periods <- function(periods) {
     periods <- data.table::as.data.table(periods)
     if (!nrow(periods) || !all(c("period", "year") %in% names(periods))) {
@@ -277,6 +304,7 @@ shift_ui_view__ui_periods <- function(periods) {
     paste(
         vapply(
             labels,
+            # vapply callback {{{
             function(label) {
                 years <- periods[period == label]$year
                 if (length(unique(years)) == 1L) {
@@ -285,14 +313,17 @@ shift_ui_view__ui_periods <- function(periods) {
                     sprintf("%s (%d\u2013%d)", label, min(years), max(years))
                 }
             },
+            # }}}
             character(1L)
         ),
         collapse = ", "
     )
 }
+# }}}
 
 # Describe the reference input without exposing matching fields or plan IDs in
 # the normal startup view; those remain available through shift_explain().
+# shift_ui_view__ui_reference {{{
 shift_ui_view__ui_reference <- function(reference) {
     if (is.null(reference)) {
         return("no reference")
@@ -327,10 +358,12 @@ shift_ui_view__ui_reference <- function(reference) {
     }
     "reference supplied"
 }
+# }}}
 
 # Format unresolved or explicit CMIP6 selections for the startup summary. The
 # table strategy is part of the scientific selection because enhanced monthly
 # recipes may resolve Amon and LImon on different grids.
+# shift_ui_view__ui_selection {{{
 shift_ui_view__ui_selection <- function(plan) {
     climate <- plan@meta$climate
     request <- plan@meta$request@meta
@@ -361,10 +394,12 @@ shift_ui_view__ui_selection <- function(plan) {
     )
     paste(member, grid, tables, sep = " \u00b7 ")
 }
+# }}}
 
 # Build the compact startup summary shown before any network request. Normal
 # output confirms the delivery directory and pending CMIP selections; detail
 # output additionally exposes the run policy and internal store.
+# shift_ui_view__ui_plan_summary {{{
 shift_ui_view__ui_plan_summary <- function(
     plan,
     run_id,
@@ -469,9 +504,11 @@ shift_ui_view__ui_plan_summary <- function(
     }
     lines
 }
+# }}}
 
 # Map internal stage identifiers onto short labels that remain readable in the
 # fixed status region and in redirected logs.
+# shift_ui_view__ui_stage_label {{{
 shift_ui_view__ui_stage_label <- function(stage) {
     labels <- c(
         planned = "Plan",
@@ -500,9 +537,11 @@ shift_ui_view__ui_stage_label <- function(stage) {
     }
     gsub("_", " ", key, fixed = TRUE)
 }
+# }}}
 
 # Abbreviate a run identity to the stable suffix users need when reading a live
 # dashboard. Startup receipts, logs, and persisted records retain the full ID.
+# shift_ui_view__ui_run_short {{{
 shift_ui_view__ui_run_short <- function(run_id) {
     run_id <- as.character(shift_stage__coalesce(run_id, ""))[[1L]]
     run_id <- sub("^run_", "", run_id)
@@ -511,8 +550,10 @@ shift_ui_view__ui_run_short <- function(run_id) {
     }
     substr(run_id, nchar(run_id) - 7L, nchar(run_id))
 }
+# }}}
 
 # Safely read one scalar numeric metric from current reporter details.
+# shift_ui_view__ui_metric_number {{{
 shift_ui_view__ui_metric_number <- function(details, name, default = NA_real_) {
     value <- details[[name]]
     if (is.null(value) || !length(value)) {
@@ -521,8 +562,10 @@ shift_ui_view__ui_metric_number <- function(details, name, default = NA_real_) {
     value <- suppressWarnings(as.numeric(value[[1L]]))
     if (!length(value) || is.na(value) || !is.finite(value)) default else value
 }
+# }}}
 
 # Format a measured download ETA without implying an ETA for the whole workflow.
+# shift_ui_view__ui_eta {{{
 shift_ui_view__ui_eta <- function(seconds) {
     if (
         is.null(seconds) ||
@@ -534,10 +577,12 @@ shift_ui_view__ui_eta <- function(seconds) {
     }
     paste("ETA", shift_ui_view__format_elapsed(seconds))
 }
+# }}}
 
 # Classify fixed left-hand labels by their information role. Accent labels form
 # the dashboard's reading outline, while terminal-problem labels reinforce the
 # corresponding state without making colour the only source of meaning.
+# shift_ui_view__ui_label_role {{{
 shift_ui_view__ui_label_role <- function(label) {
     if (label %in% c("Plan", "Flow", "Status", "Summary")) {
         return("accent")
@@ -547,10 +592,12 @@ shift_ui_view__ui_label_role <- function(label) {
     }
     "quiet"
 }
+# }}}
 
 # Give title-like labels a consistent visual hierarchy while retaining the
 # existing fixed width. NO_COLOR and narrow terminals keep the same words and
 # alignment, so styling remains an enhancement rather than required semantics.
+# shift_ui_view__ui_labeled_line {{{
 shift_ui_view__ui_labeled_line <- function(label, value) {
     label <- paste0(
         label,
@@ -564,9 +611,11 @@ shift_ui_view__ui_labeled_line <- function(label, value) {
     )
     paste0(label, value)
 }
+# }}}
 
 # Pad one semantic row inside the live panel while styling only the border.
 # The content keeps its own state colours and remains readable with NO_COLOR.
+# shift_ui_view__ui_panel_line {{{
 shift_ui_view__ui_panel_line <- function(value, width) {
     width <- shift_ui__ui_width(width)
     inner_width <- max(1L, width - 4L)
@@ -577,9 +626,11 @@ shift_ui_view__ui_panel_line <- function(value, width) {
     )
     paste0(cli::style_dim("\u2502 "), value, cli::style_dim(" \u2502"))
 }
+# }}}
 
 # Draw top, middle, and bottom panel rules with display-width-aware labels.
 # This remains a pure formatter so the framebuffer still owns all cursor work.
+# shift_ui_view__ui_panel_rule {{{
 shift_ui_view__ui_panel_rule <- function(
     label = NULL,
     width,
@@ -613,9 +664,11 @@ shift_ui_view__ui_panel_rule <- function(
         ))
     )
 }
+# }}}
 
 # Apply colour only to semantic state. Ordinary configuration values remain in
 # the terminal's default foreground colour instead of becoming a wall of green.
+# shift_ui_view__ui_status_style {{{
 shift_ui_view__ui_status_style <- function(status, stage = NULL) {
     state <- tolower(as.character(shift_stage__coalesce(status, "running"))[[
         1L
@@ -644,10 +697,12 @@ shift_ui_view__ui_status_style <- function(status, stage = NULL) {
     )
     cli::style_bold(styled)
 }
+# }}}
 
 # Format a determinate stage row only for work whose total is meaningful.
 # Resolver node failover is intentionally excluded because attempt count is not
 # a trustworthy estimate of elapsed workflow completion.
+# shift_ui_view__ui_determinate {{{
 shift_ui_view__ui_determinate <- function(current, total, width) {
     if (is.na(current) || is.na(total) || total <= 0) {
         return(NULL)
@@ -668,10 +723,12 @@ shift_ui_view__ui_determinate <- function(current, total, width) {
         percent
     )
 }
+# }}}
 
 # Build the stage-progress field. Each stage exposes its own measurable unit;
 # long transfer or selection metrics continue on aligned rows, while resolver
 # work remains indeterminate instead of presenting a misleading percentage.
+# shift_ui_view__ui_metric_line {{{
 shift_ui_view__ui_metric_line <- function(state, width = shift_ui__ui_width()) {
     width <- shift_ui__ui_width(width)
     details <- shift_stage__coalesce(state$current_details, list())
@@ -848,10 +905,12 @@ shift_ui_view__ui_metric_line <- function(state, width = shift_ui__ui_width()) {
     value <- paste(plan_context$selection, collapse = " \u00b7 ")
     shift_ui_view__ui_labeled_lines("Status", value, width)
 }
+# }}}
 
 # Describe actual request activity separately from total operation time. Only
 # received responses/rows are counted; no elapsed-time estimate implies server
 # health or overall completion. Cached responses are labelled separately.
+# shift_ui_view__ui_query_lines {{{
 shift_ui_view__ui_query_lines <- function(state, width = shift_ui__ui_width()) {
     details <- shift_stage__coalesce(state$current_details, list())
     if (is.null(details$request_started_at)) {
@@ -912,9 +971,11 @@ shift_ui_view__ui_query_lines <- function(state, width = shift_ui__ui_width()) {
         )
     )
 }
+# }}}
 
 # Return one terminal-safe animation frame without making motion essential to
 # understanding the active state. Reduced motion uses a stable marker.
+# shift_ui_view__ui_spinner {{{
 shift_ui_view__ui_spinner <- function(
     motion = c("none", "full", "reduced"),
     frame = 0L
@@ -940,9 +1001,11 @@ shift_ui_view__ui_spinner <- function(
     )
     frames[[as.integer(frame) %% length(frames) + 1L]]
 }
+# }}}
 
 # Map durable outcomes and live states to symbols before optional colour is
 # applied. Every colour retains a distinct glyph for monochrome terminals.
+# shift_ui_view__ui_state_symbol {{{
 shift_ui_view__ui_state_symbol <- function(
     status,
     motion = "none",
@@ -993,9 +1056,11 @@ shift_ui_view__ui_state_symbol <- function(
         symbol
     )
 }
+# }}}
 
 # Format the workflow as a compact stage rail. Wide terminals show the whole
 # route; narrow terminals retain only the current and next stages.
+# shift_ui_view__ui_stage_rail {{{
 shift_ui_view__ui_stage_rail <- function(
     state,
     width = shift_ui__ui_width(),
@@ -1036,6 +1101,7 @@ shift_ui_view__ui_stage_rail <- function(
     )
     labels <- vapply(
         sequence,
+        # vapply callback {{{
         function(stage) {
             if (stage %in% names(short)) {
                 short[[stage]]
@@ -1043,6 +1109,7 @@ shift_ui_view__ui_stage_rail <- function(
                 shift_ui_view__ui_stage_label(stage)
             }
         },
+        # }}}
         character(1L)
     )
     completed <- as.character(shift_stage__coalesce(
@@ -1055,6 +1122,7 @@ shift_ui_view__ui_stage_rail <- function(
     current_index <- match(current, sequence)
     values <- vapply(
         seq_along(sequence),
+        # vapply callback {{{
         function(i) {
             stage <- sequence[[i]]
             stage_status <- if (
@@ -1092,6 +1160,7 @@ shift_ui_view__ui_stage_rail <- function(
                 label
             )
         },
+        # }}}
         character(1L)
     )
     connector <- cli::style_dim("  \u203a  ")
@@ -1124,9 +1193,11 @@ shift_ui_view__ui_stage_rail <- function(
     )
     rows <- vapply(
         candidates,
+        # vapply callback {{{
         function(value) {
             shift_ui_view__ui_labeled_line("Flow", value)
         },
+        # }}}
         character(1L)
     )
     fitting <- which(cli::ansi_nchar(rows, type = "width") <= width)
@@ -1135,8 +1206,10 @@ shift_ui_view__ui_stage_rail <- function(
     }
     shift_ui_view__ui_fit(rows[[length(rows)]], width)
 }
+# }}}
 
 # Draw a width-bounded determinate bar using display-safe block characters.
+# shift_ui_view__ui_bar {{{
 shift_ui_view__ui_bar <- function(current, total, width = 18L) {
     width <- max(4L, as.integer(width))
     if (is.na(current) || is.na(total) || total <= 0) {
@@ -1149,10 +1222,12 @@ shift_ui_view__ui_bar <- function(current, total, width = 18L) {
         cli::style_dim(strrep("\u2500", width - filled))
     )
 }
+# }}}
 
 # Keep two recent business milestones below a quiet section heading. Long
 # milestones use indented continuation rows; the framebuffer already owns a
 # variable-height region and erases stale rows when the next frame contracts.
+# shift_ui_view__ui_recent_lines {{{
 shift_ui_view__ui_recent_lines <- function(
     state,
     width = shift_ui__ui_width()
@@ -1179,6 +1254,7 @@ shift_ui_view__ui_recent_lines <- function(
         outcomes <- "pending"
     }
     values <- unlist(
+        # lapply callback {{{
         lapply(seq_along(values), function(i) {
             prefix <- paste0(
                 "  ",
@@ -1187,6 +1263,7 @@ shift_ui_view__ui_recent_lines <- function(
             )
             shift_ui_view__ui_prefixed_lines(prefix, values[[i]], width)
         }),
+        # }}}
         use.names = FALSE
     )
     values <- c(values, rep("", max(0L, 2L - length(values))))
@@ -1198,10 +1275,12 @@ shift_ui_view__ui_recent_lines <- function(
         values
     )
 }
+# }}}
 
 # Render a durable completion receipt from final case counts and exported paths.
 # The output directory carries location context once; individual rows therefore
 # use basenames so the useful scenario/period identity survives narrow widths.
+# shift_ui_view__ui_result_lines {{{
 shift_ui_view__ui_result_lines <- function(
     state,
     width = shift_ui__ui_width()
@@ -1306,10 +1385,12 @@ shift_ui_view__ui_result_lines <- function(
     }
     lines
 }
+# }}}
 
 # Render one compact terminal diagnosis from structured failure fields. Values
 # wrap under their semantic prefix so the durable failure card preserves the
 # actionable cause and closest-candidate evidence at every terminal width.
+# shift_ui_view__ui_failure_lines {{{
 shift_ui_view__ui_failure_lines <- function(
     state,
     width = shift_ui__ui_width()
@@ -1317,10 +1398,12 @@ shift_ui_view__ui_failure_lines <- function(
     failure <- shift_stage__coalesce(state$failure_details, list())
     # Missing counters are valid for non-resolver failures and render as zero
     # rather than leaking NA into the fixed terminal row.
+    # number {{{
     number <- function(name) {
         value <- suppressWarnings(as.integer(failure[[name]]))
         if (!length(value) || is.na(value[[1L]])) 0L else value[[1L]]
     }
+    # }}}
     counts <- c(
         if (number("coverage_failures")) {
             sprintf(
@@ -1396,9 +1479,11 @@ shift_ui_view__ui_failure_lines <- function(
         )
     )
 }
+# }}}
 
 # Reduce a resolver outcome to a stable, actionable phrase for the live frame.
 # Complete errors remain available in persisted events, detail tables, and logs.
+# shift_ui_view__ui_node_result_short {{{
 shift_ui_view__ui_node_result_short <- function(row) {
     outcome <- as.character(shift_stage__coalesce(row$outcome, "rejected"))[[
         1L
@@ -1430,9 +1515,11 @@ shift_ui_view__ui_node_result_short <- function(row) {
         shift_ui_view__ui_fit(shift_print__error_summary(result), 48L)
     )
 }
+# }}}
 
 # Show at most two completed resolver decisions. The active node already owns
 # the single animated `Now` row, so repeating it here would create visual noise.
+# shift_ui_view__ui_live_node_lines {{{
 shift_ui_view__ui_live_node_lines <- function(
     state,
     width = shift_ui__ui_width(),
@@ -1448,6 +1535,7 @@ shift_ui_view__ui_live_node_lines <- function(
     if (nrow(rows)) {
         rows <- utils::tail(rows, 2L)
         values <- unlist(
+            # lapply callback {{{
             lapply(seq_len(nrow(rows)), function(i) {
                 outcome <- if ("outcome" %in% names(rows)) {
                     as.character(shift_stage__coalesce(
@@ -1499,6 +1587,7 @@ shift_ui_view__ui_live_node_lines <- function(
                     width
                 )
             }),
+            # }}}
             use.names = FALSE
         )
     }
@@ -1523,10 +1612,12 @@ shift_ui_view__ui_live_node_lines <- function(
         vapply(values, shift_ui_view__ui_fit, character(1L), width = width)
     )
 }
+# }}}
 
 # Render the shared responsive live dashboard used by foreground reporters and
 # shift_watch(). Stable row ownership keeps animation readable in R terminals;
 # wide terminals add labelled section rules while narrow terminals omit chrome.
+# shift_ui_view__ui_status_lines {{{
 shift_ui_view__ui_status_lines <- function(
     state,
     width = shift_ui__ui_width(),
@@ -1780,9 +1871,11 @@ shift_ui_view__ui_status_lines <- function(
         shift_ui_view__ui_panel_rule(width = width, kind = "bottom")
     )
 }
+# }}}
 
 # Collapse the same semantic dashboard into one useful status row for RStudio
 # and other dynamic consoles that support carriage returns but not cursor-up.
+# shift_ui_view__ui_compact_line {{{
 shift_ui_view__ui_compact_line <- function(
     state,
     width = shift_ui__ui_width(),
@@ -1957,9 +2050,11 @@ shift_ui_view__ui_compact_line <- function(
         width
     )
 }
+# }}}
 
 # Format byte counts locally so workflow UI does not depend on units objects or
 # on the downloader's table renderer.
+# shift_ui_view__ui_bytes {{{
 shift_ui_view__ui_bytes <- function(bytes) {
     if (is.null(bytes) || !length(bytes)) {
         return("?")
@@ -1981,41 +2076,53 @@ shift_ui_view__ui_bytes <- function(bytes) {
         labels[[power + 1L]]
     )
 }
+# }}}
 
 # Convert an index-node URL into the stable short name used in every normal and
 # detail view. Unknown nodes fall back to their host name.
+# shift_ui_view__node_label {{{
 shift_ui_view__node_label <- function(node) {
     node <- as.character(shift_stage__coalesce(node, "unknown"))[[1L]]
+    # error {{{
     normalized <- tryCatch(query__normalize_node(node), error = function(e) {
         node
     })
+    # }}}
     known <- vapply(
         INDEX_NODES,
+        # vapply callback {{{
         function(value) {
             identical(
+                # error {{{
                 tryCatch(query__normalize_node(value), error = function(e) {
                     value
                 }),
+                # }}}
                 normalized
             )
         },
+        # }}}
         logical(1L)
     )
     if (any(known)) {
         return(names(INDEX_NODES)[which(known)[[1L]]])
     }
+    # error {{{
     parsed <- tryCatch(curl::curl_parse_url(normalized), error = function(e) {
         NULL
     })
+    # }}}
     if (is.null(parsed) || is.null(parsed$host) || !nzchar(parsed$host)) {
         normalized
     } else {
         parsed$host
     }
 }
+# }}}
 
 # Classify common resolver failures into short, stable categories while keeping
 # the complete error text available in the result column and persisted event.
+# shift_ui_view__ui_error_kind {{{
 shift_ui_view__ui_error_kind <- function(message) {
     message <- tolower(as.character(shift_stage__coalesce(message, ""))[[1L]])
     if (grepl("timed? out|timeout|operation too slow", message)) {
@@ -2042,9 +2149,11 @@ shift_ui_view__ui_error_kind <- function(message) {
     }
     "error"
 }
+# }}}
 
 # Format resolver attempts as a width-safe table. Normal output uses stable
 # short outcomes; detail and debug retain the complete persisted exception.
+# shift_ui_view__ui_node_table {{{
 shift_ui_view__ui_node_table <- function(
     rows,
     width = shift_ui__ui_width(),
@@ -2057,11 +2166,13 @@ shift_ui_view__ui_node_table <- function(
     width <- shift_ui__ui_width(width)
     # Persisted resolver events may omit counts or labels. Replace missing cells
     # before measuring widths so the table remains stable.
+    # shift__display_max {{{
     shift__display_max <- function(x) {
         x <- as.character(x)
         x[is.na(x) | !nzchar(x)] <- "\u2014"
         max(cli::ansi_nchar(x, type = "width"))
     }
+    # }}}
     node_width <- min(12L, max(4L, shift__display_max(c("Node", rows$node))))
     include_counts <- width >= 56L
     include_duration <- width >= 72L && "duration" %in% names(rows)
@@ -2078,6 +2189,7 @@ shift_ui_view__ui_node_table <- function(
     result_width <- max(1L, width - 2L - sum(sizes) - 2L * length(sizes))
     columns <- c(columns, "Result")
     sizes <- c(sizes, result_width)
+    # row_line {{{
     row_line <- function(values) {
         shift_ui_view__ui_fit(
             paste0(
@@ -2095,6 +2207,7 @@ shift_ui_view__ui_node_table <- function(
             width
         )
     }
+    # }}}
     lines <- c(
         cli::style_bold("Resolver attempts"),
         cli::style_dim(row_line(columns))
@@ -2119,9 +2232,11 @@ shift_ui_view__ui_node_table <- function(
     }
     vapply(lines, shift_ui_view__ui_fit, character(1L), width = width)
 }
+# }}}
 
 # Format user cases independently from extraction plans. Narrow terminals omit
 # the member column before truncating scenario or missing-reason information.
+# shift_ui_view__ui_case_table {{{
 shift_ui_view__ui_case_table <- function(
     rows,
     width = shift_ui__ui_width(),
@@ -2161,9 +2276,11 @@ shift_ui_view__ui_case_table <- function(
         for (index in seq_len(nrow(rows))) {
             values <- vapply(
                 columns,
+                # vapply callback {{{
                 function(column) {
                     as.character(rows[[column]][[index]])
                 },
+                # }}}
                 character(1L)
             )
             lines <- c(
@@ -2217,11 +2334,13 @@ shift_ui_view__ui_case_table <- function(
     # Planned cases legitimately carry unresolved member/grid values. Replace
     # them before measuring columns so NA cannot propagate into ansi_align() as
     # a literal "NA" suffix in the static dashboard table.
+    # shift__display_max {{{
     shift__display_max <- function(x) {
         x <- as.character(x)
         x[is.na(x) | !nzchar(x)] <- "\u2014"
         max(cli::ansi_nchar(x, type = "width"))
     }
+    # }}}
     scenario_width <- min(
         14L,
         max(8L, shift__display_max(c("Scenario", scenario)))
@@ -2289,9 +2408,11 @@ shift_ui_view__ui_case_table <- function(
     }
     vapply(lines, shift_ui_view__ui_fit, character(1L), width = width)
 }
+# }}}
 
 # Build the complete watch view once so R and CLI renderers cannot drift in
 # stage, case, resolver, or width semantics.
+# shift_ui_view__ui_table_view {{{
 shift_ui_view__ui_table_view <- function(
     row,
     cases,
@@ -2348,8 +2469,10 @@ shift_ui_view__ui_table_view <- function(
         )
     )
 }
+# }}}
 
 # Adapt a live ShiftRun handle to the table-based view shared with the CLI.
+# shift_ui_view__ui_run_view {{{
 shift_ui_view__ui_run_view <- function(
     run,
     width = shift_ui__ui_width(),
@@ -2362,9 +2485,11 @@ shift_ui_view__ui_run_view <- function(
     outputs <- if (is.null(run@store_path) || !nzchar(run@store_path)) {
         run@meta$outputs
     } else {
+        # error {{{
         tryCatch(shift_outputs(run, refresh = FALSE), error = function(error) {
             NULL
         })
+        # }}}
     }
     shift_ui_view__ui_table_view(
         row = run@meta$run,
@@ -2379,9 +2504,11 @@ shift_ui_view__ui_run_view <- function(
         ui_state = run@meta$ui_state
     )
 }
+# }}}
 
 # Render a complete persisted snapshot once. This is the non-animated fallback
 # and the final frame for both R and CLI watch commands.
+# shift_ui_view__ui_print_view {{{
 shift_ui_view__ui_print_view <- function(view, include_tables = TRUE) {
     for (line in view$lines) {
         if (nzchar(cli::ansi_strip(line))) {
@@ -2395,9 +2522,11 @@ shift_ui_view__ui_print_view <- function(view, include_tables = TRUE) {
     }
     invisible(view)
 }
+# }}}
 
 # Format one persisted event for append-only watch logs with the same stage,
 # node, and catalog-role context used by foreground log reporters.
+# shift_ui_view__ui_persisted_event_line {{{
 shift_ui_view__ui_persisted_event_line <- function(
     event,
     detail = "normal",
@@ -2429,9 +2558,11 @@ shift_ui_view__ui_persisted_event_line <- function(
     )
     if (is.null(width)) line else shift_ui_view__ui_fit(line, width)
 }
+# }}}
 
 # Format workflow durations without pretending that remote work has a reliable
 # ETA while it is still running.
+# shift_ui_view__format_elapsed {{{
 shift_ui_view__format_elapsed <- function(seconds) {
     seconds <- max(0, round(as.numeric(seconds)))
     hours <- seconds %/% 3600L
@@ -2445,3 +2576,6 @@ shift_ui_view__format_elapsed <- function(seconds) {
     }
     sprintf("%ds", secs)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

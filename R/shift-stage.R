@@ -22,10 +22,13 @@ SHIFT_DIAGNOSTIC_COLUMNS <- c(
     "action"
 )
 
+# shift_stage__diagnostic_columns {{{
 shift_stage__diagnostic_columns <- function() {
     SHIFT_DIAGNOSTIC_COLUMNS
 }
+# }}}
 
+# shift_stage__diagnostics_empty {{{
 shift_stage__diagnostics_empty <- function() {
     out <- stats::setNames(
         rep(list(character()), length(SHIFT_DIAGNOSTIC_COLUMNS)),
@@ -33,7 +36,9 @@ shift_stage__diagnostics_empty <- function() {
     )
     data.table::as.data.table(out)
 }
+# }}}
 
+# shift_stage__diagnostics_normalize {{{
 shift_stage__diagnostics_normalize <- function(x = NULL) {
     if (is.null(x)) {
         return(shift_stage__diagnostics_empty())
@@ -50,7 +55,9 @@ shift_stage__diagnostics_normalize <- function(x = NULL) {
     }
     out[]
 }
+# }}}
 
+# shift_stage__diagnostic {{{
 shift_stage__diagnostic <- function(
     stage,
     severity,
@@ -74,10 +81,14 @@ shift_stage__diagnostic <- function(
     }
     shift_stage__diagnostics_normalize(data.table::as.data.table(row))
 }
+# }}}
 
+# shift_stage__bind_diagnostics {{{
 shift_stage__bind_diagnostics <- function(...) {
     parts <- list(...)
+    # Filter callback {{{
     parts <- Filter(function(x) !is.null(x) && nrow(x), parts)
+    # }}}
     if (!length(parts)) {
         return(shift_stage__diagnostics_empty())
     }
@@ -86,12 +97,16 @@ shift_stage__bind_diagnostics <- function(...) {
         fill = TRUE
     ))
 }
+# }}}
 
+# shift_stage__has_errors {{{
 shift_stage__has_errors <- function(x) {
     diagnostics <- shift_stage__diagnostics_normalize(x)
     any(diagnostics$severity %in% "error")
 }
+# }}}
 
+# shift_stage__abort_diagnostics {{{
 shift_stage__abort_diagnostics <- function(diagnostics) {
     diagnostics <- shift_stage__diagnostics_normalize(diagnostics)
     errors <- diagnostics[diagnostics[["severity"]] %in% "error"]
@@ -103,10 +118,14 @@ shift_stage__abort_diagnostics <- function(diagnostics) {
         "x" = errors$message
     ))
 }
+# }}}
 
 # shift S7 stage classes
+# ShiftDiagnostics {{{
 ShiftDiagnostics <- S7::new_S3_class("data.frame")
+# }}}
 
+# shift_stage__prop_string {{{
 shift_stage__prop_string <- function(
     null.ok = FALSE,
     min.chars = NULL,
@@ -120,7 +139,9 @@ shift_stage__prop_string <- function(
         default = default
     )
 }
+# }}}
 
+# shift_stage__prop_number {{{
 shift_stage__prop_number <- function(lower = -Inf, upper = Inf) {
     checkmate_property(
         S7::class_any,
@@ -130,7 +151,9 @@ shift_stage__prop_number <- function(lower = -Inf, upper = Inf) {
         finite = TRUE
     )
 }
+# }}}
 
+# ShiftStage {{{
 ShiftStage <- S7::new_class(
     "ShiftStage",
     abstract = TRUE,
@@ -149,26 +172,46 @@ ShiftStage <- S7::new_class(
         )
     )
 )
+# }}}
 
+# ShiftRequest {{{
 ShiftRequest <- S7::new_class("ShiftRequest", parent = ShiftStage)
+# }}}
 # ShiftDatasets is an internal persistence envelope for a standalone Dataset
 # catalog query. The public API continues to return EsgResultDataset so its
 # established query-result methods remain available without an adapter layer.
+# ShiftDatasets {{{
 ShiftDatasets <- S7::new_class("ShiftDatasets", parent = ShiftStage)
+# }}}
+# ShiftFiles {{{
 ShiftFiles <- S7::new_class("ShiftFiles", parent = ShiftStage)
+# }}}
+# ShiftDownload {{{
 ShiftDownload <- S7::new_class("ShiftDownload", parent = ShiftStage)
+# }}}
+# ShiftClimate {{{
 ShiftClimate <- S7::new_class("ShiftClimate", parent = ShiftStage)
+# }}}
+# ShiftMorphed {{{
 ShiftMorphed <- S7::new_class("ShiftMorphed", parent = ShiftStage)
+# }}}
+# ShiftOutputs {{{
 ShiftOutputs <- S7::new_class("ShiftOutputs", parent = ShiftStage)
+# }}}
 # ShiftPlan stores a deferred end-to-end workflow that can be explained or run.
+# ShiftPlan {{{
 ShiftPlan <- S7::new_class("ShiftPlan", parent = ShiftStage)
+# }}}
 # ShiftRun is a lightweight handle to a persisted end-to-end workflow run.
+# ShiftRun {{{
 ShiftRun <- S7::new_class("ShiftRun", parent = ShiftStage)
+# }}}
 
 # Reference roles distinguish historical model output from observations before
 # either source is attached to a reusable transformation.
 SHIFT_REFERENCE_ROLES <- c("model_historical", "observed_reference")
 
+# ShiftReferenceSpec {{{
 ShiftReferenceSpec <- S7::new_class(
     "ShiftReferenceSpec",
     properties = list(
@@ -192,6 +235,7 @@ ShiftReferenceSpec <- S7::new_class(
         collect = S7::new_property(S7::class_list, default = list()),
         extract = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
         if (!self@mode %in% c("historical", "plan")) {
             return("`mode` must be `historical` or `plan`.")
@@ -211,8 +255,11 @@ ShiftReferenceSpec <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
+# ShiftSite {{{
 ShiftSite <- S7::new_class(
     "ShiftSite",
     parent = ShiftStage,
@@ -229,9 +276,11 @@ ShiftSite <- S7::new_class(
         metadata = S7::new_property(S7::class_list, default = list())
     )
 )
+# }}}
 
 # Validate a normalized scalar or fully named variable mapping without coercion.
 # Constructors handle list input; the same invariant also protects S7 mutation.
+# shift_stage__check_mapping {{{
 shift_stage__check_mapping <- function(x, null.ok = TRUE) {
     valid <- checkmate::check_character(
         x,
@@ -254,9 +303,11 @@ shift_stage__check_mapping <- function(x, null.ok = TRUE) {
     }
     TRUE
 }
+# }}}
 
 # ShiftCmip6Spec keeps future-climate identity together and validates both
 # construction and subsequent field assignments.
+# ShiftCmip6Spec {{{
 ShiftCmip6Spec <- S7::new_class(
     "ShiftCmip6Spec",
     properties = list(
@@ -324,6 +375,7 @@ ShiftCmip6Spec <- S7::new_class(
             default = TRUE
         )
     ),
+    # validator {{{
     validator = function(self) {
         if (!is.null(self@model) && !is.null(self@n_models)) {
             return(
@@ -332,10 +384,13 @@ ShiftCmip6Spec <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # ShiftControl centralises workflow-wide execution and fulfilment policies so
 # stage option lists cannot silently override them.
+# ShiftControl {{{
 ShiftControl <- S7::new_class(
     "ShiftControl",
     properties = list(
@@ -349,7 +404,9 @@ ShiftControl <- S7::new_class(
         output_layout = shift_stage__prop_string(min.chars = 1L)
     )
 )
+# }}}
 
+# shift_stage__new {{{
 shift_stage__new <- function(
     class,
     stage,
@@ -368,26 +425,38 @@ shift_stage__new <- function(
         ...
     )
 }
+# }}}
 
+# shift_stage__assert_stage {{{
 shift_stage__assert_stage <- function(x) {
     if (!S7::S7_inherits(x, ShiftStage)) {
         cli::cli_abort("`x` must be a shift stage object.")
     }
     invisible(x)
 }
+# }}}
 
+# shift_stage__coalesce {{{
 shift_stage__coalesce <- function(x, y) {
     if (is.null(x)) y else x
 }
+# }}}
 
+# shift_stage__sql_string {{{
 shift_stage__sql_string <- function(x) {
     paste0("'", gsub("'", "''", as.character(x), fixed = TRUE), "'")
 }
+# }}}
 
+# shift_stage__query_maybe {{{
 shift_stage__query_maybe <- function(store, sql) {
+    # error {{{
     tryCatch(store$query(sql), error = function(e) data.table::data.table())
+    # }}}
 }
+# }}}
 
+# shift_stage__query_ids {{{
 shift_stage__query_ids <- function(ids) {
     ids <- ids[!is.na(ids) & nzchar(ids)]
     if (!length(ids)) {
@@ -395,7 +464,9 @@ shift_stage__query_ids <- function(ids) {
     }
     paste(vapply(ids, shift_stage__sql_string, character(1L)), collapse = ", ")
 }
+# }}}
 
+# shift_stage__root {{{
 shift_stage__root <- function(x) {
     if (!S7::S7_inherits(x, ShiftStage)) {
         return(NULL)
@@ -415,7 +486,9 @@ shift_stage__root <- function(x) {
     }
     NULL
 }
+# }}}
 
+# shift_stage__value {{{
 shift_stage__value <- function(x, name) {
     if (!S7::S7_inherits(x, ShiftStage)) {
         return(NULL)
@@ -429,7 +502,9 @@ shift_stage__value <- function(x, name) {
     }
     NULL
 }
+# }}}
 
+# shift_stage__variables {{{
 shift_stage__variables <- function(x) {
     for (name in c("variables", "variable_id")) {
         value <- shift_stage__value(x, name)
@@ -439,7 +514,9 @@ shift_stage__variables <- function(x) {
     }
     NULL
 }
+# }}}
 
+# shift_stage__nested {{{
 shift_stage__nested <- function(x, classes = list()) {
     if (!S7::S7_inherits(x, ShiftStage)) {
         return(NULL)
@@ -448,7 +525,9 @@ shift_stage__nested <- function(x, classes = list()) {
         !length(classes) ||
             any(vapply(
                 classes,
+                # vapply callback {{{
                 function(class) S7::S7_inherits(x, class),
+                # }}}
                 logical(1L)
             ))
     ) {
@@ -465,6 +544,7 @@ shift_stage__nested <- function(x, classes = list()) {
     }
     NULL
 }
+# }}}
 
 # generics
 #' @rdname shift_api
@@ -482,6 +562,7 @@ shift_stage__nested <- function(x, classes = list()) {
 shift_collect <- S7::new_generic(
     "shift_collect",
     "x",
+    # S7::new_generic callback {{{
     function(
         x,
         store = NULL,
@@ -519,6 +600,7 @@ shift_collect <- S7::new_generic(
                     label = label,
                     options = options
                 ),
+                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -538,10 +620,12 @@ shift_collect <- S7::new_generic(
                         )
                     )
                 }
+                # }}}
             ))
         }
         S7::S7_dispatch()
     }
+    # }}}
 )
 
 #' @rdname shift_api
@@ -565,6 +649,7 @@ shift_collect <- S7::new_generic(
 shift_download <- S7::new_generic(
     "shift_download",
     "x",
+    # S7::new_generic callback {{{
     function(
         x,
         downloader = NULL,
@@ -598,6 +683,7 @@ shift_download <- S7::new_generic(
                 } else {
                     "A session-local Downloader instance cannot be reconstructed."
                 },
+                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -618,10 +704,12 @@ shift_download <- S7::new_generic(
                         )
                     )
                 }
+                # }}}
             ))
         }
         S7::S7_dispatch()
     }
+    # }}}
 )
 
 #' @rdname shift_api
@@ -635,6 +723,7 @@ shift_download <- S7::new_generic(
 shift_extract <- S7::new_generic(
     "shift_extract",
     "x",
+    # S7::new_generic callback {{{
     function(
         x,
         site = NULL,
@@ -669,6 +758,7 @@ shift_extract <- S7::new_generic(
                     overwrite = overwrite,
                     resume = resume
                 ),
+                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -686,10 +776,12 @@ shift_extract <- S7::new_generic(
                         )
                     )
                 }
+                # }}}
             ))
         }
         S7::S7_dispatch()
     }
+    # }}}
 )
 
 #' @rdname shift_api
@@ -708,6 +800,7 @@ shift_extract <- S7::new_generic(
 shift_morph <- S7::new_generic(
     "shift_morph",
     "x",
+    # S7::new_generic callback {{{
     function(
         x,
         baseline = NULL,
@@ -761,6 +854,7 @@ shift_morph <- S7::new_generic(
                 } else {
                     "The baseline exists only in this R session."
                 },
+                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -778,10 +872,12 @@ shift_morph <- S7::new_generic(
                         )
                     )
                 }
+                # }}}
             ))
         }
         S7::S7_dispatch()
     }
+    # }}}
 )
 
 #' @rdname shift_api
@@ -795,6 +891,7 @@ shift_morph <- S7::new_generic(
 shift_epw <- S7::new_generic(
     "shift_epw",
     "x",
+    # S7::new_generic callback {{{
     function(
         x,
         dir = NULL,
@@ -818,6 +915,7 @@ shift_epw <- S7::new_generic(
                     resume = resume
                 ),
                 auto_complete = !is.null(export_dir),
+                # code {{{
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
@@ -831,10 +929,12 @@ shift_epw <- S7::new_generic(
                         )
                     )
                 }
+                # }}}
             ))
         }
         S7::S7_dispatch()
     }
+    # }}}
 )
 
 #' @rdname shift_api
@@ -846,6 +946,7 @@ shift_epw <- S7::new_generic(
 shift_check <- S7::new_generic(
     "shift_check",
     "x",
+    # S7::new_generic callback {{{
     function(
         x,
         strict = FALSE,
@@ -854,9 +955,11 @@ shift_check <- S7::new_generic(
     ) {
         S7::S7_dispatch()
     }
+    # }}}
 )
 
 # check methods
+# S7::method(shift_check, ShiftStage) {{{
 S7::method(shift_check, ShiftStage) <- function(
     x,
     strict = FALSE,
@@ -871,7 +974,9 @@ S7::method(shift_check, ShiftStage) <- function(
     }
     diagnostics
 }
+# }}}
 
+# S7::method(shift_check, ShiftRequest) {{{
 S7::method(shift_check, ShiftRequest) <- function(
     x,
     strict = FALSE,
@@ -898,9 +1003,11 @@ S7::method(shift_check, ShiftRequest) <- function(
     }
     diagnostics
 }
+# }}}
 
 # Validate local CDS configuration for reanalysis sources and optionally
 # authenticate it remotely without submitting a dataset retrieval request.
+# S7::method(shift_check, ShiftReanalysisSpec) {{{
 S7::method(shift_check, ShiftReanalysisSpec) <- function(
     x,
     strict = FALSE,
@@ -912,7 +1019,9 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
     diagnostics <- shift_stage__diagnostics_empty()
     config <- tryCatch(
         cds__config(),
+        # epwshiftr_cds_auth_error {{{
         epwshiftr_cds_auth_error = function(error) error
+        # }}}
     )
     if (inherits(config, "epwshiftr_cds_auth_error")) {
         diagnostics <- shift_stage__diagnostic(
@@ -931,8 +1040,12 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
                 cds__check_authentication(config = config)
                 NULL
             },
+            # epwshiftr_cds_auth_error {{{
             epwshiftr_cds_auth_error = function(error) error,
+            # }}}
+            # epwshiftr_cds_request_error {{{
             epwshiftr_cds_request_error = function(error) error
+            # }}}
         )
         if (!is.null(remote_error)) {
             diagnostics <- shift_stage__diagnostic(
@@ -967,7 +1080,9 @@ S7::method(shift_check, ShiftReanalysisSpec) <- function(
     }
     diagnostics
 }
+# }}}
 
+# S7::method(shift_check, ShiftFiles) {{{
 S7::method(shift_check, ShiftFiles) <- function(
     x,
     strict = FALSE,
@@ -977,7 +1092,9 @@ S7::method(shift_check, ShiftFiles) <- function(
     checkmate::assert_flag(strict)
     checkmate::assert_flag(network)
     diagnostics <- shift_stage__diagnostics_empty()
+    # error {{{
     store <- tryCatch(shift_store(x), error = function(e) NULL)
+    # }}}
     if (is.null(store)) {
         diagnostics <- shift_stage__diagnostic(
             "files",
@@ -1006,7 +1123,9 @@ S7::method(shift_check, ShiftFiles) <- function(
     }
     diagnostics
 }
+# }}}
 
+# S7::method(shift_check, ShiftDownload) {{{
 S7::method(shift_check, ShiftDownload) <- function(
     x,
     strict = FALSE,
@@ -1016,12 +1135,16 @@ S7::method(shift_check, ShiftDownload) <- function(
     checkmate::assert_flag(strict)
     checkmate::assert_flag(network)
     diagnostics <- shift_stage__diagnostics_empty()
+    # error {{{
     store <- tryCatch(shift_store(x), error = function(e) NULL)
+    # }}}
     if (!is.null(store)) {
         tasks <- if (!is.null(x@ids$session_id) && !is.na(x@ids$session_id)) {
             tryCatch(
                 store$download_status(session_id = x@ids$session_id),
+                # error {{{
                 error = function(e) data.table::data.table()
+                # }}}
             )
         } else {
             data.table::data.table()
@@ -1053,7 +1176,9 @@ S7::method(shift_check, ShiftDownload) <- function(
     }
     diagnostics
 }
+# }}}
 
+# S7::method(shift_check, ShiftClimate) {{{
 S7::method(shift_check, ShiftClimate) <- function(
     x,
     strict = FALSE,
@@ -1073,7 +1198,9 @@ S7::method(shift_check, ShiftClimate) <- function(
     }
     diagnostics
 }
+# }}}
 
+# S7::method(shift_check, ShiftMorphed) {{{
 S7::method(shift_check, ShiftMorphed) <- function(
     x,
     strict = FALSE,
@@ -1088,7 +1215,9 @@ S7::method(shift_check, ShiftMorphed) <- function(
     }
     diagnostics
 }
+# }}}
 
+# S7::method(shift_check, ShiftOutputs) {{{
 S7::method(shift_check, ShiftOutputs) <- function(
     x,
     strict = FALSE,
@@ -1127,7 +1256,9 @@ S7::method(shift_check, ShiftOutputs) <- function(
     }
     diagnostics
 }
+# }}}
 
+# shift_stage__diagnostics_from_coverage {{{
 shift_stage__diagnostics_from_coverage <- function(coverage) {
     coverage <- data.table::as.data.table(coverage)
     if (!nrow(coverage)) {
@@ -1165,3 +1296,6 @@ shift_stage__diagnostics_from_coverage <- function(coverage) {
     }
     do.call(shift_stage__bind_diagnostics, diagnostics)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

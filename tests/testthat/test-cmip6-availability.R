@@ -1,4 +1,5 @@
 # Build variable-specific Dataset rows for deterministic availability tests.
+# availability_test__datasets {{{
 availability_test__datasets <- function(
     source,
     experiment,
@@ -9,6 +10,7 @@ availability_test__datasets <- function(
     table = "day"
 ) {
     data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable) {
             variable_frequency <- if (!is.null(names(frequency))) {
                 unname(frequency[[variable]])
@@ -41,18 +43,22 @@ availability_test__datasets <- function(
                 size = 1
             )
         }),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
 }
+# }}}
 
 test_that("availability reduction requires every experiment-variable pair", {
     variables <- c("tas", "hurs", "pr")
     complete <- data.table::rbindlist(lapply(
         c("ssp245", "ssp585", "historical"),
+        # lapply callback {{{
         function(experiment) {
             availability_test__datasets("Model-A", experiment, variables)
         }
+        # }}}
     ))
     incomplete <- data.table::rbindlist(list(
         availability_test__datasets("Model-B", "ssp245", variables),
@@ -87,6 +93,7 @@ test_that("availability combines point, mean, and daily CMIP6 frequencies", {
     variables <- names(HOURLY_KQDM_MODEL_FREQUENCIES)
     datasets <- data.table::rbindlist(lapply(
         c("ssp245", "historical"),
+        # lapply callback {{{
         function(experiment) {
             availability_test__datasets(
                 "Model-A",
@@ -103,6 +110,7 @@ test_that("availability combines point, mean, and daily CMIP6 frequencies", {
                 )
             )
         }
+        # }}}
     ))
     summary <- availability__summarize(
         datasets,
@@ -260,6 +268,7 @@ test_that("shift_cmip6_avail builds an unconstrained Dataset query", {
     calls <- new.env(parent = emptyenv())
     datasets <- data.table::rbindlist(lapply(
         c("ssp245", "historical"),
+        # lapply callback {{{
         function(experiment) {
             availability_test__datasets(
                 "Model-A",
@@ -267,14 +276,17 @@ test_that("shift_cmip6_avail builds an unconstrained Dataset query", {
                 c("tas", "pr")
             )
         }
+        # }}}
     ))
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls$request <- request
             calls$store <- store
             calls$ui <- ui
             datasets
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -322,10 +334,12 @@ test_that("availability discovers every member without a preferred label", {
         )
     ))
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls$request <- request
             datasets
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -360,10 +374,12 @@ test_that("availability accepts named table overrides", {
         )
     ))
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls$request <- request
             datasets
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -395,10 +411,12 @@ test_that("shift_cmip6_avail supports the named ORNL Bridge endpoint", {
         c("tas", "pr")
     )
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls$request <- request
             datasets
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -432,10 +450,12 @@ test_that("shift_cmip6_avail supports the named ORNL Bridge endpoint", {
 test_that("availability can omit historical and returns a typed empty table", {
     calls <- new.env(parent = emptyenv())
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls$request <- request
             data.table::data.table()
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- shift_cmip6_avail(
@@ -456,6 +476,7 @@ test_that("availability can omit historical and returns a typed empty table", {
 test_that("availability can discover tables for frequencies without defaults", {
     calls <- new.env(parent = emptyenv())
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls$request <- request
             availability_test__datasets(
@@ -466,6 +487,7 @@ test_that("availability can discover tables for frequencies without defaults", {
                 table = "fx"
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- shift_cmip6_avail(
@@ -586,9 +608,11 @@ test_that("availability ignores invalid partitions and preserves empty types", {
     )
     expect_identical(result$source_id, "Model-A")
     expect_true(result$complete)
+    # lapply callback {{{
     all_missing <- data.table::as.data.table(lapply(valid, function(x) {
         rep(NA, length(x))
     }))
+    # }}}
     for (datasets in list(
         valid[0L],
         data.table::data.table(),
@@ -606,3 +630,5 @@ test_that("availability ignores invalid partitions and preserves empty types", {
         expect_identical(result, availability__empty())
     }
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

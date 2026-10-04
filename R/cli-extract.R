@@ -1,3 +1,4 @@
+# epwshiftr_cli_extract {{{
 epwshiftr_cli_extract <- function(
     store,
     command,
@@ -31,8 +32,9 @@ epwshiftr_cli_extract <- function(
         ))
     )
 }
+# }}}
 
-
+# epwshiftr_cli_extract_plan {{{
 epwshiftr_cli_extract_plan <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
@@ -78,8 +80,9 @@ epwshiftr_cli_extract_plan <- function(store, args) {
         )
     )
 }
+# }}}
 
-
+# epwshiftr_cli_extract_run {{{
 epwshiftr_cli_extract_run <- function(
     store,
     args,
@@ -126,8 +129,9 @@ epwshiftr_cli_extract_run <- function(
     )]
     result[]
 }
+# }}}
 
-
+# epwshiftr_cli_extract_retry {{{
 epwshiftr_cli_extract_retry <- function(
     store,
     args,
@@ -196,8 +200,9 @@ epwshiftr_cli_extract_retry <- function(
     )]
     result[]
 }
+# }}}
 
-
+# epwshiftr_cli_extract_coverage {{{
 epwshiftr_cli_extract_coverage <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(args, options = c("--plan"))
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -209,8 +214,9 @@ epwshiftr_cli_extract_coverage <- function(store, args) {
         )
     )
 }
+# }}}
 
-
+# epwshiftr_cli_extract_artifacts {{{
 epwshiftr_cli_extract_artifacts <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(args, options = c("--plan"))
     epwshiftr_cli_assert_no_positionals(parsed)
@@ -220,3 +226,6 @@ epwshiftr_cli_extract_artifacts <- function(store, args) {
     )
     shift_inspect__artifact_rows(store, results$artifact_id)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

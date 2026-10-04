@@ -1,24 +1,45 @@
+# local_cv_timestamp {{{
 local_cv_timestamp <- function() {
     "Wed Jan 01 00:00:00 2025 +0000"
 }
+# }}}
 
+# local_cv_version {{{
 local_cv_version <- function(note, type = note) {
     modified <- sprintf("%s_CV_modified", type)
     note_name <- sprintf("%s_CV_note", type)
     stats::setNames(
         list("6.2.0", local_cv_timestamp(), local_cv_timestamp(), note),
-        c("CV_collection_version", "CV_collection_modified", modified, note_name)
+        c(
+            "CV_collection_version",
+            "CV_collection_modified",
+            modified,
+            note_name
+        )
     )
 }
+# }}}
 
+# local_write_cv {{{
 local_write_cv <- function(dir, type, values, version_type = type) {
     path <- file.path(dir, sprintf("CMIP6_%s.json", type))
-    payload <- list(values, version_metadata = local_cv_version(type, version_type))
+    payload <- list(
+        values,
+        version_metadata = local_cv_version(type, version_type)
+    )
     names(payload)[[1L]] <- type
-    jsonlite::write_json(payload, path, auto_unbox = TRUE, pretty = TRUE, null = "null")
+    jsonlite::write_json(
+        payload,
+        path,
+        auto_unbox = TRUE,
+        pretty = TRUE,
+        null = "null"
+    )
     path
 }
+# }}}
 
+# local_write_dreq {{{
 local_write_dreq <- function(dir, table_id, realm, variables) {
     path <- file.path(dir, sprintf("CMIP6_%s.json", table_id))
     payload <- list(
@@ -35,10 +56,18 @@ local_write_dreq <- function(dir, table_id, realm, variables) {
         ),
         variable_entry = variables
     )
-    jsonlite::write_json(payload, path, auto_unbox = TRUE, pretty = TRUE, null = "null")
+    jsonlite::write_json(
+        payload,
+        path,
+        auto_unbox = TRUE,
+        pretty = TRUE,
+        null = "null"
+    )
     path
 }
+# }}}
 
+# local_cmip6_source_store {{{
 local_cmip6_source_store <- function(root) {
     cv_dir <- file.path(root, "vocab", "test-cv")
     dreq_dir <- file.path(root, "request", "test-request")
@@ -57,7 +86,11 @@ local_cmip6_source_store <- function(root) {
             filename_template = "<variable_id>_<table_id>_<source_id>.nc"
         )
     )
-    local_write_cv(cv_dir, "activity_id", list(CMIP = "CMIP activity", ScenarioMIP = "ScenarioMIP activity"))
+    local_write_cv(
+        cv_dir,
+        "activity_id",
+        list(CMIP = "CMIP activity", ScenarioMIP = "ScenarioMIP activity")
+    )
     local_write_cv(
         cv_dir,
         "experiment_id",
@@ -94,12 +127,33 @@ local_cmip6_source_store <- function(root) {
             )
         )
     )
-    local_write_cv(cv_dir, "frequency", list(day = "daily mean", fx = "fixed field", mon = "monthly mean"))
-    local_write_cv(cv_dir, "grid_label", list(gn = "native grid", gr = "regridded"))
-    local_write_cv(cv_dir, "institution_id", list(`EC-Earth-Consortium` = "EC-Earth Consortium", CCCma = "CCCma"))
-    local_write_cv(cv_dir, "nominal_resolution", c("100 km", "250 km"), "nominal_resolution")
+    local_write_cv(
+        cv_dir,
+        "frequency",
+        list(day = "daily mean", fx = "fixed field", mon = "monthly mean")
+    )
+    local_write_cv(
+        cv_dir,
+        "grid_label",
+        list(gn = "native grid", gr = "regridded")
+    )
+    local_write_cv(
+        cv_dir,
+        "institution_id",
+        list(`EC-Earth-Consortium` = "EC-Earth Consortium", CCCma = "CCCma")
+    )
+    local_write_cv(
+        cv_dir,
+        "nominal_resolution",
+        c("100 km", "250 km"),
+        "nominal_resolution"
+    )
     local_write_cv(cv_dir, "realm", list(atmos = "atmosphere", land = "land"))
-    local_write_cv(cv_dir, "required_global_attributes", c("activity_id", "table_id", "variant_label"))
+    local_write_cv(
+        cv_dir,
+        "required_global_attributes",
+        c("activity_id", "table_id", "variant_label")
+    )
     local_write_cv(
         cv_dir,
         "source_id",
@@ -129,7 +183,11 @@ local_cmip6_source_store <- function(root) {
         )
     )
     local_write_cv(cv_dir, "source_type", list(AOGCM = "coupled model"))
-    local_write_cv(cv_dir, "sub_experiment_id", list(none = "no sub experiment", s1960 = "start year 1960"))
+    local_write_cv(
+        cv_dir,
+        "sub_experiment_id",
+        list(none = "no sub experiment", s1960 = "start year 1960")
+    )
     local_write_cv(cv_dir, "table_id", c("Amon", "day", "fx"))
 
     local_write_dreq(
@@ -210,18 +268,38 @@ local_cmip6_source_store <- function(root) {
 
     root
 }
+# }}}
 
+# local_test_esgdict {{{
 local_test_esgdict <- function() {
     source_root <- local_cmip6_source_store(withr::local_tempdir())
     spec <- dict__spec("CMIP6")
     fetched <- list(
         project = "CMIP6",
-        vocab = dict__fetch_cv("test-cv", use_source = TRUE, source_dir = file.path(source_root, "vocab", "test-cv")),
-        request = dict__fetch_dreq("test-request", use_source = TRUE, source_dir = file.path(source_root, "request", "test-request")),
+        vocab = dict__fetch_cv(
+            "test-cv",
+            use_source = TRUE,
+            source_dir = file.path(source_root, "vocab", "test-cv")
+        ),
+        request = dict__fetch_dreq(
+            "test-request",
+            use_source = TRUE,
+            source_dir = file.path(source_root, "request", "test-request")
+        ),
         built_time = as.POSIXct("2025-01-04 00:00:00", tz = "UTC"),
         sources = list(
-            vocab = list(repo = spec$vocab$repo, tag = "test-cv", commit = "abc123", source_dir = file.path(source_root, "vocab", "test-cv")),
-            request = list(repo = spec$request$repo, tag = "test-request", commit = "def456", source_dir = file.path(source_root, "request", "test-request"))
+            vocab = list(
+                repo = spec$vocab$repo,
+                tag = "test-cv",
+                commit = "abc123",
+                source_dir = file.path(source_root, "vocab", "test-cv")
+            ),
+            request = list(
+                repo = spec$request$repo,
+                tag = "test-request",
+                commit = "def456",
+                source_dir = file.path(source_root, "request", "test-request")
+            )
         )
     )
 
@@ -231,7 +309,9 @@ local_test_esgdict <- function() {
     private$replace(built, status = "built")
     dict
 }
+# }}}
 
+# local_esgvoc_source_store {{{
 local_esgvoc_source_store <- function(root) {
     vocab_dir <- file.path(root, "vocab", "test-vocab")
     dir.create(file.path(vocab_dir, "activity"), recursive = TRUE)
@@ -259,30 +339,49 @@ local_esgvoc_source_store <- function(root) {
 
     root
 }
+# }}}
 
+# local_esgdict_disk_cache {{{
 local_esgdict_disk_cache <- function(env = parent.frame()) {
     cache_dir <- tempfile("epwshiftr-esgdict-cache-")
     dir.create(cache_dir, recursive = TRUE)
-    cache <- DiskCache$new(cache_dir, max_size = Inf, max_age = Inf, max_n = Inf, prune_on_init = FALSE)
+    cache <- DiskCache$new(
+        cache_dir,
+        max_size = Inf,
+        max_age = Inf,
+        max_n = Inf,
+        prune_on_init = FALSE
+    )
     old <- cache__set(cache)
 
-    withr::defer({
-        cache__set(old)
-        unlink(cache_dir, recursive = TRUE)
-    }, envir = env)
+    withr::defer(
+        {
+            cache__set(old)
+            unlink(cache_dir, recursive = TRUE)
+        },
+        envir = env
+    )
 
     invisible(cache)
 }
+# }}}
 
+# local_cache_mode_for_test {{{
 local_cache_mode_for_test <- function(value, env = parent.frame()) {
     old <- getOption("epwshiftr.cache")
     options(epwshiftr.cache = value)
 
-    withr::defer({
-        if (is.null(old)) {
-            options(epwshiftr.cache = NULL)
-        } else {
-            options(epwshiftr.cache = old)
-        }
-    }, envir = env)
+    withr::defer(
+        {
+            if (is.null(old)) {
+                options(epwshiftr.cache = NULL)
+            } else {
+                options(epwshiftr.cache = old)
+            }
+        },
+        envir = env
+    )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

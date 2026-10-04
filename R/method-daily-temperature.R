@@ -1,6 +1,7 @@
 # Daily temperature targets and constrained projection
 # Validate one long-form daily temperature source before climatology estimation.
 # Only tas, tasmax, and tasmin participate; unrelated variables are left out.
+# daily__temperature_source {{{
 daily__temperature_source <- function(data, name, by) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -91,8 +92,10 @@ daily__temperature_source <- function(data, name, by) {
 
     source[]
 }
+# }}}
 
 # Estimate one common-grid climatology for every available temperature variable.
+# daily__temperature_climatology {{{
 daily__temperature_climatology <- function(
     data,
     by,
@@ -107,9 +110,11 @@ daily__temperature_climatology <- function(
         target_year_days = target_year_days
     )
 }
+# }}}
 
 # Select one temperature metric from a long climatology and give its value and
 # sample-count columns source-specific names for deterministic joins.
+# daily__temperature_metric {{{
 daily__temperature_metric <- function(
     climatology,
     variable,
@@ -135,9 +140,11 @@ daily__temperature_metric <- function(
     )
     out[]
 }
+# }}}
 
 # Convert one source's tas/tasmax/tasmin climatologies into one row per target
 # day. The tas grid is authoritative; optional extrema are left-joined to it.
+# daily__temperature_wide {{{
 daily__temperature_wide <- function(climatology, by, source) {
     keys <- c(by, "target_day", "annual_phase")
     out <- daily__temperature_metric(
@@ -175,9 +182,11 @@ daily__temperature_wide <- function(climatology, by, source) {
     }
     out[]
 }
+# }}}
 
 # Calculate daily temperature deltas from future and historical climatologies
 # that have already been mapped onto the same calendar-neutral target grid.
+# daily__temperature_target_changes {{{
 daily__temperature_target_changes <- function(
     future_climatology,
     historical_climatology,
@@ -230,15 +239,19 @@ daily__temperature_target_changes <- function(
     )
     complete_extrema <- Reduce(
         `&`,
+        # lapply callback {{{
         lapply(extrema_columns, function(column) {
             is.finite(targets[[column]])
         })
+        # }}}
     ) &
         Reduce(
             `&`,
+            # lapply callback {{{
             lapply(extrema_counts, function(column) {
                 !is.na(targets[[column]]) & targets[[column]] > 0L
             })
+            # }}}
         )
 
     invalid_extrema <- complete_extrema &
@@ -341,9 +354,11 @@ daily__temperature_target_changes <- function(
     data.table::setorderv(targets, c(by, "target_day"))
     targets[]
 }
+# }}}
 
 # Build calendar-neutral daily temperature changes from matching future and
 # historical climatologies. Missing extrema retain the mean delta explicitly.
+# daily__temperature_targets {{{
 daily__temperature_targets <- function(
     future,
     historical,
@@ -373,9 +388,11 @@ daily__temperature_targets <- function(
         by
     )
 }
+# }}}
 
 # Construct a monotone normalized shape with fixed zero/one endpoints and the
 # requested mean. A power family retains all ordering and extrema positions.
+# daily__temperature_shape {{{
 daily__temperature_shape <- function(normalized, target_mean, tolerance) {
     lower_mean <- mean(normalized == 1)
     upper_mean <- mean(normalized > 0)
@@ -403,9 +420,11 @@ daily__temperature_shape <- function(normalized, target_mean, tolerance) {
         return(list(value = normalized, exponent = 1))
     }
 
+    # objective {{{
     objective <- function(log_exponent) {
         mean(normalized^exp(log_exponent)) - target_mean
     }
+    # }}}
     log_exponent <- stats::uniroot(
         objective,
         interval = c(-40, 40),
@@ -414,9 +433,11 @@ daily__temperature_shape <- function(normalized, target_mean, tolerance) {
     exponent <- exp(log_exponent)
     list(value = normalized^exponent, exponent = exponent)
 }
+# }}}
 
 # Project one finite hourly temperature vector onto requested daily statistics.
 # Explicit shift fallbacks keep missing extrema and flat templates traceable.
+# daily__project_temperature_day {{{
 daily__project_temperature_day <- function(
     value,
     mean_delta,
@@ -519,18 +540,22 @@ daily__project_temperature_day <- function(
         exponent = shape$exponent
     )
 }
+# }}}
 
 # Return cyclic previous values for annual boundary diagnostics. A single-day
 # input has no meaningful adjacent-day boundary and therefore returns NA.
+# daily__cyclic_previous {{{
 daily__cyclic_previous <- function(value) {
     if (length(value) < 2L) {
         return(rep.int(NA_real_, length(value)))
     }
     c(value[[length(value)]], value[-length(value)])
 }
+# }}}
 
 # Apply daily target changes to grouped 24-hour templates and expose closure and
 # cyclic boundary diagnostics without mutating the caller's source rows.
+# daily__project_temperature {{{
 daily__project_temperature <- function(
     template,
     targets,
@@ -939,3 +964,6 @@ daily__project_temperature <- function(
     )
     out[]
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

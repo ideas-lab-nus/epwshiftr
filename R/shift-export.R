@@ -3,6 +3,7 @@ NULL
 
 #' @rdname shift_api
 #' @export
+# shift_export_epw {{{
 shift_export_epw <- function(
     x,
     dir,
@@ -34,6 +35,7 @@ shift_export_epw <- function(
                 resume = resume
             ),
             auto_complete = TRUE,
+            # code {{{
             code = function(reporter, task_store) {
                 shift_run__with_reporter(
                     reporter,
@@ -46,6 +48,7 @@ shift_export_epw <- function(
                     )
                 )
             }
+            # }}}
         ))
     }
 
@@ -72,8 +75,10 @@ shift_export_epw <- function(
         reporter = reporter
     )
 }
+# }}}
 
 # Compute the user-facing export path for one generated EPW row.
+# shift_export__export_target_path {{{
 shift_export__export_target_path <- function(row, dir, separate = TRUE) {
     path <- row$path[[1L]]
     filename <- basename(path)
@@ -100,9 +105,11 @@ shift_export__export_target_path <- function(row, dir, separate = TRUE) {
     }
     file.path(dir, filename)
 }
+# }}}
 
 # Copy registered EPW outputs to a user-facing directory and annotate the stage
 # with absolute export paths.
+# shift_export__export_outputs {{{
 shift_export__export_outputs <- function(
     x,
     dir,
@@ -192,3 +199,6 @@ shift_export__export_outputs <- function(
     x@meta$paths <- outputs$path
     x
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

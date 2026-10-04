@@ -5,6 +5,7 @@ EPW_MORPH_TEMPERATURE_PROJECTION_OPTIONS <- list(tolerance = 1e-8)
 
 # Reduce one hourly projection to auditable daily targets and numerical closure
 # values shared by POWER, daily BTWS, and monthly BTWS workflows.
+# temperature__factor_rows {{{
 temperature__factor_rows <- function(targets, projected) {
     method_columns <- intersect(
         c(
@@ -83,9 +84,11 @@ temperature__factor_rows <- function(targets, projected) {
     data.table::setorderv(factors, "target_day")
     factors[]
 }
+# }}}
 
 # Preserve the baseline EPW day order after a temperature signal has produced
 # one successful target group.
+# temperature__sequence_generate {{{
 temperature__sequence_generate <- function(
     data,
     inputs,
@@ -94,9 +97,11 @@ temperature__sequence_generate <- function(
 ) {
     signal__single_value(data, "Daily temperature")
 }
+# }}}
 
 # Select and validate only options owned by the shared hourly temperature
 # projection contract, excluding signal overrides and header policies.
+# temperature__projection_options {{{
 temperature__projection_options <- function(options) {
     names <- intersect(
         names(options),
@@ -109,9 +114,11 @@ temperature__projection_options <- function(options) {
         unknown_label = "temperature projection"
     )
 }
+# }}}
 
 # Run one selected hourly projector and assemble the common payload consumed by
 # the shared physical closure component.
+# temperature__hourly_result {{{
 temperature__hourly_result <- function(data, options, projector) {
     checkmate::assert_function(projector)
     options <- temperature__projection_options(options)
@@ -165,9 +172,11 @@ temperature__hourly_result <- function(data, options, projector) {
     }
     result
 }
+# }}}
 
 # Translate a shared physical result back to the established daily-temperature
 # payload. BWS+BTWS reuses it after adding bounded-weather candidates.
+# temperature__physics_payload {{{
 temperature__physics_payload <- function(data, physical) {
     if (!S7::S7_inherits(physical, EpwPhysicalResult)) {
         cli::cli_abort("{.arg physical} must be an EpwPhysicalResult object.")
@@ -300,9 +309,11 @@ temperature__physics_payload <- function(data, physical) {
     }
     result
 }
+# }}}
 
 # Close a temperature-only projection through the shared physical policy while
 # preserving the existing POWER and BTWS diagnostic columns and messages.
+# temperature__physics_apply {{{
 temperature__physics_apply <- function(
     data,
     inputs,
@@ -317,9 +328,11 @@ temperature__physics_apply <- function(
     )
     temperature__physics_payload(data, physical)
 }
+# }}}
 
 # Assemble the shared physics-closed payload into the existing backend result
 # contract while leaving persistent file writes to EpwMorpher.
+# temperature__output_write {{{
 temperature__output_write <- function(
     data,
     inputs,
@@ -343,9 +356,11 @@ temperature__output_write <- function(
         factors = data$factors
     )
 }
+# }}}
 
 # Build the sequence, physics, and output components shared by every workflow
 # that produces the package's daily temperature target representation.
+# temperature__component_specs {{{
 temperature__component_specs <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -398,9 +413,14 @@ temperature__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the method-neutral temperature-to-EPW components once while
 # preserving any explicit process-local extensions under the same keys.
+# temperature__register_components {{{
 temperature__register_components <- function() {
     component__register_builtins(temperature__component_specs())
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

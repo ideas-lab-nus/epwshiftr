@@ -43,6 +43,7 @@ WEATHER_METHOD_REGISTRY <- new.env(parent = emptyenv())
 # WeatherMethodSpec describes only method-owned behavior: the algorithm,
 # supported temporal lattice, semantic inputs, variables, output backbone,
 # settings, stochastic status, evidence, and references.
+# WeatherMethodSpec {{{
 WeatherMethodSpec <- S7::new_class(
     "WeatherMethodSpec",
     properties = list(
@@ -69,15 +70,20 @@ WeatherMethodSpec <- S7::new_class(
             default = character()
         )
     ),
+    # validator {{{
     validator = function(self) {
-        if (length(self@name) != 1L ||
-            is.na(self@name) ||
-            !grepl("^[a-z][a-z0-9_]*$", self@name)) {
+        if (
+            length(self@name) != 1L ||
+                is.na(self@name) ||
+                !grepl("^[a-z][a-z0-9_]*$", self@name)
+        ) {
             return("`name` must be one lower snake_case method identifier.")
         }
-        if (length(self@version) != 1L ||
-            is.na(self@version) ||
-            self@version < 1L) {
+        if (
+            length(self@version) != 1L ||
+                is.na(self@version) ||
+                self@version < 1L
+        ) {
             return("`version` must be one positive integer.")
         }
         for (property in c("label", "implementation_key", "evidence")) {
@@ -86,20 +92,28 @@ WeatherMethodSpec <- S7::new_class(
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
-        if (length(self@domain) != 1L ||
-            is.na(self@domain) ||
-            !self@domain %in% WEATHER_METHOD_DOMAINS) {
+        if (
+            length(self@domain) != 1L ||
+                is.na(self@domain) ||
+                !self@domain %in% WEATHER_METHOD_DOMAINS
+        ) {
             return("`domain` must identify one weather-method family.")
         }
-        if (length(self@implementation) != 1L ||
-            is.na(self@implementation) ||
-            !self@implementation %in% WEATHER_METHOD_IMPLEMENTATIONS) {
+        if (
+            length(self@implementation) != 1L ||
+                is.na(self@implementation) ||
+                !self@implementation %in% WEATHER_METHOD_IMPLEMENTATIONS
+        ) {
             return("`implementation` must be `backend` or `signal_component`.")
         }
         for (property in c("frequencies", "input_roles", "references")) {
             value <- S7::prop(self, property)
-            if (!length(value) || anyNA(value) ||
-                any(!nzchar(value)) || anyDuplicated(value)) {
+            if (
+                !length(value) ||
+                    anyNA(value) ||
+                    any(!nzchar(value)) ||
+                    anyDuplicated(value)
+            ) {
                 return(sprintf(
                     "`%s` must contain unique, non-empty values.",
                     property
@@ -113,53 +127,70 @@ WeatherMethodSpec <- S7::new_class(
             return("`variable_sets` must contain at least one supported set.")
         }
         for (variable_set in self@variable_sets) {
-            if (!is.character(variable_set) || !length(variable_set) ||
-                anyNA(variable_set) || any(!nzchar(variable_set)) ||
-                anyDuplicated(variable_set)) {
+            if (
+                !is.character(variable_set) ||
+                    !length(variable_set) ||
+                    anyNA(variable_set) ||
+                    any(!nzchar(variable_set)) ||
+                    anyDuplicated(variable_set)
+            ) {
                 return(
                     "Every `variable_sets` entry must contain unique variable IDs."
                 )
             }
         }
-        if (!length(self@output_variables) ||
-            anyNA(self@output_variables) ||
-            any(!nzchar(self@output_variables)) ||
-            anyDuplicated(self@output_variables)) {
+        if (
+            !length(self@output_variables) ||
+                anyNA(self@output_variables) ||
+                any(!nzchar(self@output_variables)) ||
+                anyDuplicated(self@output_variables)
+        ) {
             return("`output_variables` must contain unique variable IDs.")
         }
-        if (length(self@output_role) != 1L ||
-            is.na(self@output_role) ||
-            !self@output_role %in% WEATHER_INPUT_ROLES) {
+        if (
+            length(self@output_role) != 1L ||
+                is.na(self@output_role) ||
+                !self@output_role %in% WEATHER_INPUT_ROLES
+        ) {
             return("`output_role` must identify one semantic output backbone.")
         }
-        if (length(self@parameters) &&
-            (is.null(names(self@parameters)) ||
-                any(!nzchar(names(self@parameters))) ||
-                anyDuplicated(names(self@parameters)))) {
+        if (
+            length(self@parameters) &&
+                (is.null(names(self@parameters)) ||
+                    any(!nzchar(names(self@parameters))) ||
+                    anyDuplicated(names(self@parameters)))
+        ) {
             return("`parameters` must be a uniquely named list.")
         }
         if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
-        if (anyNA(self@stochastic_variables) ||
-            any(!nzchar(self@stochastic_variables)) ||
-            anyDuplicated(self@stochastic_variables) ||
-            !all(self@stochastic_variables %in% self@output_variables)) {
+        if (
+            anyNA(self@stochastic_variables) ||
+                any(!nzchar(self@stochastic_variables)) ||
+                anyDuplicated(self@stochastic_variables) ||
+                !all(self@stochastic_variables %in% self@output_variables)
+        ) {
             return(
                 "`stochastic_variables` must contain unique output variable IDs."
             )
         }
-        if (!identical(self@stochastic, length(self@stochastic_variables) > 0L)) {
+        if (
+            !identical(self@stochastic, length(self@stochastic_variables) > 0L)
+        ) {
             return(
                 "`stochastic` must agree with whether `stochastic_variables` is non-empty."
             )
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Construct a normalized method record without accepting any data-source,
 # period, calendar, physical-policy, or output-workflow setting.
+# method__spec {{{
 method__spec <- function(
     name,
     label,
@@ -226,9 +257,11 @@ method__spec <- function(
         references = references
     )
 }
+# }}}
 
 # Convert an existing signal component into a method-only specification while
 # allowing multivariate methods to override their required variable set.
+# method__from_signal_component {{{
 method__from_signal_component <- function(
     name,
     label,
@@ -258,10 +291,15 @@ method__from_signal_component <- function(
             "weather_template"
         )
     }
-    profile_output_roles <- unique(unlist(lapply(
-        profiles,
-        function(profile) profile$metadata$output_role
-    ), use.names = FALSE))
+    profile_output_roles <- unique(unlist(
+        lapply(
+            profiles,
+            # lapply callback {{{
+            function(profile) profile$metadata$output_role
+            # }}}
+        ),
+        use.names = FALSE
+    ))
     if (is.null(output_role)) {
         if (length(profile_output_roles) != 1L) {
             cli::cli_abort(
@@ -316,9 +354,11 @@ method__from_signal_component <- function(
         version = version
     )
 }
+# }}}
 
 # Ensure every signal implementation referenced by a built-in method has been
 # registered before method records are derived from component metadata.
+# method__register_components {{{
 method__register_components <- function() {
     bias__register_linear_scaling_component()
     bias__register_delta_change_component()
@@ -336,9 +376,11 @@ method__register_components <- function() {
     hourly_kqdm__register_components()
     invisible(NULL)
 }
+# }}}
 
 # Build the method catalog independently of complete recipe defaults. Source
 # selections and study periods remain caller-owned inputs.
+# method__default_specs {{{
 method__default_specs <- function() {
     method__register_components()
     list(
@@ -352,12 +394,29 @@ method__default_specs <- function() {
             input_roles = c("model_historical", "model_future"),
             variable_sets = list(
                 c(
-                    "tas", "tasmax", "tasmin", "psl", "rlds", "rsds",
-                    "sfcWind", "clt", "pr", "hurs"
+                    "tas",
+                    "tasmax",
+                    "tasmin",
+                    "psl",
+                    "rlds",
+                    "rsds",
+                    "sfcWind",
+                    "clt",
+                    "pr",
+                    "hurs"
                 ),
                 c(
-                    "tas", "tasmax", "tasmin", "psl", "rlds", "rsds",
-                    "sfcWind", "clt", "pr", "huss", "ps"
+                    "tas",
+                    "tasmax",
+                    "tasmin",
+                    "psl",
+                    "rlds",
+                    "rsds",
+                    "sfcWind",
+                    "clt",
+                    "pr",
+                    "huss",
+                    "ps"
                 )
             ),
             output_role = "weather_template",
@@ -375,12 +434,25 @@ method__default_specs <- function() {
             input_roles = c("model_historical", "model_future"),
             variable_sets = list(
                 c(
-                    "tas", "psl", "rlds", "rsds", "sfcWind", "clt", "pr",
+                    "tas",
+                    "psl",
+                    "rlds",
+                    "rsds",
+                    "sfcWind",
+                    "clt",
+                    "pr",
                     "hurs"
                 ),
                 c(
-                    "tas", "psl", "rlds", "rsds", "sfcWind", "clt", "pr",
-                    "huss", "ps"
+                    "tas",
+                    "psl",
+                    "rlds",
+                    "rsds",
+                    "sfcWind",
+                    "clt",
+                    "pr",
+                    "huss",
+                    "ps"
                 )
             ),
             output_role = "weather_template",
@@ -454,23 +526,32 @@ method__default_specs <- function() {
             output_variables = c("tas", "huss", "ps"),
             output_role = "weather_template"
         ),
-        kernel_quantile_delta_mapping_hourly =
-            method__from_signal_component(
-                name = "kernel_quantile_delta_mapping_hourly",
-                label = "Hourly kernel quantile delta mapping",
-                domain = "hourly_direct_model",
-                component = "kernel_quantile_delta_mapping_hourly",
-                frequencies = "hour",
-                input_roles = SIGNAL_THREE_INPUT_ROLES,
-                variable_sets = c(
-                    "tas", "ps", "hurs", "sfcWind", "rsds", "rsdsdiff"
-                ),
-                output_variables = c(
-                    "tas", "ps", "hurs", "sfcWind", "rsds", "rsdsdiff"
-                ),
-                output_role = "model_future",
-                evidence = "adapted_publication"
+        kernel_quantile_delta_mapping_hourly = method__from_signal_component(
+            name = "kernel_quantile_delta_mapping_hourly",
+            label = "Hourly kernel quantile delta mapping",
+            domain = "hourly_direct_model",
+            component = "kernel_quantile_delta_mapping_hourly",
+            frequencies = "hour",
+            input_roles = SIGNAL_THREE_INPUT_ROLES,
+            variable_sets = c(
+                "tas",
+                "ps",
+                "hurs",
+                "sfcWind",
+                "rsds",
+                "rsdsdiff"
             ),
+            output_variables = c(
+                "tas",
+                "ps",
+                "hurs",
+                "sfcWind",
+                "rsds",
+                "rsdsdiff"
+            ),
+            output_role = "model_future",
+            evidence = "adapted_publication"
+        ),
         linear_scaling_daily = method__from_signal_component(
             "linear_scaling_daily",
             "Daily Linear Scaling",
@@ -533,9 +614,11 @@ method__default_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register a method definition without allowing silent replacement of one
 # stable method identifier.
+# method__register {{{
 method__register <- function(
     spec,
     overwrite = FALSE,
@@ -546,8 +629,10 @@ method__register <- function(
     }
     checkmate::assert_flag(overwrite)
     checkmate::assert_environment(registry)
-    if (exists(spec@name, envir = registry, inherits = FALSE) &&
-        !isTRUE(overwrite)) {
+    if (
+        exists(spec@name, envir = registry, inherits = FALSE) &&
+            !isTRUE(overwrite)
+    ) {
         cli::cli_abort(
             "Future-weather method {.val {spec@name}} is already registered."
         )
@@ -555,28 +640,34 @@ method__register <- function(
     assign(spec@name, spec, envir = registry)
     invisible(spec)
 }
+# }}}
 
 # Populate the built-in method catalog once while preserving explicit
 # process-local replacements.
+# method__register_defaults {{{
 method__register_defaults <- function() {
     registered <- ls(envir = WEATHER_METHOD_REGISTRY, all.names = FALSE)
     if (all(WEATHER_METHOD_DEFAULTS %in% registered)) {
         return(invisible(NULL))
     }
     for (spec in method__default_specs()) {
-        if (!exists(
-            spec@name,
-            envir = WEATHER_METHOD_REGISTRY,
-            inherits = FALSE
-        )) {
+        if (
+            !exists(
+                spec@name,
+                envir = WEATHER_METHOD_REGISTRY,
+                inherits = FALSE
+            )
+        ) {
             method__register(spec)
         }
     }
     invisible(NULL)
 }
+# }}}
 
 # Retrieve one stable method definition and optionally enforce its persisted
 # catalog version.
+# method__get {{{
 method__get <- function(
     name,
     version = NULL,
@@ -602,50 +693,65 @@ method__get <- function(
     }
     spec
 }
+# }}}
 
 # Flatten method capabilities for user inspection without exposing executable
 # component or backend objects.
+# method__list {{{
 method__list <- function(registry = WEATHER_METHOD_REGISTRY) {
     checkmate::assert_environment(registry)
     if (identical(registry, WEATHER_METHOD_REGISTRY)) {
         method__register_defaults()
     }
     names <- sort(ls(envir = registry, all.names = FALSE))
-    data.table::rbindlist(lapply(names, function(name) {
-        spec <- get(name, envir = registry, inherits = FALSE)
-        data.table::data.table(
-            name = spec@name,
-            version = spec@version,
-            label = spec@label,
-            domain = spec@domain,
-            implementation = spec@implementation,
-            implementation_key = spec@implementation_key,
-            frequencies = list(spec@frequencies),
-            input_roles = list(spec@input_roles),
-            variable_sets = list(spec@variable_sets),
-            variables = list(unique(unlist(
-                spec@variable_sets,
-                use.names = FALSE
-            ))),
-            output_variables = list(spec@output_variables),
-            output_role = spec@output_role,
-            parameters = list(spec@parameters),
-            stochastic = spec@stochastic,
-            stochastic_variables = list(spec@stochastic_variables),
-            evidence = spec@evidence,
-            references = list(spec@references)
-        )
-    }), use.names = TRUE, fill = TRUE)
+    # lapply callback {{{
+    data.table::rbindlist(
+        lapply(names, function(name) {
+            spec <- get(name, envir = registry, inherits = FALSE)
+            data.table::data.table(
+                name = spec@name,
+                version = spec@version,
+                label = spec@label,
+                domain = spec@domain,
+                implementation = spec@implementation,
+                implementation_key = spec@implementation_key,
+                frequencies = list(spec@frequencies),
+                input_roles = list(spec@input_roles),
+                variable_sets = list(spec@variable_sets),
+                variables = list(unique(unlist(
+                    spec@variable_sets,
+                    use.names = FALSE
+                ))),
+                output_variables = list(spec@output_variables),
+                output_role = spec@output_role,
+                parameters = list(spec@parameters),
+                stochastic = spec@stochastic,
+                stochastic_variables = list(spec@stochastic_variables),
+                evidence = spec@evidence,
+                references = list(spec@references)
+            )
+        }),
+        use.names = TRUE,
+        fill = TRUE
+    )
+    # }}}
 }
+# }}}
 
 # Return internal method records used to validate the transform registry.
 #' @noRd
+# epw_morph_methods {{{
 epw_morph_methods <- function() {
     method__list()
 }
+# }}}
 
 # Return one internal scientific method contract by its registered key.
 #' @noRd
+# epw_morph_method_spec {{{
 epw_morph_method_spec <- function(name) {
     method__get(name)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

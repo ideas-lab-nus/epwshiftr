@@ -1,3 +1,4 @@
+# epwshiftr_cli_download {{{
 epwshiftr_cli_download <- function(
     store,
     command,
@@ -391,8 +392,9 @@ epwshiftr_cli_download <- function(
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown download command: %s", command))
 }
+# }}}
 
-
+# epwshiftr_cli_download_watch {{{
 epwshiftr_cli_download_watch <- function(
     store,
     query_id = NULL,
@@ -445,8 +447,9 @@ epwshiftr_cli_download_watch <- function(
     }
     out
 }
+# }}}
 
-
+# epwshiftr_cli_download_watch_follow {{{
 epwshiftr_cli_download_watch_follow <- function(
     store,
     query_id = NULL,
@@ -488,8 +491,9 @@ epwshiftr_cli_download_watch_follow <- function(
     }
     structure(snapshot, class = c("epwshiftr_cli_emitted", class(snapshot)))
 }
+# }}}
 
-
+# epwshiftr_cli_download_logs {{{
 epwshiftr_cli_download_logs <- function(
     downloader,
     session_id = NULL,
@@ -507,8 +511,9 @@ epwshiftr_cli_download_logs <- function(
     }
     epwshiftr_cli_tail_rows(events, tail)
 }
+# }}}
 
-
+# epwshiftr_cli_download_watch_summary {{{
 epwshiftr_cli_download_watch_summary <- function(
     tasks,
     downloader,
@@ -594,8 +599,9 @@ epwshiftr_cli_download_watch_summary <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
-
+# epwshiftr_cli_download_last_session_id {{{
 epwshiftr_cli_download_last_session_id <- function(
     tasks,
     downloader,
@@ -614,7 +620,9 @@ epwshiftr_cli_download_last_session_id <- function(
     }
     sessions <- data.table::as.data.table(tryCatch(
         downloader$sessions(),
+        # error {{{
         error = function(e) data.frame()
+        # }}}
     ))
     if (!nrow(sessions) || !"session_id" %in% names(sessions)) {
         return(NA_character_)
@@ -624,8 +632,9 @@ epwshiftr_cli_download_last_session_id <- function(
     }
     utils::tail(sessions$session_id, 1L)
 }
+# }}}
 
-
+# epwshiftr_cli_download_snapshot_active {{{
 epwshiftr_cli_download_snapshot_active <- function(snapshot) {
     if (
         !is.null(snapshot$jobs) &&
@@ -642,8 +651,9 @@ epwshiftr_cli_download_snapshot_active <- function(snapshot) {
     }
     any(tasks$status %in% c("queued", "downloading"))
 }
+# }}}
 
-
+# epwshiftr_cli_emit_jsonl {{{
 epwshiftr_cli_emit_jsonl <- function(x) {
     cat(jsonlite::toJSON(
         x,
@@ -656,8 +666,9 @@ epwshiftr_cli_emit_jsonl <- function(x) {
     flush.console()
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_download_emit_jsonl_snapshot {{{
 epwshiftr_cli_download_emit_jsonl_snapshot <- function(snapshot) {
     emitted <- FALSE
     at <- downloader__now()
@@ -706,16 +717,20 @@ epwshiftr_cli_download_emit_jsonl_snapshot <- function(snapshot) {
     }
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_row_object {{{
 epwshiftr_cli_row_object <- function(x, i) {
     row <- as.data.frame(x[i, , drop = FALSE], stringsAsFactors = FALSE)
+    # lapply callback {{{
     out <- lapply(row, function(value) value[[1L]])
+    # }}}
     names(out) <- names(row)
     out
 }
+# }}}
 
-
+# epwshiftr_cli_download_interval {{{
 epwshiftr_cli_download_interval <- function(value, default) {
     if (is.null(value)) {
         return(default)
@@ -726,8 +741,9 @@ epwshiftr_cli_download_interval <- function(value, default) {
     }
     out
 }
+# }}}
 
-
+# epwshiftr_cli_tail_rows {{{
 epwshiftr_cli_tail_rows <- function(rows, n) {
     rows <- data.table::as.data.table(rows)
     if (!nrow(rows) || n <= 0L) {
@@ -735,8 +751,9 @@ epwshiftr_cli_tail_rows <- function(rows, n) {
     }
     rows[seq.int(max(1L, nrow(rows) - n + 1L), nrow(rows))]
 }
+# }}}
 
-
+# epwshiftr_cli_download_plan_args {{{
 epwshiftr_cli_download_plan_args <- function(parsed) {
     args <- list()
     for (name in c("--replica", "--service", "--strategy")) {
@@ -771,8 +788,9 @@ epwshiftr_cli_download_plan_args <- function(parsed) {
     }
     args
 }
+# }}}
 
-
+# epwshiftr_cli_download_config {{{
 epwshiftr_cli_download_config <- function(store, args) {
     if (!length(args)) {
         epwshiftr_cli_usage_abort(
@@ -851,10 +869,13 @@ epwshiftr_cli_download_config <- function(store, args) {
         action
     ))
 }
+# }}}
 
-
+# epwshiftr_cli_downloader_paths {{{
 epwshiftr_cli_downloader_paths <- function(store) {
+    # error {{{
     private <- tryCatch(store$.__enclos_env__$private, error = function(e) NULL)
+    # }}}
     if (
         is.null(private) ||
             is.null(private$download_dir) ||
@@ -872,8 +893,9 @@ epwshiftr_cli_downloader_paths <- function(store) {
         )
     )
 }
+# }}}
 
-
+# epwshiftr_cli_downloader {{{
 epwshiftr_cli_downloader <- function(store, ...) {
     paths <- epwshiftr_cli_downloader_paths(store)
     Downloader$new(
@@ -883,8 +905,9 @@ epwshiftr_cli_downloader <- function(store, ...) {
         ...
     )
 }
+# }}}
 
-
+# epwshiftr_cli_downloader_config {{{
 epwshiftr_cli_downloader_config <- function(downloader) {
     list(
         manifest = downloader$manifest,
@@ -899,9 +922,11 @@ epwshiftr_cli_downloader_config <- function(downloader) {
         resource_policy = downloader$resource_policy
     )
 }
+# }}}
 
-
+# epwshiftr_cli_apply_download_config_options {{{
 epwshiftr_cli_apply_download_config_options <- function(params, options) {
+    # set_count {{{
     set_count <- function(option, target, positive = TRUE) {
         if (!is.null(options[[option]])) {
             params[[target]] <<- epwshiftr_cli_count(
@@ -911,6 +936,8 @@ epwshiftr_cli_apply_download_config_options <- function(params, options) {
             )
         }
     }
+    # }}}
+    # set_nullable_count {{{
     set_nullable_count <- function(option, policy, field, positive = TRUE) {
         if (!is.null(options[[option]])) {
             params[[policy]][[field]] <<- epwshiftr_cli_count_or_null(
@@ -920,6 +947,7 @@ epwshiftr_cli_apply_download_config_options <- function(params, options) {
             )
         }
     }
+    # }}}
     set_count("--workers", "n_workers", positive = FALSE)
     set_count("--retries", "retries")
     set_count("--timeout", "timeout")
@@ -999,3 +1027,6 @@ epwshiftr_cli_apply_download_config_options <- function(params, options) {
     }
     invisible(params)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

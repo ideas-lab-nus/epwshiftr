@@ -7,6 +7,7 @@ NULL
 #' @param role Semantic role of the plan-backed climate. Use
 #'   `"observed_reference"` only for an observational extraction plan.
 #' @export
+# shift_reference_plan {{{
 shift_reference_plan <- function(
     plan_id,
     periods,
@@ -35,17 +36,20 @@ shift_reference_plan <- function(
         extract = list()
     )
 }
+# }}}
 
 #' @rdname shift_api
 #' @param period Reference period name used when constructing periods from
 #'   `years`.
 #' @export
+# historical_reference {{{
 historical_reference <- function(years = 1995:2014, period = "reference", ...) {
     shift_reference_historical(
         shift_spec__periods_from_years(years, period = period, arg = "years"),
         ...
     )
 }
+# }}}
 
 #' @rdname shift_api
 #' @param match File metadata fields copied from the future climate stage when
@@ -58,6 +62,7 @@ historical_reference <- function(years = 1995:2014, period = "reference", ...) {
 #'   [shift_plan()] applies the same strict field validation to its extraction
 #'   stage.
 #' @export
+# shift_reference_historical {{{
 shift_reference_historical <- function(
     periods,
     experiment = "historical",
@@ -110,13 +115,17 @@ shift_reference_historical <- function(
         extract = extract
     )
 }
+# }}}
 
+# shift_reference__periods {{{
 shift_reference__periods <- function(periods) {
     checkmate::assert_data_frame(periods)
     checkmate::assert_names(names(periods), must.include = c("period", "year"))
     data.table::as.data.table(periods)
 }
+# }}}
 
+# shift_reference__resolve {{{
 shift_reference__resolve <- function(
     x,
     recipe,
@@ -181,10 +190,12 @@ shift_reference__resolve <- function(
 
     cli::cli_abort("Unsupported reference mode: {.val {reference@mode}}.")
 }
+# }}}
 
 # Resolve observed daily weather only from an already extracted climate stage
 # or explicit plan IDs. Automatic CMIP historical discovery cannot satisfy the
 # observational role and is rejected before any store work begins.
+# shift_reference__observed_reference_resolve {{{
 shift_reference__observed_reference_resolve <- function(
     x,
     recipe,
@@ -233,7 +244,9 @@ shift_reference__observed_reference_resolve <- function(
         reporter = reporter
     )
 }
+# }}}
 
+# shift_reference__resolve_historical {{{
 shift_reference__resolve_historical <- function(
     x,
     recipe,
@@ -375,7 +388,9 @@ shift_reference__resolve_historical <- function(
         reporter = reporter
     )
 }
+# }}}
 
+# shift_reference__historical_filters {{{
 shift_reference__historical_filters <- function(
     catalog,
     request,
@@ -412,7 +427,9 @@ shift_reference__historical_filters <- function(
 
     utils::modifyList(filters, spec@filters)
 }
+# }}}
 
+# shift_reference__infer_field {{{
 shift_reference__infer_field <- function(field, catalog, request) {
     values <- character()
     if (field %in% names(catalog) && nrow(catalog)) {
@@ -449,3 +466,6 @@ shift_reference__infer_field <- function(field, catalog, request) {
 
     character()
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

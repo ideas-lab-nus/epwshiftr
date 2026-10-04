@@ -1,11 +1,14 @@
 # Serialize test inputs through the same JSON boundary as user configs.
+# multi_site__write_config {{{
 multi_site__write_config <- function(config) {
     path <- tempfile(fileext = ".json")
     jsonlite::write_json(config, path, auto_unbox = TRUE, null = "null")
     path
 }
+# }}}
 
 # Create a genuine second EPW header while retaining deterministic weather data.
+# multi_site__epw {{{
 multi_site__epw <- function() {
     path <- tempfile(fileext = ".epw")
     lines <- readLines(get_cache_epw())
@@ -21,8 +24,10 @@ multi_site__epw <- function() {
     writeLines(lines, path)
     path
 }
+# }}}
 
 # Keep discovery deterministic but exercise public planning and persisted plans.
+# multi_site__plan {{{
 multi_site__plan <- function(
     sites,
     store = tempfile("multi-site-store-"),
@@ -40,6 +45,7 @@ multi_site__plan <- function(
         ...
     )
 }
+# }}}
 
 # Keep a failed shared source read visible in the saved batch even when no
 # child run was started, so the user can inspect and resume that batch.
@@ -56,12 +62,16 @@ test_that("shared prefetch failure persists as a blocked batch", {
     # This test isolates failure persistence after input resolution. The input
     # resolver itself is exercised with real local catalogs in shared tests.
     testthat::local_mocked_bindings(
+        # shift_batch_plan__resolve_inputs {{{
         shift_batch_plan__resolve_inputs = function(batch, reporter = NULL) {
             batch
         },
+        # }}}
+        # shift_batch_window__prefetch {{{
         shift_batch_window__prefetch = function(...) {
             stop("source connection closed")
         }
+        # }}}
     )
     expect_error(
         shift_batch_execution__resume(batch),
@@ -79,10 +89,12 @@ test_that("shared prefetch failure persists as a blocked batch", {
 test_that("multiple sites share discovery and retain distinct durable plans", {
     calls <- 0L
     test_local_dependencies(list(
+        # availability {{{
         availability = function(...) {
             calls <<- calls + 1L
             test_cmip6_availability(...)
         },
+        # }}}
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     sites <- list(
@@ -107,7 +119,9 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
     expect_s3_class(batch@meta$shared_plan$unmatched, "data.table")
     expect_equal(nrow(shift_cases(batch)), 8L)
     expect_identical(unique(shift_cases(batch)$site_id), c("North", "South"))
+    # lapply callback {{{
     child_sites <- lapply(batch@meta$children, function(child) child@meta$site)
+    # }}}
     expect_equal(child_sites[[1L]]@lon, 126.63)
     expect_equal(child_sites[[1L]]@lat, 45.75)
     expect_identical(child_sites[[1L]]@id, "North")
@@ -180,9 +194,11 @@ test_that("site objects preserve coordinates, metadata and EPW identities", {
 })
 
 test_that("site constructors and collections reject invalid inputs before discovery", {
+    # availability {{{
     test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
+    # }}}
     epw <- get_cache_epw()
     site <- shift_site("A", epw = epw)
     expect_error(multi_site__plan(epw), "shift_site")
@@ -315,9 +331,11 @@ test_that("multi-site references are resolved for each location", {
         children[[2L]]@meta$site@lon,
         children[[4L]]@meta$site@lon
     ))
+    # availability {{{
     test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
+    # }}}
     expect_error(
         multi_site__plan(
             sites,
@@ -337,9 +355,11 @@ test_that("new site inputs validate EPW generation metadata before discovery", {
     header[[9L]] <- "unknown"
     lines[[1L]] <- paste(header, collapse = ",")
     writeLines(lines, path)
+    # availability {{{
     test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
+    # }}}
     sites <- shift_site("A", epw = path)
     expect_error(multi_site__plan(sites), "EPW time zone")
     header[[9L]] <- "8"
@@ -356,11 +376,13 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
     test_local_dependencies(list(
+        # availability {{{
         availability = function(...) {
             args <- list(...)
             args$source <- "EC-Earth3"
             do.call(test_cmip6_availability, args)
         },
+        # }}}
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transform <- monthly_transform("epwshiftr")
@@ -368,6 +390,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     files <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -378,12 +401,14 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
     )
     withr::defer(unlink(files))
     docs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable) {
             esgf_test__file_docs(
                 basename(files[[variable]]),
@@ -394,6 +419,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
                 table_id = "Amon"
             )
         }),
+        # }}}
         fill = TRUE
     )
     for (column in c("dataset_id", "master_id")) {
@@ -423,7 +449,9 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         j = "checksum",
         value = vapply(
             docs$variable_id,
+            # vapply callback {{{
             function(variable) store_hash_file(files[[variable]], "sha256"),
+            # }}}
             character(1L)
         )
     )
@@ -575,7 +603,9 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         expect_false(identical(changed@ids$batch_id, plan@ids$batch_id))
         expect_true(all(vapply(
             changed@meta$children,
+            # vapply callback {{{
             function(x) S7::S7_inherits(x, ShiftPlan),
+            # }}}
             logical(1L)
         )))
         expect_identical(changed@meta$children[[1L]]@meta$control, control)
@@ -585,9 +615,11 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
 
 
 test_that("R and CLI reject invalid method periods before discovery", {
+    # availability {{{
     test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
+    # }}}
     config <- epwshiftr_cli_shift_example_config()
     config$transform <- list(scale = "hourly", method = "kernel_qdm")
     config$periods <- list(mid = 2050L)
@@ -622,3 +654,5 @@ test_that("R and CLI reject invalid method periods before discovery", {
     )
     expect_false(dir.exists(root))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

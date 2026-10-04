@@ -13,6 +13,7 @@
 #'
 #' @return Invisibly, a list with `status`, `result`, and `error`.
 #' @export
+# epwshiftr_cli {{{
 epwshiftr_cli <- function(
     args = commandArgs(trailingOnly = TRUE),
     exit = FALSE
@@ -58,6 +59,7 @@ epwshiftr_cli <- function(
                 context = epwshiftr_cli_context(parsed)
             )
         },
+        # epwshiftr_cli_usage_error {{{
         epwshiftr_cli_usage_error = function(e) {
             status <<- 2L
             error <<- conditionMessage(e)
@@ -69,6 +71,8 @@ epwshiftr_cli <- function(
                 status = status
             )
         },
+        # }}}
+        # error {{{
         error = function(e) {
             status <<- 1L
             error <<- conditionMessage(e)
@@ -80,6 +84,7 @@ epwshiftr_cli <- function(
                 status = status
             )
         }
+        # }}}
     )
     out <- list(status = status, result = result, error = error)
     if (isTRUE(exit)) {
@@ -87,8 +92,9 @@ epwshiftr_cli <- function(
     }
     invisible(out)
 }
+# }}}
 
-
+# epwshiftr_cli_parse_globals {{{
 epwshiftr_cli_parse_globals <- function(args) {
     out <- list(
         store = NULL,
@@ -142,10 +148,12 @@ epwshiftr_cli_parse_globals <- function(args) {
     }
     out
 }
+# }}}
 
 # Translate command flags into the same UI contract used by the R shift APIs.
 # Machine-readable and quiet modes always select the null renderer so progress
 # events remain durable without contaminating stdout.
+# epwshiftr_cli_task_ui {{{
 epwshiftr_cli_task_ui <- function(
     parsed,
     json = FALSE,
@@ -175,8 +183,9 @@ epwshiftr_cli_task_ui <- function(
     motion <- if (isTRUE(flags[["--reduced-motion"]])) "reduced" else "auto"
     shift_ui(progress = progress, detail = detail, motion = motion)
 }
+# }}}
 
-
+# epwshiftr_cli_dispatch {{{
 epwshiftr_cli_dispatch <- function(parsed) {
     if (isTRUE(parsed$help)) {
         return(epwshiftr_cli_help(parsed$args))
@@ -313,8 +322,9 @@ epwshiftr_cli_dispatch <- function(parsed) {
     }
     epwshiftr_cli_usage_abort(sprintf("Unknown command group: %s", group))
 }
+# }}}
 
-
+# epwshiftr_cli_emit_result {{{
 epwshiftr_cli_emit_result <- function(
     result,
     json = FALSE,
@@ -354,8 +364,9 @@ epwshiftr_cli_emit_result <- function(
     epwshiftr_cli_with_theme(epwshiftr_cli_render(result, context = context))
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_emit_error {{{
 epwshiftr_cli_emit_error <- function(
     message,
     json = FALSE,
@@ -388,15 +399,17 @@ epwshiftr_cli_emit_error <- function(
     cli::cli_alert_danger(message)
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_with_theme {{{
 epwshiftr_cli_with_theme <- function(expr) {
     div <- cli::cli_div(theme = epwshiftr_cli_theme(), .auto_close = FALSE)
     on.exit(cli::cli_end(div), add = TRUE)
     force(expr)
 }
+# }}}
 
-
+# epwshiftr_cli_theme {{{
 epwshiftr_cli_theme <- function() {
     list(
         h1 = list(
@@ -404,13 +417,17 @@ epwshiftr_cli_theme <- function() {
             color = "cyan",
             "margin-top" = 0,
             "margin-bottom" = 1,
+            # fmt {{{
             fmt = function(x) cli::rule(left = x, line = 2, line_col = "cyan")
+            # }}}
         ),
         h2 = list(
             "font-weight" = "bold",
             "margin-top" = 1,
             "margin-bottom" = 0,
+            # fmt {{{
             fmt = function(x) cli::rule(left = x, line = 1)
+            # }}}
         ),
         par = list(
             "margin-top" = 0,
@@ -418,21 +435,27 @@ epwshiftr_cli_theme <- function() {
         )
     )
 }
+# }}}
 
-
+# epwshiftr_cli_usage {{{
 epwshiftr_cli_usage <- function() {
     epwshiftr_cli_help()
 }
+# }}}
 
-
+# epwshiftr_cli_usage_abort {{{
 epwshiftr_cli_usage_abort <- function(message) {
     stop(structure(
         list(message = paste(message, collapse = "\n"), call = NULL),
         class = c("epwshiftr_cli_usage_error", "error", "condition")
     ))
 }
+# }}}
 
-
+# epwshiftr_cli_has_flag {{{
 epwshiftr_cli_has_flag <- function(args, flag) {
     any(args %in% flag)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

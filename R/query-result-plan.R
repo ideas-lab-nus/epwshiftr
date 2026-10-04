@@ -3,6 +3,7 @@ NULL
 
 # Rank source candidates and construct download plans from query results.
 
+# query_result__node_policy {{{
 query_result__node_policy <- function(node_policy = NULL) {
     if (exists("downloader__node_policy_defaults", mode = "function")) {
         return(downloader__node_policy_defaults(node_policy))
@@ -12,7 +13,9 @@ query_result__node_policy <- function(node_policy = NULL) {
     }
     node_policy
 }
+# }}}
 
+# query_result__node_stats {{{
 query_result__node_stats <- function(
     node_stats,
     service = "HTTPServer",
@@ -120,7 +123,9 @@ query_result__node_stats <- function(
         node_last_probe_at
     )]
 }
+# }}}
 
+# query_result__apply_nodes {{{
 query_result__apply_nodes <- function(
     plan,
     node_stats,
@@ -168,7 +173,9 @@ query_result__apply_nodes <- function(
     out[, all_candidates_cooling := NULL]
     out[]
 }
+# }}}
 
+# query_result__download_plan {{{
 query_result__download_plan <- function(
     result,
     service = "HTTPServer",
@@ -289,10 +296,12 @@ query_result__download_plan <- function(
     plan[, priority := seq_len(.N), by = "logical_file_id"]
     plan[]
 }
+# }}}
 
 # query_result__resolve_downloader
 # Resolve the shared downloader contract used by public download methods and
 # HTTP fallback paths.
+# query_result__resolve_downloader {{{
 query_result__resolve_downloader <- function(
     downloader = NULL,
     store = NULL,
@@ -307,10 +316,12 @@ query_result__resolve_downloader <- function(
 
     cli::cli_abort(message)
 }
+# }}}
 
 # query_result__download
 # Shared implementation for File and Aggregation result downloads. The public
 # wrappers keep class-specific argument defaults and delegate the common work here.
+# query_result__download {{{
 query_result__download <- function(
     result,
     downloader = NULL,
@@ -336,12 +347,18 @@ query_result__download <- function(
     # with explicit calls to $download_plan().
     node_stats <- tryCatch(
         downloader$data_nodes(service = service),
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
+    # error {{{
     network_policy <- tryCatch(downloader$network_policy, error = function(e) {
         NULL
     })
+    # }}}
+    # error {{{
     node_policy <- tryCatch(downloader$node_policy, error = function(e) NULL)
+    # }}}
     if (is.null(probe_concurrency)) {
         probe_concurrency <- min(max(downloader$n_workers, 1L), 8L)
     }
@@ -360,7 +377,9 @@ query_result__download <- function(
     )
     tryCatch(
         downloader$record_probes(plan, probed = probe),
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
     session_id <- downloader$enqueue(plan, session_label = session_label)
     if (isTRUE(run)) {
@@ -369,3 +388,6 @@ query_result__download <- function(
 
     session_id
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

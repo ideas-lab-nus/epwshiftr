@@ -1,5 +1,6 @@
 # Build one complete calendar-native year whose values expose any accidental
 # change from source chronology during sequence partitioning.
+# direct_sequence_test__year {{{
 direct_sequence_test__year <- function(
     variable,
     year,
@@ -18,11 +19,14 @@ direct_sequence_test__year <- function(
     data <- data.frame(
         variable_id = rep.int(variable, year_days),
         value = seq_len(year_days),
-        units = rep.int(if (identical(variable, "pr")) {
-            "kg m-2 s-1"
-        } else {
-            "K"
-        }, year_days),
+        units = rep.int(
+            if (identical(variable, "pr")) {
+                "kg m-2 s-1"
+            } else {
+                "K"
+            },
+            year_days
+        ),
         frequency = rep.int("day", year_days),
         cf_time__coordinates(fields, calendar),
         stringsAsFactors = FALSE
@@ -32,9 +36,11 @@ direct_sequence_test__year <- function(
     }
     data
 }
+# }}}
 
 # Construct one future-backbone adjusted series spanning the requested model
 # years while retaining a visible upstream transformation record.
+# direct_sequence_test__adjusted {{{
 direct_sequence_test__adjusted <- function(
     variable,
     years,
@@ -42,6 +48,7 @@ direct_sequence_test__adjusted <- function(
     reverse = FALSE,
     output_role = "model_future"
 ) {
+    # lapply callback {{{
     rows <- lapply(years, function(year) {
         direct_sequence_test__year(
             variable,
@@ -50,6 +57,7 @@ direct_sequence_test__adjusted <- function(
             reverse
         )
     })
+    # }}}
     bias__daily_adjusted_series(
         do.call(rbind, rows),
         output_role = output_role,
@@ -58,9 +66,11 @@ direct_sequence_test__adjusted <- function(
         provenance = list(method = "test_adjustment")
     )
 }
+# }}}
 
 # Build one complete regular sub-daily year whose exact native-calendar times
 # make missing, duplicated, or reordered samples observable.
+# direct_sequence_test__subdaily_year {{{
 direct_sequence_test__subdaily_year <- function(
     variable,
     year,
@@ -100,9 +110,11 @@ direct_sequence_test__subdaily_year <- function(
     }
     data
 }
+# }}}
 
 # Construct a typed future-backbone sub-daily series spanning complete source
 # years while preserving an upstream provenance record.
+# direct_sequence_test__subdaily_adjusted {{{
 direct_sequence_test__subdaily_adjusted <- function(
     variable,
     years,
@@ -111,6 +123,7 @@ direct_sequence_test__subdaily_adjusted <- function(
     time_step_seconds = 10800,
     reverse = FALSE
 ) {
+    # lapply callback {{{
     rows <- lapply(years, function(year) {
         direct_sequence_test__subdaily_year(
             variable,
@@ -121,6 +134,7 @@ direct_sequence_test__subdaily_adjusted <- function(
             reverse
         )
     })
+    # }}}
     bias__subdaily_adjusted_series(
         do.call(rbind, rows),
         frequency = frequency,
@@ -131,14 +145,17 @@ direct_sequence_test__subdaily_adjusted <- function(
         provenance = list(method = "test_adjustment")
     )
 }
+# }}}
 
 # Assemble the canonical signal envelope consumed by every sequence component
 # without invoking a particular bias-adjustment kernel in these focused tests.
+# direct_sequence_test__execution {{{
 direct_sequence_test__execution <- function(
     values,
     keys = rep(list(list(site = "A")), length(values)),
     statuses = rep.int("ok", length(values))
 ) {
+    # lapply callback {{{
     groups <- lapply(seq_along(values), function(index) {
         adjusted <- values[[index]]
         signal__group(
@@ -147,32 +164,41 @@ direct_sequence_test__execution <- function(
             variables = unique(adjusted@data[["variable_id"]])
         )
     })
+    # }}}
     variables <- unique(unlist(
+        # lapply callback {{{
         lapply(groups, function(group) group@variables),
+        # }}}
         use.names = FALSE
     ))
     SignalExecutionResult(
         groups = groups,
         values = values,
         profiles = stats::setNames(
+            # lapply callback {{{
             lapply(variables, function(variable) {
                 list(variable_id = variable)
             }),
+            # }}}
             variables
         ),
         diagnostics = data.frame(
             method = rep.int("test_signal", length(groups)),
             group = vapply(
                 seq_along(groups),
+                # vapply callback {{{
                 function(index) {
                     signal__group_label(groups[[index]], index)
                 },
+                # }}}
                 character(1L)
             ),
             status = statuses,
             variables = vapply(
                 groups,
+                # vapply callback {{{
                 function(group) paste(group@variables, collapse = ","),
+                # }}}
                 character(1L)
             ),
             evidence = rep.int("published", length(groups)),
@@ -181,6 +207,7 @@ direct_sequence_test__execution <- function(
         )
     )
 }
+# }}}
 
 test_that("typed sequence validators share structural invariants", {
     error <- "sequence invariant failed"
@@ -275,7 +302,9 @@ test_that("direct model sequence preserves and partitions future chronology", {
     expect_identical(
         vapply(
             first@members,
+            # vapply callback {{{
             function(member) member@weather_year,
+            # }}}
             integer(1L)
         ),
         2061:2062
@@ -283,7 +312,9 @@ test_that("direct model sequence preserves and partitions future chronology", {
     expect_identical(
         vapply(
             first@members,
+            # vapply callback {{{
             function(member) member@sequence_id,
+            # }}}
             character(1L)
         ),
         rep.int(DIRECT_MODEL_SEQUENCE_ID, 2L)
@@ -367,7 +398,9 @@ test_that("direct model sequence preserves complete sub-daily model years", {
     expect_identical(
         vapply(
             sequence@members,
+            # vapply callback {{{
             function(member) member@weather_year,
+            # }}}
             integer(1L)
         ),
         2061:2062
@@ -562,3 +595,5 @@ test_that("direct model sequence rejects wrong roles, duplicates, and failures",
         "aligned SignalExecutionResult"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

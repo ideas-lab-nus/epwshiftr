@@ -1,9 +1,11 @@
+# cli_shift_test_mock_collect {{{
 cli_shift_test_mock_collect <- function(
     file_docs,
     calls = new.env(parent = emptyenv())
 ) {
     calls$types <- character()
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -36,12 +38,15 @@ cli_shift_test_mock_collect <- function(
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )
     calls
 }
+# }}}
 
+# cli_shift_test_config {{{
 cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
     config <- list(
         version = 3L,
@@ -81,7 +86,9 @@ cli_shift_test_config <- function(path, store = NULL, epw = get_cache_epw()) {
     )
     invisible(path)
 }
+# }}}
 
+# cli_shift_test_store_with_query {{{
 cli_shift_test_store_with_query <- function(nc) {
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
@@ -94,26 +101,44 @@ cli_shift_test_store_with_query <- function(nc) {
     store$close()
     list(dir = dir, query_id = query_id)
 }
+# }}}
 
+# cli_shift_test_store_with_extract {{{
 cli_shift_test_store_with_extract <- function(nc) {
     setup <- cli_shift_test_store_with_query(nc)
     plan <- epwshiftr_cli(c(
-        "--quiet", "--store", setup$dir,
-        "extract", "plan",
-        "--query", setup$query_id,
-        "--site-id", "SIN",
-        "--lon", "103.98",
-        "--lat", "1.37",
-        "--time", "2060-01-01T00:00:00Z,2060-12-31T23:59:59Z",
-        "--variable", "tas"
+        "--quiet",
+        "--store",
+        setup$dir,
+        "extract",
+        "plan",
+        "--query",
+        setup$query_id,
+        "--site-id",
+        "SIN",
+        "--lon",
+        "103.98",
+        "--lat",
+        "1.37",
+        "--time",
+        "2060-01-01T00:00:00Z,2060-12-31T23:59:59Z",
+        "--variable",
+        "tas"
     ))
     run <- epwshiftr_cli(c(
-        "--quiet", "--store", setup$dir,
-        "extract", "run",
-        "--plan", paste(plan$result$plan_id, collapse = ",")
+        "--quiet",
+        "--store",
+        setup$dir,
+        "extract",
+        "run",
+        "--plan",
+        paste(plan$result$plan_id, collapse = ",")
     ))
     testthat::expect_equal(plan$status, 0L)
     testthat::expect_equal(run$status, 0L)
     testthat::expect_true(all(run$result$status == "done"))
     c(setup, list(plan_id = plan$result$plan_id))
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -1,6 +1,7 @@
 # Resolve user settings once at an execution boundary. The same snapshot is
 # persisted for detached jobs and copied to source workers; runtime objects and
 # testing dependencies never enter this configuration.
+# shift_execution__options {{{
 shift_execution__options <- function() {
     defaults <- list(
         epwshiftr.verbose = FALSE,
@@ -19,9 +20,11 @@ shift_execution__options <- function() {
     )
     # Read only supported settings; unrelated session options stay outside
     # the persisted configuration, including when a default is NULL.
+    # lapply callback {{{
     defaults[] <- lapply(names(defaults), function(name) {
         getOption(name, defaults[[name]])
     })
+    # }}}
     checkmate::assert_count(defaults$epwshiftr.mirai_workers, positive = TRUE)
     for (name in c(
         "epwshiftr.cache_max_size",
@@ -32,9 +35,11 @@ shift_execution__options <- function() {
     }
     defaults
 }
+# }}}
 
 # Worker processes load the installed package that owns this namespace. A
 # source checkout must be installed by the development/test harness first.
+# shift_execution__library_paths {{{
 shift_execution__library_paths <- function() {
     path <- getNamespaceInfo(asNamespace("epwshiftr"), "path")
     if (!file.exists(file.path(path, "Meta", "package.rds"))) {
@@ -45,9 +50,11 @@ shift_execution__library_paths <- function() {
     }
     unique(c(dirname(path), .libPaths()))
 }
+# }}}
 
 # Quote only scalar strings accepted by background entry points. Reject other
 # types and lengths instead of silently coercing or discarding arguments.
+# shift_execution__string_literal {{{
 shift_execution__string_literal <- function(x) {
     checkmate::assert_string(x, null.ok = TRUE)
     if (is.null(x)) {
@@ -55,9 +62,11 @@ shift_execution__string_literal <- function(x) {
     }
     encodeString(x, quote = '"')
 }
+# }}}
 
 # Start one detached entry point through the same installed library and quoting
 # rules for standalone workflows, batches and downloader jobs.
+# shift_execution__launch {{{
 shift_execution__launch <- function(entry, args, log_path) {
     libraries <- paste(
         vapply(
@@ -93,9 +102,11 @@ shift_execution__launch <- function(entry, args, log_path) {
     }
     invisible(status)
 }
+# }}}
 
 # Bind a durable attempt to an explicit, call-owned runtime context. Child
 # contexts refer to their batch owner without modifying session-global state.
+# shift_execution__context {{{
 shift_execution__context <- function(root, job, store = NULL, parent = NULL) {
     context <- new.env(parent = emptyenv())
     context$root <- root
@@ -119,9 +130,11 @@ shift_execution__context <- function(root, job, store = NULL, parent = NULL) {
     }
     context
 }
+# }}}
 
 # Keep storage-specific representation at one boundary. Batch receipts stay
 # readable while child DuckDB stores are busy; both use the same lifecycle.
+# shift_execution__update {{{
 shift_execution__update <- function(context, status, message = NULL) {
     now <- store__now()
     terminal <- status %in% c("completed", "partial", "cancelled", "failed")
@@ -169,9 +182,11 @@ shift_execution__update <- function(context, status, message = NULL) {
     }
     invisible(NULL)
 }
+# }}}
 
 # Observe both the task and its owning batch at cooperative cancellation
 # boundaries, including shared reads before any child run is registered.
+# shift_execution__check_cancel {{{
 shift_execution__check_cancel <- function(context, stage = "working") {
     if (is.null(context)) {
         return(invisible(NULL))
@@ -199,9 +214,11 @@ shift_execution__check_cancel <- function(context, stage = "working") {
     }
     invisible(NULL)
 }
+# }}}
 
 # Batch source progress is written at most once per second; ordinary run
 # snapshots remain owned by the reporter attached to their DuckDB store.
+# shift_execution__checkpoint {{{
 shift_execution__checkpoint <- function(context, details = list()) {
     if (is.null(context)) {
         return(invisible(NULL))
@@ -224,9 +241,11 @@ shift_execution__checkpoint <- function(context, details = list()) {
     )
     invisible(NULL)
 }
+# }}}
 
 # Own attempt transitions and option restoration for every execution mode.
 # Scientific run results remain separate from the process attempt status.
+# shift_execution__run {{{
 shift_execution__run <- function(context, code) {
     old <- options(context$options)
     on.exit(options(old), add = TRUE)
@@ -240,6 +259,7 @@ shift_execution__run <- function(context, code) {
             }
             force(code)
         },
+        # interrupt {{{
         interrupt = function(error) {
             try(
                 shift_execution__update(
@@ -251,6 +271,8 @@ shift_execution__run <- function(context, code) {
             )
             stop(error)
         },
+        # }}}
+        # error {{{
         error = function(error) {
             status <- if (inherits(error, "epwshiftr_shift_cancelled")) {
                 "cancelled"
@@ -268,6 +290,7 @@ shift_execution__run <- function(context, code) {
             )
             stop(error)
         }
+        # }}}
     )
     outcome <- if (
         S7::S7_inherits(value, ShiftRun) &&
@@ -288,3 +311,6 @@ shift_execution__run <- function(context, code) {
     }
     value
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

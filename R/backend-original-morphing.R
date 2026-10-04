@@ -150,6 +150,7 @@ EPW_MORPH_ORIGINAL_RULES <- data.table::data.table(
 # Temperature alone accepts the automatic combined-to-shift fallback. Other
 # user-selectable fields retain the three published transformation types.
 EPW_MORPH_ORIGINAL_RULES[,
+    # lapply callback {{{
     method_choices := lapply(step, function(step_name) {
         if (identical(step_name, "tdb")) {
             c("auto", EPW_MORPH_ORIGINAL_METHOD_CHOICES)
@@ -162,11 +163,13 @@ EPW_MORPH_ORIGINAL_RULES[,
             method[step == step_name]
         }
     })
+    # }}}
 ]
 
 # Validate one complete original-morphing option list before it enters a recipe. Keeping
 # this check at construction time prevents workers from interpreting malformed
 # task JSON differently after a resume.
+# original_morphing__validate_options {{{
 original_morphing__validate_options <- function(options) {
     if (
         !is.list(options) ||
@@ -205,10 +208,12 @@ original_morphing__validate_options <- function(options) {
     class(options) <- unique(c("original_morphing_options", class(options)))
     options
 }
+# }}}
 
 # Resolve partial user options against the selected profile. This function is
 # also the single compatibility boundary used when old serialized recipes are
 # reconstructed explicitly with `profile = "legacy"`.
+# original_morphing__resolve_options {{{
 original_morphing__resolve_options <- function(profile, options = NULL) {
     defaults <- EPW_MORPH_ORIGINAL_PROFILE_OPTIONS[[profile]]
     if (is.null(options)) {
@@ -228,9 +233,11 @@ original_morphing__resolve_options <- function(profile, options = NULL) {
         unclass(options)
     ))
 }
+# }}}
 
 # Resolve the profile-specific method baseline independently of the backend's
 # registry default so legacy recipes retain their historical methods.
+# original_morphing__profile_methods {{{
 original_morphing__profile_methods <- function(backend, profile) {
     methods <- if (identical(backend$name, "original_morphing_absolute")) {
         EPW_MORPH_ORIGINAL_ABSOLUTE_PROFILE_METHODS[[profile]]
@@ -239,6 +246,7 @@ original_morphing__profile_methods <- function(backend, profile) {
     }
     unlist(methods, use.names = TRUE)
 }
+# }}}
 
 #' Configure enhanced original morphing
 #'
@@ -278,6 +286,7 @@ original_morphing__profile_methods <- function(backend, profile) {
 #' EnergyPlus Weather File Data Dictionary:
 #' <https://bigladdersoftware.com/epx/docs/22-2/auxiliary-programs/energyplus-weather-file-epw-data-dictionary.html>
 #' @noRd
+# original_morphing__options {{{
 original_morphing__options <- function(
     transition_hours = 72L,
     humidity_source = "auto",
@@ -301,7 +310,9 @@ original_morphing__options <- function(
         design_conditions = design_conditions
     ))
 }
+# }}}
 
+# original_morphing__monthly_variable {{{
 original_morphing__monthly_variable <- function(context, variable_id) {
     data <- morpher__context_variable(context, variable_id)
     if (!nrow(data)) {
@@ -315,7 +326,9 @@ original_morphing__monthly_variable <- function(context, variable_id) {
         warning = context$warning
     )
 }
+# }}}
 
+# original_morphing__monthly_reference_variable {{{
 original_morphing__monthly_reference_variable <- function(
     context,
     variable_id
@@ -331,7 +344,9 @@ original_morphing__monthly_reference_variable <- function(
         warning = context$warning
     )
 }
+# }}}
 
+# original_morphing__epw_monthly {{{
 original_morphing__epw_monthly <- function(data_epw, var, keep_units = TRUE) {
     monthly <- data_epw[,
         {
@@ -357,10 +372,12 @@ original_morphing__epw_monthly <- function(data_epw, var, keep_units = TRUE) {
 
     monthly
 }
+# }}}
 
 # Compute the EPW diurnal range from daily extrema, not from the single most
 # extreme hours in a month. This is the denominator used by every combined
 # temperature transform and is intentionally independent of CMIP sampling.
+# original_morphing__epw_monthly_dtr {{{
 original_morphing__epw_monthly_dtr <- function(data_epw, var) {
     values <- morpher__drop_units(data_epw[[var]])
     daily <- data.table::data.table(
@@ -422,10 +439,13 @@ original_morphing__epw_monthly_dtr <- function(data_epw, var) {
         )
     ][]
 }
+# }}}
 
 # Convert climate values from their declared source units into the explicit EPW
 # field unit before monthly morphing factors are calculated.
+# original_morphing__align_units {{{
 original_morphing__align_units <- function(data, target_units) {
+    # lapply callback {{{
     converted <- lapply(seq_len(nrow(data)), function(i) {
         morpher__convert_value_checked(
             data$value[[i]],
@@ -433,6 +453,7 @@ original_morphing__align_units <- function(data, target_units) {
             target_units
         )
     })
+    # }}}
     ok <- vapply(converted, `[[`, logical(1L), "ok")
     if (any(!ok)) {
         messages <- unique(vapply(
@@ -455,7 +476,9 @@ original_morphing__align_units <- function(data, target_units) {
     data[, units := target_units]
     data
 }
+# }}}
 
+# original_morphing__drop_units {{{
 original_morphing__drop_units <- function(data, vars) {
     for (var in c(vars, "delta", "alpha")) {
         if (var %in% names(data)) {
@@ -464,16 +487,22 @@ original_morphing__drop_units <- function(data, vars) {
     }
     data
 }
+# }}}
 
+# original_morphing__day_angle {{{
 original_morphing__day_angle <- function(day_of_year) {
     2.0 * pi * (day_of_year - 1.0) / 365.0
 }
+# }}}
 
+# original_morphing__equation_of_time {{{
 original_morphing__equation_of_time <- function(day_of_year) {
     d <- original_morphing__day_angle(day_of_year)
     (-7.659 * sin(d) + 9.863 * sin(2.0 * d + 3.5932)) / 60.0
 }
+# }}}
 
+# original_morphing__solar_time {{{
 original_morphing__solar_time <- function(
     longitude,
     day_of_year,
@@ -485,7 +514,9 @@ original_morphing__solar_time <- function(
         (longitude - timezone * 15.0) / 15.0 +
         original_morphing__equation_of_time(day_of_year)
 }
+# }}}
 
+# original_morphing__hour_angle {{{
 original_morphing__hour_angle <- function(
     longitude,
     day_of_year,
@@ -500,12 +531,16 @@ original_morphing__hour_angle <- function(
     )
     360 / 24 * (solar_time - 12)
 }
+# }}}
 
+# original_morphing__declination {{{
 original_morphing__declination <- function(day_of_year) {
     d <- original_morphing__day_angle(day_of_year)
     solar__spencer_declination(d)
 }
+# }}}
 
+# original_morphing__solar_angle {{{
 original_morphing__solar_angle <- function(
     latitude,
     longitude,
@@ -526,10 +561,12 @@ original_morphing__solar_angle <- function(
         solar__radians(hour_angle)
     )
 }
+# }}}
 
 # Check completeness at the month/case level. The selector is deliberately
 # case-wide: future and historical periods may not switch humidity source in
 # individual months.
+# morpher__humidity_variable_complete {{{
 morpher__humidity_variable_complete <- function(
     context,
     variable_id,
@@ -546,10 +583,12 @@ morpher__humidity_variable_complete <- function(
     values <- as.numeric(data$value)
     all(is.finite(values))
 }
+# }}}
 
 # Select one humidity source for the complete case. Enhanced auto mode prefers
 # HUSS only when huss, tas, and ps are complete in both future and reference;
 # non-shift RH methods stay on HURS because they explicitly override that path.
+# original_morphing__humidity_source {{{
 original_morphing__humidity_source <- function(context) {
     source <- context$recipe$options$humidity_source
     if (!identical(context$recipe$profile, "enhanced")) {
@@ -562,6 +601,7 @@ original_morphing__humidity_source <- function(context) {
         source <- "hurs"
     }
     has_reference <- !is.null(context$reference_climate)
+    # complete {{{
     complete <- function(variable_id) {
         morpher__humidity_variable_complete(context, variable_id) &&
             (!has_reference ||
@@ -571,6 +611,7 @@ original_morphing__humidity_source <- function(context) {
                     reference = TRUE
                 ))
     }
+    # }}}
     huss_complete <- all(vapply(c("huss", "tas", "ps"), complete, logical(1L)))
     hurs_complete <- complete("hurs")
     if (identical(source, "huss")) {
@@ -598,8 +639,10 @@ original_morphing__humidity_source <- function(context) {
     }
     "hurs"
 }
+# }}}
 
 # Normalize monthly HUSS summaries to kg/kg before calculating a state change.
+# original_morphing__monthly_huss {{{
 original_morphing__monthly_huss <- function(context, reference = FALSE) {
     data <- if (isTRUE(reference)) {
         original_morphing__monthly_reference_variable(context, "huss")
@@ -614,10 +657,12 @@ original_morphing__monthly_huss <- function(context, reference = FALSE) {
     data[, units := "kg/kg"]
     data[]
 }
+# }}}
 
 # Apply the monthly HUSS state change to baseline EPW specific humidity, smooth
 # it cyclically, cap at saturation, and invert the future state to RH and dew
 # point using morphed temperature and station pressure.
+# original_morphing__huss_state {{{
 original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
     if (!nrow(tdb)) {
         return(list(
@@ -827,10 +872,12 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
         tdew = hourly[, .SD, .SDcols = dew_keep]
     )
 }
+# }}}
 
 # Normalize the narrowly supported CF units needed by the hurs derivation.
 # Rejecting unknown units is safer than silently treating scaled humidity or
 # pressure as SI input.
+# original_morphing__tdew {{{
 original_morphing__tdew <- function(tdb, rh) {
     # Join only on scientific case identity and EPW time. Enhanced factor
     # diagnostics legitimately differ between temperature and humidity and
@@ -893,7 +940,9 @@ original_morphing__tdew <- function(tdb, rh) {
 
     tdew
 }
+# }}}
 
+# original_morphing__diffuse_radiation {{{
 original_morphing__diffuse_radiation <- function(data_epw, glob_rad) {
     diff_rad <- data.table::copy(glob_rad)
     if (!nrow(diff_rad)) {
@@ -912,7 +961,9 @@ original_morphing__diffuse_radiation <- function(data_epw, glob_rad) {
         diffuse_horizontal_radiation := as.numeric(diffuse_horizontal_radiation)
     ][]
 }
+# }}}
 
+# original_morphing__direct_normal_radiation {{{
 original_morphing__direct_normal_radiation <- function(
     glob_rad,
     diff_rad,
@@ -970,6 +1021,7 @@ original_morphing__direct_normal_radiation <- function(
     ]
     norm_rad[, c("lat_calc", "lon_calc") := NULL]
 }
+# }}}
 
 # Integrate solar geometry at one-minute midpoints over the EPW interval that
 # precedes each record time. Irradiance multiplied by 1/60 hour yields the
@@ -978,6 +1030,7 @@ original_morphing__direct_normal_radiation <- function(
 # Ridley-Boland-Lauret (2010) expresses hourly diffuse fraction as a logistic
 # function of hourly/daily clearness, apparent solar time, solar altitude, and
 # persistence. The output is clamped to the physically admissible [0, 1].
+# radiation__rbl_2010_diffuse {{{
 radiation__rbl_2010_diffuse <- function(
     ghi,
     geometry,
@@ -1032,6 +1085,7 @@ radiation__rbl_2010_diffuse <- function(
     ]
     pmin(ghi, pmax(0, diffuse))
 }
+# }}}
 
 # Perez et al. (1990), Table 4. Rows correspond to the eight sky-clearness
 # bins; columns are the four coefficients in each published transfer equation.
@@ -1077,6 +1131,7 @@ ILLUMINANCE__PEREZ_ZENITH <- rbind(
 )
 
 # Map Perez sky clearness to the eight published bins.
+# illuminance__perez_bin {{{
 illuminance__perez_bin <- function(clearness) {
     findInterval(
         as.numeric(clearness),
@@ -1085,10 +1140,12 @@ illuminance__perez_bin <- function(clearness) {
     ) +
         1L
 }
+# }}}
 
 # Recalculate EPW N16-N19 with the Perez 1990 luminous-efficacy and zenith
 # luminance equations. Nighttime values are zero; invalid daytime inputs remain
 # NA so EpwFile can serialize the field-specific missing sentinel.
+# illuminance__perez_1990 {{{
 illuminance__perez_1990 <- function(ghi, dhi, dni, geometry, dew_point) {
     ghi <- as.numeric(ghi)
     dhi <- as.numeric(dhi)
@@ -1108,7 +1165,9 @@ illuminance__perez_1990 <- function(ghi, dhi, dni, geometry, dew_point) {
     clearness[!is.finite(clearness)] <- 6.201
     bin <- illuminance__perez_bin(clearness)
     water <- exp(0.07 * as.numeric(dew_point) - 0.075)
+    # coefficient {{{
     coefficient <- function(table) table[bin, , drop = FALSE]
+    # }}}
     global_coef <- coefficient(ILLUMINANCE__PEREZ_GLOBAL)
     diffuse_coef <- coefficient(ILLUMINANCE__PEREZ_DIFFUSE)
     direct_coef <- coefficient(ILLUMINANCE__PEREZ_DIRECT)
@@ -1144,9 +1203,11 @@ illuminance__perez_1990 <- function(ghi, dhi, dni, geometry, dew_point) {
     }
     output[]
 }
+# }}}
 
 # Execute the enhanced radiation chain once so N10-N19 share the same integrated
 # solar geometry and the GHI/DHI/DNI closure is exact by construction.
+# radiation__enhanced_chain {{{
 radiation__enhanced_chain <- function(
     data_epw,
     glob_rad,
@@ -1309,7 +1370,9 @@ radiation__enhanced_chain <- function(
         illuminance = illuminance
     )
 }
+# }}}
 
+# original_morphing__opaque_sky_cover {{{
 original_morphing__opaque_sky_cover <- function(data_epw, total_sky_cover) {
     if (!nrow(total_sky_cover)) {
         return(data.table::data.table())
@@ -1370,7 +1433,9 @@ original_morphing__opaque_sky_cover <- function(data_epw, total_sky_cover) {
         )
     ]
 }
+# }}}
 
+# original_morphing__from_monthly {{{
 original_morphing__from_monthly <- function(
     var,
     data_epw,
@@ -1583,17 +1648,21 @@ original_morphing__from_monthly <- function(
         )
     ]
 }
+# }}}
 
 # The cubic smoothstep has zero slope at both ends, so adjacent monthly factor
 # plateaus meet without a value or first-derivative jump.
+# morpher__smoothstep {{{
 morpher__smoothstep <- function(x) {
     x <- pmin(1, pmax(0, as.numeric(x)))
     x * x * (3 - 2 * x)
 }
+# }}}
 
 # Build twelve cyclic basis functions over the EPW year. Each boundary blends
 # only its preceding and following month over a centered window; modulo row
 # indexing makes the December-January boundary identical to the other eleven.
+# morpher__cyclic_month_basis {{{
 morpher__cyclic_month_basis <- function(month, transition_hours) {
     month <- as.integer(month)
     transition_hours <- as.integer(transition_hours)
@@ -1628,10 +1697,12 @@ morpher__cyclic_month_basis <- function(month, transition_hours) {
     }
     basis
 }
+# }}}
 
 # Solve the 12 by 12 monthly-mean constraint system. The unknown plateau
 # coefficients differ slightly from the requested factors near boundaries, but
 # the resulting hourly series has the requested arithmetic mean in every month.
+# morpher__constrained_month_series {{{
 morpher__constrained_month_series <- function(month, target, transition_hours) {
     month <- as.integer(month)
     if (length(target) != 12L || any(!is.finite(target))) {
@@ -1642,22 +1713,28 @@ morpher__constrained_month_series <- function(month, target, transition_hours) {
     basis <- morpher__cyclic_month_basis(month, transition_hours)
     constraint <- vapply(
         1:12,
+        # vapply callback {{{
         function(target_month) {
             colMeans(basis[month == target_month, , drop = FALSE])
         },
+        # }}}
         numeric(12L)
     )
     constraint <- t(constraint)
     coefficients <- tryCatch(
         solve(constraint, as.numeric(target)),
+        # error {{{
         error = function(e) {
             qr.solve(constraint, as.numeric(target), tol = 1e-12)
         }
+        # }}}
     )
     as.numeric(basis %*% coefficients)
 }
+# }}}
 
 # Read one value per month from rows in a single model/member/period case.
+# morpher__monthly_target_vector {{{
 morpher__monthly_target_vector <- function(data, column) {
     target <- rep(NA_real_, 12L)
     for (target_month in 1:12) {
@@ -1669,6 +1746,7 @@ morpher__monthly_target_vector <- function(data, column) {
     }
     target
 }
+# }}}
 
 # Identify only stable scientific case columns. Variable-specific table IDs and
 # floating-point site coordinates are metadata: including either would split a
@@ -1694,6 +1772,7 @@ ORIGINAL_MORPHING_REFERENCE_EXTREME_IDENTITY_COLUMNS <- c(
 # Aggregate and attach one monthly-extreme field using an explicitly supplied
 # scientific identity. Callers retain ownership of the projected-versus-
 # historical identity and its user-facing alignment diagnostic.
+# morpher__attach_monthly_extreme {{{
 morpher__attach_monthly_extreme <- function(
     target,
     extreme,
@@ -1734,9 +1813,11 @@ morpher__attach_monthly_extreme <- function(
     target[extreme, on = join_cols, (value_name) := i..extreme_value]
     target[]
 }
+# }}}
 
 # Attach monthly extrema using model/member/period identity rather than table
 # identity. This supports tas in Amon and tasmax/tasmin in a different CMIP table.
+# morpher__attach_extreme_value {{{
 morpher__attach_extreme_value <- function(target, extreme, value_name) {
     morpher__attach_monthly_extreme(
         target,
@@ -1746,10 +1827,12 @@ morpher__attach_extreme_value <- function(target, extreme, value_name) {
         missing_month_message = "Cannot align monthly extrema without a month column."
     )
 }
+# }}}
 
 # Smooth delta and alpha independently, then compensate the combined method for
 # mean(alpha * baseline anomaly). This covariance term is the only way a
 # time-varying alpha can otherwise move the requested monthly mean temperature.
+# morpher__smooth_enhanced_factors {{{
 morpher__smooth_enhanced_factors <- function(
     data,
     var,
@@ -1814,6 +1897,7 @@ morpher__smooth_enhanced_factors <- function(
             anomaly <- as.numeric(rows[[var]]) - as.numeric(rows$epw_mean)
             covariance <- vapply(
                 1:12,
+                # vapply callback {{{
                 function(target_month) {
                     mean(
                         alpha[month == target_month] *
@@ -1821,6 +1905,7 @@ morpher__smooth_enhanced_factors <- function(
                         na.rm = TRUE
                     )
                 },
+                # }}}
                 numeric(1L)
             )
             delta_target <- delta_target - covariance
@@ -1842,10 +1927,12 @@ morpher__smooth_enhanced_factors <- function(
     out[, .factor_order := NULL]
     out[]
 }
+# }}}
 
 # Enhanced absolute-target morphing uses mean daily extrema for the EPW DTR.
 # For combined temperature, alpha = (R_future - R_epw) / R_epw; invalid or
 # nearly flat EPW ranges are represented explicitly as shift fallbacks.
+# original_morphing__from_monthly_enhanced {{{
 original_morphing__from_monthly_enhanced <- function(
     var,
     data_epw,
@@ -2001,11 +2088,13 @@ original_morphing__from_monthly_enhanced <- function(
     )
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
+# }}}
 
 # Select the stable identity shared by future and historical rows. Institution,
 # activity, experiment, interval, table, grid, and coordinates may legitimately
 # differ across periods or variables and therefore cannot identify a climate
 # case.
+# original_morphing__reference_join_cols {{{
 original_morphing__reference_join_cols <- function(target, reference) {
     cols <- c("source_id", "member_id", "month")
     cols <- intersect(cols, intersect(names(target), names(reference)))
@@ -2018,7 +2107,9 @@ original_morphing__reference_join_cols <- function(target, reference) {
     }
     cols
 }
+# }}}
 
+# original_morphing__attach_reference {{{
 original_morphing__attach_reference <- function(
     target,
     reference,
@@ -2047,7 +2138,9 @@ original_morphing__attach_reference <- function(
     target[reference, on = join_cols, (value_name) := i.value_reference_tmp]
     target[]
 }
+# }}}
 
+# original_morphing__handle_missing_reference {{{
 original_morphing__handle_missing_reference <- function(
     data,
     var,
@@ -2068,7 +2161,9 @@ original_morphing__handle_missing_reference <- function(
     data[is.na(reference_value), reference_value := value]
     data
 }
+# }}}
 
+# original_morphing__from_monthly_change {{{
 original_morphing__from_monthly_change <- function(
     var,
     data_epw,
@@ -2362,9 +2457,11 @@ original_morphing__from_monthly_change <- function(
         )
     ]
 }
+# }}}
 
 # Attach historical extrema across experiments and variable-specific tables,
 # retaining model/member/month as the scientific case identity.
+# morpher__attach_reference_extreme {{{
 morpher__attach_reference_extreme <- function(target, reference, value_name) {
     morpher__attach_monthly_extreme(
         target,
@@ -2374,11 +2471,13 @@ morpher__attach_reference_extreme <- function(target, reference, value_name) {
         missing_month_message = "Cannot align historical monthly extrema without a month column."
     )
 }
+# }}}
 
 # Enhanced change-factor morphing applies
 # alpha = (R_future - R_reference) / R_epw to the EPW anomaly. The same guarded
 # per-month fallback and covariance-compensated smoothing used by the absolute
 # path keeps the target monthly mean exact across month boundaries.
+# original_morphing__from_monthly_change_enhanced {{{
 original_morphing__from_monthly_change_enhanced <- function(
     var,
     data_epw,
@@ -2425,12 +2524,14 @@ original_morphing__from_monthly_change_enhanced <- function(
         strict = strict
     )
 
+    # align_optional {{{
     align_optional <- function(data) {
         if (is.null(data) || !nrow(data)) {
             return(NULL)
         }
         original_morphing__align_units(data.table::copy(data), units)
     }
+    # }}}
     data_mean <- morpher__attach_extreme_value(
         data_mean,
         align_optional(data_max),
@@ -2580,7 +2681,9 @@ original_morphing__from_monthly_change_enhanced <- function(
     )
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
+# }}}
 
+# original_morphing__tdb {{{
 original_morphing__tdb <- function(data_epw, context, type) {
     tas <- original_morphing__monthly_variable(context, "tas")
     if (!nrow(tas)) {
@@ -2608,7 +2711,9 @@ original_morphing__tdb <- function(data_epw, context, type) {
         type = type
     )
 }
+# }}}
 
+# original_morphing__rh {{{
 original_morphing__rh <- function(data_epw, context, type) {
     hurs <- original_morphing__monthly_variable(context, "hurs")
     if (!nrow(hurs)) {
@@ -2640,7 +2745,9 @@ original_morphing__rh <- function(data_epw, context, type) {
     rh[relative_humidity < 0, relative_humidity := 0]
     rh
 }
+# }}}
 
+# original_morphing__change_tdb {{{
 original_morphing__change_tdb <- function(data_epw, context, type) {
     tas <- original_morphing__monthly_variable(context, "tas")
     tas_ref <- original_morphing__monthly_reference_variable(context, "tas")
@@ -2685,7 +2792,9 @@ original_morphing__change_tdb <- function(data_epw, context, type) {
         strict = context$strict
     )
 }
+# }}}
 
+# original_morphing__change_rh {{{
 original_morphing__change_rh <- function(data_epw, context, type) {
     hurs <- original_morphing__monthly_variable(context, "hurs")
     hurs_ref <- original_morphing__monthly_reference_variable(context, "hurs")
@@ -2734,7 +2843,9 @@ original_morphing__change_rh <- function(data_epw, context, type) {
     rh[relative_humidity < 0, relative_humidity := 0]
     rh
 }
+# }}}
 
+# original_morphing__monthly_field {{{
 original_morphing__monthly_field <- function(
     data_epw,
     context,
@@ -2757,7 +2868,9 @@ original_morphing__monthly_field <- function(
     }
     original_morphing__from_monthly(epw_field, data_epw, data, type = type)
 }
+# }}}
 
+# original_morphing__change_monthly_field {{{
 original_morphing__change_monthly_field <- function(
     data_epw,
     context,
@@ -2793,7 +2906,9 @@ original_morphing__change_monthly_field <- function(
         strict = context$strict
     )
 }
+# }}}
 
+# original_morphing__monthly_change_variable {{{
 original_morphing__monthly_change_variable <- function(
     context,
     variable_id,
@@ -2839,10 +2954,12 @@ original_morphing__monthly_change_variable <- function(
     data[, reference_value := NULL]
     data[]
 }
+# }}}
 
 # Morph cloud cover as a smoothed additive factor while retaining the baseline
 # hourly cloud sequence. Values are rounded only after the constrained factor
 # series is applied because EPW stores sky cover in tenths.
+# original_morphing__total_sky_cover_enhanced {{{
 original_morphing__total_sky_cover_enhanced <- function(
     data_epw,
     context,
@@ -2918,7 +3035,9 @@ original_morphing__total_sky_cover_enhanced <- function(
     )
     hourly[, .SD, .SDcols = intersect(keep, names(hourly))]
 }
+# }}}
 
+# original_morphing__total_sky_cover {{{
 original_morphing__total_sky_cover <- function(
     data_epw,
     context,
@@ -3000,7 +3119,9 @@ original_morphing__total_sky_cover <- function(
         )
     ]
 }
+# }}}
 
+# original_morphing__change_total_sky_cover {{{
 original_morphing__change_total_sky_cover <- function(data_epw, context) {
     data_mean <- original_morphing__monthly_change_variable(
         context,
@@ -3014,10 +3135,12 @@ original_morphing__change_total_sky_cover <- function(data_epw, context) {
         change_factor = TRUE
     )
 }
+# }}}
 
 # Return a non-blocking diagnostic when optional snow data cannot form the
 # required future/reference pair; the required policy promotes the same state
 # to an error before any hourly values are changed.
+# morpher__snow_unavailable {{{
 morpher__snow_unavailable <- function(context, message) {
     if (identical(context$recipe$options$snow_depth, "required")) {
         cli::cli_abort(message, class = "epwshiftr_snow_required_error")
@@ -3035,10 +3158,12 @@ morpher__snow_unavailable <- function(context, message) {
         )
     )
 }
+# }}}
 
 # Scale existing EPW snow events by the monthly future/reference SND ratio.
 # CMIP SND is converted from metres to EPW centimetres; zero reference or a
 # snow-free EPW month never synthesizes new event timing.
+# original_morphing__snow_depth {{{
 original_morphing__snow_depth <- function(data_epw, context) {
     policy <- context$recipe$options$snow_depth
     if (
@@ -3189,9 +3314,11 @@ original_morphing__snow_depth <- function(data_epw, context) {
         diagnostics = morpher__empty_diagnostics()
     )
 }
+# }}}
 
 # Normalize precipitation units before manually converting fluxes to monthly
 # water-equivalent depth; udunits does not know the density convention.
+# morpher__precip_unit_kind {{{
 morpher__precip_unit_kind <- function(units) {
     units <- morpher__unit_alias(units)
     if (is.na(units) || !nzchar(units)) {
@@ -3214,8 +3341,10 @@ morpher__precip_unit_kind <- function(units) {
         NA_character_
     )
 }
+# }}}
 
 # Return Gregorian month lengths for the period years used by morphing.
+# morpher__precip_month_days {{{
 morpher__precip_month_days <- function(year, month) {
     year <- as.integer(year)
     month <- as.integer(month)
@@ -3223,6 +3352,7 @@ morpher__precip_month_days <- function(year, month) {
         return(integer())
     }
     mapply(
+        # mapply callback {{{
         function(y, m) {
             start <- as.Date(sprintf("%04d-%02d-01", y, m))
             next_year <- y + as.integer(m == 12L)
@@ -3231,12 +3361,15 @@ morpher__precip_month_days <- function(year, month) {
                 as.Date(sprintf("%04d-%02d-01", next_year, next_month)) - start
             )
         },
+        # }}}
         year,
         month
     )
 }
+# }}}
 
 # Convert a precipitation rate or monthly depth into water-equivalent millimetres.
+# morpher__precip_depth_checked {{{
 morpher__precip_depth_checked <- function(value, units, seconds) {
     kind <- morpher__precip_unit_kind(units)
     value <- morpher__drop_units(value)
@@ -3260,8 +3393,10 @@ morpher__precip_depth_checked <- function(value, units, seconds) {
     )
     list(value = out, ok = TRUE, message = NA_character_)
 }
+# }}}
 
 # Convert climate summary rows for `pr` from monthly mean rate to monthly depth.
+# morpher__precip_summary_depth_checked {{{
 morpher__precip_summary_depth_checked <- function(
     value,
     units,
@@ -3270,7 +3405,9 @@ morpher__precip_summary_depth_checked <- function(
 ) {
     years <- tryCatch(
         morpher__json_int_vector(years_json),
+        # error {{{
         error = function(e) integer()
+        # }}}
     )
     if (!length(years)) {
         years <- 2001L
@@ -3282,8 +3419,10 @@ morpher__precip_summary_depth_checked <- function(
         mean(days, na.rm = TRUE) * 86400
     )
 }
+# }}}
 
 # Convert a baseline EPW monthly mean precipitation depth into a monthly total.
+# morpher__baseline_precip_depth_checked {{{
 morpher__baseline_precip_depth_checked <- function(value, units, month) {
     if (is.na(units) || !nzchar(units)) {
         units <- "mm"
@@ -3294,8 +3433,10 @@ morpher__baseline_precip_depth_checked <- function(value, units, month) {
         24
     converted
 }
+# }}}
 
 # Summarise raw `pr` climate data to monthly water-equivalent depths.
+# original_morphing__monthly_precip_variable {{{
 original_morphing__monthly_precip_variable <- function(
     context,
     variable_id,
@@ -3346,6 +3487,7 @@ original_morphing__monthly_precip_variable <- function(
 
     values <- vapply(
         seq_len(nrow(out)),
+        # vapply callback {{{
         function(i) {
             days <- morpher__precip_month_days(out$years[[i]], out$month[[i]])
             converted <- morpher__precip_depth_checked(
@@ -3360,6 +3502,7 @@ original_morphing__monthly_precip_variable <- function(
             }
             converted$value
         },
+        # }}}
         numeric(1L)
     )
     out[, `:=`(
@@ -3386,8 +3529,10 @@ original_morphing__monthly_precip_variable <- function(
     )
     out[]
 }
+# }}}
 
 # Report conservative precipitation fallbacks consistently across strict modes.
+# original_morphing__precip_guard {{{
 original_morphing__precip_guard <- function(rows, message, strict = TRUE) {
     if (!nrow(rows)) {
         return(invisible(NULL))
@@ -3400,8 +3545,10 @@ original_morphing__precip_guard <- function(rows, message, strict = TRUE) {
     warning(message, call. = FALSE)
     invisible(NULL)
 }
+# }}}
 
 # Apply monthly precipitation targets while preserving baseline wet-hour timing.
+# original_morphing__precip_from_monthly {{{
 original_morphing__precip_from_monthly <- function(
     data_epw,
     data_mean,
@@ -3588,8 +3735,10 @@ original_morphing__precip_from_monthly <- function(
         )
     ]
 }
+# }}}
 
 # Build absolute-target original-morphing precipitation from future monthly totals.
+# original_morphing__precip {{{
 original_morphing__precip <- function(data_epw, context) {
     pr <- original_morphing__monthly_precip_variable(context, "pr")
     original_morphing__precip_from_monthly(
@@ -3598,8 +3747,10 @@ original_morphing__precip <- function(data_epw, context) {
         strict = context$strict
     )
 }
+# }}}
 
 # Build change-factor original-morphing precipitation from future/reference totals.
+# original_morphing__change_precip {{{
 original_morphing__change_precip <- function(data_epw, context) {
     pr <- original_morphing__monthly_precip_variable(context, "pr")
     pr_ref <- original_morphing__monthly_precip_variable(
@@ -3635,9 +3786,11 @@ original_morphing__change_precip <- function(data_epw, context) {
         change_factor = TRUE
     )
 }
+# }}}
 
 # Summarise runtime fallback and clipping states into inspectable factor rows
 # and compact diagnostics without emitting one message per EPW hour.
+# morpher__enhanced_factor_metadata {{{
 morpher__enhanced_factor_metadata <- function(context, parts) {
     rows <- list()
     for (part_name in names(parts)) {
@@ -3681,6 +3834,7 @@ morpher__enhanced_factor_metadata <- function(context, parts) {
         data.table::data.table()
     }
     bad <- if (nrow(factors)) factors[factor_status != "ok"] else factors
+    # lapply callback {{{
     diagnostics <- lapply(seq_len(nrow(bad)), function(i) {
         status <- bad$factor_status[[i]]
         message <- switch(
@@ -3725,14 +3879,17 @@ morpher__enhanced_factor_metadata <- function(context, parts) {
             action = "Inspect the persisted factor status and input coverage for this month."
         )
     })
+    # }}}
     list(
         factors = factors,
         diagnostics = morpher__bind_diagnostics(diagnostics)
     )
 }
+# }}}
 
 # Select the five builders that differ between absolute-target and
 # change-factor original-morphing execution while leaving equations independent.
+# original_morphing__execution_steps {{{
 original_morphing__execution_steps <- function(change_factor = FALSE) {
     if (isTRUE(change_factor)) {
         return(list(
@@ -3752,9 +3909,11 @@ original_morphing__execution_steps <- function(change_factor = FALSE) {
         precip = original_morphing__precip
     )
 }
+# }}}
 
 # Execute common original-morphing EPW assembly after the runner has chosen
 # whether fields come from absolute targets or future-minus-reference changes.
+# original_morphing__execute {{{
 original_morphing__execute <- function(context, change_factor = FALSE) {
     steps <- original_morphing__execution_steps(change_factor)
     methods <- context$recipe$methods
@@ -3929,15 +4088,19 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
         factors = metadata$factors
     )
 }
+# }}}
 
 # Retain the registered absolute-target runner while delegating its common EPW
 # assembly to the shared original-morphing executor.
+# original_morphing__absolute_run {{{
 original_morphing__absolute_run <- function(context, backend = NULL) {
     original_morphing__execute(context, change_factor = FALSE)
 }
+# }}}
 
 # Retain the registered change-factor runner and its no-reference fallback while
 # delegating identified change cases to the shared original-morphing executor.
+# original_morphing__run {{{
 original_morphing__run <- function(context, backend = NULL) {
     if (is.null(context$reference_climate)) {
         # Without external historical climate, the EPW monthly climatology is
@@ -3948,3 +4111,6 @@ original_morphing__run <- function(context, backend = NULL) {
 
     original_morphing__execute(context, change_factor = TRUE)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

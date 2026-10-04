@@ -2,6 +2,7 @@
 # Own a single live region for the complete model-discovery operation. Nested
 # public catalog calls inherit this reporter and therefore do not create or
 # commit separate standalone operation panels.
+# shift_batch_ui__discover_models {{{
 shift_batch_ui__discover_models <- function(
     climate,
     transforms,
@@ -75,10 +76,13 @@ shift_batch_ui__discover_models <- function(
             )
             result
         },
+        # error {{{
         error = function(error) {
             reporter$operation_failed(conditionMessage(error))
             stop(error)
         },
+        # }}}
+        # interrupt {{{
         interrupt = function(error) {
             reporter$operation_failed(
                 "Model discovery interrupted.",
@@ -86,11 +90,14 @@ shift_batch_ui__discover_models <- function(
             )
             stop(error)
         }
+        # }}}
     )
 }
+# }}}
 
 # Update only a discovery-owned reporter, leaving ordinary single-run resolver
 # presentation untouched when the same coverage helpers are reused elsewhere.
+# shift_batch_ui__discovery_update {{{
 shift_batch_ui__discovery_update <- function(context, reset = FALSE) {
     reporter <- shift_run__current_reporter()
     if (
@@ -101,9 +108,11 @@ shift_batch_ui__discovery_update <- function(context, reset = FALSE) {
     }
     invisible(NULL)
 }
+# }}}
 
 # Keep completed searches and real failover reasons in the bounded activity
 # feed, with durable one-line milestones for append-only consoles.
+# shift_batch_ui__discovery_notice {{{
 shift_batch_ui__discovery_notice <- function(message, outcome = "completed") {
     reporter <- shift_run__current_reporter()
     if (
@@ -114,9 +123,11 @@ shift_batch_ui__discovery_notice <- function(message, outcome = "completed") {
     }
     invisible(NULL)
 }
+# }}}
 
 # Name humidity alternatives in user terms; the full input contract belongs to
 # detail/debug views, while other recipes retain an honest variable count.
+# shift_batch_ui__discovery_variables {{{
 shift_batch_ui__discovery_variables <- function(variables, detail = "normal") {
     if (!length(variables)) {
         return(NULL)
@@ -136,9 +147,11 @@ shift_batch_ui__discovery_variables <- function(variables, detail = "normal") {
         collapse = " \u00b7 "
     )
 }
+# }}}
 
 # Render discovery around the requested matrix and current search scope. Method
 # and alternative ordinals are deliberately never converted to percentages.
+# shift_batch_ui__discovery_lines {{{
 shift_batch_ui__discovery_lines <- function(state, width, motion, frame) {
     batch <- state$batch_context
     status <- shift_stage__coalesce(state$status, "running")
@@ -147,6 +160,7 @@ shift_batch_ui__discovery_lines <- function(state, width, motion, frame) {
     outer <- shift_ui__ui_dashboard_width(width)
     inner <- if (panel) outer - 4L else outer
     # Wrap facts with the shared display-width-aware label formatter.
+    # row {{{
     row <- function(label, value) {
         if (!length(value)) {
             return(character())
@@ -157,6 +171,7 @@ shift_batch_ui__discovery_lines <- function(state, width, motion, frame) {
             inner
         )
     }
+    # }}}
     title <- paste(
         cli::style_bold("Discover CMIP6 models"),
         shift_ui_view__ui_status_style(status),
@@ -318,9 +333,11 @@ shift_batch_ui__discovery_lines <- function(state, width, motion, frame) {
         shift_ui_view__ui_panel_rule(width = outer, kind = "bottom")
     )
 }
+# }}}
 
 # Read each child once per snapshot and retain its identity in every table.
 # Case counts and physical EPW file counts remain separate for multi-year output.
+# shift_batch_ui__snapshot {{{
 shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
     if (isTRUE(refresh)) {
         x <- shift_batch__refresh(x)
@@ -328,9 +345,11 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
     children <- data.table::copy(x@meta$manifest)
     statuses <- vapply(
         x@meta$children,
+        # vapply callback {{{
         function(child) {
             shift_status(child, refresh = FALSE)
         },
+        # }}}
         character(1L)
     )
     children[, status := statuses]
@@ -339,9 +358,11 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         j = "run_id",
         value = vapply(
             x@meta$children,
+            # vapply callback {{{
             function(child) {
                 store__chr1(child@ids$run_id)
             },
+            # }}}
             character(1L)
         )
     )
@@ -350,14 +371,17 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         j = "current_stage",
         value = vapply(
             x@meta$children,
+            # vapply callback {{{
             function(child) {
                 store__chr1(child@meta$run$current_stage)
             },
+            # }}}
             character(1L)
         )
     )
     # Reuse the same live state as single-run watch. Older stores can still
     # reconstruct it from durable events; planned children have no activity yet.
+    # lapply callback {{{
     activity <- lapply(x@meta$children, function(child) {
         if (!S7::S7_inherits(child, ShiftRun)) {
             return(list())
@@ -380,6 +404,7 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         }
         state
     })
+    # }}}
     names(activity) <- children$child_key
     cases <- shift_cases(x, refresh = FALSE)
     outputs <- shift_outputs(x, refresh = FALSE)
@@ -389,6 +414,7 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
         j = "method_status",
         value = vapply(
             seq_len(nrow(children)),
+            # vapply callback {{{
             function(index) {
                 record <- transform__record(
                     children$scale[[index]],
@@ -396,18 +422,21 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
                 )
                 recipe__get(record$recipe)@status
             },
+            # }}}
             character(1L)
         )
     )
     events <- shift_batch__inspect(
         x@meta$children,
         x@meta$manifest,
+        # shift_batch__inspect callback {{{
         function(child) {
             data.table::as.data.table(shift_stage__coalesce(
                 child@meta$events,
                 data.table::data.table()
             ))
         }
+        # }}}
     )
     if (nrow(events)) {
         data.table::setorderv(
@@ -417,14 +446,17 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
     }
     starts <- vapply(
         x@meta$children,
+        # vapply callback {{{
         function(child) {
             value <- child@meta$run$started_at
             if (length(value)) as.numeric(value[[1L]]) else NA_real_
         },
+        # }}}
         numeric(1L)
     )
     ends <- vapply(
         x@meta$children,
+        # vapply callback {{{
         function(child) {
             value <- child@meta$run$completed_at
             if (!length(value) || is.na(value[[1L]])) {
@@ -432,6 +464,7 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
             }
             if (length(value)) as.numeric(value[[1L]]) else NA_real_
         },
+        # }}}
         numeric(1L)
     )
     active <- any(statuses %in% c("queued", "running", "stopping"))
@@ -490,9 +523,11 @@ shift_batch_ui__snapshot <- function(x, event_count = 10L, refresh = TRUE) {
     attr(result, "shift_ui_events") <- events
     result
 }
+# }}}
 
 # Render errors before warnings, preserving recovery actions and reporting
 # omissions. Static detail views retain every diagnostic without truncation.
+# shift_batch_ui__diagnostic_lines {{{
 shift_batch_ui__diagnostic_lines <- function(
     snapshot,
     width,
@@ -507,6 +542,7 @@ shift_batch_ui__diagnostic_lines <- function(
     rows <- rows[order(match(rows$severity, c("error", "warning")))]
     shown <- min(nrow(rows), limit)
     # Compact fields consume exactly one row for deterministic height budgets.
+    # field {{{
     field <- function(label, value) {
         if (compact) {
             shift_ui_view__ui_fit(
@@ -517,6 +553,7 @@ shift_batch_ui__diagnostic_lines <- function(
             shift_ui_view__ui_labeled_lines(label, value, width)
         }
     }
+    # }}}
     lines <- character()
     for (index in seq_len(shown)) {
         row <- rows[index]
@@ -549,9 +586,11 @@ shift_batch_ui__diagnostic_lines <- function(
     }
     lines
 }
+# }}}
 
 # Build a child's identity and activity from the same live state as single-run
 # watch. Full detail includes its latest event, timestamps, and durable run ID.
+# shift_batch_ui__child_lines {{{
 shift_batch_ui__child_lines <- function(
     child,
     index,
@@ -563,6 +602,7 @@ shift_batch_ui__child_lines <- function(
     frame
 ) {
     # Compact fields do not wrap beyond the dynamic viewport budget.
+    # field {{{
     field <- function(label, value) {
         if (compact) {
             shift_ui_view__ui_fit(
@@ -573,6 +613,7 @@ shift_batch_ui__child_lines <- function(
             shift_ui_view__ui_labeled_lines(label, value, width)
         }
     }
+    # }}}
     identity <- c(child$site_id, child$method, child$model)
     identity <- identity[!is.na(identity) & nzchar(identity)]
     label <- sprintf(
@@ -638,9 +679,11 @@ shift_batch_ui__child_lines <- function(
     }
     lines
 }
+# }}}
 
 # Keep the shared boxes in static receipts and dynamic viewports. Only dynamic
 # callers supply a finite height; static detail always preserves complete data.
+# shift_batch_ui__view {{{
 shift_batch_ui__view <- function(
     snapshot,
     width = shift_ui__ui_width(),
@@ -656,6 +699,7 @@ shift_batch_ui__view <- function(
     compact <- is.finite(height)
     content_width <- if (panel) max(1L, width - 4L) else width
     # Preserve long paths and identifiers outside the finite dynamic viewport.
+    # field {{{
     field <- function(label, value) {
         if (compact) {
             shift_ui_view__ui_fit(
@@ -666,6 +710,7 @@ shift_batch_ui__view <- function(
             shift_ui_view__ui_labeled_lines(label, value, content_width)
         }
     }
+    # }}}
     header <- paste(
         cli::style_bold("Future EPW Batch"),
         shift_ui_view__ui_status_style(summary$status),
@@ -720,6 +765,7 @@ shift_batch_ui__view <- function(
         )
     }
     children <- snapshot$children
+    # lapply callback {{{
     groups <- lapply(seq_len(nrow(children)), function(index) {
         child <- children[index]
         rows <- shift_batch_ui__child_lines(
@@ -744,6 +790,7 @@ shift_batch_ui__view <- function(
         }
         rows
     })
+    # }}}
     results <- c(
         field(
             "Summary",
@@ -950,9 +997,11 @@ shift_batch_ui__view <- function(
         }
     )
 }
+# }}}
 
 # Emit a durable receipt in human modes while leaving JSON and quiet callers
 # free of reporter text. Foreground child frames carry the live batch context.
+# shift_batch_ui__report {{{
 shift_batch_ui__report <- function(x, ui) {
     if (isTRUE(ui@batch_receipt) && !identical(shift_ui__ui_mode(ui), "none")) {
         shift_ui_view__ui_print_view(shift_batch_ui__view(
@@ -962,9 +1011,11 @@ shift_batch_ui__report <- function(x, ui) {
     }
     invisible(x)
 }
+# }}}
 
 # Track observed IDs per child run, because polling independent workers can
 # insert an older event anywhere in the merged chronological display order.
+# shift_batch_ui__event_delta {{{
 shift_batch_ui__event_delta <- function(
     events,
     cursor = list(),
@@ -1005,15 +1056,19 @@ shift_batch_ui__event_delta <- function(
     }
     list(rows = rows, cursor = cursor, gap = gap)
 }
+# }}}
 
 # Watch all independently running children; one failure never ends observation
 # while another child is queued, running, or stopping.
+# shift_batch_ui__watch {{{
 shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
     mode <- shift_ui__ui_mode(ui)
     motion <- shift_ui__ui_motion(ui, mode)
+    # error {{{
     renderer <- tryCatch(shift_tui__ui_renderer(mode), error = function(error) {
         NULL
     })
+    # }}}
     if (identical(mode, "dynamic") && is.null(renderer)) {
         mode <- "log"
     }
@@ -1131,6 +1186,7 @@ shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
             first <- FALSE
             shift_job__watch_sleep(frame_interval)
         },
+        # interrupt {{{
         interrupt = function(error) {
             if (!is.null(renderer)) {
                 renderer$close(result = "cancelled")
@@ -1141,6 +1197,10 @@ shift_batch_ui__watch <- function(x, follow, interval, events, ui) {
                 )
             }
         }
+        # }}}
     )
     x
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

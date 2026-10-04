@@ -5,6 +5,7 @@ NULL
 # data.table's NA comparison behaviour. The same helper is used for manifest
 # coverage and Parquet data so a derived artifact cannot cross scenarios,
 # members, grids, or sites.
+# shift_climate__humidity_identity_match {{{
 shift_climate__humidity_identity_match <- function(rows, identity, columns) {
     keep <- rep(TRUE, nrow(rows))
     for (column in intersect(columns, names(rows))) {
@@ -16,11 +17,13 @@ shift_climate__humidity_identity_match <- function(rows, identity, columns) {
     }
     keep
 }
+# }}}
 
 # Persist canonical hurs extraction plans and Parquet artifacts when a resolved
 # identity has no direct hurs but has complete huss, tas, and ps inputs. This
 # occurs before task-level coverage, so strict coverage and EpwMorpher consume
 # the same durable canonical evidence on initial and resumed runs.
+# shift_climate__derive_hurs_climate {{{
 shift_climate__derive_hurs_climate <- function(
     climate,
     recipe,
@@ -47,9 +50,11 @@ shift_climate__derive_hurs_climate <- function(
         is.null(humidity_alternatives) ||
             !any(vapply(
                 humidity_alternatives,
+                # vapply callback {{{
                 function(value) {
                     identical(as.character(value), c("huss", "tas", "ps"))
                 },
+                # }}}
                 logical(1L)
             ))
     ) {
@@ -95,9 +100,11 @@ shift_climate__derive_hurs_climate <- function(
             next
         }
         inputs <- c("huss", "tas", "ps")
+        # lapply callback {{{
         source_rows <- lapply(inputs, function(variable) {
             rows[variable_id == variable & complete %in% TRUE]
         })
+        # }}}
         # A zero-row data.table still has a non-zero length because `length()`
         # counts columns. Check rows so optional table partitions without the
         # three humidity inputs are skipped instead of being derived.
@@ -105,7 +112,9 @@ shift_climate__derive_hurs_climate <- function(
             next
         }
         source_plan_ids <- sort(unique(unlist(
+            # lapply callback {{{
             lapply(source_rows, function(value) value$plan_id),
+            # }}}
             use.names = FALSE
         )))
         derived_plan_id <- store__hash(
@@ -114,7 +123,9 @@ shift_climate__derive_hurs_climate <- function(
         )
         existing <- tryCatch(
             store$coverage(plan_id = derived_plan_id),
+            # error {{{
             error = function(e) data.table::data.table()
+            # }}}
         )
         if (
             !isTRUE(overwrite) &&
@@ -248,3 +259,6 @@ shift_climate__derive_hurs_climate <- function(
     climate@meta$derived_variables <- provenance
     climate
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

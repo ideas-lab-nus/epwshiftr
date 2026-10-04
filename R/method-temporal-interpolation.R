@@ -16,12 +16,15 @@ TEMPORAL_LINEAR_VARIABLES <- c(
 
 # Normalize one role table to the canonical sub-daily contract before splitting
 # it into independent interpolation series.
+# temporal__linear_source {{{
 temporal__linear_source <- function(input, role) {
     if (!S7::S7_inherits(input, WeatherInput)) {
         cli::cli_abort("Role {.val {role}} must contain a WeatherInput object.")
     }
-    if (!identical(input@representation, "series") ||
-        !is.data.frame(input@source)) {
+    if (
+        !identical(input@representation, "series") ||
+            !is.data.frame(input@source)
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must contain a materialized series input."
         )
@@ -42,9 +45,11 @@ temporal__linear_source <- function(input, role) {
             "Role {.val {role}} must contain sub-daily source samples."
         )
     }
-    if (!inherits(data[["time"]], "POSIXt") ||
-        anyNA(data[["time"]]) ||
-        any(!is.finite(as.numeric(data[["time"]])))) {
+    if (
+        !inherits(data[["time"]], "POSIXt") ||
+            anyNA(data[["time"]]) ||
+            any(!is.finite(as.numeric(data[["time"]])))
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must retain finite, non-missing POSIX source `time` values."
         )
@@ -74,9 +79,11 @@ temporal__linear_source <- function(input, role) {
     )
     list(data = data, frequencies = frequencies)
 }
+# }}}
 
 # Validate one ordered source series, including its declared timestep and the
 # consistency between surrogate POSIX time and native CF elapsed seconds.
+# temporal__validate_linear_group {{{
 temporal__validate_linear_group <- function(
     data,
     frequency,
@@ -106,15 +113,19 @@ temporal__validate_linear_group <- function(
     }
     elapsed <- diff(native_seconds)
     tolerance <- 1e-6
-    if (length(elapsed) &&
-        any(abs(elapsed - time_step_seconds) > tolerance)) {
+    if (
+        length(elapsed) &&
+            any(abs(elapsed - time_step_seconds) > tolerance)
+    ) {
         cli::cli_abort(
             "Interpolation group {.val {label}} contains a gap or irregular source timestep."
         )
     }
     posix_elapsed <- diff(as.numeric(data[["time"]]))
-    if (length(posix_elapsed) &&
-        any(abs(posix_elapsed - elapsed) > tolerance)) {
+    if (
+        length(posix_elapsed) &&
+            any(abs(posix_elapsed - elapsed) > tolerance)
+    ) {
         cli::cli_abort(
             "Interpolation group {.val {label}} has source `time` values inconsistent with its native CF chronology."
         )
@@ -126,9 +137,11 @@ temporal__validate_linear_group <- function(
     }
     native_seconds
 }
+# }}}
 
 # Interpolate one continuous variable group and record the exact two source
 # samples contributing to every target value.
+# temporal__linear_group {{{
 temporal__linear_group <- function(
     data,
     group_columns,
@@ -185,21 +198,31 @@ temporal__linear_group <- function(
             )
         }
         anchor_seconds <- as.numeric(anchors[["native_second"]])
-        if (any(!is.finite(anchor_seconds)) ||
-            any(abs(anchor_seconds / 3600 - round(anchor_seconds / 3600)) >
-                1e-6)) {
+        if (
+            any(!is.finite(anchor_seconds)) ||
+                any(
+                    abs(anchor_seconds / 3600 - round(anchor_seconds / 3600)) >
+                        1e-6
+                )
+        ) {
             cli::cli_abort(
                 "Interpolation anchors for group {.val {label}} must use whole-hour native CF times."
             )
         }
-        if (any(anchor_seconds <= native_seconds[[1L]] |
-            anchor_seconds >= native_seconds[[length(native_seconds)]])) {
+        if (
+            any(
+                anchor_seconds <= native_seconds[[1L]] |
+                    anchor_seconds >= native_seconds[[length(native_seconds)]]
+            )
+        ) {
             cli::cli_abort(
                 "Interpolation anchors for group {.val {label}} must lie strictly inside source support."
             )
         }
-        if (anyDuplicated(anchor_seconds) ||
-            any(anchor_seconds %in% native_seconds)) {
+        if (
+            anyDuplicated(anchor_seconds) ||
+                any(anchor_seconds %in% native_seconds)
+        ) {
             cli::cli_abort(
                 "Interpolation anchors for group {.val {label}} must use unique times between original source samples."
             )
@@ -239,8 +262,11 @@ temporal__linear_group <- function(
     target_step <- 3600
     target_start <- ceiling((native_seconds[[1L]] - 1e-6) / target_step) *
         target_step
-    target_end <- floor((native_seconds[[length(native_seconds)]] + 1e-6) /
-        target_step) * target_step
+    target_end <- floor(
+        (native_seconds[[length(native_seconds)]] + 1e-6) /
+            target_step
+    ) *
+        target_step
     target_seconds <- seq.int(
         from = target_start,
         to = target_end,
@@ -263,10 +289,11 @@ temporal__linear_group <- function(
     denominator <- support_seconds[right] - support_seconds[left]
     weight_right <- numeric(length(target_seconds))
     interior <- left != right
-    weight_right[interior] <- (
-        target_seconds[interior] - support_seconds[left[interior]]
-    ) / denominator[interior]
-    value <- support_value[left] * (1 - weight_right) +
+    weight_right[interior] <- (target_seconds[interior] -
+        support_seconds[left[interior]]) /
+        denominator[interior]
+    value <- support_value[left] *
+        (1 - weight_right) +
         support_value[right] * weight_right
     value[matched] <- support_value[exact[matched]]
 
@@ -280,7 +307,8 @@ temporal__linear_group <- function(
     }
     target_time <- as.POSIXct(
         as.numeric(data[["time"]][[1L]]) +
-            target_seconds - native_seconds[[1L]],
+            target_seconds -
+            native_seconds[[1L]],
         origin = "1970-01-01",
         tz = time_zone
     )
@@ -344,14 +372,18 @@ temporal__linear_group <- function(
         target_step_seconds = as.numeric(target_step),
         source_samples = nrow(data),
         anchor_samples = length(support_seconds) - nrow(data),
-        anchor_hour_policies = if (is.null(anchors) ||
-            !"hour_policy" %in% names(anchors)) {
+        anchor_hour_policies = if (
+            is.null(anchors) ||
+                !"hour_policy" %in% names(anchors)
+        ) {
             NA_character_
         } else {
             paste(sort(unique(anchors[["hour_policy"]])), collapse = ",")
         },
-        anchor_pair_policies = if (is.null(anchors) ||
-            !"pair_policy" %in% names(anchors)) {
+        anchor_pair_policies = if (
+            is.null(anchors) ||
+                !"pair_policy" %in% names(anchors)
+        ) {
             NA_character_
         } else {
             paste(sort(unique(anchors[["pair_policy"]])), collapse = ",")
@@ -366,9 +398,11 @@ temporal__linear_group <- function(
     )
     list(data = out[], diagnostic = diagnostic)
 }
+# }}}
 
 # Interpolate every independent group in one semantic role and rebuild its
 # WeatherInput descriptor with hourly frequency and retained source provenance.
+# temporal__linear_role {{{
 temporal__linear_role <- function(
     input,
     role,
@@ -388,6 +422,7 @@ temporal__linear_role <- function(
         keep.by = TRUE,
         drop = TRUE
     )
+    # lapply callback {{{
     results <- lapply(groups, function(group) {
         # Frequency is part of the group identity, allowing one role to retain
         # variables drawn from different supported CMIP6 sub-daily tables.
@@ -412,8 +447,11 @@ temporal__linear_role <- function(
             anchors = anchors
         )
     })
+    # }}}
     data <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(results, function(result) result$data),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -439,7 +477,9 @@ temporal__linear_role <- function(
         target_step_seconds = 3600,
         daily_extrema_anchors = sum(vapply(
             results,
+            # vapply callback {{{
             function(result) result$diagnostic$anchor_samples[[1L]],
+            # }}}
             integer(1L)
         )),
         boundary_policy = "bounded_by_source",
@@ -466,7 +506,9 @@ temporal__linear_role <- function(
         )
     )
     diagnostics <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(results, function(result) result$diagnostic),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -485,9 +527,11 @@ temporal__linear_role <- function(
         provenance = interpolation_record
     )
 }
+# }}}
 
 # Apply piecewise-linear interpolation to matching historical and future model
 # roles while preserving all other role inputs unchanged.
+# temporal__linear_apply {{{
 temporal__linear_apply <- function(inputs, context, options) {
     if (!S7::S7_inherits(inputs, WeatherInputs)) {
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
@@ -499,6 +543,7 @@ temporal__linear_apply <- function(inputs, context, options) {
         )
     }
     roles <- c("model_historical", "model_future")
+    # lapply callback {{{
     results <- lapply(roles, function(role) {
         temporal__linear_role(
             weather__get_input(inputs, role),
@@ -506,6 +551,7 @@ temporal__linear_apply <- function(inputs, context, options) {
             context
         )
     })
+    # }}}
     names(results) <- roles
     output_inputs <- weather__new_inputs(
         weather_template = weather__get_input(
@@ -520,7 +566,9 @@ temporal__linear_apply <- function(inputs, context, options) {
         model_future = results$model_future$input
     )
     diagnostics <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(results, function(result) result$diagnostics),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -529,11 +577,15 @@ temporal__linear_apply <- function(inputs, context, options) {
         roles = roles,
         source_frequencies = lapply(
             results,
+            # lapply callback {{{
             function(result) result$provenance$source_frequencies
+            # }}}
         ),
         source_step_seconds = lapply(
             results,
+            # lapply callback {{{
             function(result) result$provenance$source_step_seconds
+            # }}}
         ),
         target_frequency = "hour",
         target_step_seconds = 3600,
@@ -552,11 +604,14 @@ temporal__linear_apply <- function(inputs, context, options) {
         )
     )
 }
+# }}}
 
 # Describe the reusable point-state interpolation component independently of a
 # complete future-weather recipe.
+# temporal__linear_component {{{
 temporal__linear_component <- function() {
     variables <- lapply(TEMPORAL_LINEAR_VARIABLES, identity)
+    # requirement {{{
     requirement <- function(role) {
         component__input_requirement(
             role,
@@ -566,6 +621,7 @@ temporal__linear_component <- function() {
             variable_sets = variables
         )
     }
+    # }}}
     component__spec(
         name = "linear_temporal_interpolation",
         stage = "preprocess",
@@ -590,10 +646,15 @@ temporal__linear_component <- function() {
         )
     )
 }
+# }}}
 
 # Register the reusable preprocess implementation once for recipe compilation
 # and standalone component inspection.
+# temporal__register_linear_component {{{
 temporal__register_linear_component <- function() {
     component__register_builtin(temporal__linear_component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

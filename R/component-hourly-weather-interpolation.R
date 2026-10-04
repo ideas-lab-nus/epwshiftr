@@ -19,6 +19,7 @@ HOURLY_WEATHER_REFERENCES <- c(
 
 # Copy a variable family into a new WeatherInput while retaining only metadata
 # grouping fields that still exist in the materialized subset.
+# weather_interp__subset_input {{{
 weather_interp__subset_input <- function(input, role, variables) {
     data <- data.table::as.data.table(data.table::copy(input@source))
     data <- data[get("variable_id") %in% variables]
@@ -43,13 +44,17 @@ weather_interp__subset_input <- function(input, role, variables) {
         metadata = metadata
     )
 }
+# }}}
 
 # Validate one model role before its point-state, radiation, and daily-extrema
 # rows are dispatched to algorithms with different temporal semantics.
+# weather_interp__model_source {{{
 weather_interp__model_source <- function(input, role) {
-    if (!S7::S7_inherits(input, WeatherInput) ||
-        !identical(input@representation, "series") ||
-        !is.data.frame(input@source)) {
+    if (
+        !S7::S7_inherits(input, WeatherInput) ||
+            !identical(input@representation, "series") ||
+            !is.data.frame(input@source)
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must contain a materialized series WeatherInput."
         )
@@ -122,8 +127,10 @@ weather_interp__model_source <- function(input, role) {
             )
         }
     }
-    if (length(extrema) &&
-        !all(frequency_by_variable[["tas"]] %in% c("3hr", "3hrPt"))) {
+    if (
+        length(extrema) &&
+            !all(frequency_by_variable[["tas"]] %in% c("3hr", "3hrPt"))
+    ) {
         cli::cli_abort(
             "Role {.val {role}} requires three-hourly `tas` when daily extrema anchors are supplied."
         )
@@ -140,20 +147,26 @@ weather_interp__model_source <- function(input, role) {
         has_extrema = length(extrema) == 2L
     )
 }
+# }}}
 
 # Return the most frequent observed extreme hour with an earliest-hour tie
 # break so the result is stable across platforms and input row order.
+# weather_interp__mode_second {{{
 weather_interp__mode_second <- function(seconds) {
     counts <- table(as.numeric(seconds))
     as.numeric(names(counts)[counts == max(counts)])[[1L]]
 }
+# }}}
 
 # Learn site- and month-specific modal maximum/minimum hours from the hourly
 # observed-reference temperature without pairing its dates to model calendars.
+# weather_interp__observed_modes {{{
 weather_interp__observed_modes <- function(input) {
-    if (!S7::S7_inherits(input, WeatherInput) ||
-        !identical(input@representation, "series") ||
-        !is.data.frame(input@source)) {
+    if (
+        !S7::S7_inherits(input, WeatherInput) ||
+            !identical(input@representation, "series") ||
+            !is.data.frame(input@source)
+    ) {
         cli::cli_abort(
             "Role `observed_reference` must contain a materialized hourly series WeatherInput."
         )
@@ -196,6 +209,7 @@ weather_interp__observed_modes <- function(input) {
         ))
     }
     sites <- split(tas, by = ".weather_site_id", keep.by = TRUE)
+    # lapply callback {{{
     daily <- lapply(sites, function(site) {
         canonical <- data.table::as.data.table(bias__subdaily_table(
             as.data.frame(site, stringsAsFactors = FALSE),
@@ -232,18 +246,24 @@ weather_interp__observed_modes <- function(input) {
         )
         data.table::rbindlist(list(maximum, minimum), use.names = TRUE)
     })
+    # }}}
     daily <- data.table::rbindlist(daily, use.names = TRUE, fill = TRUE)
-    modes <- daily[, .(
-        cf_second_of_day = weather_interp__mode_second(
-            get("cf_second_of_day")
-        )
-    ), by = c(".weather_site_id", "cf_month", "extreme")]
+    modes <- daily[,
+        .(
+            cf_second_of_day = weather_interp__mode_second(
+                get("cf_second_of_day")
+            )
+        ),
+        by = c(".weather_site_id", "cf_month", "extreme")
+    ]
     data.table::setnames(modes, ".weather_site_id", "site_id")
     modes[]
 }
+# }}}
 
 # Match daily extrema to one independently interpolated model-temperature
 # group without treating table or variable identifiers as shared identity.
+# weather_interp__matching_extrema {{{
 weather_interp__matching_extrema <- function(extrema, group, role) {
     identity_columns <- intersect(
         setdiff(
@@ -275,9 +295,11 @@ weather_interp__matching_extrema <- function(extrema, group, role) {
         as.data.frame(matched, stringsAsFactors = FALSE)
     ))
 }
+# }}}
 
 # Select the adjacent three-hourly pair that best represents one daily high or
 # low while reporting when the two unconstrained extreme samples are not adjacent.
+# weather_interp__extreme_pair {{{
 weather_interp__extreme_pair <- function(day, extreme) {
     data.table::setorderv(day, "cf_second_of_day")
     if (nrow(day) < 2L) {
@@ -288,7 +310,8 @@ weather_interp__extreme_pair <- function(day, extreme) {
     left <- seq_len(nrow(day) - 1L)
     right <- left + 1L
     score <- (as.numeric(day[["value"]][left]) +
-        as.numeric(day[["value"]][right])) / 2
+        as.numeric(day[["value"]][right])) /
+        2
     selected <- if (identical(extreme, "tasmax")) {
         which.max(score)
     } else {
@@ -312,9 +335,11 @@ weather_interp__extreme_pair <- function(day, extreme) {
         }
     )
 }
+# }}}
 
 # Choose one interior hourly anchor using the observed modal extreme hour when
 # available and an earliest-interior deterministic fallback otherwise.
+# weather_interp__anchor_second {{{
 weather_interp__anchor_second <- function(
     left_second,
     right_second,
@@ -345,9 +370,11 @@ weather_interp__anchor_second <- function(
         policy = "earliest_interior_hour"
     )
 }
+# }}}
 
 # Build daily minimum and maximum support points for one regular three-hourly
 # `tas` group, preserving the exact source row and selection policy.
+# weather_interp__anchors {{{
 weather_interp__anchors <- function(
     group,
     extrema,
@@ -355,9 +382,11 @@ weather_interp__anchors <- function(
     role
 ) {
     source_frequency <- unique(as.character(group[["frequency"]]))
-    if (length(source_frequency) != 1L ||
-        !source_frequency %in% c("3hr", "3hrPt") ||
-        !identical(unique(as.character(group[["variable_id"]])), "tas")) {
+    if (
+        length(source_frequency) != 1L ||
+            !source_frequency %in% c("3hr", "3hrPt") ||
+            !identical(unique(as.character(group[["variable_id"]])), "tas")
+    ) {
         return(NULL)
     }
     matched <- weather_interp__matching_extrema(extrema, group, role)
@@ -382,6 +411,7 @@ weather_interp__anchors <- function(
         "cf_day"
     )
     days <- split(group, by = day_columns, keep.by = TRUE, drop = TRUE)
+    # lapply callback {{{
     anchors <- lapply(days, function(day) {
         # A single padding sample may bracket a requested period boundary but
         # cannot define a within-day extreme insertion interval.
@@ -394,10 +424,12 @@ weather_interp__anchors <- function(
                 get("cf_month") == day[["cf_month"]][[1L]] &
                 get("cf_day") == day[["cf_day"]][[1L]]
         ]
-        if (!identical(
-            sort(as.character(rows[["variable_id"]])),
-            sort(HOURLY_WEATHER_EXTREMA_VARIABLES)
-        )) {
+        if (
+            !identical(
+                sort(as.character(rows[["variable_id"]])),
+                sort(HOURLY_WEATHER_EXTREMA_VARIABLES)
+            )
+        ) {
             cli::cli_abort(
                 "Role {.val {role}} requires one matching `tasmin` and `tasmax` value for every anchored `tas` day."
             )
@@ -410,55 +442,60 @@ weather_interp__anchors <- function(
             )
         }
 
-        day_anchors <- lapply(HOURLY_WEATHER_EXTREMA_VARIABLES, function(
-            extreme
-        ) {
-            row <- rows[get("variable_id") == extreme]
-            pair <- weather_interp__extreme_pair(day, extreme)
-            left <- day[pair$left]
-            right <- day[pair$right]
-            anchor_value <- as.numeric(row[["value"]][[1L]])
-            endpoint_values <- c(left[["value"]], right[["value"]])
-            consistent <- if (identical(extreme, "tasmax")) {
-                anchor_value >= max(endpoint_values)
-            } else {
-                anchor_value <= min(endpoint_values)
-            }
-            if (!consistent) {
-                cli::cli_abort(
-                    "Role {.val {role}} daily {.val {extreme}} is inconsistent with its selected three-hourly `tas` bracket."
+        # lapply callback {{{
+        day_anchors <- lapply(
+            HOURLY_WEATHER_EXTREMA_VARIABLES,
+            function(
+                extreme
+            ) {
+                row <- rows[get("variable_id") == extreme]
+                pair <- weather_interp__extreme_pair(day, extreme)
+                left <- day[pair$left]
+                right <- day[pair$right]
+                anchor_value <- as.numeric(row[["value"]][[1L]])
+                endpoint_values <- c(left[["value"]], right[["value"]])
+                consistent <- if (identical(extreme, "tasmax")) {
+                    anchor_value >= max(endpoint_values)
+                } else {
+                    anchor_value <= min(endpoint_values)
+                }
+                if (!consistent) {
+                    cli::cli_abort(
+                        "Role {.val {role}} daily {.val {extreme}} is inconsistent with its selected three-hourly `tas` bracket."
+                    )
+                }
+                selected <- weather_interp__anchor_second(
+                    as.numeric(left[["cf_second_of_day"]][[1L]]),
+                    as.numeric(right[["cf_second_of_day"]][[1L]]),
+                    modes,
+                    site_id,
+                    as.integer(day[["cf_month"]][[1L]]),
+                    extreme
+                )
+                coordinate <- as.data.frame(row, stringsAsFactors = FALSE)
+                coordinate[["cf_second_of_day"]] <- selected$second
+                native_second <- temporal__native_seconds(
+                    coordinate,
+                    coordinate[["cf_calendar"]][[1L]]
+                )
+                label <- paste0(
+                    temporal__cf_time_label(coordinate),
+                    "/",
+                    extreme
+                )
+                data.table::data.table(
+                    native_second = native_second,
+                    value = anchor_value,
+                    source_time = label,
+                    source_row = as.integer(row[[".weather_source_row"]][[1L]]),
+                    source_kind = paste0("model_daily_", extreme),
+                    extreme = extreme,
+                    hour_policy = selected$policy,
+                    pair_policy = pair$policy
                 )
             }
-            selected <- weather_interp__anchor_second(
-                as.numeric(left[["cf_second_of_day"]][[1L]]),
-                as.numeric(right[["cf_second_of_day"]][[1L]]),
-                modes,
-                site_id,
-                as.integer(day[["cf_month"]][[1L]]),
-                extreme
-            )
-            coordinate <- as.data.frame(row, stringsAsFactors = FALSE)
-            coordinate[["cf_second_of_day"]] <- selected$second
-            native_second <- temporal__native_seconds(
-                coordinate,
-                coordinate[["cf_calendar"]][[1L]]
-            )
-            label <- paste0(
-                temporal__cf_time_label(coordinate),
-                "/",
-                extreme
-            )
-            data.table::data.table(
-                native_second = native_second,
-                value = anchor_value,
-                source_time = label,
-                source_row = as.integer(row[[".weather_source_row"]][[1L]]),
-                source_kind = paste0("model_daily_", extreme),
-                extreme = extreme,
-                hour_policy = selected$policy,
-                pair_policy = pair$policy
-            )
-        })
+        )
+        # }}}
         day_anchors <- data.table::rbindlist(day_anchors)
         if (anyDuplicated(day_anchors[["native_second"]])) {
             cli::cli_abort(
@@ -467,15 +504,18 @@ weather_interp__anchors <- function(
         }
         day_anchors
     })
+    # }}}
     anchors <- anchors[lengths(anchors) > 0L]
     if (!length(anchors)) {
         return(NULL)
     }
     data.table::rbindlist(anchors, use.names = TRUE, fill = TRUE)
 }
+# }}}
 
 # Interpolate one point-state family and optionally inject paired daily
 # temperature extrema into each matching three-hourly `tas` group.
+# weather_interp__state_role {{{
 weather_interp__state_role <- function(
     input,
     source,
@@ -498,9 +538,11 @@ weather_interp__state_role <- function(
     anchor_factory <- if (is.null(extrema)) {
         NULL
     } else {
+        # { callback {{{
         function(group, group_columns) {
             weather_interp__anchors(group, extrema, modes, role)
         }
+        # }}}
     }
     temporal__linear_role(
         state_input,
@@ -509,9 +551,11 @@ weather_interp__state_role <- function(
         anchor_factory = anchor_factory
     )
 }
+# }}}
 
 # Identify the complete native-calendar years shared by every reconstructed
 # variable group, treating partial edge years only as interpolation support.
+# weather_interp__complete_years {{{
 weather_interp__complete_years <- function(data, group_columns, role) {
     groups <- base::split(
         data,
@@ -520,26 +564,33 @@ weather_interp__complete_years <- function(data, group_columns, role) {
         drop = TRUE
     )
     diagnostics <- list()
+    # lapply callback {{{
     complete_sets <- lapply(groups, function(group) {
         label <- temporal__group_label(group, group_columns)
         years <- sort(unique(as.integer(group[["cf_year"]])))
-        complete <- vapply(years, function(year) {
-            target_year <- as.integer(year)
-            rows <- group[get("cf_year") == target_year]
-            year_days <- unique(as.integer(rows[["cf_year_days"]]))
-            if (length(year_days) != 1L) {
-                return(FALSE)
-            }
-            days <- sort(unique(as.integer(rows[["cf_day_of_year"]])))
-            samples_per_day <- table(rows[["cf_day_of_year"]])
-            lattice <- temporal__daily_lattice(
-                as.numeric(rows[["cf_second_of_day"]])
-            )
-            nrow(rows) == year_days * 24L &&
-                identical(days, seq_len(year_days)) &&
-                all(samples_per_day == 24L) &&
-                isTRUE(lattice$regular)
-        }, logical(1L))
+        # vapply callback {{{
+        complete <- vapply(
+            years,
+            function(year) {
+                target_year <- as.integer(year)
+                rows <- group[get("cf_year") == target_year]
+                year_days <- unique(as.integer(rows[["cf_year_days"]]))
+                if (length(year_days) != 1L) {
+                    return(FALSE)
+                }
+                days <- sort(unique(as.integer(rows[["cf_day_of_year"]])))
+                samples_per_day <- table(rows[["cf_day_of_year"]])
+                lattice <- temporal__daily_lattice(
+                    as.numeric(rows[["cf_second_of_day"]])
+                )
+                nrow(rows) == year_days * 24L &&
+                    identical(days, seq_len(year_days)) &&
+                    all(samples_per_day == 24L) &&
+                    isTRUE(lattice$regular)
+            },
+            logical(1L)
+        )
+        # }}}
         diagnostics[[length(diagnostics) + 1L]] <<- data.table::data.table(
             role = role,
             group = label,
@@ -550,6 +601,7 @@ weather_interp__complete_years <- function(data, group_columns, role) {
         )
         years[complete]
     })
+    # }}}
     retained <- sort(Reduce(intersect, complete_sets))
     diagnostics <- data.table::rbindlist(
         diagnostics,
@@ -572,13 +624,17 @@ weather_interp__complete_years <- function(data, group_columns, role) {
         diagnostics = diagnostics
     )
 }
+# }}}
 
 # Merge hourly variable families back into one role descriptor without
 # discarding their family-specific row provenance or interval columns.
+# weather_interp__combine_role {{{
 weather_interp__combine_role <- function(input, role, pieces) {
     pieces <- pieces[lengths(pieces) > 0L]
     data <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(pieces, function(piece) piece$input@source),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -590,9 +646,11 @@ weather_interp__combine_role <- function(input, role, pieces) {
         "cf_second_of_day"
     )
     data.table::setorderv(data, unique(order_columns))
+    # lapply callback {{{
     group_columns <- lapply(pieces, function(piece) {
         piece$input@metadata$group_columns
     })
+    # }}}
     group_columns <- group_columns[lengths(group_columns) > 0L]
     common_groups <- if (length(group_columns)) {
         Reduce(intersect, group_columns)
@@ -617,7 +675,9 @@ weather_interp__combine_role <- function(input, role, pieces) {
             list(
                 hourly_weather_interpolation = lapply(
                     pieces,
+                    # lapply callback {{{
                     function(piece) piece$provenance
+                    # }}}
                 ),
                 hourly_weather_years = list(
                     policy = "shared_complete_native_years",
@@ -636,9 +696,11 @@ weather_interp__combine_role <- function(input, role, pieces) {
         )
     )
 }
+# }}}
 
 # Validate every merged variable/model/site series against the same native-
 # calendar hourly contract while retaining its point or interval sampling phase.
+# weather_interp__hourly_coordinates {{{
 weather_interp__hourly_coordinates <- function(input, role) {
     data <- data.table::as.data.table(data.table::copy(input@source))
     if (any(as.character(data[["frequency"]]) != "hour")) {
@@ -663,6 +725,7 @@ weather_interp__hourly_coordinates <- function(input, role) {
         keep.by = TRUE,
         drop = TRUE
     )
+    # lapply callback {{{
     diagnostics <- lapply(groups, function(group) {
         label <- temporal__group_label(group, group_columns)
         canonical <- bias__subdaily_table(
@@ -676,8 +739,10 @@ weather_interp__hourly_coordinates <- function(input, role) {
             canonical[["cf_calendar"]][[1L]]
         )
         native_seconds <- sort(native_seconds)
-        if (length(native_seconds) > 1L &&
-            any(abs(diff(native_seconds) - 3600) > 1e-6)) {
+        if (
+            length(native_seconds) > 1L &&
+                any(abs(diff(native_seconds) - 3600) > 1e-6)
+        ) {
             cli::cli_abort(
                 "Merged hourly series {.val {paste(role, label, sep = '/')}} contains a native-calendar gap or overlap."
             )
@@ -702,11 +767,14 @@ weather_interp__hourly_coordinates <- function(input, role) {
             last_native_second = native_seconds[[length(native_seconds)]]
         )
     })
+    # }}}
     data.table::rbindlist(diagnostics, use.names = TRUE, fill = TRUE)
 }
+# }}}
 
 # Apply the shared variable-specific interpolation and optionally transform
 # reconstructed model roles before observed-variable compatibility is checked.
+# weather_interp__apply_core {{{
 weather_interp__apply_core <- function(
     inputs,
     context,
@@ -737,8 +805,10 @@ weather_interp__apply_core <- function(
     transformations <- list()
     if (!is.null(observed_transform)) {
         transformed <- observed_transform(observed, "observed_reference")
-        if (!is.list(transformed) ||
-            !S7::S7_inherits(transformed$input, WeatherInput)) {
+        if (
+            !is.list(transformed) ||
+                !S7::S7_inherits(transformed$input, WeatherInput)
+        ) {
             cli::cli_abort(
                 "Observed transformation must return a WeatherInput in `input`."
             )
@@ -748,25 +818,36 @@ weather_interp__apply_core <- function(
     }
     modes <- weather_interp__observed_modes(observed)
     roles <- c("model_historical", "model_future")
+    # lapply callback {{{
     sources <- lapply(roles, function(role) {
         weather_interp__model_source(
             weather__get_input(inputs, role),
             role
         )
     })
+    # }}}
     names(sources) <- roles
-    if (!identical(sources$model_historical$targets,
-        sources$model_future$targets)) {
+    if (
+        !identical(
+            sources$model_historical$targets,
+            sources$model_future$targets
+        )
+    ) {
         cli::cli_abort(
             "Historical and future model roles must contain identical hourly target variable sets."
         )
     }
-    if (!identical(sources$model_historical$has_extrema,
-        sources$model_future$has_extrema)) {
+    if (
+        !identical(
+            sources$model_historical$has_extrema,
+            sources$model_future$has_extrema
+        )
+    ) {
         cli::cli_abort(
             "Historical and future model roles must provide daily extrema anchors consistently."
         )
     }
+    # lapply callback {{{
     results <- lapply(roles, function(role) {
         input <- weather__get_input(inputs, role)
         source <- sources[[role]]
@@ -787,22 +868,28 @@ weather_interp__apply_core <- function(
         } else {
             solar__role(radiation_input, role, context)
         }
-        pieces <- Filter(Negate(is.null), list(
-            point_state = state,
-            solar_radiation = radiation
-        ))
+        pieces <- Filter(
+            Negate(is.null),
+            list(
+                point_state = state,
+                solar_radiation = radiation
+            )
+        )
         list(
             input = weather_interp__combine_role(input, role, pieces),
             pieces = pieces
         )
     })
+    # }}}
     names(results) <- roles
 
     if (!is.null(model_transform)) {
         for (role in roles) {
             transformed <- model_transform(results[[role]]$input, role)
-            if (!is.list(transformed) ||
-                !S7::S7_inherits(transformed$input, WeatherInput)) {
+            if (
+                !is.list(transformed) ||
+                    !S7::S7_inherits(transformed$input, WeatherInput)
+            ) {
                 cli::cli_abort(
                     "Model transformation for role {.val {role}} must return a WeatherInput in `input`."
                 )
@@ -811,9 +898,11 @@ weather_interp__apply_core <- function(
             transformations[[role]] <- transformed
         }
     }
+    # lapply callback {{{
     target_sets <- lapply(results, function(result) {
         sort(unique(as.character(result$input@source[["variable_id"]])))
     })
+    # }}}
     if (!identical(target_sets$model_historical, target_sets$model_future)) {
         cli::cli_abort(
             "Historical and future model transformations must produce identical hourly target variable sets."
@@ -852,7 +941,9 @@ weather_interp__apply_core <- function(
     )
     transformation_diagnostics <- lapply(
         transformations,
+        # lapply callback {{{
         function(result) result$diagnostics
+        # }}}
     )
     transformation_diagnostics <- transformation_diagnostics[
         lengths(transformation_diagnostics) > 0L
@@ -866,20 +957,24 @@ weather_interp__apply_core <- function(
     coordinate_diagnostics <- data.table::rbindlist(
         lapply(
             c("observed_reference", roles),
+            # lapply callback {{{
             function(role) {
                 weather_interp__hourly_coordinates(
                     weather__get_input(output, role),
                     role
                 )
             }
+            # }}}
         ),
         use.names = TRUE,
         fill = TRUE
     )
     year_diagnostics <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(roles, function(role) {
             weather__get_input(output, role)@metadata$hourly_weather_years
         }),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -901,38 +996,49 @@ weather_interp__apply_core <- function(
         kind = "hourly_role_inputs",
         value = output,
         diagnostics = stage_diagnostics,
-        provenance = c(list(
-            method = method,
-            references = HOURLY_WEATHER_REFERENCES,
-            roles = roles,
-            variables = target_variables,
-            source_variables = sources$model_future$targets,
-            point_state_method = "linear_temporal_interpolation",
-            radiation_method = "solar_radiation_interpolation",
-            daily_extrema_anchors = sources$model_future$has_extrema,
-            observed_extreme_hour_policy = "site_month_mode",
-            coordinate_policy = "regular_hourly_native_calendar_per_series",
-            cross_variable_phase_policy = "retain_temporal_semantics",
-            complete_year_policy = "shared_complete_native_years",
-            target_frequency = "hour"
-        ), extra_provenance),
-        metadata = c(list(
-            variable_dispatch = TRUE,
-            daily_extrema_are_auxiliary = TRUE
-        ), extra_metadata)
+        provenance = c(
+            list(
+                method = method,
+                references = HOURLY_WEATHER_REFERENCES,
+                roles = roles,
+                variables = target_variables,
+                source_variables = sources$model_future$targets,
+                point_state_method = "linear_temporal_interpolation",
+                radiation_method = "solar_radiation_interpolation",
+                daily_extrema_anchors = sources$model_future$has_extrema,
+                observed_extreme_hour_policy = "site_month_mode",
+                coordinate_policy = "regular_hourly_native_calendar_per_series",
+                cross_variable_phase_policy = "retain_temporal_semantics",
+                complete_year_policy = "shared_complete_native_years",
+                target_frequency = "hour"
+            ),
+            extra_provenance
+        ),
+        metadata = c(
+            list(
+                variable_dispatch = TRUE,
+                daily_extrema_are_auxiliary = TRUE
+            ),
+            extra_metadata
+        )
     )
 }
+# }}}
 
 # Apply the reusable interpolation component without a method-specific model
 # transformation, preserving its established public component contract.
+# weather_interp__apply {{{
 weather_interp__apply <- function(inputs, context, options) {
     weather_interp__apply_core(inputs, context, options)
 }
+# }}}
 
 # Describe the composite hourly-weather preprocessing boundary used when one
 # climate source contains variables with point and interval-mean semantics.
+# weather_interp__component {{{
 weather_interp__component <- function() {
     target_sets <- lapply(HOURLY_WEATHER_TARGET_VARIABLES, identity)
+    # model_requirement {{{
     model_requirement <- function(role) {
         component__input_requirement(
             role,
@@ -942,6 +1048,7 @@ weather_interp__component <- function() {
             variable_sets = target_sets
         )
     }
+    # }}}
     component__spec(
         name = "hourly_weather_interpolation",
         stage = "preprocess",
@@ -978,10 +1085,15 @@ weather_interp__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the composite preprocessing implementation once for complete
 # recipes that require state, radiation, and optional extrema inputs together.
+# weather_interp__register_component {{{
 weather_interp__register_component <- function() {
     component__register_builtin(weather_interp__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -27,22 +27,29 @@ HOURMAP_TARGET_HOURS <- HOURMAP_TARGET_DAYS * 24L
 
 # Validate one mapped group independently of the physical variables that a
 # later stage will derive from its climate-series values.
+# hourmap__series_error {{{
 hourmap__series_error <- function(self) {
-    if (length(self@group_id) != 1L ||
-        is.na(self@group_id) ||
-        !grepl("^[a-z][a-z0-9-]*$", self@group_id)) {
+    if (
+        length(self@group_id) != 1L ||
+            is.na(self@group_id) ||
+            !grepl("^[a-z][a-z0-9-]*$", self@group_id)
+    ) {
         return("`group_id` must use lower-case letters, numbers, and hyphens.")
     }
-    if (length(self@key) &&
-        (is.null(names(self@key)) ||
-            any(!nzchar(names(self@key))) ||
-            anyDuplicated(names(self@key)))) {
+    if (
+        length(self@key) &&
+            (is.null(names(self@key)) ||
+                any(!nzchar(names(self@key))) ||
+                anyDuplicated(names(self@key)))
+    ) {
         return("`key` must be a uniquely named list.")
     }
-    if (!length(self@variables) ||
-        anyNA(self@variables) ||
-        any(!grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variables)) ||
-        anyDuplicated(self@variables)) {
+    if (
+        !length(self@variables) ||
+            anyNA(self@variables) ||
+            any(!grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variables)) ||
+            anyDuplicated(self@variables)
+    ) {
         return("`variables` must contain unique CMIP-style identifiers.")
     }
     if (!is.data.frame(self@data) || !nrow(self@data)) {
@@ -73,14 +80,18 @@ hourmap__series_error <- function(self) {
             paste(sprintf("`%s`", missing), collapse = ", ")
         ))
     }
-    if (!setequal(
-        self@variables,
-        unique(as.character(self@data[["variable_id"]]))
-    )) {
+    if (
+        !setequal(
+            self@variables,
+            unique(as.character(self@data[["variable_id"]]))
+        )
+    ) {
         return("`variables` must match the mapped hourly table.")
     }
-    if (!is.numeric(self@data[["value"]]) ||
-        any(!is.finite(self@data[["value"]]))) {
+    if (
+        !is.numeric(self@data[["value"]]) ||
+            any(!is.finite(self@data[["value"]]))
+    ) {
         return("Mapped hourly `value` must contain only finite numbers.")
     }
     expected_rows <- HOURMAP_TARGET_HOURS * length(self@variables)
@@ -93,17 +104,24 @@ hourmap__series_error <- function(self) {
             ,
             drop = FALSE
         ]
-        if (!identical(as.integer(rows[["epw_row"]]), seq_len(
-            HOURMAP_TARGET_HOURS
-        ))) {
+        if (
+            !identical(
+                as.integer(rows[["epw_row"]]),
+                seq_len(
+                    HOURMAP_TARGET_HOURS
+                )
+            )
+        ) {
             return(sprintf(
                 "Mapped variable `%s` must use ordered EPW rows 1 through 8760.",
                 variable
             ))
         }
     }
-    if (!is.data.frame(self@diagnostics) ||
-        nrow(self@diagnostics) != length(self@variables)) {
+    if (
+        !is.data.frame(self@diagnostics) ||
+            nrow(self@diagnostics) != length(self@variables)
+    ) {
         return("`diagnostics` must contain one row per mapped variable.")
     }
     error <- sequence__provenance_error(self@provenance)
@@ -112,9 +130,11 @@ hourmap__series_error <- function(self) {
     }
     NULL
 }
+# }}}
 
 # MappedHourlyClimateSeries retains one signal group after its native source
 # year has been translated onto the target EPW hour rows.
+# MappedHourlyClimateSeries {{{
 MappedHourlyClimateSeries <- S7::new_class(
     "MappedHourlyClimateSeries",
     properties = list(
@@ -127,9 +147,11 @@ MappedHourlyClimateSeries <- S7::new_class(
     ),
     validator = hourmap__series_error
 )
+# }}}
 
 # Validate one future-model year after all variable groups share the same EPW
 # target grid while retaining their independent source metadata.
+# hourmap__member_error {{{
 hourmap__member_error <- function(self) {
     error <- sequence__identifier_error(
         self@sequence_id,
@@ -142,9 +164,11 @@ hourmap__member_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
-    if (length(self@source_calendar) != 1L ||
-        is.na(self@source_calendar) ||
-        !self@source_calendar %in% CF_TIME_CALENDARS) {
+    if (
+        length(self@source_calendar) != 1L ||
+            is.na(self@source_calendar) ||
+            !self@source_calendar %in% CF_TIME_CALENDARS
+    ) {
         return("`source_calendar` must identify one supported CF calendar.")
     }
     error <- sequence__member_class_error(
@@ -157,7 +181,9 @@ hourmap__member_error <- function(self) {
     }
     group_ids <- vapply(
         self@series,
+        # vapply callback {{{
         function(series) series@group_id,
+        # }}}
         character(1L)
     )
     error <- sequence__unique_values_error(
@@ -167,10 +193,15 @@ hourmap__member_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
-    variables <- unlist(lapply(
-        self@series,
-        function(series) series@variables
-    ), use.names = FALSE)
+    variables <- unlist(
+        lapply(
+            self@series,
+            # lapply callback {{{
+            function(series) series@variables
+            # }}}
+        ),
+        use.names = FALSE
+    )
     error <- sequence__unique_values_error(
         variables,
         "Each mapped hourly variable must occur in exactly one group."
@@ -178,9 +209,14 @@ hourmap__member_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
-    years <- unique(unlist(lapply(self@series, function(series) {
-        as.integer(series@data[["year"]])
-    }), use.names = FALSE))
+    # lapply callback {{{
+    years <- unique(unlist(
+        lapply(self@series, function(series) {
+            as.integer(series@data[["year"]])
+        }),
+        use.names = FALSE
+    ))
+    # }}}
     if (!identical(years, self@weather_year)) {
         return("Every mapped hourly row must match `weather_year`.")
     }
@@ -190,9 +226,11 @@ hourmap__member_error <- function(self) {
     }
     NULL
 }
+# }}}
 
 # MappedHourlyClimateMember groups every mapped climate variable for one
 # source-model year before EPW physical fields are constructed.
+# MappedHourlyClimateMember {{{
 MappedHourlyClimateMember <- S7::new_class(
     "MappedHourlyClimateMember",
     properties = list(
@@ -204,9 +242,11 @@ MappedHourlyClimateMember <- S7::new_class(
     ),
     validator = hourmap__member_error
 )
+# }}}
 
 # Validate the complete mapped sequence independently of the number of source
 # years retained by the selected future-model period.
+# hourmap__sequence_error {{{
 hourmap__sequence_error <- function(self) {
     error <- sequence__member_class_error(
         self@members,
@@ -216,16 +256,22 @@ hourmap__sequence_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
-    if (!identical(self@frequency, "hour") ||
-        !identical(as.numeric(self@time_step_seconds), 3600)) {
-        return("Mapped hourly climate sequences require a 3600-second hourly timestep.")
+    if (
+        !identical(self@frequency, "hour") ||
+            !identical(as.numeric(self@time_step_seconds), 3600)
+    ) {
+        return(
+            "Mapped hourly climate sequences require a 3600-second hourly timestep."
+        )
     }
     if (!identical(self@target_calendar, "epw_365_day")) {
         return("`target_calendar` must be `epw_365_day`.")
     }
     years <- vapply(
         self@members,
+        # vapply callback {{{
         function(member) member@weather_year,
+        # }}}
         integer(1L)
     )
     error <- sequence__ordered_years_error(
@@ -237,7 +283,9 @@ hourmap__sequence_error <- function(self) {
     }
     sequence_ids <- vapply(
         self@members,
+        # vapply callback {{{
         function(member) member@sequence_id,
+        # }}}
         character(1L)
     )
     error <- sequence__shared_values_error(
@@ -247,12 +295,19 @@ hourmap__sequence_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
+    # lapply callback {{{
     variable_sets <- lapply(self@members, function(member) {
-        sort(unlist(lapply(
-            member@series,
-            function(series) series@variables
-        ), use.names = FALSE))
+        sort(unlist(
+            lapply(
+                member@series,
+                # lapply callback {{{
+                function(series) series@variables
+                # }}}
+            ),
+            use.names = FALSE
+        ))
     })
+    # }}}
     error <- sequence__shared_sets_error(
         variable_sets,
         "Every mapped hourly member must contain the same variables."
@@ -266,9 +321,11 @@ hourmap__sequence_error <- function(self) {
     }
     NULL
 }
+# }}}
 
 # MappedHourlyClimateSequence is the typed boundary consumed by later physical
 # closure and output components for direct-model future years.
+# MappedHourlyClimateSequence {{{
 MappedHourlyClimateSequence <- S7::new_class(
     "MappedHourlyClimateSequence",
     properties = list(
@@ -280,9 +337,11 @@ MappedHourlyClimateSequence <- S7::new_class(
     ),
     validator = hourmap__sequence_error
 )
+# }}}
 
 # Read and validate the fixed EPW target lattice without relying on the
 # template year, which may be a conventional placeholder rather than a model year.
+# hourmap__target_grid {{{
 hourmap__target_grid <- function(template) {
     if (!inherits(template, "EpwFile")) {
         cli::cli_abort(
@@ -311,9 +370,11 @@ hourmap__target_grid <- function(template) {
     expected_month <- rep(as.integer(day_fields$month), each = 24L)
     expected_day <- rep(as.integer(day_fields$day), each = 24L)
     expected_hour <- rep.int(seq_len(24L), HOURMAP_TARGET_DAYS)
-    if (!identical(as.integer(weather[["month"]]), expected_month) ||
-        !identical(as.integer(weather[["day"]]), expected_day) ||
-        !identical(as.integer(weather[["hour"]]), expected_hour)) {
+    if (
+        !identical(as.integer(weather[["month"]]), expected_month) ||
+            !identical(as.integer(weather[["day"]]), expected_day) ||
+            !identical(as.integer(weather[["hour"]]), expected_hour)
+    ) {
         cli::cli_abort(
             "The EPW template must use ordered non-leap month/day rows with hours 1 through 24."
         )
@@ -331,9 +392,11 @@ hourmap__target_grid <- function(template) {
         minute = as.integer(weather[["minute"]])
     )
 }
+# }}}
 
 # Integrate piecewise-constant source interval means over uniform target bins
 # on normalized annual phase, preserving the annual mean for every CF calendar.
+# hourmap__conservative_interval_mean {{{
 hourmap__conservative_interval_mean <- function(value, target_count) {
     checkmate::assert_numeric(value, min.len = 1L, any.missing = FALSE)
     checkmate::assert_count(target_count, positive = TRUE)
@@ -355,9 +418,11 @@ hourmap__conservative_interval_mean <- function(value, target_count) {
         fraction[partial] * value[whole[partial] + 1L] / source_count
     diff(primitive) * target_count
 }
+# }}}
 
 # Return the common 24-position daily lattice so calendar mapping changes only
 # seasonal day position and never shifts a variable's time of day.
+# hourmap__daily_offsets {{{
 hourmap__daily_offsets <- function(data) {
     lattice <- temporal__daily_lattice(data[["cf_second_of_day"]])
     if (!isTRUE(lattice$regular)) {
@@ -367,8 +432,10 @@ hourmap__daily_offsets <- function(data) {
     }
     lattice$offsets
 }
+# }}}
 
 # Traverse each time-of-day series on the shared native-year-to-EPW lattice.
+# hourmap__map_daily_slots {{{
 hourmap__map_daily_slots <- function(data, target_days, mapper) {
     checkmate::assert_function(mapper)
     source_count <- nrow(data)
@@ -408,13 +475,16 @@ hourmap__map_daily_slots <- function(data, target_days, mapper) {
         hour_phase_seconds = offsets[[1L]] %% 3600
     )
 }
+# }}}
 
 # Map point samples separately at each source time of day by circular annual
 # phase, preventing 360/366-day conversion from drifting the diurnal cycle.
+# hourmap__circular_point_values {{{
 hourmap__circular_point_values <- function(data, target_days) {
     hourmap__map_daily_slots(
         data,
         target_days,
+        # mapper {{{
         mapper = function(source_rows, target_phase) {
             source_phase <- as.numeric(data[["annual_phase"]][source_rows])
             source_value <- as.numeric(data[["value"]][source_rows])
@@ -427,26 +497,33 @@ hourmap__circular_point_values <- function(data, target_days) {
                 target_phase
             )
         }
+        # }}}
     )
 }
+# }}}
 
 # Conservatively remap each time-of-day series across calendar days so
 # interval means retain both their diurnal slot and normalized annual mean.
+# hourmap__conservative_interval_values {{{
 hourmap__conservative_interval_values <- function(data, target_days) {
     hourmap__map_daily_slots(
         data,
         target_days,
+        # mapper {{{
         mapper = function(source_rows, target_phase) {
             hourmap__conservative_interval_mean(
                 data[["value"]][source_rows],
                 length(target_phase)
             )
         }
+        # }}}
     )
 }
+# }}}
 
 # Map one adjusted variable and retain the explicit temporal semantics and
 # numerical diagnostics required by later physical and output stages.
+# hourmap__variable {{{
 hourmap__variable <- function(data, variable, member, target) {
     data <- data.table::as.data.table(data.table::copy(data))
     # Capture the function argument outside data.table evaluation because
@@ -460,7 +537,8 @@ hourmap__variable <- function(data, variable, member, target) {
     expected_samples <- cf_time__year_days(
         member@weather_year,
         member@calendar
-    )[[1L]] * 24L
+    )[[1L]] *
+        24L
     if (nrow(data) != expected_samples) {
         cli::cli_abort(
             paste(
@@ -509,8 +587,10 @@ hourmap__variable <- function(data, variable, member, target) {
 
     mapped_wind_direction <- NULL
     wind_direction_mapping <- NA_character_
-    if (identical(variable, "sfcWind") &&
-        "wind_direction" %in% names(data)) {
+    if (
+        identical(variable, "sfcWind") &&
+            "wind_direction" %in% names(data)
+    ) {
         direction <- as.numeric(data[["wind_direction"]])
         if (any(!is.finite(direction))) {
             cli::cli_abort(
@@ -615,10 +695,13 @@ hourmap__variable <- function(data, variable, member, target) {
     )
     list(data = output[], diagnostic = diagnostic)
 }
+# }}}
 
 # Map every variable carried by one signal group without flattening its group
 # identity or upstream signal provenance into the hourly table.
+# hourmap__series {{{
 hourmap__series <- function(series, member, target) {
+    # lapply callback {{{
     mapped <- lapply(series@variables, function(variable) {
         hourmap__variable(
             series@adjusted@data,
@@ -627,6 +710,7 @@ hourmap__series <- function(series, member, target) {
             target
         )
     })
+    # }}}
     MappedHourlyClimateSeries(
         group_id = series@group_id,
         key = series@key,
@@ -650,42 +734,56 @@ hourmap__series <- function(series, member, target) {
         )
     )
 }
+# }}}
 
 # Reconstruct all direct-model years on one fixed EPW target lattice while
 # leaving physical variable conversion to the following component stage.
+# hourmap__reconstruct {{{
 hourmap__reconstruct <- function(data, inputs, context, options) {
     if (!S7::S7_inherits(data, DirectModelSequence)) {
         cli::cli_abort(
             "`direct_model_epw_calendar_mapping` requires a DirectModelSequence object."
         )
     }
-    if (!identical(data@frequency, "hour") ||
-        !identical(as.numeric(data@time_step_seconds), 3600)) {
+    if (
+        !identical(data@frequency, "hour") ||
+            !identical(as.numeric(data@time_step_seconds), 3600)
+    ) {
         cli::cli_abort(
             "`direct_model_epw_calendar_mapping` requires an hourly direct-model sequence with a 3600-second timestep."
         )
     }
     checkmate::assert_list(options, names = "unique")
     template_input <- weather__get_input(inputs, "weather_template")
-    if (!S7::S7_inherits(template_input, WeatherInput) ||
-        !identical(template_input@representation, "epw")) {
+    if (
+        !S7::S7_inherits(template_input, WeatherInput) ||
+            !identical(template_input@representation, "epw")
+    ) {
         cli::cli_abort(
             "Role `weather_template` must contain an EPW WeatherInput."
         )
     }
     target <- hourmap__target_grid(template_input@source)
 
+    # lapply callback {{{
     members <- lapply(data@members, function(member) {
-        variables <- unlist(lapply(
-            member@series,
-            function(series) series@variables
-        ), use.names = FALSE)
+        variables <- unlist(
+            lapply(
+                member@series,
+                # lapply callback {{{
+                function(series) series@variables
+                # }}}
+            ),
+            use.names = FALSE
+        )
         if (anyDuplicated(variables)) {
             cli::cli_abort(
                 "Weather year {member@weather_year} contains duplicate direct-model variable groups: {.val {unique(variables[duplicated(variables)])}}."
             )
         }
-        series <- lapply(member@series, hourmap__series,
+        series <- lapply(
+            member@series,
+            hourmap__series,
             member = member,
             target = target
         )
@@ -705,6 +803,7 @@ hourmap__reconstruct <- function(data, inputs, context, options) {
             )
         )
     })
+    # }}}
     MappedHourlyClimateSequence(
         members = members,
         frequency = "hour",
@@ -722,9 +821,11 @@ hourmap__reconstruct <- function(data, inputs, context, options) {
         )
     )
 }
+# }}}
 
 # Describe the reusable direct-model calendar bridge independently of any one
 # bias-adjustment kernel, physical closure, or complete published recipe.
+# hourmap__component {{{
 hourmap__component <- function() {
     component__spec(
         name = "direct_model_epw_calendar_mapping",
@@ -758,10 +859,15 @@ hourmap__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the standalone hourly mapping once so later physical and output
 # components can resolve it through the common component registry.
+# hourmap__register_component {{{
 hourmap__register_component <- function() {
     component__register_builtin(hourmap__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

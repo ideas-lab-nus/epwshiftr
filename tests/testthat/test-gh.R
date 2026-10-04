@@ -14,3 +14,5 @@ test_that("gh_token() works", {
     Sys.setenv("GITHUB_PAT" = pat)
     expect_null(names(gh_token(header = FALSE)))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

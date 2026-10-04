@@ -5,6 +5,7 @@ test_local_dependencies(list(
 ))
 
 # Build deterministic native-calendar daily extrema for the Ek factor tests.
+# ek_test__climate {{{
 ek_test__climate <- function(
     years,
     period,
@@ -19,6 +20,7 @@ ek_test__climate <- function(
     years <- as.integer(years)
     calendar_days <- as.integer(calendar_days)
     phase <- (seq_len(calendar_days) - 0.5) / calendar_days
+    # lapply callback {{{
     rows <- lapply(seq_along(years), function(index) {
         replicate_offset <- (index - mean(seq_along(years))) * 0.2
         mean_temperature <- 12 +
@@ -37,6 +39,7 @@ ek_test__climate <- function(
         )
         data.table::rbindlist(lapply(
             setdiff(names(values), omit),
+            # lapply callback {{{
             function(variable_id) {
                 data.table::data.table(
                     activity_id = if (
@@ -70,12 +73,16 @@ ek_test__climate <- function(
                     value = values[[variable_id]]
                 )
             }
+            # }}}
         ))
     })
+    # }}}
     data.table::rbindlist(rows)
 }
+# }}}
 
 # Build a complete Ek backend context around the packaged EPW fixture.
+# ek_test__context {{{
 ek_test__context <- function(
     temperature_shift = 0,
     dtr_ratio = 1,
@@ -111,6 +118,7 @@ ek_test__context <- function(
         )
     )
 }
+# }}}
 
 test_that("Ek recipe registers its temperature-focused daily contract", {
     expect_true("ek_daily_temperature" %in% epw_morph_backends())
@@ -453,3 +461,5 @@ test_that("Ek public transform survives dry-run plan reconstruction", {
     )
     expect_silent(shift_job__validate_background_plan(plan))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

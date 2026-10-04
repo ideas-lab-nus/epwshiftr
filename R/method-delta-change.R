@@ -9,6 +9,7 @@ BIAS_DELTA_CHANGE_REFERENCES <- c(
 
 # Return one explicit diagnostic string when Delta Change fails to produce its
 # package-native observed-reference result.
+# bias__validate_delta_change_result {{{
 bias__validate_delta_change_result <- function(value, inputs, key) {
     signal__validate_adjusted_result(
         value,
@@ -18,14 +19,18 @@ bias__validate_delta_change_result <- function(value, inputs, key) {
         "Delta Change"
     )
 }
+# }}}
 
 # Validate and normalize Delta Change settings through the same method
 # contract used immediately before the numerical kernel.
+# bias__delta_change_settings {{{
 bias__delta_change_settings <- function(settings) {
     bias__mean_change_settings(settings, "Delta Change")
 }
+# }}}
 # Define published Delta Change defaults for additive temperature changes and
 # multiplicative precipitation changes on the observed-reference backbone.
+# bias__delta_change_profiles {{{
 bias__delta_change_profiles <- function() {
     temperature_settings <- list(
         grouping = "calendar_month",
@@ -41,6 +46,7 @@ bias__delta_change_profiles <- function() {
         bounds = c(0, Inf),
         zero_tolerance = sqrt(.Machine$double.eps)
     )
+    # lapply callback {{{
     temperature <- lapply(c("tas", "tasmin", "tasmax"), function(variable) {
         signal__variable_profile(
             variable,
@@ -53,6 +59,7 @@ bias__delta_change_profiles <- function() {
             )
         )
     })
+    # }}}
     precipitation <- signal__variable_profile(
         "pr",
         settings = precipitation_settings,
@@ -65,9 +72,11 @@ bias__delta_change_profiles <- function() {
     )
     c(temperature, list(precipitation))
 }
+# }}}
 
 # Apply published monthly Delta Change equations to the observed daily series
 # and retain that series as the typed temporal backbone of the result.
+# bias__delta_change_apply_group {{{
 bias__delta_change_apply_group <- function(inputs, settings, key) {
     method <- "Delta Change"
     resolved <- bias__mean_change_settings(settings, method)
@@ -88,13 +97,10 @@ bias__delta_change_apply_group <- function(inputs, settings, key) {
         # For temperature, Delta_m = mean(future_m) - mean(historical_m)
         # transfers the modeled mean change without replacing observed
         # day-to-day anomalies.
-        monthly$change <- (
-            monthly$future_mean - monthly$historical_mean
-        )
+        monthly$change <- (monthly$future_mean - monthly$historical_mean)
     } else {
-        denominator_zero <- (
-            abs(monthly$historical_mean) <= resolved$zero_tolerance
-        )
+        denominator_zero <- (abs(monthly$historical_mean) <=
+            resolved$zero_tolerance)
         if (any(denominator_zero)) {
             cli::cli_abort(
                 "Multiplicative Delta Change is undefined because the historical monthly mean is zero for month(s) {.val {monthly$cf_month[denominator_zero]}}."
@@ -103,9 +109,7 @@ bias__delta_change_apply_group <- function(inputs, settings, key) {
         # For precipitation, R_m = mean(future_m) / mean(historical_m)
         # scales observed wet-day magnitudes while preserving the observed
         # zero/non-zero occurrence sequence.
-        monthly$change <- (
-            monthly$future_mean / monthly$historical_mean
-        )
+        monthly$change <- (monthly$future_mean / monthly$historical_mean)
     }
 
     observed <- series$observed_reference
@@ -138,9 +142,11 @@ bias__delta_change_apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Construct the package-native Delta Change signal with explicit three-role
 # inputs and an observed-reference daily output.
+# bias__delta_change_component {{{
 bias__delta_change_component <- function() {
     alternatives <- as.list(c("tas", "tasmin", "tasmax", "pr"))
     requirements <- signal__three_role_requirements(
@@ -168,10 +174,15 @@ bias__delta_change_component <- function() {
         )
     )
 }
+# }}}
 
 # Register Delta Change once so it is discoverable alongside Linear Scaling
 # through the process-local component registry.
+# bias__register_delta_change_component {{{
 bias__register_delta_change_component <- function() {
     component__register_builtin(bias__delta_change_component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

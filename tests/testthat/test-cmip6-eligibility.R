@@ -1,4 +1,5 @@
 # Resolve public transform constructors only in this test convenience helper.
+# eligibility_test__evaluate {{{
 eligibility_test__evaluate <- function(
     catalog,
     methods = NULL,
@@ -10,12 +11,14 @@ eligibility_test__evaluate <- function(
     transforms <- shift_batch__transforms(methods, transform)
     historical <- vapply(
         transforms,
+        # vapply callback {{{
         function(value) {
             "model_historical" %in%
                 names(value@required_inputs) ||
                 (include_optional_historical &&
                     "model_historical" %in% names(value@optional_inputs))
         },
+        # }}}
         logical(1L)
     )
     requirements <- eligibility__requirements(transforms, scenarios, historical)
@@ -25,8 +28,10 @@ eligibility_test__evaluate <- function(
         common
     )
 }
+# }}}
 
 # Build self-contained Dataset rows without querying any external service.
+# eligibility_test__catalog {{{
 eligibility_test__catalog <- function(
     variables = "tas",
     source = "Model-A",
@@ -47,6 +52,7 @@ eligibility_test__catalog <- function(
         sorted = FALSE
     )
 }
+# }}}
 
 test_that("method eligibility expands candidates without a universal variable list", {
     catalog <- data.table::rbindlist(list(
@@ -116,9 +122,11 @@ test_that("alternative input paths preserve optional historical policy", {
     alternatives <- transform@required_inputs$model_future@variable_sets
     alternative <- which(vapply(
         alternatives,
+        # vapply callback {{{
         function(variables) {
             "hurs" %in% variables && !"huss" %in% variables
         },
+        # }}}
         logical(1L)
     ))
     variables <- alternatives[[alternative]]
@@ -222,6 +230,7 @@ test_that("mixed frequencies and calendar requirements come from registered role
     transform <- hourly_transform("kernel_qdm")
     requirement <- transform@required_inputs$model_future
     variables <- requirement@variable_sets[[1L]]
+    # lapply callback {{{
     catalog <- data.table::rbindlist(lapply(variables, function(variable) {
         frequency <- requirement@variable_frequencies[[variable]][[1L]]
         eligibility_test__catalog(
@@ -230,6 +239,7 @@ test_that("mixed frequencies and calendar requirements come from registered role
             table = if (frequency == "day") "day" else "3hr"
         )
     }))
+    # }}}
     result <- eligibility_test__evaluate(
         catalog,
         transform = transform,
@@ -241,9 +251,11 @@ test_that("mixed frequencies and calendar requirements come from registered role
         unname(detail$frequency_spec[[1L]]),
         unname(vapply(
             variables,
+            # vapply callback {{{
             function(variable) {
                 requirement@variable_frequencies[[variable]][[1L]]
             },
+            # }}}
             character(1L)
         ))
     )
@@ -252,7 +264,9 @@ test_that("mixed frequencies and calendar requirements come from registered role
     # a mean-frequency Dataset with the same variable ID is present.
     point <- variables[vapply(
         requirement@variable_frequencies[variables],
+        # vapply callback {{{
         function(value) "3hrPt" %in% value,
+        # }}}
         logical(1L)
     )][[1L]]
     catalog$frequency[catalog$variable_id == point] <- "3hr"
@@ -301,10 +315,14 @@ test_that("offline results are deterministic and do not mutate or query the cata
     catalog <- data.table::as.data.table(eligibility_test__catalog())
     original <- data.table::copy(catalog)
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(...) stop("Unexpected Dataset query"),
+        # }}}
+        # shift_resolve__cmip6_period_coverage {{{
         shift_resolve__cmip6_period_coverage = function(...) {
             stop("Unexpected File query")
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- eligibility_test__evaluate(
@@ -450,9 +468,11 @@ test_that("joint path numbering retains declared alternative priority", {
     transform <- monthly_transform("epwshiftr")
     roles <- c(transform@required_inputs, transform@optional_inputs)
     variables <- unique(unlist(
+        # lapply callback {{{
         lapply(roles, function(role) {
             unlist(role@variable_sets, use.names = FALSE)
         }),
+        # }}}
         use.names = FALSE
     ))
     catalog <- eligibility_test__catalog(
@@ -628,3 +648,5 @@ test_that("eligibility summaries preserve matched evidence by reference", {
     expect_null(data.table::indices(details))
     expect_true(result$matrix$selected)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

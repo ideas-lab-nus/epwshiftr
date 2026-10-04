@@ -1,6 +1,7 @@
 # Canonicalize a workflow directory without requiring its final components to
 # exist. The deepest existing ancestor is resolved first so aliases introduced
 # by symbolic links cannot bypass output/store isolation.
+# shift_path__canonical_workflow_path {{{
 shift_path__canonical_workflow_path <- function(path) {
     checkmate::assert_string(path, min.chars = 1L)
 
@@ -40,9 +41,11 @@ shift_path__canonical_workflow_path <- function(path) {
     }
     normalizePath(current, winslash = "/", mustWork = FALSE)
 }
+# }}}
 
 # Flip one alphabetic character in a basename so the containing filesystem can
 # be probed for case-sensitive path identity without creating probe files.
+# shift_path__path_case_variant {{{
 shift_path__path_case_variant <- function(path) {
     name <- basename(path)
     chars <- strsplit(name, "", fixed = TRUE)[[1L]]
@@ -59,11 +62,13 @@ shift_path__path_case_variant <- function(path) {
     }
     file.path(dirname(path), paste0(chars, collapse = ""))
 }
+# }}}
 
 # Detect the case-comparison semantics of the filesystem containing a
 # canonical path. Windows is defined as case-insensitive; other platforms are
 # detected from an existing ancestor so case-sensitive macOS volumes remain
 # distinguishable from the usual case-insensitive ones.
+# shift_path__workflow_path_case_sensitive {{{
 shift_path__workflow_path_case_sensitive <- function(path) {
     if (identical(.Platform$OS.type, "windows")) {
         return(FALSE)
@@ -94,10 +99,12 @@ shift_path__workflow_path_case_sensitive <- function(path) {
         current <- parent
     }
 }
+# }}}
 
 # Test an ancestor relationship at a complete path-component boundary, rather
 # than by a raw prefix that would confuse sibling names such as output and
 # output-cache.
+# shift_path__workflow_path_contains {{{
 shift_path__workflow_path_contains <- function(parent, child) {
     if (identical(parent, child)) {
         return(TRUE)
@@ -105,9 +112,11 @@ shift_path__workflow_path_contains <- function(parent, child) {
     prefix <- if (endsWith(parent, "/")) parent else paste0(parent, "/")
     startsWith(child, prefix)
 }
+# }}}
 
 # Enforce the high-level workflow contract that the delivery directory contains
 # exported EPWs only and never overlaps persistent store artifacts.
+# shift_path__validate_delivery_store_paths {{{
 shift_path__validate_delivery_store_paths <- function(dir, store) {
     checkmate::assert_string(dir, min.chars = 1L)
     if (inherits(store, "EsgStore")) {
@@ -146,9 +155,10 @@ shift_path__validate_delivery_store_paths <- function(dir, store) {
     }
     invisible(paths)
 }
-
+# }}}
 
 # Resolve a store object or deferred path without creating filesystem state.
+# shift_path__store_path_value {{{
 shift_path__store_path_value <- function(store) {
     if (inherits(store, "EsgStore")) {
         store <- store$path
@@ -156,3 +166,6 @@ shift_path__store_path_value <- function(store) {
     checkmate::assert_string(store, min.chars = 1L)
     shift_path__canonical_workflow_path(store)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

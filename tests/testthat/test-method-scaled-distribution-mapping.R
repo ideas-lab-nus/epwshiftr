@@ -5,14 +5,15 @@ sdm_test__execution_inputs <- signal_test__execution_inputs
 
 # Execute compact fixtures through the common signal lifecycle with one
 # retained year and explicit sample requirements.
+# sdm_test__execute {{{
 sdm_test__execute <- function(
-  variable,
-  observed,
-  historical,
-  future,
-  overrides = list(),
-  key = list(site = "A"),
-  warn_experimental = FALSE
+    variable,
+    observed,
+    historical,
+    future,
+    overrides = list(),
+    key = list(site = "A"),
+    warn_experimental = FALSE
 ) {
     boundary <- sdm_test__execution_inputs(
         observed,
@@ -37,17 +38,22 @@ sdm_test__execute <- function(
         warn_experimental = warn_experimental
     )
 }
+# }}}
 
 # Retrieve one default profile by variable for direct settings validation.
+# sdm_test__settings {{{
 sdm_test__settings <- function(variable) {
     profiles <- sdm__profiles()
     index <- which(vapply(
         profiles,
+        # vapply callback {{{
         function(profile) identical(profile@variable_id, variable),
+        # }}}
         logical(1L)
     ))
     profiles[[index]]@settings
 }
+# }}}
 
 test_that("parametric distribution helpers fit and invert supported families", {
     normal_values <- c(-2, -1, 0, 1, 2)
@@ -157,8 +163,26 @@ test_that("SDM uses published future windows and retained blocks", {
 
 test_that("temperature SDM returns a typed future-backbone daily series", {
     pattern <- c(
-        0, 3, -1, 4, -2, 2, -3, 1, 5, -4,
-        2, -1, 3, -2, 4, 0, -3, 5, 1, -4
+        0,
+        3,
+        -1,
+        4,
+        -2,
+        2,
+        -3,
+        1,
+        5,
+        -4,
+        2,
+        -1,
+        3,
+        -2,
+        4,
+        0,
+        -3,
+        5,
+        1,
+        -4
     )
     observed <- sdm_test__series("tas", 2001L, 280 + pattern)
     historical <- sdm_test__series("tas", 1991L, 284 + 2 * pattern)
@@ -228,10 +252,29 @@ test_that("temperature SDM returns a typed future-backbone daily series", {
 
 test_that("temperature SDM preserves identity across native CF calendars", {
     calendars <- c("360_day", "noleap", "all_leap")
-    values <- 280 + c(
-        0, 3, -1, 4, -2, 2, -3, 1, 5, -4,
-        2, -1, 3, -2, 4, 0, -3, 5, 1, -4
-    )
+    values <- 280 +
+        c(
+            0,
+            3,
+            -1,
+            4,
+            -2,
+            2,
+            -3,
+            1,
+            5,
+            -4,
+            2,
+            -1,
+            3,
+            -2,
+            4,
+            0,
+            -3,
+            5,
+            1,
+            -4
+        )
 
     for (calendar in calendars) {
         observed <- sdm_test__series(
@@ -273,7 +316,9 @@ test_that("temperature SDM preserves identity across native CF calendars", {
 })
 
 test_that("precipitation SDM adjusts wet frequency on future ranks", {
+    # mm_per_day {{{
     mm_per_day <- function(value) value / 86400
+    # }}}
     observed <- sdm_test__series(
         "pr",
         2001L,
@@ -316,14 +361,15 @@ test_that("precipitation SDM adjusts wet frequency on future ranks", {
         0L
     )
     expect_identical(
-        adjusted@provenance$diagnostics$
-            precipitation$wet_day_increase_not_supported_windows,
+        adjusted@provenance$diagnostics$precipitation$wet_day_increase_not_supported_windows,
         0L
     )
 })
 
 test_that("precipitation SDM records unsupported wet-day increases", {
+    # mm_per_day {{{
     mm_per_day <- function(value) value / 86400
+    # }}}
     observed <- sdm_test__series(
         "pr",
         2001L,
@@ -353,8 +399,7 @@ test_that("precipitation SDM records unsupported wet-day increases", {
     expect_identical(window$expected_wet_days$retained, 10L)
     expect_true(window$expected_wet_days$increase_not_supported)
     expect_identical(
-        adjusted@provenance$diagnostics$
-            precipitation$wet_day_increase_not_supported_windows,
+        adjusted@provenance$diagnostics$precipitation$wet_day_increase_not_supported_windows,
         1L
     )
 })
@@ -409,12 +454,14 @@ test_that("SDM rejects incompatible settings and invalid inputs", {
 
     precipitation <- lapply(
         boundary$group@inputs,
+        # lapply callback {{{
         function(data) {
             data$variable_id <- "pr"
             data$units <- "kg m-2 s-1"
             data$value <- abs(data$value) / 86400
             data
         }
+        # }}}
     )
     precipitation$model_future$value[[1L]] <- -1
     precipitation_settings <- sdm_test__settings("pr")
@@ -482,3 +529,5 @@ test_that("SDM profiles retain evidence and component registration", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

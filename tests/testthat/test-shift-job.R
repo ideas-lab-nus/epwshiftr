@@ -10,6 +10,7 @@ test_that("failed standalone steps expose recovery identity and resume in place"
     attempts <- 0L
     file_docs <- esgf_test__file_docs("tas_day.nc")
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -42,6 +43,7 @@ test_that("failed standalone steps expose recovery identity and resume in place"
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     store_path <- tempfile("shift-resume-stage-store-")
@@ -100,18 +102,22 @@ test_that("foreground interrupts persist one meaningful cancelled state", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     testthat::local_mocked_bindings(
+        # shift_resolve__collect_resolved_inputs {{{
         shift_resolve__collect_resolved_inputs = function(...) {
             stop(structure(
                 list(message = "", call = NULL),
                 class = c("interrupt", "condition")
             ))
         },
+        # }}}
         .package = "epwshiftr"
     )
 
     interrupted <- tryCatch(
         shift_run(plan, ui = shift_ui("none")),
+        # interrupt {{{
         interrupt = function(e) e
+        # }}}
     )
     expect_s3_class(interrupted, "epwshiftr_shift_cancelled")
     expect_equal(conditionMessage(interrupted), "Interrupted by user.")
@@ -261,6 +267,7 @@ test_that("background runs register live jobs before launching workers", {
     )@meta$children[[1L]]
     store_path <- plan@store_path
     launched <- new.env(parent = emptyenv())
+    # shift_job__launch_job {{{
     test_local_dependencies(list(shift_job__launch_job = function(
         store_path,
         run_id,
@@ -275,6 +282,7 @@ test_that("background runs register live jobs before launching workers", {
         )
         invisible(0L)
     }))
+    # }}}
     run <- shift_run(
         plan,
         background = TRUE,
@@ -321,9 +329,11 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
         dry_run = TRUE
     )@meta$children[[1L]]
     store_path <- plan@store_path
+    # shift_job__launch_job {{{
     test_local_dependencies(list(shift_job__launch_job = function(...) {
         invisible(0L)
     }))
+    # }}}
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
 
     ready <- tempfile("shift-live-lock-ready-")
@@ -371,9 +381,11 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
 test_that("run readers distinguish Windows sharing violations from IO errors", {
     fixture <- shared_inputs_test__fixture()
     plan <- fixture$batch@meta$children[[1L]]
+    # shift_job__launch_job {{{
     test_local_dependencies(list(shift_job__launch_job = function(...) {
         invisible(0L)
     }))
+    # }}}
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
     run_id <- shift_ids(run, refresh = FALSE)$run_id
     failure <- simpleError(paste(
@@ -384,8 +396,12 @@ test_that("run readers distinguish Windows sharing violations from IO errors", {
     # Force the manifest-open path, as when a batch child has no active process
     # job of its own. A standalone queued job otherwise uses its startup grace.
     local_mocked_bindings(
+        # shift_job__live_process_is_active {{{
         shift_job__live_process_is_active = function(...) FALSE,
+        # }}}
+        # shift_store {{{
         shift_store = function(...) stop(failure)
+        # }}}
     )
     restored <- shift_run_get(run_id, store = run@store_path)
     expect_s7_class(restored, ShiftRun)
@@ -503,3 +519,5 @@ test_that("run updates preserve other runs and explicit nullable fields", {
     shift_job__run_update(store, first, started_at = as.POSIXct(NA, tz = "UTC"))
     expect_identical(shift_runs(store)$run_id, c(second, first))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

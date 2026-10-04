@@ -141,3 +141,5 @@ test_that("shared weather backends cannot treat EPW sentinels as temperature", {
         "dry-bulb temperature must be finite"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

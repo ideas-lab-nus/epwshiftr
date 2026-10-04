@@ -7,15 +7,18 @@ REANALYSIS__ACCESS <- c("auto", "arco", "cds")
 
 # Normalize equivalent longitude representations before provider requests,
 # distance calculations, and persistent identity construction.
+# reanalysis__longitude {{{
 reanalysis__longitude <- function(longitude) {
     normalized <- (as.numeric(longitude) + 180) %% 360 - 180
     normalized[normalized == -180 & as.numeric(longitude) > 0] <- 180
     normalized
 }
+# }}}
 
 # ShiftReanalysisSpec records provider-neutral observational source intent.
 # Credentials are deliberately excluded so persisted plans and console output
 # remain safe to share.
+# ShiftReanalysisSpec {{{
 ShiftReanalysisSpec <- S7::new_class(
     "ShiftReanalysisSpec",
     properties = list(
@@ -28,6 +31,7 @@ ShiftReanalysisSpec <- S7::new_class(
         access = S7::new_property(S7::class_character),
         options = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
         for (property in c("provider", "dataset", "product", "access")) {
             value <- S7::prop(self, property)
@@ -88,10 +92,13 @@ ShiftReanalysisSpec <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Return the registered reanalysis products without exposing credentials or
 # provider transport details to method code.
+# reanalysis__registry {{{
 reanalysis__registry <- function() {
     list(
         era5 = list(
@@ -108,9 +115,11 @@ reanalysis__registry <- function() {
         )
     )
 }
+# }}}
 
 # Construct one validated reanalysis source specification for a public
 # provider-specific wrapper.
+# reanalysis__spec {{{
 reanalysis__spec <- function(
     dataset,
     years,
@@ -152,9 +161,11 @@ reanalysis__spec <- function(
         options = options
     )
 }
+# }}}
 
 # Serialize only reproducible source intent. Authentication is read again in
 # the executing process and therefore cannot leak through a plan specification.
+# reanalysis__spec_value {{{
 reanalysis__spec_value <- function(spec) {
     if (!S7::S7_inherits(spec, ShiftReanalysisSpec)) {
         cli::cli_abort("`spec` must be a {.cls ShiftReanalysisSpec}.")
@@ -175,8 +186,10 @@ reanalysis__spec_value <- function(spec) {
         options = spec@options
     )
 }
+# }}}
 
 # Reconstruct a supported reanalysis source from persisted scientific intent.
+# reanalysis__from_spec {{{
 reanalysis__from_spec <- function(spec) {
     dataset <- as.character(spec$dataset)
     arguments <- c(
@@ -207,9 +220,11 @@ reanalysis__from_spec <- function(spec) {
         "Unsupported persisted reanalysis dataset: {.val {dataset}}."
     )
 }
+# }}}
 
 # Present source intent without printing provider credentials or endpoint
 # overrides that could contain user-specific information.
+# S7::method(print, ShiftReanalysisSpec) {{{
 S7::method(print, ShiftReanalysisSpec) <- function(x, ...) {
     esg__print_header("Reanalysis Source")
     esg__print_facts(list(
@@ -230,3 +245,6 @@ S7::method(print, ShiftReanalysisSpec) <- function(x, ...) {
     ))
     invisible(x)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

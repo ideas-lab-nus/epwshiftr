@@ -1,3 +1,4 @@
+# epwshiftr_cli_shift_config {{{
 epwshiftr_cli_shift_config <- function(
     store,
     args,
@@ -28,8 +29,9 @@ epwshiftr_cli_shift_config <- function(
         ))
     )
 }
+# }}}
 
-
+# epwshiftr_cli_read_shift_config {{{
 epwshiftr_cli_read_shift_config <- function(path) {
     checkmate::assert_string(path, min.chars = 1L)
     if (!file.exists(path)) {
@@ -44,12 +46,14 @@ epwshiftr_cli_read_shift_config <- function(path) {
             simplifyVector = TRUE,
             simplifyDataFrame = FALSE
         ),
+        # error {{{
         error = function(e) {
             epwshiftr_cli_usage_abort(sprintf(
                 "Failed to read JSON config: %s",
                 conditionMessage(e)
             ))
         }
+        # }}}
     )
     tryCatch(
         {
@@ -60,17 +64,20 @@ epwshiftr_cli_read_shift_config <- function(path) {
             )
             epwshiftr_cli_validate_shift_config(config)
         },
+        # error {{{
         error = function(e) {
             epwshiftr_cli_usage_abort(sprintf(
                 "Invalid shift workflow config: %s",
                 conditionMessage(e)
             ))
         }
+        # }}}
     )
     invisible(config)
 }
+# }}}
 
-
+# epwshiftr_cli_shift_config_example {{{
 epwshiftr_cli_shift_config_example <- function(args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
@@ -192,8 +199,9 @@ epwshiftr_cli_shift_config_example <- function(args) {
         config = config
     )
 }
+# }}}
 
-
+# epwshiftr_cli_shift_config_validate {{{
 epwshiftr_cli_shift_config_validate <- function(
     store,
     args,
@@ -223,6 +231,7 @@ epwshiftr_cli_shift_config_validate <- function(
         "observed_reference"
     )
     periods <- shift_spec__periods_from_input(config$periods)
+    # lapply callback {{{
     references <- lapply(transforms, function(transform) {
         shift_spec__validate_transform_periods(transform, periods)
         if (!is.null(climate@frequency)) {
@@ -233,9 +242,12 @@ epwshiftr_cli_shift_config_validate <- function(
         }
         shift_batch__references(transform, reference, observed)
     })
+    # }}}
+    # lapply callback {{{
     locations <- shift_batch__sites(lapply(config$sites, function(site) {
         do.call(shift_site, site)
     }))
+    # }}}
     shift_path__validate_delivery_store_paths(config$dir, store)
     network <- isTRUE(parsed$flags[["--network"]])
     ui <- epwshiftr_cli_task_ui(
@@ -248,6 +260,7 @@ epwshiftr_cli_shift_config_validate <- function(
         shift_reporter__ui_check(
             ui,
             "Calibration readiness",
+            # shift_reporter__ui_check callback {{{
             function(reporter) {
                 reporter$stage_started(
                     "check",
@@ -259,6 +272,7 @@ epwshiftr_cli_shift_config_validate <- function(
                 )
                 shift_check(observed, network = network)
             }
+            # }}}
         )
     } else {
         shift_stage__diagnostics_empty()
@@ -293,6 +307,7 @@ epwshiftr_cli_shift_config_validate <- function(
                 paste(
                     vapply(
                         transforms,
+                        # vapply callback {{{
                         function(transform) {
                             paste(
                                 transform@scale,
@@ -300,6 +315,7 @@ epwshiftr_cli_shift_config_validate <- function(
                                 transform@reconstruction
                             )
                         },
+                        # }}}
                         character(1L)
                     ),
                     collapse = "; "
@@ -325,10 +341,12 @@ epwshiftr_cli_shift_config_validate <- function(
         diagnostics = checks
     )
 }
+# }}}
 
 # Summarize the user's scientific choices before execution without opening a
 # store or resolving remote models. Keep calibration separate from historical
 # model reference data so the two input roles remain unambiguous.
+# cli_shift__config_intent {{{
 cli_shift__config_intent <- function(config) {
     transforms <- shift_batch__transforms(
         methods = config$methods,
@@ -347,9 +365,11 @@ cli_shift__config_intent <- function(config) {
         Baseline = paste(
             vapply(
                 config$sites,
+                # vapply callback {{{
                 function(site) {
                     paste0(site$id, ": ", site$epw)
                 },
+                # }}}
                 character(1L)
             ),
             collapse = "; "
@@ -357,6 +377,7 @@ cli_shift__config_intent <- function(config) {
         Methods = paste(
             vapply(
                 transforms,
+                # vapply callback {{{
                 function(transform) {
                     sprintf(
                         "%s / %s / %s [%s]",
@@ -366,6 +387,7 @@ cli_shift__config_intent <- function(config) {
                         transform@status
                     )
                 },
+                # }}}
                 character(1L)
             ),
             collapse = "; "
@@ -389,8 +411,9 @@ cli_shift__config_intent <- function(config) {
         Output = config$dir
     )
 }
+# }}}
 
-
+# epwshiftr_cli_shift_example_config {{{
 epwshiftr_cli_shift_example_config <- function() {
     list(
         version = 3L,
@@ -430,3 +453,6 @@ epwshiftr_cli_shift_example_config <- function() {
         )
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

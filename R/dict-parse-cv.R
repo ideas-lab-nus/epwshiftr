@@ -1,8 +1,16 @@
+# dict__nest {{{
 dict__nest <- function(json) {
+    # lapply callback {{{
     transposed <- lapply(names(json[[1L]]), function(nm) lapply(json, "[[", nm))
-    data.table::setnames(data.table::as.data.table(transposed), names(json[[1L]]))
+    # }}}
+    data.table::setnames(
+        data.table::as.data.table(transposed),
+        names(json[[1L]])
+    )
 }
+# }}}
 
+# dict__parse_cv_version {{{
 dict__parse_cv_version <- function(lst) {
     res <- list()
 
@@ -26,50 +34,76 @@ dict__parse_cv_version <- function(lst) {
 
     res
 }
+# }}}
 
+# dict__parse_cv_vec {{{
 dict__parse_cv_vec <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- unlst(json[[1L]])
-    data.table::setattr(res, "version",
+    data.table::setattr(
+        res,
+        "version",
         dict__parse_cv_version(json$version_metadata)
     )
 
     structure(res, class = c(subclass, "Cmip6CV", typeof(res)))
 }
+# }}}
 
+# dict__parse_cv_list {{{
 dict__parse_cv_list <- function(file, subclass = NULL) {
     json <- jsonlite::read_json(file)
     res <- json[[1L]]
-    data.table::setattr(res, "version",
+    data.table::setattr(
+        res,
+        "version",
         dict__parse_cv_version(json$version_metadata)
     )
 
     structure(res, class = c(subclass, "Cmip6CV", "list"))
 }
+# }}}
 
+# dict__parse_cv_drs {{{
 dict__parse_cv_drs <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_DRS")
 }
+# }}}
 
+# dict__parse_cv_activity_id {{{
 dict__parse_cv_activity_id <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_ActivityId")
 }
+# }}}
 
+# dict__parse_cv_experiment_id {{{
 dict__parse_cv_experiment_id <- function(file) {
     json <- jsonlite::read_json(file)
     d <- dict__nest(json[[1L]])
 
     data.table::setcolorder(d, "experiment_id")
 
-    cols_lst <- c("activity_id", "additional_allowed_model_components",
-        "parent_activity_id", "parent_experiment_id",
-        "required_model_components", "sub_experiment_id")
+    cols_lst <- c(
+        "activity_id",
+        "additional_allowed_model_components",
+        "parent_activity_id",
+        "parent_experiment_id",
+        "required_model_components",
+        "sub_experiment_id"
+    )
     for (col in cols_lst) {
         data.table::set(d, NULL, col, lapply(d[[col]], unlist, FALSE, FALSE))
     }
 
-    cols_flat <- c("experiment_id", "description", "end_year", "experiment",
-        "min_number_yrs_per_sim", "start_year", "tier")
+    cols_flat <- c(
+        "experiment_id",
+        "description",
+        "end_year",
+        "experiment",
+        "min_number_yrs_per_sim",
+        "start_year",
+        "tier"
+    )
     for (col in cols_flat) {
         data.table::set(d, NULL, col, unlist(d[[col]], FALSE, FALSE))
     }
@@ -79,43 +113,71 @@ dict__parse_cv_experiment_id <- function(file) {
         data.table::set(d, NULL, col, suppressWarnings(as.integer(d[[col]])))
     }
 
-    data.table::setcolorder(d, c(
-        "experiment_id", "experiment", "description", "tier",
-        "start_year", "end_year", "min_number_yrs_per_sim",
-        "required_model_components",
-        "parent_experiment_id", "sub_experiment_id",
-        "activity_id", "parent_activity_id",
-        "additional_allowed_model_components"
-    ))
-    data.table::setattr(d, "version", dict__parse_cv_version(json$version_metadata))
+    data.table::setcolorder(
+        d,
+        c(
+            "experiment_id",
+            "experiment",
+            "description",
+            "tier",
+            "start_year",
+            "end_year",
+            "min_number_yrs_per_sim",
+            "required_model_components",
+            "parent_experiment_id",
+            "sub_experiment_id",
+            "activity_id",
+            "parent_activity_id",
+            "additional_allowed_model_components"
+        )
+    )
+    data.table::setattr(
+        d,
+        "version",
+        dict__parse_cv_version(json$version_metadata)
+    )
 
     structure(d, class = c("Cmip6CV_ExperimentId", "Cmip6CV", class(d)))
 }
+# }}}
 
+# dict__parse_cv_frequency {{{
 dict__parse_cv_frequency <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_Frequency")
 }
+# }}}
 
+# dict__parse_cv_grid_label {{{
 dict__parse_cv_grid_label <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_GridLabel")
 }
+# }}}
 
+# dict__parse_cv_institution_id {{{
 dict__parse_cv_institution_id <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_InstitutionId")
 }
+# }}}
 
+# dict__parse_cv_nominal_resolution {{{
 dict__parse_cv_nominal_resolution <- function(file) {
     dict__parse_cv_vec(file, "Cmip6CV_Resolution")
 }
+# }}}
 
+# dict__parse_cv_realm {{{
 dict__parse_cv_realm <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_Realm")
 }
+# }}}
 
+# dict__parse_cv_required_global_attributes {{{
 dict__parse_cv_required_global_attributes <- function(file) {
     dict__parse_cv_vec(file, "Cmip6CV_ReqGlobAttr")
 }
+# }}}
 
+# dict__parse_cv_source_id {{{
 dict__parse_cv_source_id <- function(file) {
     json <- jsonlite::read_json(file)
     d <- dict__nest(json[[1L]])
@@ -127,30 +189,64 @@ dict__parse_cv_source_id <- function(file) {
         data.table::set(d, NULL, col, lapply(d[[col]], unlst))
     }
 
-    cols_flat <- c("source_id", "release_year", "cohort", "label", "label_extended")
+    cols_flat <- c(
+        "source_id",
+        "release_year",
+        "cohort",
+        "label",
+        "label_extended"
+    )
     for (col in cols_flat) {
         data.table::set(d, NULL, col, unlist(d[[col]], FALSE, FALSE))
     }
 
-    data.table::set(d, NULL, "release_year", suppressWarnings(as.integer(d$release_year)))
+    data.table::set(
+        d,
+        NULL,
+        "release_year",
+        suppressWarnings(as.integer(d$release_year))
+    )
 
-    data.table::setcolorder(d, c(
-        "source_id", "release_year", "institution_id", "label", "label_extended",
-        "cohort", "activity_participation", "model_component", "license_info"
-    ))
-    data.table::setattr(d, "version", dict__parse_cv_version(json$version_metadata))
+    data.table::setcolorder(
+        d,
+        c(
+            "source_id",
+            "release_year",
+            "institution_id",
+            "label",
+            "label_extended",
+            "cohort",
+            "activity_participation",
+            "model_component",
+            "license_info"
+        )
+    )
+    data.table::setattr(
+        d,
+        "version",
+        dict__parse_cv_version(json$version_metadata)
+    )
 
     structure(d, class = c("Cmip6CV_SourceId", "Cmip6CV", class(d)))
 }
+# }}}
 
+# dict__parse_cv_source_type {{{
 dict__parse_cv_source_type <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_SourceType")
 }
+# }}}
 
+# dict__parse_cv_sub_experiment_id {{{
 dict__parse_cv_sub_experiment_id <- function(file) {
     dict__parse_cv_list(file, "Cmip6CV_SubExperimentId")
 }
+# }}}
 
+# dict__parse_cv_table_id {{{
 dict__parse_cv_table_id <- function(file) {
     dict__parse_cv_vec(file, "Cmip6CV_TableId")
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

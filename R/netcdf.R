@@ -2,6 +2,7 @@
 NULL
 
 # get_nc_meta
+# get_nc_meta {{{
 get_nc_meta <- function(file) {
     # to avoid No visible binding for global variable check NOTE
     value <- name <- NULL
@@ -62,7 +63,9 @@ get_nc_meta <- function(file) {
         )
     )
 }
+# }}}
 # get_nc_atts
+# get_nc_atts {{{
 get_nc_atts <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -75,9 +78,11 @@ get_nc_atts <- function(x) {
     inq <- RNetCDF::file.inq.nc(nc)
 
     # global attributes
+    # lapply callback {{{
     glo <- rbindlist(lapply(seq_len(inq$ngatts), function(i) {
         RNetCDF::att.inq.nc(nc, "NC_GLOBAL", i - 1L)
     }))
+    # }}}
     # set global attribute id to -1
     set(glo, NULL, "id", -1L)
     set(glo, NULL, "variable", "NC_GLOBAL")
@@ -86,9 +91,11 @@ get_nc_atts <- function(x) {
         glo,
         NULL,
         "value",
+        # lapply callback {{{
         lapply(seq_len(inq$ngatts), function(i) {
             RNetCDF::att.get.nc(nc, "NC_GLOBAL", i - 1L)
         })
+        # }}}
     )
     setnames(glo, "name", "attribute")
 
@@ -99,12 +106,16 @@ get_nc_atts <- function(x) {
         .SDcols = c("id", "name", "natts")
     ])
     vars <- vars[, by = list(idx = seq_len(nrow(vars))), {
+        # lapply callback {{{
         nm <- lapply(seq_len(natts) - 1L, function(i) {
             RNetCDF::att.inq.nc(nc, id, i)$name
         })
+        # }}}
+        # lapply callback {{{
         att <- lapply(seq_len(natts) - 1L, function(i) {
             RNetCDF::att.get.nc(nc, id, i)
         })
+        # }}}
         list(
             id = id,
             variable = rep(name, length(nm)),
@@ -116,7 +127,9 @@ get_nc_atts <- function(x) {
 
     rbindlist(list(vars, glo), use.names = TRUE)
 }
+# }}}
 # get_nc_vars
+# get_nc_vars {{{
 get_nc_vars <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -130,16 +143,20 @@ get_nc_vars <- function(x) {
 
     vars <- rbindlist(
         fill = TRUE,
+        # lapply callback {{{
         lapply(seq_len(inq$nvars) - 1L, function(i) {
             res <- RNetCDF::var.inq.nc(nc, i)
             res <- res[names(res) != "dimids"]
             res[vapply(res, length, integer(1)) > 0L]
         })
+        # }}}
     )
 
     vars
 }
+# }}}
 # get_nc_dims
+# get_nc_dims {{{
 get_nc_dims <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -151,11 +168,15 @@ get_nc_dims <- function(x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
+    # lapply callback {{{
     rbindlist(lapply(seq_len(inq$ndims) - 1L, function(i) {
         RNetCDF::dim.inq.nc(nc, i)
     }))
+    # }}}
 }
+# }}}
 # get_nc_axes
+# get_nc_axes {{{
 get_nc_axes <- function(x) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -167,16 +188,20 @@ get_nc_axes <- function(x) {
     # get file info
     inq <- RNetCDF::file.inq.nc(nc)
 
+    # lapply callback {{{
     vars <- rbindlist(lapply(seq_len(inq$nvars) - 1L, function(i) {
         RNetCDF::var.inq.nc(nc, i)
     }))[, `:=`(axis = .I)]
+    # }}}
     set(vars, NULL, setdiff(names(vars), c("axis", "name", "dimids")), NULL)
     setcolorder(vars, "axis")
     setnames(vars, c("axis", "variable", "dimension"))
 
     vars[]
 }
+# }}}
 # get_nc_time
+# normalize_cf_calendar {{{
 normalize_cf_calendar <- function(calendar) {
     if (
         !length(calendar) ||
@@ -188,7 +213,9 @@ normalize_cf_calendar <- function(calendar) {
 
     tolower(as.character(calendar[[1L]]))
 }
+# }}}
 
+# get_nc_time_att {{{
 get_nc_time_att <- function(atts, attribute, default = NULL) {
     idx <- which(atts$variable == "time" & atts$attribute == attribute)
 
@@ -204,6 +231,7 @@ get_nc_time_att <- function(atts, attribute, default = NULL) {
 
     atts$value[[idx[[1L]]]]
 }
+# }}}
 
 CF_TIME_CALENDARS <- c(
     "standard",
@@ -245,13 +273,16 @@ CF_TIME_COORDINATE_COLUMNS <- c(
     "annual_phase"
 )
 
+# cf_time_check_calendar {{{
 cf_time_check_calendar <- function(calendar) {
     if (!calendar %in% CF_TIME_CALENDARS) {
         stop("Invalid calendar specification", call. = FALSE)
     }
     calendar
 }
+# }}}
 
+# cf_time_parse_unit {{{
 cf_time_parse_unit <- function(unit) {
     aliases <- c(
         years = "years",
@@ -282,11 +313,15 @@ cf_time_parse_unit <- function(unit) {
     }
     unit
 }
+# }}}
 
+# cf_time_is_leap_gregorian {{{
 cf_time_is_leap_gregorian <- function(year) {
     (year %% 4L == 0L & year %% 100L != 0L) | year %% 400L == 0L
 }
+# }}}
 
+# cf_time_month_days {{{
 cf_time_month_days <- function(year, month, calendar) {
     common <- c(31L, 28L, 31L, 30L, 31L, 30L, 31L, 31L, 30L, 31L, 30L, 31L)
     leap <- c(31L, 29L, 31L, 30L, 31L, 30L, 31L, 31L, 30L, 31L, 30L, 31L)
@@ -301,7 +336,9 @@ cf_time_month_days <- function(year, month, calendar) {
         ifelse(cf_time_is_leap_gregorian(year), leap[month], common[month])
     )
 }
+# }}}
 
+# cf_time_valid_days {{{
 cf_time_valid_days <- function(parts, calendar) {
     valid <- !is.na(parts$year) &
         !is.na(parts$month) &
@@ -312,7 +349,9 @@ cf_time_valid_days <- function(parts, calendar) {
     days <- cf_time_month_days(parts$year, parts$month, calendar)
     valid & !is.na(days) & parts$day <= days
 }
+# }}}
 
+# cf_time_parse_origin {{{
 cf_time_parse_origin <- function(origin, calendar) {
     pattern <- paste0(
         "^\\s*",
@@ -362,7 +401,9 @@ cf_time_parse_origin <- function(origin, calendar) {
 
     parts
 }
+# }}}
 
+# cf_time_parse_definition {{{
 cf_time_parse_definition <- function(units, calendar) {
     units <- as.character(units[[1L]])
     pattern <- "^\\s*([[:alpha:]]+)\\s+(since|after|from|ref|per)\\s+(.+?)\\s*$"
@@ -381,7 +422,9 @@ cf_time_parse_definition <- function(units, calendar) {
         origin = cf_time_parse_origin(parts[[4L]], calendar)
     )
 }
+# }}}
 
+# cf_time_gregorian_date2offset {{{
 cf_time_gregorian_date2offset <- function(parts) {
     year1 <- parts$year - 1L
     corr <- ifelse(
@@ -398,7 +441,9 @@ cf_time_gregorian_date2offset <- function(parts) {
         corr +
         parts$day
 }
+# }}}
 
+# cf_time_gregorian_offset2date {{{
 cf_time_gregorian_offset2date <- function(offsets) {
     d0 <- offsets - 1L
     n400 <- d0 %/% 146097L
@@ -431,9 +476,11 @@ cf_time_gregorian_offset2date <- function(offsets) {
 
     data.frame(year = year, month = month, day = day)
 }
+# }}}
 
 # Convert calendar-native dates to absolute offsets on a fixed 365- or 366-day
 # CF calendar.
+# cf_time__fixed_date2offset {{{
 cf_time__fixed_date2offset <- function(parts, year_days) {
     checkmate::assert_choice(year_days, c(365L, 366L))
 
@@ -453,9 +500,11 @@ cf_time__fixed_date2offset <- function(parts, year_days) {
         correction +
         parts$day
 }
+# }}}
 
 # Convert absolute offsets back to calendar-native dates on a fixed 365- or
 # 366-day CF calendar.
+# cf_time__fixed_offset2date {{{
 cf_time__fixed_offset2date <- function(offsets, year_days) {
     checkmate::assert_choice(year_days, c(365L, 366L))
 
@@ -477,7 +526,9 @@ cf_time__fixed_offset2date <- function(offsets, year_days) {
 
     data.frame(year = year, month = month, day = day)
 }
+# }}}
 
+# cf_time_date2offset {{{
 cf_time_date2offset <- function(parts, origin, calendar) {
     fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
     if (!is.null(fixed_year_days)) {
@@ -498,7 +549,9 @@ cf_time_date2offset <- function(parts, origin, calendar) {
             cf_time_gregorian_date2offset(origin)
     )
 }
+# }}}
 
+# cf_time_offset2date {{{
 cf_time_offset2date <- function(offsets, origin, calendar) {
     fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
     if (!is.null(fixed_year_days)) {
@@ -529,7 +582,9 @@ cf_time_offset2date <- function(offsets, origin, calendar) {
         )
     )
 }
+# }}}
 
+# cf_time_origin_posix {{{
 cf_time_origin_posix <- function(origin, tz) {
     ISOdatetime(origin$year[[1L]], origin$month[[1L]], 1L, 0L, 0L, 0, tz = tz) +
         (origin$day[[1L]] - 1L) * 86400 +
@@ -537,7 +592,9 @@ cf_time_origin_posix <- function(origin, tz) {
         origin$minute[[1L]] * 60 +
         origin$second[[1L]]
 }
+# }}}
 
+# cf_time_add_seconds_to_fields {{{
 cf_time_add_seconds_to_fields <- function(fields, seconds, origin, calendar) {
     total_seconds <- fields$hour *
         3600 +
@@ -554,7 +611,9 @@ cf_time_add_seconds_to_fields <- function(fields, seconds, origin, calendar) {
     fields$second <- seconds %% 60L
     fields
 }
+# }}}
 
+# cf_time_offsets2fields {{{
 cf_time_offsets2fields <- function(offsets, unit, origin, calendar) {
     if (unit %in% names(CF_TIME_UNIT_SECONDS)) {
         seconds <- offsets *
@@ -599,7 +658,9 @@ cf_time_offsets2fields <- function(offsets, unit, origin, calendar) {
 
     fields
 }
+# }}}
 
+# cf_time_fields2posix {{{
 cf_time_fields2posix <- function(fields, origin, calendar, tz) {
     if (calendar %in% c("standard", "gregorian", "proleptic_gregorian")) {
         return(as.POSIXct(
@@ -629,9 +690,11 @@ cf_time_fields2posix <- function(fields, origin, calendar, tz) {
 
     as.POSIXct(origin_time + day_offsets * 86400 + second_offsets, tz = tz)
 }
+# }}}
 
 # Return the number of days in each requested CF calendar year so annual phase
 # is computed from the model calendar rather than the surrogate Gregorian date.
+# cf_time__year_days {{{
 cf_time__year_days <- function(year, calendar) {
     year <- as.integer(year)
     switch(
@@ -644,10 +707,12 @@ cf_time__year_days <- function(year, calendar) {
         ifelse(cf_time_is_leap_gregorian(year), 366L, 365L)
     )
 }
+# }}}
 
 # Build calendar-native coordinates for persistence and weather methods. Keep
 # clock seconds explicit for sub-daily consumers while retaining the same annual
 # phase used by daily methods across every supported calendar.
+# cf_time__coordinates {{{
 cf_time__coordinates <- function(fields, calendar) {
     year_start <- data.frame(
         year = as.integer(fields$year),
@@ -678,10 +743,12 @@ cf_time__coordinates <- function(fields, calendar) {
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Select a user-supplied time range against calendar-native fields. Comparing
 # the CF date tuple avoids assigning the end of a 360-day year to the preceding
 # Gregorian year merely because its POSIXct value is a continuous surrogate.
+# cf_time__range_indices {{{
 cf_time__range_indices <- function(time, coordinates, range) {
     if (is.null(range)) {
         return(seq_along(time))
@@ -725,7 +792,9 @@ cf_time__range_indices <- function(time, coordinates, range) {
             coordinate_key <= boundary_key[[2L]]
     )
 }
+# }}}
 
+# parse_cf_time {{{
 parse_cf_time <- function(offsets, units, calendar = "standard", tz = "UTC") {
     calendar <- normalize_cf_calendar(calendar)
     calendar <- cf_time_check_calendar(calendar)
@@ -751,7 +820,9 @@ parse_cf_time <- function(offsets, units, calendar = "standard", tz = "UTC") {
     data.table::setattr(posix_time, "cf_coordinates", coordinates)
     posix_time
 }
+# }}}
 
+# get_nc_time {{{
 get_nc_time <- function(x, range = FALSE) {
     if (inherits(x, "NetCDF")) {
         nc <- x
@@ -779,7 +850,9 @@ get_nc_time <- function(x, range = FALSE) {
 
     parse_cf_time(offsets, time_units, time_calendar)
 }
+# }}}
 # match_nc_time
+# match_nc_time {{{
 match_nc_time <- function(x, years = NULL) {
     checkmate::assert_integerish(
         years,
@@ -795,7 +868,9 @@ match_nc_time <- function(x, years = NULL) {
     } else {
         coordinates <- attr(time, "cf_coordinates", exact = TRUE)
         y <- coordinates$cf_year
+        # lapply callback {{{
         i <- lapply(as.integer(years), function(x) which(y == x))
+        # }}}
 
         j <- 1L
         l <- vector("list", length(i))
@@ -812,6 +887,7 @@ match_nc_time <- function(x, years = NULL) {
             }
         }
 
+        # lapply callback {{{
         datetime <- lapply(l, function(idx) {
             value <- time[idx]
             data.table::setattr(
@@ -831,11 +907,14 @@ match_nc_time <- function(x, years = NULL) {
             )
             value
         })
+        # }}}
         list(datetime = datetime, which = l)
     }
 }
+# }}}
 # nocov start
 # rechunk_nc_dims
+# rechunk_nc_dims {{{
 rechunk_nc_dims <- function(nc, out_file) {
     if (Sys.which("nccopy") == "") {
         return()
@@ -858,7 +937,9 @@ rechunk_nc_dims <- function(nc, out_file) {
 
     normalizePath(out_file)
 }
+# }}}
 # permute_nc_dims
+# permute_nc_dims {{{
 permute_nc_dims <- function(nc, out_file) {
     if (Sys.which("ncpdq") == "") {
         return()
@@ -881,8 +962,10 @@ permute_nc_dims <- function(nc, out_file) {
 
     normalizePath(out_file)
 }
+# }}}
 # reorganize_nc_dims
 # Ref: https://github.com/ebimodeling/model-drivers/tree/master/met/cruncep
+# reorganize_nc_dims {{{
 reorganize_nc_dims <- function(nc) {
     f <- rechunk_nc_dims(nc, tempfile(fileext = ".nc"))
     if (is.null(f)) {
@@ -897,4 +980,7 @@ reorganize_nc_dims <- function(nc) {
 
     re
 }
+# }}}
 # nocov end
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

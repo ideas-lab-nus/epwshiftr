@@ -380,12 +380,14 @@ test_that("shift watch JSONL follow emits typed event deltas", {
     )
     index <- 0L
     testthat::local_mocked_bindings(
+        # epwshiftr_cli_shift_watch_snapshot {{{
         epwshiftr_cli_shift_watch_snapshot = function(...) {
             index <<- index + 1L
             snapshot <- snapshots[[index]]
             attr(snapshot, "shift_ui_events") <- snapshot$events
             snapshot
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -432,12 +434,14 @@ test_that("shift CLI registers, inspects, and cancels background batches", {
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
     launched <- NULL
+    # shift_batch_execution__launch {{{
     testthat::local_mocked_bindings(shift_batch_execution__launch = function(
         root,
         job
     ) {
         launched <<- list(root = root, job = job)
     })
+    # }}}
     queued <- epwshiftr_cli(c(
         "--quiet",
         "--store",
@@ -532,7 +536,9 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
     test_local_dependencies(list(
+        # shift_job__launch_job {{{
         shift_job__launch_job = function(...) invisible(0L)
+        # }}}
     ))
     # This test targets a standalone run's locked-store inspection. Batch
     # launch ownership is covered separately above.
@@ -637,6 +643,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     nc <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable_id) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -647,6 +654,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
@@ -654,6 +662,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     on.exit(unlink(nc), add = TRUE)
 
     docs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable_id) {
             esgf_test__file_docs(
                 basename(nc[[variable_id]]),
@@ -664,6 +673,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
                 table_id = "Amon"
             )
         }),
+        # }}}
         fill = TRUE
     )
     # Each synthetic variable represents a separate CMIP6 File identity.
@@ -879,3 +889,5 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     expect_equal(rendered_show$status, 0L)
     expect_true(any(grepl("Shift workflow run", rendered)))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

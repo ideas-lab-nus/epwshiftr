@@ -3,6 +3,7 @@ NULL
 
 # Check source endpoints and reuse their reachability and latency evidence.
 
+# query_result__url_scheme {{{
 query_result__url_scheme <- function(url) {
     url <- as.character(url)
     out <- rep(NA_character_, length(url))
@@ -18,17 +19,23 @@ query_result__url_scheme <- function(url) {
     ))
     out
 }
+# }}}
 
+# query_result__url_http {{{
 query_result__url_http <- function(url) {
     query_result__url_scheme(url) %in% c("http", "https")
 }
+# }}}
 
+# query_result__url_local {{{
 query_result__url_local <- function(url) {
     scheme <- query_result__url_scheme(url)
     missing <- is.na(url) | !nzchar(url)
     !missing & (is.na(scheme) | scheme == "file")
 }
+# }}}
 
+# query_result__url_path {{{
 query_result__url_path <- function(url) {
     url <- as.character(url[[1L]])
     scheme <- query_result__url_scheme(url)
@@ -40,7 +47,9 @@ query_result__url_path <- function(url) {
 
     url
 }
+# }}}
 
+# query_result__url_host {{{
 query_result__url_host <- function(url) {
     url <- as.character(url)
     out <- rep(NA_character_, length(url))
@@ -48,11 +57,15 @@ query_result__url_host <- function(url) {
     out[use] <- sub("^[A-Za-z][A-Za-z0-9+.-]*://([^/:?#]+).*$", "\\1", url[use])
     out
 }
+# }}}
 
+# query_result__reach_missing {{{
 query_result__reach_missing <- function(error) {
     list(reachable = NA, latency_ms = NA_real_, error = error)
 }
+# }}}
 
+# query_result__reach_local {{{
 query_result__reach_local <- function(url) {
     path <- query_result__url_path(url)
     ok <- file.exists(path)
@@ -62,7 +75,9 @@ query_result__reach_local <- function(url) {
         error = if (ok) NA_character_ else "File does not exist."
     )
 }
+# }}}
 
+# query_result__reach_config {{{
 query_result__reach_config <- function(
     probe = NULL,
     include_level = FALSE,
@@ -113,7 +128,9 @@ query_result__reach_config <- function(
 
     defaults
 }
+# }}}
 
+# query_result__reach_check {{{
 query_result__reach_check <- function(
     timeout = 5,
     network_policy = NULL,
@@ -132,7 +149,9 @@ query_result__reach_check <- function(
 
     invisible(NULL)
 }
+# }}}
 
+# query_result__node_urls {{{
 query_result__node_urls <- function(node) {
     node <- as.character(node[[1L]])
     if (is.na(node) || !nzchar(node)) {
@@ -144,7 +163,9 @@ query_result__node_urls <- function(node) {
 
     c(sprintf("https://%s/", node), sprintf("http://%s/", node))
 }
+# }}}
 
+# query_result__node_try {{{
 query_result__node_try <- function(url, timeout = 5, network_policy = NULL) {
     if (is.null(network_policy)) {
         network_policy <- list()
@@ -178,6 +199,7 @@ query_result__node_try <- function(url, timeout = 5, network_policy = NULL) {
                 probe_url = url
             )
         },
+        # error {{{
         error = function(e) {
             list(
                 reachable = FALSE,
@@ -186,9 +208,12 @@ query_result__node_try <- function(url, timeout = 5, network_policy = NULL) {
                 probe_url = url
             )
         }
+        # }}}
     )
 }
+# }}}
 
+# query_result__reach_node_url {{{
 query_result__reach_node_url <- function(
     url,
     timeout = 5,
@@ -212,8 +237,10 @@ query_result__reach_node_url <- function(
         network_policy = network_policy
     )
 }
+# }}}
 
 # Execute a normalized batch of URL checks through one shared curl pool.
+# query_result__run_url_checks {{{
 query_result__run_url_checks <- function(
     urls,
     timeout,
@@ -221,17 +248,23 @@ query_result__run_url_checks <- function(
     concurrency,
     serial_check,
     done_result,
+    # function callback {{{
     clock = function() proc.time()[["elapsed"]],
+    # }}}
     failonerror = NULL,
     nobody = TRUE,
+    # function callback {{{
     request_url = function(url) url,
+    # }}}
     retry_failed = TRUE
 ) {
     checkmate::assert_flag(retry_failed)
     # Keep serial execution authoritative for one target and as the fallback path.
+    # serial {{{
     serial <- function(targets) {
         stats::setNames(lapply(targets, serial_check), targets)
     }
+    # }}}
     if (!length(urls)) {
         return(stats::setNames(list(), character()))
     }
@@ -286,6 +319,7 @@ query_result__run_url_checks <- function(
                     )
                     curl::multi_add(
                         handle,
+                        # done {{{
                         done = function(response) {
                             out[[j]] <<- done_result(
                                 response = response,
@@ -293,6 +327,8 @@ query_result__run_url_checks <- function(
                                 started_at = started_at
                             )
                         },
+                        # }}}
+                        # fail {{{
                         fail = function(error) {
                             failed[[j]] <<- TRUE
                             failure_messages[[j]] <<- if (
@@ -306,6 +342,7 @@ query_result__run_url_checks <- function(
                                 as.character(error)[[1L]]
                             }
                         },
+                        # }}}
                         pool = pool
                     )
                 })
@@ -317,7 +354,9 @@ query_result__run_url_checks <- function(
             )
             TRUE
         },
+        # error {{{
         error = function(e) FALSE
+        # }}}
     )
 
     if (!isTRUE(ok)) {
@@ -337,6 +376,7 @@ query_result__run_url_checks <- function(
         if (isTRUE(retry_failed)) {
             out[failed] <- lapply(urls[failed], serial_check)
         } else {
+            # lapply callback {{{
             out[failed] <- lapply(which(failed), function(index) {
                 message <- failure_messages[[index]]
                 if (is.na(message) || !nzchar(message)) {
@@ -348,12 +388,15 @@ query_result__run_url_checks <- function(
                     error = message
                 )
             })
+            # }}}
         }
     }
 
     out
 }
+# }}}
 
+# query_result__reach_node_urls {{{
 query_result__reach_node_urls <- function(
     urls,
     timeout = 5,
@@ -368,6 +411,7 @@ query_result__reach_node_urls <- function(
         network_policy = network_policy,
         concurrency = probe_concurrency,
         # Keep data-node response handling independent of HTTP status.
+        # serial_check {{{
         serial_check = function(url) {
             query_result__reach_node_url(
                 url,
@@ -375,7 +419,9 @@ query_result__reach_node_urls <- function(
                 network_policy = network_policy
             )
         },
+        # }}}
         # Retain millisecond timing and the actual node URL in successful checks.
+        # done_result {{{
         done_result = function(response, url, started_at) {
             list(
                 reachable = TRUE,
@@ -384,17 +430,22 @@ query_result__reach_node_urls <- function(
                 probe_url = url
             )
         },
+        # }}}
         failonerror = FALSE
     )
 }
+# }}}
 
+# query_result__net_key {{{
 query_result__net_key <- function(network_policy = NULL) {
     if (is.null(network_policy) || !length(network_policy)) {
         return(NULL)
     }
     network_policy[sort(names(network_policy))]
 }
+# }}}
 
+# query_result__reach_cache_key {{{
 query_result__reach_cache_key <- function(
     level,
     target,
@@ -411,7 +462,9 @@ query_result__reach_cache_key <- function(
         )
     )
 }
+# }}}
 
+# query_result__reach_cache_get {{{
 query_result__reach_cache_get <- function(
     level,
     target,
@@ -451,7 +504,9 @@ query_result__reach_cache_get <- function(
     result$probe_cached <- TRUE
     result
 }
+# }}}
 
+# query_result__reach_cache_set {{{
 query_result__reach_cache_set <- function(
     level,
     target,
@@ -482,7 +537,9 @@ query_result__reach_cache_set <- function(
     cache__get()$set(key, value)
     invisible(NULL)
 }
+# }}}
 
+# query_result__url_try {{{
 query_result__url_try <- function(
     url,
     timeout = 5,
@@ -524,12 +581,16 @@ query_result__url_try <- function(
                 error = NA_character_
             )
         },
+        # error {{{
         error = function(e) {
             list(ok = FALSE, latency_ms = NA_real_, error = conditionMessage(e))
         }
+        # }}}
     )
 }
+# }}}
 
+# query_result__reach_url {{{
 query_result__reach_url <- function(url, timeout = 5, network_policy = NULL) {
     query_result__reach_check(timeout, network_policy)
 
@@ -595,31 +656,39 @@ query_result__reach_url <- function(url, timeout = 5, network_policy = NULL) {
         error = error
     )
 }
+# }}}
 
 # Convert an ESGF OPeNDAP data URL to its DAP2 Dataset Descriptor Structure
 # endpoint without carrying a selection expression or fragment into the check.
+# query_result__opendap_dds_url {{{
 query_result__opendap_dds_url <- function(url) {
     url <- sub("[?#].*$", "", as.character(url))
     url <- sub("\\.html$", "", url, ignore.case = TRUE)
     ifelse(grepl("\\.dds$", url, ignore.case = TRUE), url, paste0(url, ".dds"))
 }
+# }}}
 
 # Confirm that a successful HTTP response is a DAP Dataset Descriptor Structure
 # rather than an HTML error page returned with status 200.
+# query_result__valid_dds {{{
 query_result__valid_dds <- function(content) {
     if (is.null(content) || !length(content)) {
         return(FALSE)
     }
+    # error {{{
     text <- tryCatch(rawToChar(content), error = function(error) "")
+    # }}}
     isTRUE(grepl("^[[:space:]]*Dataset[[:space:]]*\\{", text)) &&
         isTRUE(grepl(
             "\\}[[:space:]]*[^;[:space:]]+[[:space:]]*;[[:space:]]*$",
             text
         ))
 }
+# }}}
 
 # Check one exact OPeNDAP file endpoint by requesting its DDS metadata. A data
 # node homepage or an arbitrary 200 response cannot satisfy this contract.
+# query_result__check_opendap_url {{{
 query_result__check_opendap_url <- function(
     url,
     timeout = 5,
@@ -672,6 +741,7 @@ query_result__check_opendap_url <- function(
                 error = NA_character_
             )
         },
+        # error {{{
         error = function(error) {
             list(
                 reachable = FALSE,
@@ -679,11 +749,14 @@ query_result__check_opendap_url <- function(
                 error = conditionMessage(error)
             )
         }
+        # }}}
     )
 }
+# }}}
 
 # Check unique OPeNDAP URLs concurrently while retaining the original base URL
 # as the result key used by catalog records and cache entries.
+# query_result__check_opendap_urls {{{
 query_result__check_opendap_urls <- function(
     urls,
     timeout = 5,
@@ -697,6 +770,7 @@ query_result__check_opendap_urls <- function(
         timeout = timeout,
         network_policy = network_policy,
         concurrency = concurrency,
+        # serial_check {{{
         serial_check = function(url) {
             query_result__check_opendap_url(
                 url,
@@ -704,6 +778,8 @@ query_result__check_opendap_urls <- function(
                 network_policy = network_policy
             )
         },
+        # }}}
+        # done_result {{{
         done_result = function(response, url, started_at) {
             if (!query_result__valid_dds(response$content)) {
                 return(list(
@@ -718,13 +794,16 @@ query_result__check_opendap_urls <- function(
                 error = NA_character_
             )
         },
+        # }}}
         failonerror = TRUE,
         nobody = FALSE,
         request_url = query_result__opendap_dds_url,
         retry_failed = FALSE
     )
 }
+# }}}
 
+# query_result__reach_http_urls {{{
 query_result__reach_http_urls <- function(
     urls,
     timeout = 5,
@@ -739,6 +818,7 @@ query_result__reach_http_urls <- function(
         network_policy = network_policy,
         concurrency = probe_concurrency,
         # Retain the HEAD-then-Range behavior for failed service URL checks.
+        # serial_check {{{
         serial_check = function(url) {
             query_result__reach_url(
                 url,
@@ -746,7 +826,9 @@ query_result__reach_http_urls <- function(
                 network_policy = network_policy
             )
         },
+        # }}}
         # Successful HTTP service checks retain the reachability result schema.
+        # done_result {{{
         done_result = function(response, url, started_at) {
             list(
                 reachable = TRUE,
@@ -754,10 +836,13 @@ query_result__reach_http_urls <- function(
                 error = NA_character_
             )
         },
+        # }}}
         failonerror = TRUE
     )
 }
+# }}}
 
+# query_result__reach_urls {{{
 query_result__reach_urls <- function(
     urls,
     timeout = 5,
@@ -825,9 +910,11 @@ query_result__reach_urls <- function(
 
     out[]
 }
+# }}}
 
 # Dispatch exact URL checks by ESGF service and cache them independently so a
 # generic HTTP response can never be reused as evidence of DAP availability.
+# query_result__reach_service_urls {{{
 query_result__reach_service_urls <- function(
     urls,
     service,
@@ -938,7 +1025,9 @@ query_result__reach_service_urls <- function(
     }
     out[]
 }
+# }}}
 
+# query_result__reach_nodes {{{
 query_result__reach_nodes <- function(
     data_node,
     timeout = 5,
@@ -997,9 +1086,11 @@ query_result__reach_nodes <- function(
         node_urls <- lapply(node_values, query_result__node_urls)
         first_urls <- vapply(
             node_urls,
+            # vapply callback {{{
             function(urls) {
                 if (length(urls)) urls[[1L]] else NA_character_
             },
+            # }}}
             character(1L)
         )
         first_probes <- query_result__reach_node_urls(
@@ -1129,7 +1220,9 @@ query_result__reach_nodes <- function(
 
     out[]
 }
+# }}}
 
+# query_result__reach_url_table {{{
 query_result__reach_url_table <- function(probes, urls) {
     if (!"probe_level" %in% names(probes)) {
         probes[,
@@ -1148,7 +1241,9 @@ query_result__reach_url_table <- function(probes, urls) {
     }
     probes[]
 }
+# }}}
 
+# query_result__reach_targets {{{
 query_result__reach_targets <- function(
     urls,
     data_node = NULL,
@@ -1266,7 +1361,9 @@ query_result__reach_targets <- function(
 
     out[]
 }
+# }}}
 
+# query_result__latency_url {{{
 query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
     if (is.na(url) || !nzchar(url) || startsWith(url, "file://")) {
         return(list(latency = NA_real_, throughput = NA_real_))
@@ -1296,7 +1393,9 @@ query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
             curl::curl_fetch_memory(url, handle = handle)
             TRUE
         },
+        # error {{{
         error = function(e) FALSE
+        # }}}
     )
     if (!ok) {
         start <- Sys.time()
@@ -1313,7 +1412,9 @@ query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
                 curl::curl_fetch_memory(url, handle = handle)
                 TRUE
             },
+            # error {{{
             error = function(e) FALSE
+            # }}}
         )
     }
     if (!ok) {
@@ -1324,7 +1425,9 @@ query_result__latency_url <- function(url, timeout = 5, network_policy = NULL) {
         throughput = NA_real_
     )
 }
+# }}}
 
+# query_result__latency_urls {{{
 query_result__latency_urls <- function(
     urls,
     timeout = 5,
@@ -1339,6 +1442,7 @@ query_result__latency_urls <- function(
         network_policy = network_policy,
         concurrency = probe_concurrency,
         # Retain the existing latency check and its Range fallback.
+        # serial_check {{{
         serial_check = function(url) {
             query_result__latency_url(
                 url,
@@ -1346,7 +1450,9 @@ query_result__latency_urls <- function(
                 network_policy = network_policy
             )
         },
+        # }}}
         # Latency remains measured in seconds with an unavailable throughput.
+        # done_result {{{
         done_result = function(response, url, started_at) {
             list(
                 latency = as.numeric(difftime(
@@ -1357,10 +1463,13 @@ query_result__latency_urls <- function(
                 throughput = NA_real_
             )
         },
+        # }}}
         clock = Sys.time
     )
 }
+# }}}
 
+# query_result__latency_table {{{
 query_result__latency_table <- function(
     urls,
     data_node = NULL,
@@ -1462,3 +1571,6 @@ query_result__latency_table <- function(
     }
     out[]
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

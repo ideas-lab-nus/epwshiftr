@@ -1,12 +1,14 @@
 # Read source files without serializing a store connection into a worker.
 # Payload publication is shared; plan status and Parquet persistence stay with
 # the process that owns the manifest.
+# store__read_job {{{
 store__read_job <- function(job, source) {
     tryCatch(
         {
             resolved <- store__extract_cache_resolve(
                 job$plan,
                 job$file,
+                # store__extract_cache_resolve callback {{{
                 function() {
                     if (is.null(source$opened)) {
                         source$opened <- store__open_dataset(
@@ -28,6 +30,7 @@ store__read_job <- function(job, source) {
                         recovery_error = NULL
                     )
                 }
+                # }}}
             )
             # Transfer a cache reference instead of copying weather arrays through
             # IPC. The caller loads and persists one site's payload at a time.
@@ -43,8 +46,10 @@ store__read_job <- function(job, source) {
         error = base::identity
     )
 }
+# }}}
 
 # Open a native source and classify access errors before any manifest write.
+# store__open_dataset {{{
 store__open_dataset <- function(target, service) {
     started_at <- proc.time()[["elapsed"]]
     ds <- NULL
@@ -58,6 +63,7 @@ store__open_dataset <- function(target, service) {
                 access_method = service
             )
         },
+        # error {{{
         error = function(error) {
             if (!is.null(ds) && isTRUE(ds$is_open)) {
                 ds$close()
@@ -70,10 +76,13 @@ store__open_dataset <- function(target, service) {
                 started_at = started_at
             ))
         }
+        # }}}
     )
 }
+# }}}
 
 # Build the same native point payload in the caller or a source worker.
+# store__read_extract_dataset {{{
 store__read_extract_dataset <- function(
     ds,
     plan,
@@ -94,6 +103,7 @@ store__read_extract_dataset <- function(
             }
             list(info = value, valid = valid)
         },
+        # error {{{
         error = function(error) {
             stop(store__access_error(
                 error,
@@ -103,6 +113,7 @@ store__read_extract_dataset <- function(
                 started_at = metadata_started
             ))
         }
+        # }}}
     )
     requested_time <- c(plan$time_start[[1L]], plan$time_stop[[1L]])
     # Count the same calendar-native indices that read_region() will
@@ -118,6 +129,7 @@ store__read_extract_dataset <- function(
     callback <- if (is.null(reporter)) {
         NULL
     } else {
+        # { callback {{{
         function(progress) {
             reporter$heartbeat(
                 details = list(
@@ -138,6 +150,7 @@ store__read_extract_dataset <- function(
             )
             invisible(TRUE)
         }
+        # }}}
     }
     dataset_private <- priv(ds)
     old_callback <- dataset_private$progress_callback
@@ -156,6 +169,7 @@ store__read_extract_dataset <- function(
     dt <- tryCatch(
         tryCatch(
             do.call(ds$read_region, c(read_args, list(async = use_async))),
+            # epwshiftr_async_unavailable {{{
             epwshiftr_async_unavailable = function(error) {
                 # A worker launch failure changes liveness only; the
                 # same OPeNDAP read remains valid synchronously.
@@ -177,7 +191,9 @@ store__read_extract_dataset <- function(
                 )
                 do.call(ds$read_region, c(read_args, list(async = FALSE)))
             }
+            # }}}
         ),
+        # error {{{
         error = function(error) {
             stop(store__access_error(
                 error,
@@ -187,6 +203,7 @@ store__read_extract_dataset <- function(
                 started_at = read_started
             ))
         }
+        # }}}
     )
     grid_sources <- attr(dt, "grid_sources", exact = TRUE)
     units <- tryCatch(
@@ -195,7 +212,9 @@ store__read_extract_dataset <- function(
             "units",
             index = 1L
         ))[[1L]],
+        # error {{{
         error = function(error) NA_character_
+        # }}}
     )
     data.table::set(dt, j = "units", value = units)
     list(
@@ -206,11 +225,13 @@ store__read_extract_dataset <- function(
         actual_end = max(time_info$valid)
     )
 }
+# }}}
 
 # Keep at most the requested number of source tasks in flight. Workers own
 # native handles only; collect() runs in the caller and may commit to its store.
 # Stop dispatching on a fatal task error, drain already running work, and keep
 # its completed cache entries available for recovery.
+# source__apply {{{
 source__apply <- function(
     jobs,
     read,
@@ -359,9 +380,11 @@ source__apply <- function(
     }
     invisible(NULL)
 }
+# }}}
 
 # Preserve per-plan failures as results for the manifest owner. Native failures
 # are not resubmitted by the pool; HTTP fallback runs after the pool drains.
+# store__read_task {{{
 store__read_task <- function(job) {
     source <- new.env(parent = emptyenv())
     source$opened <- NULL
@@ -384,9 +407,11 @@ store__read_task <- function(job) {
     }
     list(results = results)
 }
+# }}}
 
 # One batch task shares all of its sites and writes recoverable windows. No
 # child manifest is opened in the source worker.
+# source__read_acquisition {{{
 source__read_acquisition <- function(job) {
     tryCatch(
         shift_batch_window__prefetch_acquisition(
@@ -395,12 +420,19 @@ source__read_acquisition <- function(job) {
             job$consumers,
             cached = job$cached
         ),
+        # epwshiftr_shared_unavailable {{{
         epwshiftr_shared_unavailable = function(error) {
             list(unavailable = error)
         },
+        # }}}
+        # error {{{
         error = function(error) {
             attr(error, "shared_file") <- job$acquisition$filename[[1L]]
             stop(error)
         }
+        # }}}
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -1,3 +1,4 @@
+# schema__extdata {{{
 schema__extdata <- function(file) {
     system.file(
         "extdata",
@@ -7,11 +8,15 @@ schema__extdata <- function(file) {
         mustWork = TRUE
     )
 }
+# }}}
 
+# schema__load {{{
 schema__load <- function(file) {
     schema_read(schema__extdata(file))
 }
+# }}}
 
+# schema__load_lazy {{{
 schema__load_lazy <- function(name, file, env = parent.frame()) {
     force(file)
     delayedAssign(
@@ -22,6 +27,7 @@ schema__load_lazy <- function(name, file, env = parent.frame()) {
     )
     invisible(name)
 }
+# }}}
 
 schema__load_lazy("SCHEMA_QUERY", "query.json")
 schema__load_lazy("SCHEMA_RESPONSE", "response.json")
@@ -32,4 +38,4 @@ schema__load_lazy("SCHEMA_ESG_DICT", "esg-dict.json")
 schema__load_lazy("SCHEMA_DOWNLOADER_CONFIG", "downloader-config.json")
 schema__load_lazy("SCHEMA_SHIFT_WORKFLOW_CONFIG", "shift-workflow-config.json")
 
-# vim: fdm=marker :
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

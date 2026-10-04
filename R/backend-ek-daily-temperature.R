@@ -30,6 +30,7 @@ EPW_MORPH_EK_DAILY_TEMPERATURE_OPTIONS <- EPW_MORPH_TEMPERATURE_OPTIONS
 
 # Validate Ek settings through the shared temperature validator without
 # exposing the injected daily-window value to the method itself.
+# ek__daily_temperature_options {{{
 ek__daily_temperature_options <- function(options = NULL) {
     temperature__backend_options(
         options,
@@ -37,8 +38,10 @@ ek__daily_temperature_options <- function(options = NULL) {
         label = "Ek daily temperature"
     )
 }
+# }}}
 
 # Declare the daily extrema and baseline EPW inputs required by every Ek stage.
+# ek__daily_temperature_inputs {{{
 ek__daily_temperature_inputs <- function() {
     list(
         weather_template = component__input_requirement(
@@ -61,10 +64,12 @@ ek__daily_temperature_inputs <- function() {
         )
     )
 }
+# }}}
 
 # Normalize one native-calendar year onto the 365 EPW phase grid with circular
 # linear interpolation. This is a calendar adapter, not a smoothing window:
 # every target value is determined by the two adjacent native-calendar days.
+# ek__interpolate_calendar_year {{{
 ek__interpolate_calendar_year <- function(annual_phase, value, target_phase) {
     annual_phase <- daily__check_phase(annual_phase)
     checkmate::assert_numeric(
@@ -101,9 +106,11 @@ ek__interpolate_calendar_year <- function(annual_phase, value, target_phase) {
     # continuous and does not privilege a Gregorian January 1 boundary.
     daily__circular_interpolate(annual_phase, value, target_phase)
 }
+# }}}
 
 # Reproduce Ek's day-of-year baseline construction while adapting each native
 # CF calendar year to the common 365-day coordinate before averaging years.
+# ek__daily_temperature_climatology {{{
 ek__daily_temperature_climatology <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -176,11 +183,13 @@ ek__daily_temperature_climatology <- function(data, name) {
     )
     climatology[]
 }
+# }}}
 
 # Convert aligned tasmin/tasmax baselines into Ek temperature change factors.
 # The relative DTR change is the Belcher-compatible interpretation that makes
 # zero climate change an identity and satisfies the mean/variance statements
 # accompanying Ek equation (5).
+# ek__daily_temperature_factors {{{
 ek__daily_temperature_factors <- function(
     future_climatology,
     historical_climatology,
@@ -285,8 +294,10 @@ ek__daily_temperature_factors <- function(
     }
     factors[]
 }
+# }}}
 
 # Build daily Ek factors directly from two normalized daily temperature sources.
+# ek__daily_temperature_targets {{{
 ek__daily_temperature_targets <- function(
     future,
     historical,
@@ -304,17 +315,21 @@ ek__daily_temperature_targets <- function(
         tolerance
     )
 }
+# }}}
 
 # Normalize role-addressable inputs and preserve Ek's lack of a smoothing
 # setting before any calendar or climate-signal calculation occurs.
+# ek__preprocess_apply {{{
 ek__preprocess_apply <- function(inputs, context, options) {
     morpher__validate_context(context)
     options <- ek__daily_temperature_options(options)
     temperature__preprocess_inputs(inputs, options)
 }
+# }}}
 
 # Map each native CF year to the shared annual coordinate before averaging the
 # day-of-year baselines described by Ek.
+# ek__calendar_apply {{{
 ek__calendar_apply <- function(data, inputs, context, options) {
     future <- ek__daily_temperature_climatology(
         data$future,
@@ -343,9 +358,11 @@ ek__calendar_apply <- function(data, inputs, context, options) {
         variables = c("tasmin", "tasmax")
     ))
 }
+# }}}
 
 # Calculate the Ek mean shift and DTR-relative-change signal after all calendar
 # interpretation has been completed by the preceding component.
+# ek__signal_apply_group {{{
 ek__signal_apply_group <- function(inputs, settings, key) {
     tolerance <- unique(
         inputs$model_future[["daily_mean_dtr_tolerance"]]
@@ -364,15 +381,19 @@ ek__signal_apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Retain the baseline EPW day order while applying the Ek climate signal and
 # published within-day transformation.
+# ek__sequence_generate {{{
 ek__sequence_generate <- function(data, inputs, context, options) {
     signal__single_value(data, "Ek")
 }
+# }}}
 
 # Apply Ek equation (5) day by day using relative DTR change as the anomaly
 # multiplier: x = x0 + delta_mean + alpha_dtr * (x0 - daily_mean_x0).
+# ek__hourly_reconstruct {{{
 ek__hourly_reconstruct <- function(data, inputs, context, options) {
     options <- ek__daily_temperature_options(options)
     baseline <- data$baseline
@@ -534,9 +555,11 @@ ek__hourly_reconstruct <- function(data, inputs, context, options) {
         options = options
     )
 }
+# }}}
 
 # Select paper-faithful humidity preservation or shared humidity closure
 # without changing the preceding Ek signal and hourly transformation.
+# ek__physics_apply {{{
 ek__physics_apply <- function(data, inputs, context, options) {
     baseline <- data$baseline
     hourly <- data$hourly
@@ -670,9 +693,11 @@ ek__physics_apply <- function(data, inputs, context, options) {
         settings = settings
     )
 }
+# }}}
 
 # Return the common EPW morph result with Ek factors and formula settings
 # retained as separately inspectable parts.
+# ek__output_write {{{
 ek__output_write <- function(data, inputs, context, options, stages) {
     epw_morph_result(
         context,
@@ -687,9 +712,11 @@ ek__output_write <- function(data, inputs, context, options, stages) {
         factors = data$factors
     )
 }
+# }}}
 
 # Define the seven Ek stages so its signal and hourly equation remain
 # independently inspectable and reusable.
+# ek__component_specs {{{
 ek__component_specs <- function() {
     complete_inputs <- ek__daily_temperature_inputs()
     template <- complete_inputs$weather_template
@@ -699,6 +726,7 @@ ek__component_specs <- function() {
     )
     profiles <- lapply(
         c("tasmin", "tasmax"),
+        # lapply callback {{{
         function(variable) {
             signal__variable_profile(
                 variable,
@@ -709,6 +737,7 @@ ek__component_specs <- function() {
                 )
             )
         }
+        # }}}
     )
 
     list(
@@ -790,15 +819,19 @@ ek__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the daily mean/DTR components once without replacing process-local
 # implementations already stored under the same stable component keys.
+# ek__register_components {{{
 ek__register_components <- function() {
     component__register_builtins(ek__component_specs())
 }
+# }}}
 
 # Compose the temperature-focused Ek recipe from method-neutral stages while
 # retaining the publication identity at the complete-recipe boundary.
+# ek__pipeline {{{
 ek__pipeline <- function() {
     ek__register_components()
     pipeline__spec(list(
@@ -811,3 +844,6 @@ ek__pipeline <- function() {
         output = "daily_mean_dtr_epw_result"
     ))
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

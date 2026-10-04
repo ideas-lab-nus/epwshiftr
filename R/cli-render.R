@@ -1,3 +1,4 @@
+# epwshiftr_cli_context {{{
 epwshiftr_cli_context <- function(parsed) {
     args <- parsed$args
     if (isTRUE(parsed$help)) {
@@ -26,8 +27,9 @@ epwshiftr_cli_context <- function(parsed) {
     context$columns <- epwshiftr_cli_context_columns(args)
     context
 }
+# }}}
 
-
+# epwshiftr_cli_context_columns {{{
 epwshiftr_cli_context_columns <- function(args) {
     if (
         length(args) < 2L ||
@@ -49,8 +51,9 @@ epwshiftr_cli_context_columns <- function(args) {
     )
     epwshiftr_cli_csv(parsed$options[["--columns"]])
 }
+# }}}
 
-
+# epwshiftr_cli_render {{{
 epwshiftr_cli_render <- function(result, context = NULL) {
     if (is.null(context)) {
         context <- list()
@@ -88,16 +91,18 @@ epwshiftr_cli_render <- function(result, context = NULL) {
     }
     epwshiftr_cli_render_default(result)
 }
+# }}}
 
-
+# epwshiftr_cli_render_help {{{
 epwshiftr_cli_render_help <- function(lines) {
     for (line in lines) {
         cli::cli_text("{line}")
     }
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_doctor {{{
 epwshiftr_cli_render_doctor <- function(result) {
     cli::cli_h1("epwshiftr doctor")
     epwshiftr_cli_render_summary(result$summary, "Summary")
@@ -108,8 +113,9 @@ epwshiftr_cli_render_doctor <- function(result) {
     )
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_query {{{
 epwshiftr_cli_render_query <- function(result, command, context = NULL) {
     if (identical(command, "list")) {
         return(epwshiftr_cli_render_table(
@@ -215,8 +221,9 @@ epwshiftr_cli_render_query <- function(result, command, context = NULL) {
     )
     epwshiftr_cli_render_default(result, title = title)
 }
+# }}}
 
-
+# epwshiftr_cli_query_search_columns {{{
 epwshiftr_cli_query_search_columns <- function(result, context = NULL) {
     columns <- context$columns
     if (!is.null(columns)) {
@@ -234,8 +241,9 @@ epwshiftr_cli_query_search_columns <- function(result, context = NULL) {
         "dataset_id"
     )
 }
+# }}}
 
-
+# epwshiftr_cli_validate_display_columns {{{
 epwshiftr_cli_validate_display_columns <- function(x, columns) {
     missing <- setdiff(columns, names(x))
     if (length(missing)) {
@@ -246,8 +254,9 @@ epwshiftr_cli_validate_display_columns <- function(x, columns) {
     }
     columns
 }
+# }}}
 
-
+# epwshiftr_cli_render_download {{{
 epwshiftr_cli_render_download <- function(result, command, action = NULL) {
     if (identical(command, "preflight")) {
         return(epwshiftr_cli_render_download_preflight(result))
@@ -380,8 +389,9 @@ epwshiftr_cli_render_download <- function(result, command, action = NULL) {
     )
     epwshiftr_cli_render_default(result, title = title)
 }
+# }}}
 
-
+# epwshiftr_cli_render_download_preflight {{{
 epwshiftr_cli_render_download_preflight <- function(result) {
     cli::cli_h1("Download preflight")
     epwshiftr_cli_render_summary(result$summary, "Summary")
@@ -418,8 +428,9 @@ epwshiftr_cli_render_download_preflight <- function(result) {
     )
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_download_watch {{{
 epwshiftr_cli_render_download_watch <- function(result) {
     cli::cli_h1("Download activity")
     epwshiftr_cli_render_summary(result$summary, "Summary")
@@ -487,8 +498,9 @@ epwshiftr_cli_render_download_watch <- function(result) {
     )
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_esgf_report {{{
 epwshiftr_cli_render_esgf_report <- function(result) {
     cli::cli_h1("ESGF report")
     epwshiftr_cli_render_table(
@@ -562,8 +574,9 @@ epwshiftr_cli_render_esgf_report <- function(result) {
     )
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_storage {{{
 epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
     if (identical(command, "report")) {
         if (is.list(result) && !is.data.frame(result)) {
@@ -650,8 +663,9 @@ epwshiftr_cli_render_storage <- function(result, command, action = NULL) {
     )
     epwshiftr_cli_render_default(result, title = title)
 }
+# }}}
 
-
+# epwshiftr_cli_render_shift {{{
 epwshiftr_cli_render_shift <- function(result, command) {
     if (identical(command, "list")) {
         return(cli_shift__render_history(result))
@@ -743,9 +757,11 @@ epwshiftr_cli_render_shift <- function(result, command) {
     )
     epwshiftr_cli_render_default(result, title = title)
 }
+# }}}
 
 # Render complete run/batch identities and their exact stores so a history row
 # can always be used with show/watch, even when child stores are independent.
+# cli_shift__render_history {{{
 cli_shift__render_history <- function(rows) {
     cli::cli_h1("Workflow history")
     if (!nrow(rows)) {
@@ -795,9 +811,11 @@ cli_shift__render_history <- function(rows) {
     )
     invisible(NULL)
 }
+# }}}
 
 # Keep scientific identity, output type, denominators, and missing-file counts
 # together in each comparison record. No weather metric implies method ranking.
+# cli_shift__render_summary {{{
 cli_shift__render_summary <- function(rows) {
     cli::cli_h1("Workflow comparison")
     if (!nrow(rows)) {
@@ -894,10 +912,11 @@ cli_shift__render_summary <- function(rows) {
     }
     invisible(NULL)
 }
-
+# }}}
 
 # Keep the default overview bounded and render complete wrapped records only
 # when explicitly requested. Debug additionally exposes raw JSON payloads.
+# epwshiftr_cli_render_shift_show {{{
 epwshiftr_cli_render_shift_show <- function(result) {
     cli::cli_h1("Shift workflow run")
     detail <- shift_stage__coalesce(attr(result, "shift_ui_detail"), "normal")
@@ -960,10 +979,12 @@ epwshiftr_cli_render_shift_show <- function(result) {
     )
     invisible(NULL)
 }
+# }}}
 
 # Print every row and every selected field without cell or row truncation.
 # Vertical records keep long paths, actions and raw payloads readable on small
 # terminals while preserving their complete text across wrapped lines.
+# cli_shift__render_detail_records {{{
 cli_shift__render_detail_records <- function(rows, title, debug = FALSE) {
     rows <- data.table::as.data.table(rows)
     width <- shift_ui__ui_width()
@@ -994,8 +1015,9 @@ cli_shift__render_detail_records <- function(rows, title, debug = FALSE) {
     }
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_shift_config {{{
 epwshiftr_cli_render_shift_config <- function(result) {
     if (identical(result$action, "example")) {
         cli::cli_h1("Shift config example")
@@ -1038,10 +1060,11 @@ epwshiftr_cli_render_shift_config <- function(result) {
     }
     epwshiftr_cli_render_default(result, title = "Shift config")
 }
-
+# }}}
 
 # Render CLI watch snapshots with the same live dashboard as the foreground R
 # reporter, then append terminal artifacts when they exist.
+# epwshiftr_cli_render_shift_watch {{{
 epwshiftr_cli_render_shift_watch <- function(
     result,
     detail = shift_stage__coalesce(attr(result, "shift_ui_detail"), "normal")
@@ -1096,8 +1119,9 @@ epwshiftr_cli_render_shift_watch <- function(
     )
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_extract {{{
 epwshiftr_cli_render_extract <- function(result, command) {
     title <- switch(
         command,
@@ -1163,8 +1187,9 @@ epwshiftr_cli_render_extract <- function(result, command) {
     )
     epwshiftr_cli_render_table(result, title = title, columns = columns)
 }
+# }}}
 
-
+# epwshiftr_cli_render_morph {{{
 epwshiftr_cli_render_morph <- function(result, command) {
     if (identical(command, "transforms")) {
         cli::cli_h1("Weather transformations")
@@ -1321,9 +1346,11 @@ epwshiftr_cli_render_morph <- function(result, command) {
     )
     epwshiftr_cli_render_table(result, title = title, columns = columns)
 }
+# }}}
 
 # Render AND/OR variable alternatives explicitly; the generic named-list
 # renderer cannot display the unnamed vectors inside input contracts.
+# cli_morph__render_inputs {{{
 cli_morph__render_inputs <- function(inputs, title) {
     cli::cli_h2(title)
     width <- shift_ui__ui_width()
@@ -1342,9 +1369,11 @@ cli_morph__render_inputs <- function(inputs, title) {
         if (length(input$variable_sets)) {
             alternatives <- vapply(
                 input$variable_sets,
+                # vapply callback {{{
                 function(variables) {
                     paste0("(", paste(variables, collapse = " + "), ")")
                 },
+                # }}}
                 character(1L)
             )
             items <- c(
@@ -1385,9 +1414,11 @@ cli_morph__render_inputs <- function(inputs, title) {
     }
     invisible(NULL)
 }
+# }}}
 
 # Keep one batch rendering contract for run receipts, show, status, and watch.
 # Status-only results use their available summary without requiring case data.
+# cli_shift__render_batch {{{
 cli_shift__render_batch <- function(
     result,
     detail = shift_stage__coalesce(attr(result, "shift_ui_detail"), "normal")
@@ -1425,9 +1456,11 @@ cli_shift__render_batch <- function(
     )
     invisible(NULL)
 }
+# }}}
 
 # Keep batch output and diagnostic identities attached to their payloads.
 # Wrapped records preserve full paths and actionable messages on narrow TTYs.
+# cli_shift__render_records {{{
 cli_shift__render_records <- function(rows, command) {
     width <- shift_ui__ui_width()
     cli::cli_h2(epwshiftr_cli_title(command))
@@ -1474,8 +1507,9 @@ cli_shift__render_records <- function(rows, command) {
     }
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_default {{{
 epwshiftr_cli_render_default <- function(result, title = NULL) {
     if (is.data.frame(result)) {
         return(epwshiftr_cli_render_table(result, title = title))
@@ -1490,8 +1524,9 @@ epwshiftr_cli_render_default <- function(result, title = NULL) {
     cli::cli_text("{value}")
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_named_list {{{
 epwshiftr_cli_render_named_list <- function(result, title = NULL) {
     if (!is.null(title) && nzchar(trimws(title))) {
         cli::cli_h1(trimws(title))
@@ -1515,8 +1550,9 @@ epwshiftr_cli_render_named_list <- function(result, title = NULL) {
     }
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_summary {{{
 epwshiftr_cli_render_summary <- function(x, title = "Summary") {
     if (is.null(x)) {
         return(invisible(NULL))
@@ -1546,11 +1582,12 @@ epwshiftr_cli_render_summary <- function(x, title = "Summary") {
     }
     invisible(NULL)
 }
-
+# }}}
 
 # Render the shared double-line heading used by established ESGF object
 # receipts. Keeping the rule style here prevents high-level Shift facades from
 # drifting away from EsgQuery and EsgResult output again.
+# esg__print_header {{{
 esg__print_header <- function(title) {
     checkmate::assert_string(title, min.chars = 1L)
     div <- cli::cli_div(theme = list(rule = list("line-type" = "double")))
@@ -1558,10 +1595,11 @@ esg__print_header <- function(title) {
     cli::cli_end(div)
     invisible(NULL)
 }
-
+# }}}
 
 # Render named scalar facts as the bullet summary established by EsgResult.
 # Empty facts are removed so incomplete objects do not display fake values.
+# esg__print_facts {{{
 esg__print_facts <- function(x) {
     if (is.null(x) || !length(x)) {
         return(invisible(NULL))
@@ -1569,11 +1607,13 @@ esg__print_facts <- function(x) {
     checkmate::assert_list(x, names = "named")
     keep <- vapply(
         x,
+        # vapply callback {{{
         function(value) {
             length(value) &&
                 !all(is.na(value)) &&
                 any(nzchar(as.character(value)))
         },
+        # }}}
         logical(1L)
     )
     x <- x[keep]
@@ -1586,10 +1626,11 @@ esg__print_facts <- function(x) {
     }
     invisible(NULL)
 }
-
+# }}}
 
 # Render query parameters through QueryParam's canonical display formatter so
 # EsgQuery and ShiftRequest never diverge on names, ordering, or negation.
+# esg__print_parameters {{{
 esg__print_parameters <- function(params, title = "Query parameters") {
     checkmate::assert_string(title, min.chars = 1L)
     cli::cli_rule(title)
@@ -1601,18 +1642,20 @@ esg__print_parameters <- function(params, title = "Query parameters") {
     cli::cli_bullets(stats::setNames(rendered, rep("*", length(rendered))))
     invisible(NULL)
 }
-
+# }}}
 
 # Compose the high-level Shift request receipt with the canonical QueryParam
 # renderer. Callers decide whether an index node is pinned or auto-selected.
+# esg__print_query {{{
 esg__print_query <- function(index_node, params, title = "ESGF query") {
     esg__print_header(title)
     esg__print_facts(list("Index node" = index_node))
     esg__print_parameters(params)
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_render_table {{{
 epwshiftr_cli_render_table <- function(
     x,
     title = NULL,
@@ -1647,6 +1690,7 @@ epwshiftr_cli_render_table <- function(
     }
     shown <- x[seq_len(min(nrow(x), max_rows)), columns, drop = FALSE]
     display <- as.data.frame(
+        # lapply callback {{{
         lapply(names(shown), function(name) {
             value <- epwshiftr_cli_format_named_cell(shown[[name]], name)
             epwshiftr_cli_truncate_cell(
@@ -1654,6 +1698,7 @@ epwshiftr_cli_render_table <- function(
                 epwshiftr_cli_column_max_width(name)
             )
         }),
+        # }}}
         stringsAsFactors = FALSE
     )
     names(display) <- names(shown)
@@ -1697,8 +1742,9 @@ epwshiftr_cli_render_table <- function(
     }
     invisible(NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_as_data_frame {{{
 epwshiftr_cli_as_data_frame <- function(x) {
     if (is.null(x)) {
         return(data.frame())
@@ -1716,8 +1762,9 @@ epwshiftr_cli_as_data_frame <- function(x) {
     }
     data.frame(value = epwshiftr_cli_format_cell(x), stringsAsFactors = FALSE)
 }
+# }}}
 
-
+# epwshiftr_cli_pick_columns {{{
 epwshiftr_cli_pick_columns <- function(x, columns = NULL) {
     available <- names(x)
     if (is.null(columns)) {
@@ -1729,8 +1776,9 @@ epwshiftr_cli_pick_columns <- function(x, columns = NULL) {
     }
     available
 }
+# }}}
 
-
+# epwshiftr_cli_column_max_width {{{
 epwshiftr_cli_column_max_width <- function(name) {
     name <- tolower(name)
     if (grepl("url|path|detail|message|error|hint", name)) {
@@ -1744,8 +1792,9 @@ epwshiftr_cli_column_max_width <- function(name) {
     }
     24L
 }
+# }}}
 
-
+# epwshiftr_cli_table_lines {{{
 epwshiftr_cli_table_lines <- function(
     x,
     header = names(x),
@@ -1775,10 +1824,12 @@ epwshiftr_cli_table_lines <- function(
     header <- rep_len(header, ncol(body))
     widths <- vapply(
         seq_along(body),
+        # vapply callback {{{
         function(i) {
             label <- c(header[[i]], if (!is.null(types)) types[[i]], body[[i]])
             max(cli::ansi_nchar(label, type = "width"), na.rm = TRUE)
         },
+        # }}}
         integer(1L)
     )
 
@@ -1810,8 +1861,9 @@ epwshiftr_cli_table_lines <- function(
     }
     c(lines, epwshiftr_cli_table_rule(widths, chars, "bottom"))
 }
+# }}}
 
-
+# epwshiftr_cli_adapt_table_columns {{{
 epwshiftr_cli_adapt_table_columns <- function(
     display,
     raw,
@@ -1840,8 +1892,9 @@ epwshiftr_cli_adapt_table_columns <- function(
     }
     list(display = display, raw = raw, dropped = dropped)
 }
+# }}}
 
-
+# epwshiftr_cli_table_width {{{
 epwshiftr_cli_table_width <- function(display, raw, show_types = TRUE) {
     lines <- epwshiftr_cli_table_lines(
         display,
@@ -1858,8 +1911,9 @@ epwshiftr_cli_table_width <- function(display, raw, show_types = TRUE) {
     }
     max(cli::ansi_nchar(lines, type = "width"), na.rm = TRUE)
 }
+# }}}
 
-
+# epwshiftr_cli_table_types {{{
 epwshiftr_cli_table_types <- function(x) {
     if (!length(x)) {
         return(character())
@@ -1884,6 +1938,7 @@ epwshiftr_cli_table_types <- function(x) {
     )
     vapply(
         x,
+        # vapply callback {{{
         function(col) {
             class <- class(col)[[1L]]
             label <- unname(class_abbr[[class]])
@@ -1892,12 +1947,14 @@ epwshiftr_cli_table_types <- function(x) {
             }
             label
         },
+        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
 }
+# }}}
 
-
+# epwshiftr_cli_add_progress_column {{{
 epwshiftr_cli_add_progress_column <- function(x, columns = NULL) {
     if (
         !all(c("bytes_done", "size") %in% names(x)) || "progress" %in% names(x)
@@ -1916,8 +1973,9 @@ epwshiftr_cli_add_progress_column <- function(x, columns = NULL) {
     }
     list(x = x, columns = columns)
 }
+# }}}
 
-
+# epwshiftr_cli_progress_bar {{{
 epwshiftr_cli_progress_bar <- function(done, total, width = 8L) {
     done <- suppressWarnings(as.numeric(done))
     total <- suppressWarnings(as.numeric(total))
@@ -1930,6 +1988,7 @@ epwshiftr_cli_progress_bar <- function(done, total, width = 8L) {
     filled <- pmin(width, pmax(0L, round(ratio * width)))
     out[ok] <- vapply(
         seq_along(ratio),
+        # vapply callback {{{
         function(i) {
             paste0(
                 "[",
@@ -1939,12 +1998,14 @@ epwshiftr_cli_progress_bar <- function(done, total, width = 8L) {
                 sprintf("%3.0f%%", ratio[[i]] * 100)
             )
         },
+        # }}}
         character(1L)
     )
     out
 }
+# }}}
 
-
+# epwshiftr_cli_console_width {{{
 epwshiftr_cli_console_width <- function() {
     width <- getOption("width", 80L)
     width <- suppressWarnings(as.integer(width[[1L]]))
@@ -1953,8 +2014,9 @@ epwshiftr_cli_console_width <- function() {
     }
     width
 }
+# }}}
 
-
+# epwshiftr_cli_table_border {{{
 epwshiftr_cli_table_border <- function(border = "single") {
     border <- match.arg(border, c("single", "ascii", "none"))
     if (identical(border, "single") && !isTRUE(cli::is_utf8_output())) {
@@ -1988,8 +2050,9 @@ epwshiftr_cli_table_border <- function(border = "single") {
         )
     )
 }
+# }}}
 
-
+# epwshiftr_cli_table_rule {{{
 epwshiftr_cli_table_rule <- function(
     widths,
     chars,
@@ -2005,7 +2068,9 @@ epwshiftr_cli_table_rule <- function(
     cell_widths <- widths + chars$margin * 2L
     cells <- vapply(
         cell_widths,
+        # vapply callback {{{
         function(width) paste(rep(chars$horizontal, width), collapse = ""),
+        # }}}
         character(1L)
     )
     paste0(
@@ -2014,12 +2079,14 @@ epwshiftr_cli_table_rule <- function(
         pieces[["right"]]
     )
 }
+# }}}
 
-
+# epwshiftr_cli_table_row {{{
 epwshiftr_cli_table_row <- function(values, widths, align, chars) {
     values <- as.character(values)
     cells <- vapply(
         seq_along(values),
+        # vapply callback {{{
         function(i) {
             padded <- epwshiftr_cli_table_pad(
                 values[[i]],
@@ -2032,6 +2099,7 @@ epwshiftr_cli_table_row <- function(values, widths, align, chars) {
                 paste(rep(" ", chars$margin), collapse = "")
             )
         },
+        # }}}
         character(1L)
     )
     paste0(
@@ -2040,8 +2108,9 @@ epwshiftr_cli_table_row <- function(values, widths, align, chars) {
         chars$vertical
     )
 }
+# }}}
 
-
+# epwshiftr_cli_table_pad {{{
 epwshiftr_cli_table_pad <- function(value, width, align = "left") {
     value <- as.character(value[[1L]])
     visible <- cli::ansi_nchar(value, type = "width")
@@ -2055,11 +2124,13 @@ epwshiftr_cli_table_pad <- function(value, width, align = "left") {
     right <- pad - left
     paste0(strrep(" ", left), value, strrep(" ", right))
 }
+# }}}
 
-
+# epwshiftr_cli_table_alignments {{{
 epwshiftr_cli_table_alignments <- function(x) {
     vapply(
         names(x),
+        # vapply callback {{{
         function(name) {
             value <- x[[name]]
             if (is.numeric(value) || is.integer(value)) {
@@ -2076,11 +2147,13 @@ epwshiftr_cli_table_alignments <- function(x) {
             }
             "left"
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
-
+# epwshiftr_cli_table_row_styles {{{
 epwshiftr_cli_table_row_styles <- function(x) {
     if (!nrow(x)) {
         return(character())
@@ -2088,6 +2161,7 @@ epwshiftr_cli_table_row_styles <- function(x) {
     value <- epwshiftr_cli_table_status_values(x)
     vapply(
         value,
+        # vapply callback {{{
         function(status) {
             group <- epwshiftr_cli_status_group(status)
             switch(
@@ -2097,12 +2171,14 @@ epwshiftr_cli_table_row_styles <- function(x) {
                 "none"
             )
         },
+        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
 }
+# }}}
 
-
+# epwshiftr_cli_table_status_values {{{
 epwshiftr_cli_table_status_values <- function(x) {
     for (name in c("status", "change_type", "check_status")) {
         if (name %in% names(x)) {
@@ -2111,8 +2187,9 @@ epwshiftr_cli_table_status_values <- function(x) {
     }
     rep(NA_character_, nrow(x))
 }
+# }}}
 
-
+# epwshiftr_cli_style_table_row {{{
 epwshiftr_cli_style_table_row <- function(line, style = "none") {
     switch(
         style,
@@ -2124,8 +2201,9 @@ epwshiftr_cli_style_table_row <- function(line, style = "none") {
         line
     )
 }
+# }}}
 
-
+# epwshiftr_cli_truncate_cell {{{
 epwshiftr_cli_truncate_cell <- function(x, width) {
     x <- as.character(x)
     width <- as.integer(width[[1L]])
@@ -2134,17 +2212,20 @@ epwshiftr_cli_truncate_cell <- function(x, width) {
     }
     vapply(
         x,
+        # vapply callback {{{
         function(value) {
             if (is.na(value) || nchar(value, type = "width") <= width) {
                 return(value)
             }
             paste0(substr(value, 1L, width - 3L), "...")
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
-
+# epwshiftr_cli_format_named_cell {{{
 epwshiftr_cli_format_named_cell <- function(x, name) {
     if (epwshiftr_cli_is_status_column(name)) {
         return(epwshiftr_cli_color_status(epwshiftr_cli_format_cell(x)))
@@ -2163,8 +2244,9 @@ epwshiftr_cli_format_named_cell <- function(x, name) {
     }
     epwshiftr_cli_format_cell(x)
 }
+# }}}
 
-
+# epwshiftr_cli_is_status_column {{{
 epwshiftr_cli_is_status_column <- function(name) {
     grepl(
         "(^status$|change_type|check_status|event$)",
@@ -2172,8 +2254,9 @@ epwshiftr_cli_is_status_column <- function(name) {
         ignore.case = TRUE
     )
 }
+# }}}
 
-
+# epwshiftr_cli_is_boolean_indicator {{{
 epwshiftr_cli_is_boolean_indicator <- function(name) {
     grepl(
         "(^|_)(ok|exists|tracked|cached|resume|run|execute|dry_run|incomplete|retryable|would_block)$",
@@ -2181,11 +2264,13 @@ epwshiftr_cli_is_boolean_indicator <- function(name) {
         ignore.case = TRUE
     )
 }
+# }}}
 
-
+# epwshiftr_cli_color_status {{{
 epwshiftr_cli_color_status <- function(x) {
     vapply(
         x,
+        # vapply callback {{{
         function(value) {
             group <- epwshiftr_cli_status_group(value)
             switch(
@@ -2198,12 +2283,14 @@ epwshiftr_cli_color_status <- function(x) {
                 value
             )
         },
+        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
 }
+# }}}
 
-
+# epwshiftr_cli_status_group {{{
 epwshiftr_cli_status_group <- function(x) {
     x <- tolower(as.character(x[[1L]]))
     if (is.na(x) || !nzchar(x) || identical(x, "-")) {
@@ -2273,8 +2360,9 @@ epwshiftr_cli_status_group <- function(x) {
     }
     "none"
 }
+# }}}
 
-
+# epwshiftr_cli_color_boolean {{{
 epwshiftr_cli_color_boolean <- function(x, name) {
     value <- tolower(as.character(x))
     positive_is_bad <- grepl(
@@ -2284,6 +2372,7 @@ epwshiftr_cli_color_boolean <- function(x, name) {
     )
     vapply(
         value,
+        # vapply callback {{{
         function(item) {
             if (item %in% c("yes", "true", "1")) {
                 return(
@@ -2305,12 +2394,14 @@ epwshiftr_cli_color_boolean <- function(x, name) {
             }
             cli::col_grey(item)
         },
+        # }}}
         character(1L),
         USE.NAMES = FALSE
     )
 }
+# }}}
 
-
+# epwshiftr_cli_format_cell {{{
 epwshiftr_cli_format_cell <- function(x) {
     if (is.null(x)) {
         return("-")
@@ -2321,9 +2412,11 @@ epwshiftr_cli_format_cell <- function(x) {
     if (is.list(x) && !is.data.frame(x)) {
         return(vapply(
             x,
+            # vapply callback {{{
             function(value) {
                 paste(epwshiftr_cli_format_cell(value), collapse = ",")
             },
+            # }}}
             character(1L)
         ))
     }
@@ -2338,8 +2431,9 @@ epwshiftr_cli_format_cell <- function(x) {
     out[is.na(out) | !nzchar(out)] <- "-"
     out
 }
+# }}}
 
-
+# epwshiftr_cli_format_time {{{
 epwshiftr_cli_format_time <- function(x) {
     out <- as.character(x)
     ok <- !is.na(x)
@@ -2349,8 +2443,9 @@ epwshiftr_cli_format_time <- function(x) {
     out[!ok | !nzchar(out)] <- "-"
     out
 }
+# }}}
 
-
+# epwshiftr_cli_format_bytes {{{
 epwshiftr_cli_format_bytes <- function(x) {
     if (is.null(x) || !length(x)) {
         return("-")
@@ -2377,13 +2472,15 @@ epwshiftr_cli_format_bytes <- function(x) {
     }
     out
 }
+# }}}
 
-
+# epwshiftr_cli_title {{{
 epwshiftr_cli_title <- function(x) {
     x <- gsub("_", " ", as.character(x), fixed = TRUE)
     x <- gsub("-", " ", x, fixed = TRUE)
     vapply(
         strsplit(x, " ", fixed = TRUE),
+        # vapply callback {{{
         function(parts) {
             parts <- parts[nzchar(parts)]
             if (!length(parts)) {
@@ -2395,11 +2492,13 @@ epwshiftr_cli_title <- function(x) {
             )
             paste(parts, collapse = " ")
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
-
+# epwshiftr_cli_is_scalar_value {{{
 epwshiftr_cli_is_scalar_value <- function(x) {
     if (is.null(x)) {
         return(TRUE)
@@ -2412,8 +2511,9 @@ epwshiftr_cli_is_scalar_value <- function(x) {
     }
     length(x) <= 1L
 }
+# }}}
 
-
+# epwshiftr_cli_string_default {{{
 epwshiftr_cli_string_default <- function(x, y) {
     if (
         is.null(x) ||
@@ -2426,3 +2526,6 @@ epwshiftr_cli_string_default <- function(x, y) {
         x
     }
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

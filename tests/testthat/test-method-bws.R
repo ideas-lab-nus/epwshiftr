@@ -73,9 +73,15 @@ test_that("BWS makes unattainable requested means explicit and reproducible", {
 test_that("monthly BWS preserves ordering and returns equation parameters", {
     month <- rep(seq_len(12L), each = 24L)
     source <- rep(c(0, 10, seq(1, 9, length.out = 22L)), 12L)
-    baseline <- vapply(seq_len(12L), function(calendar_month) {
-        mean(source[month == calendar_month])
-    }, numeric(1L))
+    # vapply callback {{{
+    baseline <- vapply(
+        seq_len(12L),
+        function(calendar_month) {
+            mean(source[month == calendar_month])
+        },
+        numeric(1L)
+    )
+    # }}}
     projected <- bws__project_monthly(
         source,
         month,
@@ -142,3 +148,5 @@ test_that("integer BWS uses the closest attainable monthly mean", {
         abs(projected$factors$closure_error) <= 0.5 / 24L
     ))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

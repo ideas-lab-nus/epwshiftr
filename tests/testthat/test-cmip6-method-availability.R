@@ -1,4 +1,5 @@
 # Construct complete Dataset identities for offline public-query tests.
+# method_availability_test__datasets {{{
 method_availability_test__datasets <- function(
     variables = "tas",
     source = "Model-A",
@@ -29,6 +30,7 @@ method_availability_test__datasets <- function(
     rows[, `:=`(size = 1, latest = TRUE, replica = FALSE)]
     rows
 }
+# }}}
 
 test_that("method queries share a union catalog and keep rejected identities", {
     calls <- list()
@@ -40,6 +42,7 @@ test_that("method queries share a union catalog and keep rejected identities", {
         )
     ))
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls[[length(calls) + 1L]] <<- list(
                 request = request,
@@ -48,6 +51,7 @@ test_that("method queries share a union catalog and keep rejected identities", {
             )
             datasets
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- shift_cmip6_avail(
@@ -102,6 +106,7 @@ test_that("explicit transforms drive variables and optional historical queries",
     variables <- transform@required_inputs$model_future@variable_sets[[1L]]
     calls <- list()
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls[[length(calls) + 1L]] <<- request
             method_availability_test__datasets(
@@ -111,6 +116,7 @@ test_that("explicit transforms drive variables and optional historical queries",
                 table = "Amon"
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- shift_cmip6_avail(transform = transform, scenarios = "ssp245")
@@ -132,10 +138,12 @@ test_that("method queries preserve empty schemas and defensive identity filters"
     response <- data.table::data.table()
     calls <- list()
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, store, ui) {
             calls[[length(calls) + 1L]] <<- request
             response
         },
+        # }}}
         .package = "epwshiftr"
     )
     empty <- shift_cmip6_avail(methods = "qdm", scenarios = "ssp245")
@@ -174,7 +182,9 @@ test_that("method queries preserve empty schemas and defensive identity filters"
 
 test_that("invalid method combinations fail before querying", {
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(...) stop("Unexpected query"),
+        # }}}
         .package = "epwshiftr"
     )
     expect_error(
@@ -236,18 +246,22 @@ test_that("method queries derive mixed frequencies and reject missing catalog fi
     response[,
         table_id := vapply(
             frequency,
+            # vapply callback {{{
             function(value) {
                 shift_spec__cmip6_table_id(value)
             },
+            # }}}
             character(1L)
         )
     ]
     calls <- list()
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(request, ...) {
             calls[[length(calls) + 1L]] <<- request
             response
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- shift_cmip6_avail(transform = transform, scenarios = "ssp245")
@@ -283,10 +297,12 @@ test_that("shared method discovery reuses the existing HTTP cache across order a
     calls <- character()
     # Exercise the real Dataset workflow and JSON cache, replacing only HTTP I/O.
     local_mocked_bindings(
+        # curl_fetch_memory {{{
         curl_fetch_memory = function(url, handle, ...) {
             calls <<- c(calls, url)
             list(content = bytes, status_code = 200L)
         },
+        # }}}
         .package = "curl"
     )
     first <- shift_cmip6_avail(
@@ -340,7 +356,9 @@ test_that("public method discovery rejects incompatible cross-period alternative
         )
     ))
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(...) catalog,
+        # }}}
         .package = "epwshiftr"
     )
     result <- shift_cmip6_avail(
@@ -359,11 +377,15 @@ test_that("frequency table defaults are resolved once per unique frequency", {
         source = paste0("Model-", 1:100)
     )
     local_mocked_bindings(
+        # availability__collect {{{
         availability__collect = function(...) catalog,
+        # }}}
+        # shift_spec__cmip6_table_id {{{
         shift_spec__cmip6_table_id = function(frequency) {
             calls <<- c(calls, frequency)
             original(frequency)
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- shift_cmip6_avail(methods = "qdm", scenarios = "ssp245")
@@ -375,10 +397,12 @@ test_that("frequency table defaults are resolved once per unique frequency", {
 # Public variable and method discovery must preserve explicit replica policies.
 test_that("availability preserves explicit replica filters", {
     requested <- NULL
+    # availability__collect {{{
     local_mocked_bindings(availability__collect = function(request, store, ui) {
         requested <<- request@meta$filters
         method_availability_test__datasets()
     })
+    # }}}
     for (method in list(NULL, "qdm")) {
         for (filters in list(
             list(),
@@ -403,3 +427,5 @@ test_that("availability preserves explicit replica filters", {
         }
     }
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

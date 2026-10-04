@@ -6,6 +6,7 @@ test_local_dependencies(list(
 
 # Construct one complete hourly variable over one or more native-calendar years
 # so the integration fixture can exercise every post-interpolation component.
+# hourly_kqdm_test__series {{{
 hourly_kqdm_test__series <- function(
     variable,
     years,
@@ -25,6 +26,7 @@ hourly_kqdm_test__series <- function(
         rsds = "W m-2",
         rsdsdiff = "W m-2"
     )
+    # lapply callback {{{
     rows <- lapply(seq_along(years), function(index) {
         year <- as.integer(years[[index]])
         year_days <- cf_time__year_days(year, calendar)[[1L]]
@@ -119,11 +121,14 @@ hourly_kqdm_test__series <- function(
             stringsAsFactors = FALSE
         )
     })
+    # }}}
     data.table::rbindlist(rows, use.names = TRUE)
 }
+# }}}
 
 # Assemble the six-variable role tables required by the built-in hourly
 # kernel-QDM recipe without involving remote collection or extraction.
+# hourly_kqdm_test__role {{{
 hourly_kqdm_test__role <- function(
     years,
     role = c("observed", "historical", "future"),
@@ -141,10 +146,12 @@ hourly_kqdm_test__role <- function(
         use.names = TRUE
     )
 }
+# }}}
 
 # Reduce the hourly fixture to bounded three-hourly model samples. Point-state
 # variables use the CMIP6 `3hrPt` facet and include one following boundary
 # sample; radiation variables use the interval-mean `3hr` facet.
+# hourly_kqdm_test__model_role {{{
 hourly_kqdm_test__model_role <- function(
     years,
     role = c("historical", "future"),
@@ -155,6 +162,7 @@ hourly_kqdm_test__model_role <- function(
         EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES,
         SOLAR_RADIATION_VARIABLES
     )
+    # lapply callback {{{
     point <- lapply(point_variables, function(variable) {
         source <- hourly_kqdm_test__series(
             variable,
@@ -179,6 +187,8 @@ hourly_kqdm_test__model_role <- function(
             native_second[[1L]]
         source
     })
+    # }}}
+    # lapply callback {{{
     radiation <- lapply(SOLAR_RADIATION_VARIABLES, function(variable) {
         source <- hourly_kqdm_test__series(
             variable,
@@ -215,19 +225,25 @@ hourly_kqdm_test__model_role <- function(
         source$lat <- 0
         source
     })
+    # }}}
     data.table::rbindlist(c(point, radiation), use.names = TRUE, fill = TRUE)
 }
+# }}}
 
 # Use the smallest valid KDE grid in integration tests while preserving the
 # same variable-specific settings resolution used by production execution.
+# hourly_kqdm_test__overrides {{{
 hourly_kqdm_test__overrides <- function() {
     stats::setNames(
+        # lapply callback {{{
         lapply(EPW_MORPH_HOURLY_KQDM_VARIABLES, function(variable) {
             list(grid_points = 128L, min_samples = 3L)
         }),
+        # }}}
         EPW_MORPH_HOURLY_KQDM_VARIABLES
     )
 }
+# }}}
 
 test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
     reference <- historical_reference(1995:2014)
@@ -431,14 +447,18 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     expect_identical(
         vapply(
             result@members,
+            # vapply callback {{{
             function(member) member@weather_year,
+            # }}}
             integer(1L)
         ),
         2061:2062
     )
     expect_true(all(vapply(
         result@members,
+        # vapply callback {{{
         function(member) nrow(member@data) == 8760L,
+        # }}}
         logical(1L)
     )))
     expect_true(all(
@@ -453,6 +473,7 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     )
     expect_true(all(vapply(
         result@members,
+        # vapply callback {{{
         function(member) {
             weather <- member@data
             all(
@@ -464,13 +485,18 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
                 all(weather$wind_direction >= 0) &&
                 all(weather$wind_direction < 360)
         },
+        # }}}
         logical(1L)
     )))
     expect_true(all(vapply(
         result@members,
+        # vapply callback {{{
         function(member) {
             "wind_direction" %in% member@provenance$constructed_fields
         },
+        # }}}
         logical(1L)
     )))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

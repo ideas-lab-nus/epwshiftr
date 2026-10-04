@@ -1,5 +1,6 @@
 # Preserve the requested detail level as presentation metadata for both target
 # types; attributes do not change the machine-readable snapshot fields.
+# epwshiftr_cli_shift_show {{{
 epwshiftr_cli_shift_show <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
@@ -29,10 +30,11 @@ epwshiftr_cli_shift_show <- function(store, args) {
     attr(snapshot, "shift_ui_detail") <- epwshiftr_cli_shift_detail(parsed)
     snapshot
 }
-
+# }}}
 
 # Route watch presentation so JSON emits one final snapshot, JSONL emits the
 # event stream, and neither mode is contaminated by human-readable rendering.
+# epwshiftr_cli_shift_watch {{{
 epwshiftr_cli_shift_watch <- function(
     store,
     args,
@@ -120,10 +122,11 @@ epwshiftr_cli_shift_watch <- function(
     attr(snapshot, "shift_ui_detail") <- detail
     snapshot
 }
-
+# }}}
 
 # Read one durable run snapshot without reconstructing state from unrelated
 # query, extraction, or morph tables.
+# epwshiftr_cli_shift_watch_snapshot {{{
 epwshiftr_cli_shift_watch_snapshot <- function(
     store,
     run_id,
@@ -148,10 +151,11 @@ epwshiftr_cli_shift_watch_snapshot <- function(
     attr(snapshot, "shift_ui_state") <- run@meta$ui_state
     snapshot
 }
-
+# }}}
 
 # Emit one typed JSONL record for workflow automation. Snapshot, event, gap, and
 # terminal records remain self-describing and never contain human progress text.
+# epwshiftr_cli_shift_jsonl_record {{{
 epwshiftr_cli_shift_jsonl_record <- function(type, ...) {
     epwshiftr_cli_emit_jsonl(c(
         list(
@@ -161,10 +165,11 @@ epwshiftr_cli_shift_jsonl_record <- function(type, ...) {
         list(...)
     ))
 }
-
+# }}}
 
 # Select the correct event cursor for single-run and independently polled
 # batch histories before any public recent-event limit is applied.
+# cli_shift__watch_event_delta {{{
 cli_shift__watch_event_delta <- function(
     snapshot,
     cursor,
@@ -181,8 +186,10 @@ cli_shift__watch_event_delta <- function(
         shift_ui_state__ui_event_delta(events, cursor, initial_limit, initial)
     }
 }
+# }}}
 
 # Follow persisted snapshots with shared R/CLI views and lossless event deltas.
+# epwshiftr_cli_shift_watch_follow {{{
 epwshiftr_cli_shift_watch_follow <- function(
     store,
     run_id,
@@ -202,15 +209,18 @@ epwshiftr_cli_shift_watch_follow <- function(
     motion <- shift_ui__ui_motion(ui, progress)
     i <- 0L
     frame <- 0L
+    # error {{{
     renderer <- tryCatch(shift_tui__ui_renderer(progress), error = function(e) {
         NULL
     })
+    # }}}
     if (identical(progress, "dynamic") && is.null(renderer)) {
         progress <- "log"
         motion <- "none"
     }
     event_cursor <- if (is.null(batch_id)) NA_character_ else list()
     event_cursor_initialized <- FALSE
+    # update_dynamic {{{
     update_dynamic <- function(snapshot) {
         if (!is.null(snapshot$batch)) {
             view <- shift_batch_ui__view(
@@ -249,12 +259,15 @@ epwshiftr_cli_shift_watch_follow <- function(
         }
         ok
     }
+    # }}}
+    # close_dynamic {{{
     close_dynamic <- function(result = "done") {
         if (!is.null(renderer)) {
             renderer$close(result = result)
         }
         invisible(NULL)
     }
+    # }}}
     on.exit(close_dynamic(), add = TRUE)
     repeat {
         i <- i + 1L
@@ -361,9 +374,10 @@ epwshiftr_cli_shift_watch_follow <- function(
     attr(snapshot, "shift_ui_detail") <- detail
     structure(snapshot, class = c("epwshiftr_cli_emitted", class(snapshot)))
 }
-
+# }}}
 
 # Keep following the coordinator while source work precedes child registration.
+# epwshiftr_cli_shift_watch_active {{{
 epwshiftr_cli_shift_watch_active <- function(snapshot) {
     active <- c("queued", "running", "stopping")
     if (!is.null(snapshot$batch)) {
@@ -375,3 +389,6 @@ epwshiftr_cli_shift_watch_active <- function(snapshot) {
     }
     nrow(snapshot$run) && snapshot$run$status[[1L]] %in% active
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

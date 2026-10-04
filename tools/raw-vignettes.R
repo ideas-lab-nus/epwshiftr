@@ -2,15 +2,18 @@
 # command without executing expensive vignette code in CI.
 
 # Verify that relative raw-vignette paths are resolved from the package root.
+# vignette__assert_package_root {{{
 vignette__assert_package_root <- function() {
     if (!file.exists("DESCRIPTION")) {
         stop("Run this script from the package root.", call. = FALSE)
     }
     invisible(NULL)
 }
+# }}}
 
 # Return the deterministic source-to-output inventory shared by rendering and
 # the checksum-only CI freshness check.
+# vignette__checksum_manifest {{{
 vignette__checksum_manifest <- function() {
     source_paths <- sort(list.files(
         "vignettes-raw",
@@ -41,8 +44,10 @@ vignette__checksum_manifest <- function() {
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Write checksums only after local rendering and output validation succeed.
+# vignette__write_checksum_manifest {{{
 vignette__write_checksum_manifest <- function(
     path = "vignettes-raw/precompiled-checksums.csv"
 ) {
@@ -56,9 +61,11 @@ vignette__write_checksum_manifest <- function(
     )
     invisible(manifest)
 }
+# }}}
 
 # Compare committed raw sources and generated outputs with the last successful
 # local-render manifest without executing any vignette code.
+# vignette__check_checksum_manifest {{{
 vignette__check_checksum_manifest <- function(
     path = "vignettes-raw/precompiled-checksums.csv"
 ) {
@@ -88,9 +95,9 @@ vignette__check_checksum_manifest <- function(
 
     if (
         anyNA(recorded) ||
-        any(!nzchar(as.matrix(recorded))) ||
-        anyDuplicated(recorded$source) ||
-        anyDuplicated(recorded$output)
+            any(!nzchar(as.matrix(recorded))) ||
+            anyDuplicated(recorded$source) ||
+            anyDuplicated(recorded$output)
     ) {
         stop(
             "Raw-vignette checksum manifest contains missing or duplicate entries.",
@@ -145,16 +152,20 @@ vignette__check_checksum_manifest <- function(
 
     invisible(current)
 }
+# }}}
 
 # Check committed source/output checksums through the lightweight CI path.
+# vignette__check {{{
 vignette__check <- function() {
     vignette__assert_package_root()
     vignette__check_checksum_manifest()
     message("Precompiled raw vignettes are fresh.")
     invisible(NULL)
 }
+# }}}
 
 # Require the packages used only by the expensive local rendering path.
+# vignette__require_render_dependencies {{{
 vignette__require_render_dependencies <- function() {
     if (!requireNamespace("pkgload", quietly = TRUE)) {
         stop("Install pkgload before rendering raw vignettes.", call. = FALSE)
@@ -168,9 +179,11 @@ vignette__require_render_dependencies <- function() {
     }
     invisible(NULL)
 }
+# }}}
 
 # Normalize generated articles so committed output is stable across local
 # rendering environments.
+# vignette__trim_trailing_whitespace {{{
 vignette__trim_trailing_whitespace <- function(path) {
     lines <- readLines(path, warn = FALSE)
     trimmed <- sub("[ \t]+$", "", lines)
@@ -179,9 +192,12 @@ vignette__trim_trailing_whitespace <- function(path) {
     }
     invisible(path)
 }
+# }}}
 
 # Find embedded rendering failures before a new checksum manifest is trusted.
+# vignette__render_errors {{{
 vignette__render_errors <- function(article_paths) {
+    # lapply callback {{{
     errors <- lapply(article_paths, function(path) {
         lines <- readLines(path, warn = FALSE)
         index <- grep("^#> Error", lines)
@@ -195,15 +211,18 @@ vignette__render_errors <- function(article_paths) {
             stringsAsFactors = FALSE
         )
     })
+    # }}}
     errors <- errors[lengths(errors) > 0L]
     if (!length(errors)) {
         return(NULL)
     }
     do.call(rbind, errors)
 }
+# }}}
 
 # Render raw vignettes locally, validate generated output, and record the exact
 # committed source/output checksums consumed later by CI.
+# vignette__render {{{
 vignette__render <- function() {
     vignette__assert_package_root()
     vignette__require_render_dependencies()
@@ -248,9 +267,11 @@ vignette__render <- function() {
     message("Rendered raw vignettes and updated their checksum manifest.")
     invisible(NULL)
 }
+# }}}
 
 # Dispatch the single repository tool to an explicit lightweight check or
 # expensive local render operation.
+# vignette__main {{{
 vignette__main <- function(args = commandArgs(trailingOnly = TRUE)) {
     choices <- c("check", "render")
     if (length(args) != 1L || !args[[1L]] %in% choices) {
@@ -266,9 +287,12 @@ vignette__main <- function(args = commandArgs(trailingOnly = TRUE)) {
         render = vignette__render()
     )
 }
+# }}}
 
 # Run the command dispatcher only when this file is invoked as a script, which
 # also keeps its helpers reusable for focused local maintenance.
 if (sys.nframe() == 0L) {
     vignette__main()
 }
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

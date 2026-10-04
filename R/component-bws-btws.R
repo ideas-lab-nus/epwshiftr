@@ -5,6 +5,7 @@ NULL
 # Convert every adjusted BWS monthly target into a method-level diagnostic with
 # the climate means, EPW baseline, requested target, applied target, and exact
 # attainable interval needed to reproduce the decision.
+# bws_btws_epw__target_diagnostics {{{
 bws_btws_epw__target_diagnostics <- function(factors, context) {
     factors <- data.table::as.data.table(data.table::copy(factors))
     adjustment <- factors[["target_adjustment"]]
@@ -13,6 +14,7 @@ bws_btws_epw__target_diagnostics <- function(factors, context) {
         return(morpher__empty_diagnostics())
     }
     case <- data.table::as.data.table(context$case)
+    # case_value {{{
     case_value <- function(name) {
         if (name %in% names(case)) {
             store__chr1(case[[name]][[1L]])
@@ -20,6 +22,7 @@ bws_btws_epw__target_diagnostics <- function(factors, context) {
             NA_character_
         }
     }
+    # }}}
     source_id <- case_value("source_id")
     experiment_id <- case_value("experiment_id")
     variant_label <- case_value("variant_label")
@@ -71,9 +74,11 @@ bws_btws_epw__target_diagnostics <- function(factors, context) {
     }
     morpher__bind_diagnostics(rows)
 }
+# }}}
 
 # Apply BTWS to dry-bulb temperature and BWS to the two published bounded
 # variables while retaining baseline hourly ordering for physical closure.
+# bws_btws_epw__hourly_reconstruct {{{
 bws_btws_epw__hourly_reconstruct <- function(
     data,
     inputs,
@@ -132,23 +137,29 @@ bws_btws_epw__hourly_reconstruct <- function(
     }
     ghi_mean <- vapply(
         seq_len(12L),
+        # vapply callback {{{
         function(calendar_month) {
             mean(baseline_ghi[month == calendar_month])
         },
+        # }}}
         numeric(1L)
     )
     ghi_upper <- vapply(
         seq_len(12L),
+        # vapply callback {{{
         function(calendar_month) {
             max(baseline_ghi[month == calendar_month])
         },
+        # }}}
         numeric(1L)
     )
     cover_mean <- vapply(
         seq_len(12L),
+        # vapply callback {{{
         function(calendar_month) {
             mean(baseline_cover[month == calendar_month])
         },
+        # }}}
         numeric(1L)
     )
 
@@ -243,9 +254,11 @@ bws_btws_epw__hourly_reconstruct <- function(
     )
     temperature
 }
+# }}}
 
 # Apply all BWS/BTWS candidates in one call to the common physical layer so
 # humidity and shortwave closure see the same final temperature and radiation.
+# bws_btws_epw__physics_apply {{{
 bws_btws_epw__physics_apply <- function(
     data,
     inputs,
@@ -308,9 +321,11 @@ bws_btws_epw__physics_apply <- function(
     }
     result
 }
+# }}}
 
 # Define the method-specific sequence, hourly, physical, and output stages around
 # the reusable BWS, BTWS, temperature-result, solar, and EPW-physics helpers.
+# bws_btws_epw__component_specs {{{
 bws_btws_epw__component_specs <- function() {
     complete_inputs <- bws_btws__inputs()
     list(
@@ -377,10 +392,15 @@ bws_btws_epw__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the complete BWS/BTWS EPW stages without replacing a
 # process-local extension that owns the same stable keys.
+# bws_btws_epw__register_components {{{
 bws_btws_epw__register_components <- function() {
     component__register_builtins(bws_btws_epw__component_specs())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

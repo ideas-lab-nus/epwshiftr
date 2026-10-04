@@ -5,6 +5,7 @@ NULL
 
 # Convert validated study years to an inclusive UTC request interval.
 
+# shift_spec__periods_time {{{
 shift_spec__periods_time <- function(periods) {
     checkmate::assert_data_frame(periods)
     checkmate::assert_names(names(periods), must.include = c("period", "year"))
@@ -17,9 +18,11 @@ shift_spec__periods_time <- function(periods) {
     }
     shift_spec__time_window(range(years))
 }
+# }}}
 
 # Expand a requested period by the method's declared temporal support while
 # preserving the original years as the case and coverage contract.
+# shift_spec__method_time_window {{{
 shift_spec__method_time_window <- function(periods, recipe) {
     window <- as.POSIXct(
         shift_spec__periods_time(periods),
@@ -30,8 +33,10 @@ shift_spec__method_time_window <- function(periods, recipe) {
     window <- window + c(-padding, padding)
     format(window, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
 }
+# }}}
 
 # Expand one or two integer years; already explicit time intervals pass through.
+# shift_spec__time_window {{{
 shift_spec__time_window <- function(time) {
     if (is.null(time)) {
         return(NULL)
@@ -52,11 +57,12 @@ shift_spec__time_window <- function(time) {
     }
     time
 }
-
+# }}}
 
 # Parse year tokens once for R and CLI. Validate complete tokens before integer
 # conversion so decimal years cannot be silently truncated. Range expansion is
 # variable-length; collect its pieces and concatenate once rather than growing.
+# shift_spec__years_value {{{
 shift_spec__years_value <- function(value, arg = "years") {
     if (is.numeric(value) && !inherits(value, c("Date", "POSIXt"))) {
         checkmate::assert_integerish(value, any.missing = FALSE, min.len = 1L)
@@ -82,6 +88,7 @@ shift_spec__years_value <- function(value, arg = "years") {
         )
     }
     bounds <- strsplit(pieces, ":", fixed = TRUE)
+    # lapply callback {{{
     parsed <- lapply(bounds, function(piece) {
         years <- suppressWarnings(as.integer(trimws(piece)))
         if (anyNA(years)) {
@@ -89,11 +96,14 @@ shift_spec__years_value <- function(value, arg = "years") {
         }
         if (length(years) == 1L) years else seq.int(min(years), max(years))
     })
+    # }}}
     unique(unlist(parsed, use.names = FALSE))
 }
+# }}}
 
 # Normalize period inputs so individual target years, explicit period tables,
 # and named multi-year windows all reach the same canonical two-column form.
+# shift_spec__periods_from_input {{{
 shift_spec__periods_from_input <- function(periods, arg = "periods") {
     if (is.data.frame(periods)) {
         checkmate::assert_names(
@@ -124,16 +134,20 @@ shift_spec__periods_from_input <- function(periods, arg = "periods") {
             "`{arg}` must be target years, a period table, or a named list of years."
         )
     }
+    # lapply callback {{{
     values <- lapply(seq_along(periods), function(i) {
         shift_spec__years_value(
             periods[[i]],
             sprintf("%s$%s", arg, names(periods)[[i]])
         )
     })
+    # }}}
     do.call(epw_morph_periods, stats::setNames(values, names(periods)))
 }
+# }}}
 
 # Build a one-period table from the common years + period_name shorthand.
+# shift_spec__periods_from_years {{{
 shift_spec__periods_from_years <- function(
     years,
     period = "future",
@@ -143,9 +157,11 @@ shift_spec__periods_from_years <- function(
     years <- shift_spec__years_value(years, arg = arg)
     do.call(epw_morph_periods, stats::setNames(list(years), period))
 }
+# }}}
 
 # Resolve recipe strings early so later workflow stages can rely on a recipe
 # object and its required variable set.
+# shift_spec__recipe_value {{{
 shift_spec__recipe_value <- function(recipe) {
     if (inherits(recipe, "epw_morph_recipe")) {
         return(recipe)
@@ -157,9 +173,11 @@ shift_spec__recipe_value <- function(recipe) {
         "`recipe` must be a recipe name or an {.cls epw_morph_recipe} object."
     )
 }
+# }}}
 
 # Let high-level APIs accept named variable sets while leaving explicit CMIP
 # variable IDs untouched.
+# shift_spec__variables_value {{{
 shift_spec__variables_value <- function(variables, recipe = NULL) {
     if (is.null(variables)) {
         return(epw_morph_variables(shift_stage__coalesce(
@@ -183,10 +201,11 @@ shift_spec__variables_value <- function(variables, recipe = NULL) {
     }
     variables[!is.na(variables) & nzchar(variables)]
 }
-
+# }}}
 
 # Validate middle-layer stage options before a plan is created so misspellings
 # and attempts to override workflow-wide policies cannot be silently ignored.
+# shift_spec__validate_stage_options {{{
 shift_spec__validate_stage_options <- function(x, stage, allowed) {
     checkmate::assert_list(x, names = "unique")
     if (length(x) && (is.null(names(x)) || any(!nzchar(names(x))))) {
@@ -215,10 +234,12 @@ shift_spec__validate_stage_options <- function(x, stage, allowed) {
     }
     x
 }
+# }}}
 
 # Build the immutable user case matrix before member and grid auto-selection;
 # unresolved dimensions remain explicit missing values until the resolver pins
 # them for the persisted run.
+# shift_spec__expected_cases {{{
 shift_spec__expected_cases <- function(request, periods) {
     request_meta <- request@meta
     sources <- shift_stage__coalesce(
@@ -234,10 +255,12 @@ shift_spec__expected_cases <- function(request, periods) {
         request_meta$filters$variant_label
     )
     grids <- request_meta$filters$grid_label
+    # scalar_or_missing {{{
     scalar_or_missing <- function(value) {
         value <- as.character(value)
         if (length(value)) value else NA_character_
     }
+    # }}}
     sources <- scalar_or_missing(sources)
     experiments <- scalar_or_missing(experiments)
     members <- scalar_or_missing(members)
@@ -255,13 +278,16 @@ shift_spec__expected_cases <- function(request, periods) {
     # Keep the exact requested year set as a list column because coverage is a
     # case-level contract, not just a min/max time filter.
     cases[,
+        # lapply callback {{{
         years := lapply(period, function(value) {
             as.integer(periods[periods[["period"]] == value, year])
         })
+        # }}}
     ]
     cases[,
         case_id := vapply(
             seq_len(.N),
+            # vapply callback {{{
             function(i) {
                 store__hash(
                     source_id[[i]],
@@ -272,6 +298,7 @@ shift_spec__expected_cases <- function(request, periods) {
                     years[[i]]
                 )
             },
+            # }}}
             character(1L)
         )
     ]
@@ -301,8 +328,10 @@ shift_spec__expected_cases <- function(request, periods) {
     )
     cases[]
 }
+# }}}
 
 # Record the durable baseline EPW identity used for run hashing and resume.
+# shift_spec__epw_identity {{{
 shift_spec__epw_identity <- function(epw) {
     if (shift_spec__is_epw_path(epw)) {
         path <- normalizePath(path.expand(epw), winslash = "/", mustWork = TRUE)
@@ -324,8 +353,10 @@ shift_spec__epw_identity <- function(epw) {
         "`epw` must be an EPW file path or an object inheriting from {.cls Epw} or {.cls EpwFile}."
     )
 }
+# }}}
 
 # Choose CMIP table defaults that match the most common atmospheric frequencies.
+# shift_spec__cmip6_table_id {{{
 shift_spec__cmip6_table_id <- function(frequency) {
     frequency <- as.character(frequency)[[1L]]
     switch(
@@ -339,9 +370,11 @@ shift_spec__cmip6_table_id <- function(frequency) {
         NULL
     )
 }
+# }}}
 
 # Validate scalar and variable-specific CMIP6 frequency specifications without
 # discarding names that are needed after a broad multi-frequency ESGF query.
+# shift_spec__cmip6_frequency_spec {{{
 shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
     if (is.list(frequency)) {
         if (
@@ -355,10 +388,12 @@ shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
         }
         frequency <- vapply(
             frequency,
+            # vapply callback {{{
             function(value) {
                 checkmate::assert_string(value, min.chars = 1L)
                 value
             },
+            # }}}
             character(1L)
         )
     }
@@ -408,9 +443,11 @@ shift_spec__cmip6_frequency_spec <- function(frequency, variables = NULL) {
     }
     frequency
 }
+# }}}
 
 # Expand one scalar CMIP6 frequency or retain an explicit variable mapping so
 # downstream table selection and File coverage use the same source semantics.
+# shift_spec__cmip6_variable_frequencies {{{
 shift_spec__cmip6_variable_frequencies <- function(variables, frequency) {
     variables <- unique(as.character(variables))
     checkmate::assert_character(
@@ -427,10 +464,12 @@ shift_spec__cmip6_variable_frequencies <- function(variables, frequency) {
     }
     frequency
 }
+# }}}
 
 # Validate the two supported table-selection forms. An unnamed scalar pins all
 # variables to one table, while a fully named vector overrides only the named
 # variables and leaves the remainder on their automatic tables.
+# shift_spec__cmip6_table_spec {{{
 shift_spec__cmip6_table_spec <- function(table, null.ok = TRUE) {
     if (is.null(table)) {
         if (isTRUE(null.ok)) {
@@ -446,10 +485,12 @@ shift_spec__cmip6_table_spec <- function(table, null.ok = TRUE) {
         }
         table <- vapply(
             table,
+            # vapply callback {{{
             function(value) {
                 checkmate::assert_string(value, min.chars = 1L)
                 value
             },
+            # }}}
             character(1L)
         )
     }
@@ -469,10 +510,12 @@ shift_spec__cmip6_table_spec <- function(table, null.ok = TRUE) {
     }
     table
 }
+# }}}
 
 # Resolve each requested source variable to its CMIP6 table. Snow depth is a
 # land-state variable in LImon; all other monthly inputs retain the atmospheric
 # Amon default unless the caller pins or overrides them explicitly.
+# shift_spec__cmip6_variable_tables {{{
 shift_spec__cmip6_variable_tables <- function(
     variables,
     frequency,
@@ -484,12 +527,14 @@ shift_spec__cmip6_variable_tables <- function(
     frequencies <- shift_spec__cmip6_variable_frequencies(variables, frequency)
     defaults <- vapply(
         frequencies,
+        # vapply callback {{{
         function(value) {
             shift_stage__coalesce(
                 shift_spec__cmip6_table_id(value),
                 NA_character_
             )
         },
+        # }}}
         character(1L)
     )
     unresolved <- names(defaults)[is.na(defaults)]
@@ -524,26 +569,34 @@ shift_spec__cmip6_variable_tables <- function(
     }
     out
 }
+# }}}
 
 # Interpret one direct request table as a pin, while treating a multi-table
 # query filter as discovery breadth whose variable mapping must be inferred.
+# shift_spec__cmip6_request_table_spec {{{
 shift_spec__cmip6_request_table_spec <- function(table_id) {
     if (is.null(table_id) || length(table_id) != 1L) {
         return(NULL)
     }
     table_id
 }
+# }}}
 
+# shift_spec__is_epw_object {{{
 shift_spec__is_epw_object <- function(x) {
     inherits(x, "EpwFile") || epw_file_is_external(x)
 }
+# }}}
 
+# shift_spec__is_epw_path {{{
 shift_spec__is_epw_path <- function(x) {
     is.character(x) &&
         length(x) == 1L &&
         identical(tolower(tools::file_ext(x)), "epw")
 }
+# }}}
 
+# shift_spec__location_value {{{
 shift_spec__location_value <- function(location, names) {
     if (is.null(location)) {
         return(NULL)
@@ -575,9 +628,11 @@ shift_spec__location_value <- function(location, names) {
     }
     NULL
 }
+# }}}
 
 # Read only the LOCATION header for path-backed site defaults; weather data
 # remain unopened until extraction or generation actually needs them.
+# shift_spec__epw_location {{{
 shift_spec__epw_location <- function(epw) {
     if (is.null(epw)) {
         return(NULL)
@@ -596,7 +651,9 @@ shift_spec__epw_location <- function(epw) {
     }
     epw_obj$location()
 }
+# }}}
 
+# shift_spec__site_default_id {{{
 shift_spec__site_default_id <- function(epw, location) {
     if (shift_spec__is_epw_path(epw)) {
         return(tools::file_path_sans_ext(basename(epw)))
@@ -610,7 +667,9 @@ shift_spec__site_default_id <- function(epw, location) {
     }
     as.character(id)
 }
+# }}}
 
+# shift_spec__resolve_epw {{{
 shift_spec__resolve_epw <- function(x) {
     if (S7::S7_inherits(x, ShiftSite)) {
         x <- x@epw
@@ -628,6 +687,7 @@ shift_spec__resolve_epw <- function(x) {
         "A baseline EPW must be a file path or an object inheriting from {.cls Epw} or {.cls EpwFile}."
     )
 }
+# }}}
 
 # constructors
 #' Store-native shift workflow API
@@ -680,6 +740,7 @@ NULL
 
 #' @rdname shift_api
 #' @export
+# shift_request {{{
 shift_request <- function(
     provider = "esgf",
     project = NULL,
@@ -764,9 +825,11 @@ shift_request <- function(
 
     shift_stage__new(ShiftRequest, "request", meta = meta)
 }
+# }}}
 
 #' @rdname shift_api
 #' @export
+# shift_site {{{
 shift_site <- function(
     id = NULL,
     lon = NULL,
@@ -826,6 +889,7 @@ shift_site <- function(
         metadata = metadata
     )
 }
+# }}}
 
 #' @rdname shift_api
 #' @param model CMIP6 model selection. A positive whole number selects that
@@ -854,6 +918,7 @@ shift_site <- function(
 #' @param index_nodes Ordered ESGF index nodes used for failover.
 #' @param data_node Optional ESGF data-node filter.
 #' @export
+# shift_cmip6 {{{
 shift_cmip6 <- function(
     model = 3L,
     scenarios,
@@ -923,9 +988,11 @@ shift_cmip6 <- function(
         common = common
     )
 }
+# }}}
 
 # Resolve the exact CMIP6 frequency of every source variable from either an
 # explicit climate override or the selected weather method's role contract.
+# shift_spec__transform_cmip6_frequencies {{{
 shift_spec__transform_cmip6_frequencies <- function(
     transform,
     variables,
@@ -971,9 +1038,11 @@ shift_spec__transform_cmip6_frequencies <- function(
     }
     output
 }
+# }}}
 
 # Translate one complete CMIP6 climate specification into the lower-level
 # request consumed by the staged workflow and ESGF collector.
+# shift_spec__request_from_cmip6 {{{
 shift_spec__request_from_cmip6 <- function(climate, periods, transform) {
     recipe <- transform__recipe(transform)
     variables <- morpher__input_variables(recipe)
@@ -1012,6 +1081,7 @@ shift_spec__request_from_cmip6 <- function(climate, periods, transform) {
     request@meta <- request_meta
     request
 }
+# }}}
 
 #' @rdname shift_api
 #' @param allow_partial Whether a task-level run may complete with missing cases.
@@ -1021,6 +1091,7 @@ shift_spec__request_from_cmip6 <- function(climate, periods, transform) {
 #' @param extraction_method Grid extraction method.
 #' @param output_layout Output directory layout.
 #' @export
+# shift_control {{{
 shift_control <- function(
     strict = TRUE,
     allow_partial = FALSE,
@@ -1051,6 +1122,7 @@ shift_control <- function(
         output_layout = output_layout
     )
 }
+# }}}
 
 #' @rdname shift_api
 #' @param scenario CMIP6 scenario experiment IDs, for example
@@ -1065,6 +1137,7 @@ shift_control <- function(
 #' @param data_node Optional ESGF data node filter.
 #' @param index_node Optional ESGF index node.
 #' @export
+# shift_cmip6_scenario {{{
 shift_cmip6_scenario <- function(
     source,
     scenario,
@@ -1139,10 +1212,11 @@ shift_cmip6_scenario <- function(
         options = options
     )
 }
-
+# }}}
 
 # Validate a transform-specific frequency contract before a task writes store state
 # or attempts remote CMIP6 discovery.
+# shift_spec__validate_transform_frequency {{{
 shift_spec__validate_transform_frequency <- function(transform, frequency) {
     if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
         cli::cli_abort("`transform` must be a {.cls WeatherTransformSpec}.")
@@ -1181,9 +1255,11 @@ shift_spec__validate_transform_frequency <- function(transform, frequency) {
     }
     invisible(TRUE)
 }
+# }}}
 
 # Reject a single-year case before store or network work when the selected
 # recipe promises an explicitly addressable multi-year result.
+# shift_spec__validate_transform_periods {{{
 shift_spec__validate_transform_periods <- function(transform, periods) {
     if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
         cli::cli_abort("`transform` must be a {.cls WeatherTransformSpec}.")
@@ -1206,6 +1282,7 @@ shift_spec__validate_transform_periods <- function(transform, periods) {
     }
     invisible(TRUE)
 }
+# }}}
 
 #' @rdname shift_api
 #' @param request A [shift_request()] object, commonly from
@@ -1213,6 +1290,7 @@ shift_spec__validate_transform_periods <- function(transform, periods) {
 #' @param morph Named morph-stage options. Stage option lists are validated and
 #'   cannot override task-level controls or the transform/reference inputs.
 #' @export
+# shift_plan {{{
 shift_plan <- function(
     request,
     site,
@@ -1312,6 +1390,7 @@ shift_plan <- function(
         )
     )
 }
+# }}}
 
 #' @rdname shift_api
 #' @param climate A complete future-climate specification from [shift_cmip6()].
@@ -1335,6 +1414,7 @@ shift_plan <- function(
 #' @param dry_run If `TRUE`, discover eligible datasets and return a planned
 #'   batch without extracting climate values or generating EPWs.
 #' @export
+# shift_future_epw {{{
 shift_future_epw <- function(
     sites,
     climate,
@@ -1396,3 +1476,6 @@ shift_future_epw <- function(
         background = background
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -57,15 +57,20 @@ test_that("daily phase windows wrap and retain their requested odd width", {
 
 test_that("daily climatology maps native calendars onto one target grid", {
     calendar_days <- c(`360_day` = 360L, `365_day` = 365L, `366_day` = 366L)
-    source <- data.table::rbindlist(lapply(names(calendar_days), function(calendar) {
-        year_days <- calendar_days[[calendar]]
-        phase <- daily__phase_grid(year_days)
-        data.table::data.table(
-            calendar = calendar,
-            annual_phase = phase,
-            value = 12 + 6 * sin(2 * pi * phase) + 2 * cos(4 * pi * phase)
-        )
-    }))
+    # lapply callback {{{
+    source <- data.table::rbindlist(lapply(
+        names(calendar_days),
+        function(calendar) {
+            year_days <- calendar_days[[calendar]]
+            phase <- daily__phase_grid(year_days)
+            data.table::data.table(
+                calendar = calendar,
+                annual_phase = phase,
+                value = 12 + 6 * sin(2 * pi * phase) + 2 * cos(4 * pi * phase)
+            )
+        }
+    ))
+    # }}}
 
     mapped <- daily__climatology(
         source,
@@ -116,7 +121,10 @@ test_that("daily climatology validates phases, windows, and columns", {
     expect_error(daily__phase_grid(365.5), "integerish")
     expect_error(daily__phase_window(c(0.1, 1), 0.1), "\\[0, 1\\)")
     expect_error(daily__phase_window(0.1, c(0.1, 0.2)), "one annual-phase")
-    expect_error(daily__phase_window(0.1, 0.1, window_days = 30L), "must be odd")
+    expect_error(
+        daily__phase_window(0.1, 0.1, window_days = 30L),
+        "must be odd"
+    )
     expect_error(
         daily__phase_window(0.1, 0.1, window_days = 367L),
         "must not exceed"
@@ -125,3 +133,5 @@ test_that("daily climatology validates phases, windows, and columns", {
     expect_error(daily__climatology(valid, value = "tas"), "missing required")
     expect_error(daily__climatology(valid, by = "annual_phase"), "cannot use")
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

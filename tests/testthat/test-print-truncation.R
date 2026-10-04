@@ -19,3 +19,5 @@ test_that("shared truncation footer preserves display behavior", {
     )
     expect_identical(complete_footer, character())
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

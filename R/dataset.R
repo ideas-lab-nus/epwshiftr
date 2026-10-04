@@ -1,15 +1,18 @@
 # EsgDataset
 ESG_GRID_METHOD_CHOICES <- c("nearest", "idw", "bilinear", "mean")
 # DatasetAsyncTask
+# dataset__async_condition {{{
 dataset__async_condition <- function(class, message) {
     structure(
         list(message = message, call = NULL),
         class = c(class, "error", "condition")
     )
 }
+# }}}
 
 # Describe infrastructure failures separately from errors raised by the
 # NetCDF operation itself, so callers may safely fall back to synchronous I/O.
+# dataset__async_unavailable {{{
 dataset__async_unavailable <- function(operation, condition) {
     dataset__async_condition(
         "epwshiftr_async_unavailable",
@@ -20,7 +23,9 @@ dataset__async_unavailable <- function(operation, condition) {
         )
     )
 }
+# }}}
 
+# dataset__async_error {{{
 dataset__async_error <- function(operation, result, timeout_ms = NULL) {
     if (inherits(result, "miraiError")) {
         message <- attr(result, "message", exact = TRUE)
@@ -73,7 +78,9 @@ dataset__async_error <- function(operation, result, timeout_ms = NULL) {
         )
     )
 }
+# }}}
 
+# DatasetAsyncTask {{{
 DatasetAsyncTask <- R6::R6Class(
     "DatasetAsyncTask",
     lock_class = TRUE,
@@ -90,6 +97,7 @@ DatasetAsyncTask <- R6::R6Class(
         cancellation_requested = FALSE,
         backend_released = FALSE,
 
+        # initialize {{{
         initialize = function(
             operation,
             mirai_obj,
@@ -103,7 +111,9 @@ DatasetAsyncTask <- R6::R6Class(
             self$status <- "running"
             self$started_at <- Sys.time()
         },
+        # }}}
 
+        # release_backend {{{
         release_backend = function() {
             if (
                 !isTRUE(self$backend_released) && !is.null(self$compute_profile)
@@ -116,7 +126,9 @@ DatasetAsyncTask <- R6::R6Class(
             }
             invisible(self)
         },
+        # }}}
 
+        # mark_terminal {{{
         mark_terminal = function(status, result = NULL, error = NULL) {
             self$status <- status
             self$result <- result
@@ -124,10 +136,12 @@ DatasetAsyncTask <- R6::R6Class(
             self$completed_at <- Sys.time()
             invisible(self)
         },
+        # }}}
 
         # Poll a one-shot worker so workflow reporters can keep a synchronous
         # caller visibly alive and respond to cooperative cancellation while
         # RNetCDF performs the blocking read in another process.
+        # collect {{{
         collect = function(
             progress_callback = NULL,
             poll_interval = 0.25
@@ -205,7 +219,9 @@ DatasetAsyncTask <- R6::R6Class(
             self$release_backend()
             result
         },
+        # }}}
 
+        # cancel {{{
         cancel = function() {
             self$cancellation_requested <- TRUE
 
@@ -261,12 +277,15 @@ DatasetAsyncTask <- R6::R6Class(
             self$release_backend()
             requested
         }
+        # }}}
     )
 )
+# }}}
 # Read and normalize the optional CF bounds attached to the time coordinate.
 # Bounds remain paired with their native-calendar POSIX surrogate so interval
 # semantics survive spatial extraction without assigning Gregorian dates to
 # non-Gregorian calendars.
+# dataset__time_bounds {{{
 dataset__time_bounds <- function(
     dataset,
     index,
@@ -293,7 +312,9 @@ dataset__time_bounds <- function(
     indices <- as.integer(indices)
     bounds_name <- tryCatch(
         dataset$att_get("time", "bounds", index),
+        # error {{{
         error = function(error) NULL
+        # }}}
     )
     if (is.null(bounds_name)) {
         return(NULL)
@@ -305,6 +326,7 @@ dataset__time_bounds <- function(
 
     info <- tryCatch(
         dataset$var_inq(bounds_name, index),
+        # error {{{
         error = function(error) {
             stop(
                 sprintf(
@@ -315,18 +337,25 @@ dataset__time_bounds <- function(
                 call. = FALSE
             )
         }
+        # }}}
     )
+    # lapply callback {{{
     dimension_info <- lapply(info$dimids, function(id) {
         dataset$dim_inq(id, index)
     })
+    # }}}
     dimension_names <- vapply(
         dimension_info,
+        # vapply callback {{{
         function(dimension) dimension$name,
+        # }}}
         character(1L)
     )
     dimension_lengths <- vapply(
         dimension_info,
+        # vapply callback {{{
         function(dimension) as.integer(dimension$length),
+        # }}}
         integer(1L)
     )
     time_dimension <- match("time", dimension_names)
@@ -409,10 +438,12 @@ dataset__time_bounds <- function(
         end_coordinates = attr(end, "cf_coordinates", exact = TRUE)
     )
 }
+# }}}
 
 # Cache the complete native time coordinates independently of interval bounds.
 # Shared readers can select indices before fetching bounds; get_time_axis()
 # still returns the full bounds required by its existing public contract.
+# dataset__time_axis {{{
 dataset__time_axis <- function(dataset, index = 1L) {
     private <- dataset__private(dataset)
     private$check_open()
@@ -429,7 +460,9 @@ dataset__time_axis <- function(dataset, index = 1L) {
     units <- dataset$att_get("time", "units", index)
     calendar <- tryCatch(
         dataset$att_get("time", "calendar", index),
+        # error {{{
         error = function(error) "standard"
+        # }}}
     )
     values <- parse_cf_time(
         dataset$var_get("time", index = index),
@@ -447,10 +480,12 @@ dataset__time_axis <- function(dataset, index = 1L) {
     private$metadata_cache[[key]] <- result
     result
 }
+# }}}
 
 # Read actual bounds only for selected native positions and reuse the last
 # selection within this open dataset. Keep one bounded entry rather than grow
 # a cache for every region; a previously loaded full axis also serves subsets.
+# dataset__selected_bounds {{{
 dataset__selected_bounds <- function(dataset, index, axis, indices) {
     if (!length(indices)) {
         return(NULL)
@@ -484,6 +519,7 @@ dataset__selected_bounds <- function(dataset, index, axis, indices) {
     }
     list(start = bounds$start[position], end = bounds$end[position])
 }
+# }}}
 
 #' Remote NetCDF Dataset Access via OPeNDAP
 #'
@@ -506,6 +542,7 @@ dataset__selected_bounds <- function(dataset, index, axis, indices) {
 #' @author Hongyuan Jia
 #' @name EsgDataset
 #' @export
+# EsgDataset {{{
 EsgDataset <- R6::R6Class(
     "EsgDataset",
     lock_class = TRUE,
@@ -526,6 +563,7 @@ EsgDataset <- R6::R6Class(
         #' # Multiple files
         #' ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
         #' }
+        # initialize {{{
         initialize = function(urls) {
             checkmate::assert_character(urls, any.missing = FALSE, min.len = 1L)
 
@@ -537,6 +575,7 @@ EsgDataset <- R6::R6Class(
 
             self
         },
+        # }}}
         # open
         #' @description
         #' Open OPeNDAP connection(s)
@@ -562,6 +601,7 @@ EsgDataset <- R6::R6Class(
         #' # Returns the opened dataset directly; no Mirai/Future to collect.
         #' ds$open(async = TRUE, timeout = 10)
         #' }
+        # open {{{
         open = function(
             async = FALSE,
             timeout = NULL,
@@ -582,7 +622,9 @@ EsgDataset <- R6::R6Class(
 
             task <- private$start_async_operation(
                 operation = "open OPeNDAP connection",
+                # handler {{{
                 handler = function(urls, nc_handles) TRUE,
+                # }}}
                 timeout = timeout
             )
             private$collect_async_task(task)
@@ -596,6 +638,7 @@ EsgDataset <- R6::R6Class(
 
             invisible(self)
         },
+        # }}}
         # close
         #' @description
         #' Close OPeNDAP connection(s)
@@ -606,11 +649,13 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' ds$close()
         #' }
+        # close {{{
         close = function() {
             private$cancel_async_task()
             private$close_handles()
             invisible(self)
         },
+        # }}}
         # slice
         #' @description
         #' Select files from this dataset by file position.
@@ -629,6 +674,7 @@ EsgDataset <- R6::R6Class(
         #'        be safely shared between dataset objects.
         #'
         #' @return A new `EsgDataset` object.
+        # slice {{{
         slice = function(i, reopen = FALSE) {
             if (missing(i)) {
                 cli::cli_abort("`i` must be supplied.")
@@ -652,6 +698,7 @@ EsgDataset <- R6::R6Class(
 
             out
         },
+        # }}}
         # reachable
         #' @description
         #' Probe whether this dataset's current files or URLs are reachable.
@@ -672,6 +719,7 @@ EsgDataset <- R6::R6Class(
         #'        `file_index`, `source_index`, `data_node`, `service`, `url`,
         #'        `reachable`, `latency_ms`, `error`, `probe_level`,
         #'        `probe_url`, and `probe_cached`.
+        # reachable {{{
         reachable = function(level = c("data_node", "url"), probe = NULL) {
             level <- match.arg(level)
             probe <- query_result__reach_config(probe)
@@ -711,6 +759,7 @@ EsgDataset <- R6::R6Class(
                 probe_cached = probes$probe_cached
             )
         },
+        # }}}
         # file_inq
         #' @description
         #' Get file information
@@ -723,11 +772,13 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' info <- ds$file_inq()
         #' }
+        # file_inq {{{
         file_inq = function(index = 1L) {
             private$check_open()
             private$check_index(index)
             RNetCDF::file.inq.nc(private$nc_handles[[index]])
         },
+        # }}}
         # var_inq
         #' @description
         #' Get variable information
@@ -741,11 +792,13 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' var_info <- ds$var_inq("tas")
         #' }
+        # var_inq {{{
         var_inq = function(var, index = 1L) {
             private$check_open()
             private$check_index(index)
             RNetCDF::var.inq.nc(private$nc_handles[[index]], var)
         },
+        # }}}
         # dim_inq
         #' @description
         #' Get dimension information
@@ -759,11 +812,13 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' dim_info <- ds$dim_inq("time")
         #' }
+        # dim_inq {{{
         dim_inq = function(dim, index = 1L) {
             private$check_open()
             private$check_index(index)
             RNetCDF::dim.inq.nc(private$nc_handles[[index]], dim)
         },
+        # }}}
         # att_get
         #' @description
         #' Get attribute value
@@ -778,11 +833,13 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' units <- ds$att_get("tas", "units")
         #' }
+        # att_get {{{
         att_get = function(var, att, index = 1L) {
             private$check_open()
             private$check_index(index)
             RNetCDF::att.get.nc(private$nc_handles[[index]], var, att)
         },
+        # }}}
         # var_get
         #' @description
         #' Read variable data
@@ -807,6 +864,7 @@ EsgDataset <- R6::R6Class(
         #' # Returns the final array directly; no Mirai/Future handling required.
         #' data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
         #' }
+        # var_get {{{
         var_get = function(
             var,
             start = NULL,
@@ -847,6 +905,7 @@ EsgDataset <- R6::R6Class(
                 )
             }
         },
+        # }}}
         # get_variables
         #' @description
         #' List all variables in the dataset
@@ -859,6 +918,7 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' vars <- ds$get_variables()
         #' }
+        # get_variables {{{
         get_variables = function(index = 1L) {
             private$check_open()
             private$check_index(index)
@@ -870,6 +930,7 @@ EsgDataset <- R6::R6Class(
                 RNetCDF::var.inq.nc
             )
         },
+        # }}}
         # get_dimensions
         #' @description
         #' List all dimensions in the dataset
@@ -882,6 +943,7 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' dims <- ds$get_dimensions()
         #' }
+        # get_dimensions {{{
         get_dimensions = function(index = 1L) {
             private$check_open()
             private$check_index(index)
@@ -893,6 +955,7 @@ EsgDataset <- R6::R6Class(
                 RNetCDF::dim.inq.nc
             )
         },
+        # }}}
         # get_time_axis
         #' @description
         #' Get time axis information
@@ -906,6 +969,7 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' time_info <- ds$get_time_axis()
         #' }
+        # get_time_axis {{{
         get_time_axis = function(index = 1L) {
             private$check_open()
             private$check_index(index)
@@ -927,6 +991,7 @@ EsgDataset <- R6::R6Class(
             private$metadata_cache[[cache_key]] <- result
             result
         },
+        # }}}
         # get_spatial_grid
         #' @description
         #' Get spatial grid information (latitude and longitude)
@@ -939,6 +1004,7 @@ EsgDataset <- R6::R6Class(
         #' \dontrun{
         #' grid <- ds$get_spatial_grid()
         #' }
+        # get_spatial_grid {{{
         get_spatial_grid = function(index = 1L) {
             private$check_open()
             private$check_index(index)
@@ -952,12 +1018,16 @@ EsgDataset <- R6::R6Class(
             # Get lat/lon data
             lat <- tryCatch(
                 self$var_get("lat", index = index),
+                # error {{{
                 error = function(e) NULL
+                # }}}
             )
 
             lon <- tryCatch(
                 self$var_get("lon", index = index),
+                # error {{{
                 error = function(e) NULL
+                # }}}
             )
 
             result <- list(
@@ -969,6 +1039,7 @@ EsgDataset <- R6::R6Class(
             private$metadata_cache[[cache_key]] <- result
             result
         },
+        # }}}
         # read_array
         #' @description
         #' Read variable data as a list of arrays (one per file)
@@ -993,6 +1064,7 @@ EsgDataset <- R6::R6Class(
         #' # Returns the final list directly; no Mirai/Future handling required.
         #' data_list_async <- ds$read_array("tas", async = TRUE, timeout = 10)
         #' }
+        # read_array {{{
         read_array = function(
             variable,
             start = NULL,
@@ -1014,6 +1086,7 @@ EsgDataset <- R6::R6Class(
                 ))
             }
 
+            # lapply callback {{{
             lapply(seq_along(private$urls), function(i) {
                 self$var_get(
                     variable,
@@ -1023,7 +1096,9 @@ EsgDataset <- R6::R6Class(
                     collapse = collapse
                 )
             })
+            # }}}
         },
+        # }}}
         # read_data_table
         #' @description
         #' Read variable data as a list of data.table (one per file)
@@ -1051,6 +1126,7 @@ EsgDataset <- R6::R6Class(
         #' # Returns the final data.table directly; no Mirai/Future handling required.
         #' dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
         #' }
+        # read_data_table {{{
         read_data_table = function(
             variable,
             start = NULL,
@@ -1072,6 +1148,7 @@ EsgDataset <- R6::R6Class(
                 async = async,
                 timeout = timeout
             )
+            # lapply callback {{{
             dt_list <- lapply(seq_along(arr_list), function(i) {
                 private$array_to_data_table(
                     arr_list[[i]],
@@ -1081,6 +1158,7 @@ EsgDataset <- R6::R6Class(
                     index = i
                 )
             })
+            # }}}
 
             if (!isTRUE(rbind)) {
                 return(dt_list)
@@ -1099,6 +1177,7 @@ EsgDataset <- R6::R6Class(
             }
             dt
         },
+        # }}}
         # read_region
         #' @description
         #' Read variable values near a target coordinate and optional time range
@@ -1139,6 +1218,7 @@ EsgDataset <- R6::R6Class(
         #'     time = c("2050-01-01", "2050-12-31")
         #' )
         #' }
+        # read_region {{{
         read_region = function(
             variable,
             lon,
@@ -1232,15 +1312,18 @@ EsgDataset <- R6::R6Class(
 
             out <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
             sources <- data.table::rbindlist(
+                # lapply callback {{{
                 lapply(pieces, function(piece) {
                     attr(piece, "grid_sources", exact = TRUE)
                 }),
+                # }}}
                 use.names = TRUE,
                 fill = TRUE
             )
             attr(out, "grid_sources") <- sources
             out
         },
+        # }}}
         # selection
         #' @description
         #' Return file selection provenance for this dataset.
@@ -1251,14 +1334,17 @@ EsgDataset <- R6::R6Class(
         #'
         #' @return A list with `source_count`, `source_num_found`, and
         #'        `source_indices`.
+        # selection {{{
         selection = function() {
             private$get_selection_context()
         },
+        # }}}
         # print
         #' @description
         #' Print dataset summary
         #'
         #' @return The `EsgDataset` object itself, invisibly.
+        # print {{{
         print = function() {
             cli::cli_h1("ESGF Dataset")
             cli::cli_li("URLs: {length(private$urls)}")
@@ -1266,12 +1352,16 @@ EsgDataset <- R6::R6Class(
             cli::cli_li("Multiple: {length(private$urls) > 1L}")
 
             if (private$opened) {
+                # error {{{
                 vars <- tryCatch(self$get_variables(1L), error = function(e) {
                     character()
                 })
+                # }}}
+                # error {{{
                 dims <- tryCatch(self$get_dimensions(1L), error = function(e) {
                     character()
                 })
+                # }}}
 
                 cli::cli_h2("Dimensions")
                 cli::cli_li("{paste(dims, collapse = ', ')}")
@@ -1282,33 +1372,43 @@ EsgDataset <- R6::R6Class(
 
             invisible(self)
         }
+        # }}}
     ),
 
     active = list(
         # url
         #' @field url The OPeNDAP URL(s)
+        # url {{{
         url = function() {
             private$urls
         },
+        # }}}
         # is_open
         #' @field is_open Whether the connection is open
+        # is_open {{{
         is_open = function() {
             private$opened
         },
+        # }}}
         # is_aggregated
         #' @field is_aggregated Whether the dataset contains multiple files
+        # is_aggregated {{{
         is_aggregated = function() {
             length(private$urls) > 1L
         },
+        # }}}
         # file_count
         #' @field file_count Number of files in the dataset
+        # file_count {{{
         file_count = function() {
             length(private$urls)
         },
+        # }}}
         # time_filter
         #' @field time_filter A result-level time filter recorded by
         #'        `EsgResultFile$filter_time()` or
         #'        `EsgResultAggregation$filter_time()`, or `NULL`.
+        # time_filter {{{
         time_filter = function() {
             ctx <- private$context$time_filter
             if (is.null(ctx) || !length(ctx)) {
@@ -1317,6 +1417,7 @@ EsgDataset <- R6::R6Class(
 
             ctx
         }
+        # }}}
     ),
 
     private = list(
@@ -1330,6 +1431,7 @@ EsgDataset <- R6::R6Class(
         async_state = "idle",
 
         # get_selection_context
+        # get_selection_context {{{
         get_selection_context = function() {
             ctx <- private$context$selection
             if (!is.null(ctx) && length(ctx)) {
@@ -1343,7 +1445,9 @@ EsgDataset <- R6::R6Class(
                 source_indices = seq_len(n)
             )
         },
+        # }}}
         # update_selection_context
+        # update_selection_context {{{
         update_selection_context = function(index, context = private$context) {
             context__update_selection(
                 context,
@@ -1351,7 +1455,9 @@ EsgDataset <- R6::R6Class(
                 index
             )
         },
+        # }}}
         # normalize_slice_index
+        # normalize_slice_index {{{
         normalize_slice_index = function(i) {
             n <- length(private$urls)
             if (is.null(i)) {
@@ -1404,7 +1510,9 @@ EsgDataset <- R6::R6Class(
                 i
             }
         },
+        # }}}
         # normalize_region_time {{
+        # normalize_region_time {{{
         normalize_region_time = function(time) {
             context <- private$context$time_filter
             context_range <- NULL
@@ -1472,8 +1580,10 @@ EsgDataset <- R6::R6Class(
 
             time
         },
+        # }}}
         # get_var_dim_meta {{
         # NOTE: `start`/`count` are in NetCDF dimension order.
+        # get_var_dim_meta {{{
         get_var_dim_meta = function(variable, index = 1L) {
             cache_key <- sprintf("var_dim_meta_%s_%d", variable, index)
             if (!is.null(private$metadata_cache[[cache_key]])) {
@@ -1484,12 +1594,16 @@ EsgDataset <- R6::R6Class(
             dimids <- vinfo$dimids
             dnames <- vapply(
                 dimids,
+                # vapply callback {{{
                 function(id) self$dim_inq(id, index = index)$name,
+                # }}}
                 character(1L)
             )
             dlens <- vapply(
                 dimids,
+                # vapply callback {{{
                 function(id) as.integer(self$dim_inq(id, index = index)$length),
+                # }}}
                 integer(1L)
             )
 
@@ -1497,10 +1611,12 @@ EsgDataset <- R6::R6Class(
             private$metadata_cache[[cache_key]] <- res
             res
         },
+        # }}}
         # infer_dim_perm {{
         # Infer how NetCDF dimension order maps to the returned R array order.
         # Returns an index vector `perm` such that:
         #   dim_names_in_array_order <- dim_names_in_netcdf_order[perm]
+        # infer_dim_perm {{{
         infer_dim_perm = function(arr_dim, count = NULL, nc_lengths = NULL) {
             nd <- length(arr_dim)
             ref <- NULL
@@ -1526,11 +1642,15 @@ EsgDataset <- R6::R6Class(
             )
             seq_len(nd)
         },
+        # }}}
         # finalize
+        # finalize {{{
         finalize = function() {
             self$close()
         },
+        # }}}
         # validate_async_request
+        # validate_async_request {{{
         validate_async_request = function(async, timeout) {
             checkmate::assert_flag(async)
             if (!isTRUE(async) && !is.null(timeout)) {
@@ -1538,7 +1658,9 @@ EsgDataset <- R6::R6Class(
             }
             invisible(async)
         },
+        # }}}
         # open_handles
+        # open_handles {{{
         open_handles = function(
             progress = FALSE,
             progress_label = "Opening dataset files"
@@ -1571,6 +1693,7 @@ EsgDataset <- R6::R6Class(
                     private$opened <- TRUE
                     progress_ok <- TRUE
                 },
+                # error {{{
                 error = function(e) {
                     private$close_handles()
                     stop(sprintf(
@@ -1578,17 +1701,22 @@ EsgDataset <- R6::R6Class(
                         conditionMessage(e)
                     ))
                 }
+                # }}}
             )
 
             invisible(NULL)
         },
+        # }}}
         # close_handles
+        # close_handles {{{
         close_handles = function() {
             for (i in seq_along(private$nc_handles)) {
                 if (!is.null(private$nc_handles[[i]])) {
                     tryCatch(
                         RNetCDF::close.nc(private$nc_handles[[i]]),
+                        # error {{{
                         error = function(e) NULL
+                        # }}}
                     )
                     # NOTE: Use single-bracket assignment to avoid shrinking the list.
                     private$nc_handles[i] <- list(NULL)
@@ -1600,7 +1728,9 @@ EsgDataset <- R6::R6Class(
             private$opened <- FALSE
             invisible(NULL)
         },
+        # }}}
         # normalize_async_timeout
+        # normalize_async_timeout {{{
         normalize_async_timeout = function(timeout) {
             if (is.null(timeout)) {
                 return(NULL)
@@ -1613,7 +1743,9 @@ EsgDataset <- R6::R6Class(
 
             as.integer(ceiling(timeout * 1000))
         },
+        # }}}
         # next_async_compute_profile
+        # next_async_compute_profile {{{
         next_async_compute_profile = function() {
             # Different dataset objects can own tasks in the same R process.
             # A per-object counter would reuse the same compute profile.
@@ -1624,7 +1756,9 @@ EsgDataset <- R6::R6Class(
                 basename(tempfile())
             )
         },
+        # }}}
         # start_async_operation
+        # start_async_operation {{{
         start_async_operation = function(
             operation,
             handler,
@@ -1692,6 +1826,7 @@ EsgDataset <- R6::R6Class(
                         .compute = compute_profile
                     )
                 },
+                # error {{{
                 error = function(e) {
                     try(
                         mirai::daemons(0L, .compute = compute_profile),
@@ -1699,6 +1834,7 @@ EsgDataset <- R6::R6Class(
                     )
                     stop(dataset__async_unavailable(operation, e))
                 }
+                # }}}
             )
 
             task <- DatasetAsyncTask$new(
@@ -1711,7 +1847,9 @@ EsgDataset <- R6::R6Class(
             private$async_state <- "running"
             task
         },
+        # }}}
         # collect_async_task
+        # collect_async_task {{{
         collect_async_task = function(task = private$async_task, clear = TRUE) {
             if (is.null(task)) {
                 stop("No async task is registered for this dataset.")
@@ -1729,7 +1867,9 @@ EsgDataset <- R6::R6Class(
 
             task$collect(progress_callback = private$progress_callback)
         },
+        # }}}
         # cancel_async_task
+        # cancel_async_task {{{
         cancel_async_task = function(task = private$async_task, clear = TRUE) {
             if (is.null(task)) {
                 return(FALSE)
@@ -1742,7 +1882,9 @@ EsgDataset <- R6::R6Class(
             }
             requested
         },
+        # }}}
         # async_var_get
+        # async_var_get {{{
         async_var_get = function(
             var,
             start = NULL,
@@ -1753,6 +1895,7 @@ EsgDataset <- R6::R6Class(
         ) {
             task <- private$start_async_operation(
                 operation = "read variable data",
+                # handler {{{
                 handler = function(
                     urls,
                     nc_handles,
@@ -1778,6 +1921,7 @@ EsgDataset <- R6::R6Class(
                         collapse = collapse
                     )
                 },
+                # }}}
                 handler_args = list(
                     var = var,
                     start = start,
@@ -1790,7 +1934,9 @@ EsgDataset <- R6::R6Class(
 
             private$collect_async_task(task)
         },
+        # }}}
         # async_read_array
+        # async_read_array {{{
         async_read_array = function(
             variable,
             start = NULL,
@@ -1800,6 +1946,7 @@ EsgDataset <- R6::R6Class(
         ) {
             task <- private$start_async_operation(
                 operation = "read variable data",
+                # handler {{{
                 handler = function(
                     urls,
                     nc_handles,
@@ -1808,6 +1955,7 @@ EsgDataset <- R6::R6Class(
                     count,
                     collapse
                 ) {
+                    # lapply callback {{{
                     lapply(seq_along(nc_handles), function(i) {
                         if (is.null(start) && is.null(count)) {
                             return(RNetCDF::var.get.nc(
@@ -1825,7 +1973,9 @@ EsgDataset <- R6::R6Class(
                             collapse = collapse
                         )
                     })
+                    # }}}
                 },
+                # }}}
                 handler_args = list(
                     variable = variable,
                     start = start,
@@ -1837,10 +1987,12 @@ EsgDataset <- R6::R6Class(
 
             private$collect_async_task(task)
         },
+        # }}}
         # inquiry_names
         # Collect ordered NetCDF names for a validated handle. Public variable
         # and dimension methods retain ownership of state and index checks and
         # select the corresponding metadata count and inquiry function.
+        # inquiry_names {{{
         inquiry_names = function(handle, count, inquiry) {
             names <- character(count)
             for (i in seq_len(count)) {
@@ -1851,13 +2003,17 @@ EsgDataset <- R6::R6Class(
             }
             names
         },
+        # }}}
         # check_open
+        # check_open {{{
         check_open = function() {
             if (!private$opened) {
                 stop("Dataset is not open. Call $open() first.")
             }
         },
+        # }}}
         # check_index
+        # check_index {{{
         check_index = function(index) {
             if (index < 1L || index > length(private$urls)) {
                 stop(sprintf(
@@ -1867,7 +2023,9 @@ EsgDataset <- R6::R6Class(
                 ))
             }
         },
+        # }}}
         # empty_region_data_table
+        # empty_region_data_table {{{
         empty_region_data_table = function() {
             data.table::data.table(
                 file_index = integer(),
@@ -1889,8 +2047,10 @@ EsgDataset <- R6::R6Class(
                 value = numeric()
             )
         },
+        # }}}
         # empty_grid_sources_data_table
         # Describes the grid cells that contributed to an extracted station value.
+        # empty_grid_sources_data_table {{{
         empty_grid_sources_data_table = function() {
             data.table::data.table(
                 file_index = integer(),
@@ -1904,7 +2064,9 @@ EsgDataset <- R6::R6Class(
                 weight = numeric()
             )
         },
+        # }}}
         # normalize_lon_for_grid
+        # normalize_lon_for_grid {{{
         normalize_lon_for_grid = function(lon, grid_lon) {
             grid_lon <- grid_lon[!is.na(grid_lon)]
             if (!length(grid_lon)) {
@@ -1918,14 +2080,18 @@ EsgDataset <- R6::R6Class(
             }
             lon
         },
+        # }}}
         # lon_to_360
         # Converts any longitude convention into a cyclic 0-360 axis for cell math.
+        # lon_to_360 {{{
         lon_to_360 = function(lon) {
             (lon + 360) %% 360
         },
+        # }}}
         # make_region_grid_coords
         # Build grid coordinates once per file; site distances are computed only
         # when selecting the few source cells required by a particular site.
+        # make_region_grid_coords {{{
         make_region_grid_coords = function(grid_lat, grid_lon) {
             coords <- data.table::CJ(
                 ind_lat = seq_along(grid_lat),
@@ -1943,9 +2109,11 @@ EsgDataset <- R6::R6Class(
             )
             coords
         },
+        # }}}
         # select_nearest_grid_sources
         # Select up to four nearest cells without copying and sorting the full
         # grid for every site. which.min() keeps the original grid tie order.
+        # select_nearest_grid_sources {{{
         select_nearest_grid_sources = function(
             coords,
             method,
@@ -2004,8 +2172,10 @@ EsgDataset <- R6::R6Class(
             )]
             sources
         },
+        # }}}
         # find_lat_bounds
         # Finds the south/north coordinates that enclose a target latitude.
+        # find_lat_bounds {{{
         find_lat_bounds = function(grid_lat, lat) {
             vals <- sort(unique(as.numeric(grid_lat[!is.na(grid_lat)])))
             if (length(vals) < 2L) {
@@ -2045,8 +2215,10 @@ EsgDataset <- R6::R6Class(
             }
             c(south = south, north = min(north_candidates))
         },
+        # }}}
         # find_lon_bounds
         # Finds west/east longitudes on a cyclic axis, including dateline wrap.
+        # find_lon_bounds {{{
         find_lon_bounds = function(grid_lon, target_lon) {
             lon_tbl <- unique(data.table::data.table(
                 grid_lon = as.numeric(grid_lon[!is.na(grid_lon)]),
@@ -2092,8 +2264,10 @@ EsgDataset <- R6::R6Class(
                 target360 = target360
             )
         },
+        # }}}
         # select_cell_grid_sources
         # Selects the four enclosing cell corners and computes method weights.
+        # select_cell_grid_sources {{{
         select_cell_grid_sources = function(
             grid_lat,
             grid_lon,
@@ -2175,8 +2349,10 @@ EsgDataset <- R6::R6Class(
             ]
             sources
         },
+        # }}}
         # region_grid_sources
         # Dispatches method-specific source-cell selection for point extraction.
+        # region_grid_sources {{{
         region_grid_sources = function(
             method,
             grid_lat,
@@ -2207,7 +2383,9 @@ EsgDataset <- R6::R6Class(
                 method
             )
         },
+        # }}}
         # read_region_one
+        # read_region_one {{{
         read_region_one = function(
             variable,
             lon,
@@ -2220,7 +2398,9 @@ EsgDataset <- R6::R6Class(
         ) {
             meta <- tryCatch(
                 private$get_var_dim_meta(variable, index = index),
+                # error {{{
                 error = function(e) NULL
+                # }}}
             )
             if (is.null(meta)) {
                 return(NULL)
@@ -2314,7 +2494,9 @@ EsgDataset <- R6::R6Class(
                 target_lon
             )
 
+            # dim_index {{{
             dim_index <- function(name) match(name, meta$names)
+            # }}}
             selected <- list(
                 time = time_idx,
                 lat = sources$ind_lat,
@@ -2479,7 +2661,9 @@ EsgDataset <- R6::R6Class(
             attr(out, "grid_sources") <- grid_sources
             out[]
         },
+        # }}}
         # array_to_data_table
+        # array_to_data_table {{{
         array_to_data_table = function(
             arr,
             variable,
@@ -2567,7 +2751,9 @@ EsgDataset <- R6::R6Class(
                             index = index,
                             collapse = TRUE
                         ),
+                        # error {{{
                         error = function(e) NULL
+                        # }}}
                     )
                     if (!is.null(coord)) {
                         coord <- as.vector(coord)
@@ -2601,9 +2787,12 @@ EsgDataset <- R6::R6Class(
 
             dt
         }
+        # }}}
     )
 )
+# }}}
 # dataset__progress_bar
+# dataset__progress_bar {{{
 dataset__progress_bar <- function(progress, label, total) {
     checkmate::assert_flag(progress)
     if (!isTRUE(progress)) {
@@ -2612,14 +2801,18 @@ dataset__progress_bar <- function(progress, label, total) {
 
     cli::cli_progress_bar(label, total = total, .auto_close = FALSE)
 }
+# }}}
 # dataset__progress_update
+# dataset__progress_update {{{
 dataset__progress_update <- function(id, current) {
     if (!is.null(id)) {
         cli::cli_progress_update(id = id, set = current)
     }
     invisible(NULL)
 }
+# }}}
 # dataset__progress_done
+# dataset__progress_done {{{
 dataset__progress_done <- function(id, ok = TRUE) {
     if (!is.null(id)) {
         cli::cli_progress_done(
@@ -2629,11 +2822,15 @@ dataset__progress_done <- function(id, ok = TRUE) {
     }
     invisible(NULL)
 }
+# }}}
 # dataset__private
+# dataset__private {{{
 dataset__private <- function(dataset) {
+    # error {{{
     private <- tryCatch(dataset$.__enclos_env__$private, error = function(e) {
         NULL
     })
+    # }}}
     if (is.null(private) || !is.environment(private)) {
         stop("`dataset` must be an EsgDataset-like object.", call. = FALSE)
     }
@@ -2656,7 +2853,9 @@ dataset__private <- function(dataset) {
 
     private
 }
+# }}}
 # dataset__detach_handles
+# dataset__detach_handles {{{
 dataset__detach_handles <- function(dataset) {
     private <- dataset__private(dataset)
     handles <- private$nc_handles
@@ -2664,7 +2863,9 @@ dataset__detach_handles <- function(dataset) {
     private$opened <- FALSE
     handles
 }
+# }}}
 # dataset__adopt_handles
+# dataset__adopt_handles {{{
 dataset__adopt_handles <- function(dataset, handles) {
     checkmate::assert_list(handles)
 
@@ -2681,7 +2882,9 @@ dataset__adopt_handles <- function(dataset, handles) {
 
     invisible(dataset)
 }
+# }}}
 # dataset__set_context
+# dataset__set_context {{{
 dataset__set_context <- function(dataset, context = NULL) {
     private <- dataset__private(dataset)
     if (!"context" %in% names(private)) {
@@ -2697,7 +2900,9 @@ dataset__set_context <- function(dataset, context = NULL) {
 
     invisible(dataset)
 }
+# }}}
 # dataset__close_handles
+# dataset__close_handles {{{
 dataset__close_handles <- function(urls, handles) {
     checkmate::assert_character(urls, any.missing = FALSE)
     checkmate::assert_list(handles)
@@ -2713,3 +2918,6 @@ dataset__close_handles <- function(urls, handles) {
     holder$close()
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

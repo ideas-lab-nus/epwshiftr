@@ -1,7 +1,16 @@
 # epwshiftr_cli_parse_command() {{{
 test_that("epwshiftr_cli_parse_command() separates flags, options, and positionals", {
     parsed <- epwshiftr_cli_parse_command(
-        c("--dry-run", "--limit", "2", "--tag", "tas", "--tag", "daily", "project=CMIP6"),
+        c(
+            "--dry-run",
+            "--limit",
+            "2",
+            "--tag",
+            "tas",
+            "--tag",
+            "daily",
+            "project=CMIP6"
+        ),
         flags = "--dry-run",
         options = "--limit",
         multi_options = "--tag"
@@ -40,3 +49,5 @@ test_that("epwshiftr_cli_empty_to_null() validates scalar inputs", {
     expect_equal(epwshiftr_cli_empty_to_null(""), "")
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

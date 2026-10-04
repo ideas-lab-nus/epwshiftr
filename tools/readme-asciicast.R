@@ -1,5 +1,6 @@
 # Execute the displayed README example in a real terminal and retain its cast
 # outside the repository. Only playback timing changes in the rendered SVGs.
+# readme__terminal {{{
 readme__terminal <- function(options) {
     options$engine <- "r"
     if (!isTRUE(options$eval)) {
@@ -38,7 +39,9 @@ readme__terminal <- function(options) {
         writeLines(options$code, code_path)
         # The child uses this R and its libraries; no shell startup or user
         # profile is needed. The displayed example is the only workflow call.
+        # literal {{{
         literal <- function(x) paste(capture.output(dput(x)), collapse = "\n")
+        # }}}
         writeLines(
             c(
                 paste0(".libPaths(", literal(.libPaths()), ")"),
@@ -142,3 +145,6 @@ readme__terminal <- function(options) {
     )
     knitr::engine_output(options, options$code, "", knitr::asis_output(picture))
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -39,18 +39,19 @@ ISIMIP_PR_THRESHOLD <- 0.1 / 86400
 # Construct the complete settings schema shared by every variable profile.
 # Variable-specific arguments select only method choices documented by the
 # ISIMIP3BASD application rather than inventing implicit transformations.
+# isimip__default_settings {{{
 isimip__default_settings <- function(
-  mapping_model,
-  trend_preservation,
-  bounds = c(-Inf, Inf),
-  lower_threshold = NULL,
-  upper_threshold = NULL,
-  unconditional_change_transfer = FALSE,
-  trendless_bound_frequency = FALSE,
-  detrend = FALSE,
-  impute_missing = FALSE,
-  all_missing_fallback = NULL,
-  scale_by_upper_bound_cycle = FALSE
+    mapping_model,
+    trend_preservation,
+    bounds = c(-Inf, Inf),
+    lower_threshold = NULL,
+    upper_threshold = NULL,
+    unconditional_change_transfer = FALSE,
+    trendless_bound_frequency = FALSE,
+    detrend = FALSE,
+    impute_missing = FALSE,
+    all_missing_fallback = NULL,
+    scale_by_upper_bound_cycle = FALSE
 ) {
     list(
         method_version = "3.0.x",
@@ -64,8 +65,7 @@ isimip__default_settings <- function(
         bounds = bounds,
         lower_threshold = lower_threshold,
         upper_threshold = upper_threshold,
-        unconditional_change_transfer =
-            unconditional_change_transfer,
+        unconditional_change_transfer = unconditional_change_transfer,
         trendless_bound_frequency = trendless_bound_frequency,
         detrend = detrend,
         detrend_alpha = 0.05,
@@ -84,10 +84,12 @@ isimip__default_settings <- function(
         fit_max_iterations = 1000L
     )
 }
+# }}}
 
 # Build publication-backed profiles for direct and component variables. The
 # metadata distinguishes direct CMIP variables from quantities that must later
 # be recombined into physically related output variables.
+# isimip__profiles {{{
 isimip__profiles <- function() {
     settings <- list(
         hurs = isimip__default_settings(
@@ -168,6 +170,7 @@ isimip__profiles <- function() {
         tasskew = c("tasmin", "tasmax")
     )
 
+    # lapply callback {{{
     lapply(ISIMIP_VARIABLES, function(variable) {
         derived <- variable %in% ISIMIP_DERIVED_VARIABLES
         signal__variable_profile(
@@ -190,10 +193,13 @@ isimip__profiles <- function() {
             )
         )
     })
+    # }}}
 }
+# }}}
 
 # Validate the complete method schema so partial overrides cannot silently
 # change the official application semantics or create invalid threshold pairs.
+# isimip__settings {{{
 isimip__settings <- function(settings) {
     expected <- c(
         "method_version",
@@ -230,13 +236,15 @@ isimip__settings <- function(settings) {
         expected,
         "ISIMIP3BASD"
     )
-    if (!identical(resolved$method_version, "3.0.x") ||
-        !identical(
-            resolved$seasonal_grouping,
-            "circular_running_window"
-        ) ||
-        !identical(resolved$running_window_step_days, 1L) ||
-        !identical(resolved$adjust_event_likelihood, FALSE)) {
+    if (
+        !identical(resolved$method_version, "3.0.x") ||
+            !identical(
+                resolved$seasonal_grouping,
+                "circular_running_window"
+            ) ||
+            !identical(resolved$running_window_step_days, 1L) ||
+            !identical(resolved$adjust_event_likelihood, FALSE)
+    ) {
         cli::cli_abort(
             "ISIMIP3BASD currently implements the 3.0.x one-day circular-window application without event-likelihood adjustment."
         )
@@ -292,9 +300,11 @@ isimip__settings <- function(settings) {
     upper <- resolved$upper_threshold
     if (!is.null(lower)) {
         checkmate::assert_number(lower, finite = TRUE)
-        if (!is.finite(resolved$bounds[[1L]]) ||
-            lower <= resolved$bounds[[1L]] ||
-            lower >= resolved$bounds[[2L]]) {
+        if (
+            !is.finite(resolved$bounds[[1L]]) ||
+                lower <= resolved$bounds[[1L]] ||
+                lower >= resolved$bounds[[2L]]
+        ) {
             cli::cli_abort(
                 "`lower_threshold` must lie strictly above a finite lower bound."
             )
@@ -302,9 +312,11 @@ isimip__settings <- function(settings) {
     }
     if (!is.null(upper)) {
         checkmate::assert_number(upper, finite = TRUE)
-        if (!is.finite(resolved$bounds[[2L]]) ||
-            upper >= resolved$bounds[[2L]] ||
-            upper <= resolved$bounds[[1L]]) {
+        if (
+            !is.finite(resolved$bounds[[2L]]) ||
+                upper >= resolved$bounds[[2L]] ||
+                upper <= resolved$bounds[[1L]]
+        ) {
             cli::cli_abort(
                 "`upper_threshold` must lie strictly below a finite upper bound."
             )
@@ -315,21 +327,27 @@ isimip__settings <- function(settings) {
             "ISIMIP3BASD lower and upper thresholds must be ordered."
         )
     }
-    if (identical(resolved$trend_preservation, "bounded") &&
-        (!is.finite(resolved$bounds[[1L]]) ||
-            !is.finite(resolved$bounds[[2L]]))) {
+    if (
+        identical(resolved$trend_preservation, "bounded") &&
+            (!is.finite(resolved$bounds[[1L]]) ||
+                !is.finite(resolved$bounds[[2L]]))
+    ) {
         cli::cli_abort(
             "Bounded ISIMIP3BASD transfer requires two finite bounds."
         )
     }
-    if (identical(resolved$mapping_model, "gamma") &&
-        is.null(lower)) {
+    if (
+        identical(resolved$mapping_model, "gamma") &&
+            is.null(lower)
+    ) {
         cli::cli_abort(
             "Gamma ISIMIP3BASD mapping requires a lower threshold."
         )
     }
-    if (identical(resolved$mapping_model, "weibull") &&
-        is.null(lower)) {
+    if (
+        identical(resolved$mapping_model, "weibull") &&
+            is.null(lower)
+    ) {
         cli::cli_abort(
             "Weibull ISIMIP3BASD mapping requires a lower threshold."
         )
@@ -349,12 +367,18 @@ isimip__settings <- function(settings) {
         upper = 1,
         finite = TRUE
     )
-    if (resolved$detrend_alpha <= 0 ||
-        resolved$detrend_alpha >= 1) {
-        cli::cli_abort("`detrend_alpha` must lie strictly between zero and one.")
+    if (
+        resolved$detrend_alpha <= 0 ||
+            resolved$detrend_alpha >= 1
+    ) {
+        cli::cli_abort(
+            "`detrend_alpha` must lie strictly between zero and one."
+        )
     }
-    if (!resolved$impute_missing &&
-        !is.null(resolved$all_missing_fallback)) {
+    if (
+        !resolved$impute_missing &&
+            !is.null(resolved$all_missing_fallback)
+    ) {
         cli::cli_abort(
             "`all_missing_fallback` requires `impute_missing = TRUE`."
         )
@@ -391,8 +415,10 @@ isimip__settings <- function(settings) {
         lower = 1,
         finite = TRUE
     )
-    if (resolved$max_change_factor <= 1 ||
-        resolved$max_adjustment_factor <= 1) {
+    if (
+        resolved$max_change_factor <= 1 ||
+            resolved$max_adjustment_factor <= 1
+    ) {
         cli::cli_abort(
             "ISIMIP3BASD change and adjustment factors must exceed one."
         )
@@ -411,10 +437,12 @@ isimip__settings <- function(settings) {
     )
     resolved
 }
+# }}}
 
 # Validate one input while temporarily replacing permitted missing values only
 # for the common structural validator. The original missing mask is restored
 # before any method calculation is performed.
+# isimip__input_table {{{
 isimip__input_table <- function(data, role, allow_missing) {
     if (!is.data.frame(data)) {
         cli::cli_abort(
@@ -444,22 +472,27 @@ isimip__input_table <- function(data, role, allow_missing) {
     checked[["value"]][missing] <- NA_real_
     checked
 }
+# }}}
 
 # Resolve the three role-addressable daily inputs and retain their independent
 # native calendars. Only the snow-ratio component admits missing observations,
 # matching the published imputation step.
+# isimip__inputs {{{
 isimip__inputs <- function(inputs, variable, resolved) {
     roles <- c(
         "observed_reference",
         "model_historical",
         "model_future"
     )
-    if (!is.list(inputs) ||
-        !identical(sort(names(inputs)), sort(roles))) {
+    if (
+        !is.list(inputs) ||
+            !identical(sort(names(inputs)), sort(roles))
+    ) {
         cli::cli_abort(
             "ISIMIP3BASD requires observed, historical-model, and future-model role payloads."
         )
     }
+    # lapply callback {{{
     series <- lapply(roles, function(role) {
         isimip__input_table(
             inputs[[role]],
@@ -467,6 +500,7 @@ isimip__inputs <- function(inputs, variable, resolved) {
             allow_missing = resolved$impute_missing
         )
     })
+    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -483,7 +517,9 @@ isimip__inputs <- function(inputs, variable, resolved) {
     }
     units <- vapply(
         series,
+        # vapply callback {{{
         function(data) unique(data[["units"]]),
+        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -491,25 +527,37 @@ isimip__inputs <- function(inputs, variable, resolved) {
             "ISIMIP3BASD inputs for {.val {variable}} must use identical units."
         )
     }
-    if (is.finite(resolved$bounds[[1L]]) &&
-        any(vapply(series, function(data) {
-            any(data[["value"]] < resolved$bounds[[1L]], na.rm = TRUE)
-        }, logical(1L)))) {
+    if (
+        is.finite(resolved$bounds[[1L]]) &&
+            # vapply callback {{{
+            any(vapply(
+                series,
+                function(data) {
+                    any(data[["value"]] < resolved$bounds[[1L]], na.rm = TRUE)
+                },
+                logical(1L)
+            ))
+    ) {
+        # }}}
         cli::cli_abort(
             "ISIMIP3BASD inputs for {.val {variable}} contain values below the declared physical lower bound."
         )
     }
     series
 }
+# }}}
 
 # Map a native-calendar annual phase to the common target day without pairing
 # nominal dates across 360-, 365-, and 366-day source calendars.
+# isimip__target_day {{{
 isimip__target_day <- function(annual_phase, target_year_days) {
     daily__target_day(annual_phase, target_year_days)
 }
+# }}}
 
 # Derive a deterministic seed for one operation and window. Method-local
 # Park-Miller uniforms then leave R's global random-number state untouched.
+# isimip__seed {{{
 isimip__seed <- function(resolved, key, variable, operation, target_day = 0L) {
     quantile__group_seed(
         resolved$random_seed,
@@ -523,10 +571,12 @@ isimip__seed <- function(resolved, key, variable, operation, target_day = 0L) {
         variable
     )
 }
+# }}}
 
 # Fill missing target-day climatology values through circular linear
 # interpolation so a 360-day input can participate on the common 365-day grid
 # without duplicating or discarding native dates.
+# isimip__circular_fill {{{
 isimip__circular_fill <- function(values) {
     checkmate::assert_numeric(
         values,
@@ -551,14 +601,16 @@ isimip__circular_fill <- function(values) {
         period = n
     )
 }
+# }}}
 
 # Calculate a circular running statistic at every target day using an odd
 # target-grid window. This helper is deliberately value-agnostic so both the
 # running maximum and subsequent running mean remain directly testable.
+# isimip__circular_running {{{
 isimip__circular_running <- function(
-  values,
-  window_days,
-  statistic = c("mean", "max")
+    values,
+    window_days,
+    statistic = c("mean", "max")
 ) {
     statistic <- match.arg(statistic)
     spec <- daily__window_spec(window_days, length(values))
@@ -575,14 +627,16 @@ isimip__circular_running <- function(
     }
     out
 }
+# }}}
 
 # Estimate the smoothed annual upper-bound cycle used to normalize short-wave
 # radiation. A daily maximum is followed by a circular running maximum and
 # running mean, matching the published two-stage upper-bound construction.
+# isimip__upper_bound_cycle {{{
 isimip__upper_bound_cycle <- function(
-  data,
-  window_days,
-  target_year_days
+    data,
+    window_days,
+    target_year_days
 ) {
     target_day <- isimip__target_day(
         data[["annual_phase"]],
@@ -620,11 +674,14 @@ isimip__upper_bound_cycle <- function(
         upper_bound_range = range(upper_bound)
     )
 }
+# }}}
 
 # Scale all roles to a dimensionless short-wave fraction and transfer the
 # simulated upper-bound-cycle change to the observed cycle. The target cycle is
 # clipped to a positive numerical floor before final rescaling.
+# isimip__scale_upper_bounds {{{
 isimip__scale_upper_bounds <- function(series, resolved) {
+    # lapply callback {{{
     cycles <- lapply(series, function(data) {
         isimip__upper_bound_cycle(
             data,
@@ -632,16 +689,23 @@ isimip__scale_upper_bounds <- function(series, resolved) {
             resolved$target_year_days
         )
     })
-    scaled <- Map(function(data, cycle) {
-        day <- isimip__target_day(
-            data[["annual_phase"]],
-            resolved$target_year_days
-        )
-        out <- data
-        out[["value"]] <- data[["value"]] / cycle$value[day]
-        out[["value"]] <- pmin(pmax(out[["value"]], 0), 1)
-        out
-    }, series, cycles)
+    # }}}
+    # Map callback {{{
+    scaled <- Map(
+        function(data, cycle) {
+            day <- isimip__target_day(
+                data[["annual_phase"]],
+                resolved$target_year_days
+            )
+            out <- data
+            out[["value"]] <- data[["value"]] / cycle$value[day]
+            out[["value"]] <- pmin(pmax(out[["value"]], 0), 1)
+            out
+        },
+        series,
+        cycles
+    )
+    # }}}
     names(scaled) <- names(series)
 
     observed <- cycles$observed_reference$value
@@ -662,6 +726,7 @@ isimip__scale_upper_bounds <- function(series, resolved) {
         series = scaled,
         target = target,
         diagnostics = list(
+            # lapply callback {{{
             role_cycles = lapply(cycles, function(cycle) {
                 cycle[c(
                     "missing_target_days",
@@ -669,15 +734,18 @@ isimip__scale_upper_bounds <- function(series, resolved) {
                     "upper_bound_range"
                 )]
             }),
+            # }}}
             invalid_change_days = as.integer(which(invalid)),
             target_upper_bound_range = range(target)
         )
     )
 }
+# }}}
 
 # Impute published snow-ratio missing values from the empirical distribution of
 # available values. The deterministic generator records both the number filled
 # and whether the all-missing fallback was needed.
+# isimip__impute_missing {{{
 isimip__impute_missing <- function(values, seed, fallback = NULL) {
     missing <- is.na(values)
     if (!any(missing)) {
@@ -711,9 +779,11 @@ isimip__impute_missing <- function(values, seed, fallback = NULL) {
         seed = as.integer(seed)
     )
 }
+# }}}
 
 # Remove a statistically detectable linear trend in annual means while
 # retaining the centered trend term needed to restore the future sequence.
+# isimip__detrend {{{
 isimip__detrend <- function(values, years, alpha) {
     checkmate::assert_numeric(
         values,
@@ -756,14 +826,17 @@ isimip__detrend <- function(values, years, alpha) {
         residual_variance /
             sum(centered_year^2)
     )
-    p_value <- if (!is.finite(standard_error) ||
-        standard_error <= 0) {
+    p_value <- if (
+        !is.finite(standard_error) ||
+            standard_error <= 0
+    ) {
         if (slope == 0) 1 else 0
     } else {
-        2 * stats::pt(
-            -abs(slope / standard_error),
-            df = residual_df
-        )
+        2 *
+            stats::pt(
+                -abs(slope / standard_error),
+                df = residual_df
+            )
     }
     applied <- is.finite(p_value) && p_value < alpha
     row_trend <- if (applied) {
@@ -779,16 +852,18 @@ isimip__detrend <- function(values, years, alpha) {
         applied = applied
     )
 }
+# }}}
 
 # Replace lower- or upper-threshold values by deterministic within-threshold
 # values whose rank order is reproducible. This removes a point mass before
 # fitting while preserving its occurrence count for final de-randomization.
+# isimip__randomize_threshold {{{
 isimip__randomize_threshold <- function(
-  values,
-  bound,
-  threshold,
-  side = c("lower", "upper"),
-  seed
+    values,
+    bound,
+    threshold,
+    side = c("lower", "upper"),
+    seed
 ) {
     side <- match.arg(side)
     selected <- if (identical(side, "lower")) {
@@ -822,14 +897,16 @@ isimip__randomize_threshold <- function(
         seed = as.integer(seed)
     )
 }
+# }}}
 
 # Randomize both published threshold regions in a fixed order, deriving a new
 # seed for the upper operation so the two tails never share a random stream.
+# isimip__randomize_bounds {{{
 isimip__randomize_bounds <- function(
-  values,
-  resolved,
-  lower_seed,
-  upper_seed
+    values,
+    resolved,
+    lower_seed,
+    upper_seed
 ) {
     diagnostics <- list()
     if (!is.null(resolved$lower_threshold)) {
@@ -856,23 +933,27 @@ isimip__randomize_bounds <- function(
     }
     list(value = values, diagnostics = diagnostics)
 }
+# }}}
 
 # Transfer an additive, capped multiplicative, mixed, or bounded change between
 # common quantiles. The mixed cosine transition and bounded branch implement
 # the published equations rather than selecting transformations by variable
 # name inside the kernel.
+# isimip__transfer_change {{{
 isimip__transfer_change <- function(
-  observed,
-  historical,
-  future,
-  resolved
+    observed,
+    historical,
+    future,
+    resolved
 ) {
     method <- resolved$trend_preservation
     if (identical(method, "additive")) {
         return(observed + future - historical)
     }
-    if (identical(method, "multiplicative") ||
-        identical(method, "mixed")) {
+    if (
+        identical(method, "multiplicative") ||
+            identical(method, "mixed")
+    ) {
         ratio <- rep.int(1, length(future))
         nonzero <- historical != 0
         ratio[nonzero] <- future[nonzero] / historical[nonzero]
@@ -889,18 +970,16 @@ isimip__transfer_change <- function(
         fraction[historical >= observed] <- 1
         transition <- historical < observed &
             historical > 0 &
-            observed <
-                resolved$max_adjustment_factor * historical
-        fraction[transition] <- 0.5 * (
-            1 + cos(
-                (observed[transition] / historical[transition] - 1) *
-                    pi /
-                    (resolved$max_adjustment_factor - 1)
-            )
-        )
+            observed < resolved$max_adjustment_factor * historical
+        fraction[transition] <- 0.5 *
+            (1 +
+                cos(
+                    (observed[transition] / historical[transition] - 1) *
+                        pi /
+                        (resolved$max_adjustment_factor - 1)
+                ))
         return(
-            fraction * multiplicative +
-                (1 - fraction) * additive
+            fraction * multiplicative + (1 - fraction) * additive
         )
     }
 
@@ -931,14 +1010,16 @@ isimip__transfer_change <- function(
         historical[!is.finite(value)]
     pmin(pmax(value, lower), upper)
 }
+# }}}
 
 # Transfer the model change in bound-event frequency onto the observed event
 # frequency using the same bounded climate-change equation on [0, 1].
+# isimip__transfer_frequency {{{
 isimip__transfer_frequency <- function(
-  observed,
-  historical,
-  future,
-  trendless
+    observed,
+    historical,
+    future,
+    trendless
 ) {
     if (trendless) {
         return(observed)
@@ -955,26 +1036,31 @@ isimip__transfer_frequency <- function(
     )
     pmin(pmax(value, 0), 1)
 }
+# }}}
 
 # Fit a fixed-location Weibull distribution by maximizing the profile
 # likelihood over log-shape. The scale has a closed-form value conditional on
 # shape, so positivity is guaranteed without an external optimizer package.
+# isimip__fit_weibull {{{
 isimip__fit_weibull <- function(
-  values,
-  location,
-  tolerance,
-  max_iterations
+    values,
+    location,
+    tolerance,
+    max_iterations
 ) {
     shifted <- values - location
-    if (length(shifted) < 2L ||
-        any(!is.finite(shifted)) ||
-        any(shifted <= 0) ||
-        length(unique(shifted)) < 2L) {
+    if (
+        length(shifted) < 2L ||
+            any(!is.finite(shifted)) ||
+            any(shifted <= 0) ||
+            length(unique(shifted)) < 2L
+    ) {
         cli::cli_abort(
             "A fixed-location Weibull fit requires at least two distinct values above its location."
         )
     }
     log_values <- log(shifted)
+    # objective {{{
     objective <- function(log_shape) {
         shape <- exp(log_shape)
         powered <- shape * log_values
@@ -982,9 +1068,8 @@ isimip__fit_weibull <- function(
         log_mean_power <- maximum +
             log(mean(exp(powered - maximum)))
         log_scale <- log_mean_power / shape
-        log_likelihood <- length(shifted) * (
-            log(shape) - shape * log_scale
-        ) +
+        log_likelihood <- length(shifted) *
+            (log(shape) - shape * log_scale) +
             (shape - 1) * sum(log_values) -
             sum(exp(shape * (log_values - log_scale)))
         if (is.finite(log_likelihood)) {
@@ -993,6 +1078,7 @@ isimip__fit_weibull <- function(
             .Machine$double.xmax
         }
     }
+    # }}}
     optimization <- stats::optim(
         par = 0,
         fn = objective,
@@ -1007,18 +1093,19 @@ isimip__fit_weibull <- function(
             maxit = as.integer(max_iterations)
         )
     )
-    if (optimization$convergence != 0L ||
-        !is.finite(optimization$value)) {
+    if (
+        optimization$convergence != 0L ||
+            !is.finite(optimization$value)
+    ) {
         cli::cli_abort(
             "Fixed-location Weibull maximum-likelihood fitting did not converge."
         )
     }
     shape <- exp(optimization$par)
     maximum <- max(shape * log_values)
-    log_scale <- (
-        maximum +
-            log(mean(exp(shape * log_values - maximum)))
-    ) / shape
+    log_scale <- (maximum +
+        log(mean(exp(shape * log_values - maximum)))) /
+        shape
     list(
         family = "weibull",
         parameters = list(
@@ -1030,9 +1117,11 @@ isimip__fit_weibull <- function(
         method = "maximum_likelihood_fixed_location"
     )
 }
+# }}}
 
 # Fit one profile-selected distribution and retain an explicit threshold
 # location for positive Gamma and Weibull families.
+# isimip__fit_distribution {{{
 isimip__fit_distribution <- function(values, resolved) {
     model <- resolved$mapping_model
     if (identical(model, "normal")) {
@@ -1061,10 +1150,12 @@ isimip__fit_distribution <- function(values, resolved) {
         "Empirical ISIMIP3BASD mapping does not use a parametric fit."
     )
 }
+# }}}
 
 # Calculate the two-sided one-sample Kolmogorov-Smirnov statistic without
 # relying on the distribution-free p-value that is not used by the 3.0.x
 # application configuration.
+# isimip__ks_statistic {{{
 isimip__ks_statistic <- function(values, fit) {
     ordered <- sort(values)
     probability <- distribution__cdf(fit, ordered)
@@ -1074,12 +1165,16 @@ isimip__ks_statistic <- function(values, fit) {
         abs(seq_len(n) / n - probability)
     ))
 }
+# }}}
 
 # Attempt one parametric fit and return a structured failure reason instead of
 # allowing optimizer warnings to escape the group execution boundary.
+# isimip__try_fit {{{
 isimip__try_fit <- function(values, resolved) {
-    if (length(values) < resolved$min_samples ||
-        length(unique(values)) < 2L) {
+    if (
+        length(values) < resolved$min_samples ||
+            length(unique(values)) < 2L
+    ) {
         return(list(
             fit = NULL,
             reason = "insufficient_distinct_samples"
@@ -1087,7 +1182,9 @@ isimip__try_fit <- function(values, resolved) {
     }
     fit <- tryCatch(
         suppressWarnings(isimip__fit_distribution(values, resolved)),
+        # error {{{
         error = function(error) error
+        # }}}
     )
     if (inherits(fit, "error")) {
         return(list(
@@ -1096,8 +1193,10 @@ isimip__try_fit <- function(values, resolved) {
         ))
     }
     statistic <- isimip__ks_statistic(values, fit)
-    if (!is.finite(statistic) ||
-        statistic > resolved$ks_threshold) {
+    if (
+        !is.finite(statistic) ||
+            statistic > resolved$ks_threshold
+    ) {
         return(list(
             fit = NULL,
             reason = "kolmogorov_smirnov_threshold",
@@ -1110,13 +1209,15 @@ isimip__try_fit <- function(values, resolved) {
         ks_statistic = statistic
     )
 }
+# }}}
 
 # Interpolate probabilities from a fixed quantile grid while averaging the
 # probability coordinate of duplicated quantiles.
+# isimip__probability_from_quantiles {{{
 isimip__probability_from_quantiles <- function(
-  values,
-  quantiles,
-  probability
+    values,
+    quantiles,
+    probability
 ) {
     groups <- split(probability, quantiles)
     anchors <- as.numeric(names(groups))
@@ -1136,23 +1237,27 @@ isimip__probability_from_quantiles <- function(
         ties = "ordered"
     )$y
 }
+# }}}
 
 # Map one empirical source distribution to a target distribution with the
 # published constant-correction tail extrapolation.
+# isimip__map_empirical {{{
 isimip__map_empirical <- function(
-  values,
-  source,
-  target,
-  n_quantiles
+    values,
+    source,
+    target,
+    n_quantiles
 ) {
     count <- min(
         as.integer(n_quantiles) + 1L,
         length(source),
         length(target)
     )
-    if (count < 2L ||
-        length(unique(source)) < 2L ||
-        !length(target)) {
+    if (
+        count < 2L ||
+            length(unique(source)) < 2L ||
+            !length(target)
+    ) {
         return(list(
             value = values,
             quantiles = count - 1L,
@@ -1164,9 +1269,15 @@ isimip__map_empirical <- function(
     target_quantile <- quantile__inverse_cdf(target, probability)
     groups <- split(seq_along(source_quantile), source_quantile)
     source_anchor <- as.numeric(names(groups))
-    target_anchor <- vapply(groups, function(index) {
-        mean(target_quantile[index])
-    }, numeric(1L))
+    # vapply callback {{{
+    target_anchor <- vapply(
+        groups,
+        function(index) {
+            mean(target_quantile[index])
+        },
+        numeric(1L)
+    )
+    # }}}
     order_index <- order(source_anchor)
     source_anchor <- source_anchor[order_index]
     target_anchor <- target_anchor[order_index]
@@ -1196,26 +1307,28 @@ isimip__map_empirical <- function(
         fallback = NULL
     )
 }
+# }}}
 
 # Quantile-map arbitrary selected source values onto the empirical distribution
 # of source-fit values before applying a bounded parametric model.
+# isimip__brute_force_to_fit {{{
 isimip__brute_force_to_fit <- function(values, source_fit) {
     if (!length(values) || length(unique(source_fit)) < 2L) {
         return(values)
     }
-    probability <- (
-        rank(values, ties.method = "average") - 1
-    ) / length(values)
+    probability <- (rank(values, ties.method = "average") - 1) / length(values)
     quantile__inverse_cdf(source_fit, probability)
 }
+# }}}
 
 # Generate pseudo future observations by transferring modeled changes at
 # corresponding empirical quantiles onto historical observations.
+# isimip__pseudo_future {{{
 isimip__pseudo_future <- function(
-  observed,
-  historical,
-  future,
-  resolved
+    observed,
+    historical,
+    future,
+    resolved
 ) {
     observed_keep <- rep.int(TRUE, length(observed))
     historical_keep <- rep.int(TRUE, length(historical))
@@ -1305,18 +1418,26 @@ isimip__pseudo_future <- function(
         )
     )
 }
+# }}}
 
 # Calculate target lower- and upper-bound event proportions, normalizing the
 # pair when their transferred frequencies would otherwise overlap.
+# isimip__target_frequencies {{{
 isimip__target_frequencies <- function(
-  original,
-  resolved
+    original,
+    resolved
 ) {
     frequencies <- list(lower = 0, upper = 0)
     if (!is.null(resolved$lower_threshold)) {
-        probability <- vapply(original, function(values) {
-            mean(values <= resolved$lower_threshold, na.rm = TRUE)
-        }, numeric(1L))
+        # vapply callback {{{
+        probability <- vapply(
+            original,
+            function(values) {
+                mean(values <= resolved$lower_threshold, na.rm = TRUE)
+            },
+            numeric(1L)
+        )
+        # }}}
         frequencies$lower <- isimip__transfer_frequency(
             probability[["observed_reference"]],
             probability[["model_historical"]],
@@ -1325,9 +1446,15 @@ isimip__target_frequencies <- function(
         )
     }
     if (!is.null(resolved$upper_threshold)) {
-        probability <- vapply(original, function(values) {
-            mean(values >= resolved$upper_threshold, na.rm = TRUE)
-        }, numeric(1L))
+        # vapply callback {{{
+        probability <- vapply(
+            original,
+            function(values) {
+                mean(values >= resolved$upper_threshold, na.rm = TRUE)
+            },
+            numeric(1L)
+        )
+        # }}}
         frequencies$upper <- isimip__transfer_frequency(
             probability[["observed_reference"]],
             probability[["model_historical"]],
@@ -1346,15 +1473,17 @@ isimip__target_frequencies <- function(
         list(normalized = normalized)
     )
 }
+# }}}
 
 # Bias-adjust one randomized future window onto its pseudo-observed target.
 # Bound frequencies are set first; parametric fitting falls back explicitly to
 # empirical mapping if either fitted distribution is unsupported.
+# isimip__map_window {{{
 isimip__map_window <- function(
-  future,
-  pseudo,
-  original,
-  resolved
+    future,
+    pseudo,
+    original,
+    resolved
 ) {
     frequencies <- isimip__target_frequencies(original, resolved)
     n <- length(future)
@@ -1413,9 +1542,11 @@ isimip__map_window <- function(
         source_fit = NULL,
         target_fit = NULL
     )
-    if (length(source_index) &&
-        length(source_fit) &&
-        length(target_fit)) {
+    if (
+        length(source_index) &&
+            length(source_fit) &&
+            length(target_fit)
+    ) {
         values <- future[source_index]
         if (identical(resolved$mapping_model, "empirical")) {
             empirical <- isimip__map_empirical(
@@ -1431,8 +1562,10 @@ isimip__map_window <- function(
         } else {
             source_attempt <- isimip__try_fit(source_fit, resolved)
             target_attempt <- isimip__try_fit(target_fit, resolved)
-            if (is.null(source_attempt$fit) ||
-                is.null(target_attempt$fit)) {
+            if (
+                is.null(source_attempt$fit) ||
+                    is.null(target_attempt$fit)
+            ) {
                 empirical <- isimip__map_empirical(
                     values,
                     source_fit,
@@ -1509,17 +1642,19 @@ isimip__map_window <- function(
         )
     )
 }
+# }}}
 
 # Prepare one role inside a seasonal window in the published operation order:
 # missing-value imputation, optional annual-mean detrending, then deterministic
 # threshold randomization.
+# isimip__prepare_window_role {{{
 isimip__prepare_window_role <- function(
-  data,
-  role,
-  resolved,
-  key,
-  variable,
-  target_day
+    data,
+    role,
+    resolved,
+    key,
+    variable,
+    target_day
 ) {
     imputation_seed <- isimip__seed(
         resolved,
@@ -1594,18 +1729,21 @@ isimip__prepare_window_role <- function(
         )
     )
 }
+# }}}
 
 # Execute all marginal operations for one target-day window and return values
 # for the complete future window. The caller retains only the center-day rows,
 # preventing overlapping windows from writing a row more than once.
+# isimip__adjust_window {{{
 isimip__adjust_window <- function(
-  series,
-  center,
-  target_day,
-  resolved,
-  key,
-  variable
+    series,
+    center,
+    target_day,
+    resolved,
+    key,
+    variable
 ) {
+    # lapply callback {{{
     rows <- lapply(series, function(data) {
         daily__phase_window(
             data[["annual_phase"]],
@@ -1614,25 +1752,38 @@ isimip__adjust_window <- function(
             resolved$target_year_days
         )
     })
+    # }}}
     counts <- vapply(rows, sum, integer(1L))
     if (any(counts < resolved$min_samples)) {
         cli::cli_abort(
             "ISIMIP3BASD target day {target_day} has fewer than {resolved$min_samples} observed, historical, or future daily values in its running window."
         )
     }
-    window <- Map(function(data, keep) {
-        data[keep, , drop = FALSE]
-    }, series, rows)
-    prepared <- Map(function(data, role) {
-        isimip__prepare_window_role(
-            data,
-            role,
-            resolved,
-            key,
-            variable,
-            target_day
-        )
-    }, window, names(window))
+    # Map callback {{{
+    window <- Map(
+        function(data, keep) {
+            data[keep, , drop = FALSE]
+        },
+        series,
+        rows
+    )
+    # }}}
+    # Map callback {{{
+    prepared <- Map(
+        function(data, role) {
+            isimip__prepare_window_role(
+                data,
+                role,
+                resolved,
+                key,
+                variable,
+                target_day
+            )
+        },
+        window,
+        names(window)
+    )
+    # }}}
     names(prepared) <- names(window)
 
     pseudo <- isimip__pseudo_future(
@@ -1644,7 +1795,9 @@ isimip__adjust_window <- function(
     mapped <- isimip__map_window(
         prepared$model_future$value,
         pseudo$value,
+        # lapply callback {{{
         lapply(prepared, function(role) role$original),
+        # }}}
         resolved
     )
     restored <- mapped$value + prepared$model_future$trend
@@ -1666,7 +1819,9 @@ isimip__adjust_window <- function(
             samples = counts,
             role_preparation = lapply(
                 prepared,
+                # lapply callback {{{
                 function(role) role$diagnostics
+                # }}}
             ),
             change_transfer = pseudo$diagnostics,
             distribution_mapping = mapped$diagnostics,
@@ -1676,15 +1831,17 @@ isimip__adjust_window <- function(
         )
     )
 }
+# }}}
 
 # Apply every required target-day window to the future-model backbone. Each
 # native-calendar row is assigned through its annual phase, while short-wave
 # scaling and rescaling happen outside the repeated fitting loop.
+# isimip__adjust_values {{{
 isimip__adjust_values <- function(
-  series,
-  resolved,
-  key,
-  variable
+    series,
+    resolved,
+    key,
+    variable
 ) {
     upper_bound <- NULL
     working <- series
@@ -1712,8 +1869,7 @@ isimip__adjust_values <- function(
             key,
             variable
         )
-        center_in_window <- future_target_day[window$future_rows] ==
-            target_day
+        center_in_window <- future_target_day[window$future_rows] == target_day
         output_rows <- window$future_rows[center_in_window]
         adjusted[output_rows] <- window$value[center_in_window]
         records[[record_index]] <- window$diagnostics
@@ -1739,7 +1895,9 @@ isimip__adjust_values <- function(
             target_days = as.integer(target_days),
             native_calendars = vapply(
                 series,
+                # vapply callback {{{
                 function(data) unique(data[["cf_calendar"]]),
+                # }}}
                 character(1L)
             ),
             calendar_adapter = list(
@@ -1756,9 +1914,11 @@ isimip__adjust_values <- function(
         )
     )
 }
+# }}}
 
 # Execute one univariate ISIMIP3BASD group and return the shared future-model
 # DailyAdjustedSeries result with complete method and calendar provenance.
+# isimip__apply_group {{{
 isimip__apply_group <- function(inputs, settings, key) {
     resolved <- isimip__settings(settings)
     variable <- names(settings)[[1L]]
@@ -1795,9 +1955,7 @@ isimip__apply_group <- function(inputs, settings, key) {
                     "direct"
                 },
                 reconstructed_outputs = reconstructed,
-                mapping_domain = if (
-                    resolved$scale_by_upper_bound_cycle
-                ) {
+                mapping_domain = if (resolved$scale_by_upper_bound_cycle) {
                     "upper_bound_fraction"
                 } else {
                     "native_units"
@@ -1817,9 +1975,7 @@ isimip__apply_group <- function(inputs, settings, key) {
             marginal_adjustment = TRUE,
             spatial_downscaling = "separate_stage",
             reconstructed_outputs = reconstructed,
-            mapping_domain = if (
-                resolved$scale_by_upper_bound_cycle
-            ) {
+            mapping_domain = if (resolved$scale_by_upper_bound_cycle) {
                 "upper_bound_fraction"
             } else {
                 "native_units"
@@ -1829,9 +1985,11 @@ isimip__apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Return an explicit diagnostic if the component violates the package-native
 # future-model result contract.
+# isimip__validate_result {{{
 isimip__validate_result <- function(value, inputs, key) {
     signal__validate_adjusted_result(
         value,
@@ -1841,9 +1999,11 @@ isimip__validate_result <- function(value, inputs, key) {
         "ISIMIP3BASD"
     )
 }
+# }}}
 
 # Construct the package-native signal component for every direct and component
 # variable in the published ISIMIP3BASD application configuration.
+# isimip__component {{{
 isimip__component <- function() {
     alternatives <- as.list(ISIMIP_VARIABLES)
     requirements <- signal__three_role_requirements(
@@ -1883,10 +2043,15 @@ isimip__component <- function() {
         )
     )
 }
+# }}}
 
 # Register ISIMIP3BASD once so package load and repeated tests share one
 # discoverable process-local component.
+# isimip__register_component {{{
 isimip__register_component <- function() {
     component__register_builtin(isimip__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

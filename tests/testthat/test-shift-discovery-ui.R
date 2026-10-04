@@ -8,19 +8,32 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
     reporters <- list()
     withr::local_options(list(cli.width = 112L, cli.num_colors = 1L))
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             opened <<- opened + 1L
             list(
+                # draw {{{
                 draw = function(lines, compact) {
                     frames[[length(frames) + 1L]] <<- cli::ansi_strip(lines)
                     TRUE
                 },
+                # }}}
+                # backend {{{
                 backend = function() "frame",
+                # }}}
+                # commit {{{
                 commit = function(...) committed <<- committed + 1L,
+                # }}}
+                # close {{{
                 close = function(...) NULL,
+                # }}}
+                # suspend {{{
                 suspend = function(code) code()
+                # }}}
             )
         },
+        # }}}
+        # shift_resolve__with_query_reporter {{{
         shift_resolve__with_query_reporter = function(
             reporter,
             query,
@@ -29,15 +42,27 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
         ) {
             force(expr)
         },
+        # }}}
+        # shift_resolve__as_query {{{
         shift_resolve__as_query = function(x) {
             list(
+                # index_node {{{
                 index_node = function() "https://example.org",
+                # }}}
+                # collect {{{
+                # count {{{
                 collect = function(...) list(count = function() 964L)
+                # }}}
+                # }}}
             )
         },
+        # }}}
+        # shift_run__task_execute {{{
         shift_run__task_execute = function(...) {
             stop("unexpected standalone operation")
         },
+        # }}}
+        # shift_resolve__cmip6_coverage_catalog {{{
         shift_resolve__cmip6_coverage_catalog = function(
             request,
             store,
@@ -70,9 +95,11 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
             )
             rows
         },
+        # }}}
         .package = "epwshiftr"
     )
     test_local_dependencies(list(
+        # availability {{{
         availability = function(...) {
             reporter <- shift_run__current_reporter()
             reporters[[length(reporters) + 1L]] <<- reporter
@@ -83,6 +110,7 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
             ))
             test_cmip6_availability(...)
         },
+        # }}}
         shift_resolve__cmip6_period_coverage = shift_resolve__cmip6_period_coverage
     ))
     transforms <- shift_batch__transforms(c("original_morphing", "bws_btws"))
@@ -101,9 +129,11 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
             mid = 2041:2060,
             late = 2071:2090
         )),
+        # lapply callback {{{
         references = lapply(transforms, function(x) {
             list(reference = reference)
         }),
+        # }}}
         store = tempfile(),
         ui = shift_ui("dynamic"),
         site = "San Francisco"
@@ -133,9 +163,11 @@ test_that("discovery owns one reporter across methods and nested catalog stages"
 test_that("nested coverage collection persists files and closes its owned store", {
     calls <- cli_shift_test_mock_collect(esgf_test__file_docs("tas_day.nc"))
     testthat::local_mocked_bindings(
+        # shift_run__task_execute {{{
         shift_run__task_execute = function(...) {
             stop("unexpected standalone operation")
         },
+        # }}}
         .package = "epwshiftr"
     )
     request <- shift_request(
@@ -174,6 +206,7 @@ test_that("nested coverage collection persists files and closes its owned store"
 test_that("discovery restores reporter ownership after failures and interrupts", {
     for (interrupted in c(FALSE, TRUE)) {
         reporter <- NULL
+        # availability {{{
         test_local_dependencies(list(availability = function(...) {
             reporter <<- shift_run__current_reporter()
             expect_null(reporter$context()$request_started_at)
@@ -192,6 +225,7 @@ test_that("discovery restores reporter ownership after failures and interrupts",
             }
             stop("catalog unavailable")
         }))
+        # }}}
         transforms <- shift_batch__transforms("original_morphing")
         condition <- tryCatch(
             shift_batch_ui__discover_models(
@@ -202,8 +236,12 @@ test_that("discovery restores reporter ownership after failures and interrupts",
                 tempfile(),
                 shift_ui("none")
             ),
+            # error {{{
             error = function(e) e,
+            # }}}
+            # interrupt {{{
             interrupt = function(e) e
+            # }}}
         )
         expect_null(shift_run__current_reporter())
         expect_false(is.null(reporter), info = conditionMessage(condition))
@@ -254,10 +292,13 @@ test_that("catalog callbacks retain truthful request and cache metrics", {
 test_that("JSON catalog reads report parsed rows and cache hits separately", {
     cache <- DiskCache$new(tempfile("discovery-cache-"), prune_on_init = FALSE)
     testthat::local_mocked_bindings(
+        # cache__get {{{
         cache__get = function(...) cache,
+        # }}}
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
+        # curl_fetch_memory {{{
         curl_fetch_memory = function(...) {
             list(
                 content = charToRaw(
@@ -266,10 +307,13 @@ test_that("JSON catalog reads report parsed rows and cache hits separately", {
                 status_code = 200L
             )
         },
+        # }}}
         .package = "curl"
     )
     events <- list()
+    # callback {{{
     callback <- function(event) events[[length(events) + 1L]] <<- event
+    # }}}
     online <- cache__read_json(
         "https://example.org/catalog",
         cache = TRUE,
@@ -324,7 +368,9 @@ test_that("frame writes isolate ANSI state and respect no-color output", {
         renderer <- ShiftFrameRenderer$new(
             output,
             backend = "frame",
+            # writer {{{
             writer = function(text) writes <<- c(writes, text)
+            # }}}
         )
         renderer$draw(c("Neutral body", cli::col_green("COMPLETED")))
         renderer$commit()
@@ -337,3 +383,5 @@ test_that("frame writes isolate ANSI state and respect no-color output", {
         }
     }
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

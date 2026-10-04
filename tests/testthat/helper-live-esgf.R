@@ -1,3 +1,4 @@
+# skip_live_esgf {{{
 skip_live_esgf <- function() {
     run <- tolower(Sys.getenv("EPWSHIFTR_RUN_LIVE_ESGF", "false"))
     testthat::skip_if_not(
@@ -9,22 +10,30 @@ skip_live_esgf <- function() {
     skip_if_not_installed("curl")
     skip_if_not_installed("duckdb")
 }
+# }}}
 
+# is_live_esgf_dict_warning {{{
 is_live_esgf_dict_warning <- function(message) {
     grepl("^ESG dictionary check found invalid query constraint", message)
 }
+# }}}
 
+# allow_live_esgf_dict_warnings {{{
 allow_live_esgf_dict_warnings <- function(expr) {
     withCallingHandlers(
         force(expr),
+        # warning {{{
         warning = function(w) {
             if (is_live_esgf_dict_warning(conditionMessage(w))) {
                 invokeRestart("muffleWarning")
             }
         }
+        # }}}
     )
 }
+# }}}
 
+# is_live_esgf_transient_warning {{{
 is_live_esgf_transient_warning <- function(message) {
     grepl(
         paste(
@@ -42,14 +51,21 @@ is_live_esgf_transient_warning <- function(message) {
         message
     )
 }
+# }}}
 
+# allow_live_esgf_transient_warnings {{{
 allow_live_esgf_transient_warnings <- function(expr) {
     withCallingHandlers(
         force(expr),
+        # warning {{{
         warning = function(w) {
             if (is_live_esgf_transient_warning(conditionMessage(w))) {
                 invokeRestart("muffleWarning")
             }
         }
+        # }}}
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

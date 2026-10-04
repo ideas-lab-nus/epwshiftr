@@ -1,4 +1,5 @@
 # Resolve and validate statuses selected for a retry command.
+# cli_retry__resolve_statuses {{{
 cli_retry__resolve_statuses <- function(value, choices) {
     statuses <- epwshiftr_cli_csv(value)
     # Both retry commands use failed work as the default selection.
@@ -13,9 +14,10 @@ cli_retry__resolve_statuses <- function(value, choices) {
     }
     statuses
 }
-
+# }}}
 
 # Filter retry candidates and decide whether execution should proceed.
+# cli_retry__prepare_candidates {{{
 cli_retry__prepare_candidates <- function(candidates, statuses, run) {
     if (nrow(candidates)) {
         # The plural selector avoids data.table resolving it as the candidate
@@ -32,3 +34,6 @@ cli_retry__prepare_candidates <- function(candidates, statuses, run) {
 
     list(candidates = candidates, execute = execute)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

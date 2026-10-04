@@ -5,6 +5,7 @@ NULL
 # Return the canonical ERA5 variable manifest. Long CDS names define requests,
 # short aliases cover both CDS and time-series NetCDF encodings, and product
 # flags prevent an ERA5-Land request from inheriting unsupported ERA5 fields.
+# era5__variable_manifest {{{
 era5__variable_manifest <- function() {
     data.table::data.table(
         variable_id = c(
@@ -137,9 +138,11 @@ era5__variable_manifest <- function() {
         )
     )
 }
+# }}}
 
 # Expand supported CF variables to the provider fields needed to calculate
 # them, rejecting variables that are unavailable in the selected ERA5 product.
+# era5__source_variables {{{
 era5__source_variables <- function(variables, product = "single_levels") {
     checkmate::assert_choice(product, c("single_levels", "land"))
     dependencies <- list(
@@ -170,8 +173,10 @@ era5__source_variables <- function(variables, product = "single_levels") {
     }
     unique(unlist(dependencies[variables], use.names = FALSE))
 }
+# }}}
 
 # Select the official dataset entry used by each product and access mode.
+# era5__dataset_id {{{
 era5__dataset_id <- function(product, access) {
     checkmate::assert_choice(product, c("single_levels", "land"))
     checkmate::assert_choice(access, c("arco", "cds"))
@@ -187,9 +192,11 @@ era5__dataset_id <- function(product, access) {
         "reanalysis-era5-single-levels"
     }
 }
+# }}}
 
 # Prefer the official ARCO-backed point service only when it contains every
 # required source field; otherwise use the complete CDS subset service.
+# era5__resolve_access {{{
 era5__resolve_access <- function(spec, variables) {
     if (!identical(spec@access, "auto")) {
         return(spec@access)
@@ -203,10 +210,12 @@ era5__resolve_access <- function(spec, variables) {
     ]
     if (isTRUE(available)) "arco" else "cds"
 }
+# }}}
 
 # Build the transport request for one ERA5 source variable. Requests include
 # one UTC day of padding so conversion to the EPW fixed standard offset cannot
 # lose the first or last local calendar day.
+# era5__request {{{
 era5__request <- function(spec, variable, site, access) {
     manifest <- era5__variable_manifest()
     row <- manifest[variable_id == variable & get(spec@product) %in% TRUE]
@@ -258,6 +267,7 @@ era5__request <- function(spec, variable, site, access) {
     )))
     request
 }
+# }}}
 
 #' Use ERA5 as an observed weather reference
 #'
@@ -290,6 +300,7 @@ era5__request <- function(spec, variable, site, access) {
 #'
 #' @seealso [shift_future_epw()], [shift_check()]
 #' @export
+# shift_era5 {{{
 shift_era5 <- function(
     years,
     product = c("single_levels", "land"),
@@ -317,6 +328,7 @@ shift_era5 <- function(
         options = options
     )
 }
+# }}}
 
 #' Describe the future ERA6 source boundary
 #'
@@ -332,6 +344,7 @@ shift_era5 <- function(
 #' [ECMWF, ERA6 reanalysis production](https://www.ecmwf.int/en/newsletter/188/news/era6-reanalysis-production).
 #'
 #' @export
+# shift_era6 {{{
 shift_era6 <- function(
     years,
     product = "single_levels",
@@ -368,3 +381,6 @@ shift_era6 <- function(
         class = "epwshiftr_reanalysis_unavailable"
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

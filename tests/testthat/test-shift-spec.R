@@ -446,3 +446,5 @@ test_that("CMIP6 fields remain valid after construction", {
     expect_error(climate@table <- c(tas = "Amon", tas = "Amon"), "table")
     expect_error(shift_cmip6("", "ssp245"), "model")
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

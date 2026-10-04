@@ -1,5 +1,6 @@
 # Convert offsets from a native-calendar year start into canonical CF fields
 # used by all hourly-weather interpolation fixtures.
+# weather_interp_test__coordinates {{{
 weather_interp_test__coordinates <- function(offsets, calendar = "noleap") {
     origin <- data.frame(year = 2061L, month = 1L, day = 1L)
     fields <- cf_time_offset2date(offsets %/% 86400, origin, calendar)
@@ -13,9 +14,11 @@ weather_interp_test__coordinates <- function(offsets, calendar = "noleap") {
         seconds = seconds
     )
 }
+# }}}
 
 # Build one regular three-hourly temperature series whose extrema fall between
 # source samples at the observed modal hours used by the anchor tests.
+# weather_interp_test__tas {{{
 weather_interp_test__tas <- function(value_offset = 0) {
     offsets <- 79 * 86400 + seq.int(21600, 64800, by = 10800)
     coordinates <- weather_interp_test__coordinates(offsets)
@@ -35,9 +38,11 @@ weather_interp_test__tas <- function(value_offset = 0) {
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Build paired daily extrema on the same native-calendar day as the three-
 # hourly temperature samples.
+# weather_interp_test__extrema {{{
 weather_interp_test__extrema <- function(value_offset = 0) {
     offsets <- rep.int(79 * 86400, 2L)
     coordinates <- weather_interp_test__coordinates(offsets)
@@ -57,9 +62,11 @@ weather_interp_test__extrema <- function(value_offset = 0) {
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Build bounded interval-mean shortwave radiation for the same site and model
 # identity as the point-state fixture.
+# weather_interp_test__radiation {{{
 weather_interp_test__radiation <- function(value_offset = 0) {
     interval_starts <- 79 * 86400 + seq.int(21600, 54000, by = 10800)
     source_step <- 10800
@@ -86,15 +93,18 @@ weather_interp_test__radiation <- function(value_offset = 0) {
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Build an hourly observed reference whose daily temperature extrema occur at
 # 07:00 and 14:00, plus the matching radiation variable required downstream.
+# weather_interp_test__observed {{{
 weather_interp_test__observed <- function() {
     offsets <- 79 * 86400 + seq.int(0, 23 * 3600, by = 3600)
     coordinates <- weather_interp_test__coordinates(offsets)
     temperature <- 295 + 5 * cos((seq_len(24L) - 15) * pi / 12)
     temperature[[8L]] <- min(temperature) - 1
     temperature[[15L]] <- max(temperature) + 1
+    # one_variable {{{
     one_variable <- function(variable, value, units) {
         data.frame(
             site_id = "A",
@@ -107,16 +117,27 @@ weather_interp_test__observed <- function() {
             stringsAsFactors = FALSE
         )
     }
-    data.table::rbindlist(list(
-        one_variable("tas", temperature, "K"),
-        one_variable("rsds", pmax(0, 500 * sin(seq(0, pi, length.out = 24))),
-            "W m-2")
-    ), use.names = TRUE, fill = TRUE)
+    # }}}
+    data.table::rbindlist(
+        list(
+            one_variable("tas", temperature, "K"),
+            one_variable(
+                "rsds",
+                pmax(0, 500 * sin(seq(0, pi, length.out = 24))),
+                "W m-2"
+            )
+        ),
+        use.names = TRUE,
+        fill = TRUE
+    )
 }
+# }}}
 
 # Assemble all three semantic roles with mixed point, daily-extrema, and
 # interval-mean rows in each model input.
+# weather_interp_test__inputs {{{
 weather_interp_test__inputs <- function(include_extrema = TRUE) {
+    # model {{{
     model <- function(value_offset, radiation_offset) {
         pieces <- list(
             weather_interp_test__tas(value_offset),
@@ -131,6 +152,7 @@ weather_interp_test__inputs <- function(include_extrema = TRUE) {
         }
         data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
     }
+    # }}}
     weather__new_inputs(
         observed_reference = weather__new_input(
             "observed_reference",
@@ -146,6 +168,7 @@ weather_interp_test__inputs <- function(include_extrema = TRUE) {
         )
     )
 }
+# }}}
 
 test_that("hourly weather interpolation dispatches variables and applies extrema anchors", {
     result <- weather_interp__apply(
@@ -199,8 +222,10 @@ test_that("hourly weather interpolation dispatches variables and applies extrema
         family == "point_state"
     ]
     expect_identical(point$anchor_samples, c(2L, 2L))
-    expect_false(any(result@value@model_future@variables %in%
-        HOURLY_WEATHER_EXTREMA_VARIABLES))
+    expect_false(any(
+        result@value@model_future@variables %in%
+            HOURLY_WEATHER_EXTREMA_VARIABLES
+    ))
 })
 
 test_that("hourly weather interpolation keeps the unanchored linear fallback explicit", {
@@ -220,7 +245,8 @@ test_that("hourly weather interpolation keeps the unanchored linear fallback exp
     expect_true(all(
         result@diagnostics$hourly_weather_interpolation[
             family == "point_state"
-        ]$anchor_samples == 0L
+        ]$anchor_samples ==
+            0L
     ))
 })
 
@@ -249,3 +275,5 @@ test_that("hourly weather interpolation rejects incomplete extrema and registers
         "hour"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

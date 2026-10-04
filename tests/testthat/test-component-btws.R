@@ -5,6 +5,7 @@ test_local_dependencies(list(
 ))
 
 # Build deterministic daily temperature rows for the composite BTWS recipe.
+# btws_test__climate {{{
 btws_test__climate <- function(
     years,
     period,
@@ -14,6 +15,7 @@ btws_test__climate <- function(
     maximum_shift = 0
 ) {
     phase <- daily__phase_grid(365L)
+    # lapply callback {{{
     data.table::rbindlist(lapply(as.integer(years), function(year) {
         time <- as.POSIXct(
             as.Date(sprintf("%04d-01-01", year)) + seq.int(0L, 364L),
@@ -26,6 +28,7 @@ btws_test__climate <- function(
             tasmin = 16 + seasonal + minimum_shift,
             tasmax = 25 + seasonal + maximum_shift
         )
+        # lapply callback {{{
         data.table::rbindlist(lapply(names(values), function(variable_id) {
             data.table::data.table(
                 activity_id = if (identical(experiment, "historical")) {
@@ -50,10 +53,14 @@ btws_test__climate <- function(
                 value = values[[variable_id]] + 273.15
             )
         }))
+        # }}}
     }))
+    # }}}
 }
+# }}}
 
 # Assemble one direct role-addressable context from the packaged EPW fixture.
+# btws_test__context {{{
 btws_test__context <- function(
     mean_shift = 0.5,
     minimum_shift = 0,
@@ -79,6 +86,7 @@ btws_test__context <- function(
         recipe = epw_morph_recipe("epwshiftr_daily_btws")
     )
 }
+# }}}
 
 test_that("BTWS component and composite recipe expose strict contracts", {
     expect_true("daily_temperature_btws" %in% epw_morph_backends())
@@ -251,3 +259,5 @@ test_that("daily temperature reconstruction selects one hourly component", {
         "power.*btws"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

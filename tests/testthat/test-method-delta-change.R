@@ -281,3 +281,5 @@ test_that("Delta Change is a registered package-native signal component", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -1,9 +1,12 @@
 # Recognize portable paths while testing CLI recovery instructions.
+# shift_test__is_absolute_path {{{
 shift_test__is_absolute_path <- function(path) {
     grepl("^(/|[A-Za-z]:[/\\\\])", path)
 }
+# }}}
 
 # Capture several workflow objects under the same console settings.
+# shift_test__print_objects {{{
 shift_test__print_objects <- function(
     objects,
     width = 80L,
@@ -15,8 +18,10 @@ shift_test__print_objects <- function(
     }
     invisible(NULL)
 }
+# }}}
 
 # Remove machine-specific temporary roots from console assertions.
+# shift_test__normalize_print {{{
 shift_test__normalize_print <- function(x) {
     roots <- unique(c(
         tempdir(),
@@ -27,11 +32,13 @@ shift_test__normalize_print <- function(x) {
     }
     x
 }
-
+# }}}
 
 # Record catalog calls while supplying deterministic local File documents.
+# shift_test__mock_collect {{{
 shift_test__mock_collect <- function(file_docs, calls) {
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -70,14 +77,19 @@ shift_test__mock_collect <- function(file_docs, calls) {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )
 }
+# }}}
 
 # Read a serialized query facet for offline catalog filtering.
+# shift_test__param_value {{{
 shift_test__param_value <- function(params, name) {
+    # error {{{
     state <- tryCatch(params$serialize(null = TRUE), error = function(e) list())
+    # }}}
     value <- state[[name]]
     if (is.null(value)) {
         return(NULL)
@@ -87,10 +99,13 @@ shift_test__param_value <- function(params, name) {
     }
     value
 }
+# }}}
 
 # Apply requested facets to the shared offline catalog.
+# shift_test__mock_collect_filtered {{{
 shift_test__mock_collect_filtered <- function(file_docs, calls) {
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -168,16 +183,20 @@ shift_test__mock_collect_filtered <- function(file_docs, calls) {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )
 }
+# }}}
 
 # Supply successive catalog snapshots to exercise refresh and recovery.
+# shift_test__mock_collect_sequence {{{
 shift_test__mock_collect_sequence <- function(file_doc_sets, calls) {
     calls$file_calls <- 0L
     calls$collect_times <- list()
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -247,18 +266,22 @@ shift_test__mock_collect_sequence <- function(file_doc_sets, calls) {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr",
         .env = parent.frame()
     )
 }
+# }}}
 
 # Keep deterministic renderer fixtures with the tests: installed-package checks
 # cannot load the repository-only README recording script from tools/.
+# ui_workflows__states {{{
 ui_workflows__states <- function() {
     transforms <- list(
         monthly_transform("original_morphing"),
         daily_transform("qdm")
     )
+    # lapply callback {{{
     children <- data.table::rbindlist(lapply(transforms, function(transform) {
         record <- transform__record(transform@scale, transform@method)
         data.table::data.table(
@@ -271,6 +294,7 @@ ui_workflows__states <- function() {
             current_stage = NA_character_
         )
     }))
+    # }}}
     children[, child_key := paste0("child_ui", seq_len(.N))]
     children[1:2, `:=`(status = "running", current_stage = "extract_future")]
     summary <- data.table::data.table(
@@ -330,8 +354,10 @@ ui_workflows__states <- function() {
     states[[3L]] <- data.table::copy(snapshot)
     states
 }
+# }}}
 
 # Plan a real offline matrix with saved receipts, avoiding remote catalog work.
+# ui_workflows__batch {{{
 ui_workflows__batch <- function(root) {
     test_local_dependencies(list(
         availability = test_cmip6_availability,
@@ -352,3 +378,6 @@ ui_workflows__batch <- function(root) {
         ui = shift_ui("none")
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

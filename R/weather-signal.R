@@ -11,20 +11,25 @@ SIGNAL_ERROR_POLICIES <- c("abort", "collect")
 
 # Return the only successful signal-group payload shared by sequence-preserving
 # methods, while allowing each method to retain its own diagnostic identity.
+# signal__single_value {{{
 signal__single_value <- function(data, label) {
     checkmate::assert_string(label, min.chars = 1L)
-    if (!S7::S7_inherits(data, SignalExecutionResult) ||
-        length(data@values) != 1L ||
-        is.null(data@values[[1L]])) {
+    if (
+        !S7::S7_inherits(data, SignalExecutionResult) ||
+            length(data@values) != 1L ||
+            is.null(data@values[[1L]])
+    ) {
         cli::cli_abort(
             "{label} sequence input must contain one successful signal group."
         )
     }
     data@values[[1L]]
 }
+# }}}
 
 # Resolve the one-variable settings envelope used by signal kernels and require
 # the complete method schema before method-specific validation begins.
+# signal__resolve_settings {{{
 signal__resolve_settings <- function(settings, expected, label) {
     checkmate::assert_character(
         expected,
@@ -33,10 +38,12 @@ signal__resolve_settings <- function(settings, expected, label) {
         unique = TRUE
     )
     checkmate::assert_string(label, min.chars = 1L)
-    if (length(settings) != 1L ||
-        is.null(names(settings)) ||
-        !nzchar(names(settings)[[1L]]) ||
-        !is.list(settings[[1L]])) {
+    if (
+        length(settings) != 1L ||
+            is.null(names(settings)) ||
+            !nzchar(names(settings)[[1L]]) ||
+            !is.list(settings[[1L]])
+    ) {
         cli::cli_abort(
             "{label} requires settings for exactly one variable."
         )
@@ -54,9 +61,11 @@ signal__resolve_settings <- function(settings, expected, label) {
     }
     resolved
 }
+# }}}
 
 # Validate a two-value signal bound while allowing each method to retain its
 # published rule for equal endpoints and its existing user-facing message.
+# signal__ordered_bounds {{{
 signal__ordered_bounds <- function(bounds, message, strict = FALSE) {
     checkmate::assert_string(message, min.chars = 1L)
     checkmate::assert_flag(strict)
@@ -76,9 +85,11 @@ signal__ordered_bounds <- function(bounds, message, strict = FALSE) {
     }
     invisible(bounds)
 }
+# }}}
 
 # Validate and normalize an integer-valued signal setting with a stable
 # diagnostic name even though validation is delegated to this shared helper.
+# signal__integer_setting {{{
 signal__integer_setting <- function(value, name, lower, upper = Inf) {
     checkmate::assert_string(name, pattern = "^[A-Za-z][A-Za-z0-9_]*$")
     checkmate::assert_number(lower)
@@ -93,9 +104,11 @@ signal__integer_setting <- function(value, name, lower, upper = Inf) {
     )
     as.integer(value)
 }
+# }}}
 
 # Validate the common deterministic-seed range used by stochastic signal
 # preprocessors and return the normalized integer seed.
+# signal__random_seed {{{
 signal__random_seed <- function(value) {
     signal__integer_setting(
         value,
@@ -104,9 +117,11 @@ signal__random_seed <- function(value) {
         upper = .Machine$integer.max - 1L
     )
 }
+# }}}
 
 # Randomize threshold-selected values independently by input role with the
 # package's deterministic generator, without touching R's global RNG state.
+# signal__randomize_threshold_values {{{
 signal__randomize_threshold_values <- function(
     series,
     random_seed,
@@ -166,9 +181,11 @@ signal__randomize_threshold_values <- function(
 
     list(values = values, counts = randomized, seeds = seeds)
 }
+# }}}
 
 # SignalVariableProfile records variable-specific defaults without embedding
 # them in an algorithm function or losing their evidence status.
+# SignalVariableProfile {{{
 SignalVariableProfile <- S7::new_class(
     "SignalVariableProfile",
     properties = list(
@@ -181,15 +198,20 @@ SignalVariableProfile <- S7::new_class(
         ),
         metadata = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
-        if (length(self@variable_id) != 1L ||
-            is.na(self@variable_id) ||
-            !grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variable_id)) {
+        if (
+            length(self@variable_id) != 1L ||
+                is.na(self@variable_id) ||
+                !grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variable_id)
+        ) {
             return("`variable_id` must be one CMIP-style variable identifier.")
         }
-        if (length(self@evidence) != 1L ||
-            is.na(self@evidence) ||
-            !self@evidence %in% SIGNAL_PROFILE_EVIDENCE) {
+        if (
+            length(self@evidence) != 1L ||
+                is.na(self@evidence) ||
+                !self@evidence %in% SIGNAL_PROFILE_EVIDENCE
+        ) {
             return(sprintf(
                 "`evidence` must be one of %s.",
                 paste(
@@ -198,37 +220,48 @@ SignalVariableProfile <- S7::new_class(
                 )
             ))
         }
-        if (length(self@settings) &&
-            (is.null(names(self@settings)) ||
-                any(!nzchar(names(self@settings))) ||
-                anyDuplicated(names(self@settings)))) {
+        if (
+            length(self@settings) &&
+                (is.null(names(self@settings)) ||
+                    any(!nzchar(names(self@settings))) ||
+                    anyDuplicated(names(self@settings)))
+        ) {
             return("`settings` must be a uniquely named list.")
         }
-        if (length(self@metadata) &&
-            (is.null(names(self@metadata)) ||
-                any(!nzchar(names(self@metadata))) ||
-                anyDuplicated(names(self@metadata)))) {
+        if (
+            length(self@metadata) &&
+                (is.null(names(self@metadata)) ||
+                    any(!nzchar(names(self@metadata))) ||
+                    anyDuplicated(names(self@metadata)))
+        ) {
             return("`metadata` must be a uniquely named list.")
         }
-        if (anyNA(self@references) ||
-            any(!nzchar(self@references)) ||
-            anyDuplicated(self@references)) {
+        if (
+            anyNA(self@references) ||
+                any(!nzchar(self@references)) ||
+                anyDuplicated(self@references)
+        ) {
             return(
                 "`references` must contain unique, non-missing, non-empty values."
             )
         }
-        if (identical(self@evidence, "published") &&
-            !length(self@references)) {
+        if (
+            identical(self@evidence, "published") &&
+                !length(self@references)
+        ) {
             return(
                 "Published variable profiles must provide at least one reference."
             )
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # SignalGroup carries one already aligned unit of work. Calendar mapping and
 # source alignment happen before this boundary so kernels never infer dates.
+# SignalGroup {{{
 SignalGroup <- S7::new_class(
     "SignalGroup",
     properties = list(
@@ -236,22 +269,27 @@ SignalGroup <- S7::new_class(
         inputs = S7::new_property(S7::class_list),
         variables = S7::new_property(S7::class_character)
     ),
+    # validator {{{
     validator = function(self) {
         if (length(self@key)) {
-            if (is.null(names(self@key)) ||
-                any(!nzchar(names(self@key))) ||
-                anyDuplicated(names(self@key)) ||
-                any(vapply(self@key, length, integer(1L)) != 1L) ||
-                any(!vapply(self@key, is.atomic, logical(1L)))) {
+            if (
+                is.null(names(self@key)) ||
+                    any(!nzchar(names(self@key))) ||
+                    anyDuplicated(names(self@key)) ||
+                    any(vapply(self@key, length, integer(1L)) != 1L) ||
+                    any(!vapply(self@key, is.atomic, logical(1L)))
+            ) {
                 return(
                     "`key` must be a uniquely named list of atomic scalar values."
                 )
             }
         }
-        if (!length(self@inputs) ||
-            is.null(names(self@inputs)) ||
-            any(!nzchar(names(self@inputs))) ||
-            anyDuplicated(names(self@inputs))) {
+        if (
+            !length(self@inputs) ||
+                is.null(names(self@inputs)) ||
+                any(!nzchar(names(self@inputs))) ||
+                anyDuplicated(names(self@inputs))
+        ) {
             return("`inputs` must be a non-empty, uniquely named role list.")
         }
         if (!all(names(self@inputs) %in% WEATHER_INPUT_ROLES)) {
@@ -260,21 +298,26 @@ SignalGroup <- S7::new_class(
         if (any(vapply(self@inputs, is.null, logical(1L)))) {
             return("`inputs` cannot contain NULL role payloads.")
         }
-        if (!length(self@variables) ||
-            anyNA(self@variables) ||
-            any(!nzchar(self@variables)) ||
-            anyDuplicated(self@variables) ||
-            any(!grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variables))) {
+        if (
+            !length(self@variables) ||
+                anyNA(self@variables) ||
+                any(!nzchar(self@variables)) ||
+                anyDuplicated(self@variables) ||
+                any(!grepl("^[A-Za-z][A-Za-z0-9_]*$", self@variables))
+        ) {
             return(
                 "`variables` must contain unique, non-missing variable IDs."
             )
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # SignalExecutionResult keeps group outputs positionally aligned with their
 # inputs and records a status row for every attempted group.
+# SignalExecutionResult {{{
 SignalExecutionResult <- S7::new_class(
     "SignalExecutionResult",
     properties = list(
@@ -283,34 +326,48 @@ SignalExecutionResult <- S7::new_class(
         profiles = S7::new_property(S7::class_list),
         diagnostics = S7::new_property(S7::class_any)
     ),
+    # validator {{{
     validator = function(self) {
-        if (!all(vapply(
-            self@groups,
-            S7::S7_inherits,
-            logical(1L),
-            class = SignalGroup
-        ))) {
+        if (
+            !all(vapply(
+                self@groups,
+                S7::S7_inherits,
+                logical(1L),
+                class = SignalGroup
+            ))
+        ) {
             return("`groups` must contain only SignalGroup objects.")
         }
         if (length(self@values) != length(self@groups)) {
             return("`values` must remain positionally aligned with `groups`.")
         }
         variables <- unique(unlist(
+            # lapply callback {{{
             lapply(self@groups, function(group) group@variables),
+            # }}}
             use.names = FALSE
         ))
-        if (is.null(names(self@profiles)) ||
-            !setequal(names(self@profiles), variables)) {
+        if (
+            is.null(names(self@profiles)) ||
+                !setequal(names(self@profiles), variables)
+        ) {
             return(
                 "`profiles` must record the resolved settings for every group variable."
             )
         }
         expected <- c(
-            "method", "group", "status", "variables", "evidence", "message"
+            "method",
+            "group",
+            "status",
+            "variables",
+            "evidence",
+            "message"
         )
-        if (!is.data.frame(self@diagnostics) ||
-            !identical(names(self@diagnostics), expected) ||
-            nrow(self@diagnostics) != length(self@groups)) {
+        if (
+            !is.data.frame(self@diagnostics) ||
+                !identical(names(self@diagnostics), expected) ||
+                nrow(self@diagnostics) != length(self@groups)
+        ) {
             return(
                 "`diagnostics` must contain one canonical row per signal group."
             )
@@ -320,10 +377,13 @@ SignalExecutionResult <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Construct one variable profile and enforce that published defaults cite their
 # source while experimental defaults remain visibly labelled.
+# signal__variable_profile {{{
 signal__variable_profile <- function(
     variable_id,
     settings = list(),
@@ -337,8 +397,10 @@ signal__variable_profile <- function(
     )
     evidence <- match.arg(evidence)
     checkmate::assert_list(settings, names = "unique")
-    if (length(settings) &&
-        (is.null(names(settings)) || any(!nzchar(names(settings))))) {
+    if (
+        length(settings) &&
+            (is.null(names(settings)) || any(!nzchar(names(settings))))
+    ) {
         cli::cli_abort("{.arg settings} must be named.")
     }
     references <- weather__descriptor_values(references, "references")
@@ -352,27 +414,35 @@ signal__variable_profile <- function(
         metadata = metadata
     )
 }
+# }}}
 
 # Normalize profile collections by variable ID so construction order never
 # changes profile lookup or serialized metadata.
+# signal__profiles {{{
 signal__profiles <- function(profiles) {
     checkmate::assert_list(profiles)
     if (!length(profiles)) {
-        cli::cli_abort("{.arg profiles} must contain at least one variable profile.")
+        cli::cli_abort(
+            "{.arg profiles} must contain at least one variable profile."
+        )
     }
-    if (!all(vapply(
-        profiles,
-        S7::S7_inherits,
-        logical(1L),
-        class = SignalVariableProfile
-    ))) {
+    if (
+        !all(vapply(
+            profiles,
+            S7::S7_inherits,
+            logical(1L),
+            class = SignalVariableProfile
+        ))
+    ) {
         cli::cli_abort(
             "{.arg profiles} must contain only SignalVariableProfile objects."
         )
     }
     ids <- vapply(
         profiles,
+        # vapply callback {{{
         function(profile) profile@variable_id,
+        # }}}
         character(1L)
     )
     if (anyDuplicated(ids)) {
@@ -382,9 +452,11 @@ signal__profiles <- function(profiles) {
     }
     stats::setNames(profiles, ids)
 }
+# }}}
 
 # Normalize variable-specific user overrides before applying them to profile
 # defaults. Overrides may change settings but not their evidence provenance.
+# signal__overrides {{{
 signal__overrides <- function(overrides, variables) {
     checkmate::assert_list(overrides, names = "unique")
     if (!length(overrides)) {
@@ -414,9 +486,11 @@ signal__overrides <- function(overrides, variables) {
             overrides[[variable]],
             names = "unique"
         )
-        if (length(overrides[[variable]]) &&
-            (is.null(names(overrides[[variable]])) ||
-                any(!nzchar(names(overrides[[variable]]))))) {
+        if (
+            length(overrides[[variable]]) &&
+                (is.null(names(overrides[[variable]])) ||
+                    any(!nzchar(names(overrides[[variable]]))))
+        ) {
             cli::cli_abort(
                 "Override settings for {.val {variable}} must be named."
             )
@@ -429,9 +503,11 @@ signal__overrides <- function(overrides, variables) {
     out[names(overrides)] <- overrides
     out
 }
+# }}}
 
 # Resolve every variable once per execution so experimental warnings are not
 # repeated for each location or temporal window.
+# signal__resolve_profiles {{{
 signal__resolve_profiles <- function(
     profiles,
     variables,
@@ -449,10 +525,13 @@ signal__resolve_profiles <- function(
     }
     overrides <- signal__overrides(overrides, variables)
 
+    # lapply callback {{{
     resolved <- lapply(variables, function(variable) {
         profile <- profiles[[variable]]
-        if (isTRUE(warn_experimental) &&
-            identical(profile@evidence, "experimental")) {
+        if (
+            isTRUE(warn_experimental) &&
+                identical(profile@evidence, "experimental")
+        ) {
             cli::cli_warn(c(
                 "Signal defaults for {.val {variable}} are experimental.",
                 "i" = "Review the method settings and resulting diagnostics."
@@ -467,11 +546,14 @@ signal__resolve_profiles <- function(
             )
         )
     })
+    # }}}
     stats::setNames(resolved, variables)
 }
+# }}}
 
 # Construct one pre-aligned group without imposing a package-wide array or
 # table representation on individual signal methods.
+# signal__group {{{
 signal__group <- function(key = list(), inputs, variables) {
     checkmate::assert_list(key, names = "unique")
     checkmate::assert_list(inputs, names = "unique", min.len = 1L)
@@ -483,9 +565,11 @@ signal__group <- function(key = list(), inputs, variables) {
         variables = variables
     )
 }
+# }}}
 
 # Render a deterministic group label for diagnostics without requiring every
 # upstream adapter to invent a string identifier.
+# signal__group_label {{{
 signal__group_label <- function(group, index) {
     if (!length(group@key)) {
         return(sprintf("group-%d", index))
@@ -493,9 +577,11 @@ signal__group_label <- function(group, index) {
     values <- vapply(group@key, as.character, character(1L))
     paste(sprintf("%s=%s", names(values), values), collapse = ",")
 }
+# }}}
 
 # Validate the role boundary again at group granularity because a globally
 # available source can still be absent after alignment for one location.
+# signal__validate_group_roles {{{
 signal__validate_group_roles <- function(component, group) {
     required <- names(component@required_inputs)
     optional <- names(component@optional_inputs)
@@ -513,9 +599,11 @@ signal__validate_group_roles <- function(component, group) {
     }
     invisible(TRUE)
 }
+# }}}
 
 # Apply an optional method-specific output validator while keeping the common
 # executor independent from numeric-vector, table, or field representations.
+# signal__validate_result {{{
 signal__validate_result <- function(component, value, group) {
     if (is.null(value)) {
         cli::cli_abort("A signal group kernel cannot return NULL.")
@@ -538,8 +626,10 @@ signal__validate_result <- function(component, value, group) {
         "A signal result validator must return TRUE or one diagnostic string."
     )
 }
+# }}}
 
 # Build one canonical diagnostic row for either a successful or failed group.
+# signal__diagnostic {{{
 signal__diagnostic <- function(
     method,
     group,
@@ -556,7 +646,9 @@ signal__diagnostic <- function(
         evidence = paste(
             unique(vapply(
                 profiles[group@variables],
+                # vapply callback {{{
                 function(resolved) resolved$profile@evidence,
+                # }}}
                 character(1L)
             )),
             collapse = ","
@@ -564,10 +656,13 @@ signal__diagnostic <- function(
         message = message
     )
 }
+# }}}
 
 # Convert resolved profiles into data-only records that retain the actual
 # settings used after overrides as well as their original provenance.
+# signal__profile_records {{{
 signal__profile_records <- function(profiles) {
+    # lapply callback {{{
     lapply(profiles, function(resolved) {
         list(
             variable_id = resolved$profile@variable_id,
@@ -577,10 +672,13 @@ signal__profile_records <- function(profiles) {
             metadata = resolved$profile@metadata
         )
     })
+    # }}}
 }
+# }}}
 
 # Execute a component's single-group kernel over pre-aligned groups. Failed
 # groups remain NULL with explicit diagnostics instead of silently becoming NaN.
+# signal__execute_groups {{{
 signal__execute_groups <- function(
     component,
     inputs,
@@ -590,25 +688,31 @@ signal__execute_groups <- function(
     error_policy = c("abort", "collect"),
     warn_experimental = TRUE
 ) {
-    if (!S7::S7_inherits(component, WeatherComponentSpec) ||
-        !identical(component@stage, "signal")) {
+    if (
+        !S7::S7_inherits(component, WeatherComponentSpec) ||
+            !identical(component@stage, "signal")
+    ) {
         cli::cli_abort(
             "{.arg component} must be a signal WeatherComponentSpec object."
         )
     }
     component__validate_inputs(component, inputs)
     checkmate::assert_list(groups, min.len = 1L)
-    if (!all(vapply(
-        groups,
-        S7::S7_inherits,
-        logical(1L),
-        class = SignalGroup
-    ))) {
+    if (
+        !all(vapply(
+            groups,
+            S7::S7_inherits,
+            logical(1L),
+            class = SignalGroup
+        ))
+    ) {
         cli::cli_abort("{.arg groups} must contain only SignalGroup objects.")
     }
     error_policy <- match.arg(error_policy)
     variables <- unique(unlist(
+        # lapply callback {{{
         lapply(groups, function(group) group@variables),
+        # }}}
         use.names = FALSE
     ))
     resolved <- signal__resolve_profiles(
@@ -632,7 +736,9 @@ signal__execute_groups <- function(
                     inputs = group@inputs,
                     settings = lapply(
                         group_profiles,
+                        # lapply callback {{{
                         function(item) item$settings
+                        # }}}
                     ),
                     key = group@key
                 )
@@ -643,6 +749,7 @@ signal__execute_groups <- function(
                     profiles = group_profiles
                 )
             },
+            # error {{{
             error = function(error) {
                 list(
                     ok = FALSE,
@@ -650,9 +757,12 @@ signal__execute_groups <- function(
                     profiles = resolved[group@variables]
                 )
             }
+            # }}}
         )
-        if (!isTRUE(attempt$ok) &&
-            identical(error_policy, "abort")) {
+        if (
+            !isTRUE(attempt$ok) &&
+                identical(error_policy, "abort")
+        ) {
             cli::cli_abort(
                 "Signal component {.val {component@name}} failed for {.val {signal__group_label(group, i)}}.",
                 parent = attempt$error
@@ -689,9 +799,11 @@ signal__execute_groups <- function(
         diagnostics = data.table::rbindlist(diagnostics)
     )
 }
+# }}}
 
 # Construct a signal component whose public `apply` operation uses the common
 # group executor while `apply_group` remains the method-specific kernel.
+# signal__component {{{
 signal__component <- function(
     name,
     label = name,
@@ -728,6 +840,7 @@ signal__component <- function(
 
     # Executable functions stay process-local, while profile summaries in
     # metadata remain inspectable and serializable.
+    # lapply callback {{{
     metadata$signal_profiles <- lapply(profiles, function(profile) {
         list(
             variable_id = profile@variable_id,
@@ -737,7 +850,9 @@ signal__component <- function(
             metadata = profile@metadata
         )
     })
+    # }}}
     state <- new.env(parent = emptyenv())
+    # apply {{{
     apply <- function(
         inputs,
         groups,
@@ -755,6 +870,7 @@ signal__component <- function(
             warn_experimental = warn_experimental
         )
     }
+    # }}}
     component <- component__spec(
         name = name,
         stage = "signal",
@@ -774,3 +890,6 @@ signal__component <- function(
     state$component <- component
     component
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

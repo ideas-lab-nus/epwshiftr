@@ -4,6 +4,7 @@
 # Define interpolated empirical-CDF anchors with average-rank ties. For a
 # sample x(1)...x(n), each distinct value receives
 # p = (average_rank - 1) / (n - 1), with a constant sample placed at p = 0.5.
+# quantile__cdf_anchors {{{
 quantile__cdf_anchors <- function(sample) {
     checkmate::assert_numeric(
         sample,
@@ -26,9 +27,11 @@ quantile__cdf_anchors <- function(sample) {
         probability = probability
     )
 }
+# }}}
 
 # Evaluate the explicit empirical CDF and clamp values outside the sample to
 # endpoint probabilities rather than extrapolating a new tail.
+# quantile__empirical_cdf {{{
 quantile__empirical_cdf <- function(sample, values) {
     checkmate::assert_numeric(
         values,
@@ -61,8 +64,10 @@ quantile__empirical_cdf <- function(sample, values) {
         tied_sample_values = length(sample) - nrow(anchors)
     )
 }
+# }}}
 
 # Evaluate an inverse empirical CDF with R's type-7 linear quantile rule.
+# quantile__inverse_cdf {{{
 quantile__inverse_cdf <- function(sample, probability) {
     checkmate::assert_numeric(
         probability,
@@ -78,20 +83,27 @@ quantile__inverse_cdf <- function(sample, probability) {
         type = 7
     ))
 }
+# }}}
 
 # Derive a stable group-specific seed so stochastic preprocessing remains
 # reproducible without assigning identical sequences to every location.
+# quantile__group_seed {{{
 quantile__group_seed <- function(seed, key, variable) {
     text <- paste(
         c(
             variable,
-            unlist(Map(
-                function(name, value) {
-                    paste0(name, "=", as.character(value))
-                },
-                names(key),
-                key
-            ), use.names = FALSE)
+            unlist(
+                Map(
+                    # Map callback {{{
+                    function(name, value) {
+                        paste0(name, "=", as.character(value))
+                    },
+                    # }}}
+                    names(key),
+                    key
+                ),
+                use.names = FALSE
+            )
         ),
         collapse = "\u001f"
     )
@@ -102,9 +114,11 @@ quantile__group_seed <- function(seed, key, variable) {
     }
     as.integer(hash + 1)
 }
+# }}}
 
 # Generate reproducible uniform variates with the Park-Miller
 # state[i] = 16807 * state[i-1] mod 2147483647 recurrence.
+# quantile__uniform {{{
 quantile__uniform <- function(n, seed) {
     checkmate::assert_count(n)
     checkmate::assert_int(
@@ -121,3 +135,6 @@ quantile__uniform <- function(n, seed) {
     }
     out
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -1,23 +1,29 @@
 # Write through JSON so tests exercise the actual command-line configuration
 # boundary, including nulls and arrays of transform objects.
+# cli_batch__write_config {{{
 cli_batch__write_config <- function(config) {
     path <- tempfile(fileext = ".json")
     jsonlite::write_json(config, path, auto_unbox = TRUE, null = "null")
     path
 }
+# }}}
 
 # Resolve deterministic local model coverage while preserving real planning,
 # receipt persistence, and inspection code.
+# cli_batch__local_catalog {{{
 cli_batch__local_catalog <- function() {
     list(
         availability = test_cmip6_availability,
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     )
 }
+# }}}
 
 test_that("every catalog configuration can be described and generated offline", {
     testthat::local_mocked_bindings(
+        # new {{{
         EsgStore = list(new = function(...) stop("Unexpected store access")),
+        # }}}
         .package = "epwshiftr"
     )
     catalog <- epwshiftr_cli(c("--quiet", "morph", "transforms"))$result
@@ -156,7 +162,9 @@ test_that("config supports method matrices, typed models, ERA5, and explicit tra
     transforms <- cli_shift__config_transform(parsed$transform)
     expect_length(transforms, 2L)
     expect_identical(
+        # vapply callback {{{
         vapply(transforms, function(x) x@reconstruction, character(1L)),
+        # }}}
         c("power", "btws")
     )
     expect_null(epwshiftr_cli_config_climate(parsed$climate)@n_models)
@@ -182,9 +190,11 @@ test_that("config supports method matrices, typed models, ERA5, and explicit tra
 
 test_that("local batch validation never discovers remote coverage", {
     testthat::local_mocked_bindings(
+        # shift_batch_ui__discover_models {{{
         shift_batch_ui__discover_models = function(...) {
             stop("Unexpected discovery")
         },
+        # }}}
         .package = "epwshiftr"
     )
     config <- epwshiftr_cli_shift_config_example(c(
@@ -216,6 +226,7 @@ test_that("local batch validation never discovers remote coverage", {
 test_that("network validation and doctor share reanalysis readiness checks", {
     network_flags <- logical()
     testthat::local_mocked_bindings(
+        # shift_check {{{
         shift_check = function(x, network = FALSE, ...) {
             network_flags <<- c(network_flags, network)
             data.table::data.table(
@@ -225,6 +236,7 @@ test_that("network validation and doctor share reanalysis readiness checks", {
                 action = "Set the CDS environment"
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     test_local_dependencies(cli_batch__local_catalog())
@@ -304,9 +316,11 @@ test_that("dry-run batch receipts reopen offline through CLI and R", {
     id <- result$result$batch_id
     # Reopening uses persisted child plans, even if discovery is unavailable.
     testthat::local_mocked_bindings(
+        # shift_batch_ui__discover_models {{{
         shift_batch_ui__discover_models = function(...) {
             stop("Unexpected discovery")
         },
+        # }}}
         .package = "epwshiftr"
     )
     batch <- shift_batch_get(id, root)
@@ -394,6 +408,7 @@ test_that("dry-run batch receipts reopen offline through CLI and R", {
 })
 
 test_that("batch watch follows remaining children after an independent failure", {
+    # lapply callback {{{
     snapshots <- lapply(c("running", "completed"), function(status) {
         list(
             batch = data.table::data.table(
@@ -404,13 +419,18 @@ test_that("batch watch follows remaining children after an independent failure",
             events = data.table::data.table()
         )
     })
+    # }}}
     index <- 0L
     testthat::local_mocked_bindings(
+        # shift_batch_get {{{
         shift_batch_get = function(...) NULL,
+        # }}}
+        # shift_batch_ui__snapshot {{{
         shift_batch_ui__snapshot = function(...) {
             index <<- index + 1L
             snapshots[[index]]
         },
+        # }}}
         .package = "epwshiftr"
     )
     output <- capture.output(
@@ -463,9 +483,11 @@ test_that("completion facts distinguish cases, files, warnings, and field roles"
 
 test_that("failed batch execution returns a nonzero CLI status with its receipt", {
     testthat::local_mocked_bindings(
+        # epwshiftr_cli_dispatch {{{
         epwshiftr_cli_dispatch = function(parsed) {
             list(status = "partial", batch_id = "batch-partial")
         },
+        # }}}
         .package = "epwshiftr"
     )
     result <- epwshiftr_cli(c("--quiet", "shift", "run"))
@@ -478,11 +500,13 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
     test_local_dependencies(list(
+        # availability {{{
         availability = function(...) {
             args <- list(...)
             args$source <- "EC-Earth3"
             do.call(test_cmip6_availability, args)
         },
+        # }}}
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     variables <- epw_morph_variables(transform__recipe(monthly_transform(
@@ -491,6 +515,7 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     files <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -501,12 +526,14 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
     )
     withr::defer(unlink(files))
     docs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable) {
             esgf_test__file_docs(
                 basename(files[[variable]]),
@@ -517,6 +544,7 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
                 table_id = "Amon"
             )
         }),
+        # }}}
         fill = TRUE
     )
     docs[, `:=`(
@@ -635,3 +663,5 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     expect_true(all(file.exists(repaired$result$outputs$export_path)))
     expect_identical(tools::md5sum(output), hash)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

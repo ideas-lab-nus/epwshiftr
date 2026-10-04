@@ -1,5 +1,6 @@
 # Read coordinator state independently of child DuckDB locks. A dead owner or
 # an expired launch is recoverable; a cancellation belongs to one attempt only.
+# shift_batch_execution__job_read {{{
 shift_batch_execution__job_read <- function(root) {
     path <- file.path(root, "batch-job.json")
     if (!file.exists(path)) {
@@ -22,8 +23,10 @@ shift_batch_execution__job_read <- function(root) {
     }
     job
 }
+# }}}
 
 # Run a batch with the same attempt lifecycle used by a standalone plan.
+# shift_batch_execution__run_execution {{{
 shift_batch_execution__run_execution <- function(x, job, ui) {
     context <- shift_execution__context(x@store_path, job)
     reporter <- shift_reporter__reporter(ui, execution = context)
@@ -35,9 +38,11 @@ shift_batch_execution__run_execution <- function(x, job, ui) {
     shift_batch_ui__report(result, ui)
     result
 }
+# }}}
 
 # Launch a single R process with the same package and library paths. Source
 # workers run inside it, so adding cities never multiplies the worker limit.
+# shift_batch_execution__launch {{{
 shift_batch_execution__launch <- function(root, job) {
     shift_execution__launch(
         "shift_batch_execution__job_main",
@@ -45,9 +50,11 @@ shift_batch_execution__launch <- function(root, job) {
         file.path(root, paste0(job$id, ".log"))
     )
 }
+# }}}
 
 # A coordinator owns the batch execution lock for its whole lifetime. Its ID
 # prevents a delayed process from taking over a later explicitly resumed job.
+# shift_batch_execution__job_main {{{
 shift_batch_execution__job_main <- function(root, id) {
     manifest_with_lock(
         file.path(root, "batch-execution"),
@@ -67,9 +74,11 @@ shift_batch_execution__job_main <- function(root, id) {
         timeout = 60
     )
 }
+# }}}
 
 # Claim an execution attempt before doing catalog work. Both public execution
 # modes return the same batch identity and expose pre-read progress/cancellation.
+# shift_batch_execution__resume {{{
 shift_batch_execution__resume <- function(
     x,
     background = FALSE,
@@ -123,12 +132,14 @@ shift_batch_execution__resume <- function(
             if (background) {
                 tryCatch(
                     shift_batch_execution__launch(x@store_path, job),
+                    # error {{{
                     error = function(error) {
                         job$status <- "failed"
                         job$message <- conditionMessage(error)
                         store_write_json_atomic(job, path)
                         stop(error)
                     }
+                    # }}}
                 )
                 x
             } else {
@@ -138,9 +149,11 @@ shift_batch_execution__resume <- function(
         timeout = 0
     )
 }
+# }}}
 
 # Publish the current child's registered run before it acquires long-lived
 # store ownership. External batch watchers then use ordinary live snapshots.
+# shift_batch_execution__register_child {{{
 shift_batch_execution__register_child <- function(
     store,
     run_id,
@@ -168,3 +181,6 @@ shift_batch_execution__register_child <- function(
     shift_batch__receipt_write(context$owner)
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

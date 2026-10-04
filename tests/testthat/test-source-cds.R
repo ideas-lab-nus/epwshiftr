@@ -1,9 +1,12 @@
 test_that("CDS configuration parses current files and rejects retired keys", {
     current <- tempfile()
-    writeLines(c(
-        "url: https://example.test/api",
-        "key: current-token"
-    ), current)
+    writeLines(
+        c(
+            "url: https://example.test/api",
+            "key: current-token"
+        ),
+        current
+    )
     withr::local_envvar(c(
         ECMWF_DATASTORES_RC_FILE = current,
         ECMWF_DATASTORES_URL = NA,
@@ -13,10 +16,13 @@ test_that("CDS configuration parses current files and rejects retired keys", {
         CDS_API_KEY = NA
     ))
 
-    expect_identical(cds__config(), list(
-        url = "https://example.test/api",
-        key = "current-token"
-    ))
+    expect_identical(
+        cds__config(),
+        list(
+            url = "https://example.test/api",
+            key = "current-token"
+        )
+    )
 
     writeLines("key: 1234:retired", current)
     expect_error(cds__config(), class = "epwshiftr_cds_auth_error")
@@ -43,6 +49,7 @@ test_that("CDS HTTP failures distinguish authentication and licences", {
 test_that("CDS authentication check uses the profile endpoint only", {
     call <- NULL
     testthat::local_mocked_bindings(
+        # cds__http {{{
         cds__http = function(method, url, key, body = NULL, timeout = 120) {
             call <<- list(
                 method = method,
@@ -53,6 +60,7 @@ test_that("CDS authentication check uses the profile endpoint only", {
             )
             list(status_code = 200L)
         },
+        # }}}
         .package = "epwshiftr"
     )
     config <- list(url = "https://example.test/api", key = "secret")
@@ -69,6 +77,7 @@ test_that("CDS authentication check uses the profile endpoint only", {
 
 test_that("CDS submission reports dataset-specific licence recovery", {
     testthat::local_mocked_bindings(
+        # cds__http {{{
         cds__http = function(...) {
             cli::cli_abort(
                 "CDS returned HTTP 403.",
@@ -80,6 +89,7 @@ test_that("CDS submission reports dataset-specific licence recovery", {
                 provider_message = "licence not accepted"
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     config <- list(url = "https://example.test/api", key = "secret")
@@ -119,15 +129,18 @@ test_that("CDS job helpers follow the OGC async link contract", {
         list(
             status_code = 200L,
             body = list(
-                asset = list(value = list(
-                    href = "../../files/result.nc",
-                    `file:size` = 12,
-                    type = "application/x-netcdf"
-                ))
+                asset = list(
+                    value = list(
+                        href = "../../files/result.nc",
+                        `file:size` = 12,
+                        type = "application/x-netcdf"
+                    )
+                )
             ),
             url = "https://example.test/api/retrieve/v1/jobs/job-1/results"
         )
     )
+    # fake_http {{{
     fake_http <- function(method, url, key, body = NULL, timeout = 120) {
         calls[[length(calls) + 1L]] <<- list(
             method = method,
@@ -137,6 +150,7 @@ test_that("CDS job helpers follow the OGC async link contract", {
         )
         replies[[length(calls)]]
     }
+    # }}}
     testthat::local_mocked_bindings(
         cds__http = fake_http,
         .package = "epwshiftr"
@@ -158,12 +172,15 @@ test_that("CDS job helpers follow the OGC async link contract", {
         list(inputs = list(variable = "2m_temperature"))
     )
 
-    successful <- c(job, list(
-        links = list(list(
-            rel = "results",
-            href = "/api/retrieve/v1/jobs/job-1/results"
-        ))
-    ))
+    successful <- c(
+        job,
+        list(
+            links = list(list(
+                rel = "results",
+                href = "/api/retrieve/v1/jobs/job-1/results"
+            ))
+        )
+    )
     asset <- cds__result(successful, config)
     expect_identical(
         asset$url,
@@ -174,6 +191,7 @@ test_that("CDS job helpers follow the OGC async link contract", {
 
 test_that("CDS polling recognizes success, failure, and secret redaction", {
     index <- 0L
+    # fake_status {{{
     fake_status <- function(job, config) {
         index <<- index + 1L
         list(
@@ -185,6 +203,7 @@ test_that("CDS polling recognizes success, failure, and secret redaction", {
             message = NULL
         )
     }
+    # }}}
     testthat::local_mocked_bindings(
         cds__status = fake_status,
         .package = "epwshiftr"
@@ -204,6 +223,7 @@ test_that("CDS polling recognizes success, failure, and secret redaction", {
     )
 
     testthat::local_mocked_bindings(
+        # cds__status {{{
         cds__status = function(job, config) {
             list(
                 dataset_id = job$dataset_id,
@@ -214,6 +234,7 @@ test_that("CDS polling recognizes success, failure, and secret redaction", {
                 message = NULL
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     expect_error(
@@ -269,21 +290,32 @@ test_that("CDS retrieval reuses files unless overwrite is explicit", {
 
     downloaded <- 0L
     testthat::local_mocked_bindings(
+        # cds__submit {{{
         cds__submit = function(dataset_id, request, config) {
-            list(dataset_id = dataset_id, request_id = "job-1",
-                monitor_url = "https://example.test/jobs/job-1")
+            list(
+                dataset_id = dataset_id,
+                request_id = "job-1",
+                monitor_url = "https://example.test/jobs/job-1"
+            )
         },
+        # }}}
+        # cds__wait {{{
         cds__wait = function(job, config, timeout, poll_interval, reporter) {
             c(job, list(status = "successful", links = list()))
         },
+        # }}}
+        # cds__result {{{
         cds__result = function(job, config) {
             list(url = "https://example.test/result.nc", size = 4)
         },
+        # }}}
+        # cds__download {{{
         cds__download = function(asset, target, config) {
             downloaded <<- downloaded + 1L
             writeBin(as.raw(1:4), target)
             target
         },
+        # }}}
         .package = "epwshiftr"
     )
     replaced <- cds__retrieve(
@@ -298,3 +330,5 @@ test_that("CDS retrieval reuses files unless overwrite is explicit", {
     expect_identical(downloaded, 1L)
     expect_identical(file.info(target)$size, 4)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

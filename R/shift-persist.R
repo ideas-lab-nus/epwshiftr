@@ -4,6 +4,7 @@ NULL
 # Serialize an explicit workflow reference with the role assigned by its
 # execution argument. ShiftClimate stages do not otherwise carry enough
 # provenance to distinguish model output from observations.
+# shift_persist__reference_spec_value {{{
 shift_persist__reference_spec_value <- function(reference, role) {
     if (is.null(reference)) {
         return(NULL)
@@ -53,9 +54,11 @@ shift_persist__reference_spec_value <- function(reference, role) {
         extract = reference@extract
     )
 }
+# }}}
 
 # Rebuild only the reference mode that was serialized; a missing value remains
 # missing and is never converted into a historical reference.
+# shift_persist__reference_from_spec {{{
 shift_persist__reference_from_spec <- function(spec) {
     if (is.null(spec)) {
         return(NULL)
@@ -108,9 +111,11 @@ shift_persist__reference_from_spec <- function(spec) {
     }
     cli::cli_abort("Unsupported persisted reference mode: {.val {spec$mode}}.")
 }
+# }}}
 
 # Serialize the complete CMIP6 identity as the sole scientific source of truth;
 # the lower-level request is derived from this value when a run is resumed.
+# shift_persist__climate_spec_value {{{
 shift_persist__climate_spec_value <- function(climate) {
     if (is.null(climate)) {
         return(NULL)
@@ -148,9 +153,11 @@ shift_persist__climate_spec_value <- function(climate) {
     }
     spec
 }
+# }}}
 
 # Rebuild only explicitly supported climate specifications from persisted task
 # intent instead of inferring provider or model fields from request artifacts.
+# shift_persist__climate_from_spec {{{
 shift_persist__climate_from_spec <- function(spec) {
     if (is.null(spec)) {
         return(NULL)
@@ -176,9 +183,11 @@ shift_persist__climate_from_spec <- function(spec) {
     arguments["model"] <- list(model)
     do.call(shift_cmip6, arguments)
 }
+# }}}
 
 # Preserve variable names on request frequency mappings because jsonlite
 # serializes named atomic vectors as arrays when automatic unboxing is enabled.
+# shift_persist__request_spec_value {{{
 shift_persist__request_spec_value <- function(request) {
     if (is.null(request)) {
         return(NULL)
@@ -189,9 +198,11 @@ shift_persist__request_spec_value <- function(request) {
     }
     out
 }
+# }}}
 
 # Restore request frequencies without allowing character coercion to discard
 # names from a JSON object that represents a variable-specific mapping.
+# shift_persist__request_frequency_from_spec {{{
 shift_persist__request_frequency_from_spec <- function(value) {
     if (is.null(value)) {
         return(NULL)
@@ -202,10 +213,12 @@ shift_persist__request_frequency_from_spec <- function(value) {
     names(value) <- value_names
     value
 }
+# }}}
 
 # Convert a plan into a canonical, JSON-safe task specification. Identical
 # resumable intent resolves to the original run ID, while explicit refresh or
 # overwrite requests remain distinct executions.
+# shift_persist__plan_spec {{{
 shift_persist__plan_spec <- function(x) {
     meta <- x@meta
     request <- meta$request@meta
@@ -275,9 +288,11 @@ shift_persist__plan_spec <- function(x) {
     spec$stages$shared_inputs <- meta$shared_inputs
     spec
 }
+# }}}
 
 # Encode workflow specs with stable key order inherited from the constructor
 # lists so identical scientific intent produces the same hash.
+# shift_persist__spec_json {{{
 shift_persist__spec_json <- function(spec) {
     as.character(jsonlite::toJSON(
         spec,
@@ -288,9 +303,11 @@ shift_persist__spec_json <- function(spec) {
         POSIXt = "ISO8601"
     ))
 }
+# }}}
 
 # Convert one site into the JSON-safe identity required by later extraction and
 # morph steps. EPW objects are persisted through their backing path only.
+# shift_persist__site_ref {{{
 shift_persist__site_ref <- function(site) {
     if (is.null(site)) {
         return(NULL)
@@ -315,8 +332,10 @@ shift_persist__site_ref <- function(site) {
         metadata = site@metadata
     )
 }
+# }}}
 
 # Rebuild a persisted site without inferring or replacing a missing EPW path.
+# shift_persist__site_from_ref {{{
 shift_persist__site_from_ref <- function(ref) {
     if (is.null(ref)) {
         return(NULL)
@@ -330,9 +349,11 @@ shift_persist__site_from_ref <- function(ref) {
         metadata = shift_stage__coalesce(ref$metadata, list())
     )
 }
+# }}}
 
 # Reduce a stage to stable store IDs plus the minimum scientific metadata
 # required to continue the normal collect-to-export chain in another session.
+# shift_persist__stage_ref {{{
 shift_persist__stage_ref <- function(x) {
     if (is.null(x)) {
         return(NULL)
@@ -452,10 +473,12 @@ shift_persist__stage_ref <- function(x) {
     base$meta <- meta
     base
 }
+# }}}
 
 # Reconstruct a lightweight but actionable stage from persisted IDs. Large
 # datasets and workflow objects are queried from the store instead of being
 # embedded in JSON step rows.
+# shift_persist__stage_from_ref {{{
 shift_persist__stage_from_ref <- function(ref) {
     if (is.null(ref)) {
         return(NULL)
@@ -466,9 +489,11 @@ shift_persist__stage_from_ref <- function(ref) {
     } else {
         as.character(ref$store_path)
     }
+    # lapply callback {{{
     ids <- lapply(shift_stage__coalesce(ref$ids, list()), function(value) {
         unlist(value, use.names = FALSE)
     })
+    # }}}
     meta <- shift_stage__coalesce(ref$meta, list())
     if (identical(stage, "request")) {
         return(do.call(shift_request, meta))
@@ -642,9 +667,11 @@ shift_persist__stage_from_ref <- function(ref) {
     }
     cli::cli_abort("Unsupported persisted shift stage: {.val {stage}}.")
 }
+# }}}
 
 # Reconstruct a persisted plan for cross-session resume. A baseline EPW object
 # without a path cannot be recovered and therefore fails with a targeted error.
+# shift_persist__plan_from_spec {{{
 shift_persist__plan_from_spec <- function(spec, store = NULL) {
     version <- as.integer(shift_stage__coalesce(spec$version, 1L))
     if (!identical(version, 2L)) {
@@ -749,3 +776,6 @@ shift_persist__plan_from_spec <- function(spec, store = NULL) {
     plan@meta$shared_inputs <- stage$shared_inputs
     plan
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

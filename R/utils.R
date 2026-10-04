@@ -1,3 +1,4 @@
+# lpad {{{
 lpad <- function(x, pad = " ", width = NULL) {
     wid <- nchar(x, "width")
     if (is.null(width)) {
@@ -5,33 +6,47 @@ lpad <- function(x, pad = " ", width = NULL) {
     }
     paste0(strrep(pad, pmax(width - wid, 0)), x)
 }
+# }}}
 
 # a little bit faster
+# unlst {{{
 unlst <- function(x) unlist(x, FALSE, FALSE)
+# }}}
 
+# trim_ws {{{
 trim_ws <- function(x) sub("\\s*$", "", sub("^\\s*", "", x))
+# }}}
 
+# to_title_case {{{
 to_title_case <- function(x) {
     sub("(.)", "\\U\\1", gsub("_", " ", x, fixed = TRUE), perl = TRUE)
 }
+# }}}
 
+# priv {{{
 priv <- function(x) {
     checkmate::assert_r6(x)
     x$.__enclos_env__[["private"]]
 }
+# }}}
 
+# `priv<-` {{{
 `priv<-` <- function(x, value) {
     checkmate::assert_r6(x)
     x$.__enclos_env__[["private"]] <- value
     invisible(x)
 }
+# }}}
 
+# vmsg {{{
 vmsg <- function(..., sep = "") {
     if (getOption("epwshiftr.verbose", FALSE)) {
         message(paste(..., sep = "\n"))
     }
 }
+# }}}
 
+# verbose {{{
 verbose <- function(...) {
     if (!getOption("epwshiftr.verbose", FALSE)) {
         return()
@@ -52,9 +67,11 @@ verbose <- function(...) {
     msg <- paste0(
         vapply(
             exprs,
+            # vapply callback {{{
             function(expr) {
                 as.character(eval(expr, parent.frame()))
             },
+            # }}}
             character(1L)
         ),
         collapse = ""
@@ -64,28 +81,36 @@ verbose <- function(...) {
     }
     invisible(msg)
 }
+# }}}
 
+# vb {{{
 vb <- function(...) {
     if (!getOption("epwshiftr.verbose", FALSE)) {
         return(NULL)
     }
     paste0(...)
 }
+# }}}
 
+# with_silent {{{
 with_silent <- function(expr) {
     old <- options("epwshiftr.verbose" = FALSE)
     on.exit(options(old), add = TRUE)
     force(expr)
 }
+# }}}
 
+# with_timeout {{{
 with_timeout <- function(secs = 300, expr) {
     old <- options(timeout = secs)
     on.exit(options(old), add = TRUE)
     force(expr)
 }
+# }}}
 
 # Convert `checkmate::check_*()` results into the return contract expected by
 # S7 property/class validators: `NULL` on success, a single message on failure.
+# checkmate_result {{{
 checkmate_result <- function(result, label = NULL) {
     if (isTRUE(result)) {
         return(NULL)
@@ -97,18 +122,24 @@ checkmate_result <- function(result, label = NULL) {
 
     result
 }
+# }}}
 
+# checkmate_validator {{{
 checkmate_validator <- function(check, ..., label = NULL) {
     checkmate::assert_function(check)
 
     args <- list(...)
     force(label)
 
+    # { callback {{{
     function(value) {
         checkmate_result(do.call(check, c(list(value), args)), label = label)
     }
+    # }}}
 }
+# }}}
 
+# checkmate_rule {{{
 checkmate_rule <- function(class, check, ..., label = NULL, branch = NULL) {
     checkmate::assert_function(check)
     checkmate::assert_string(label, null.ok = TRUE)
@@ -139,7 +170,9 @@ checkmate_rule <- function(class, check, ..., label = NULL, branch = NULL) {
         class = "CheckmateRule"
     )
 }
+# }}}
 
+# checkmate_any {{{
 checkmate_any <- function(...) {
     rules <- list(...)
     checkmate::assert_list(
@@ -159,7 +192,9 @@ checkmate_any <- function(...) {
         class = c("CheckmateSpecAny", "CheckmateSpec")
     )
 }
+# }}}
 
+# checkmate_base_type {{{
 checkmate_base_type <- function(value) {
     switch(
         typeof(value),
@@ -171,7 +206,9 @@ checkmate_base_type <- function(value) {
         typeof(value)
     )
 }
+# }}}
 
+# checkmate_class_match {{{
 checkmate_class_match <- function(value, class) {
     if (is.null(class)) {
         return(is.null(value))
@@ -205,7 +242,9 @@ checkmate_class_match <- function(value, class) {
 
     inherits(value, class)
 }
+# }}}
 
+# checkmate_match_rule {{{
 checkmate_match_rule <- function(value, rules) {
     for (i in seq_along(rules)) {
         rule_class <- rules[[i]]$class
@@ -217,7 +256,9 @@ checkmate_match_rule <- function(value, rules) {
 
     NA_integer_
 }
+# }}}
 
+# checkmate_validate_rule {{{
 checkmate_validate_rule <- function(value, rule) {
     msg <- checkmate_result(
         do.call(rule$check, c(list(value), rule$args)),
@@ -230,7 +271,9 @@ checkmate_validate_rule <- function(value, rule) {
 
     msg
 }
+# }}}
 
+# checkmate_property {{{
 checkmate_property <- function(
     class = S7::class_any,
     check,
@@ -268,6 +311,7 @@ checkmate_property <- function(
             class = spec$class,
             getter = getter,
             setter = setter,
+            # validator {{{
             validator = function(value) {
                 idx <- checkmate_match_rule(value, spec$rules)
 
@@ -277,6 +321,7 @@ checkmate_property <- function(
 
                 checkmate_validate_rule(value, spec$rules[[idx]])
             },
+            # }}}
             default = default,
             name = name
         ))
@@ -295,7 +340,9 @@ checkmate_property <- function(
         name = name
     )
 }
+# }}}
 
+# fast_hash {{{
 fast_hash <- function(x) {
     # FNV-1a hash algorithm
     FNV_PRIME <- 16777619 # 0x01000193
@@ -333,7 +380,9 @@ fast_hash <- function(x) {
         sprintf("%04x%04x", hash_hi, hash_lo)
     }
 }
+# }}}
 
+# eval_with_bang {{{
 eval_with_bang <- function(..., .env = parent.frame()) {
     dots <- eval(substitute(alist(...)))
 
@@ -342,6 +391,7 @@ eval_with_bang <- function(..., .env = parent.frame()) {
     }
     checkmate::assert_list(dots, .var.name = "Input", min.len = 1L)
 
+    # lapply callback {{{
     lapply(dots, function(expr) {
         negate <- !is.symbol(expr) &&
             !is.null(expr) &&
@@ -353,15 +403,20 @@ eval_with_bang <- function(..., .env = parent.frame()) {
 
         list(value = eval(expr, .env), negate = negate)
     })
+    # }}}
 }
+# }}}
 
+# now {{{
 now <- function(tz = "UTC") {
     t <- Sys.time()
     attr(t, "tzone") <- tz
     t
 }
+# }}}
 
 # nocov start
+# rd_query_is_facets {{{
 rd_query_is_facets <- function(x) {
     x %in%
         c(
@@ -376,7 +431,9 @@ rd_query_is_facets <- function(x) {
             "distrib"
         )
 }
+# }}}
 
+# rd_query_method_param {{{
 rd_query_method_param <- function(
     method,
     type,
@@ -443,7 +500,9 @@ rd_query_method_param <- function(
 
     paste(rd, collapse = "\n")
 }
+# }}}
 
+# rd_query_method_return {{{
 rd_query_method_return <- function() {
     paste(
         "\\itemize{",
@@ -458,8 +517,10 @@ rd_query_method_return <- function() {
         "}"
     )
 }
+# }}}
 # nocov end
 
+# set_size_units {{{
 set_size_units <- function(x) {
     if (!length(x)) {
         return(NULL)
@@ -468,15 +529,18 @@ set_size_units <- function(x) {
     # display class that does not require the units package.
     structure(as.numeric(x), class = c("epwshiftr_bytes", "numeric"))
 }
+# }}}
 
 # Format byte counts with IEC prefixes so result tables remain readable after
 # removing the units package dependency.
 #' @export
+# format.epwshiftr_bytes {{{
 format.epwshiftr_bytes <- function(x, digits = 2L, ...) {
     checkmate::assert_count(digits)
     labels <- c("Byte", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
     vapply(
         as.numeric(x),
+        # vapply callback {{{
         function(value) {
             if (is.na(value)) {
                 return(NA_character_)
@@ -503,32 +567,41 @@ format.epwshiftr_bytes <- function(x, digits = 2L, ...) {
                 )
             }
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
 # Print the lightweight byte vector through its human-readable formatter while
 # retaining the original numeric values invisibly.
 #' @export
+# print.epwshiftr_bytes {{{
 print.epwshiftr_bytes <- function(x, ...) {
     print(format(x, ...), quote = FALSE)
     invisible(x)
 }
+# }}}
 
 # Format raw byte counts for query summaries and formatted result tables using
 # the same dependency-free IEC representation as the public size vector.
+# format_size_units {{{
 format_size_units <- function(x, digits = 2L) {
     if (!length(x)) {
         return(character())
     }
     format(set_size_units(x), digits = digits)
 }
+# }}}
 
 # store_is_abs_path
+# store_is_abs_path {{{
 store_is_abs_path <- function(path) {
     grepl("^(/|~|[A-Za-z]:[\\\\/]|\\\\\\\\)", path)
 }
+# }}}
 # store_normalize_path
+# store_normalize_path {{{
 store_normalize_path <- function(path) {
     path <- path.expand(path)
     if (file.exists(path)) {
@@ -545,6 +618,7 @@ store_normalize_path <- function(path) {
 
     normalizePath(path, winslash = "/", mustWork = FALSE)
 }
+# }}}
 #' Get the epwshiftr store directory
 #'
 #' `store_dir()` returns the root directory used for persistent epwshiftr store
@@ -556,6 +630,7 @@ store_normalize_path <- function(path) {
 #' @return A single string indicating the directory location.
 #'
 #' @export
+# store_dir {{{
 store_dir <- function(init = TRUE) {
     checkmate::assert_flag(init)
 
@@ -586,13 +661,17 @@ store_dir <- function(init = TRUE) {
 
     path
 }
+# }}}
 
 # store_path
+# store_path {{{
 store_path <- function(..., root = store_dir(init = TRUE)) {
     parts <- c(list(root), list(...))
     do.call(file.path, parts)
 }
+# }}}
 # store_abs_path
+# store_abs_path {{{
 store_abs_path <- function(path, root = store_dir(init = TRUE)) {
     checkmate::assert_string(path, min.chars = 1L)
     checkmate::assert_string(root, min.chars = 1L)
@@ -602,7 +681,9 @@ store_abs_path <- function(path, root = store_dir(init = TRUE)) {
     }
     store_normalize_path(file.path(root, path))
 }
+# }}}
 # store_rel_path
+# store_rel_path {{{
 store_rel_path <- function(path, root = store_dir(init = TRUE)) {
     checkmate::assert_string(path, min.chars = 1L)
     checkmate::assert_string(root, min.chars = 1L)
@@ -625,7 +706,9 @@ store_rel_path <- function(path, root = store_dir(init = TRUE)) {
     }
     substring(path, nchar(root_prefix) + 1L)
 }
+# }}}
 # checksum helpers
+# checksum_file {{{
 checksum_file <- function(path, algo = "sha256") {
     checkmate::assert_file_exists(path, access = "r")
     checkmate::assert_choice(algo, c("md5", "sha256"))
@@ -637,7 +720,9 @@ checksum_file <- function(path, algo = "sha256") {
     }
     unname(as.character(out))
 }
+# }}}
 
+# checksum_bytes {{{
 checksum_bytes <- function(bytes, algo = "sha256") {
     if (!is.raw(bytes)) {
         stop("`bytes` must be a raw vector.", call. = FALSE)
@@ -651,7 +736,9 @@ checksum_bytes <- function(bytes, algo = "sha256") {
     }
     unname(as.character(out))
 }
+# }}}
 # duckdb helpers
+# ddb_connect {{{
 ddb_connect <- function(dbdir, read_only = FALSE, ...) {
     duckdb::dbConnect(
         duckdb::duckdb(),
@@ -660,55 +747,81 @@ ddb_connect <- function(dbdir, read_only = FALSE, ...) {
         ...
     )
 }
+# }}}
 
+# ddb_disconnect {{{
 ddb_disconnect <- function(conn, shutdown = TRUE) {
     duckdb::dbDisconnect(conn, shutdown = shutdown)
 }
+# }}}
 
+# ddb_is_valid {{{
 ddb_is_valid <- function(conn) {
     duckdb::dbIsValid(conn)
 }
+# }}}
 
+# ddb_exec {{{
 ddb_exec <- function(conn, sql) {
     duckdb::sql_exec(sql, conn = conn)
 }
+# }}}
 
+# ddb_query {{{
 ddb_query <- function(conn, sql) {
     duckdb::sql_query(sql, conn = conn)
 }
+# }}}
 
+# ddb_list_tables {{{
 ddb_list_tables <- function(conn) {
     duckdb::dbListTables(conn)
 }
+# }}}
 
+# ddb_read_table {{{
 ddb_read_table <- function(conn, table) {
     ddb_query(conn, sprintf("SELECT * FROM %s", ddb_ident(conn, table)))
 }
+# }}}
 
+# ddb_write_table {{{
 ddb_write_table <- function(conn, table, rows, ...) {
     duckdb::dbWriteTable(conn, table, rows, ...)
 }
+# }}}
 
+# ddb_append_table {{{
 ddb_append_table <- function(conn, table, rows, ...) {
     duckdb::dbAppendTable(conn, table, rows, ...)
 }
+# }}}
 
+# ddb_ident {{{
 ddb_ident <- function(conn, x) {
     as.character(duckdb::dbQuoteIdentifier(conn, x))
 }
+# }}}
 
+# ddb_literal {{{
 ddb_literal <- function(conn, x) {
     as.character(duckdb::dbQuoteLiteral(conn, x))
 }
+# }}}
 # manifest_lock
+# manifest_lock_path {{{
 manifest_lock_path <- function(path) {
     paste0(normalizePath(path, mustWork = FALSE, winslash = "/"), ".lock")
 }
+# }}}
 
+# manifest_lock_metadata {{{
 manifest_lock_metadata <- function(lock_dir) {
     file.path(lock_dir, "owner.json")
 }
+# }}}
 
+# manifest_lock_stale {{{
 manifest_lock_stale <- function(lock_dir, stale_after) {
     if (!dir.exists(lock_dir)) {
         return(FALSE)
@@ -720,7 +833,9 @@ manifest_lock_stale <- function(lock_dir, stale_after) {
     age <- as.numeric(difftime(Sys.time(), info$mtime, units = "secs"))
     is.finite(age) && age > stale_after
 }
+# }}}
 
+# manifest_acquire_lock {{{
 manifest_acquire_lock <- function(path, timeout = 30, stale_after = 24 * 3600) {
     lock_dir <- manifest_lock_path(path)
     checkmate::assert_count(timeout, positive = FALSE)
@@ -748,12 +863,14 @@ manifest_acquire_lock <- function(path, timeout = 30, stale_after = 24 * 3600) {
                 ),
                 silent = TRUE
             )
+            # return callback {{{
             return(function() {
                 if (dir.exists(lock_dir)) {
                     unlink(lock_dir, recursive = TRUE, force = TRUE)
                 }
                 invisible(NULL)
             })
+            # }}}
         }
 
         if (manifest_lock_stale(lock_dir, stale_after)) {
@@ -770,7 +887,9 @@ manifest_acquire_lock <- function(path, timeout = 30, stale_after = 24 * 3600) {
         Sys.sleep(min(0.2, max(0.01, timeout - elapsed)))
     }
 }
+# }}}
 
+# manifest_with_lock {{{
 manifest_with_lock <- function(
     path,
     expr,
@@ -785,7 +904,9 @@ manifest_with_lock <- function(
     on.exit(release(), add = TRUE)
     force(expr)
 }
+# }}}
 # write_parquet_file
+# write_parquet_file {{{
 write_parquet_file <- function(dt, path) {
     checkmate::assert_data_frame(dt)
     checkmate::assert_string(path, min.chars = 1L)
@@ -846,7 +967,9 @@ write_parquet_file <- function(dt, path) {
 
     invisible(path)
 }
+# }}}
 # mirai helpers
+# mirai_default_workers {{{
 mirai_default_workers <- function(n) {
     if (!n) {
         return(0L)
@@ -856,7 +979,9 @@ mirai_default_workers <- function(n) {
 
     max(1L, min(as.integer(workers), n))
 }
+# }}}
 
+# mirai_error_message {{{
 mirai_error_message <- function(result) {
     if (inherits(result, "miraiError")) {
         message <- attr(result, "message", exact = TRUE)
@@ -873,7 +998,9 @@ mirai_error_message <- function(result) {
 
     ""
 }
+# }}}
 
+# mirai_worker_bindings {{{
 mirai_worker_bindings <- function(symbols = character()) {
     ns <- asNamespace("epwshiftr")
     symbols <- unique(c(
@@ -890,13 +1017,17 @@ mirai_worker_bindings <- function(symbols = character()) {
     bindings <- mget(symbols, envir = ns, inherits = FALSE)
     local <- vapply(
         bindings,
+        # vapply callback {{{
         function(x) is.function(x) && identical(environment(x), ns),
+        # }}}
         logical(1L)
     )
     attr(bindings, "local_symbols") <- names(bindings)[local]
     bindings
 }
+# }}}
 
+# mirai_lapply {{{
 mirai_lapply <- function(
     X,
     FUN,
@@ -920,7 +1051,9 @@ mirai_lapply <- function(
     dot_args <- list(...)
 
     if (workers <= 1L) {
+        # lapply callback {{{
         return(lapply(X, function(x) do.call(FUN, c(list(x), dot_args))))
+        # }}}
     }
 
     compute_profile <- sprintf(
@@ -932,6 +1065,7 @@ mirai_lapply <- function(
     on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
 
     worker_symbols <- mirai_worker_bindings(symbols)
+    # lapply callback {{{
     tasks <- lapply(X, function(x) {
         mirai::mirai(
             {
@@ -961,6 +1095,7 @@ mirai_lapply <- function(
             .compute = compute_profile
         )
     })
+    # }}}
 
     results <- lapply(tasks, mirai::collect_mirai)
     errors <- vapply(results, mirai_error_message, character(1L))
@@ -979,7 +1114,9 @@ mirai_lapply <- function(
 
     results
 }
+# }}}
 
+# mirai_map {{{
 mirai_map <- function(
     FUN,
     ...,
@@ -1000,16 +1137,22 @@ mirai_map <- function(
         stop("Mapped inputs must have the same length.", call. = FALSE)
     }
 
+    # lapply callback {{{
     items <- lapply(seq_len(lens[[1L]]), function(i) lapply(args, `[[`, i))
+    # }}}
     mirai_lapply(
         items,
+        # mirai_lapply callback {{{
         function(item) do.call(FUN, item),
+        # }}}
         workers = workers,
         symbols = symbols,
         label = label
     )
 }
+# }}}
 
+# netcdf_mirai_symbols {{{
 netcdf_mirai_symbols <- function(extra = character()) {
     ns <- asNamespace("epwshiftr")
     unique(c(
@@ -1030,14 +1173,18 @@ netcdf_mirai_symbols <- function(extra = character()) {
         extra
     ))
 }
+# }}}
 # store_hash_file
+# store_hash_file {{{
 store_hash_file <- function(path, algo = "sha256") {
     checkmate::assert_file_exists(path, access = "r")
     checkmate::assert_choice(algo, c("md5", "sha256"))
 
     checksum_file(path, algo)
 }
+# }}}
 # store_write_json_atomic
+# store_write_json_atomic {{{
 store_write_json_atomic <- function(x, path, ...) {
     checkmate::assert_string(path, min.chars = 1L)
     path <- store_normalize_path(path)
@@ -1055,11 +1202,15 @@ store_write_json_atomic <- function(x, path, ...) {
     }
     path
 }
+# }}}
 # store_cmip6_index_active_key
+# store_cmip6_index_active_key {{{
 store_cmip6_index_active_key <- function() {
     "active_cmip6_index_artifact_id"
 }
+# }}}
 # store_cmip6_index_dir
+# store_cmip6_index_dir {{{
 store_cmip6_index_dir <- function(init = TRUE) {
     checkmate::assert_flag(init)
     path <- store_path("queries", "cmip6-index", root = store_dir(init = init))
@@ -1068,12 +1219,16 @@ store_cmip6_index_dir <- function(init = TRUE) {
     }
     path
 }
+# }}}
 # store_cmip6_index_path
+# store_cmip6_index_path {{{
 store_cmip6_index_path <- function(index_id, init = TRUE) {
     checkmate::assert_string(index_id, min.chars = 1L)
     file.path(store_cmip6_index_dir(init), sprintf("%s.csv", index_id))
 }
+# }}}
 # store_cmip6_index_save
+# store_cmip6_index_save {{{
 store_cmip6_index_save <- function(index) {
     checkmate::assert_data_table(index)
 
@@ -1115,7 +1270,9 @@ store_cmip6_index_save <- function(index) {
 
     path
 }
+# }}}
 # store_cmip6_index_active_path
+# store_cmip6_index_active_path {{{
 store_cmip6_index_active_path <- function() {
     root <- store_dir(init = FALSE)
     if (!dir.exists(root)) {
@@ -1131,9 +1288,12 @@ store_cmip6_index_active_path <- function() {
 
     tryCatch(
         store$artifact_path(artifact_id),
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
 }
+# }}}
 # get rid of R CMD check NOTEs on global variables
 utils::globalVariables(c(
     ".",
@@ -1384,6 +1544,10 @@ utils::globalVariables(c(
 ))
 
 # Drop NULL values from named lists before forwarding them to stage functions.
+# compact_list {{{
 compact_list <- function(x) {
     x[vapply(x, Negate(is.null), logical(1L))]
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

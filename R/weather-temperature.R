@@ -10,6 +10,7 @@ EPW_MORPH_TEMPERATURE_OPTIONS <- list(
 
 # Validate and complete one backend's JSON-safe temperature options while
 # allowing the backend to supply only the settings its method actually owns.
+# temperature__backend_options {{{
 temperature__backend_options <- function(
     options,
     defaults,
@@ -75,9 +76,11 @@ temperature__backend_options <- function(
 
     options
 }
+# }}}
 
 # Normalize the three role-addressable inputs shared by daily-source
 # temperature backends after each method has resolved its own option contract.
+# temperature__preprocess_inputs {{{
 temperature__preprocess_inputs <- function(inputs, options) {
     if (!S7::S7_inherits(inputs, WeatherInputs)) {
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
@@ -101,9 +104,11 @@ temperature__preprocess_inputs <- function(inputs, options) {
         options = options
     )
 }
+# }}}
 
 # Convert mixed supported temperature units to degrees Celsius through the
 # package-wide checked unit converter after a caller validates source metadata.
+# temperature__to_celsius {{{
 temperature__to_celsius <- function(value, units) {
     value <- as.numeric(value)
     if (length(units) == 1L) {
@@ -130,9 +135,11 @@ temperature__to_celsius <- function(value, units) {
     }
     converted
 }
+# }}}
 
 # Convert extracted daily temperature rows to degrees Celsius and reject inputs
 # that cannot satisfy the shared daily-frequency temperature contract.
+# temperature__daily_climate {{{
 temperature__daily_climate <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -175,9 +182,11 @@ temperature__daily_climate <- function(data, name) {
     data.table::set(out, j = "units", value = rep.int("degC", nrow(out)))
     out[]
 }
+# }}}
 
 # Map a complete non-leap EPW year to the shared 365-day temperature grid while
 # retaining a stable row index for reconstruction after grouped projection.
+# temperature__epw_template {{{
 temperature__epw_template <- function(epw) {
     if (!inherits(epw, "EpwFile")) {
         cli::cli_abort("`epw` must be an internal {.cls EpwFile} object.")
@@ -266,3 +275,6 @@ temperature__epw_template <- function(epw) {
 
     list(epw = epw, weather = weather, template = template)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

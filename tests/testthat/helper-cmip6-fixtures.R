@@ -1,13 +1,23 @@
 local_cmip6_test_years <- 2059:2061
 
+# local_cmip6_nc_file {{{
 local_cmip6_nc_file <- function(year, variable_id = "tas") {
-    sprintf("%s_day_EC-Earth3_ssp585_r1i1p1f1_gr_%s0101-%s1231.nc", variable_id, year, year)
+    sprintf(
+        "%s_day_EC-Earth3_ssp585_r1i1p1f1_gr_%s0101-%s1231.nc",
+        variable_id,
+        year,
+        year
+    )
 }
+# }}}
 
+# local_is_leap_year {{{
 local_is_leap_year <- function(year) {
     (year %% 4L == 0L && year %% 100L != 0L) || year %% 400L == 0L
 }
+# }}}
 
+# local_cmip6_variable_spec {{{
 local_cmip6_variable_spec <- function(variable_id) {
     specs <- list(
         tas = list(
@@ -78,11 +88,19 @@ local_cmip6_variable_spec <- function(variable_id) {
     )
     spec <- specs[[variable_id]]
     if (is.null(spec)) {
-        stop(sprintf("Unsupported local CMIP6 fixture variable: %s", variable_id), call. = FALSE)
+        stop(
+            sprintf(
+                "Unsupported local CMIP6 fixture variable: %s",
+                variable_id
+            ),
+            call. = FALSE
+        )
     }
     spec
 }
+# }}}
 
+# local_cmip6_variable_array {{{
 local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
     values <- array(NA_real_, dim = c(length(lon), length(lat), length(time)))
     phase <- 2 * pi * time / length(time)
@@ -102,25 +120,43 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
                 rlds = 340 + 18 * sin(phase) + spatial,
                 rsds = pmax(0, 260 + 180 * sin(phase - pi / 3) + 3 * spatial),
                 sfcWind = pmax(0.1, 3 + 0.6 * cos(phase) + spatial / 8),
-                clt = pmin(100, pmax(0, 52 + 22 * cos(phase - pi / 6) + spatial)),
+                clt = pmin(
+                    100,
+                    pmax(0, 52 + 22 * cos(phase - pi / 6) + spatial)
+                ),
                 # Keep fixture precipitation positive and seasonal so monthly
                 # flux-to-depth conversion has predictable non-zero totals.
-                pr = pmax(0, 4e-5 + 2e-5 * sin(phase - pi / 5) + spatial * 1e-6),
+                pr = pmax(
+                    0,
+                    4e-5 + 2e-5 * sin(phase - pi / 5) + spatial * 1e-6
+                ),
                 # Snow depth remains non-negative and seasonal while retaining
                 # a small spatial gradient for nearest-grid assertions.
                 snd = pmax(0, 0.08 + 0.04 * cos(phase) + spatial * 1e-3),
-                stop(sprintf("Unsupported local CMIP6 fixture variable: %s", variable_id), call. = FALSE)
+                stop(
+                    sprintf(
+                        "Unsupported local CMIP6 fixture variable: %s",
+                        variable_id
+                    ),
+                    call. = FALSE
+                )
             )
         }
     }
 
     values
 }
+# }}}
 
-write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
-                                              calendar = "proleptic_gregorian",
-                                              n_years = 1L,
-                                              frequency = "day") {
+# write_local_cmip6_netcdf_fixture {{{
+write_local_cmip6_netcdf_fixture <- function(
+    path,
+    year,
+    variable_id = "tas",
+    calendar = "proleptic_gregorian",
+    n_years = 1L,
+    frequency = "day"
+) {
     spec <- local_cmip6_variable_spec(variable_id)
     lat <- c(1.0, 2.0, 41.0)
     lon <- c(103.5, 104.0, 104.5, 254.0)
@@ -171,8 +207,20 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
     RNetCDF::var.def.nc(nc, variable_id, "NC_FLOAT", c("lon", "lat", "time"))
 
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "mip_era", "NC_CHAR", "CMIP6")
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "activity_id", "NC_CHAR", "ScenarioMIP")
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "institution_id", "NC_CHAR", "EC-Earth-Consortium")
+    RNetCDF::att.put.nc(
+        nc,
+        "NC_GLOBAL",
+        "activity_id",
+        "NC_CHAR",
+        "ScenarioMIP"
+    )
+    RNetCDF::att.put.nc(
+        nc,
+        "NC_GLOBAL",
+        "institution_id",
+        "NC_CHAR",
+        "EC-Earth-Consortium"
+    )
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "source_id", "NC_CHAR", "EC-Earth3")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "experiment_id", "NC_CHAR", "ssp585")
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "variant_label", "NC_CHAR", "r1i1p1f1")
@@ -180,11 +228,29 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "table_id", "NC_CHAR", table_id)
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "frequency", "NC_CHAR", frequency)
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "grid_label", "NC_CHAR", "gr")
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "nominal_resolution", "NC_CHAR", "100 km")
+    RNetCDF::att.put.nc(
+        nc,
+        "NC_GLOBAL",
+        "nominal_resolution",
+        "NC_CHAR",
+        "100 km"
+    )
     RNetCDF::att.put.nc(nc, "NC_GLOBAL", "variable_id", "NC_CHAR", variable_id)
-    RNetCDF::att.put.nc(nc, "NC_GLOBAL", "tracking_id", "NC_CHAR", sprintf("hdl:21.14100/local-test-%s-%s", variable_id, year))
+    RNetCDF::att.put.nc(
+        nc,
+        "NC_GLOBAL",
+        "tracking_id",
+        "NC_CHAR",
+        sprintf("hdl:21.14100/local-test-%s-%s", variable_id, year)
+    )
 
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", sprintf("days since %s-01-01 00:00:00", year))
+    RNetCDF::att.put.nc(
+        nc,
+        "time",
+        "units",
+        "NC_CHAR",
+        sprintf("days since %s-01-01 00:00:00", year)
+    )
     RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
     RNetCDF::att.put.nc(nc, "time", "axis", "NC_CHAR", "T")
     RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
@@ -199,7 +265,13 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
     RNetCDF::att.put.nc(nc, "height", "units", "NC_CHAR", "m")
     RNetCDF::att.put.nc(nc, "height", "standard_name", "NC_CHAR", "height")
     RNetCDF::att.put.nc(nc, "height", "positive", "NC_CHAR", "up")
-    RNetCDF::att.put.nc(nc, variable_id, "standard_name", "NC_CHAR", spec$standard_name)
+    RNetCDF::att.put.nc(
+        nc,
+        variable_id,
+        "standard_name",
+        "NC_CHAR",
+        spec$standard_name
+    )
     RNetCDF::att.put.nc(nc, variable_id, "long_name", "NC_CHAR", spec$long_name)
     RNetCDF::att.put.nc(nc, variable_id, "units", "NC_CHAR", spec$units)
 
@@ -214,7 +286,9 @@ write_local_cmip6_netcdf_fixture <- function(path, year, variable_id = "tas",
 
     invisible(path)
 }
+# }}}
 
+# write_local_morph_tas_fixture {{{
 write_local_morph_tas_fixture <- function(path, year = 2060L) {
     datetime <- seq.POSIXt(
         as.POSIXct(sprintf("%s-01-01 00:00:00", year), tz = "UTC"),
@@ -235,14 +309,38 @@ write_local_morph_tas_fixture <- function(path, year = 2060L) {
         variable = "tas",
         description = "Near-Surface Air Temperature",
         units = "K",
-        value = 299 + 5 * sin(2 * pi * (as.integer(format(datetime, "%j")) - 1) / length(datetime)) + coord_id / 10
+        value = 299 +
+            5 *
+                sin(
+                    2 *
+                        pi *
+                        (as.integer(format(datetime, "%j")) - 1) /
+                        length(datetime)
+                ) +
+            coord_id / 10
     )]
     data[, coord_id := NULL]
-    data.table::setcolorder(data, c(
-        "activity_drs", "institution_id", "source_id", "experiment_id",
-        "member_id", "table_id", "lon", "lat", "datetime",
-        "variable", "description", "units", "value"
-    ))
+    data.table::setcolorder(
+        data,
+        c(
+            "activity_drs",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "member_id",
+            "table_id",
+            "lon",
+            "lat",
+            "datetime",
+            "variable",
+            "description",
+            "units",
+            "value"
+        )
+    )
     write_parquet_file(data, path)
     invisible(path)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

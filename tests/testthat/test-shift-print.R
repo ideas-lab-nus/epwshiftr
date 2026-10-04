@@ -416,6 +416,7 @@ test_that("shift_ui() validates presentation options without changing scientific
         frequency = "mon",
         table = "Amon"
     )
+    # make_plan {{{
     make_plan <- function(ui) {
         shift_future_epw(
             sites = shift_site(epw = get_cache_epw()),
@@ -428,6 +429,7 @@ test_that("shift_ui() validates presentation options without changing scientific
             ui = ui
         )@meta$children[[1L]]
     }
+    # }}}
     expect_identical(
         shift_persist__plan_spec(make_plan(shift_ui("none"))),
         shift_persist__plan_spec(make_plan(shift_ui(
@@ -490,20 +492,28 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
     compacts <- character()
     closes <- 0L
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(lines, compact = NULL) {
                     frames[[length(frames) + 1L]] <<- lines
                     compacts <<- c(compacts, compact)
                     TRUE
                 },
+                # }}}
+                # suspend {{{
                 suspend = function(code) code(),
+                # }}}
+                # close {{{
                 close = function(...) {
                     closes <<- closes + 1L
                     invisible(NULL)
                 }
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -533,13 +543,21 @@ test_that("ShiftReporter submits one complete frame per dynamic refresh", {
 
 test_that("ShiftReporter falls back to logs when frame painting fails", {
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(...) FALSE,
+                # }}}
+                # suspend {{{
                 suspend = function(code) code(),
+                # }}}
+                # close {{{
                 close = function(...) invisible(NULL)
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     reporter <- shift_reporter__reporter(shift_ui("dynamic"))
@@ -554,3 +572,5 @@ test_that("ShiftReporter falls back to logs when frame painting fails", {
         "Trying DKRZ"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -1,3 +1,4 @@
+# gh_token {{{
 gh_token <- function(token = NULL, header = TRUE) {
     checkmate::assert_string(token, null.ok = TRUE)
 
@@ -12,11 +13,14 @@ gh_token <- function(token = NULL, header = TRUE) {
     }
 
     token <- trim_ws(token)
-    if (!nchar(token)) return(NULL)
+    if (!nchar(token)) {
+        return(NULL)
+    }
 
-    if (!grepl("^gh[pousr]_[A-Za-z0-9_]{36,251}$", token) &&
-        !grepl("[[:xdigit:]]{40}", token)) {
-
+    if (
+        !grepl("^gh[pousr]_[A-Za-z0-9_]{36,251}$", token) &&
+            !grepl("[[:xdigit:]]{40}", token)
+    ) {
         return(NULL)
     } else {
         if (!header) {
@@ -26,11 +30,14 @@ gh_token <- function(token = NULL, header = TRUE) {
         }
     }
 }
+# }}}
 
+# gh {{{
 gh <- function(path, token = NULL) {
     base_url <- "https://api.github.com"
     link <- file.path(base_url, path)
 
+    # cache__url callback {{{
     cache__url("gh", link, function() {
         # use GitHub token if possible
         headers <- c("Accept" = "application/vnd.github+json")
@@ -41,40 +48,85 @@ gh <- function(path, token = NULL) {
 
         jsonlite::fromJSON(base::url(link, headers = headers))
     })
+    # }}}
 }
+# }}}
 
 # TODO: pagination for tags
+# gh_tags {{{
 gh_tags <- function(repo, token = NULL) {
     gh(sprintf("repos/%s/tags", repo), token)
 }
+# }}}
 
+# download_gh_file {{{
 download_gh_file <- function(repo, tag, file, dir = tempdir(), token = NULL) {
-    url <- sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, tag, file)
+    url <- sprintf(
+        "https://raw.githubusercontent.com/%s/%s/%s",
+        repo,
+        tag,
+        file
+    )
     dest <- file.path(dir, file)
 
+    # cache__download callback {{{
     cache__download(url, dest, function() {
-        utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
+        utils::download.file(
+            url,
+            dest,
+            mode = "wb",
+            headers = gh_token(token),
+            quiet = TRUE
+        )
         dest
     })
+    # }}}
 }
+# }}}
 
+# download_gh_tag {{{
 download_gh_tag <- function(repo, tag, dir = tempdir(), token = NULL) {
-    url <- sprintf("https://api.github.com/repos/%s/zipball/refs/tags/%s", repo, tag)
+    url <- sprintf(
+        "https://api.github.com/repos/%s/zipball/refs/tags/%s",
+        repo,
+        tag
+    )
     dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), tag))
 
+    # cache__download callback {{{
     cache__download(url, dest, function() {
-        utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
+        utils::download.file(
+            url,
+            dest,
+            mode = "wb",
+            headers = gh_token(token),
+            quiet = TRUE
+        )
         dest
     })
+    # }}}
 }
+# }}}
 
+# download_gh_ref {{{
 download_gh_ref <- function(repo, ref, dir = tempdir(), token = NULL) {
     url <- sprintf("https://api.github.com/repos/%s/zipball/%s", repo, ref)
     ref_file <- gsub("[/\\\\]", "-", ref)
     dest <- file.path(dir, sprintf("%s-%s.zip", basename(repo), ref_file))
 
+    # cache__download callback {{{
     cache__download(url, dest, function() {
-        utils::download.file(url, dest, mode = "wb", headers = gh_token(token), quiet = TRUE)
+        utils::download.file(
+            url,
+            dest,
+            mode = "wb",
+            headers = gh_token(token),
+            quiet = TRUE
+        )
         dest
     })
+    # }}}
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

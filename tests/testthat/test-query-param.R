@@ -1,14 +1,17 @@
 # query_param_test_complex_store() {{{
+# query_param_test_complex_store {{{
 query_param_test_complex_store <- function() {
-    QueryParamStore$new()$
-        activity_id(!c("CFMIP", "ScenarioMIP"))$
-        datetime_range(start = "2017", stop = "2018")$
-        timestamp_range(from = "NOW-1YEAR", to = "2021")$
-        version_range(min = "2020", max = "2021")$
-        params(table_id = "Amon")
+    QueryParamStore$new()$activity_id(
+        !c("CFMIP", "ScenarioMIP")
+    )$datetime_range(start = "2017", stop = "2018")$timestamp_range(
+        from = "NOW-1YEAR",
+        to = "2021"
+    )$version_range(min = "2020", max = "2021")$params(table_id = "Amon")
 }
 # }}}
+# }}}
 # query_param_test_expect_facet_method() {{{
+# query_param_test_expect_facet_method {{{
 query_param_test_expect_facet_method <- function(method, value = "CMIP6") {
     store <- QueryParamStore$new()
     expect_identical(store[[method]](value), store)
@@ -26,6 +29,7 @@ query_param_test_expect_facet_method <- function(method, value = "CMIP6") {
     expect_null(cleared[[method]]())
 }
 # }}}
+# }}}
 # QueryParamFacet() {{{
 test_that("QueryParamFacet()", {
     facet <- QueryParamFacet(c("CMIP6", "CMIP5"))
@@ -35,7 +39,10 @@ test_that("QueryParamFacet()", {
         list(value = c("CMIP6", "CMIP5"), negate = FALSE, encoded = FALSE)
     )
     expect_equal(render(facet, "project"), "project=CMIP6,CMIP5")
-    expect_equal(render(facet, "project", space = TRUE), "project = CMIP6, CMIP5")
+    expect_equal(
+        render(facet, "project", space = TRUE),
+        "project = CMIP6, CMIP5"
+    )
 
     facet_negate <- QueryParamFacet(c("100km", "100 km"), negate = TRUE)
     expect_equal(
@@ -84,11 +91,20 @@ test_that("QueryParamCtrl()", {
         "format=application%2Fsolr%2Bjson"
     )
     expect_equal(
-        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format", encode = FALSE),
+        render(
+            QueryParamCtrl(QUERY_PARAM__FORMAT_JSON),
+            "format",
+            encode = FALSE
+        ),
         "format=application/solr+json"
     )
     expect_equal(
-        render(QueryParamCtrl(QUERY_PARAM__FORMAT_JSON), "format", encode = FALSE, space = TRUE),
+        render(
+            QueryParamCtrl(QUERY_PARAM__FORMAT_JSON),
+            "format",
+            encode = FALSE,
+            space = TRUE
+        ),
         "format = application/solr+json"
     )
 })
@@ -101,7 +117,10 @@ test_that("QueryParamDate()", {
         S7::props(date),
         list(value = solr_date("[2017-02-03T05:06:07Z+2MONTHS TO *]"))
     )
-    expect_equal(render(date, "datetime_start"), "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]")
+    expect_equal(
+        render(date, "datetime_start"),
+        "datetime_start:[2017-02-03T05:06:07Z+2MONTHS TO *]"
+    )
     expect_equal(
         render(date, "datetime_start", space = TRUE),
         "datetime_start: [2017-02-03T05:06:07Z+2MONTHS TO *]"
@@ -211,7 +230,10 @@ test_that("QueryParamStore$shards()", {
     expect_s7_class(store$shards(), QueryParamFacet)
     expect_identical(store$shards()@value, "node")
     expect_false(store$shards()@negate)
-    expect_error(QueryParamStore$new()$distrib(FALSE)$shards("node"), "distributed queries")
+    expect_error(
+        QueryParamStore$new()$distrib(FALSE)$shards("node"),
+        "distributed queries"
+    )
 })
 # }}}
 # QueryParamStore$replica() {{{
@@ -236,7 +258,10 @@ test_that("QueryParamStore$latest()", {
 # QueryParamStore$type() {{{
 test_that("QueryParamStore$type()", {
     expect_identical(QueryParamStore$new()$type("File")$type()@value, "File")
-    expect_identical(QueryParamStore$new()$type("Aggregation")$type()@value, "Aggregation")
+    expect_identical(
+        QueryParamStore$new()$type("Aggregation")$type()@value,
+        "Aggregation"
+    )
 })
 # }}}
 # QueryParamStore$limit() {{{
@@ -320,7 +345,10 @@ test_that("QueryParamStore$params() accepts raw REST and predefined parameters",
         ),
         NA
     )
-    expect_setequal(names(raw_store$params()), c("bbox", "start", "end", "from", "to"))
+    expect_setequal(
+        names(raw_store$params()),
+        c("bbox", "start", "end", "from", "to")
+    )
 
     multi_params <- QueryParamStore$new()$params(
         project = "CMIP6",
@@ -330,23 +358,38 @@ test_that("QueryParamStore$params() accepts raw REST and predefined parameters",
     )
     expect_identical(multi_params$project()@value, "CMIP6")
     expect_true(multi_params$activity_id()@negate)
-    expect_identical(multi_params$activity_id()@value, c("CFMIP", "ScenarioMIP"))
+    expect_identical(
+        multi_params$activity_id()@value,
+        c("CFMIP", "ScenarioMIP")
+    )
     expect_identical(multi_params$params()$table_id@value, "Amon")
     expect_true(multi_params$params()$realm@negate)
     expect_identical(multi_params$params()$realm@value, c("atmos", "ocean"))
 
-    expect_identical(QueryParamStore$new()$params(type = "File")$type()@value, "File")
-    expect_error(QueryParamStore$new()$params(format = "application/xml"), "Only JSON")
+    expect_identical(
+        QueryParamStore$new()$params(type = "File")$type()@value,
+        "File"
+    )
+    expect_error(
+        QueryParamStore$new()$params(format = "application/xml"),
+        "Only JSON"
+    )
 })
 
 test_that("QueryParamStore$params() validates duplicate and reserved parameters", {
     repeated_vals <- c("Amon", "Omon")
     expect_error(
-        QueryParamStore$new()$params(table_id = repeated_vals[[1]], table_id = repeated_vals[[2]]),
+        QueryParamStore$new()$params(
+            table_id = repeated_vals[[1]],
+            table_id = repeated_vals[[2]]
+        ),
         "unique"
     )
 
-    cleared_params <- QueryParamStore$new()$params(table_id = "Amon", realm = "atmos")
+    cleared_params <- QueryParamStore$new()$params(
+        table_id = "Amon",
+        realm = "atmos"
+    )
     expect_named(cleared_params$params(), c("table_id", "realm"))
     expect_identical(cleared_params$params(NULL)$params(), list())
     expect_identical(QueryParamStore$new()$params(NULL)$params(), list())
@@ -363,7 +406,10 @@ test_that("QueryParamStore$params() validates duplicate and reserved parameters"
 # }}}
 # QueryParamStore$datetime_range() {{{
 test_that("QueryParamStore$datetime_range() stores structured datetime bounds", {
-    q <- QueryParamStore$new()$project("CMIP6")$datetime_range(start = "2017", stop = "2018")
+    q <- QueryParamStore$new()$project("CMIP6")$datetime_range(
+        start = "2017",
+        stop = "2018"
+    )
     expect_s3_class(q$project(), "S7_object")
     expect_identical(q$project()@value, "CMIP6")
 
@@ -408,14 +454,19 @@ test_that("QueryParamStore$timestamp_range() stores structured timestamp bounds"
 })
 
 test_that("QueryParamStore$timestamp_range() takes precedence over raw REST keywords", {
-    timestamp_helper_first <- QueryParamStore$new()$timestamp_range(from = "2020")
+    timestamp_helper_first <- QueryParamStore$new()$timestamp_range(
+        from = "2020"
+    )
     expect_warning(
         timestamp_helper_first$params(from = "2019", to = "2021"),
         "structured helper .* takes precedence over raw REST keyword"
     )
     expect_length(timestamp_helper_first$params(), 0L)
 
-    timestamp_raw_first <- QueryParamStore$new()$params(from = "2019", to = "2021")
+    timestamp_raw_first <- QueryParamStore$new()$params(
+        from = "2019",
+        to = "2021"
+    )
     expect_warning(
         timestamp_raw_first$timestamp_range(to = "2020"),
         "structured helper .* takes precedence over raw REST keyword"
@@ -458,8 +509,14 @@ test_that("QueryParamStore$render()", {
 test_that("QueryParamStore$state()", {
     q <- query_param_test_complex_store()
 
-    subset_state <- q$state(name = c("activity_id", "version_max", "table_id", "limit"), null = TRUE)
-    expect_named(subset_state, c("activity_id", "version_max", "table_id", "limit"))
+    subset_state <- q$state(
+        name = c("activity_id", "version_max", "table_id", "limit"),
+        null = TRUE
+    )
+    expect_named(
+        subset_state,
+        c("activity_id", "version_max", "table_id", "limit")
+    )
 
     q_fields <- names(q$state())[query_param__field(names(q$state()))]
     expect_setequal(
@@ -510,7 +567,12 @@ test_that("QueryParamStore$restore()", {
     expect_s3_class(restored$datetime_range()$start, "S7_object")
     expect_s3_class(restored$version_range()$max, "S7_object")
     expect_identical(restored$render(), q$render())
-    expect_error(QueryParamStore$new()$restore(list(facet = list(project = serialized$project))), "Bucketed")
+    expect_error(
+        QueryParamStore$new()$restore(list(
+            facet = list(project = serialized$project)
+        )),
+        "Bucketed"
+    )
 
     serialized_all <- q$serialize(null = TRUE)
     restored_all <- QueryParamStore$new()$restore(serialized_all)
@@ -520,8 +582,15 @@ test_that("QueryParamStore$restore()", {
 # QueryParamStore$print() {{{
 test_that("QueryParamStore$print()", {
     display_store <- QueryParamStore$new()$params(table_id = c("A mon", "B+C"))
-    store_print <- paste(capture.output(display_store$print(), type = "message"), collapse = "\n")
-    expect_true(grepl("format = application/solr+json", store_print, fixed = TRUE))
+    store_print <- paste(
+        capture.output(display_store$print(), type = "message"),
+        collapse = "\n"
+    )
+    expect_true(grepl(
+        "format = application/solr+json",
+        store_print,
+        fixed = TRUE
+    ))
     expect_true(grepl("table_id = A mon, B+C", store_print, fixed = TRUE))
     expect_false(grepl("application%2Fsolr%2Bjson", store_print, fixed = TRUE))
     expect_false(grepl("A%20mon", store_print, fixed = TRUE))
@@ -538,7 +607,10 @@ test_that("query_param__as() / query_param__value() / query_param__negate()", {
     expect_identical(query_param__value(param), LETTERS[1:3])
     expect_true(query_param__negate(param))
 
-    query_param <- expect_s3_class(query_param__as("datetime_start", "2017"), "S7_object")
+    query_param <- expect_s3_class(
+        query_param__as("datetime_start", "2017"),
+        "S7_object"
+    )
     expect_true(S7::S7_inherits(query_param, QueryParamDate))
     expect_true(is.solr_date(query_param__value(query_param)))
 })
@@ -578,7 +650,9 @@ test_that("query_param__names() / query_param__field()", {
     )
 
     expect_warning(
-        role_store <- QueryParamStore$new()$activity_id("CMIP")$fields("source_id")$facets("source_id")$shards(
+        role_store <- QueryParamStore$new()$activity_id("CMIP")$fields(
+            "source_id"
+        )$facets("source_id")$shards(
             "node"
         )$params(
             table_id = "Amon",
@@ -611,24 +685,67 @@ test_that("query_param__as_store()", {
 # }}}
 # query_param__render() {{{
 test_that("query_param__render()", {
-    expect_identical(query_param__render(query_param__as("table_id", "B+C"), "table_id", encode = FALSE), "table_id=B+C")
-    expect_identical(query_param__render(query_param__as("x", list(value = TRUE, negate = TRUE)), "x"), "x=false")
-    expect_identical(query_param__render(query_param__as("x", list(value = 1.0, negate = TRUE)), "x"), "x!=1")
     expect_identical(
-        query_param__render(query_param__as("x", list(value = "solr+json", negate = TRUE)), "x"),
+        query_param__render(
+            query_param__as("table_id", "B+C"),
+            "table_id",
+            encode = FALSE
+        ),
+        "table_id=B+C"
+    )
+    expect_identical(
+        query_param__render(
+            query_param__as("x", list(value = TRUE, negate = TRUE)),
+            "x"
+        ),
+        "x=false"
+    )
+    expect_identical(
+        query_param__render(
+            query_param__as("x", list(value = 1.0, negate = TRUE)),
+            "x"
+        ),
+        "x!=1"
+    )
+    expect_identical(
+        query_param__render(
+            query_param__as("x", list(value = "solr+json", negate = TRUE)),
+            "x"
+        ),
         "x!=solr%2Bjson"
     )
 
-    expect_identical(query_param__render(query_param__as("x", TRUE), "x", space = TRUE), "x = true")
-    expect_identical(query_param__render(query_param__as("x", 1.0), "x", space = TRUE), "x = 1")
-    expect_identical(query_param__render(query_param__as("x", "solr+json"), "x", space = TRUE), "x = solr%2Bjson")
+    expect_identical(
+        query_param__render(query_param__as("x", TRUE), "x", space = TRUE),
+        "x = true"
+    )
+    expect_identical(
+        query_param__render(query_param__as("x", 1.0), "x", space = TRUE),
+        "x = 1"
+    )
+    expect_identical(
+        query_param__render(
+            query_param__as("x", "solr+json"),
+            "x",
+            space = TRUE
+        ),
+        "x = solr%2Bjson"
+    )
 })
 # }}}
 # query_param__display() / query_param__print() {{{
 test_that("query_param__display() / query_param__print()", {
     display_store <- QueryParamStore$new()$params(table_id = c("A mon", "B+C"))
-    expect_true(any(grepl("format=application%2Fsolr%2Bjson", display_store$render(), fixed = TRUE)))
-    expect_true(any(grepl("table_id=A%20mon,B%2BC", display_store$render(), fixed = TRUE)))
+    expect_true(any(grepl(
+        "format=application%2Fsolr%2Bjson",
+        display_store$render(),
+        fixed = TRUE
+    )))
+    expect_true(any(grepl(
+        "table_id=A%20mon,B%2BC",
+        display_store$render(),
+        fixed = TRUE
+    )))
     expect_equal(
         query_param__display(display_store)[c("format", "table_id")],
         c(
@@ -637,9 +754,18 @@ test_that("query_param__display() / query_param__print()", {
         )
     )
 
-    helper_print <- paste(capture.output(query_param__print(display_store), type = "message"), collapse = "\n")
-    expect_true(grepl("format = application/solr+json", helper_print, fixed = TRUE))
+    helper_print <- paste(
+        capture.output(query_param__print(display_store), type = "message"),
+        collapse = "\n"
+    )
+    expect_true(grepl(
+        "format = application/solr+json",
+        helper_print,
+        fixed = TRUE
+    ))
     expect_true(grepl("table_id = A mon, B+C", helper_print, fixed = TRUE))
     expect_false(grepl("application%2Fsolr%2Bjson", helper_print, fixed = TRUE))
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -3,6 +3,7 @@ NULL
 
 # Describe each child's source demand before assigning physical files. Separate
 # consumer rows retain site and method ownership even when source data overlap.
+# shift_batch_plan__consumers {{{
 shift_batch_plan__consumers <- function(children, manifest) {
     if (!length(children)) {
         return(data.table::data.table())
@@ -42,6 +43,7 @@ shift_batch_plan__consumers <- function(children, manifest) {
                 experiments = reference@experiment
             )
         }
+        # lapply callback {{{
         demands <- lapply(roles, function(role) {
             # Child extraction uses one continuous time window for all named
             # periods. Match that exact window so the shared read can populate
@@ -82,6 +84,7 @@ shift_batch_plan__consumers <- function(children, manifest) {
             )
             grid
         })
+        # }}}
         demand <- data.table::rbindlist(demands, idcol = "role")
         inputs <- meta$shared_inputs
         if (!is.null(inputs)) {
@@ -92,6 +95,7 @@ shift_batch_plan__consumers <- function(children, manifest) {
             partitions <- data.table::rbindlist(
                 lapply(
                     c("future", "reference"),
+                    # lapply callback {{{
                     function(role) {
                         if (
                             identical(role, "reference") &&
@@ -114,6 +118,7 @@ shift_batch_plan__consumers <- function(children, manifest) {
                         )
                         rows
                     }
+                    # }}}
                 ),
                 use.names = TRUE
             )
@@ -169,10 +174,12 @@ shift_batch_plan__consumers <- function(children, manifest) {
     data.table::set(demands, j = "demand_id", value = seq_len(nrow(demands)))
     demands
 }
+# }}}
 
 # Join source demands to cached File metadata once. The file table owns shared
 # acquisition intervals; the link table keeps separate child consumers. Actual
 # native time indices and spatial reads are resolved by the following stage.
+# shift_batch_plan__shared_plan {{{
 shift_batch_plan__shared_plan <- function(catalog, consumers) {
     empty <- list(
         acquisitions = data.table::data.table(),
@@ -241,6 +248,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
     # Different versions or unverified endpoints must never share a task.
     physical_id <- vapply(
         seq_len(nrow(catalog)),
+        # vapply callback {{{
         function(index) {
             row <- catalog[index]
             source <- if (
@@ -262,6 +270,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
                 row$size[[1L]]
             )
         },
+        # }}}
         character(1L)
     )
     data.table::set(catalog, j = "physical_file_id", value = physical_id)
@@ -374,6 +383,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
         j = "acquisition_id",
         value = vapply(
             seq_len(nrow(acquisitions)),
+            # vapply callback {{{
             function(index) {
                 store__hash(
                     acquisitions$physical_file_id[[index]],
@@ -381,6 +391,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
                     as.numeric(acquisitions$time_stop[[index]])
                 )
             },
+            # }}}
             character(1L)
         )
     )
@@ -419,9 +430,11 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
         unmatched = unmatched
     )
 }
+# }}}
 
 # Reuse the File records already cached by model discovery. This planning read
 # performs no remote query and leaves each child's execution store untouched.
+# shift_batch_plan__plan_from_discovery {{{
 shift_batch_plan__plan_from_discovery <- function(children, manifest, path) {
     consumers <- shift_batch_plan__consumers(children, manifest)
     if (!nrow(consumers)) {
@@ -450,15 +463,18 @@ shift_batch_plan__plan_from_discovery <- function(children, manifest, path) {
     )
     shift_batch_plan__shared_plan(store$query(sql), consumers)
 }
+# }}}
 
 # Resolve one site-independent input selection per model/method and persist it
 # before shared reads begin. Dry-run discovery remains provisional; execution
 # pins the same immutable File snapshots for every linked child and resume.
+# shift_batch_plan__resolve_inputs {{{
 shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
     children <- batch@meta$children
     plans <- lapply(children, shift_batch_plan__child_plan)
     pending <- which(vapply(
         seq_along(children),
+        # vapply callback {{{
         function(index) {
             status <- shift_status(children[[index]], refresh = FALSE)
             input <- plans[[index]]@meta$shared_inputs
@@ -466,6 +482,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
                 c("completed", "queued", "running", "stopping", "waiting") &&
                 (is.null(input) || !is.null(input$failure))
         },
+        # }}}
         logical(1L)
     ))
     if (!length(pending)) {
@@ -473,6 +490,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
     }
     groups <- vapply(
         plans[pending],
+        # vapply callback {{{
         function(child) {
             meta <- child@meta
             store__hash(
@@ -488,6 +506,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
                 meta$control@allow_partial
             )
         },
+        # }}}
         character(1L)
     )
     for (positions in split(pending, groups)) {
@@ -527,6 +546,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
         # can write to them. Content hashes make interrupted copies detectable.
         snapshots <- lapply(
             list(resolved$files, resolved$reference_files),
+            # lapply callback {{{
             function(files) {
                 if (is.null(files)) {
                     return(NULL)
@@ -561,6 +581,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
                 ref$sha256 <- hash
                 ref
             }
+            # }}}
         )
         inputs <- list(
             store = child@store_path,
@@ -584,26 +605,34 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
         }
     }
     batch@meta$children <- children
+    # lapply callback {{{
     inputs <- lapply(plans, function(child) child@meta$shared_inputs)
+    # }}}
     inputs <- Filter(
+        # Filter callback {{{
         function(input) !is.null(input) && is.null(input$failure),
+        # }}}
         inputs
     )
     inputs <- inputs[
         !duplicated(vapply(
             inputs,
+            # vapply callback {{{
             function(value) {
                 value$input_id
             },
+            # }}}
             character(1L)
         ))
     ]
+    # lapply callback {{{
     catalogs <- lapply(inputs, function(input) {
         store <- shift_store(input$store)
         on.exit(store$close(), add = TRUE)
         rows <- data.table::rbindlist(
             lapply(
                 c("files", "reference_files"),
+                # lapply callback {{{
                 function(role) {
                     ref <- input[[role]]
                     if (is.null(ref)) {
@@ -611,12 +640,14 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
                     }
                     shift_inspect__file_catalog(store, ref$ids$query_id)
                 }
+                # }}}
             ),
             use.names = TRUE
         )
         data.table::set(rows, j = "input_id", value = input$input_id)
         rows
     })
+    # }}}
     batch@meta$shared_plan <- shift_batch_plan__shared_plan(
         data.table::rbindlist(catalogs, use.names = TRUE),
         shift_batch_plan__consumers(plans, batch@meta$manifest)
@@ -624,9 +655,11 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
     shift_batch__receipt_write(batch)
     batch
 }
+# }}}
 
 # Reconstruct run intent while retaining a batch's explicitly retried selection.
 # Old failed run specs remain evidence; the batch receipt owns the new snapshot.
+# shift_batch_plan__child_plan {{{
 shift_batch_plan__child_plan <- function(child) {
     if (S7::S7_inherits(child, ShiftPlan)) {
         return(child)
@@ -643,3 +676,6 @@ shift_batch_plan__child_plan <- function(child) {
     }
     plan
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

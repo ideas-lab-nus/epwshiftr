@@ -21,6 +21,7 @@ WEATHER_TRANSFORM_REGISTRY_STATE <- new.env(parent = emptyenv())
 
 # WeatherTransformSpec is the reusable public method boundary. It deliberately
 # contains no site, climate, reference period, model identity, or output path.
+# WeatherTransformSpec {{{
 WeatherTransformSpec <- S7::new_class(
     "WeatherTransformSpec",
     properties = list(
@@ -65,6 +66,7 @@ WeatherTransformSpec <- S7::new_class(
         ),
         status = S7::new_property(S7::class_character)
     ),
+    # validator {{{
     validator = function(self) {
         if (
             length(self@scale) != 1L ||
@@ -297,10 +299,13 @@ WeatherTransformSpec <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Declare every public selection tuple in one place. Internal recipe keys stay
 # stable while concise method keys and scientific scale remain user-facing.
+# transform__records {{{
 transform__records <- function() {
     reconstruction_labels <- c(
         original_morphing_field_equations = "Original morphing field equations",
@@ -465,22 +470,26 @@ transform__records <- function() {
     )
     # Attach user-facing labels in the same registry that owns the selectable
     # reconstruction keys, so printing never exposes implementation-style IDs.
+    # lapply callback {{{
     records <- lapply(records, function(record) {
         keys <- record$reconstructions
         labels <- unname(reconstruction_labels[keys])
         record$reconstruction_labels <- stats::setNames(labels, keys)
         record
     })
+    # }}}
     if (!isTRUE(WEATHER_TRANSFORM_REGISTRY_STATE$validated)) {
         transform__validate_records(records)
         WEATHER_TRANSFORM_REGISTRY_STATE$validated <- TRUE
     }
     records
 }
+# }}}
 
 # Validate the complete public-to-internal mapping as one graph before any
 # constructor or discovery call uses it. This catches drift between method,
 # recipe, backend, component, and input-role registries at package runtime.
+# transform__validate_records {{{
 transform__validate_records <- function(records) {
     checkmate::assert_list(records, min.len = 1L)
     required_fields <- c(
@@ -649,9 +658,11 @@ transform__validate_records <- function(records) {
                 "Method and signal component identity disagree for {.val {recipe_name}}."
             )
         }
+        # lapply callback {{{
         components <- lapply(WEATHER_COMPONENT_STAGES, function(stage) {
             component__get(stage, recipe@components[[stage]])
         })
+        # }}}
         for (component_index in seq_len(length(components) - 1L)) {
             component__assert_compatible(
                 components[[component_index]],
@@ -661,9 +672,11 @@ transform__validate_records <- function(records) {
     }
     invisible(TRUE)
 }
+# }}}
 
 # Resolve one public scale/method/reconstruction tuple and reject fixed-method
 # reconstruction arguments before constructing any internal recipe.
+# transform__record {{{
 transform__record <- function(scale, method, reconstruction = NULL) {
     checkmate::assert_choice(scale, WEATHER_TRANSFORM_SCALES)
     checkmate::assert_string(method, min.chars = 1L)
@@ -675,16 +688,20 @@ transform__record <- function(scale, method, reconstruction = NULL) {
     method <- tolower(method)
     registry <- transform__records()
     records <- Filter(
+        # Filter callback {{{
         function(record) {
             identical(record$scale, scale) &&
                 identical(record$method, method)
         },
+        # }}}
         registry
     )
     if (!length(records)) {
         available <- unique(vapply(
             Filter(
+                # Filter callback {{{
                 function(record) identical(record$scale, scale),
+                # }}}
                 registry
             ),
             `[[`,
@@ -721,9 +738,11 @@ transform__record <- function(scale, method, reconstruction = NULL) {
     )
     record
 }
+# }}}
 
 # Resolve complete signal settings through the selected component's own
 # validator so construction and execution cannot apply different contracts.
+# transform__validated_signal_settings {{{
 transform__validated_signal_settings <- function(
     method,
     variables,
@@ -745,6 +764,7 @@ transform__validated_signal_settings <- function(
         )
     }
 
+    # lapply callback {{{
     resolved <- lapply(variables, function(variable) {
         defaults <- method@parameters[[variable]]
         if (is.null(defaults)) {
@@ -763,11 +783,14 @@ transform__validated_signal_settings <- function(
         complete <- utils::modifyList(defaults, override, keep.null = TRUE)
         validator(stats::setNames(list(complete), variable))
     })
+    # }}}
     stats::setNames(resolved, variables)
 }
+# }}}
 
 # Split adapter controls from the selected signal method's scientific settings
 # and return the complete validated recipe option envelope.
+# transform__signal_options {{{
 transform__signal_options <- function(recipe_spec, method, options) {
     if (startsWith(recipe_spec@backend, "daily_adjustment_")) {
         adapter_defaults <- daily_adjustment__options(NULL)
@@ -815,9 +838,11 @@ transform__signal_options <- function(recipe_spec, method, options) {
     )
     hourly_kqdm__options(list(signal_overrides = signal_settings))
 }
+# }}}
 
 # Convert public scientific options to the existing canonical recipe option
 # contract, retaining the current numerical defaults and validators.
+# transform__recipe_options {{{
 transform__recipe_options <- function(record, options) {
     checkmate::assert_list(options, names = "unique")
     recipe_spec <- recipe__get(record$recipe)
@@ -837,26 +862,34 @@ transform__recipe_options <- function(record, options) {
     }
     utils::modifyList(defaults, options)
 }
+# }}}
 
 # Expand canonical variable alternatives into complete source-variable sets.
 # Each returned vector is one valid AND-set and the list retains OR semantics.
+# transform__variable_sets {{{
 transform__variable_sets <- function(requirements) {
     variable_sets <- list(character())
     for (alternatives in unname(requirements)) {
         variable_sets <- unlist(
+            # lapply callback {{{
             lapply(variable_sets, function(current) {
+                # lapply callback {{{
                 lapply(alternatives, function(alternative) {
                     unique(c(current, as.character(alternative)))
                 })
+                # }}}
             }),
+            # }}}
             recursive = FALSE
         )
     }
     unname(variable_sets)
 }
+# }}}
 
 # Rebuild one input requirement while preserving every descriptor except the
 # option-dependent variable alternatives supplied by the resolved recipe.
+# transform__with_variable_sets {{{
 transform__with_variable_sets <- function(requirement, variable_sets) {
     component__input_requirement(
         role = requirement@role,
@@ -867,9 +900,11 @@ transform__with_variable_sets <- function(requirement, variable_sets) {
         variable_sets = variable_sets
     )
 }
+# }}}
 
 # Resolve option-dependent original-morphing variables after recipe construction.
 # Other recipes already declare fixed role contracts in their canonical specs.
+# transform__input_contracts {{{
 transform__input_contracts <- function(recipe_spec, recipe) {
     required_inputs <- recipe_spec@required_inputs
     optional_inputs <- recipe_spec@optional_inputs
@@ -904,13 +939,16 @@ transform__input_contracts <- function(recipe_spec, recipe) {
         optional_inputs = optional_inputs
     )
 }
+# }}}
 
 # Return the source-frequency contract by semantic role without collapsing
 # mixed-frequency variables into an ambiguous scalar.
+# transform__source_frequencies {{{
 transform__source_frequencies <- function(requirements) {
     requirements <- requirements[
         setdiff(names(requirements), "weather_template")
     ]
+    # lapply callback {{{
     lapply(requirements, function(requirement) {
         if (length(requirement@variable_frequencies)) {
             required_variables <- unique(unlist(
@@ -927,16 +965,20 @@ transform__source_frequencies <- function(requirements) {
         }
         requirement@frequencies
     })
+    # }}}
 }
+# }}}
 
 # Surface model variables queried opportunistically by a recipe even though
 # no method contract requires them for a successful transformation.
+# transform__optional_variables {{{
 transform__optional_variables <- function(recipe, inputs) {
     all_variables <- morpher__input_variables(recipe)
     model_roles <- intersect(
         c("model_historical", "model_future"),
         c(names(inputs$required_inputs), names(inputs$optional_inputs))
     )
+    # lapply callback {{{
     values <- lapply(model_roles, function(role) {
         requirement <- shift_stage__coalesce(
             inputs$required_inputs[[role]],
@@ -948,12 +990,15 @@ transform__optional_variables <- function(recipe, inputs) {
         ))
         setdiff(all_variables, required)
     })
+    # }}}
     values <- stats::setNames(values, model_roles)
     Filter(length, values)
 }
+# }}}
 
 # Resolve the source frequency of every optional model variable from the
 # role-specific mapping first and the recipe-wide frequency contract second.
+# transform__optional_variable_frequencies {{{
 transform__optional_variable_frequencies <- function(
     recipe,
     inputs,
@@ -963,12 +1008,14 @@ transform__optional_variable_frequencies <- function(
         return(list())
     }
     recipe_frequencies <- morpher__recipe_required_frequency(recipe)
+    # lapply callback {{{
     values <- lapply(names(optional_variables), function(role) {
         requirement <- shift_stage__coalesce(
             inputs$required_inputs[[role]],
             inputs$optional_inputs[[role]]
         )
         variables <- optional_variables[[role]]
+        # lapply callback {{{
         values <- lapply(variables, function(variable) {
             mapped <- requirement@variable_frequencies[[variable]]
             if (!is.null(mapped)) {
@@ -982,13 +1029,17 @@ transform__optional_variable_frequencies <- function(
             }
             as.character(recipe_frequencies)
         })
+        # }}}
         stats::setNames(values, variables)
     })
+    # }}}
     stats::setNames(values, names(optional_variables))
 }
+# }}}
 
 # Build the public immutable object from one already validated canonical recipe
 # so new construction and persisted-plan restoration share the same boundary.
+# transform__from_recipe {{{
 transform__from_recipe <- function(record, recipe) {
     recipe_spec <- recipe__get(
         recipe$recipe_spec,
@@ -1042,10 +1093,12 @@ transform__from_recipe <- function(record, recipe) {
         status = recipe_spec@status
     )
 }
+# }}}
 
 # Resolve an existing stored recipe to its unique public tuple. This supports
 # store-backed output and retry operations without exposing recipe identifiers
 # in current user-facing commands.
+# transform__from_recipe_object {{{
 transform__from_recipe_object <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort(
@@ -1081,8 +1134,10 @@ transform__from_recipe_object <- function(recipe) {
     }
     transform__from_recipe(matches[[1L]], recipe)
 }
+# }}}
 
 # Construct one validated reusable transform from the public tuple and options.
+# transform__new {{{
 transform__new <- function(
     scale,
     method,
@@ -1097,9 +1152,11 @@ transform__new <- function(
     )
     transform__from_recipe(record, recipe)
 }
+# }}}
 
 # Restore the internal executable recipe without exposing its backend, profile,
 # policy, or component identifiers through the public constructor surface.
+# transform__recipe {{{
 transform__recipe <- function(transform) {
     if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
         cli::cli_abort(
@@ -1112,8 +1169,10 @@ transform__recipe <- function(transform) {
         options = transform@options
     )
 }
+# }}}
 
 # Convert one role requirement to the data-only form persisted with a transform.
+# transform__input_requirement_value {{{
 transform__input_requirement_value <- function(requirement) {
     list(
         role = requirement@role,
@@ -1124,15 +1183,19 @@ transform__input_requirement_value <- function(requirement) {
         variable_sets = requirement@variable_sets
     )
 }
+# }}}
 
 # Convert role contracts into data-only records that remain readable in a
 # persisted plan and comparable after a JSON round trip.
+# transform__input_contract_value {{{
 transform__input_contract_value <- function(contract) {
     lapply(contract, transform__input_requirement_value)
 }
+# }}}
 
 # Record the scientific catalog identity needed to detect registry drift when
 # a stored workflow is resumed in a later package session.
+# transform__persistence_snapshot {{{
 transform__persistence_snapshot <- function(transform) {
     recipe <- recipe__get(
         transform@recipe,
@@ -1154,40 +1217,51 @@ transform__persistence_snapshot <- function(transform) {
         )
     )
 }
+# }}}
 
 # Normalize alternative variable sets after jsonlite has simplified one-row
 # arrays to vectors or equal-width alternatives to matrices.
+# transform__variable_sets_from_value {{{
 transform__variable_sets_from_value <- function(variable_sets) {
     if (is.null(variable_sets) || !length(variable_sets)) {
         return(list())
     }
     if (is.matrix(variable_sets)) {
+        # lapply callback {{{
         return(lapply(seq_len(nrow(variable_sets)), function(index) {
             as.character(variable_sets[index, , drop = TRUE])
         }))
+        # }}}
     }
     if (is.character(variable_sets)) {
         return(list(as.character(variable_sets)))
     }
+    # lapply callback {{{
     lapply(variable_sets, function(variable_set) {
         as.character(unlist(variable_set, use.names = FALSE))
     })
+    # }}}
 }
+# }}}
 
 # Normalize a persisted role contract without weakening any scientific field
 # before comparing it with the current registry definition.
+# transform__input_contract_from_value {{{
 transform__input_contract_from_value <- function(contract) {
     if (is.null(contract) || !length(contract)) {
         return(list())
     }
+    # lapply callback {{{
     lapply(contract, function(requirement) {
         frequencies <- requirement$variable_frequencies
         if (is.atomic(frequencies) && length(frequencies)) {
             frequencies <- as.list(frequencies)
         }
+        # lapply callback {{{
         frequencies <- lapply(frequencies, function(value) {
             as.character(unlist(value, use.names = FALSE))
         })
+        # }}}
         list(
             role = as.character(requirement$role),
             representations = as.character(unlist(
@@ -1208,10 +1282,13 @@ transform__input_contract_from_value <- function(contract) {
             )
         )
     })
+    # }}}
 }
+# }}}
 
 # Canonicalize the persisted scientific snapshot after JSON simplification so
 # semantic equality does not depend on scalar-versus-one-element-list shapes.
+# transform__snapshot_from_value {{{
 transform__snapshot_from_value <- function(snapshot) {
     provenance <- snapshot$provenance
     list(
@@ -1232,9 +1309,11 @@ transform__snapshot_from_value <- function(snapshot) {
         )
     )
 }
+# }}}
 
 # Encode a transform snapshot canonically so list simplification during JSON
 # restoration cannot disguise a changed input or provenance contract.
+# transform__snapshot_json {{{
 transform__snapshot_json <- function(snapshot) {
     as.character(jsonlite::toJSON(
         transform__snapshot_from_value(snapshot),
@@ -1243,9 +1322,11 @@ transform__snapshot_json <- function(snapshot) {
         na = "null"
     ))
 }
+# }}}
 
 # Encode non-finite numeric settings explicitly because workflow JSON maps
 # infinities to null and would otherwise corrupt method bounds during resume.
+# transform__options_to_spec {{{
 transform__options_to_spec <- function(value) {
     if (is.list(value)) {
         return(lapply(value, transform__options_to_spec))
@@ -1254,6 +1335,7 @@ transform__options_to_spec <- function(value) {
         return(value)
     }
     encoded <- as.list(value)
+    # lapply callback {{{
     encoded <- lapply(encoded, function(element) {
         if (is.infinite(element) && element > 0) {
             return("__epwshiftr_positive_infinity__")
@@ -1263,11 +1345,14 @@ transform__options_to_spec <- function(value) {
         }
         element
     })
+    # }}}
     unlist(encoded, use.names = FALSE)
 }
+# }}}
 
 # Decode transform-specific non-finite sentinels before the canonical recipe
 # validates and normalizes restored scientific settings.
+# transform__options_from_spec {{{
 transform__options_from_spec <- function(value) {
     if (is.list(value)) {
         return(lapply(value, transform__options_from_spec))
@@ -1285,9 +1370,11 @@ transform__options_from_spec <- function(value) {
     decoded[negative] <- -Inf
     decoded
 }
+# }}}
 
 # Serialize only reusable transform intent; execution data and internal recipe
 # implementation details remain separate plan records.
+# transform__spec_value {{{
 transform__spec_value <- function(transform) {
     if (!S7::S7_inherits(transform, WeatherTransformSpec)) {
         cli::cli_abort(
@@ -1306,9 +1393,11 @@ transform__spec_value <- function(transform) {
         transform__persistence_snapshot(transform)
     )
 }
+# }}}
 
 # Restore a persisted transform only when its public tuple still resolves to
 # the recorded canonical recipe and version.
+# transform__from_spec {{{
 transform__from_spec <- function(spec) {
     if (!is.list(spec)) {
         cli::cli_abort("Persisted weather transform specification is invalid.")
@@ -1384,9 +1473,11 @@ transform__from_spec <- function(spec) {
     }
     transform
 }
+# }}}
 
 # Test whether a transform declares one semantic role in its complete recipe
 # contract, including optional inputs where relevant.
+# transform__accepts_input {{{
 transform__accepts_input <- function(transform, role) {
     role %in%
         c(
@@ -1394,15 +1485,19 @@ transform__accepts_input <- function(transform, role) {
             names(transform@optional_inputs)
         )
 }
+# }}}
 
 # Test whether execution must supply one semantic role before any catalog or
 # source-data access starts.
+# transform__requires_input {{{
 transform__requires_input <- function(transform, role) {
     role %in% names(transform@required_inputs)
 }
+# }}}
 
 # Validate execution-owned reference roles without allowing model output to be
 # substituted silently for observed weather.
+# transform__validate_execution_inputs {{{
 transform__validate_execution_inputs <- function(
     transform,
     reference = NULL,
@@ -1481,6 +1576,7 @@ transform__validate_execution_inputs <- function(
     }
     invisible(TRUE)
 }
+# }}}
 
 #' Configure a built-in future-weather transformation
 #'
@@ -1498,6 +1594,7 @@ transform__validate_execution_inputs <- function(
 #'
 #' @seealso [weather_transforms()], [shift_future_epw()]
 #' @export
+# monthly_transform {{{
 monthly_transform <- function(method, reconstruction = NULL, ...) {
     transform__new(
         "monthly",
@@ -1506,9 +1603,11 @@ monthly_transform <- function(method, reconstruction = NULL, ...) {
         options = list(...)
     )
 }
+# }}}
 
 #' @rdname monthly_transform
 #' @export
+# daily_transform {{{
 daily_transform <- function(method, reconstruction = NULL, ...) {
     transform__new(
         "daily",
@@ -1517,9 +1616,11 @@ daily_transform <- function(method, reconstruction = NULL, ...) {
         options = list(...)
     )
 }
+# }}}
 
 #' @rdname monthly_transform
 #' @export
+# hourly_transform {{{
 hourly_transform <- function(method, reconstruction = NULL, ...) {
     transform__new(
         "hourly",
@@ -1528,6 +1629,7 @@ hourly_transform <- function(method, reconstruction = NULL, ...) {
         options = list(...)
     )
 }
+# }}}
 
 #' List built-in future-weather transformations
 #'
@@ -1540,8 +1642,11 @@ hourly_transform <- function(method, reconstruction = NULL, ...) {
 #'
 #' @seealso [monthly_transform()]
 #' @export
+# weather_transforms {{{
 weather_transforms <- function() {
+    # lapply callback {{{
     rows <- lapply(transform__records(), function(record) {
+        # lapply callback {{{
         lapply(record$reconstructions, function(reconstruction) {
             selected <- transform__record(
                 record$scale,
@@ -1603,19 +1708,25 @@ weather_transforms <- function() {
                 status = transform@status
             )
         })
+        # }}}
     })
+    # }}}
     data.table::rbindlist(
         unlist(rows, recursive = FALSE),
         use.names = TRUE,
         fill = TRUE
     )[]
 }
+# }}}
 
 # Format one role's alternative variable sets without leaking internal recipe
 # or component identifiers into the public transform print method.
+# transform__format_variable_sets {{{
 transform__format_variable_sets <- function(requirements) {
     requirements <- Filter(
+        # Filter callback {{{
         function(requirement) length(requirement@variable_sets),
+        # }}}
         requirements
     )
     if (!length(requirements)) {
@@ -1623,29 +1734,36 @@ transform__format_variable_sets <- function(requirements) {
     }
     values <- vapply(
         names(requirements),
+        # vapply callback {{{
         function(role) {
             sets <- vapply(
                 requirements[[role]]@variable_sets,
+                # vapply callback {{{
                 function(variables) {
                     paste(variables, collapse = " + ")
                 },
+                # }}}
                 character(1L)
             )
             sprintf("%s: %s", role, paste(sets, collapse = " or "))
         },
+        # }}}
         character(1L)
     )
     paste(values, collapse = "; ")
 }
+# }}}
 
 # Format scalar and variable-specific frequencies by semantic input role so a
 # mixed-frequency transform remains fully inspectable at the console.
+# transform__format_source_frequencies {{{
 transform__format_source_frequencies <- function(source_frequencies) {
     if (!length(source_frequencies)) {
         return("none")
     }
     values <- vapply(
         names(source_frequencies),
+        # vapply callback {{{
         function(role) {
             frequency <- source_frequencies[[role]]
             if (
@@ -1659,9 +1777,11 @@ transform__format_source_frequencies <- function(source_frequencies) {
                         names(frequency),
                         vapply(
                             frequency,
+                            # vapply callback {{{
                             function(value) {
                                 paste(value, collapse = "/")
                             },
+                            # }}}
                             character(1L)
                         )
                     ),
@@ -1675,13 +1795,16 @@ transform__format_source_frequencies <- function(source_frequencies) {
             }
             sprintf("%s: %s", role, frequency)
         },
+        # }}}
         character(1L)
     )
     paste(values, collapse = "; ")
 }
+# }}}
 
 # Present the five distinct temporal concepts and the required input roles
 # without exposing internal backend, policy, profile, or component identifiers.
+# S7::method(print, WeatherTransformSpec) {{{
 S7::method(print, WeatherTransformSpec) <- function(x, ...) {
     esg__print_header("Weather Transform")
     esg__print_facts(list(
@@ -1709,6 +1832,7 @@ S7::method(print, WeatherTransformSpec) <- function(x, ...) {
             paste(
                 vapply(
                     names(x@optional_variables),
+                    # vapply callback {{{
                     function(role) {
                         sprintf(
                             "%s: %s",
@@ -1719,6 +1843,7 @@ S7::method(print, WeatherTransformSpec) <- function(x, ...) {
                             )
                         )
                     },
+                    # }}}
                     character(1L)
                 ),
                 collapse = "; "
@@ -1740,3 +1865,6 @@ S7::method(print, WeatherTransformSpec) <- function(x, ...) {
     ))
     invisible(x)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

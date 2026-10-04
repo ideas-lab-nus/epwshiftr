@@ -168,10 +168,12 @@ test_that("an identical interrupted workflow resumes its original run ID", {
 
     resumed_ids <- character()
     testthat::local_mocked_bindings(
+        # shift_job__resume_one {{{
         shift_job__resume_one = function(x, background, ui, execution = NULL) {
             resumed_ids <<- c(resumed_ids, x@ids$run_id)
             x
         },
+        # }}}
         .package = "epwshiftr"
     )
     resumed <- shift_run(plan, ui = shift_ui("none"))
@@ -183,3 +185,5 @@ test_that("an identical interrupted workflow resumes its original run ID", {
     runs <- morpher__private_store(reopened)$read_table("shift_run")
     expect_equal(nrow(runs), 1L)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

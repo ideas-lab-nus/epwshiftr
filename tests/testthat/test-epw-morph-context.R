@@ -32,3 +32,5 @@ test_that("morpher calendar columns prefer CF identity with legacy fallback", {
     expect_identical(legacy$month, 2L)
     expect_identical(legacy$day, 3L)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

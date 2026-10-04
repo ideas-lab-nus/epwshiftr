@@ -31,6 +31,7 @@ test_that("historical workflow queries preserve years without exact datetime bou
     # timestamps. A December 16 endpoint still covers the calendar year 2014.
     variables <- epw_morph_variables(plan@meta$recipe)
     reference_catalog <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable) {
             docs <- esgf_test__file_docs(
                 sprintf("historical_%s.nc", variable),
@@ -45,6 +46,7 @@ test_that("historical workflow queries preserve years without exact datetime bou
             docs$grid_label <- "gn"
             docs
         }),
+        # }}}
         fill = TRUE
     )
     candidates <- shift_resolve__cmip6_candidates(
@@ -135,6 +137,7 @@ test_that("workflow resolver resolves both File service paths", {
     resolver_calls <- 0L
     resolver_check <- NULL
     test_local_dependencies(list(
+        # query_result__resolve_file_services {{{
         query_result__resolve_file_services = function(
             value,
             index_node = NULL,
@@ -150,6 +153,7 @@ test_that("workflow resolver resolves both File service paths", {
                 )
             )
         }
+        # }}}
     ))
 
     resolved <- shift_resolve__resolve_file_services(files, "future")
@@ -294,8 +298,10 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
     catalog <- data.table::rbindlist(
         lapply(
             c("ssp245", "historical"),
+            # lapply callback {{{
             function(experiment) {
                 data.table::rbindlist(
+                    # lapply callback {{{
                     lapply(variables, function(variable) {
                         docs <- esgf_test__file_docs(
                             sprintf(
@@ -316,10 +322,12 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
                         docs$grid_label <- "gn"
                         docs
                     }),
+                    # }}}
                     use.names = TRUE,
                     fill = TRUE
                 )
             }
+            # }}}
         ),
         use.names = TRUE,
         fill = TRUE
@@ -381,8 +389,10 @@ test_that("resolver enforces variable-specific CMIP6 frequencies", {
 })
 
 test_that("resolver satisfies canonical hurs only from direct data or huss plus tas and ps", {
+    # make_catalog {{{
     make_catalog <- function(variables) {
         data.table::rbindlist(
+            # lapply callback {{{
             lapply(variables, function(variable) {
                 docs <- esgf_test__file_docs(
                     sprintf(
@@ -400,10 +410,13 @@ test_that("resolver satisfies canonical hurs only from direct data or huss plus 
                 docs$grid_label <- "gn"
                 docs
             }),
+            # }}}
             fill = TRUE
         )
     }
+    # }}}
     requirements <- list(hurs = list("hurs", c("huss", "tas", "ps")))
+    # candidates {{{
     candidates <- function(variables) {
         shift_resolve__cmip6_candidates(
             make_catalog(variables),
@@ -416,6 +429,7 @@ test_that("resolver satisfies canonical hurs only from direct data or huss plus 
             requirements = requirements
         )
     }
+    # }}}
 
     expect_true(candidates("hurs")$complete[[1L]])
     expect_true(candidates(c("huss", "tas", "ps"))$complete[[1L]])
@@ -752,8 +766,10 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     # Create two otherwise equivalent non-native grids so automatic preference
     # rules cannot choose one without user input.
     catalogs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(c("gr1", "gr2"), function(grid) {
             data.table::rbindlist(
+                # lapply callback {{{
                 lapply(variables, function(variable_id) {
                     docs <- esgf_test__file_docs(
                         sprintf("%s_%s.nc", variable_id, grid),
@@ -770,9 +786,11 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
                     )
                     docs
                 }),
+                # }}}
                 fill = TRUE
             )
         }),
+        # }}}
         fill = TRUE
     )
 
@@ -852,3 +870,5 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
         "No complete CMIP6 member/grid candidate"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

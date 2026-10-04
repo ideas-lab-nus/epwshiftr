@@ -27,6 +27,7 @@ QDM_EXPERIMENTAL_VARIABLES <- c(
 # Construct one complete QDM settings record. The 91-day seasonal window
 # represents the published three-month pool, while the odd 31-year future
 # window gives a symmetric discrete-year implementation of its 30-year window.
+# qdm__default_settings {{{
 qdm__default_settings <- function(
     bounds,
     trend_preservation = c("absolute", "relative"),
@@ -53,9 +54,11 @@ qdm__default_settings <- function(
         random_seed = 1L
     )
 }
+# }}}
 
 # Build method-evidence-aware variable profiles without attributing
 # implementation-selected transformations to the QDM publication.
+# qdm__profiles {{{
 qdm__profiles <- function() {
     settings <- list(
         pr = qdm__default_settings(
@@ -73,6 +76,7 @@ qdm__profiles <- function() {
         tasmax = qdm__default_settings(c(-Inf, Inf), "absolute")
     )
     variables <- c(QDM_PUBLISHED_VARIABLES, QDM_EXPERIMENTAL_VARIABLES)
+    # lapply callback {{{
     lapply(variables, function(variable) {
         published <- variable %in% QDM_PUBLISHED_VARIABLES
         signal__variable_profile(
@@ -91,10 +95,13 @@ qdm__profiles <- function() {
             )
         )
     })
+    # }}}
 }
+# }}}
 
 # Validate every QDM convention at the signal-kernel boundary so overrides
 # cannot silently change the published transfer semantics.
+# qdm__settings {{{
 qdm__settings <- function(settings) {
     expected <- c(
         "mapping_type",
@@ -127,10 +134,12 @@ qdm__settings <- function(settings) {
         resolved$trend_preservation,
         c("absolute", "relative")
     )
-    if (!identical(resolved$cdf_method, "linear_interpolation") ||
-        !identical(resolved$inverse_cdf_method, "linear_type_7") ||
-        !identical(resolved$tie_method, "average_rank") ||
-        !identical(resolved$tail_policy, "future_window_support")) {
+    if (
+        !identical(resolved$cdf_method, "linear_interpolation") ||
+            !identical(resolved$inverse_cdf_method, "linear_type_7") ||
+            !identical(resolved$tie_method, "average_rank") ||
+            !identical(resolved$tail_policy, "future_window_support")
+    ) {
         cli::cli_abort(
             "Quantile Delta Mapping currently requires linear empirical CDF interpolation, type-7 inverse quantiles, average-rank ties, and future-window endpoint support."
         )
@@ -177,18 +186,24 @@ qdm__settings <- function(settings) {
         lower = 0,
         finite = TRUE
     )
-    if (identical(
-        resolved$distribution_model,
-        "precipitation_censored"
-    ) && resolved$dry_threshold <= 0) {
+    if (
+        identical(
+            resolved$distribution_model,
+            "precipitation_censored"
+        ) &&
+            resolved$dry_threshold <= 0
+    ) {
         cli::cli_abort(
             "Censored-precipitation Quantile Delta Mapping requires a positive `dry_threshold`."
         )
     }
-    if (identical(
-        resolved$distribution_model,
-        "precipitation_censored"
-    ) && !identical(resolved$trend_preservation, "relative")) {
+    if (
+        identical(
+            resolved$distribution_model,
+            "precipitation_censored"
+        ) &&
+            !identical(resolved$trend_preservation, "relative")
+    ) {
         cli::cli_abort(
             "Censored-precipitation Quantile Delta Mapping requires relative trend preservation."
         )
@@ -201,9 +216,11 @@ qdm__settings <- function(settings) {
     resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
 }
+# }}}
 
 # Validate the three role-addressable daily inputs while preserving their
 # independent CF calendars and date coordinates.
+# qdm__inputs {{{
 qdm__inputs <- function(inputs, variable, distribution_model) {
     roles <- c(
         "observed_reference",
@@ -215,9 +232,11 @@ qdm__inputs <- function(inputs, variable, distribution_model) {
             "Quantile Delta Mapping requires observed, historical-model, and future-model role payloads."
         )
     }
+    # lapply callback {{{
     series <- lapply(roles, function(role) {
         bias__daily_table(inputs[[role]], role)
     })
+    # }}}
     names(series) <- roles
     for (role in roles) {
         role_variables <- unique(series[[role]][["variable_id"]])
@@ -234,7 +253,9 @@ qdm__inputs <- function(inputs, variable, distribution_model) {
     }
     units <- vapply(
         series,
+        # vapply callback {{{
         function(data) unique(data[["units"]]),
+        # }}}
         character(1L)
     )
     if (length(unique(units)) != 1L) {
@@ -242,33 +263,43 @@ qdm__inputs <- function(inputs, variable, distribution_model) {
             "Quantile Delta Mapping inputs for {.val {variable}} must use identical units."
         )
     }
-    if (identical(distribution_model, "precipitation_censored") &&
-        any(vapply(
-            series,
-            function(data) any(data[["value"]] < 0),
-            logical(1L)
-        ))) {
+    if (
+        identical(distribution_model, "precipitation_censored") &&
+            any(vapply(
+                series,
+                # vapply callback {{{
+                function(data) any(data[["value"]] < 0),
+                # }}}
+                logical(1L)
+            ))
+    ) {
         cli::cli_abort(
             "Censored-precipitation Quantile Delta Mapping requires non-negative input values."
         )
     }
     series
 }
+# }}}
 
 # Select a symmetric discrete-year window around one projected row. Seasonal
 # filtering is applied separately on the calendar-neutral annual phase.
+# qdm__future_year_window {{{
 qdm__future_year_window <- function(year, center, width) {
     half_width <- width %/% 2L
     year >= center - half_width & year <= center + half_width
 }
+# }}}
 
 # Preprocess each role once so a source row receives one reproducible censored
 # value even when it contributes to several overlapping QDM windows.
+# qdm__prepared_values {{{
 qdm__prepared_values <- function(series, resolved, key, variable) {
-    if (!identical(
-        resolved$distribution_model,
-        "precipitation_censored"
-    )) {
+    if (
+        !identical(
+            resolved$distribution_model,
+            "precipitation_censored"
+        )
+    ) {
         return(list(
             values = lapply(series, `[[`, "value"),
             precipitation = NULL
@@ -294,10 +325,12 @@ qdm__prepared_values <- function(series, resolved, key, variable) {
         )
     )
 }
+# }}}
 
 # Apply the Cannon et al. QDM equations at one future value. The future CDF
 # supplies p, then observed and historical quantiles at p define the absolute
 # delta or relative ratio transferred to the observed quantile.
+# qdm__map_value {{{
 qdm__map_value <- function(
     observed,
     historical,
@@ -343,9 +376,11 @@ qdm__map_value <- function(
         tied_future_values = future_cdf$tied_sample_values
     )
 }
+# }}}
 
 # Summarize window coverage and transfer behavior without retaining one
 # provenance record for every adjusted day.
+# qdm__diagnostics {{{
 qdm__diagnostics <- function(
     observed_samples,
     historical_samples,
@@ -397,9 +432,11 @@ qdm__diagnostics <- function(
     }
     diagnostics
 }
+# }}}
 
 # Apply seasonal and future-period windows independently at each projected day
 # while retaining the future-model sequence as the adjusted output backbone.
+# qdm__adjust_values {{{
 qdm__adjust_values <- function(series, resolved, key, variable) {
     observed <- series$observed_reference
     historical <- series$model_historical
@@ -450,9 +487,11 @@ qdm__adjust_values <- function(series, resolved, key, variable) {
         future_year_counts[[index]] <- length(unique(
             future[["cf_year"]][future_window]
         ))
-        if (observed_samples[[index]] < resolved$min_samples ||
-            historical_samples[[index]] < resolved$min_samples ||
-            future_samples[[index]] < resolved$min_samples) {
+        if (
+            observed_samples[[index]] < resolved$min_samples ||
+                historical_samples[[index]] < resolved$min_samples ||
+                future_samples[[index]] < resolved$min_samples
+        ) {
             cli::cli_abort(
                 "Quantile Delta Mapping future row {index} has fewer than {resolved$min_samples} observed, historical, or future values in its seasonal and future-period windows."
             )
@@ -502,9 +541,11 @@ qdm__adjust_values <- function(series, resolved, key, variable) {
         )
     )
 }
+# }}}
 
 # Execute QDM for one aligned univariate signal group and return the common
 # DailyAdjustedSeries contract with resolved settings and provenance.
+# qdm__apply_group {{{
 qdm__apply_group <- function(inputs, settings, key) {
     resolved <- qdm__settings(settings)
     variable <- names(settings)[[1L]]
@@ -531,9 +572,11 @@ qdm__apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Return one explicit diagnostic string when QDM violates the package-native
 # future-model output contract.
+# qdm__validate_result {{{
 qdm__validate_result <- function(value, inputs, key) {
     signal__validate_adjusted_result(
         value,
@@ -543,9 +586,11 @@ qdm__validate_result <- function(value, inputs, key) {
         "Quantile Delta Mapping"
     )
 }
+# }}}
 
 # Construct the reusable QDM signal with explicit daily roles and
 # method-evidence-aware variable alternatives.
+# qdm__component {{{
 qdm__component <- function() {
     alternatives <- as.list(c(
         QDM_PUBLISHED_VARIABLES,
@@ -588,10 +633,15 @@ qdm__component <- function() {
         )
     )
 }
+# }}}
 
 # Register QDM once so package load and repeated tests share one discoverable
 # process-local component.
+# qdm__register_component {{{
 qdm__register_component <- function() {
     component__register_builtin(qdm__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

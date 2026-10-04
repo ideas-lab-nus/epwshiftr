@@ -3,6 +3,7 @@ NULL
 
 # ShiftUiOptions keeps runtime presentation preferences separate from the
 # scientific ShiftPlan so display choices never alter deterministic artifacts.
+# ShiftUiOptions {{{
 ShiftUiOptions <- S7::new_class(
     "ShiftUiOptions",
     properties = list(
@@ -18,6 +19,7 @@ ShiftUiOptions <- S7::new_class(
         batch_receipt = S7::new_property(S7::class_logical, default = TRUE)
     )
 )
+# }}}
 
 # Detail levels are ordered so every renderer applies the same visibility
 # contract to foreground runs, background logs, and watch snapshots.
@@ -40,6 +42,7 @@ SHIFT_UI_DETAIL_LEVELS <- c("normal", "detail", "debug")
 #'   Use `progress = "log"` for screen readers, reduced-motion use, redirected
 #'   output, and stable captured logs.
 #' @export
+# shift_ui {{{
 shift_ui <- function(
     progress = c("auto", "dynamic", "log", "none"),
     detail = c("normal", "detail", "debug"),
@@ -60,9 +63,11 @@ shift_ui <- function(
         heartbeat = as.numeric(heartbeat)
     )
 }
+# }}}
 
 # Resolve auto mode once per reporter so a run does not switch presentation
 # when its surrounding output device changes halfway through execution.
+# shift_ui__ui_mode {{{
 shift_ui__ui_mode <- function(ui) {
     if (!S7::S7_inherits(ui, ShiftUiOptions)) {
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
@@ -83,9 +88,11 @@ shift_ui__ui_mode <- function(ui) {
     # terminal. TTY capability, not `interactive()`, is the useful boundary.
     if (isTRUE(cli::is_dynamic_tty())) "dynamic" else "log"
 }
+# }}}
 
 # Resolve animation independently from output mode. Log, null, redirected, and
 # machine-readable renderers remain static even if full motion was requested.
+# shift_ui__ui_motion {{{
 shift_ui__ui_motion <- function(ui, mode = shift_ui__ui_mode(ui)) {
     if (!S7::S7_inherits(ui, ShiftUiOptions)) {
         cli::cli_abort("`ui` must be created by {.fn shift_ui}.")
@@ -95,36 +102,46 @@ shift_ui__ui_motion <- function(ui, mode = shift_ui__ui_mode(ui)) {
     }
     if (identical(ui@motion, "auto")) "full" else ui@motion
 }
+# }}}
 
 # Compare one requested detail level against the immutable UI configuration.
+# shift_ui__ui_at_least {{{
 shift_ui__ui_at_least <- function(ui, level = c("normal", "detail", "debug")) {
     level <- match.arg(level)
     match(ui@detail, SHIFT_UI_DETAIL_LEVELS) >=
         match(level, SHIFT_UI_DETAIL_LEVELS)
 }
+# }}}
 
 # Resolve the current display width through cli so terminal, RStudio, and
 # redirected output use the same cross-platform width policy as styling. Narrow
 # terminals therefore reflow instead of overflowing a nominal width.
+# shift_ui__ui_width {{{
 shift_ui__ui_width <- function(width = NULL) {
     if (is.null(width)) {
+        # error {{{
         width <- tryCatch(cli::console_width(), error = function(e) 80L)
+        # }}}
     }
     width <- suppressWarnings(as.integer(width[[1L]]))
     if (!length(width) || is.na(width) || width < 1L) 80L else width
 }
+# }}}
 
 # Reserve the terminal's final column for autowrap safety. Several terminals,
 # including WezTerm, wrap or visually drop a glyph painted in the last column;
 # keeping one column unused makes the right panel border deterministic across
 # terminals without bringing back a fixed readable-measure cap.
+# shift_ui__ui_dashboard_width {{{
 shift_ui__ui_dashboard_width <- function(width = NULL) {
     max(1L, shift_ui__ui_width(width) - 1L)
 }
+# }}}
 
 # Reserve one terminal row for cursor ownership and the next shell prompt.
 # Native TTY dimensions follow terminal resizes. Explicit options also support
 # IDE panes and reproducible recordings with caller-owned dimensions.
+# shift_ui__ui_height {{{
 shift_ui__ui_height <- function(height = NULL) {
     height <- shift_stage__coalesce(height, getOption("epwshiftr.ui_height"))
     if (is.null(height)) {
@@ -139,3 +156,6 @@ shift_ui__ui_height <- function(height = NULL) {
     }
     max(1L, height - 1L)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

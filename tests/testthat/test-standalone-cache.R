@@ -1,9 +1,11 @@
 # cache_disk_deterministic() {{{
+# cache_disk_deterministic {{{
 cache_disk_deterministic <- function(dir, ...) {
     cache <- DiskCache$new(dir = dir, ...)
     priv(cache)$set_count <- 0L
     cache
 }
+# }}}
 # }}}
 # DiskCache$new() {{{
 test_that("DiskCache$new()", {
@@ -126,13 +128,23 @@ test_that("DiskCache$new(prune_on_init = TRUE)", {
     delay <- 0.01
 
     cache_dir <- tempfile("cache-prune-init-")
-    cache <- DiskCache$new(cache_dir, max_n = 3, prune_rate = 100, prune_on_init = FALSE)
+    cache <- DiskCache$new(
+        cache_dir,
+        max_n = 3,
+        prune_rate = 100,
+        prune_on_init = FALSE
+    )
 
-    cache$set("a", 1); Sys.sleep(delay)
-    cache$set("b", 2); Sys.sleep(delay)
-    cache$set("c", 3); Sys.sleep(delay)
-    cache$set("d", 4); Sys.sleep(delay)
-    cache$set("e", 5); Sys.sleep(delay)
+    cache$set("a", 1)
+    Sys.sleep(delay)
+    cache$set("b", 2)
+    Sys.sleep(delay)
+    cache$set("c", 3)
+    Sys.sleep(delay)
+    cache$set("d", 4)
+    Sys.sleep(delay)
+    cache$set("e", 5)
+    Sys.sleep(delay)
 
     cache$prune()
     expect_equal(cache$size(), 3L)
@@ -140,7 +152,12 @@ test_that("DiskCache$new(prune_on_init = TRUE)", {
     rm(cache)
     gc()
 
-    cache <- DiskCache$new(cache_dir, max_n = 3, prune_rate = 100, prune_on_init = TRUE)
+    cache <- DiskCache$new(
+        cache_dir,
+        max_n = 3,
+        prune_rate = 100,
+        prune_on_init = TRUE
+    )
     expect_equal(cache$size(), 3L)
 
     cache$destroy()
@@ -160,7 +177,12 @@ test_that("DiskCache$new() loads persisted metadata", {
     rm(cache)
     gc()
 
-    cache <- DiskCache$new(cache_dir, max_n = 10, max_size = 1000, prune_on_init = FALSE)
+    cache <- DiskCache$new(
+        cache_dir,
+        max_n = 10,
+        max_size = 1000,
+        prune_on_init = FALSE
+    )
     expect_true(cache$exists("a"))
 
     cache$destroy()
@@ -220,9 +242,18 @@ test_that("DiskCache$get() rejects invalid keys", {
     long_key <- paste(rep("a", 81), collapse = "")
     expect_error(cache$get(long_key), "Key must be shorter than 80 characters")
 
-    expect_error(cache$get("key/with/slash"), "Key must not contain any of the following characters")
-    expect_error(cache$get("key:with:colon"), "Key must not contain any of the following characters")
-    expect_error(cache$get("key*with*star"), "Key must not contain any of the following characters")
+    expect_error(
+        cache$get("key/with/slash"),
+        "Key must not contain any of the following characters"
+    )
+    expect_error(
+        cache$get("key:with:colon"),
+        "Key must not contain any of the following characters"
+    )
+    expect_error(
+        cache$get("key*with*star"),
+        "Key must not contain any of the following characters"
+    )
 
     cache$destroy()
 })
@@ -282,7 +313,9 @@ test_that("DiskCache$set() stores different data types", {
     cache$set("mat", mat)
     expect_equal(cache$get("mat"), mat)
 
+    # fn {{{
     fn <- function(x) x + 1
+    # }}}
     cache$set("fn", fn)
     expect_equal(cache$get("fn")(5), 6)
 
@@ -479,11 +512,16 @@ test_that("DiskCache$prune() respects max_n", {
     cache_dir <- tempfile("cache-prune-n-")
     cache <- cache_disk_deterministic(cache_dir, max_n = 3, prune_rate = 1)
 
-    cache$set("a", rnorm(100)); Sys.sleep(delay)
-    cache$set("b", rnorm(100)); Sys.sleep(delay)
-    cache$set("c", rnorm(100)); Sys.sleep(delay)
-    cache$set("d", rnorm(100)); Sys.sleep(delay)
-    cache$set("e", rnorm(100)); Sys.sleep(delay)
+    cache$set("a", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("b", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("c", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("d", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("e", rnorm(100))
+    Sys.sleep(delay)
     cache$prune()
 
     expect_equal(sort(cache$keys()), c("c", "d", "e"))
@@ -498,19 +536,25 @@ test_that("DiskCache$prune() respects max_size", {
     cache_dir <- tempfile("cache-prune-size-")
     cache <- cache_disk_deterministic(cache_dir, max_size = 200, prune_rate = 1)
 
-    cache$set("a", rnorm(100)); Sys.sleep(delay)
-    cache$set("b", rnorm(100)); Sys.sleep(delay)
-    cache$set("c", 1); Sys.sleep(delay)
+    cache$set("a", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("b", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("c", 1)
+    Sys.sleep(delay)
     cache$prune()
 
     expect_equal(sort(cache$keys()), "c")
 
-    cache$set("d", rnorm(100)); Sys.sleep(delay)
+    cache$set("d", rnorm(100))
+    Sys.sleep(delay)
     cache$prune()
     expect_length(cache$keys(), 0L)
 
-    cache$set("e", 2); Sys.sleep(delay)
-    cache$set("f", 3); Sys.sleep(delay)
+    cache$set("e", 2)
+    Sys.sleep(delay)
+    cache$set("f", 3)
+    Sys.sleep(delay)
     cache$prune()
     expect_equal(sort(cache$keys()), c("e", "f"))
 
@@ -522,14 +566,25 @@ test_that("DiskCache$prune() respects max_n and max_size", {
     delay <- 0.01
 
     cache_dir <- tempfile("cache-prune-both-")
-    cache <- cache_disk_deterministic(cache_dir, max_n = 3, max_size = 200, prune_rate = 1)
+    cache <- cache_disk_deterministic(
+        cache_dir,
+        max_n = 3,
+        max_size = 200,
+        prune_rate = 1
+    )
 
-    cache$set("a", rnorm(100)); Sys.sleep(delay)
-    cache$set("b", rnorm(100)); Sys.sleep(delay)
-    cache$set("c", rnorm(100)); Sys.sleep(delay)
-    cache$set("d", rnorm(100)); Sys.sleep(delay)
-    cache$set("e", rnorm(100)); Sys.sleep(delay)
-    cache$set("f", 1); Sys.sleep(delay)
+    cache$set("a", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("b", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("c", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("d", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("e", rnorm(100))
+    Sys.sleep(delay)
+    cache$set("f", 1)
+    Sys.sleep(delay)
     cache$prune()
 
     expect_equal(cache$keys(), "f")
@@ -563,20 +618,28 @@ test_that("DiskCache$prune() honors prune_rate throttling", {
     cache_dir <- tempfile("cache-throttle-rate-")
     cache <- cache_disk_deterministic(cache_dir, max_n = 2, prune_rate = 20)
 
-    cache$set("a", 1); Sys.sleep(delay)
-    cache$set("b", 1); Sys.sleep(delay)
-    cache$set("c", 1); Sys.sleep(delay)
-    cache$set("d", 1); Sys.sleep(delay)
+    cache$set("a", 1)
+    Sys.sleep(delay)
+    cache$set("b", 1)
+    Sys.sleep(delay)
+    cache$set("c", 1)
+    Sys.sleep(delay)
+    cache$set("d", 1)
+    Sys.sleep(delay)
 
     expect_equal(sort(cache$keys()), c("a", "b", "c", "d"))
 
     cache$destroy()
     cache <- cache_disk_deterministic(cache_dir, max_n = 2, prune_rate = 2)
 
-    cache$set("a", 1); Sys.sleep(delay)
-    cache$set("b", 1); Sys.sleep(delay)
-    cache$set("c", 1); Sys.sleep(delay)
-    cache$set("d", 1); Sys.sleep(delay)
+    cache$set("a", 1)
+    Sys.sleep(delay)
+    cache$set("b", 1)
+    Sys.sleep(delay)
+    cache$set("c", 1)
+    Sys.sleep(delay)
+    cache$set("d", 1)
+    Sys.sleep(delay)
 
     expect_equal(sort(cache$keys()), c("c", "d"))
 
@@ -587,7 +650,12 @@ test_that("DiskCache$prune() honors prune_limit throttling", {
     skip_on_cran()
 
     cache_dir <- tempfile("cache-throttle-limit-")
-    cache <- cache_disk_deterministic(cache_dir, max_n = 2, prune_rate = 100, prune_limit = 1)
+    cache <- cache_disk_deterministic(
+        cache_dir,
+        max_n = 2,
+        prune_rate = 100,
+        prune_limit = 1
+    )
 
     cache$set("a", 1)
     cache$set("b", 1)
@@ -628,7 +696,19 @@ test_that("DiskCache$info()", {
 
     info <- cache$info()
     expect_type(info, "list")
-    expect_named(info, c("dir", "max_size", "max_age", "max_n", "prune_rate", "prune_limit", "n", "size"))
+    expect_named(
+        info,
+        c(
+            "dir",
+            "max_size",
+            "max_age",
+            "max_n",
+            "prune_rate",
+            "prune_limit",
+            "n",
+            "size"
+        )
+    )
     expect_equal(info$max_size, 1000)
     expect_equal(info$max_age, 3600)
     expect_equal(info$max_n, 10)
@@ -699,11 +779,17 @@ test_that("DiskCache$print()", {
 
     expect_snapshot(
         print(cache),
+        # transform {{{
         transform = function(lines) {
             lines <- gsub("^(\\s*)dir: .+$", "\\1dir: <cache-dir>", lines)
-            lines <- gsub("^(\\s*)last_prune_time: .+$", "\\1last_prune_time: <time>", lines)
+            lines <- gsub(
+                "^(\\s*)last_prune_time: .+$",
+                "\\1last_prune_time: <time>",
+                lines
+            )
             gsub("^(\\s*)set_count: .+$", "\\1set_count: <count>", lines)
         }
+        # }}}
     )
 })
 # }}}
@@ -794,11 +880,15 @@ test_that("cache__read_json() normalizes an empty Solr score", {
 test_that("cache__read_json() parses long HTTP URLs through curl", {
     cache <- local_test_cache()
     local_cache_mode("normal")
-    long_url <- paste0("https://example.org/esg-search/search?", paste(rep("a", 2100), collapse = ""))
+    long_url <- paste0(
+        "https://example.org/esg-search/search?",
+        paste(rep("a", 2100), collapse = "")
+    )
     seen <- NULL
     states <- character()
 
     testthat::local_mocked_bindings(
+        # curl_fetch_memory {{{
         curl_fetch_memory = function(url, handle) {
             seen <<- list(url = url, handle = handle)
             list(
@@ -808,6 +898,7 @@ test_that("cache__read_json() parses long HTTP URLs through curl", {
                 url = url
             )
         },
+        # }}}
         .package = "curl"
     )
 
@@ -815,9 +906,11 @@ test_that("cache__read_json() parses long HTTP URLs through curl", {
     res <- cache__read_json(
         long_url,
         simplifyVector = FALSE,
+        # progress_callback {{{
         progress_callback = function(progress) {
             states <<- c(states, progress$state)
         }
+        # }}}
     )
     expect_equal(seen$url, long_url)
     expect_s3_class(seen$handle, "curl_handle")
@@ -865,7 +958,12 @@ test_that("cache__url() bypasses cache in off mode", {
     local_cache_mode("off")
 
     call_count <- 0L
-    fn <- function() { call_count <<- call_count + 1L; list(data = 42) }
+    # fn {{{
+    fn <- function() {
+        call_count <<- call_count + 1L
+        list(data = 42)
+    }
+    # }}}
 
     result <- cache__url("test", "key1", fn)
     expect_equal(result$data, 42)
@@ -881,7 +979,12 @@ test_that("cache__url() works in normal mode", {
     local_cache_mode("normal")
 
     call_count <- 0L
-    fn <- function() { call_count <<- call_count + 1L; list(data = 42) }
+    # fn {{{
+    fn <- function() {
+        call_count <<- call_count + 1L
+        list(data = 42)
+    }
+    # }}}
 
     result1 <- cache__url("test", "key1", fn)
     expect_equal(result1$data, 42)
@@ -900,15 +1003,25 @@ test_that("cache__url() works in offline mode", {
     cache <- local_test_cache()
 
     local_cache_mode("normal")
+    # cache__url callback {{{
     cache__url("test", "existing_key", function() "cached_value")
+    # }}}
 
     local_cache_mode("offline")
 
-    result <- cache__url("test", "existing_key", function() stop("should not be called"))
+    # cache__url callback {{{
+    result <- cache__url("test", "existing_key", function() {
+        stop("should not be called")
+    })
+    # }}}
     expect_equal(result, "cached_value")
 
     expect_error(
-        cache__url("test", "missing_key", function() stop("should not be called")),
+        # cache__url callback {{{
+        cache__url("test", "missing_key", function() {
+            stop("should not be called")
+        }),
+        # }}}
         "offline"
     )
 })
@@ -918,13 +1031,26 @@ test_that("cache__url() validate parameter controls caching", {
     local_cache_mode("normal")
 
     call_count <- 0L
-    fn <- function() { call_count <<- call_count + 1L; NULL }
+    # fn {{{
+    fn <- function() {
+        call_count <<- call_count + 1L
+        NULL
+    }
+    # }}}
 
-    result1 <- cache__url("test", "validate_key", fn, validate = function(x) !is.null(x))
+    # validate {{{
+    result1 <- cache__url("test", "validate_key", fn, validate = function(x) {
+        !is.null(x)
+    })
+    # }}}
     expect_null(result1)
     expect_equal(call_count, 1L)
 
-    result2 <- cache__url("test", "validate_key", fn, validate = function(x) !is.null(x))
+    # validate {{{
+    result2 <- cache__url("test", "validate_key", fn, validate = function(x) {
+        !is.null(x)
+    })
+    # }}}
     expect_null(result2)
     expect_equal(call_count, 2L)
 })
@@ -934,7 +1060,12 @@ test_that("cache__url() validate=NULL caches everything (default)", {
     local_cache_mode("normal")
 
     call_count <- 0L
-    fn <- function() { call_count <<- call_count + 1L; NULL }
+    # fn {{{
+    fn <- function() {
+        call_count <<- call_count + 1L
+        NULL
+    }
+    # }}}
 
     result1 <- cache__url("test", "null_key", fn)
     expect_null(result1)
@@ -954,11 +1085,13 @@ test_that("cache__download() bypasses cache in off mode", {
     on.exit(unlink(destfile), add = TRUE)
 
     call_count <- 0L
+    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         writeBin(charToRaw("file content"), destfile)
         destfile
     }
+    # }}}
 
     result <- cache__download("http://example.com/file.txt", destfile, fn)
     expect_equal(result, destfile)
@@ -975,11 +1108,13 @@ test_that("cache__download() works in normal mode", {
     on.exit(unlink(c(destfile1, destfile2)), add = TRUE)
 
     call_count <- 0L
+    # fn {{{
     fn <- function() {
         call_count <<- call_count + 1L
         writeBin(charToRaw("downloaded data"), destfile1)
         destfile1
     }
+    # }}}
 
     result1 <- cache__download("http://example.com/data.bin", destfile1, fn)
     expect_equal(result1, destfile1)
@@ -988,9 +1123,15 @@ test_that("cache__download() works in normal mode", {
 
     unlink(destfile1)
 
-    result2 <- cache__download("http://example.com/data.bin", destfile2, function() {
-        stop("should not be called")
-    })
+    # cache__download callback {{{
+    result2 <- cache__download(
+        "http://example.com/data.bin",
+        destfile2,
+        function() {
+            stop("should not be called")
+        }
+    )
+    # }}}
     expect_equal(result2, destfile2)
     expect_equal(call_count, 1L)
     expect_equal(readBin(destfile2, "raw", 100), charToRaw("downloaded data"))
@@ -1003,10 +1144,12 @@ test_that("cache__download() works in offline mode", {
     on.exit(unlink(destfile), add = TRUE)
 
     local_cache_mode("normal")
+    # fn_populate {{{
     fn_populate <- function() {
         writeBin(charToRaw("cached file"), destfile)
         destfile
     }
+    # }}}
     cache__download("http://example.com/cached.bin", destfile, fn_populate)
 
     unlink(destfile)
@@ -1015,16 +1158,28 @@ test_that("cache__download() works in offline mode", {
 
     destfile2 <- tempfile("dl-offline2-")
     on.exit(unlink(destfile2), add = TRUE)
-    result <- cache__download("http://example.com/cached.bin", destfile2, function() {
-        stop("should not be called")
-    })
+    # cache__download callback {{{
+    result <- cache__download(
+        "http://example.com/cached.bin",
+        destfile2,
+        function() {
+            stop("should not be called")
+        }
+    )
+    # }}}
     expect_equal(result, destfile2)
     expect_equal(readBin(destfile2, "raw", 100), charToRaw("cached file"))
 
     expect_error(
-        cache__download("http://example.com/missing.bin", tempfile(), function() {
-            stop("should not be called")
-        }),
+        # cache__download callback {{{
+        cache__download(
+            "http://example.com/missing.bin",
+            tempfile(),
+            function() {
+                stop("should not be called")
+            }
+        ),
+        # }}}
         "offline"
     )
 })
@@ -1035,7 +1190,12 @@ test_that("cache__set() sets and returns old cache", {
     on.exit(cache__set(original), add = TRUE)
 
     dir1 <- tempfile("cache-set1-")
-    cache1 <- DiskCache$new(dir = dir1, max_size = "100 MB", max_age = Inf, max_n = Inf)
+    cache1 <- DiskCache$new(
+        dir = dir1,
+        max_size = "100 MB",
+        max_age = Inf,
+        max_n = Inf
+    )
     on.exit(cache1$destroy(), add = TRUE)
 
     old <- cache__set(cache1)
@@ -1044,7 +1204,12 @@ test_that("cache__set() sets and returns old cache", {
     expect_identical(cache__get(), cache1)
 
     dir2 <- tempfile("cache-set2-")
-    cache2 <- DiskCache$new(dir = dir2, max_size = "100 MB", max_age = Inf, max_n = Inf)
+    cache2 <- DiskCache$new(
+        dir = dir2,
+        max_size = "100 MB",
+        max_age = Inf,
+        max_n = Inf
+    )
     on.exit(cache2$destroy(), add = TRUE)
 
     old2 <- cache__set(cache2)
@@ -1081,10 +1246,18 @@ test_that("cache__reset() sets cache to NULL", {
     on.exit(cache__set(original), add = TRUE)
 
     dir <- tempfile("cache-reset-test-")
-    cache <- DiskCache$new(dir = dir, max_size = "100 MB", max_age = Inf, max_n = Inf)
-    on.exit({
-        unlink(dir, recursive = TRUE)
-    }, add = TRUE)
+    cache <- DiskCache$new(
+        dir = dir,
+        max_size = "100 MB",
+        max_age = Inf,
+        max_n = Inf
+    )
+    on.exit(
+        {
+            unlink(dir, recursive = TRUE)
+        },
+        add = TRUE
+    )
 
     cache__set(cache)
     expect_identical(cache__get(), cache)
@@ -1098,3 +1271,5 @@ test_that("cache__reset() sets cache to NULL", {
     cache__reset()
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

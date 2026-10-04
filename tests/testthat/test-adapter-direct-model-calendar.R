@@ -1,10 +1,13 @@
 # Build one complete hourly native-calendar series with values defined by the
 # supplied annual-phase function so calendar remapping remains directly testable.
+# hourmap_test__adjusted {{{
 hourmap_test__adjusted <- function(
     variable,
     year,
     calendar = "noleap",
+    # function callback {{{
     value = function(phase) phase,
+    # }}}
     units = NULL,
     wind_direction = NULL
 ) {
@@ -55,10 +58,13 @@ hourmap_test__adjusted <- function(
         provenance = list(source = "synthetic")
     )
 }
+# }}}
 
 # Assemble the signal envelope expected by direct_model_realization while
 # allowing repeated variables to use distinct group keys in rejection tests.
+# hourmap_test__execution {{{
 hourmap_test__execution <- function(values) {
+    # lapply callback {{{
     groups <- lapply(seq_along(values), function(index) {
         signal__group(
             key = list(group = paste0("group-", index)),
@@ -66,23 +72,36 @@ hourmap_test__execution <- function(values) {
             variables = unique(values[[index]]@data[["variable_id"]])
         )
     })
-    variables <- unique(unlist(lapply(
-        groups,
-        function(group) group@variables
-    ), use.names = FALSE))
+    # }}}
+    variables <- unique(unlist(
+        lapply(
+            groups,
+            # lapply callback {{{
+            function(group) group@variables
+            # }}}
+        ),
+        use.names = FALSE
+    ))
     SignalExecutionResult(
         groups = groups,
         values = values,
-        profiles = stats::setNames(lapply(variables, function(variable) {
-            list(variable_id = variable)
-        }), variables),
+        # lapply callback {{{
+        profiles = stats::setNames(
+            lapply(variables, function(variable) {
+                list(variable_id = variable)
+            }),
+            variables
+        ),
+        # }}}
         diagnostics = data.frame(
             method = rep.int("test_signal", length(groups)),
             group = paste0("group-", seq_along(groups)),
             status = rep.int("ok", length(groups)),
             variables = vapply(
                 groups,
+                # vapply callback {{{
                 function(group) paste(group@variables, collapse = ","),
+                # }}}
                 character(1L)
             ),
             evidence = rep.int("published", length(groups)),
@@ -91,9 +110,11 @@ hourmap_test__execution <- function(values) {
         )
     )
 }
+# }}}
 
 # Return the complete role-addressable input set required by the standalone
 # hourly component without constructing an otherwise incomplete recipe.
+# hourmap_test__inputs {{{
 hourmap_test__inputs <- function() {
     epw <- epw_file_read(get_cache_epw())
     weather__new_inputs(
@@ -106,12 +127,15 @@ hourmap_test__inputs <- function() {
         )
     )
 }
+# }}}
 
 test_that("365-day direct-model hours map exactly onto EPW rows", {
     adjusted <- hourmap_test__adjusted(
         "tas",
         2061L,
+        # value {{{
         value = function(phase) seq_along(phase)
+        # }}}
     )
     sequence <- sequence__direct_model_generate(
         hourmap_test__execution(list(adjusted)),
@@ -165,14 +189,18 @@ test_that("daily slot traversal shares identity and mapped placement", {
     identity_data <- hourmap_test__adjusted(
         "tas",
         2061L,
+        # value {{{
         value = function(phase) seq_along(phase)
+        # }}}
     )@data
     identity <- hourmap__map_daily_slots(
         identity_data,
         HOURMAP_TARGET_DAYS,
+        # mapper {{{
         mapper = function(source_rows, target_phase) {
             stop("identity mapping should bypass the numerical kernel")
         }
+        # }}}
     )
 
     expect_identical(identity$value, as.numeric(identity_data[["value"]]))
@@ -190,13 +218,16 @@ test_that("daily slot traversal shares identity and mapped placement", {
         "tas",
         2061L,
         "360_day",
+        # value {{{
         value = function(phase, second_of_day) second_of_day / 3600
+        # }}}
     )@data
     source_lengths <- integer()
     target_lengths <- integer()
     mapped <- hourmap__map_daily_slots(
         data,
         HOURMAP_TARGET_DAYS,
+        # mapper {{{
         mapper = function(source_rows, target_phase) {
             source_lengths <<- c(source_lengths, length(source_rows))
             target_lengths <<- c(target_lengths, length(target_phase))
@@ -205,6 +236,7 @@ test_that("daily slot traversal shares identity and mapped placement", {
                 length(target_phase)
             )
         }
+        # }}}
     )
 
     expect_identical(source_lengths, rep.int(360L, 24L))
@@ -228,11 +260,12 @@ test_that("daily slot traversal shares identity and mapped placement", {
 test_that("point variables use circular annual-phase interpolation", {
     calendars <- CF_TIME_CALENDARS
     years <- ifelse(
-        calendars %in% c(
-            "standard",
-            "gregorian",
-            "proleptic_gregorian"
-        ),
+        calendars %in%
+            c(
+                "standard",
+                "gregorian",
+                "proleptic_gregorian"
+            ),
         2064L,
         2061L
     )
@@ -241,7 +274,9 @@ test_that("point variables use circular annual-phase interpolation", {
             "tas",
             years[[index]],
             calendars[[index]],
+            # value {{{
             value = function(phase) 280 + 5 * sin(2 * pi * phase)
+            # }}}
         )
         sequence <- sequence__direct_model_generate(
             hourmap_test__execution(list(adjusted)),
@@ -256,9 +291,11 @@ test_that("point variables use circular annual-phase interpolation", {
             list()
         )
         series <- result@members[[1L]]@series[[1L]]
-        expected <- 280 + 5 * sin(
-            2 * pi * series@data$target_annual_phase
-        )
+        expected <- 280 +
+            5 *
+                sin(
+                    2 * pi * series@data$target_annual_phase
+                )
 
         expect_equal(
             series@data$value,
@@ -288,11 +325,15 @@ test_that("scalar wind direction uses circular vector interpolation", {
         "sfcWind",
         2061L,
         "360_day",
+        # value {{{
         value = function(phase) rep.int(3, length(phase)),
+        # }}}
         units = "m/s",
+        # wind_direction {{{
         wind_direction = function(phase) {
             (350 + 20 * sin(2 * pi * phase)) %% 360
         }
+        # }}}
     )
     sequence <- sequence__direct_model_generate(
         hourmap_test__execution(list(adjusted)),
@@ -307,9 +348,12 @@ test_that("scalar wind direction uses circular vector interpolation", {
         list()
     )
     series <- result@members[[1L]]@series[[1L]]
-    expected <- (350 + 20 * sin(
-        2 * pi * series@data$target_annual_phase
-    )) %% 360
+    expected <- (350 +
+        20 *
+            sin(
+                2 * pi * series@data$target_annual_phase
+            )) %%
+        360
     angular_error <- abs(
         ((series@data$wind_direction - expected + 180) %% 360) - 180
     )
@@ -327,9 +371,11 @@ test_that("calendar mapping preserves every source time-of-day position", {
             variable,
             2061L,
             "360_day",
+            # value {{{
             value = function(phase, second_of_day) {
                 second_of_day / 3600
             }
+            # }}}
         )
         sequence <- sequence__direct_model_generate(
             hourmap_test__execution(list(adjusted)),
@@ -364,7 +410,9 @@ test_that("interval-mean variables conserve their normalized annual mean", {
         "rsds",
         2061L,
         "360_day",
+        # value {{{
         value = function(phase) 200 + 100 * pmax(0, sin(2 * pi * phase))
+        # }}}
     )
     sequence <- sequence__direct_model_generate(
         hourmap_test__execution(list(adjusted)),
@@ -461,7 +509,9 @@ test_that("hourly calendar mapping rejects ambiguous source contracts", {
     second <- hourmap_test__adjusted(
         "tas",
         2061L,
+        # value {{{
         value = function(phase) phase + 1
+        # }}}
     )
     duplicate_sequence <- sequence__direct_model_generate(
         hourmap_test__execution(list(first, second)),
@@ -500,3 +550,5 @@ test_that("hourly calendar mapping rejects ambiguous source contracts", {
         "must contain an internal.*EpwFile"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -1,5 +1,6 @@
 # nocov start
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
+# .onLoad {{{
 .onLoad <- function(libname, pkgname) {
     S7::methods_register()
     registerS3method(
@@ -67,4 +68,7 @@
 
     invisible()
 }
+# }}}
 # nocov end
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

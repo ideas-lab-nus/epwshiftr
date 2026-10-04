@@ -1,5 +1,6 @@
 # Build one role-labelled climate input with only the metadata needed by recipe
 # contract tests.
+# recipe_test__climate_input {{{
 recipe_test__climate_input <- function(role, frequency, variables) {
     weather__new_input(
         role,
@@ -9,9 +10,11 @@ recipe_test__climate_input <- function(role, frequency, variables) {
         )
     )
 }
+# }}}
 
 # Build the common EPW template input without reading or mutating a weather
 # fixture.
+# recipe_test__weather_template {{{
 recipe_test__weather_template <- function() {
     weather__new_input(
         "weather_template",
@@ -21,6 +24,7 @@ recipe_test__weather_template <- function() {
         calendars = "gregorian"
     )
 }
+# }}}
 
 test_that("built-in complete recipes expose inspectable stable metadata", {
     recipes <- epw_morph_recipes()
@@ -28,12 +32,26 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
     expect_named(
         recipes,
         c(
-            "name", "version", "label", "method", "backend",
-            "implementation", "default_policy", "policies",
-            "physical_policies", "calendar_policy", "target_calendar",
-            "output_type", "stochastic", "status", "source",
-            "required_inputs", "optional_inputs", "components",
-            "diagnostics", "provenance"
+            "name",
+            "version",
+            "label",
+            "method",
+            "backend",
+            "implementation",
+            "default_policy",
+            "policies",
+            "physical_policies",
+            "calendar_policy",
+            "target_calendar",
+            "output_type",
+            "stochastic",
+            "status",
+            "source",
+            "required_inputs",
+            "optional_inputs",
+            "components",
+            "diagnostics",
+            "provenance"
         )
     )
     expect_setequal(
@@ -85,10 +103,15 @@ test_that("complete recipes expose one comparable EPW field-role contract", {
         epw_morph_recipe("isimip3basd_daily_temperature")
     )
 
-    expect_named(original, c(
-        "transformed_fields", "derived_fields",
-        "physically_closed_fields", "inherited_fields"
-    ))
+    expect_named(
+        original,
+        c(
+            "transformed_fields",
+            "derived_fields",
+            "physically_closed_fields",
+            "inherited_fields"
+        )
+    )
     expect_true("liquid_precip_depth" %in% original$transformed_fields)
     expect_true("dry_bulb_temperature" %in% bounded$transformed_fields)
     expect_true("total_sky_cover" %in% bounded$transformed_fields)
@@ -96,11 +119,14 @@ test_that("complete recipes expose one comparable EPW field-role contract", {
     expect_true("dry_bulb_temperature" %in% isimip$transformed_fields)
     expect_true("wind_speed" %in% isimip$inherited_fields)
     expect_length(
-        Reduce(intersect, list(
-            isimip$transformed_fields,
-            isimip$derived_fields,
-            isimip$inherited_fields
-        )),
+        Reduce(
+            intersect,
+            list(
+                isimip$transformed_fields,
+                isimip$derived_fields,
+                isimip$inherited_fields
+            )
+        ),
         0L
     )
 })
@@ -163,7 +189,6 @@ test_that("recipe registry rejects duplicate and incompatible definitions", {
         recipe__register(incompatible, registry = registry),
         "do not match"
     )
-
 })
 
 test_that("registered recipe policies resolve backend profiles explicitly", {
@@ -178,8 +203,10 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
     expect_identical(faithful$recipe_spec, "original_morphing_monthly")
     expect_identical(faithful$recipe_version, 2L)
     expect_identical(faithful$methods[["tdb"]], "combined")
-    expect_true(all(c("tas", "tasmax", "tasmin") %in%
-        epw_morph_variables(faithful)))
+    expect_true(all(
+        c("tas", "tasmax", "tasmin") %in%
+            epw_morph_variables(faithful)
+    ))
     expect_true(morpher__recipe_requires_reference(faithful))
     expect_true(morpher__recipe_accepts_reference(faithful))
     expect_identical(
@@ -251,8 +278,16 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
 
 test_that("recipe input roles validate before backend execution", {
     monthly_variables <- c(
-        "tas", "tasmax", "tasmin", "psl", "rlds", "rsds", "sfcWind",
-        "clt", "pr", "hurs"
+        "tas",
+        "tasmax",
+        "tasmin",
+        "psl",
+        "rlds",
+        "rsds",
+        "sfcWind",
+        "clt",
+        "pr",
+        "hurs"
     )
     future <- recipe_test__climate_input(
         "model_future",
@@ -351,3 +386,5 @@ test_that("registered recipe identity survives JSON and transform persistence", 
     )
     expect_identical(aliased_roundtrip$policy, "harmonized")
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

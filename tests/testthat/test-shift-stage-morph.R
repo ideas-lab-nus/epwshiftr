@@ -13,6 +13,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     paths <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -22,12 +23,14 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
     )
     on.exit(unlink(paths), add = TRUE)
     docs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable) {
             row <- esgf_test__file_docs(
                 basename(paths[[variable]]),
@@ -40,6 +43,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
             row$id <- sprintf("humidity-%s|dataset", variable)
             row
         }),
+        # }}}
         fill = TRUE
     )
     # Model the production layout where optional snow depth is a separate
@@ -126,6 +130,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     future_nc <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable_id) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -136,6 +141,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
@@ -143,6 +149,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     reference_nc <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable_id) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -153,6 +160,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
@@ -161,10 +169,13 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
 
     # Represent each scenario-variable pair with a distinct ESGF identity while
     # reusing compact local NetCDF fixtures for the two scenario catalogs.
+    # workflow_docs {{{
     workflow_docs <- function(paths, experiments, activity, start, end) {
         data.table::rbindlist(
+            # lapply callback {{{
             lapply(experiments, function(experiment_id) {
                 data.table::rbindlist(
+                    # lapply callback {{{
                     lapply(names(paths), function(variable_id) {
                         docs <- esgf_test__file_docs(
                             basename(paths[[variable_id]]),
@@ -209,12 +220,15 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                         )
                         docs
                     }),
+                    # }}}
                     fill = TRUE
                 )
             }),
+            # }}}
             fill = TRUE
         )
     }
+    # }}}
     future_docs <- workflow_docs(
         future_nc,
         c("ssp126", "ssp585"),
@@ -235,6 +249,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     calls$historical_file_calls <- 0L
     calls$future_scenarios <- c("ssp126", "ssp585")
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -326,6 +341,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -374,19 +390,23 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     expect_true(all(file.exists(shift_outputs(run)$export_path)))
     expect_true(all(vapply(
         shift_outputs(run)$export_path,
+        # vapply callback {{{
         function(path) {
             inherits(epw_file_read(path), "EpwFile")
         },
+        # }}}
         logical(1L)
     )))
     expect_equal(calls$historical_file_calls, 1L)
     run_tables <- c("shift_run", "shift_run_case", "shift_run_event")
     expect_true(all(vapply(
         run_tables,
+        # vapply callback {{{
         function(table) {
             nrow(morpher__private_store(shift_store(run))$read_table(table)) >=
                 1L
         },
+        # }}}
         logical(1L)
     )))
     expect_equal(nrow(shift_runs(store_path)), 1L)
@@ -451,6 +471,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     export_attempts <- 0L
     original_export <- shift_export__export_outputs
     testthat::local_mocked_bindings(
+        # shift_export__export_outputs {{{
         shift_export__export_outputs = function(...) {
             export_attempts <<- export_attempts + 1L
             if (export_attempts == 1L) {
@@ -458,6 +479,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
             }
             original_export(...)
         },
+        # }}}
         .package = "epwshiftr"
     )
     failed_run <- (shift_future_epw(
@@ -580,6 +602,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     future_nc <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable_id) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -589,6 +612,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
@@ -596,6 +620,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     reference_nc <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable_id) {
                 path <- tempfile(fileext = ".nc")
                 write_local_cmip6_netcdf_fixture(
@@ -605,6 +630,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
                 )
                 path
             },
+            # }}}
             character(1L)
         ),
         variables
@@ -612,6 +638,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     on.exit(unlink(c(future_nc, reference_nc)), add = TRUE)
 
     future_docs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable_id) {
             docs <- esgf_test__file_docs(
                 basename(future_nc[[variable_id]]),
@@ -623,9 +650,11 @@ test_that("shift_morph() resolves automatic and manual historical references", {
             docs$table_id <- "Amon"
             docs
         }),
+        # }}}
         fill = TRUE
     )
     reference_docs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(variables, function(variable_id) {
             docs <- esgf_test__file_docs(
                 basename(reference_nc[[variable_id]]),
@@ -639,6 +668,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
             docs$table_id <- "Amon"
             docs
         }),
+        # }}}
         fill = TRUE
     )
     future_docs[, `:=`(
@@ -723,9 +753,11 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     )
     expect_true(all(vapply(
         historical_collect_times,
+        # vapply callback {{{
         function(x) {
             is.null(x$datetime_start) && is.null(x$datetime_stop)
         },
+        # }}}
         logical(1L)
     )))
     reference_climate <- auto@meta$reference
@@ -770,3 +802,5 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     )
     expect_true(sum(calls$values %in% "File") >= 2L)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

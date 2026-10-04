@@ -60,6 +60,7 @@ EPW_MORPH_BWS_BTWS_RULES <- data.table::data.table(
 EPW_MORPH_BWS_BTWS_OPTIONS <- EPW_MORPH_TEMPERATURE_OPTIONS
 
 # Validate the options shared by the complete calendar-month BWS/BTWS method.
+# bws_btws__options {{{
 bws_btws__options <- function(options = NULL) {
     temperature__backend_options(
         options,
@@ -67,9 +68,11 @@ bws_btws__options <- function(options = NULL) {
         label = "BWS and BTWS monthly morphing"
     )
 }
+# }}}
 
 # Declare the role-addressable inputs shared by every BWS/BTWS component. Monthly
 # CMIP6 values map directly to the monthly change factors defined by the paper.
+# bws_btws__inputs {{{
 bws_btws__inputs <- function() {
     variables <- c("tas", "tasmin", "tasmax", "rsds", "clt")
     list(
@@ -93,9 +96,11 @@ bws_btws__inputs <- function() {
         )
     )
 }
+# }}}
 
 # Normalize the five monthly CMIP6 variables to method-owned units before
 # climatology aggregation. This keeps source adaptation separate from BWS/BTWS.
+# bws_btws__monthly_climate {{{
 bws_btws__monthly_climate <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -174,10 +179,12 @@ bws_btws__monthly_climate <- function(data, name) {
     }
     out[]
 }
+# }}}
 
 # Aggregate multi-year monthly model values into the five monthly climatologies
 # used by the BWS/BTWS change factors. Native CF fields take precedence over
 # surrogate timestamps when resolving the calendar month.
+# bws_btws__monthly_climatology {{{
 bws_btws__monthly_climatology <- function(data, name) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -270,9 +277,11 @@ bws_btws__monthly_climatology <- function(data, name) {
     data.table::setorderv(monthly, c("variable_id", "month"))
     monthly[]
 }
+# }}}
 
 # Convert aligned climatologies into the temperature deltas, shortwave absolute
 # delta, and cloud-cover fractional scale used by BWS for each calendar month.
+# bws_btws__monthly_changes {{{
 bws_btws__monthly_changes <- function(
     future_climatology,
     historical_climatology
@@ -423,9 +432,11 @@ bws_btws__monthly_changes <- function(
 
     monthly[]
 }
+# }}}
 
 # Expand the monthly BTWS temperature deltas to the 365 daily targets consumed
 # by the shared BTWS reconstruction component.
+# bws_btws__daily_temperature_targets {{{
 bws_btws__daily_temperature_targets <- function(monthly) {
     checkmate::assert_data_frame(monthly)
     if (
@@ -487,9 +498,11 @@ bws_btws__daily_temperature_targets <- function(monthly) {
     )
     target[]
 }
+# }}}
 
 # Build both BWS monthly signals and expanded BTWS targets from normalized
 # monthly sources. This pure entry point keeps tests independent of pipelines.
+# bws_btws__monthly_targets {{{
 bws_btws__monthly_targets <- function(future, historical) {
     monthly <- bws_btws__monthly_changes(
         bws_btws__monthly_climatology(future, "future climate"),
@@ -503,9 +516,11 @@ bws_btws__monthly_targets <- function(future, historical) {
         temperature = bws_btws__daily_temperature_targets(monthly)
     )
 }
+# }}}
 
 # Normalize the role-addressable EPW and monthly CMIP6 inputs without
 # introducing temporal smoothing that does not belong to BWS or BTWS.
+# bws_btws__preprocess_apply {{{
 bws_btws__preprocess_apply <- function(
     inputs,
     context,
@@ -526,9 +541,11 @@ bws_btws__preprocess_apply <- function(
         options = options
     )
 }
+# }}}
 
 # Interpret each model's native calendar before the signal kernel so the kernel
 # receives only aligned monthly statistics and cannot infer Gregorian dates.
+# bws_btws__calendar_apply {{{
 bws_btws__calendar_apply <- function(
     data,
     inputs,
@@ -552,9 +569,11 @@ bws_btws__calendar_apply <- function(
         variables = c("tas", "tasmin", "tasmax", "rsds", "clt")
     ))
 }
+# }}}
 
 # Calculate the complete monthly signal and emit both the BTWS daily
 # temperature targets and the monthly BWS radiation/cloud targets.
+# bws_btws__signal_apply_group {{{
 bws_btws__signal_apply_group <- function(
     inputs,
     settings,
@@ -581,13 +600,16 @@ bws_btws__signal_apply_group <- function(
         ]
     )
 }
+# }}}
 
 # Define the BWS/BTWS monthly input, native-calendar, and joint signal stages.
+# bws_btws__component_specs {{{
 bws_btws__component_specs <- function() {
     complete_inputs <- bws_btws__inputs()
     reference <- "https://doi.org/10.1177/01436244231218861"
     profiles <- lapply(
         c("tas", "tasmin", "tasmax", "rsds", "clt"),
+        # lapply callback {{{
         function(variable) {
             signal__variable_profile(
                 variable,
@@ -605,6 +627,7 @@ bws_btws__component_specs <- function() {
                 )
             )
         }
+        # }}}
     )
 
     list(
@@ -644,14 +667,18 @@ bws_btws__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the BWS/BTWS stages once while preserving process-local extensions.
+# bws_btws__register_components {{{
 bws_btws__register_components <- function() {
     component__register_builtins(bws_btws__component_specs())
 }
+# }}}
 
 # Compose BWS/BTWS monthly signals with shared EPW sequencing, their combined
 # BTWS/BWS hourly adapter, unified physical closure, and common result writer.
+# bws_btws__pipeline {{{
 bws_btws__pipeline <- function() {
     temperature__register_components()
     bws_btws_epw__register_components()
@@ -666,3 +693,6 @@ bws_btws__pipeline <- function() {
         output = "bws_btws_epw_result"
     ))
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

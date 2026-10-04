@@ -51,6 +51,7 @@ FIELDS_FACETS_COMMON <- c(
 
 # Normalize optional Solr response fields that ESGF nodes omit or return as
 # JSON null for an otherwise valid empty result.
+# query__normalize_solr_response {{{
 query__normalize_solr_response <- function(response) {
     if (!is.list(response) || is.null(response$response)) {
         return(response)
@@ -63,9 +64,11 @@ query__normalize_solr_response <- function(response) {
     }
     response
 }
+# }}}
 
 # Read an ESGF JSON response through curl, honoring cache mode while exposing a
 # throttled callback boundary for long-running workflow queries.
+# cache__read_json {{{
 cache__read_json <- function(
     url,
     strict = TRUE,
@@ -130,6 +133,7 @@ cache__read_json <- function(
             curl::handle_setopt(
                 handle,
                 noprogress = FALSE,
+                # progressfunction {{{
                 progressfunction = function(down, up) {
                     progress_callback(list(
                         state = "transfer",
@@ -139,12 +143,15 @@ cache__read_json <- function(
                     ))
                     TRUE
                 }
+                # }}}
             )
             progress_callback(list(state = "started", url = url))
         }
         fetched <- tryCatch(
             curl::curl_fetch_memory(url, handle = handle),
+            # error {{{
             error = function(e) e
+            # }}}
         )
         if (inherits(fetched, "error")) {
             json_source <- fetched
@@ -166,8 +173,12 @@ cache__read_json <- function(
     } else {
         tryCatch(
             jsonlite::fromJSON(json_source, bigint_as_char = TRUE, ...),
+            # warning {{{
             warning = function(w) w,
+            # }}}
+            # error {{{
             error = function(e) e
+            # }}}
         )
     }
     timestamp <- Sys.time()
@@ -210,6 +221,7 @@ cache__read_json <- function(
 
     res
 }
+# }}}
 
 # esg_query
 #' Query CMIP6 data using ESGF search RESTful API
@@ -406,12 +418,15 @@ cache__read_json <- function(
 #'   `https://esgf.ceda.ac.uk`
 #'
 #' @export
+# esg_query {{{
 esg_query <- function(index_node = "https://esgf-node.ornl.gov") {
     EsgQuery$new(index_node = index_node)
 }
+# }}}
 #' @name EsgQuery
 #' @export
 # EsgQuery
+# EsgQuery {{{
 EsgQuery <- R6::R6Class(
     "EsgQuery",
     lock_class = TRUE,
@@ -446,6 +461,7 @@ EsgQuery <- R6::R6Class(
         #' q <- EsgQuery$new(index_node = "https://esgf-node.ornl.gov")
         #' q
         #' }
+        # initialize {{{
         initialize = function(index_node = "https://esgf-node.ornl.gov") {
             checkmate::assert_string(index_node)
             private$index_node_url <- query__normalize_node(index_node)
@@ -454,6 +470,7 @@ EsgQuery <- R6::R6Class(
 
             self
         },
+        # }}}
         # index_node
         #' @description
         #' Get or set the ESGF index node.
@@ -474,6 +491,7 @@ EsgQuery <- R6::R6Class(
         #' q$index_node()
         #' q$index_node("https://esgf.ceda.ac.uk")
         #' }
+        # index_node {{{
         index_node = function(value) {
             if (missing(value)) {
                 return(private$index_node_url)
@@ -482,6 +500,7 @@ EsgQuery <- R6::R6Class(
             private$index_node_url <- query__normalize_node(value)
             self
         },
+        # }}}
         # list_facets
         #' @description
         #' List all available facet names
@@ -501,6 +520,7 @@ EsgQuery <- R6::R6Class(
         #' \dontrun{
         #' q$list_facets()
         #' }
+        # list_facets {{{
         list_facets = function(force = FALSE) {
             checkmate::assert_flag(force)
 
@@ -529,6 +549,7 @@ EsgQuery <- R6::R6Class(
 
             unlst(res$responseHeader$params$facet.field)
         },
+        # }}}
         # list_fields
         #' @description
         #' List all available field names
@@ -544,6 +565,7 @@ EsgQuery <- R6::R6Class(
         #' \dontrun{
         #' q$list_fields()
         #' }
+        # list_fields {{{
         list_fields = function(force = FALSE) {
             checkmate::assert_flag(force)
 
@@ -561,6 +583,7 @@ EsgQuery <- R6::R6Class(
             res <- private$query_listing_cached(url, force, "field")
             names(res$response$docs[[1L]])
         },
+        # }}}
         # list_shards
         #' @description
         #' List all available shards.
@@ -576,6 +599,7 @@ EsgQuery <- R6::R6Class(
         #' \dontrun{
         #' q$list_shards()
         #' }
+        # list_shards {{{
         list_shards = function(force = FALSE) {
             checkmate::assert_flag(force)
 
@@ -615,6 +639,7 @@ EsgQuery <- R6::R6Class(
                 ))
             }
 
+            # vapply callback {{{
             vapply(shards_parts, FUN.VALUE = "", function(shard) {
                 shard <- shard[-1L]
                 # replace localhost
@@ -637,7 +662,9 @@ EsgQuery <- R6::R6Class(
                     shard[[3L]]
                 )
             })
+            # }}}
         },
+        # }}}
         # list_values
         #' @description
         #' List all available values of specific facets.
@@ -657,6 +684,7 @@ EsgQuery <- R6::R6Class(
         #' \dontrun{
         #' q$list_values(c("activity_id", "experiment_id"))
         #' }
+        # list_values {{{
         list_values = function(facets, force = FALSE) {
             checkmate::assert_subset(facets, QUERY_PARAM__FIELDS)
             checkmate::assert_flag(force)
@@ -689,6 +717,7 @@ EsgQuery <- R6::R6Class(
             }
             out
         },
+        # }}}
         # parameter methods
         #' @description
         #' Get or set the `project` facet parameter.
@@ -700,6 +729,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # project {{{
         project = function(value = "CMIP6") {
             if (missing(value)) {
                 return(private$parameter$project())
@@ -713,6 +743,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `activity_id` facet parameter.
@@ -723,6 +754,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # activity_id {{{
         activity_id = function(value) {
             if (missing(value)) {
                 return(private$parameter$activity_id())
@@ -736,6 +768,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `experiment_id` facet parameter.
@@ -746,6 +779,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # experiment_id {{{
         experiment_id = function(value) {
             if (missing(value)) {
                 return(private$parameter$experiment_id())
@@ -759,6 +793,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `source_id` facet parameter.
@@ -768,6 +803,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # source_id {{{
         source_id = function(value) {
             if (missing(value)) {
                 return(private$parameter$source_id())
@@ -781,6 +817,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `variable_id` facet parameter.
@@ -790,6 +827,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # variable_id {{{
         variable_id = function(value) {
             if (missing(value)) {
                 return(private$parameter$variable_id())
@@ -803,6 +841,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `frequency` facet parameter.
@@ -812,6 +851,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # frequency {{{
         frequency = function(value) {
             if (missing(value)) {
                 return(private$parameter$frequency())
@@ -825,6 +865,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `variant_label` facet parameter.
@@ -834,6 +875,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # variant_label {{{
         variant_label = function(value) {
             if (missing(value)) {
                 return(private$parameter$variant_label())
@@ -847,6 +889,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `nominal_resolution` facet parameter.
@@ -856,6 +899,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # nominal_resolution {{{
         nominal_resolution = function(value) {
             if (missing(value)) {
                 return(private$parameter$nominal_resolution())
@@ -869,6 +913,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `data_node` facet parameter.
@@ -878,6 +923,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # data_node {{{
         data_node = function(value) {
             if (missing(value)) {
                 return(private$parameter$data_node())
@@ -891,6 +937,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `facets` parameter used by `$count()`.
@@ -900,6 +947,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # facets {{{
         facets = function(value) {
             if (missing(value)) {
                 return(private$parameter$facets())
@@ -907,6 +955,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$facets(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `fields` parameter.
@@ -917,6 +966,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # fields {{{
         fields = function(value = "*") {
             if (missing(value)) {
                 return(private$parameter$fields())
@@ -924,6 +974,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$fields(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `shards` parameter for distributed searches.
@@ -933,6 +984,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # shards {{{
         shards = function(value) {
             if (missing(value)) {
                 return(private$parameter$shards())
@@ -940,6 +992,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$shards(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set temporal coverage overlap constraints.
@@ -952,6 +1005,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If either boundary is supplied, the modified `EsgQuery`
         #'         object. Otherwise, a list with `start` and `stop` elements.
+        # datetime_range {{{
         datetime_range = function(start, stop) {
             if (missing(start) && missing(stop)) {
                 return(private$parameter$datetime_range())
@@ -964,6 +1018,7 @@ EsgQuery <- R6::R6Class(
             }
             self
         },
+        # }}}
 
         #' @description
         #' Get or set Solr index timestamp range constraints.
@@ -975,6 +1030,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If either boundary is supplied, the modified `EsgQuery`
         #'         object. Otherwise, a list with `from` and `to` elements.
+        # timestamp_range {{{
         timestamp_range = function(from, to) {
             if (missing(from) && missing(to)) {
                 return(private$parameter$timestamp_range())
@@ -987,6 +1043,7 @@ EsgQuery <- R6::R6Class(
             }
             self
         },
+        # }}}
 
         #' @description
         #' Get or set version range constraints.
@@ -1000,6 +1057,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If either boundary is supplied, the modified `EsgQuery`
         #'         object. Otherwise, a list with `min` and `max` elements.
+        # version_range {{{
         version_range = function(min, max) {
             if (missing(min) && missing(max)) {
                 return(private$parameter$version_range())
@@ -1012,6 +1070,7 @@ EsgQuery <- R6::R6Class(
             }
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `replica` parameter.
@@ -1021,6 +1080,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # replica {{{
         replica = function(value) {
             if (missing(value)) {
                 return(private$parameter$replica())
@@ -1028,6 +1088,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$replica(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `latest` parameter.
@@ -1037,6 +1098,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # latest {{{
         latest = function(value = NULL) {
             if (missing(value)) {
                 return(private$parameter$latest())
@@ -1044,6 +1106,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$latest(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `limit` parameter.
@@ -1053,6 +1116,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # limit {{{
         limit = function(value = 10L) {
             if (missing(value)) {
                 return(private$parameter$limit())
@@ -1060,6 +1124,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$limit(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `offset` parameter.
@@ -1069,6 +1134,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # offset {{{
         offset = function(value = 0L) {
             if (missing(value)) {
                 return(private$parameter$offset())
@@ -1076,6 +1142,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$offset(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set the `distrib` parameter.
@@ -1085,6 +1152,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If `value` is supplied, the modified `EsgQuery` object.
         #'         Otherwise, a `QueryParam` object or `NULL`.
+        # distrib {{{
         distrib = function(value = TRUE) {
             if (missing(value)) {
                 return(private$parameter$distrib())
@@ -1092,6 +1160,7 @@ EsgQuery <- R6::R6Class(
             private$parameter$distrib(value)
             self
         },
+        # }}}
 
         #' @description
         #' Get or set ad hoc query parameters.
@@ -1109,6 +1178,7 @@ EsgQuery <- R6::R6Class(
         #'
         #' @return If parameters are supplied, the modified `EsgQuery` object.
         #'         Otherwise, a named list of `QueryParam` objects.
+        # params {{{
         params = function(...) {
             dots <- eval(substitute(alist(...)))
             if (length(dots) == 0L) {
@@ -1140,6 +1210,7 @@ EsgQuery <- R6::R6Class(
             )
             self
         },
+        # }}}
         # url
         #' @description
         #' Get the URL of actual query or wget script
@@ -1168,6 +1239,7 @@ EsgQuery <- R6::R6Class(
         #' download.file(q$url(TRUE), file.path(tempdir(), "wget.sh"), mode = "wb")
         #'
         #' }
+        # url {{{
         url = function(wget = FALSE) {
             checkmate::assert_flag(wget)
             query__build(
@@ -1176,6 +1248,7 @@ EsgQuery <- R6::R6Class(
                 type = if (wget) "wget" else "search"
             )
         },
+        # }}}
         # count
         #' @description
         #' Send a query of facet counting and fetch the results
@@ -1209,6 +1282,7 @@ EsgQuery <- R6::R6Class(
         #' # same as above
         #' q$count(facets = c("activity_id", "source_id"))
         #' }
+        # count {{{
         count = function(facets = TRUE) {
             params <- private$parameter$copy()
             params$limit(0L)
@@ -1241,6 +1315,7 @@ EsgQuery <- R6::R6Class(
             )
             c(list(total = res$response$numFound), counts)
         },
+        # }}}
         # collect
         #' @description
         #' Send the actual query and fetch the results
@@ -1320,6 +1395,7 @@ EsgQuery <- R6::R6Class(
         #' res4 <- query$collect(all = TRUE, limit = 30)
         #' identical(res2$count(), res4$count())
         #' }
+        # collect {{{
         collect = function(
             all = FALSE,
             limit = TRUE,
@@ -1333,6 +1409,7 @@ EsgQuery <- R6::R6Class(
             checkmate::assert_flag(progress)
             dots <- eval(substitute(alist(...)))
 
+            # collect_dataset {{{
             collect_dataset <- function(
                 all,
                 limit,
@@ -1372,6 +1449,7 @@ EsgQuery <- R6::R6Class(
                     context = result$context
                 )
             }
+            # }}}
 
             if (identical(type, "Dataset")) {
                 if (length(dots)) {
@@ -1405,6 +1483,7 @@ EsgQuery <- R6::R6Class(
                 ...
             )
         },
+        # }}}
         # state
         #' @description
         #' Get the current query state.
@@ -1424,12 +1503,14 @@ EsgQuery <- R6::R6Class(
         #' q$state()
         #' q$state(null = TRUE)
         #' }
+        # state {{{
         state = function(name = NULL, null = FALSE) {
             list(
                 index_node = private$index_node_url,
                 parameter = private$parameter$state(name = name, null = null)
             )
         },
+        # }}}
         # reset
         #' @description
         #' Reset query parameters to their defaults.
@@ -1443,10 +1524,12 @@ EsgQuery <- R6::R6Class(
         #' \dontrun{
         #' q$experiment_id("ssp585")$reset()
         #' }
+        # reset {{{
         reset = function() {
             private$parameter <- query_param__new_store()
             self
         },
+        # }}}
         # save
         #' @description
         #' Save the query into a JSON file
@@ -1467,6 +1550,7 @@ EsgQuery <- R6::R6Class(
         #' \dontrun{
         #' q$save(tempfile(fileext = ".json"))
         #' }
+        # save {{{
         save = function(file = "query.json", pretty = TRUE) {
             query__save(
                 index_node = private$index_node_url,
@@ -1477,6 +1561,7 @@ EsgQuery <- R6::R6Class(
                 schema = SCHEMA_QUERY
             )
         },
+        # }}}
         # load
         #' @description
         #' Restore the query state from an JSON file
@@ -1498,6 +1583,7 @@ EsgQuery <- R6::R6Class(
         #' json <- q$save(f)
         #' q$load(f)
         #' }
+        # load {{{
         load = function(file) {
             q <- query__load(file, SCHEMA_QUERY)
             private$validate_query_state(q$parameter)
@@ -1507,6 +1593,7 @@ EsgQuery <- R6::R6Class(
 
             self
         },
+        # }}}
         # print
         #' @description
         #' Print a summary of the current `EsgQuery` object
@@ -1520,6 +1607,7 @@ EsgQuery <- R6::R6Class(
         #' \dontrun{
         #' q$print()
         #' }
+        # print {{{
         print = function() {
             d <- cli::cli_div(
                 theme = list(rule = list("line-type" = "double"))
@@ -1532,6 +1620,7 @@ EsgQuery <- R6::R6Class(
 
             invisible(self)
         }
+        # }}}
     ),
 
     private = list(
@@ -1540,6 +1629,7 @@ EsgQuery <- R6::R6Class(
 
         parameter = NULL,
 
+        # collect_child_limit {{{
         collect_child_limit = function(limit) {
             checkmate::assert(
                 checkmate::check_flag(limit),
@@ -1564,7 +1654,9 @@ EsgQuery <- R6::R6Class(
 
             as.integer(limit)
         },
+        # }}}
 
+        # validate_query_state {{{
         validate_query_state = function(parameter) {
             type <- parameter$type()
             type_value <- query_param__value(type)
@@ -1605,7 +1697,9 @@ EsgQuery <- R6::R6Class(
 
             invisible(parameter)
         },
+        # }}}
 
+        # format_facet_counts {{{
         format_facet_counts = function(counts) {
             ind <- seq_along(counts)
             nm <- unlst(.subset(counts, ind[ind %% 2L == 1L]))
@@ -1614,13 +1708,17 @@ EsgQuery <- R6::R6Class(
 
             value
         },
+        # }}}
 
+        # eval_param_call {{{
         eval_param_call = function(expr, env) {
             call_env <- new.env(parent = env)
             call_env$private <- private
             eval(expr, envir = call_env)
         },
+        # }}}
 
+        # query_listing_cached {{{
         query_listing_cached = function(url, force, type) {
             mode <- cache__mode()
             if (mode != "off") {
@@ -1659,13 +1757,18 @@ EsgQuery <- R6::R6Class(
             ))
             with_timeout(300, cache__read_json(url, simplifyVector = FALSE))
         }
+        # }}}
     )
 )
+# }}}
 # query__is_bridge
+# query__is_bridge {{{
 query__is_bridge <- function(index_node) {
     grepl("esgf-1-5-bridge", index_node, fixed = TRUE)
 }
+# }}}
 
+# query__assert_bridge_type {{{
 query__assert_bridge_type <- function(index_node, params) {
     if (!query__is_bridge(index_node)) {
         return(invisible(TRUE))
@@ -1682,7 +1785,9 @@ query__assert_bridge_type <- function(index_node, params) {
 
     invisible(TRUE)
 }
+# }}}
 # query__normalize_node
+# query__normalize_node {{{
 query__normalize_node <- function(index_node, raw = FALSE) {
     index_node <- curl::curl_unescape(index_node)
     # curl::curl_parse_url() requires scheme and host to present
@@ -1715,7 +1820,9 @@ query__normalize_node <- function(index_node, raw = FALSE) {
     }
     url
 }
+# }}}
 # query__build
+# query__free_text {{{
 query__free_text <- function(query) {
     if (!length(query) || !nchar(query)) {
         return(character())
@@ -1723,7 +1830,9 @@ query__free_text <- function(query) {
 
     paste0("query=", query_param__encode(query))
 }
+# }}}
 
+# query__glob_value {{{
 query__glob_value <- function(value) {
     value <- as.character(value)
     ifelse(
@@ -1732,7 +1841,9 @@ query__glob_value <- function(value) {
         query_param__quote_bound(value)
     )
 }
+# }}}
 
+# query__build {{{
 query__build <- function(index_node, params, type = "search") {
     checkmate::assert_choice(type, c("search", "wget"))
     store <- query_param__clone(params)
@@ -1785,7 +1896,9 @@ query__build <- function(index_node, params, type = "search") {
 
     is_negate <- vapply(
         params,
+        # vapply callback {{{
         function(param) isTRUE(query_param__negate(param)),
+        # }}}
         logical(1L)
     )
     # facet queries without any negated inputs
@@ -1793,7 +1906,9 @@ query__build <- function(index_node, params, type = "search") {
         rendered <- c(
             vapply(
                 names(params),
+                # vapply callback {{{
                 function(name) query_param__render(params[[name]], name),
+                # }}}
                 FUN.VALUE = ""
             ),
             if (length(query_clauses)) {
@@ -1815,7 +1930,9 @@ query__build <- function(index_node, params, type = "search") {
     facets <- paste(
         vapply(
             names(params[!is_negate]),
+            # vapply callback {{{
             function(name) query_param__render(params[[name]], name),
+            # }}}
             FUN.VALUE = ""
         ),
         collapse = "&"
@@ -1823,6 +1940,7 @@ query__build <- function(index_node, params, type = "search") {
     negate_query <- paste(
         vapply(
             names(params[is_negate]),
+            # vapply callback {{{
             function(name) {
                 param <- params[[name]]
                 value <- query__glob_value(query_param__value(param))
@@ -1833,6 +1951,7 @@ query__build <- function(index_node, params, type = "search") {
                 }
                 sprintf("NOT (%s:%s)", name, value)
             },
+            # }}}
             FUN.VALUE = ""
         ),
         collapse = " AND "
@@ -1852,7 +1971,9 @@ query__build <- function(index_node, params, type = "search") {
         query__free_text(query)
     )
 }
+# }}}
 # query dict check
+# query__dict_project {{{
 query__dict_project <- function(store) {
     project <- store$project()
     if (is.null(project) || isTRUE(query_param__negate(project))) {
@@ -1871,10 +1992,14 @@ query__dict_project <- function(store) {
             dict__assert_project(project)
             project
         },
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
 }
+# }}}
 
+# query__dict_load {{{
 query__dict_load <- function(project) {
     dict <- esgdict_get_default(project)
     if (!is.null(dict) && dict$has_data()) {
@@ -1887,10 +2012,14 @@ query__dict_load <- function(project) {
             suppressWarnings(suppressMessages(dict$load()))
             if (dict$has_data()) dict else NULL
         },
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
 }
+# }}}
 
+# query__dict_args {{{
 query__dict_args <- function(store, dict) {
     params <- store$state()
     if (!length(params)) {
@@ -1909,7 +2038,9 @@ query__dict_args <- function(store, dict) {
             next
         }
 
+        # error {{{
         field <- tryCatch(dict__field(name, dict), error = function(e) NULL)
+        # }}}
         if (is.null(field)) {
             next
         }
@@ -1925,11 +2056,14 @@ query__dict_args <- function(store, dict) {
 
     out
 }
+# }}}
 
+# query__dict_warning {{{
 query__dict_warning <- function(invalid, n = 5L) {
     n <- min(n, nrow(invalid))
     lines <- vapply(
         seq_len(n),
+        # vapply callback {{{
         function(i) {
             msg <- invalid$message[[i]]
             suggestions <- invalid$suggestions[[i]]
@@ -1942,6 +2076,7 @@ query__dict_warning <- function(invalid, n = 5L) {
             }
             sprintf("- %s", msg)
         },
+        # }}}
         character(1L)
     )
 
@@ -1955,7 +2090,9 @@ query__dict_warning <- function(invalid, n = 5L) {
         collapse = "\n"
     )
 }
+# }}}
 
+# query__warn_dict {{{
 query__warn_dict <- function(params) {
     store <- query_param__as_store(params)
     project <- query__dict_project(store)
@@ -1981,7 +2118,9 @@ query__warn_dict <- function(params) {
             suggest = TRUE,
             relationship = "any"
         ),
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
     if (is.null(result) || !nrow(result)) {
         return(invisible(result))
@@ -1994,7 +2133,9 @@ query__warn_dict <- function(params) {
 
     invisible(result)
 }
+# }}}
 # query__collect
+# query__collect_nrow {{{
 query__collect_nrow <- function(docs) {
     if (is.null(docs)) {
         return(0L)
@@ -2007,7 +2148,9 @@ query__collect_nrow <- function(docs) {
     }
     0L
 }
+# }}}
 
+# query__collect {{{
 query__collect <- function(
     index_node,
     params,
@@ -2115,6 +2258,7 @@ query__collect <- function(
     docs <- response$response$docs
     doc_pages <- list(docs)
 
+    # warn_no_progress {{{
     warn_no_progress <- function(offset) {
         cli::cli_warn(c(
             "!" = "ESGF pagination stopped before all reported records were collected.",
@@ -2123,6 +2267,7 @@ query__collect <- function(
         ))
         invisible(NULL)
     }
+    # }}}
 
     # check if the total number is less that the limit
     total <- response$response$numFound
@@ -2194,7 +2339,9 @@ query__collect <- function(
         )
     )
 }
+# }}}
 # query__save
+# query__save {{{
 query__save <- function(
     index_node,
     parameter,
@@ -2245,7 +2392,9 @@ query__save <- function(
 
     normalizePath(file, mustWork = TRUE)
 }
+# }}}
 # query__load
+# query__load {{{
 query__load <- function(file, schema = NULL) {
     checkmate::assert_file(file, "r", extension = "json")
 
@@ -2313,9 +2462,13 @@ query__load <- function(file, schema = NULL) {
 
     json
 }
-# vim: fdm=marker :
+# }}}
 
 # Capture one evaluation instant for relative dates in a bridge query.
+# query__now {{{
 query__now <- function() {
     Sys.time()
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

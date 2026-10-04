@@ -151,3 +151,5 @@ test_that("morphing contexts expose explicit inputs and preserve legacy fields",
         "observed_reference"
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

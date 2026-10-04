@@ -1,5 +1,6 @@
 # Apply Dataset filter precedence shared by public and batch discovery.
 # Request identity is supplied directly to shift_request() by each caller.
+# availability__filters {{{
 availability__filters <- function(filters, selections) {
     # Core selections have one owner in both discovery entry points.
     filters[c(
@@ -31,6 +32,7 @@ availability__filters <- function(filters, selections) {
         )
     )
 }
+# }}}
 
 # Dataset fields retained by the public CMIP6 availability query.
 AVAILABILITY__DATASET_FIELDS <- c(
@@ -55,6 +57,7 @@ AVAILABILITY__DATASET_FIELDS <- c(
 )
 
 # Return a typed empty availability table with the public column contract.
+# availability__empty {{{
 availability__empty <- function() {
     data.table::data.table(
         source_id = character(),
@@ -73,8 +76,10 @@ availability__empty <- function() {
         index_node = character()
     )
 }
+# }}}
 
 # Reduce variable-specific Dataset records to one row per stable CMIP6 identity.
+# availability__summarize {{{
 availability__summarize <- function(
     datasets,
     experiments,
@@ -121,12 +126,14 @@ availability__summarize <- function(
         ]
         defaults <- vapply(
             unique(unname(frequencies)),
+            # vapply callback {{{
             function(value) {
                 shift_stage__coalesce(
                     shift_spec__cmip6_table_id(value),
                     NA_character_
                 )
             },
+            # }}}
             character(1L)
         )
         preferred <- unname(defaults[scores$frequency])
@@ -219,8 +226,10 @@ availability__summarize <- function(
     )
     summary
 }
+# }}}
 
 # Collect Dataset records through the existing store-native query workflow.
+# availability__collect {{{
 availability__collect <- function(request, store, ui) {
     result <- shift_datasets(
         request,
@@ -231,8 +240,10 @@ availability__collect <- function(request, store, ui) {
     )
     data.table::as.data.table(result$to_data_table())
 }
+# }}}
 
 # Resolve a public index-node name or URL to the endpoint used by EsgQuery.
+# availability__index_node {{{
 availability__index_node <- function(index_node) {
     if (is.null(index_node)) {
         index_node <- "DKRZ"
@@ -249,9 +260,11 @@ availability__index_node <- function(index_node) {
     }
     query__normalize_node(index_node)
 }
+# }}}
 
 # Attach the chosen future input specification to each public method row.
 # Full requirement diagnostics remain internal; rejected rows retain missing reasons.
+# availability__method_summary {{{
 availability__method_summary <- function(evaluated, index_node) {
     identity <- c("source_id", "variant_label", "grid_label")
     role <- NULL
@@ -294,6 +307,7 @@ availability__method_summary <- function(evaluated, index_node) {
     data.table::setorderv(result, c(identity, "transform_key", "scenario"))
     result
 }
+# }}}
 
 #' Query CMIP6 availability by variables or weather methods
 #'
@@ -376,6 +390,7 @@ availability__method_summary <- function(evaluated, index_node) {
 #' }
 #'
 #' @export
+# shift_cmip6_avail {{{
 shift_cmip6_avail <- function(
     variables = NULL,
     scenarios = c("ssp245", "ssp585"),
@@ -450,12 +465,14 @@ shift_cmip6_avail <- function(
         transforms <- shift_batch__transforms(methods, transform)
         historical <- vapply(
             transforms,
+            # vapply callback {{{
             function(value) {
                 "model_historical" %in%
                     names(value@required_inputs) ||
                     (include_optional_historical &&
                         "model_historical" %in% names(value@optional_inputs))
             },
+            # }}}
             logical(1L)
         )
         requirements <- eligibility__requirements(
@@ -554,3 +571,6 @@ shift_cmip6_avail <- function(
         index_node = index_node
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

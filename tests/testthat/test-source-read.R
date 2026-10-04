@@ -5,6 +5,7 @@ test_that("source workers overlap tasks and collect in the owning process", {
     result <- vector("list", 3L)
     source__apply(
         as.list(1:3),
+        # source__apply callback {{{
         function(job) {
             start <- as.numeric(Sys.time())
             Sys.sleep(0.15)
@@ -14,10 +15,13 @@ test_that("source workers overlap tasks and collect in the owning process", {
                 stop = as.numeric(Sys.time())
             )
         },
+        # }}}
+        # source__apply callback {{{
         function(job, value) {
             expect_identical(Sys.getpid(), owner)
             result[[job]] <<- value
         }
+        # }}}
     )
     expect_length(unique(vapply(result, `[[`, integer(1L), "pid")), 2L)
     expect_true(all(vapply(result, `[[`, integer(1L), "pid") != owner))
@@ -27,7 +31,9 @@ test_that("source workers overlap tasks and collect in the owning process", {
     )
     withr::local_options(epwshiftr.mirai_workers = 0L)
     expect_error(
+        # source__apply callback {{{
         source__apply(list(1), identity, function(...) NULL),
+        # }}}
         "positive|>=|greater"
     )
 })
@@ -40,13 +46,16 @@ test_that("fatal source failures drain active work without dispatching more", {
     )
     on.exit(unlink(paths), add = TRUE)
     jobs <- Map(
+        # Map callback {{{
         function(index, path) list(index = index, path = path),
+        # }}}
         1:3,
         paths
     )
     expect_error(
         source__apply(
             jobs,
+            # source__apply callback {{{
             function(job) {
                 if (job$index == 1L) {
                     stop("source failed")
@@ -54,7 +63,10 @@ test_that("fatal source failures drain active work without dispatching more", {
                 Sys.sleep(0.1)
                 file.create(job$path)
             },
+            # }}}
+            # source__apply callback {{{
             function(job, value) NULL
+            # }}}
         ),
         "source failed"
     )
@@ -62,7 +74,9 @@ test_that("fatal source failures drain active work without dispatching more", {
     expect_false(file.exists(paths[[3L]]))
     # A separate pool must still be usable after failure cleanup.
     value <- NULL
+    # source__apply callback {{{
     source__apply(list(1), identity, function(job, result) value <<- result)
+    # }}}
     expect_identical(value, 1)
 })
 
@@ -70,6 +84,7 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
     withr::local_options(epwshiftr.mirai_workers = 2L, epwshiftr.cache = FALSE)
     paths <- c(tempfile(fileext = ".nc"), tempfile(fileext = ".nc"))
     on.exit(unlink(paths), add = TRUE)
+    # lapply callback {{{
     jobs <- lapply(seq_along(paths), function(index) {
         path <- paths[[index]]
         write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
@@ -92,9 +107,11 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
             )
         )
     })
+    # }}}
     # Read the tiny native files directly, independently of the extraction and
     # worker implementations. This catches errors shared by serial and parallel
     # paths; the fixture's two requested sites resolve to cells (2, 1) and (4, 3).
+    # lapply callback {{{
     native <- lapply(paths, function(path) {
         nc <- RNetCDF::open.nc(path)
         on.exit(RNetCDF::close.nc(nc))
@@ -105,11 +122,14 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
             units = RNetCDF::att.get.nc(nc, "tas", "units")
         )
     })
+    # }}}
     expected <- lapply(jobs, store__read_task)
     actual <- vector("list", 2L)
+    # source__apply callback {{{
     source__apply(jobs, store__read_task, function(job, value) {
         actual[[job$indices]] <<- value
     })
+    # }}}
     for (index in seq_along(jobs)) {
         for (site in 1:2) {
             expect_equal(
@@ -156,6 +176,7 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
     cache <- tempfile("source-cache-")
     withr::local_options(epwshiftr.cache = TRUE, epwshiftr.dir_cache = cache)
     on.exit(unlink(cache, recursive = TRUE), add = TRUE)
+    # source__apply callback {{{
     source__apply(jobs, store__read_task, function(job, value) {
         for (site in seq_along(value$results)) {
             resolved <- value$results[[site]]
@@ -167,15 +188,20 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
             )
         }
     })
+    # }}}
     unlink(paths)
     withr::local_options(epwshiftr.cache = "offline")
+    # source__apply callback {{{
     source__apply(jobs, store__read_task, function(job, value) {
         expect_true(all(vapply(
             value$results,
+            # vapply callback {{{
             function(x) isTRUE(x$cache_reused),
+            # }}}
             logical(1L)
         )))
     })
+    # }}}
 })
 
 
@@ -186,16 +212,24 @@ test_that("a single visible source read leaves the reporter responsive", {
     heartbeats <- 0L
     pid <- NULL
     reporter <- list(
+        # check_cancel {{{
         check_cancel = function() invisible(NULL),
+        # }}}
+        # heartbeat {{{
         heartbeat = function(...) heartbeats <<- heartbeats + 1L
+        # }}}
     )
     source__apply(
         list(1L),
+        # source__apply callback {{{
         function(job) {
             Sys.sleep(0.1)
             Sys.getpid()
         },
+        # }}}
+        # source__apply callback {{{
         function(job, value) pid <<- value,
+        # }}}
         reporter = reporter
     )
     expect_false(identical(pid, owner))
@@ -207,10 +241,13 @@ test_that("a single visible source read leaves the reporter responsive", {
 test_that("collector failures drain readers and stop dispatching", {
     withr::local_options(epwshiftr.mirai_workers = 2L)
     root <- withr::local_tempdir()
+    # lapply callback {{{
     jobs <- lapply(1:3, function(index) list(index = index, root = root))
+    # }}}
     expect_error(
         source__apply(
             jobs,
+            # source__apply callback {{{
             function(job) {
                 if (job$index == 1L) {
                     deadline <- Sys.time() + 10
@@ -227,9 +264,12 @@ test_that("collector failures drain readers and stop dispatching", {
                 }
                 file.create(file.path(job$root, paste0("done-", job$index)))
             },
+            # }}}
+            # source__apply callback {{{
             function(job, result) {
                 stop("persist conflict")
             }
+            # }}}
         ),
         "persist conflict"
     )
@@ -244,16 +284,24 @@ test_that("file isolation callbacks allow independent sources to finish", {
         failed <- integer()
         source__apply(
             as.list(1:3),
+            # source__apply callback {{{
             function(job) {
                 if (job == 1L) {
                     stop("unavailable source")
                 }
                 job
             },
+            # }}}
+            # source__apply callback {{{
             function(job, value) done <<- c(done, job),
+            # }}}
+            # on_error {{{
             on_error = function(job, error) failed <<- c(failed, job)
+            # }}}
         )
         expect_setequal(done, 2:3)
         expect_identical(failed, 1L)
     }
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

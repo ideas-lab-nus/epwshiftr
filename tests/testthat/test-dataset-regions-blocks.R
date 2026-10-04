@@ -66,3 +66,5 @@ test_that("native time runs use the spatial group's value allowance", {
         )
     }
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

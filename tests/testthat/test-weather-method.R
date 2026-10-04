@@ -3,10 +3,17 @@ test_that("method catalog contains algorithm-owned metadata only", {
 
     expect_setequal(methods$name, WEATHER_METHOD_DEFAULTS)
     expect_setequal(methods$domain, WEATHER_METHOD_DOMAINS)
-    expect_false(any(c(
-        "calendar_policy", "physical_policy", "output_type",
-        "data_source", "periods", "study_preset"
-    ) %in% names(methods)))
+    expect_false(any(
+        c(
+            "calendar_policy",
+            "physical_policy",
+            "output_type",
+            "data_source",
+            "periods",
+            "study_preset"
+        ) %in%
+            names(methods)
+    ))
 
     daily <- epw_morph_method_spec("quantile_delta_mapping_daily")
     expect_true(S7::S7_inherits(daily, WeatherMethodSpec))
@@ -39,7 +46,9 @@ test_that("daily adjustment methods share one reusable EPW adapter", {
         "_temperature"
     )
     recipes <- lapply(recipe_names, epw_morph_recipe_spec)
+    # lapply callback {{{
     components <- lapply(recipes, function(recipe) recipe@components)
+    # }}}
     signal_names <- vapply(
         components,
         `[[`,
@@ -52,15 +61,19 @@ test_that("daily adjustment methods share one reusable EPW adapter", {
         unname(DAILY_ADJUSTMENT_METHOD_COMPONENTS)
     )
     for (stage in setdiff(WEATHER_COMPONENT_STAGES, "signal")) {
-        expect_length(unique(vapply(
-            components,
-            `[[`,
-            character(1L),
-            stage
-        )), 1L)
+        expect_length(
+            unique(vapply(
+                components,
+                `[[`,
+                character(1L),
+                stage
+            )),
+            1L
+        )
     }
     expect_true(all(vapply(
         recipe_names,
+        # vapply callback {{{
         function(name) {
             recipe <- epw_morph_recipe(name)
             identical(
@@ -68,6 +81,7 @@ test_that("daily adjustment methods share one reusable EPW adapter", {
                 "preserve_specific_humidity"
             )
         },
+        # }}}
         logical(1L)
     )))
 })
@@ -104,11 +118,13 @@ test_that("all daily adjustment methods produce the same output contract", {
         unname(DAILY_ADJUSTMENT_METHOD_COMPONENTS),
         "_temperature"
     )
+    # lapply callback {{{
     results <- lapply(recipe_names, function(name) {
         recipe <- epw_morph_recipe(name)
         context <- daily_adjustment_test__context(recipe)
         suppressWarnings(morpher__run_context(context))
     })
+    # }}}
 
     expect_true(all(vapply(
         results,
@@ -117,20 +133,40 @@ test_that("all daily adjustment methods produce the same output contract", {
         what = "epw_morph_result"
     )))
     expect_identical(
-        unique(vapply(results, function(result) nrow(result$data), integer(1L))),
+        # vapply callback {{{
+        unique(vapply(
+            results,
+            function(result) nrow(result$data),
+            integer(1L)
+        )),
+        # }}}
         8760L
     )
     expect_identical(
-        unique(vapply(results, function(result) nrow(result$factors), integer(1L))),
+        # vapply callback {{{
+        unique(vapply(
+            results,
+            function(result) nrow(result$factors),
+            integer(1L)
+        )),
+        # }}}
         365L
     )
-    expect_true(all(vapply(results, function(result) {
-        identical(
-            result$parts$component_pipeline[
-                stage == "physics",
-                component
-            ],
-            "daily_adjusted_specific_humidity_closure"
-        )
-    }, logical(1L))))
+    # vapply callback {{{
+    expect_true(all(vapply(
+        results,
+        function(result) {
+            identical(
+                result$parts$component_pipeline[
+                    stage == "physics",
+                    component
+                ],
+                "daily_adjusted_specific_humidity_closure"
+            )
+        },
+        logical(1L)
+    )))
+    # }}}
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

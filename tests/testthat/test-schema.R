@@ -66,15 +66,30 @@ test_that("SCHEMA_DOWNLOADER_CONFIG validates persistent downloader config", {
         )
     )
 
-    expect_true(schema_validate(SCHEMA_DOWNLOADER_CONFIG, config, mode = "test", name = "downloader-config"))
+    expect_true(schema_validate(
+        SCHEMA_DOWNLOADER_CONFIG,
+        config,
+        mode = "test",
+        name = "downloader-config"
+    ))
 
     bad <- config
     bad$retries <- -1L
-    expect_false(schema_validate(SCHEMA_DOWNLOADER_CONFIG, bad, mode = "test", name = "bad-downloader-config"))
+    expect_false(schema_validate(
+        SCHEMA_DOWNLOADER_CONFIG,
+        bad,
+        mode = "test",
+        name = "bad-downloader-config"
+    ))
 
     bad <- config
     bad$connect_timeout <- 0L
-    expect_false(schema_validate(SCHEMA_DOWNLOADER_CONFIG, bad, mode = "test", name = "bad-downloader-config"))
+    expect_false(schema_validate(
+        SCHEMA_DOWNLOADER_CONFIG,
+        bad,
+        mode = "test",
+        name = "bad-downloader-config"
+    ))
 })
 # }}}
 # SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION {{{
@@ -96,29 +111,68 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         "context_time_filter"
     )
 
-    for (filename in c("result-dataset.json", "result-file.json", "result-aggregation.json")) {
-        schema_file <- system.file("extdata", "schema", filename, package = "epwshiftr", mustWork = TRUE)
-        json <- jsonlite::fromJSON(schema_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    for (filename in c(
+        "result-dataset.json",
+        "result-file.json",
+        "result-aggregation.json"
+    )) {
+        schema_file <- system.file(
+            "extdata",
+            "schema",
+            filename,
+            package = "epwshiftr",
+            mustWork = TRUE
+        )
+        json <- jsonlite::fromJSON(
+            schema_file,
+            simplifyVector = TRUE,
+            simplifyMatrix = FALSE
+        )
 
-        expect_named(json$fields, c("index_node", "parameter", "response", "context"))
+        expect_named(
+            json$fields,
+            c("index_node", "parameter", "response", "context")
+        )
         expect_identical(json$fields$index_node$`$ref`, "#/$defs/index_node")
         expect_identical(json$fields$parameter$`$ref`, "#/$defs/parameter")
         expect_identical(json$fields$response$`$ref`, "#/$defs/response")
         expect_identical(json$fields$context$`$ref`, "#/$defs/context")
         expect_true(all(required_defs %in% names(json[["$defs"]])))
-        expect_false(any(c("parameter_facet", "parameter_query", "parameter_control", "parameter_others") %in% names(json[["$defs"]])))
+        expect_false(any(
+            c(
+                "parameter_facet",
+                "parameter_query",
+                "parameter_control",
+                "parameter_others"
+            ) %in%
+                names(json[["$defs"]])
+        ))
     }
 })
 # }}}
 # SCHEMA_QUERY {{{
 test_that("SCHEMA_QUERY validates saved query JSON fixtures", {
     query_file <- test_path("_snaps", "query", "query_empty.json")
-    query_json <- jsonlite::fromJSON(query_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    query_json <- jsonlite::fromJSON(
+        query_file,
+        simplifyVector = TRUE,
+        simplifyMatrix = FALSE
+    )
 
-    expect_true(schema_validate(SCHEMA_QUERY, query_json, mode = "test", name = query_file))
+    expect_true(schema_validate(
+        SCHEMA_QUERY,
+        query_json,
+        mode = "test",
+        name = query_file
+    ))
 
     query_json$parameter <- "not a parameter list"
-    expect_false(schema_validate(SCHEMA_QUERY, query_json, mode = "test", name = "bad-query"))
+    expect_false(schema_validate(
+        SCHEMA_QUERY,
+        query_json,
+        mode = "test",
+        name = "bad-query"
+    ))
 
     bad_file <- tempfile(fileext = ".json")
     jsonlite::write_json(query_json, bad_file, null = "null", auto_unbox = TRUE)
@@ -126,6 +180,7 @@ test_that("SCHEMA_QUERY validates saved query JSON fixtures", {
 })
 # }}}
 # schema_test_response() {{{
+# schema_test_response {{{
 schema_test_response <- function(docs) {
     esgf_test__response(
         docs,
@@ -138,11 +193,16 @@ schema_test_response <- function(docs) {
     )
 }
 # }}}
+# }}}
 # schema_test_result_json() {{{
+# schema_test_result_json {{{
 schema_test_result_json <- function(type, docs, context = NULL) {
     result <- list(
         index_node = "https://example.org",
-        parameter = query_param__as_store(list(type = type, format = QUERY_PARAM__FORMAT_JSON))$serialize(null = TRUE),
+        parameter = query_param__as_store(list(
+            type = type,
+            format = QUERY_PARAM__FORMAT_JSON
+        ))$serialize(null = TRUE),
         response = schema_test_response(docs)
     )
     if (!is.null(context)) {
@@ -152,7 +212,9 @@ schema_test_result_json <- function(type, docs, context = NULL) {
     result
 }
 # }}}
+# }}}
 # schema_test_dataset_docs() {{{
+# schema_test_dataset_docs {{{
 schema_test_dataset_docs <- function() {
     data.frame(
         id = "dataset-1",
@@ -162,7 +224,9 @@ schema_test_dataset_docs <- function() {
     )
 }
 # }}}
+# }}}
 # schema_test_file_docs() {{{
+# schema_test_file_docs {{{
 schema_test_file_docs <- function() {
     docs <- data.frame(
         id = "file-1",
@@ -186,16 +250,39 @@ schema_test_file_docs <- function() {
     docs
 }
 # }}}
+# }}}
 # SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION {{{
 test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION validate saved query result JSON fixtures", {
     result_file <- test_path("_snaps", "query-result", "dataset.json")
-    dataset_json <- jsonlite::fromJSON(result_file, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    dataset_json <- jsonlite::fromJSON(
+        result_file,
+        simplifyVector = TRUE,
+        simplifyMatrix = FALSE
+    )
     file_json <- schema_test_result_json("File", schema_test_file_docs())
-    aggregation_json <- schema_test_result_json("Aggregation", schema_test_file_docs())
+    aggregation_json <- schema_test_result_json(
+        "Aggregation",
+        schema_test_file_docs()
+    )
 
-    expect_true(schema_validate(SCHEMA_RESULT_DATASET, dataset_json, mode = "test", name = result_file))
-    expect_true(schema_validate(SCHEMA_RESULT_FILE, file_json, mode = "test", name = "file-result"))
-    expect_true(schema_validate(SCHEMA_RESULT_AGGREGATION, aggregation_json, mode = "test", name = "aggregation-result"))
+    expect_true(schema_validate(
+        SCHEMA_RESULT_DATASET,
+        dataset_json,
+        mode = "test",
+        name = result_file
+    ))
+    expect_true(schema_validate(
+        SCHEMA_RESULT_FILE,
+        file_json,
+        mode = "test",
+        name = "file-result"
+    ))
+    expect_true(schema_validate(
+        SCHEMA_RESULT_AGGREGATION,
+        aggregation_json,
+        mode = "test",
+        name = "aggregation-result"
+    ))
 
     # Current bridge nodes may ignore `fields` and return these legitimate Solr
     # columns, which must remain distinct from arbitrary unknown saved fields.
@@ -239,15 +326,37 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         name = "current-provider-aggregation-fields"
     ))
 
-    expect_false(schema_validate(SCHEMA_RESULT_DATASET, file_json, mode = "test", name = "file-as-dataset"))
-    expect_false(schema_validate(SCHEMA_RESULT_FILE, aggregation_json, mode = "test", name = "aggregation-as-file"))
+    expect_false(schema_validate(
+        SCHEMA_RESULT_DATASET,
+        file_json,
+        mode = "test",
+        name = "file-as-dataset"
+    ))
+    expect_false(schema_validate(
+        SCHEMA_RESULT_FILE,
+        aggregation_json,
+        mode = "test",
+        name = "aggregation-as-file"
+    ))
 
-    dataset_json$response$response$docs$not_a_solr_field <- seq_len(nrow(dataset_json$response$response$docs))
-    expect_false(schema_validate(SCHEMA_RESULT_DATASET, dataset_json, mode = "test", name = "bad-result"))
+    dataset_json$response$response$docs$not_a_solr_field <- seq_len(nrow(
+        dataset_json$response$response$docs
+    ))
+    expect_false(schema_validate(
+        SCHEMA_RESULT_DATASET,
+        dataset_json,
+        mode = "test",
+        name = "bad-result"
+    ))
 
     file_missing_required <- file_json
     file_missing_required$response$response$docs$dataset_id <- NULL
-    expect_false(schema_validate(SCHEMA_RESULT_FILE, file_missing_required, mode = "test", name = "bad-file-result"))
+    expect_false(schema_validate(
+        SCHEMA_RESULT_FILE,
+        file_missing_required,
+        mode = "test",
+        name = "bad-file-result"
+    ))
 
     aggregation_missing_required <- aggregation_json
     aggregation_missing_required$response$response$docs$title <- NULL
@@ -258,50 +367,105 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         name = "bad-aggregation-result"
     ))
 
-    empty_file_json <- schema_test_result_json("File", schema_test_file_docs()[0L, ])
+    empty_file_json <- schema_test_result_json(
+        "File",
+        schema_test_file_docs()[0L, ]
+    )
     empty_file_json$response$response$docs <- data.frame()
-    expect_true(schema_validate(SCHEMA_RESULT_FILE, empty_file_json, mode = "test", name = "empty-file-result"))
-
-    time_context <- list(time_filter = list(
-        start = "2050-01-01T00:00:00Z",
-        stop = "2050-12-31T23:59:59Z",
-        method = "drs",
-        unknown = "kept",
-        total = 2L,
-        selected = 1L,
-        unknown_count = 0L
+    expect_true(schema_validate(
+        SCHEMA_RESULT_FILE,
+        empty_file_json,
+        mode = "test",
+        name = "empty-file-result"
     ))
-    file_with_context <- schema_test_result_json("File", schema_test_file_docs(), context = time_context)
-    expect_true(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "file-result-context"))
+
+    time_context <- list(
+        time_filter = list(
+            start = "2050-01-01T00:00:00Z",
+            stop = "2050-12-31T23:59:59Z",
+            method = "drs",
+            unknown = "kept",
+            total = 2L,
+            selected = 1L,
+            unknown_count = 0L
+        )
+    )
+    file_with_context <- schema_test_result_json(
+        "File",
+        schema_test_file_docs(),
+        context = time_context
+    )
+    expect_true(schema_validate(
+        SCHEMA_RESULT_FILE,
+        file_with_context,
+        mode = "test",
+        name = "file-result-context"
+    ))
     file_with_context$context$time_filter$method <- "metadata"
-    expect_false(schema_validate(SCHEMA_RESULT_FILE, file_with_context, mode = "test", name = "bad-result-context"))
-
-    query_url_context <- list(query_url = c("https://example.org/search?page=1", "https://example.org/search?page=2"))
-    dataset_with_context <- schema_test_result_json("Dataset", schema_test_dataset_docs(), context = query_url_context)
-    expect_true(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "dataset-result-query-url-context"))
-    dataset_with_context$context$query_url[[1L]] <- NA_character_
-    expect_false(schema_validate(SCHEMA_RESULT_DATASET, dataset_with_context, mode = "test", name = "bad-result-query-url-context"))
-
-    selection_context <- list(selection = list(
-        source_count = 3L,
-        source_num_found = 10L,
-        source_indices = c(3L, 1L)
+    expect_false(schema_validate(
+        SCHEMA_RESULT_FILE,
+        file_with_context,
+        mode = "test",
+        name = "bad-result-context"
     ))
-    aggregation_with_context <- schema_test_result_json("Aggregation", schema_test_file_docs(), context = selection_context)
+
+    query_url_context <- list(
+        query_url = c(
+            "https://example.org/search?page=1",
+            "https://example.org/search?page=2"
+        )
+    )
+    dataset_with_context <- schema_test_result_json(
+        "Dataset",
+        schema_test_dataset_docs(),
+        context = query_url_context
+    )
+    expect_true(schema_validate(
+        SCHEMA_RESULT_DATASET,
+        dataset_with_context,
+        mode = "test",
+        name = "dataset-result-query-url-context"
+    ))
+    dataset_with_context$context$query_url[[1L]] <- NA_character_
+    expect_false(schema_validate(
+        SCHEMA_RESULT_DATASET,
+        dataset_with_context,
+        mode = "test",
+        name = "bad-result-query-url-context"
+    ))
+
+    selection_context <- list(
+        selection = list(
+            source_count = 3L,
+            source_num_found = 10L,
+            source_indices = c(3L, 1L)
+        )
+    )
+    aggregation_with_context <- schema_test_result_json(
+        "Aggregation",
+        schema_test_file_docs(),
+        context = selection_context
+    )
     expect_true(schema_validate(
         SCHEMA_RESULT_AGGREGATION,
         aggregation_with_context,
         mode = "test",
         name = "aggregation-result-selection-context"
     ))
-    aggregation_with_context$context$selection$source_indices[[1L]] <- NA_integer_
+    aggregation_with_context$context$selection$source_indices[[
+        1L
+    ]] <- NA_integer_
     expect_false(schema_validate(
         SCHEMA_RESULT_AGGREGATION,
         aggregation_with_context,
         mode = "test",
         name = "bad-result-selection-context-missing"
     ))
-    aggregation_with_context <- schema_test_result_json("Aggregation", schema_test_file_docs(), context = selection_context)
+    aggregation_with_context <- schema_test_result_json(
+        "Aggregation",
+        schema_test_file_docs(),
+        context = selection_context
+    )
     aggregation_with_context$context$selection$source_count <- NULL
     expect_false(schema_validate(
         SCHEMA_RESULT_AGGREGATION,
@@ -311,23 +475,50 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     ))
 
     bad_file <- tempfile(fileext = ".json")
-    jsonlite::write_json(file_missing_required, bad_file, null = "null", auto_unbox = TRUE)
+    jsonlite::write_json(
+        file_missing_required,
+        bad_file,
+        null = "null",
+        auto_unbox = TRUE
+    )
     expect_error(esg_result("file")$load(bad_file))
 
     bad_file <- tempfile(fileext = ".json")
-    jsonlite::write_json(dataset_json, bad_file, null = "null", auto_unbox = TRUE)
+    jsonlite::write_json(
+        dataset_json,
+        bad_file,
+        null = "null",
+        auto_unbox = TRUE
+    )
     expect_error(esg_result()$load(bad_file))
 })
 # }}}
 # SCHEMA_RESULT_DATASET {{{
 test_that("SCHEMA_RESULT_DATASET validates local minimal results", {
-    result_json <- schema_test_result_json("Dataset", schema_test_dataset_docs())
+    result_json <- schema_test_result_json(
+        "Dataset",
+        schema_test_dataset_docs()
+    )
 
-    expect_true(schema_validate(SCHEMA_RESULT_DATASET, result_json, mode = "test", name = "local-dataset-result"))
+    expect_true(schema_validate(
+        SCHEMA_RESULT_DATASET,
+        result_json,
+        mode = "test",
+        name = "local-dataset-result"
+    ))
 
     bad_file <- tempfile(fileext = ".json")
-    result_json$response$response$docs$not_a_solr_field <- seq_len(nrow(result_json$response$response$docs))
-    jsonlite::write_json(result_json, bad_file, null = "null", auto_unbox = TRUE)
+    result_json$response$response$docs$not_a_solr_field <- seq_len(nrow(
+        result_json$response$response$docs
+    ))
+    jsonlite::write_json(
+        result_json,
+        bad_file,
+        null = "null",
+        auto_unbox = TRUE
+    )
     expect_error(esg_result()$load(bad_file))
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

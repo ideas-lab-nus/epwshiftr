@@ -4,6 +4,7 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
+# enhanced_test__hourly_year {{{
 enhanced_test__hourly_year <- function() {
     dates <- seq(as.Date("2001-01-01"), as.Date("2001-12-31"), by = "day")
     data.table::CJ(date = dates, hour = 1:24)[, `:=`(
@@ -15,8 +16,9 @@ enhanced_test__hourly_year <- function() {
         dry_bulb_temperature = 20 + 5 * sin(2 * pi * (hour - 8) / 24)
     )][]
 }
+# }}}
 
-
+# enhanced_test__catalog {{{
 enhanced_test__catalog <- function(
     experiment,
     variables,
@@ -40,10 +42,11 @@ enhanced_test__catalog <- function(
         datetime_end = sprintf("%d-12-31T23:59:59Z", max(years))
     )
 }
-
+# }}}
 
 # Build the deterministic monthly case whose full legacy EPW result is checked
 # against the real Singapore IWEC baseline fixture below.
+# enhanced_test__legacy_climate {{{
 enhanced_test__legacy_climate <- function() {
     month <- 1:12
     phase <- 2 * pi * (month - 1) / 12
@@ -57,6 +60,7 @@ enhanced_test__legacy_climate <- function() {
         clt = list(units = "%", value = 65 + 5 * sin(phase)),
         pr = list(units = "kg m-2 s-1", value = 2e-5 + 2e-6 * cos(phase))
     )
+    # lapply callback {{{
     data.table::rbindlist(lapply(names(spec), function(variable_id) {
         data.table::data.table(
             activity_drs = "ScenarioMIP",
@@ -76,17 +80,20 @@ enhanced_test__legacy_climate <- function() {
             value = spec[[variable_id]]$value
         )
     }))
+    # }}}
 }
-
+# }}}
 
 # Hash all 35 EPW fields after fixed-decimal canonicalization. This preserves a
 # full-year golden regression while ignoring platform line endings and harmless
 # sub-micro-unit floating-point differences from R and system math libraries.
+# enhanced_test__legacy_weather_digest {{{
 enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
     weather <- data.table::as.data.table(weather)[,
         EPW_FILE_COLUMNS,
         with = FALSE
     ]
+    # lapply callback {{{
     encoded <- lapply(weather, function(value) {
         missing <- is.na(value)
         if (is.numeric(value) || is.integer(value)) {
@@ -102,13 +109,15 @@ enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
         output[missing] <- "<NA>"
         output
     })
+    # }}}
     rows <- do.call(paste, c(encoded, sep = "\u001f"))
     checksum_bytes(charToRaw(paste(rows, collapse = "\n")), "sha256")
 }
-
+# }}}
 
 # Encode a result column deterministically before hashing complete runner
 # tables. Classes and factor levels are recorded separately by the snapshot.
+# original_morphing_test__canonical_column {{{
 original_morphing_test__canonical_column <- function(
     value,
     significant_digits = 7L
@@ -116,6 +125,7 @@ original_morphing_test__canonical_column <- function(
     if (is.list(value) && !is.data.frame(value)) {
         return(vapply(
             value,
+            # vapply callback {{{
             function(item) {
                 jsonlite::toJSON(
                     item,
@@ -124,6 +134,7 @@ original_morphing_test__canonical_column <- function(
                     na = "string"
                 )
             },
+            # }}}
             character(1L)
         ))
     }
@@ -166,10 +177,11 @@ original_morphing_test__canonical_column <- function(
     output[is.na(value) & !is.nan(value)] <- "<NA>"
     output
 }
-
+# }}}
 
 # Capture the complete schema, row order, and values of one runner table in a
 # compact, reviewable form suitable for cross-platform test snapshots.
+# original_morphing_test__table_behavior {{{
 original_morphing_test__table_behavior <- function(
     data,
     significant_digits = 7L
@@ -177,6 +189,7 @@ original_morphing_test__table_behavior <- function(
     data <- data.table::as.data.table(data)
     schema <- vapply(
         seq_along(data),
+        # vapply callback {{{
         function(index) {
             value <- data[[index]]
             details <- character()
@@ -210,6 +223,7 @@ original_morphing_test__table_behavior <- function(
                 suffix
             )
         },
+        # }}}
         character(1L)
     )
     encoded <- lapply(
@@ -228,9 +242,11 @@ original_morphing_test__table_behavior <- function(
         names(data),
         vapply(
             data,
+            # vapply callback {{{
             function(value) {
                 paste(class(value), collapse = "/")
             },
+            # }}}
             character(1L)
         ),
         rows
@@ -245,10 +261,11 @@ original_morphing_test__table_behavior <- function(
         )
     )
 }
-
+# }}}
 
 # Render compact behavior records as stable text rather than serializing R's
 # nested object metadata into the checked-in snapshot.
+# original_morphing_test__snapshot_json {{{
 original_morphing_test__snapshot_json <- function(value) {
     jsonlite::toJSON(
         value,
@@ -258,11 +275,12 @@ original_morphing_test__snapshot_json <- function(value) {
         pretty = TRUE
     )
 }
-
+# }}}
 
 # Snapshot every persisted and intermediate surface returned by an
 # original-morphing runner while retaining the method identity and selected
 # physical policy.
+# original_morphing_test__result_behavior {{{
 original_morphing_test__result_behavior <- function(result) {
     policy <- epwphys__recipe_policy(result$recipe)
     list(
@@ -275,10 +293,11 @@ original_morphing_test__result_behavior <- function(result) {
         diagnostics = original_morphing_test__table_behavior(result$diagnostics)
     )
 }
-
+# }}}
 
 # Build the same single-case context boundary used by EpwMorpher after it has
 # separated model, scenario, member, and period cases.
+# original_morphing_test__context {{{
 original_morphing_test__context <- function(
     epw,
     climate,
@@ -308,10 +327,11 @@ original_morphing_test__context <- function(
         strict = TRUE
     )
 }
-
+# }}}
 
 # Build matching future/reference cases that exercise every enhanced runner
 # branch, including optional extrema, HUSS state humidity, and LImon snow.
+# enhanced_test__change_climate {{{
 enhanced_test__change_climate <- function(reference = FALSE) {
     month <- 1:12
     phase <- 2 * pi * (month - 1) / 12
@@ -332,6 +352,7 @@ enhanced_test__change_climate <- function(reference = FALSE) {
         snd = list("m", 0.1 + 0.02 * offset + phase * 0)
     )
     year <- if (isTRUE(reference)) 1995L else 2060L
+    # lapply callback {{{
     data.table::rbindlist(lapply(names(spec), function(variable_id) {
         data.table::data.table(
             activity_drs = if (isTRUE(reference)) "CMIP" else "ScenarioMIP",
@@ -351,8 +372,9 @@ enhanced_test__change_climate <- function(reference = FALSE) {
             value = spec[[variable_id]][[2L]]
         )
     }))
+    # }}}
 }
-
+# }}}
 
 test_that("disabled precipitation preserves baseline EPW fields", {
     epw <- epw_file_read(get_cache_epw())
@@ -1119,6 +1141,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
+    # file_doc {{{
     file_doc <- function(path, variable_id) {
         data.frame(
             id = sprintf("%s|dataset", basename(path)),
@@ -1154,6 +1177,8 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
             check.names = FALSE
         )
     }
+    # }}}
+    # file_result {{{
     file_result <- function(docs) {
         params <- query_param__as_store(list(
             project = "CMIP6",
@@ -1170,6 +1195,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
             result = response
         )
     }
+    # }}}
 
     paths <- c(tas = tempfile(fileext = ".nc"), snd = tempfile(fileext = ".nc"))
     write_local_cmip6_netcdf_fixture(paths[["tas"]], 2060L, "tas")
@@ -1184,6 +1210,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
         grid_label = c("gn", "gr", "gr", "gn")
     )
     docs <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(seq_len(nrow(combinations)), function(i) {
             variable_id <- combinations$variable_id[[i]]
             row <- file_doc(paths[[variable_id]], variable_id)
@@ -1205,6 +1232,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
             row$title <- paste0(suffix, ".nc")
             row
         }),
+        # }}}
         fill = TRUE
     )
 
@@ -1618,6 +1646,7 @@ test_that("Original morphing combined temperature uses average daily EPW range",
         minute = 60L,
         dry_bulb_temperature = c(10, 20, 0, 30)
     )
+    # climate {{{
     climate <- function(value, variable_id) {
         data.table::data.table(
             activity_drs = "ScenarioMIP",
@@ -1635,6 +1664,7 @@ test_that("Original morphing combined temperature uses average daily EPW range",
             interval = "future"
         )
     }
+    # }}}
     future_mean <- climate(302, "tas")
     reference_mean <- climate(300, "tas")
     future_max <- climate(310, "tasmax")
@@ -1683,3 +1713,5 @@ test_that("Original morphing combined temperature uses average daily EPW range",
         tolerance = 1e-12
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

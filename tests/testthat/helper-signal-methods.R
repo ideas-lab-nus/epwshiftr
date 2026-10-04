@@ -1,4 +1,5 @@
 # Build compact canonical daily rows for package-native signal contract tests.
+# bias_adjustment_test__series {{{
 bias_adjustment_test__series <- function(
     variable_id,
     year,
@@ -30,9 +31,11 @@ bias_adjustment_test__series <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Build consecutive native-calendar daily rows shared by statistical signal
 # method tests without coercing 360-, 365-, or 366-day dates through base Date.
+# signal_test__series {{{
 signal_test__series <- function(
     variable_id,
     year,
@@ -68,9 +71,11 @@ signal_test__series <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Construct the role metadata and aligned group shared by signal component
 # execution tests so every method exercises the same package boundary.
+# signal_test__execution_inputs {{{
 signal_test__execution_inputs <- function(
     observed,
     historical,
@@ -103,9 +108,14 @@ signal_test__execution_inputs <- function(
         )
     )
 }
+# }}}
 
 # Build all three role-labelled WeatherInput objects required by monthly
 # mean-change signals while retaining the same tables in the aligned group.
+# bias_adjustment_test__inputs {{{
 bias_adjustment_test__inputs <- function(observed, historical, future) {
     signal_test__execution_inputs(observed, historical, future)$inputs
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

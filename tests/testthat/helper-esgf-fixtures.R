@@ -1,18 +1,25 @@
+# fixture_path {{{
 fixture_path <- function(...) {
     testthat::test_path("fixtures", ...)
 }
+# }}}
 
+# fixture_json {{{
 fixture_json <- function(...) {
     path <- fixture_path(...)
     jsonlite::fromJSON(path, simplifyVector = TRUE, simplifyMatrix = FALSE)
 }
+# }}}
 
+# read_fixture_json {{{
 read_fixture_json <- function(...) {
     readLines(fixture_path(...), warn = FALSE)
 }
+# }}}
 
 # Build the canonical Solr response envelope shared by query, Store, CLI, and
 # staged-workflow tests while allowing time-sensitive tests to supply a timestamp.
+# esgf_test__response {{{
 esgf_test__response <- function(
     docs,
     timestamp = as.POSIXct("2026-01-01 00:00:00", tz = "UTC"),
@@ -42,25 +49,35 @@ esgf_test__response <- function(
         timestamp = timestamp
     )
 }
+# }}}
 
+# esgf_fixture_response {{{
 esgf_fixture_response <- function(name) {
     response <- fixture_json("esgf", name)
     response$timestamp <- as.POSIXct("2020-02-02 22:22:22", tz = "UTC")
     response
 }
+# }}}
 
-esgf_fixture_collect <- function(params,
-                                 dataset = "dataset-success.json",
-                                 file = "file-success.json",
-                                 response = NULL) {
+# esgf_fixture_collect {{{
+esgf_fixture_collect <- function(
+    params,
+    dataset = "dataset-success.json",
+    file = "file-success.json",
+    response = NULL
+) {
     if (is.null(response)) {
         type <- query_param__value(query_param__as_store(params)$type())
-        response <- esgf_fixture_response(if (identical(type, "File")) file else dataset)
+        response <- esgf_fixture_response(
+            if (identical(type, "File")) file else dataset
+        )
     }
     list(response = response, docs = response$response$docs, parameter = params)
 }
+# }}}
 
 # Build a deterministic Dataset document for offline workflow discovery.
+# esgf_test__dataset_docs {{{
 esgf_test__dataset_docs <- function(variable_id = "tas", frequency = "day") {
     data.table::data.table(
         id = "dataset-1",
@@ -76,8 +93,10 @@ esgf_test__dataset_docs <- function(variable_id = "tas", frequency = "day") {
         data_node = "example.org"
     )
 }
+# }}}
 
 # Build File identity, coverage and endpoint fields shared by CLI and R tests.
+# esgf_test__file_docs {{{
 esgf_test__file_docs <- function(
     path,
     opendap_url = path,
@@ -131,8 +150,10 @@ esgf_test__file_docs <- function(
     data.table::set(docs, j = "url", value = list(list(urls)))
     docs
 }
+# }}}
 
 # Wrap shared File documents in the same result class consumed by the store.
+# esgf_test__file_result {{{
 esgf_test__file_result <- function(docs) {
     params <- query_param__as_store(list(
         project = "CMIP6",
@@ -148,3 +169,6 @@ esgf_test__file_result <- function(docs) {
         result = esgf_test__response(docs)
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

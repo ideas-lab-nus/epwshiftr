@@ -6,6 +6,7 @@ test_local_dependencies(list(
 
 # Build deterministic daily CMIP temperature rows with complete canonical
 # context columns for backend and workflow tests.
+# daily_backend_test__climate {{{
 daily_backend_test__climate <- function(
     years,
     period,
@@ -18,6 +19,7 @@ daily_backend_test__climate <- function(
 ) {
     years <- as.integer(years)
     phase <- daily__phase_grid(365L)
+    # lapply callback {{{
     rows <- lapply(years, function(year) {
         time <- as.POSIXct(
             as.Date(sprintf("%04d-01-01", year)) + seq.int(0L, 364L),
@@ -30,6 +32,7 @@ daily_backend_test__climate <- function(
             values$tasmin <- 20 + seasonal - 4 + minimum_shift
             values$tasmax <- 20 + seasonal + 5 + maximum_shift
         }
+        # lapply callback {{{
         data.table::rbindlist(lapply(names(values), function(variable_id) {
             data.table::data.table(
                 activity_id = if (identical(experiment, "historical")) {
@@ -54,12 +57,16 @@ daily_backend_test__climate <- function(
                 value = values[[variable_id]] + 273.15
             )
         }))
+        # }}}
     })
+    # }}}
     data.table::rbindlist(rows)
 }
+# }}}
 
 # Build one direct backend context from the packaged EPW fixture and matching
 # future/historical daily climate rows.
+# daily_backend_test__context {{{
 daily_backend_test__context <- function(
     include_extrema = TRUE,
     frequency = "day",
@@ -91,6 +98,7 @@ daily_backend_test__context <- function(
         recipe = epw_morph_recipe("daily_temperature")
     )
 }
+# }}}
 
 test_that("shared temperature conversion handles mixed supported units", {
     expect_equal(
@@ -475,3 +483,5 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
     )))
     expect_identical(resumed$result_id, workflow$results$result_id)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

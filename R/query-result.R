@@ -13,6 +13,7 @@
 #' @author Hongyuan Jia
 #' @name EsgResult
 #' @keywords internal
+# EsgResult {{{
 EsgResult <- R6::R6Class(
     "EsgResult",
     lock_class = TRUE,
@@ -35,6 +36,7 @@ EsgResult <- R6::R6Class(
         #'
         #' @return An `EsgResult` object.
         #'
+        # initialize {{{
         initialize = function(index_node, params, response, context = NULL) {
             private$index_node <- index_node
             private$parameter <- query_param__clone(params)
@@ -43,6 +45,7 @@ EsgResult <- R6::R6Class(
             private$register_dynamic_fields()
             self
         },
+        # }}}
         # to_data_table
         #' @description
         #' Convert the results into a [data.table][data.table::data.table()]
@@ -57,6 +60,7 @@ EsgResult <- R6::R6Class(
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
+        # to_data_table {{{
         to_data_table = function(fields = NULL, formatted = NULL) {
             checkmate::assert_character(
                 fields,
@@ -79,6 +83,7 @@ EsgResult <- R6::R6Class(
             }
 
             res <- stats::setNames(
+                # lapply callback {{{
                 lapply(fields, function(field) {
                     private$normalize_output_field(
                         private$get_output_field(
@@ -87,12 +92,14 @@ EsgResult <- R6::R6Class(
                         )
                     )
                 }),
+                # }}}
                 fields
             )
 
             data.table::setDT(res)
             res[]
         },
+        # }}}
         # to_dt
         #' @description
         #' Alias of `$to_data_table()`.
@@ -101,18 +108,22 @@ EsgResult <- R6::R6Class(
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
+        # to_dt {{{
         to_dt = function(...) {
             self$to_data_table(...)
         },
+        # }}}
         # count
         #' @description
         #' Count the number of matched records in current result
         #'
         #' @return An integer.
         #'
+        # count {{{
         count = function() {
             length(self$id)
         },
+        # }}}
         # save
         #' @description
         #' Save the result into a JSON file
@@ -129,6 +140,7 @@ EsgResult <- R6::R6Class(
         #'
         #' @return The full path of the output JSON file.
         #'
+        # save {{{
         save = function(file, pretty = TRUE) {
             args <- list(
                 index_node = private$index_node,
@@ -144,6 +156,7 @@ EsgResult <- R6::R6Class(
 
             do.call(query__save, args)
         },
+        # }}}
         # load
         #' @description
         #' Restore the result state from an JSON file
@@ -159,6 +172,7 @@ EsgResult <- R6::R6Class(
         #'
         #' @return The modified `EsgResult` object itself.
         #'
+        # load {{{
         load = function(file) {
             q <- query__load(file, private$result_schema())
             private$validate_loaded_result(q)
@@ -171,6 +185,7 @@ EsgResult <- R6::R6Class(
 
             self
         },
+        # }}}
         # query_url
         #' @description
         #' Return the ESGF search query URL used to create this result.
@@ -181,6 +196,7 @@ EsgResult <- R6::R6Class(
         #'
         #' @return A named character vector of query URLs.
         #'
+        # query_url {{{
         query_url = function(pages = c("first", "all")) {
             pages <- match.arg(pages)
             urls <- private$get_query_url_context()
@@ -190,6 +206,7 @@ EsgResult <- R6::R6Class(
 
             urls
         },
+        # }}}
         # reachable
         #' @description
         #' Check whether result records are reachable through a service URL.
@@ -212,6 +229,7 @@ EsgResult <- R6::R6Class(
         #'        `record_index`, `id`, `data_node`, `service`, `url`,
         #'        `reachable`, `latency_ms`, `error`, `probe_level`,
         #'        `probe_url`, and `probe_cached`.
+        # reachable {{{
         reachable = function(
             service = "OPENDAP",
             level = c("data_node", "url"),
@@ -251,6 +269,7 @@ EsgResult <- R6::R6Class(
                 probe_cached = probes$probe_cached
             )
         },
+        # }}}
         # slice
         #' @description
         #' Subset result records by row, logical selector, or record ID.
@@ -263,6 +282,7 @@ EsgResult <- R6::R6Class(
         #'        empty result.
         #'
         #' @return A new result object of the same type.
+        # slice {{{
         slice = function(i = NULL) {
             index <- private$normalize_slice_index(i)
             docs <- private$get_docs()
@@ -272,6 +292,7 @@ EsgResult <- R6::R6Class(
                 context = private$update_selection_context(index)
             )
         },
+        # }}}
         # filter
         #' @description
         #' Subset result records with a predicate function.
@@ -282,6 +303,7 @@ EsgResult <- R6::R6Class(
         #'        predicate input data table. Default: `FALSE`.
         #'
         #' @return A new result object of the same type.
+        # filter {{{
         filter = function(predicate, formatted = FALSE) {
             checkmate::assert_function(predicate)
             checkmate::assert_flag(formatted)
@@ -301,6 +323,7 @@ EsgResult <- R6::R6Class(
 
             self$slice(keep)
         },
+        # }}}
         # selection
         #' @description
         #' Return local selection provenance for this result.
@@ -311,18 +334,22 @@ EsgResult <- R6::R6Class(
         #'
         #' @return A list with `source_count`, `source_num_found`, and
         #'        `source_indices`.
+        # selection {{{
         selection = function() {
             private$get_selection_context()
         }
+        # }}}
     ),
 
     active = list(
         # id
         #' @field id A character vector indicating globally unique record
         #'        identifiers.
+        # id {{{
         id = function() {
             private$get_field("id")
         },
+        # }}}
         # url
         #' @field url A list of [data.table][data.table::data.table()] with 3
         #'        columns:
@@ -333,12 +360,14 @@ EsgResult <- R6::R6Class(
         #' 3. `mime_type` \\[`character`\\]: The MIME types indicating
         #'    the nature and format of the corresponding document of the
         #'    URLs.
+        # url {{{
         url = function() {
             urls <- private$get_field("url")
             if (!length(urls)) {
                 return(NULL)
             }
 
+            # lapply callback {{{
             lapply(urls, function(url) {
                 if (!length(url)) {
                     return(NULL)
@@ -359,26 +388,34 @@ EsgResult <- R6::R6Class(
                 data.table::setnames(res, c("service", "url", "mime_type"))
                 res
             })
+            # }}}
         },
+        # }}}
         # size
         #' @field size A numeric vector of file sizes in bytes.
+        # size {{{
         size = function() {
             size <- private$get_field("size")
             set_size_units(size)
         },
+        # }}}
         # fields
         #' @field fields A character vector indicating all fields in the results,
         #'        preserving the order returned by the response.
+        # fields {{{
         fields = function() {
             names(private$get_docs())
         },
+        # }}}
         # time_filter
         #' @field time_filter A list describing the time range used by
         #'        `$filter_time()`, or `NULL` if no result-level time filter
         #'        has been recorded.
+        # time_filter {{{
         time_filter = function() {
             private$get_time_filter_context()
         }
+        # }}}
     ),
 
     private = list(
@@ -410,6 +447,7 @@ EsgResult <- R6::R6Class(
         ),
 
         # result_schema
+        # result_schema {{{
         result_schema = function() {
             type <- private$result_type
             if (!is.character(type) || length(type) != 1L || is.na(type)) {
@@ -433,6 +471,8 @@ EsgResult <- R6::R6Class(
 
             schema
         },
+        # }}}
+        # get_docs {{{
         get_docs = function() {
             if (is.null(private$response)) {
                 return(data.frame(check.names = FALSE))
@@ -445,7 +485,9 @@ EsgResult <- R6::R6Class(
                 docs
             }
         },
+        # }}}
 
+        # get_field {{{
         get_field = function(field) {
             docs <- private$get_docs()
             val <- docs[[field]]
@@ -454,8 +496,10 @@ EsgResult <- R6::R6Class(
             }
             if (all(lengths(val) == 1L)) unlst(val) else val
         },
+        # }}}
 
         # get_time_filter_context
+        # get_time_filter_context {{{
         get_time_filter_context = function() {
             ctx <- private$context$time_filter
             if (is.null(ctx) || !length(ctx)) {
@@ -464,7 +508,9 @@ EsgResult <- R6::R6Class(
 
             ctx
         },
+        # }}}
         # get_query_url_context
+        # get_query_url_context {{{
         get_query_url_context = function() {
             urls <- private$context$query_url
             if (is.null(urls)) {
@@ -476,7 +522,9 @@ EsgResult <- R6::R6Class(
 
             query_result__query_urls(urls)
         },
+        # }}}
         # get_selection_context
+        # get_selection_context {{{
         get_selection_context = function() {
             ctx <- private$context$selection
             if (!is.null(ctx) && length(ctx)) {
@@ -503,7 +551,9 @@ EsgResult <- R6::R6Class(
                 source_indices = seq_len(n)
             )
         },
+        # }}}
         # update_time_filter_context
+        # update_time_filter_context {{{
         update_time_filter_context = function(
             start,
             stop,
@@ -525,7 +575,9 @@ EsgResult <- R6::R6Class(
 
             context
         },
+        # }}}
         # update_selection_context
+        # update_selection_context {{{
         update_selection_context = function(index, context = private$context) {
             context__update_selection(
                 context,
@@ -533,7 +585,9 @@ EsgResult <- R6::R6Class(
                 index
             )
         },
+        # }}}
         # result_with_docs
+        # result_with_docs {{{
         result_with_docs = function(docs, context = private$context) {
             response <- private$response
             response$response$docs <- docs
@@ -560,7 +614,9 @@ EsgResult <- R6::R6Class(
                 context = context
             )
         },
+        # }}}
         # filter_time_result
+        # filter_time_result {{{
         filter_time_result = function(
             start,
             stop,
@@ -618,7 +674,9 @@ EsgResult <- R6::R6Class(
 
             private$result_with_docs(out, context = context)
         },
+        # }}}
         # normalize_slice_index
+        # normalize_slice_index {{{
         normalize_slice_index = function(i) {
             n <- nrow(private$get_docs())
             if (is.null(i)) {
@@ -711,7 +769,9 @@ EsgResult <- R6::R6Class(
 
             i
         },
+        # }}}
         # filter_time_ranges_drs
+        # filter_time_ranges_drs {{{
         filter_time_ranges_drs = function(docs, result_label = "file") {
             # Warn only about records that actually cannot be interpreted;
             # selecting the documented DRS strategy is not itself exceptional.
@@ -731,14 +791,18 @@ EsgResult <- R6::R6Class(
 
             ranges
         },
+        # }}}
         # filter_time_ranges_auto
         # Prefer authoritative File metadata and fill only absent ranges from
         # CMIP/DRS filenames. ESGF nodes commonly omit the requested datetime
         # fields, while local fixtures and some providers already supply them.
+        # filter_time_ranges_auto {{{
         filter_time_ranges_auto = function(docs, result_label = "file") {
+            # query_result__fill_time_ranges callback {{{
             ranges <- query_result__fill_time_ranges(docs, function() {
                 query_result__drs_labels(docs)$value
             })
+            # }}}
             unknown <- is.na(ranges$datetime_start) |
                 is.na(ranges$datetime_end)
             if (any(unknown)) {
@@ -756,7 +820,9 @@ EsgResult <- R6::R6Class(
             }
             ranges
         },
+        # }}}
         # filter_time_ranges_opendap
+        # filter_time_ranges_opendap {{{
         filter_time_ranges_opendap = function(result_label = "file") {
             urls <- self$url_opendap
             if (is.null(urls)) {
@@ -795,7 +861,9 @@ EsgResult <- R6::R6Class(
                         end[[i]] <- max(time_axis)
                         TRUE
                     },
+                    # error {{{
                     error = function(e) FALSE,
+                    # }}}
                     finally = {
                         if (!is.null(ds) && isTRUE(ds$is_open)) {
                             ds$close()
@@ -822,13 +890,17 @@ EsgResult <- R6::R6Class(
                 check.names = FALSE
             )
         },
+        # }}}
         # add_time_range_fields
+        # add_time_range_fields {{{
         add_time_range_fields = function(docs, ranges) {
             docs$datetime_start <- query_result__time_iso(ranges$datetime_start)
             docs$datetime_end <- query_result__time_iso(ranges$datetime_end)
             docs
         },
+        # }}}
         # validate_loaded_result
+        # validate_loaded_result {{{
         validate_loaded_result = function(q) {
             expected <- private$result_type
             actual <- query_param__value(q$parameter$type())
@@ -850,7 +922,9 @@ EsgResult <- R6::R6Class(
 
             invisible(q)
         },
+        # }}}
         # register_dynamic_fields
+        # register_dynamic_fields {{{
         register_dynamic_fields = function() {
             if (length(private$dynamic_fields)) {
                 for (field in private$dynamic_fields) {
@@ -884,6 +958,7 @@ EsgResult <- R6::R6Class(
                     field,
                     local({
                         field <- field
+                        # { callback {{{
                         function(value) {
                             if (!missing(value)) {
                                 stop(
@@ -893,6 +968,7 @@ EsgResult <- R6::R6Class(
                             }
                             private$get_field(field)
                         }
+                        # }}}
                     }),
                     self
                 )
@@ -901,7 +977,9 @@ EsgResult <- R6::R6Class(
 
             invisible(fields)
         },
+        # }}}
         # has_access
+        # has_access {{{
         has_access = function(type) {
             n <- self$count()
             if (!n) {
@@ -919,9 +997,13 @@ EsgResult <- R6::R6Class(
                 access <- c(access, rep(list(character()), n - length(access)))
             }
 
+            # vapply callback {{{
             vapply(access[seq_len(n)], function(acc) type %in% acc, logical(1L))
+            # }}}
         },
+        # }}}
         # get_url
+        # get_url {{{
         get_url = function(type, name = type) {
             urls <- self$url
             if (is.null(urls)) {
@@ -930,6 +1012,7 @@ EsgResult <- R6::R6Class(
 
             vapply(
                 seq_along(urls),
+                # vapply callback {{{
                 function(i) {
                     dt_url <- urls[[i]]
                     # nocov start
@@ -956,10 +1039,13 @@ EsgResult <- R6::R6Class(
 
                     res
                 },
+                # }}}
                 character(1L)
             )
         },
+        # }}}
         # get_output_field
+        # get_output_field {{{
         get_output_field = function(field, formatted = FALSE) {
             docs <- private$get_docs()
             value <- docs[[field]]
@@ -974,7 +1060,9 @@ EsgResult <- R6::R6Class(
 
             value
         },
+        # }}}
         # normalize_output_field
+        # normalize_output_field {{{
         normalize_output_field = function(value) {
             if (typeof(value) == "list") {
                 len <- lengths(value)
@@ -986,7 +1074,9 @@ EsgResult <- R6::R6Class(
 
             value
         },
+        # }}}
         # record_context
+        # record_context {{{
         record_context = function(index) {
             checkmate::assert_int(index, lower = 1L)
 
@@ -1014,12 +1104,16 @@ EsgResult <- R6::R6Class(
 
             ""
         },
+        # }}}
         # record_label
+        # record_label {{{
         record_label = function(index) {
             checkmate::assert_int(index, lower = 1L)
             sprintf("record %d%s", index, private$record_context(index))
         },
+        # }}}
         # record_labels
+        # record_labels {{{
         record_labels = function(index) {
             checkmate::assert_integerish(
                 index,
@@ -1032,7 +1126,9 @@ EsgResult <- R6::R6Class(
                 collapse = ", "
             )
         },
+        # }}}
         # format_record_context_value
+        # format_record_context_value {{{
         format_record_context_value = function(value) {
             if (is.null(value) || !length(value)) {
                 return(NULL)
@@ -1045,9 +1141,11 @@ EsgResult <- R6::R6Class(
                 return(NULL)
             }
 
+            # error {{{
             value <- tryCatch(as.character(value), error = function(e) {
                 character()
             })
+            # }}}
             value <- value[!is.na(value) & nzchar(value)]
             if (!length(value)) {
                 return(NULL)
@@ -1060,13 +1158,17 @@ EsgResult <- R6::R6Class(
 
             value
         },
+        # }}}
         # print_header
+        # print_header {{{
         print_header = function(type = "") {
             d <- cli::cli_div(theme = list(rule = list("line-type" = "double")))
             cli::cli_rule("ESGF Query Result [{type}]")
             cli::cli_end(d)
         },
+        # }}}
         # print_summary
+        # print_summary {{{
         print_summary = function(type = "") {
             ts <- format(
                 private$response$timestamp,
@@ -1125,12 +1227,16 @@ EsgResult <- R6::R6Class(
                 ))
             }
         },
+        # }}}
         # print_parameters
+        # print_parameters {{{
         print_parameters = function() {
             cli::cli_h1("<Query Parameter>")
             query_param__print(private$parameter)
         },
+        # }}}
         # print_contents
+        # print_contents {{{
         print_contents = function(type, n) {
             checkmate::assert_count(n, positive = TRUE, null.ok = TRUE)
 
@@ -1214,12 +1320,14 @@ EsgResult <- R6::R6Class(
                         vapply(
                             url[ind],
                             FUN.VALUE = character(1),
+                            # vapply callback {{{
                             function(url) {
                                 if (is.null(url)) {
                                     return("NONE")
                                 }
                                 paste0(url$service, collapse = ", ")
                             }
+                            # }}}
                         )
                     }
                 )
@@ -1229,9 +1337,12 @@ EsgResult <- R6::R6Class(
 
             print__truncation_footer(self$id, n)
         }
+        # }}}
     )
 )
+# }}}
 # result collection helpers
+# query_result__context {{{
 query_result__context <- function(context = NULL) {
     if (is.null(context) || !length(context)) {
         return(list())
@@ -1251,7 +1362,9 @@ query_result__context <- function(context = NULL) {
 
     context
 }
+# }}}
 
+# query_result__selection {{{
 query_result__selection <- function(selection) {
     if (is.null(selection) || !length(selection)) {
         return(NULL)
@@ -1311,8 +1424,10 @@ query_result__selection <- function(selection) {
         source_indices = source_indices
     )
 }
+# }}}
 
 # Update a result context with selected source positions.
+# context__update_selection {{{
 context__update_selection <- function(context, selection, index) {
     # Source totals describe the original result; only its retained positions
     # change when a dataset or query result is sliced again.
@@ -1324,7 +1439,9 @@ context__update_selection <- function(context, selection, index) {
 
     context
 }
+# }}}
 
+# query_result__query_urls {{{
 query_result__query_urls <- function(urls, named = TRUE) {
     if (is.null(urls) || !length(urls)) {
         return(stats::setNames(character(), character()))
@@ -1338,8 +1455,10 @@ query_result__query_urls <- function(urls, named = TRUE) {
         urls
     }
 }
+# }}}
 
 # Normalize a result column to the fixed character length required by callers.
+# query_result__character_column {{{
 query_result__character_column <- function(data, name, size = nrow(data)) {
     value <- data[[name]]
     if (is.null(value)) {
@@ -1352,7 +1471,9 @@ query_result__character_column <- function(data, name, size = nrow(data)) {
     }
     value[seq_len(size)]
 }
+# }}}
 
+# query_result__time_iso {{{
 query_result__time_iso <- function(x) {
     if (is.null(x)) {
         return(character())
@@ -1364,8 +1485,10 @@ query_result__time_iso <- function(x) {
     out[ok] <- format.POSIXct(x[ok], tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ")
     out
 }
+# }}}
 
 # Fill incomplete metadata time ranges from caller-selected CMIP/DRS labels.
+# query_result__fill_time_ranges {{{
 query_result__fill_time_ranges <- function(data, labels) {
     size <- nrow(data)
     start <- solrdate__parse(
@@ -1396,7 +1519,9 @@ query_result__fill_time_ranges <- function(data, labels) {
         check.names = FALSE
     )
 }
+# }}}
 
+# query_result__time_window {{{
 query_result__time_window <- function(start, stop) {
     checkmate::assert_scalar(start)
     checkmate::assert_scalar(stop)
@@ -1411,7 +1536,9 @@ query_result__time_window <- function(start, stop) {
 
     list(start = time[[1L]], stop = time[[2L]])
 }
+# }}}
 
+# query_result__drs_url {{{
 query_result__drs_url <- function(url) {
     if (is.null(url) || !length(url)) {
         return(NA_character_)
@@ -1426,7 +1553,9 @@ query_result__drs_url <- function(url) {
 
     parsed <- vapply(
         strsplit(url, "|", fixed = TRUE),
+        # vapply callback {{{
         function(parts) parts[[1L]],
+        # }}}
         character(1L)
     )
     parsed <- sub("[?#].*$", "", parsed)
@@ -1439,7 +1568,9 @@ query_result__drs_url <- function(url) {
 
     parsed[[1L]]
 }
+# }}}
 
+# query_result__drs_id {{{
 query_result__drs_id <- function(id) {
     if (is.null(id) || !length(id) || is.na(id[[1L]])) {
         return(NA_character_)
@@ -1453,12 +1584,15 @@ query_result__drs_id <- function(id) {
 
     hit
 }
+# }}}
 
+# query_result__drs_labels {{{
 query_result__drs_labels <- function(docs) {
     n <- nrow(docs)
     labels <- rep(NA_character_, n)
     source <- rep(NA_character_, n)
 
+    # scalar_field {{{
     scalar_field <- function(field, i) {
         value <- docs[[field]]
         if (is.null(value) || length(value) < i) {
@@ -1475,6 +1609,7 @@ query_result__drs_labels <- function(docs) {
 
         value[[1L]]
     }
+    # }}}
 
     for (i in seq_len(n)) {
         title <- scalar_field("title", i)
@@ -1505,20 +1640,26 @@ query_result__drs_labels <- function(docs) {
 
     data.frame(value = labels, source = source, check.names = FALSE)
 }
+# }}}
 
+# query_result__col {{{
 query_result__col <- function(dt, name, default = NA_character_) {
     if (name %in% names(dt)) {
         return(dt[[name]])
     }
     rep(default, nrow(dt))
 }
+# }}}
 
+# query_result__file_key {{{
 query_result__file_key <- function(dt) {
     # Use the same logical identity as the persistent store so replica
     # candidates cannot split into independent download tasks before they are
     # normalized in the catalog.
     store__logical_file_id(data.table::as.data.table(dt))
 }
+# }}}
+# query_result__generator {{{
 query_result__generator <- function(type) {
     type <- query_result__type(type)
     switch(
@@ -1528,7 +1669,9 @@ query_result__generator <- function(type) {
         Aggregation = EsgResultAggregation
     )
 }
+# }}}
 
+# query_result__required {{{
 query_result__required <- function(type) {
     type <- query_result__type(type)
     switch(
@@ -1538,6 +1681,8 @@ query_result__required <- function(type) {
         Aggregation = EsgResultAggregation$private_fields$required_fields
     )
 }
+# }}}
+# query_result__drs_bound {{{
 query_result__drs_bound <- function(value, end = FALSE) {
     if (is.na(value) || !nzchar(value)) {
         return(as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC"))
@@ -1593,7 +1738,9 @@ query_result__drs_bound <- function(value, end = FALSE) {
     )
     seq(parsed, by = increment, length.out = 2L)[[2L]] - 1
 }
+# }}}
 
+# query_result__drs_ranges {{{
 query_result__drs_ranges <- function(labels) {
     start <- as.POSIXct(
         rep(NA_real_, length(labels)),
@@ -1631,7 +1778,9 @@ query_result__drs_ranges <- function(labels) {
 
     data.frame(datetime_start = start, datetime_end = end, check.names = FALSE)
 }
+# }}}
 
+# query_result__type {{{
 query_result__type <- function(
     type,
     choices = c("Dataset", "File", "Aggregation")
@@ -1653,7 +1802,9 @@ query_result__type <- function(
     checkmate::assert_choice(type, choices)
     type
 }
+# }}}
 
+# query_result__merge_params {{{
 query_result__merge_params <- function(store, params) {
     if (!length(params)) {
         return(store)
@@ -1675,12 +1826,14 @@ query_result__merge_params <- function(store, params) {
 
     store$restore(state)
 }
+# }}}
 # Child Dataset collection is split by Dataset count instead of URL length so
 # the behavior is deterministic and independent of JSON/url connection heuristics.
 QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE <- 50L
 
 # query_result__child_dataset_batches
 # Split Dataset IDs for child File/Aggregation collection while preserving order.
+# query_result__child_dataset_batches {{{
 query_result__child_dataset_batches <- function(
     dataset_id,
     batch_size = QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE
@@ -1694,8 +1847,10 @@ query_result__child_dataset_batches <- function(
     # Keep the original Dataset order so batched results remain predictable.
     split(dataset_id, ceiling(seq_along(dataset_id) / as.integer(batch_size)))
 }
+# }}}
 # query_result__merge_child_collects
 # Merge several child query responses into one result object state.
+# query_result__merge_child_collects {{{
 query_result__merge_child_collects <- function(
     results,
     params,
@@ -1719,6 +1874,7 @@ query_result__merge_child_collects <- function(
     response <- results[[length(results)]]$response
     num_found <- vapply(
         results,
+        # vapply callback {{{
         function(result) {
             value <- result$response$response$numFound
             if (is.null(value) || !length(value) || is.na(value[[1L]])) {
@@ -1726,6 +1882,7 @@ query_result__merge_child_collects <- function(
             }
             as.numeric(value[[1L]])
         },
+        # }}}
         numeric(1L)
     )
 
@@ -1734,7 +1891,9 @@ query_result__merge_child_collects <- function(
     response$response$start <- 0L
 
     query_urls <- unlist(
+        # lapply callback {{{
         lapply(results, function(result) result$context$query_url),
+        # }}}
         use.names = FALSE
     )
 
@@ -1757,6 +1916,7 @@ query_result__merge_child_collects <- function(
         )
     )
 }
+# }}}
 # EsgResultDataset
 #' ESGF Query results for `Dataset` type
 #'
@@ -1772,6 +1932,7 @@ query_result__merge_child_collects <- function(
 #' @author Hongyuan Jia
 #' @name EsgResultDataset
 #' @keywords internal
+# EsgResultDataset {{{
 EsgResultDataset <- R6::R6Class(
     "EsgResultDataset",
     inherit = EsgResult,
@@ -1791,28 +1952,34 @@ EsgResultDataset <- R6::R6Class(
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
+        # to_data_table {{{
         to_data_table = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
             super$to_data_table(fields, if (formatted) c("url", "size"))
         },
+        # }}}
         # has_opendap
         #' @description
         #' Check if there are OPeNDAP support for the datasets
         #'
         #' @return A logical vector.
         #'
+        # has_opendap {{{
         has_opendap = function() {
             private$has_access("OPENDAP")
         },
+        # }}}
         # has_download
         #' @description
         #' Check if there are HTTPServer download URL for the datasets
         #'
         #' @return A logical vector.
         #'
+        # has_download {{{
         has_download = function() {
             private$has_access("HTTPServer")
         },
+        # }}}
         # collect
         #' @description
         #' Collect file or aggregation information for current datasets
@@ -1883,6 +2050,7 @@ EsgResultDataset <- R6::R6Class(
         #' - If `type="File"`, an [EsgResultFile] object
         #' - If `type="Aggregation"`, an [EsgResultAggregation] object
         #'
+        # collect {{{
         collect = function(
             which = NULL,
             fields = NULL,
@@ -1964,6 +2132,7 @@ EsgResultDataset <- R6::R6Class(
             } else {
                 # Collect one child query batch. The caller decides whether the
                 # batch is the original full request or a subset of Dataset IDs.
+                # collect_one {{{
                 collect_one <- function(
                     batch_params,
                     batch_limit,
@@ -1996,6 +2165,7 @@ EsgResultDataset <- R6::R6Class(
                     }
                     do.call(query__collect, collect_args)
                 }
+                # }}}
 
                 if (
                     length(selected_dataset_id) >
@@ -2077,6 +2247,7 @@ EsgResultDataset <- R6::R6Class(
                 )
             }
         },
+        # }}}
         # expand_replicas
         #' @description
         #' Query ESGF for Dataset master and replica records.
@@ -2093,6 +2264,7 @@ EsgResultDataset <- R6::R6Class(
         #'
         #' @return A new `EsgResultDataset` object with expanded Dataset records
         #'        when the requested identity key is available; otherwise `self`.
+        # expand_replicas {{{
         expand_replicas = function(
             by = c("instance_id", "master_id"),
             all = TRUE,
@@ -2105,6 +2277,7 @@ EsgResultDataset <- R6::R6Class(
                 index_node = index_node
             )
         },
+        # }}}
         # print
         #' @description
         #' Print a summary of the current dataset
@@ -2113,6 +2286,7 @@ EsgResultDataset <- R6::R6Class(
         #'        all items will be printed. Default: `10L`.
         #'
         #' @return The `EsgResultDataset` object itself, invisibly.
+        # print {{{
         print = function(n = 10L) {
             private$print_header("Dataset")
             private$print_summary("Dataset")
@@ -2121,6 +2295,7 @@ EsgResultDataset <- R6::R6Class(
             private$print_contents("Dataset", n)
             invisible(self)
         }
+        # }}}
     ),
 
     private = list(
@@ -2143,6 +2318,7 @@ EsgResultDataset <- R6::R6Class(
         ))),
 
         # build_params
+        # build_params {{{
         build_params = function(
             fields = NULL,
             limit = 100L,
@@ -2228,6 +2404,7 @@ EsgResultDataset <- R6::R6Class(
                     }
                 }
                 extra_params <- stats::setNames(
+                    # lapply callback {{{
                     lapply(seq_along(extra_params), function(i) {
                         param <- extra_params[[i]]
                         if (is.null(param$value)) {
@@ -2239,6 +2416,7 @@ EsgResultDataset <- R6::R6Class(
                             encoded = FALSE
                         )
                     }),
+                    # }}}
                     names(extra_params)
                 )
                 extra_params <- extra_params[
@@ -2250,7 +2428,9 @@ EsgResultDataset <- R6::R6Class(
                     length(overrides) &&
                         any(vapply(
                             overrides,
+                            # vapply callback {{{
                             function(param) isTRUE(param$negate),
+                            # }}}
                             logical(1L)
                         ))
                 ) {
@@ -2261,6 +2441,7 @@ EsgResultDataset <- R6::R6Class(
                 }
             }
 
+            # param_value {{{
             param_value <- function(param) {
                 if (is.null(param)) {
                     return(NULL)
@@ -2270,12 +2451,15 @@ EsgResultDataset <- R6::R6Class(
                 }
                 param$value
             }
+            # }}}
+            # inherited_value {{{
             inherited_value <- function(name) {
                 if (name %in% names(overrides)) {
                     return(param_value(overrides[[name]]))
                 }
                 param_value(.subset2(private$parameter, name)())
             }
+            # }}}
 
             controls <- list(
                 shards = inherited_value("shards"),
@@ -2322,8 +2506,10 @@ EsgResultDataset <- R6::R6Class(
 
             list(params = store, limit = limit)
         }
+        # }}}
     )
 )
+# }}}
 # EsgResultFile
 #' ESGF Query results for `File` type
 #'
@@ -2339,6 +2525,7 @@ EsgResultDataset <- R6::R6Class(
 #' @author Hongyuan Jia
 #' @name EsgResultFile
 #' @keywords internal
+# EsgResultFile {{{
 EsgResultFile <- R6::R6Class(
     "EsgResultFile",
     inherit = EsgResult,
@@ -2358,10 +2545,12 @@ EsgResultFile <- R6::R6Class(
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
+        # to_data_table {{{
         to_data_table = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
             super$to_data_table(fields, if (formatted) c("url", "size"))
         },
+        # }}}
         # filter_time
         #' @description
         #' Filter file records by the time range covered by each file
@@ -2388,6 +2577,7 @@ EsgResultFile <- R6::R6Class(
         #'        remote time axis. Default: `"drs"`.
         #'
         #' @return A new `EsgResultFile` object.
+        # filter_time {{{
         filter_time = function(
             start,
             stop,
@@ -2400,6 +2590,7 @@ EsgResultFile <- R6::R6Class(
                 result_label = "file"
             )
         },
+        # }}}
         # download_plan
         #' @description
         #' Build a persistent downloader plan for file records.
@@ -2420,6 +2611,7 @@ EsgResultFile <- R6::R6Class(
         #'        history before probing a URL again. Default: `3600`.
         #'
         #' @return A data.table download plan.
+        # download_plan {{{
         download_plan = function(
             replica = c("auto", "current"),
             service = "HTTPServer",
@@ -2451,6 +2643,7 @@ EsgResultFile <- R6::R6Class(
                 probe_cache_seconds = probe_cache_seconds
             )
         },
+        # }}}
         # expand_replicas
         #' @description
         #' Query ESGF for same-version master and replica records.
@@ -2463,9 +2656,11 @@ EsgResultFile <- R6::R6Class(
         #' @return A new `EsgResultFile` object with expanded replica records
         #'        when `instance_id`, or `master_id` plus `version`, is available;
         #'        otherwise `self`.
+        # expand_replicas {{{
         expand_replicas = function(service = "HTTPServer", all = TRUE) {
             query_result__expand_files(self, service = service, all = all)
         },
+        # }}}
         # repair_urls
         #' @description
         #' Replace unreachable service URLs from compatible replicas.
@@ -2488,6 +2683,7 @@ EsgResultFile <- R6::R6Class(
         #'        `level` is `"data_node"`.
         #'
         #' @return A new `EsgResultFile` object.
+        # repair_urls {{{
         repair_urls = function(
             service = c("OPENDAP", "HTTPServer"),
             index_node = NULL,
@@ -2500,6 +2696,7 @@ EsgResultFile <- R6::R6Class(
                 probe = probe
             )
         },
+        # }}}
         # select_replica
         #' @description
         #' Select the preferred candidate URL per logical file.
@@ -2519,6 +2716,7 @@ EsgResultFile <- R6::R6Class(
         #'        history before probing a URL again. Default: `3600`.
         #'
         #' @return A data.table with one selected candidate per logical file.
+        # select_replica {{{
         select_replica = function(
             strategy = c("fastest", "first", "stable"),
             probe = TRUE,
@@ -2546,6 +2744,7 @@ EsgResultFile <- R6::R6Class(
             }
             plan[, .SD[which.min(priority)], by = "logical_file_id"]
         },
+        # }}}
         # download
         #' @description
         #' Enqueue and run file downloads using a Downloader.
@@ -2569,6 +2768,7 @@ EsgResultFile <- R6::R6Class(
         #' @param ... Additional arguments passed to `Downloader$run()`.
         #'
         #' @return The created downloader session ID.
+        # download {{{
         download = function(
             downloader = NULL,
             store = NULL,
@@ -2598,6 +2798,7 @@ EsgResultFile <- R6::R6Class(
                 ...
             )
         },
+        # }}}
         # print
         #' @description
         #' Print a summary of the current dataset
@@ -2606,6 +2807,7 @@ EsgResultFile <- R6::R6Class(
         #'        all items will be printed. Default: `10L`.
         #'
         #' @return The `EsgResultFile` object itself, invisibly.
+        # print {{{
         print = function(n = 10L) {
             private$print_header("File")
             private$print_summary("File")
@@ -2614,6 +2816,7 @@ EsgResultFile <- R6::R6Class(
             private$print_contents("File", n)
             invisible(self)
         },
+        # }}}
         # open_dataset
         #' @description
         #' Open a file as an EsgDataset for remote data access via OPeNDAP
@@ -2635,6 +2838,7 @@ EsgResultFile <- R6::R6Class(
         #'        to [interactive()].
         #'
         #' @return An `EsgDataset` object with the connection already opened.
+        # open_dataset {{{
         open_dataset = function(
             which = NULL,
             fallback = c("ask", "auto", "error"),
@@ -2655,17 +2859,21 @@ EsgResultFile <- R6::R6Class(
                 http_missing_message = "HTTPServer download URLs are missing for one or more file records."
             )
         }
+        # }}}
     ),
     active = list(
         # filename
         #' @field filename A character vector indicating file names on the
         #'        sever.
+        # filename {{{
         filename = function() {
             private$get_field("title")
         },
+        # }}}
         # url_opendap
         #' @field url_opendap A character vector of the OPeNDAP URLs of the
         #'        files.
+        # url_opendap {{{
         url_opendap = function() {
             url <- private$get_url("OPENDAP", "OPeNDAP")
 
@@ -2675,16 +2883,20 @@ EsgResultFile <- R6::R6Class(
             }
             url
         },
+        # }}}
         # url_download
         #' @field url_download A character vector of the download URLs of the
         #'        files.
+        # url_download {{{
         url_download = function() {
             private$get_url("HTTPServer")
         },
+        # }}}
         # fields
         #' @field fields A character vector indicating all response fields,
         #'        followed by derived fields such as `filename`, `url_opendap`
         #'        and `url_download` when their source fields are available.
+        # fields {{{
         fields = function() {
             fields <- super$fields
             derived <- character()
@@ -2696,6 +2908,7 @@ EsgResultFile <- R6::R6Class(
             }
             unique(c(fields, derived))
         }
+        # }}}
     ),
     private = list(
         result_type = "File",
@@ -2717,6 +2930,7 @@ EsgResultFile <- R6::R6Class(
         )))
     )
 )
+# }}}
 # EsgResultAggregation
 #' ESGF Query results for `Aggregation` type
 #'
@@ -2732,6 +2946,7 @@ EsgResultFile <- R6::R6Class(
 #' @author Hongyuan Jia
 #' @name EsgResultAggregation
 #' @keywords internal
+# EsgResultAggregation {{{
 EsgResultAggregation <- R6::R6Class(
     "EsgResultAggregation",
     inherit = EsgResult,
@@ -2751,10 +2966,12 @@ EsgResultAggregation <- R6::R6Class(
         #'
         #' @return A [data.table][data.table::data.table()].
         #'
+        # to_data_table {{{
         to_data_table = function(fields = NULL, formatted = FALSE) {
             checkmate::assert_flag(formatted)
             super$to_data_table(fields, if (formatted) c("url", "size"))
         },
+        # }}}
         # filter_time
         #' @description
         #' Filter aggregation records by the time range covered by each file
@@ -2769,6 +2986,7 @@ EsgResultAggregation <- R6::R6Class(
         #'        remote time axis. Default: `"drs"`.
         #'
         #' @return A new `EsgResultAggregation` object.
+        # filter_time {{{
         filter_time = function(
             start,
             stop,
@@ -2781,6 +2999,7 @@ EsgResultAggregation <- R6::R6Class(
                 result_label = "aggregation"
             )
         },
+        # }}}
         # download_plan
         #' @description
         #' Build a persistent downloader plan for aggregation records.
@@ -2803,6 +3022,7 @@ EsgResultAggregation <- R6::R6Class(
         #'        history before probing a URL again. Default: `3600`.
         #'
         #' @return A data.table download plan.
+        # download_plan {{{
         download_plan = function(
             replica = c("current", "auto"),
             service = "HTTPServer",
@@ -2829,6 +3049,7 @@ EsgResultAggregation <- R6::R6Class(
                 probe_cache_seconds = probe_cache_seconds
             )
         },
+        # }}}
         # repair_urls
         #' @description
         #' Replace unreachable service URLs from compatible replicas.
@@ -2853,6 +3074,7 @@ EsgResultAggregation <- R6::R6Class(
         #'        `level` is `"data_node"`.
         #'
         #' @return A new `EsgResultAggregation` object.
+        # repair_urls {{{
         repair_urls = function(
             service = c("OPENDAP", "HTTPServer"),
             index_node = NULL,
@@ -2865,6 +3087,7 @@ EsgResultAggregation <- R6::R6Class(
                 probe = probe
             )
         },
+        # }}}
         # download
         #' @description
         #' Enqueue and run aggregation downloads using a Downloader.
@@ -2888,6 +3111,7 @@ EsgResultAggregation <- R6::R6Class(
         #' @param ... Additional arguments passed to `Downloader$run()`.
         #'
         #' @return The created downloader session ID.
+        # download {{{
         download = function(
             downloader = NULL,
             store = NULL,
@@ -2917,6 +3141,7 @@ EsgResultAggregation <- R6::R6Class(
                 ...
             )
         },
+        # }}}
         # print
         #' @description
         #' Print a summary of the current dataset
@@ -2925,6 +3150,7 @@ EsgResultAggregation <- R6::R6Class(
         #'        all items will be printed. Default: `10L`.
         #'
         #' @return The `EsgResultAggregation` object itself, invisibly.
+        # print {{{
         print = function(n = 10L) {
             private$print_header("Aggregation")
             private$print_summary("Aggregation")
@@ -2933,6 +3159,7 @@ EsgResultAggregation <- R6::R6Class(
             private$print_contents("Aggregation", n)
             invisible(self)
         },
+        # }}}
         # open_dataset
         #' @description
         #' Open aggregation files as an EsgDataset for remote data access via OPeNDAP
@@ -2955,6 +3182,7 @@ EsgResultAggregation <- R6::R6Class(
         #'        to [interactive()].
         #'
         #' @return An `EsgDataset` object with the connection already opened.
+        # open_dataset {{{
         open_dataset = function(
             which = NULL,
             fallback = c("ask", "auto", "error"),
@@ -2975,12 +3203,14 @@ EsgResultAggregation <- R6::R6Class(
                 http_missing_message = "HTTPServer download URLs are missing for one or more aggregation records."
             )
         }
+        # }}}
     ),
 
     active = list(
         # url_opendap
         #' @field url_opendap A character vector of the OPeNDAP URLs of the
         #'        files.
+        # url_opendap {{{
         url_opendap = function() {
             url <- private$get_url("OPENDAP", "OPeNDAP")
             has_html <- !is.na(url) & tools::file_ext(url) == "html"
@@ -2989,16 +3219,20 @@ EsgResultAggregation <- R6::R6Class(
             }
             url
         },
+        # }}}
         # url_download
         #' @field url_download A character vector of the download URLs of the
         #'        files.
+        # url_download {{{
         url_download = function() {
             private$get_url("HTTPServer")
         },
+        # }}}
         # fields
         #' @field fields A character vector indicating all response fields,
         #'        followed by derived URL fields when their source fields are
         #'        available.
+        # fields {{{
         fields = function() {
             fields <- super$fields
             derived <- character()
@@ -3007,6 +3241,7 @@ EsgResultAggregation <- R6::R6Class(
             }
             unique(c(fields, derived))
         }
+        # }}}
     ),
 
     private = list(
@@ -3026,18 +3261,22 @@ EsgResultAggregation <- R6::R6Class(
         )))
     )
 )
+# }}}
 # query_result__response
 # Normalize empty ESGF facet buckets to named empty lists so saved-result schema
 # validation sees a JSON object instead of an unnamed array.
+# query_result__named_empty_facets {{{
 query_result__named_empty_facets <- function(x) {
     if (is.null(x) || (is.list(x) && !length(x))) {
         return(stats::setNames(list(), character()))
     }
     x
 }
+# }}}
 
 # Normalize the parts of an ESGF response whose JSON shape is ambiguous when
 # ESGF returns no records or no facet counts.
+# query_result__response_facets {{{
 query_result__response_facets <- function(response) {
     if (is.null(response$facet_counts)) {
         response$facet_counts <- list()
@@ -3055,7 +3294,9 @@ query_result__response_facets <- function(response) {
     }
     response
 }
+# }}}
 
+# query_result__response {{{
 query_result__response <- function(response) {
     if (is.null(response)) {
         return(response)
@@ -3071,7 +3312,9 @@ query_result__response <- function(response) {
 
     query_result__response_facets(response)
 }
+# }}}
 # query_result__empty_response
+# query_result__empty_response {{{
 query_result__empty_response <- function(params) {
     force(params)
 
@@ -3104,7 +3347,9 @@ query_result__empty_response <- function(params) {
         context = list(query_url = character())
     )
 }
+# }}}
 # query_result__new
+# query_result__new {{{
 query_result__new <- function(
     generator,
     index_node = NULL,
@@ -3114,6 +3359,7 @@ query_result__new <- function(
 ) {
     generator$new(index_node, params, result, ...)
 }
+# }}}
 # result subset method
 #' Subset an ESGF query result
 #'
@@ -3126,6 +3372,7 @@ query_result__new <- function(
 #' @return A new result object of the same type, or `x` for `x[]`.
 #'
 #' @export
+# `[.EsgResult` {{{
 `[.EsgResult` <- function(x, i, j, ..., drop = FALSE) {
     if (
         nargs() > 2L ||
@@ -3144,6 +3391,7 @@ query_result__new <- function(
 
     x$slice(i)
 }
+# }}}
 # esg_result
 #' Create empty query result object
 #'
@@ -3157,6 +3405,7 @@ query_result__new <- function(
 #' @return An empty [EsgResult] object of given type.
 #'
 #' @export
+# esg_result {{{
 esg_result <- function(type = c("dataset", "file", "aggregation")) {
     type <- match.arg(type)
 
@@ -3172,4 +3421,6 @@ esg_result <- function(type = c("dataset", "file", "aggregation")) {
         result = NULL
     )
 }
-# vim: fdm=marker :
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

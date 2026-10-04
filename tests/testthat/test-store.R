@@ -1,8 +1,11 @@
 # store_test__response() / store_test__params() / store_test__result() / store_test__file_docs() / store_test__completed_store() {{{
+# store_test__response {{{
 store_test__response <- function(docs) {
     esgf_test__response(docs)
 }
+# }}}
 
+# store_test__params {{{
 store_test__params <- function(type = "File") {
     query_param__as_store(list(
         project = "CMIP6",
@@ -13,7 +16,9 @@ store_test__params <- function(type = "File") {
         format = QUERY_PARAM__FORMAT_JSON
     ))
 }
+# }}}
 
+# store_test__result {{{
 store_test__result <- function(type = "File", docs, context = NULL) {
     generator <- switch(
         type,
@@ -28,13 +33,17 @@ store_test__result <- function(type = "File", docs, context = NULL) {
         context = context
     )
 }
+# }}}
 
-store_test__file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
-                                         source_id = "EC-Earth3",
-                                         experiment_id = "ssp585",
-                                         variable_id = "tas",
-                                         opendap_url = NULL,
-                                         download_url = NULL) {
+# store_test__file_docs {{{
+store_test__file_docs <- function(
+    path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+    source_id = "EC-Earth3",
+    experiment_id = "ssp585",
+    variable_id = "tas",
+    opendap_url = NULL,
+    download_url = NULL
+) {
     if (is.null(opendap_url)) {
         opendap_url <- sprintf("https://example.org/dods/%s.html", path)
     }
@@ -72,7 +81,9 @@ store_test__file_docs <- function(path = "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_2
     )))
     docs
 }
+# }}}
 
+# store_test__completed_store {{{
 store_test__completed_store <- function() {
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
@@ -96,9 +107,11 @@ store_test__completed_store <- function() {
 
     list(store = store, dir = dir, nc = nc, plan = plan)
 }
+# }}}
 
 # Create one real catalog and extraction plan while exposing the internal rows
 # needed to exercise failure recovery without relying on an external service.
+# store_test__planned_extract {{{
 store_test__planned_extract <- function() {
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
@@ -122,42 +135,59 @@ store_test__planned_extract <- function() {
     )[1L]
     list(store = store, dir = dir, nc = nc, plan = plan, file = file)
 }
+# }}}
 
 # Mimic an already-open remote dataset that fails at a chosen access phase;
 # read-phase fixtures reuse a genuine CF time axis to isolate the failure.
+# store_test__failing_dataset {{{
 store_test__failing_dataset <- function(phase, time_info = NULL) {
     checkmate::assert_choice(phase, c("metadata", "read"))
+    # R6::R6Class( private = list(progress_callback = NULL), lock_objects = FALSE ) callback {{{
     ds <- R6::R6Class(
         private = list(progress_callback = NULL),
         lock_objects = FALSE
     )$new()
+    # }}}
     ds$is_open <- TRUE
+    # ds$close {{{
     ds$close <- function() {
         ds$is_open <- FALSE
         invisible(NULL)
     }
+    # }}}
     private <- priv(ds)
     private$nc_handles <- list()
     private$opened <- TRUE
+    # private$check_open {{{
     private$check_open <- function() {
         if (identical(phase, "metadata")) {
             stop("remote metadata timed out", call. = FALSE)
         }
     }
+    # }}}
+    # private$check_index {{{
     private$check_index <- function(index) invisible(NULL)
+    # }}}
     private$metadata_cache <- list(time_coordinates_1 = time_info)
+    # ds$read_region {{{
     ds$read_region <- function(...) {
         stop("remote read timed out", call. = FALSE)
     }
+    # }}}
+    # ds$att_get {{{
     ds$att_get <- function(...) "K"
+    # }}}
     ds
 }
+# }}}
 
 # Capture reporter events in memory so tests can verify the exact structured
 # fields later persisted by the workflow reporter in shift_run_event.
+# store_test__access_reporter {{{
 store_test__access_reporter <- function() {
     reporter <- new.env(parent = emptyenv())
     reporter$events <- list()
+    # reporter$notice {{{
     reporter$notice <- function(message, outcome, details) {
         reporter$events[[length(reporter$events) + 1L]] <- list(
             message = message,
@@ -166,32 +196,45 @@ store_test__access_reporter <- function() {
         )
         invisible(NULL)
     }
+    # }}}
+    # reporter$detail {{{
     reporter$detail <- function(...) invisible(NULL)
+    # }}}
+    # reporter$heartbeat {{{
     reporter$heartbeat <- function(...) invisible(NULL)
+    # }}}
     reporter
 }
+# }}}
 
 # Temporarily replace one locked R6 private method and restore it when the
 # current test exits, keeping fault injection local to the owning store object.
+# store_test__mock_private {{{
 store_test__mock_private <- function(store, name, value, env = parent.frame()) {
     private <- priv(store)
     original <- private[[name]]
     unlockBinding(name, private)
     assign(name, value, envir = private)
     lockBinding(name, private)
-    withr::defer({
-        unlockBinding(name, private)
-        assign(name, original, envir = private)
-        lockBinding(name, private)
-    }, envir = env)
+    withr::defer(
+        {
+            unlockBinding(name, private)
+            assign(name, original, envir = private)
+            lockBinding(name, private)
+        },
+        envir = env
+    )
     invisible(NULL)
 }
+# }}}
 
 # Build a test-only downloader whose public methods assert they are called
 # outside EsgStore's manifest lock.
+# store_test__lock_check_downloader {{{
 store_test__lock_check_downloader <- function(store) {
     # This R6 class mimics the small downloader surface EsgStore needs in the
     # lock-boundary tests without starting real downloads or background jobs.
+    # R6::R6Class( "StoreLockCheckDownloader", public = list( n_workers = 1L, network_policy = NULL, node_policy = NULL, calls = character(), plan = NULL, # Every downloader-side operation in these tests should happen after # the store lock has been released. assert_unlocked = function(where) { self$calls <- c(self$calls, where) testthat::expect_identical(priv(store)$lock_depth, 0L, info = where) }, # EsgStore reads node history before ranking candidates. data_nodes = function(service = "HTTPServer") { self$assert_unlocked("data_nodes") NULL }, # Probe recording writes to the downloader manifest, not the store. record_probes = function(plan, probed = TRUE) { self$assert_unlocked("record_probes") invisible(NULL) }, # Capture the plan so later fake run() calls can return matching task rows. enqueue = function(plan, session_label = NULL) { self$assert_unlocked("enqueue") self$plan <- data.table::as.data.table(plan) "session-lock-check" }, # Return a completed task row without touching the filesystem. run = function(session_id = NULL, progress = TRUE, overwrite = FALSE, resume = TRUE, ...) { self$assert_unlocked("run") data.table::data.table( task_id = "task-lock-check", session_id = session_id, file_key = self$plan$file_key[[1L]], logical_file_id = self$plan$logical_file_id[[1L]], status = "done", target_path = NA_character_, selected_url = self$plan$url[[1L]], checksum = self$plan$checksum[[1L]], checksum_type = self$plan$checksum_type[[1L]], filename = self$plan$filename[[1L]] ) }, # Return a queued job row for background-download branches. start = function(session_id = NULL, overwrite = FALSE, resume = TRUE, mode = c("process", "daemon"), store_path = NULL) { self$assert_unlocked("start") data.table::data.table( job_id = "job-lock-check", session_id = session_id, status = "queued" ) }, # sync_downloads() may ask for completed tasks; return none so the # lock-boundary tests stay focused on call placement. tasks = function(...) { data.table::data.table() } ) ) callback {{{
     R6::R6Class(
         "StoreLockCheckDownloader",
         public = list(
@@ -203,32 +246,51 @@ store_test__lock_check_downloader <- function(store) {
 
             # Every downloader-side operation in these tests should happen after
             # the store lock has been released.
+            # assert_unlocked {{{
             assert_unlocked = function(where) {
                 self$calls <- c(self$calls, where)
-                testthat::expect_identical(priv(store)$lock_depth, 0L, info = where)
+                testthat::expect_identical(
+                    priv(store)$lock_depth,
+                    0L,
+                    info = where
+                )
             },
+            # }}}
 
             # EsgStore reads node history before ranking candidates.
+            # data_nodes {{{
             data_nodes = function(service = "HTTPServer") {
                 self$assert_unlocked("data_nodes")
                 NULL
             },
+            # }}}
 
             # Probe recording writes to the downloader manifest, not the store.
+            # record_probes {{{
             record_probes = function(plan, probed = TRUE) {
                 self$assert_unlocked("record_probes")
                 invisible(NULL)
             },
+            # }}}
 
             # Capture the plan so later fake run() calls can return matching task rows.
+            # enqueue {{{
             enqueue = function(plan, session_label = NULL) {
                 self$assert_unlocked("enqueue")
                 self$plan <- data.table::as.data.table(plan)
                 "session-lock-check"
             },
+            # }}}
 
             # Return a completed task row without touching the filesystem.
-            run = function(session_id = NULL, progress = TRUE, overwrite = FALSE, resume = TRUE, ...) {
+            # run {{{
+            run = function(
+                session_id = NULL,
+                progress = TRUE,
+                overwrite = FALSE,
+                resume = TRUE,
+                ...
+            ) {
                 self$assert_unlocked("run")
                 data.table::data.table(
                     task_id = "task-lock-check",
@@ -243,10 +305,17 @@ store_test__lock_check_downloader <- function(store) {
                     filename = self$plan$filename[[1L]]
                 )
             },
+            # }}}
 
             # Return a queued job row for background-download branches.
-            start = function(session_id = NULL, overwrite = FALSE, resume = TRUE,
-                             mode = c("process", "daemon"), store_path = NULL) {
+            # start {{{
+            start = function(
+                session_id = NULL,
+                overwrite = FALSE,
+                resume = TRUE,
+                mode = c("process", "daemon"),
+                store_path = NULL
+            ) {
                 self$assert_unlocked("start")
                 data.table::data.table(
                     job_id = "job-lock-check",
@@ -254,16 +323,22 @@ store_test__lock_check_downloader <- function(store) {
                     status = "queued"
                 )
             },
+            # }}}
 
             # sync_downloads() may ask for completed tasks; return none so the
             # lock-boundary tests stay focused on call placement.
+            # tasks {{{
             tasks = function(...) {
                 data.table::data.table()
             }
+            # }}}
         )
     )$new()
+    # }}}
 }
+# }}}
 
+# store_test__with_downloaded_query {{{
 store_test__with_downloaded_query <- function(code) {
     src <- tempfile(fileext = ".nc")
     writeLines("tracked query netcdf placeholder", src)
@@ -273,10 +348,9 @@ store_test__with_downloaded_query <- function(code) {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(1L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(1L)
     query_id <- store$add_query(query, track = TRUE)
 
     dataset_docs <- data.frame(
@@ -299,6 +373,7 @@ store_test__with_downloaded_query <- function(code) {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -327,6 +402,7 @@ store_test__with_downloaded_query <- function(code) {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -341,16 +417,17 @@ store_test__with_downloaded_query <- function(code) {
 
     code(store, dl, query_id, session_id)
 }
+# }}}
 
+# store_test__with_updated_query {{{
 store_test__with_updated_query <- function(code) {
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, track = TRUE)
 
     dataset_docs <- data.frame(
@@ -380,6 +457,7 @@ store_test__with_updated_query <- function(code) {
     second_files <- data.table::rbindlist(list(file_one), fill = TRUE)
     file_calls <- 0L
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -408,6 +486,7 @@ store_test__with_updated_query <- function(code) {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -442,6 +521,7 @@ store_test__with_updated_query <- function(code) {
     )
 }
 # }}}
+# }}}
 # EsgStore$new() {{{
 test_that("EsgStore$new()", {
     skip_if_not_installed("duckdb")
@@ -459,7 +539,10 @@ test_that("EsgStore$new()", {
     expect_true(dir.exists(file.path(dir, "outputs")))
     expect_true(dir.exists(file.path(dir, "tmp")))
     expect_true(dir.exists(file.path(dir, "logs")))
-    expect_equal(store$path, normalizePath(dir, winslash = "/", mustWork = TRUE))
+    expect_equal(
+        store$path,
+        normalizePath(dir, winslash = "/", mustWork = TRUE)
+    )
     expect_true(file.exists(store$manifest))
     expect_true(store$is_open)
 
@@ -467,18 +550,36 @@ test_that("EsgStore$new()", {
     expect_setequal(
         tables,
         c(
-            "store_meta", "artifact", "query_run", "esg_query",
-            "esg_file", "esg_query_file", "file_catalog",
-            "esg_query_update", "esg_query_update_file",
-            "esg_query_tag", "esg_query_dependency",
-            "extraction_plan", "extraction_result", "extraction_grid_source",
-            "epw_source", "epw_baseline_summary", "epw_climate_summary",
+            "store_meta",
+            "artifact",
+            "query_run",
+            "esg_query",
+            "esg_file",
+            "esg_query_file",
+            "file_catalog",
+            "esg_query_update",
+            "esg_query_update_file",
+            "esg_query_tag",
+            "esg_query_dependency",
+            "extraction_plan",
+            "extraction_result",
+            "extraction_grid_source",
+            "epw_source",
+            "epw_baseline_summary",
+            "epw_climate_summary",
             "epw_climate_summary_plan",
-            "epw_morph_plan", "epw_morph_factor",
-            "epw_morph_observed_reference", "epw_morph_case",
-            "epw_morph_diagnostic", "epw_morph_result",
-            "epw_output", "shift_run", "shift_run_case", "shift_run_event",
-            "shift_run_job", "shift_run_step"
+            "epw_morph_plan",
+            "epw_morph_factor",
+            "epw_morph_observed_reference",
+            "epw_morph_case",
+            "epw_morph_diagnostic",
+            "epw_morph_result",
+            "epw_output",
+            "shift_run",
+            "shift_run_case",
+            "shift_run_event",
+            "shift_run_job",
+            "shift_run_step"
         )
     )
 })
@@ -523,6 +624,7 @@ test_that("site extraction cache is shared without store-local identities", {
         actual_end = as.POSIXct("2060-12-31", tz = "UTC")
     )
     calls <- 0L
+    # generate {{{
     generate <- function() {
         calls <<- calls + 1L
         list(
@@ -531,6 +633,7 @@ test_that("site extraction cache is shared without store-local identities", {
             recovery_error = NULL
         )
     }
+    # }}}
 
     first <- store__extract_cache_resolve(plan, file, generate)
     second_plan <- data.table::copy(plan)[, `:=`(
@@ -576,8 +679,16 @@ test_that("EsgStore$new() rejects older manifests", {
 
     manifest <- file.path(dir, "manifest.duckdb")
     conn <- ddb_connect(manifest, read_only = FALSE)
-    on.exit(if (!is.null(conn) && ddb_is_valid(conn)) ddb_disconnect(conn, shutdown = TRUE), add = TRUE)
-    ddb_exec(conn, "UPDATE store_meta SET value = '2.6.0' WHERE key = 'schema_version'")
+    on.exit(
+        if (!is.null(conn) && ddb_is_valid(conn)) {
+            ddb_disconnect(conn, shutdown = TRUE)
+        },
+        add = TRUE
+    )
+    ddb_exec(
+        conn,
+        "UPDATE store_meta SET value = '2.6.0' WHERE key = 'schema_version'"
+    )
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
@@ -597,19 +708,31 @@ test_that("store_reset() preserves an old store and creates the current schema",
     store$close()
 
     conn <- ddb_connect(file.path(dir, "manifest.duckdb"), read_only = FALSE)
-    ddb_exec(conn, "UPDATE store_meta SET value = '2.7.0' WHERE key = 'schema_version'")
+    ddb_exec(
+        conn,
+        "UPDATE store_meta SET value = '2.7.0' WHERE key = 'schema_version'"
+    )
     ddb_disconnect(conn, shutdown = TRUE)
 
     result <- store_reset(dir)
-    on.exit(unlink(c(dir, result$backup_path), recursive = TRUE, force = TRUE), add = TRUE)
+    on.exit(
+        unlink(c(dir, result$backup_path), recursive = TRUE, force = TRUE),
+        add = TRUE
+    )
 
-    expect_identical(result$path, normalizePath(dir, winslash = "/", mustWork = TRUE))
+    expect_identical(
+        result$path,
+        normalizePath(dir, winslash = "/", mustWork = TRUE)
+    )
     expect_identical(result$previous_schema, "2.7.0")
     expect_identical(result$schema, STORE_SCHEMA_VERSION)
     expect_identical(result$action, "backed_up")
     expect_true(dir.exists(result$backup_path))
     expect_true(file.exists(file.path(result$backup_path, "sentinel.txt")))
-    expect_false(dir.exists(file.path(result$backup_path, "manifest.duckdb.lock")))
+    expect_false(dir.exists(file.path(
+        result$backup_path,
+        "manifest.duckdb.lock"
+    )))
 
     current <- EsgStore$new(dir, create = FALSE)
     on.exit(current$close(), add = TRUE)
@@ -694,9 +817,30 @@ test_that("EsgStore$downloader()", {
 
     dl <- store$downloader(n_workers = 0L)
     expect_s3_class(dl, "Downloader")
-    expect_equal(dl$data_dir, normalizePath(file.path(dir, "downloads"), mustWork = TRUE, winslash = "/"))
-    expect_equal(dl$tmp_dir, normalizePath(file.path(dir, "tmp", "downloads"), mustWork = TRUE, winslash = "/"))
-    expect_equal(dl$manifest, normalizePath(file.path(dir, "downloads", "_downloader", "manifest.duckdb"), mustWork = FALSE, winslash = "/"))
+    expect_equal(
+        dl$data_dir,
+        normalizePath(
+            file.path(dir, "downloads"),
+            mustWork = TRUE,
+            winslash = "/"
+        )
+    )
+    expect_equal(
+        dl$tmp_dir,
+        normalizePath(
+            file.path(dir, "tmp", "downloads"),
+            mustWork = TRUE,
+            winslash = "/"
+        )
+    )
+    expect_equal(
+        dl$manifest,
+        normalizePath(
+            file.path(dir, "downloads", "_downloader", "manifest.duckdb"),
+            mustWork = FALSE,
+            winslash = "/"
+        )
+    )
     expect_true(file.exists(dl$manifest))
     on.exit(priv(dl)$disconnect_manifest(), add = TRUE)
     # Inspect the persisted configuration only after releasing its writer.
@@ -729,8 +873,14 @@ test_that("EsgStore$set_meta()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    expect_invisible(store$set_meta("active_cmip6_index_artifact_id", "artifact-1"))
-    expect_identical(store$get_meta("active_cmip6_index_artifact_id"), "artifact-1")
+    expect_invisible(store$set_meta(
+        "active_cmip6_index_artifact_id",
+        "artifact-1"
+    ))
+    expect_identical(
+        store$get_meta("active_cmip6_index_artifact_id"),
+        "artifact-1"
+    )
 })
 # }}}
 # EsgStore$add_query() {{{
@@ -741,17 +891,21 @@ test_that("EsgStore$add_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
 
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
     expect_type(query_id, "character")
     expect_identical(store$add_query(query), query_id)
 
     artifacts <- ddb_read_table(priv(store)$conn, "artifact")
-    expect_equal(nrow(artifacts[artifacts$query_id == query_id & artifacts$kind == "query", ]), 1L)
+    expect_equal(
+        nrow(artifacts[
+            artifacts$query_id == query_id & artifacts$kind == "query",
+        ]),
+        1L
+    )
 })
 # }}}
 # EsgStore$queries() {{{
@@ -762,10 +916,9 @@ test_that("EsgStore$queries()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
 
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
     queries <- store$queries()
@@ -787,10 +940,9 @@ test_that("EsgStore$untrack_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
     expect_invisible(store$untrack_query(query_id))
@@ -806,10 +958,9 @@ test_that("EsgStore$track_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = FALSE)
 
     expect_invisible(store$track_query(query_id))
@@ -825,10 +976,9 @@ test_that("EsgStore$tag_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
     tags <- store$tag_query(query_id, c("ssp585", "tas"))
@@ -843,10 +993,9 @@ test_that("EsgStore$query_tags()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
     store$tag_query(query_id, c("ssp585", "tas"))
 
@@ -861,10 +1010,9 @@ test_that("EsgStore$untag_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
     store$tag_query(query_id, c("ssp585", "tas"))
 
@@ -879,16 +1027,14 @@ test_that("EsgStore$require_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
-    child_query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("pr")$
-        limit(1L)
+    child_query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("pr")$limit(1L)
     child_id <- store$add_query(child_query, label = "child", track = TRUE)
     edges <- store$require_query(child_id, query_id)
     expect_equal(edges$query_id[[1L]], child_id)
@@ -902,20 +1048,21 @@ test_that("EsgStore$query_graph()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
-    child_query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("pr")$
-        limit(1L)
+    child_query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("pr")$limit(1L)
     child_id <- store$add_query(child_query, label = "child", track = TRUE)
     store$require_query(child_id, query_id)
 
-    expect_true(child_id %in% store$query_graph(query_id, direction = "children")$query_id)
+    expect_true(
+        child_id %in%
+            store$query_graph(query_id, direction = "children")$query_id
+    )
 })
 # }}}
 # EsgStore$unrequire_query() {{{
@@ -926,16 +1073,14 @@ test_that("EsgStore$unrequire_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
 
-    child_query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("pr")$
-        limit(1L)
+    child_query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("pr")$limit(1L)
     child_id <- store$add_query(child_query, label = "child", track = TRUE)
     store$require_query(child_id, query_id)
 
@@ -950,10 +1095,9 @@ test_that("EsgStore$preview_update_queries()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(1L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(1L)
     query_id <- store$add_query(query, label = "preview tas", track = TRUE)
     qid <- query_id
     before_query <- store$queries()[query_id == qid]
@@ -973,6 +1117,7 @@ test_that("EsgStore$preview_update_queries()", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1001,6 +1146,7 @@ test_that("EsgStore$preview_update_queries()", {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -1039,24 +1185,66 @@ test_that("EsgStore$preview_update_queries()", {
 test_that("EsgStore$update_queries()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+    # store_test__with_updated_query callback {{{
+    store_test__with_updated_query(function(
+        store,
+        query_id,
+        first_links,
+        second_links,
+        first_current,
+        first_retracted,
+        files,
+        links_db,
+        catalog,
+        updates,
+        latest,
+        stale_changes
+    ) {
         expect_equal(nrow(first_links), 2L)
         expect_true("update_id" %in% names(first_links))
         expect_setequal(first_links$change_type, "new")
         expect_equal(nrow(files), 2L)
-        expect_setequal(files$file_key, c("master:CMIP6.mock.master.file-1", "master:CMIP6.mock.master.file-2"))
+        expect_setequal(
+            files$file_key,
+            c(
+                "master:CMIP6.mock.master.file-1",
+                "master:CMIP6.mock.master.file-2"
+            )
+        )
         expect_equal(nrow(links_db), 2L)
         expect_equal(nrow(catalog), 1L)
-        expect_identical(catalog$file_key[[1L]], "master:CMIP6.mock.master.file-1")
+        expect_identical(
+            catalog$file_key[[1L]],
+            "master:CMIP6.mock.master.file-1"
+        )
 
-        status_by_file <- stats::setNames(second_links$status, second_links$file_key)
-        expect_identical(status_by_file[["master:CMIP6.mock.master.file-1"]], "current")
-        expect_identical(status_by_file[["master:CMIP6.mock.master.file-2"]], "missing")
-        change_by_file <- stats::setNames(second_links$change_type, second_links$file_key)
-        expect_identical(change_by_file[["master:CMIP6.mock.master.file-1"]], "current")
-        expect_identical(change_by_file[["master:CMIP6.mock.master.file-2"]], "stale")
+        status_by_file <- stats::setNames(
+            second_links$status,
+            second_links$file_key
+        )
+        expect_identical(
+            status_by_file[["master:CMIP6.mock.master.file-1"]],
+            "current"
+        )
+        expect_identical(
+            status_by_file[["master:CMIP6.mock.master.file-2"]],
+            "missing"
+        )
+        change_by_file <- stats::setNames(
+            second_links$change_type,
+            second_links$file_key
+        )
+        expect_identical(
+            change_by_file[["master:CMIP6.mock.master.file-1"]],
+            "current"
+        )
+        expect_identical(
+            change_by_file[["master:CMIP6.mock.master.file-2"]],
+            "stale"
+        )
         expect_false(is.na(store$queries()$last_checked_at[[1L]]))
     })
+    # }}}
 })
 
 test_that("EsgStore query update and download workflows release store lock around external work", {
@@ -1064,15 +1252,15 @@ test_that("EsgStore query update and download workflows release store lock aroun
 
     # Create a minimal tracked-query store and inject a collect mock that fails
     # if ESGF collection happens while EsgStore's manifest lock is held.
+    # with_lock_check_store {{{
     with_lock_check_store <- function(code) {
         dir <- tempfile("esg-store-")
         store <- EsgStore$new(dir)
         on.exit(store$close(), add = TRUE)
 
-        query <- esg_query("https://example.org")$
-            experiment_id("ssp585")$
-            variable_id("tas")$
-            limit(1L)
+        query <- esg_query("https://example.org")$experiment_id(
+            "ssp585"
+        )$variable_id("tas")$limit(1L)
         query_id <- store$add_query(query, track = TRUE)
 
         dataset_docs <- data.frame(
@@ -1092,6 +1280,7 @@ test_that("EsgStore query update and download workflows release store lock aroun
         testthat::local_mocked_bindings(
             # Collection is the network-facing part of these workflows and must
             # remain outside the store lock.
+            # query__collect {{{
             query__collect = function(
                 index_node,
                 params,
@@ -1125,79 +1314,163 @@ test_that("EsgStore query update and download workflows release store lock aroun
                     parameter = params
                 )
             },
+            # }}}
             .package = "epwshiftr"
         )
 
         code(store, query_id)
     }
+    # }}}
 
+    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
-        links <- store$update_queries(query_id = query_id, enqueue = TRUE, downloader = dl, replica = "current", probe = FALSE)
+        links <- store$update_queries(
+            query_id = query_id,
+            enqueue = TRUE,
+            downloader = dl,
+            replica = "current",
+            probe = FALSE
+        )
 
         expect_equal(nrow(links), 1L)
         expect_equal(links$download_session_id, "session-lock-check")
-        expect_true(all(c("data_nodes", "record_probes", "enqueue") %in% dl$calls))
+        expect_true(all(
+            c("data_nodes", "record_probes", "enqueue") %in% dl$calls
+        ))
         update <- store$query_updates(query_id, latest = TRUE)
         expect_equal(update$download_session_id, "session-lock-check")
     })
+    # }}}
 
+    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
-        session_id <- store$download_query(query_id, downloader = dl, replica = "current", run = FALSE, probe = FALSE)
+        session_id <- store$download_query(
+            query_id,
+            downloader = dl,
+            replica = "current",
+            run = FALSE,
+            probe = FALSE
+        )
 
         expect_equal(session_id, "session-lock-check")
-        expect_true(all(c("data_nodes", "record_probes", "enqueue") %in% dl$calls))
+        expect_true(all(
+            c("data_nodes", "record_probes", "enqueue") %in% dl$calls
+        ))
         expect_false("run" %in% dl$calls)
         update <- store$query_updates(query_id, latest = TRUE)
         expect_equal(update$download_session_id, "session-lock-check")
     })
+    # }}}
 
+    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
-        session_id <- store$download_query(query_id, downloader = dl, replica = "current", run = TRUE, probe = FALSE)
+        session_id <- store$download_query(
+            query_id,
+            downloader = dl,
+            replica = "current",
+            run = TRUE,
+            probe = FALSE
+        )
 
         expect_equal(session_id, "session-lock-check")
         expect_true(all(c("record_probes", "enqueue", "run") %in% dl$calls))
     })
+    # }}}
 
+    # with_lock_check_store callback {{{
     with_lock_check_store(function(store, query_id) {
         dl <- store_test__lock_check_downloader(store)
-        job <- store$download_query(query_id, downloader = dl, replica = "current", run = TRUE, background = TRUE, probe = FALSE)
+        job <- store$download_query(
+            query_id,
+            downloader = dl,
+            replica = "current",
+            run = TRUE,
+            background = TRUE,
+            probe = FALSE
+        )
 
         expect_equal(job$job_id, "job-lock-check")
         expect_true(all(c("record_probes", "enqueue", "start") %in% dl$calls))
         expect_false("run" %in% dl$calls)
     })
+    # }}}
 })
 # }}}
 # EsgStore$query_files() {{{
 test_that("EsgStore$query_files()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+    # store_test__with_updated_query callback {{{
+    store_test__with_updated_query(function(
+        store,
+        query_id,
+        first_links,
+        second_links,
+        first_current,
+        first_retracted,
+        files,
+        links_db,
+        catalog,
+        updates,
+        latest,
+        stale_changes
+    ) {
         expect_equal(nrow(first_current), 1L)
         expect_equal(nrow(first_retracted), 1L)
     })
+    # }}}
 })
 # }}}
 # EsgStore$query_updates() {{{
 test_that("EsgStore$query_updates()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+    # store_test__with_updated_query callback {{{
+    store_test__with_updated_query(function(
+        store,
+        query_id,
+        first_links,
+        second_links,
+        first_current,
+        first_retracted,
+        files,
+        links_db,
+        catalog,
+        updates,
+        latest,
+        stale_changes
+    ) {
         expect_equal(nrow(updates), 2L)
         expect_equal(latest$stale_count, 1L)
     })
+    # }}}
 })
 # }}}
 # EsgStore$query_changes() {{{
 test_that("EsgStore$query_changes()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_updated_query(function(store, query_id, first_links, second_links, first_current, first_retracted, files, links_db, catalog, updates, latest, stale_changes) {
+    # store_test__with_updated_query callback {{{
+    store_test__with_updated_query(function(
+        store,
+        query_id,
+        first_links,
+        second_links,
+        first_current,
+        first_retracted,
+        files,
+        links_db,
+        catalog,
+        updates,
+        latest,
+        stale_changes
+    ) {
         expect_equal(nrow(stale_changes), 1L)
     })
+    # }}}
 })
 # }}}
 # EsgStore$download_preflight() {{{
@@ -1211,10 +1484,9 @@ test_that("EsgStore$download_preflight()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(1L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(1L)
     query_id <- store$add_query(query, label = "preflight tas", track = TRUE)
 
     dataset_docs <- data.frame(
@@ -1237,6 +1509,7 @@ test_that("EsgStore$download_preflight()", {
     file_docs$retracted <- FALSE
 
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1265,6 +1538,7 @@ test_that("EsgStore$download_preflight()", {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -1329,10 +1603,9 @@ test_that("EsgStore$set_download_layout()", {
 
     store$set_download_layout(layout = "drs")
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(1L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(1L)
     query_id <- store$add_query(query, track = TRUE)
 
     dataset_docs <- data.frame(
@@ -1345,6 +1618,7 @@ test_that("EsgStore$set_download_layout()", {
     )
     file_docs <- store_test__file_docs(path = "layout.nc")
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1373,6 +1647,7 @@ test_that("EsgStore$set_download_layout()", {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -1386,18 +1661,21 @@ test_that("EsgStore$set_download_layout()", {
     )
     tasks <- dl$tasks(session_id = session_id)
 
-    expect_equal(tasks$subdir, file.path(
-        "CMIP6",
-        "ScenarioMIP",
-        "EC-Earth-Consortium",
-        "EC-Earth3",
-        "ssp585",
-        "r1i1p1f1",
-        "day",
-        "tas",
-        "gr",
-        "v20260101"
-    ))
+    expect_equal(
+        tasks$subdir,
+        file.path(
+            "CMIP6",
+            "ScenarioMIP",
+            "EC-Earth-Consortium",
+            "EC-Earth3",
+            "ssp585",
+            "r1i1p1f1",
+            "day",
+            "tas",
+            "gr",
+            "v20260101"
+        )
+    )
     expect_match(
         tasks$target_path,
         "downloads/CMIP6/ScenarioMIP/.*/v20260101/layout[.]nc$"
@@ -1412,10 +1690,9 @@ test_that("EsgStore$download_preflight() reports layout issues", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(2L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(2L)
     query_id <- store$add_query(query, track = TRUE)
 
     dataset_docs <- data.frame(
@@ -1435,6 +1712,7 @@ test_that("EsgStore$download_preflight() reports layout issues", {
     file_docs <- rbind(first, second)
 
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -1463,6 +1741,7 @@ test_that("EsgStore$download_preflight() reports layout issues", {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -1495,7 +1774,13 @@ test_that("EsgStore$download_preflight() reports layout issues", {
 test_that("EsgStore$download_query()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+    # store_test__with_downloaded_query callback {{{
+    store_test__with_downloaded_query(function(
+        store,
+        dl,
+        query_id,
+        session_id
+    ) {
         tasks <- dl$tasks(session_id = session_id)
         expect_equal(tasks$status, "done")
         qfiles <- store$query_files(query_id, status = "current")
@@ -1504,24 +1789,38 @@ test_that("EsgStore$download_query()", {
         expect_true(file.exists(file.path(store$path, qfiles$local_path[[1L]])))
         expect_false(is.na(qfiles$local_artifact_id[[1L]]))
     })
+    # }}}
 })
 # }}}
 # EsgStore$download_status() {{{
 test_that("EsgStore$download_status()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+    # store_test__with_downloaded_query callback {{{
+    store_test__with_downloaded_query(function(
+        store,
+        dl,
+        query_id,
+        session_id
+    ) {
         status <- store$download_status(query_id, downloader = dl)
         expect_equal(status$status, "done")
         expect_equal(status$query_file_status, "current")
     })
+    # }}}
 })
 # }}}
 # EsgStore$query_status() {{{
 test_that("EsgStore$query_status()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+    # store_test__with_downloaded_query callback {{{
+    store_test__with_downloaded_query(function(
+        store,
+        dl,
+        query_id,
+        session_id
+    ) {
         query_status <- store$query_status(query_id, downloader = dl)
         expect_equal(query_status$file_total, 1L)
         expect_equal(query_status$file_current, 1L)
@@ -1529,13 +1828,20 @@ test_that("EsgStore$query_status()", {
         expect_equal(query_status$local_available, 1L)
         expect_true(query_status$complete)
     })
+    # }}}
 })
 # }}}
 # EsgStore$workflow_status() {{{
 test_that("EsgStore$workflow_status()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+    # store_test__with_downloaded_query callback {{{
+    store_test__with_downloaded_query(function(
+        store,
+        dl,
+        query_id,
+        session_id
+    ) {
         workflow <- store$workflow_status(query_id, downloader = dl)
         expect_equal(workflow$query_id, query_id)
         expect_equal(workflow$download_done, 1L)
@@ -1547,15 +1853,25 @@ test_that("EsgStore$workflow_status()", {
         expect_equal(workflow$new_count, 1L)
         expect_true("bytes_missing" %in% names(workflow))
     })
+    # }}}
 })
 # }}}
 # EsgStore$workflow_report() {{{
 test_that("EsgStore$workflow_report()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
+    # store_test__with_downloaded_query callback {{{
+    store_test__with_downloaded_query(function(
+        store,
+        dl,
+        query_id,
+        session_id
+    ) {
         report <- store$workflow_report(query_id, downloader = dl)
-        expect_named(report, c("summary", "updates", "changes", "downloads", "nodes"))
+        expect_named(
+            report,
+            c("summary", "updates", "changes", "downloads", "nodes")
+        )
         expect_equal(report$summary$query_id, query_id)
         expect_equal(report$summary$last_download_session_id, session_id)
         expect_equal(report$summary$download_retryable, 0)
@@ -1563,15 +1879,26 @@ test_that("EsgStore$workflow_report()", {
         expect_equal(report$downloads$status, "done")
         expect_equal(report$downloads$query_file_status, "current")
     })
+    # }}}
 })
 # }}}
 # EsgStore$retry_downloads() {{{
 test_that("EsgStore$retry_downloads()", {
     skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(store, dl, query_id, session_id) {
-        expect_equal(nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)), 0L)
+    # store_test__with_downloaded_query callback {{{
+    store_test__with_downloaded_query(function(
+        store,
+        dl,
+        query_id,
+        session_id
+    ) {
+        expect_equal(
+            nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)),
+            0L
+        )
     })
+    # }}}
 })
 # }}}
 # EsgStore$remove_query() {{{
@@ -1582,10 +1909,9 @@ test_that("EsgStore$remove_query()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(1L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(1L)
     query_id <- store$add_query(query, track = TRUE)
 
     docs <- store_test__file_docs(path = "remove-query.nc")
@@ -1611,10 +1937,9 @@ test_that("EsgStore$prune_orphans()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query <- esg_query("https://example.org")$
-        experiment_id("ssp585")$
-        variable_id("tas")$
-        limit(1L)
+    query <- esg_query("https://example.org")$experiment_id(
+        "ssp585"
+    )$variable_id("tas")$limit(1L)
     query_id <- store$add_query(query, track = TRUE)
 
     docs <- store_test__file_docs(path = "remove-query.nc")
@@ -1636,7 +1961,9 @@ test_that("EsgStore$remove_files()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    files <- store_test__result(docs = store_test__file_docs(path = "remove-file.nc"))
+    files <- store_test__result(
+        docs = store_test__file_docs(path = "remove-file.nc")
+    )
     query_id <- store$add_files(files, label = "remove file test")
     file_key <- store$query("SELECT file_key FROM esg_file")$file_key[[1L]]
     local_file <- file.path(store$path, "downloads", "remove-file.nc")
@@ -1653,18 +1980,24 @@ test_that("EsgStore$remove_files()", {
 
     rel <- store_rel_path(local_file, store$path)
     conn <- priv(store)$conn
-    ddb_exec(conn, sprintf(
-        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
-    ddb_exec(conn, sprintf(
-        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
 
     expect_error(store$remove_files(file_key), "still linked")
     removed <- store$remove_files(file_key, delete_local = TRUE, force = TRUE)
@@ -1692,12 +2025,28 @@ test_that("EsgStore$storage_report()", {
     writeLines("partial download placeholder", tmp_file)
 
     report <- store$storage_report(detail = TRUE)
-    expect_named(report, c("summary", "downloads", "registered", "untracked_files", "missing_records", "tmp", "orphan_records"))
+    expect_named(
+        report,
+        c(
+            "summary",
+            "downloads",
+            "registered",
+            "untracked_files",
+            "missing_records",
+            "tmp",
+            "orphan_records"
+        )
+    )
     expect_equal(report$summary$untracked_file_count, 1L)
     expect_equal(report$summary$tmp_file_count, 1L)
     expect_equal(report$summary$registered_file_count, 0L)
-    expect_true(store_rel_path(untracked_file, store$path) %in% report$untracked_files$relative_path)
-    expect_true(store_rel_path(tmp_file, store$path) %in% report$tmp$relative_path)
+    expect_true(
+        store_rel_path(untracked_file, store$path) %in%
+            report$untracked_files$relative_path
+    )
+    expect_true(
+        store_rel_path(tmp_file, store$path) %in% report$tmp$relative_path
+    )
 })
 # }}}
 # EsgStore$cleanup_downloads() {{{
@@ -1715,13 +2064,19 @@ test_that("EsgStore$cleanup_downloads()", {
     writeLines("untracked netcdf placeholder", untracked_file)
     writeLines("partial download placeholder", tmp_file)
 
-    dry <- store$cleanup_downloads(scope = c("tmp", "untracked_files"), dry_run = TRUE)
+    dry <- store$cleanup_downloads(
+        scope = c("tmp", "untracked_files"),
+        dry_run = TRUE
+    )
     expect_equal(sort(dry$scope), c("tmp", "untracked_files"))
     expect_true(all(dry$dry_run))
     expect_true(file.exists(untracked_file))
     expect_true(file.exists(tmp_file))
 
-    cleaned <- store$cleanup_downloads(scope = c("tmp", "untracked_files"), dry_run = FALSE)
+    cleaned <- store$cleanup_downloads(
+        scope = c("tmp", "untracked_files"),
+        dry_run = FALSE
+    )
     expect_equal(sort(cleaned$scope), c("tmp", "untracked_files"))
     expect_true(all(cleaned$deleted))
     expect_false(file.exists(untracked_file))
@@ -1740,14 +2095,20 @@ test_that("EsgStore$validate_files()", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    files <- store_test__result(docs = store_test__file_docs(path = "validate-file.nc"))
+    files <- store_test__result(
+        docs = store_test__file_docs(path = "validate-file.nc")
+    )
     query_id <- store$add_files(files, label = "validate file test")
     conn <- priv(store)$conn
     file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
 
     local_file <- file.path(store$path, "downloads", "validate-file.nc")
     artifact_file <- file.path(store$path, "downloads", "artifact-file.nc")
-    untracked_file <- file.path(store$path, "downloads", "untracked-validate.nc")
+    untracked_file <- file.path(
+        store$path,
+        "downloads",
+        "untracked-validate.nc"
+    )
     dir.create(dirname(local_file), recursive = TRUE, showWarnings = FALSE)
     writeLines("local placeholder", local_file)
     writeLines("artifact placeholder", artifact_file)
@@ -1762,23 +2123,32 @@ test_that("EsgStore$validate_files()", {
     )
 
     rel <- store_rel_path(local_file, store$path)
-    ddb_exec(conn, sprintf(
-        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
-    ddb_exec(conn, sprintf(
-        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
     catalog_before <- ddb_read_table(conn, "file_catalog")
     artifacts_before <- ddb_read_table(conn, "artifact")
 
     no_hash <- store$validate_files(query_id = query_id, checksum = FALSE)
-    expect_named(no_hash, c("summary", "files", "artifacts", "untracked", "actions"))
+    expect_named(
+        no_hash,
+        c("summary", "files", "artifacts", "untracked", "actions")
+    )
     expect_equal(no_hash$summary$file_count, 1L)
     expect_equal(no_hash$summary$bad_size_count, 1L)
     expect_equal(no_hash$summary$bad_checksum_count, 0L)
@@ -1788,7 +2158,10 @@ test_that("EsgStore$validate_files()", {
     expect_false(no_hash$files$size_ok)
     expect_true(is.na(no_hash$files$checksum_ok))
     expect_false(no_hash$files$artifact_path_matches)
-    expect_true(store_rel_path(untracked_file, store$path) %in% no_hash$untracked$relative_path)
+    expect_true(
+        store_rel_path(untracked_file, store$path) %in%
+            no_hash$untracked$relative_path
+    )
 
     with_hash <- store$validate_files(query_id = query_id, checksum = TRUE)
     expect_equal(with_hash$summary$bad_checksum_count, 1L)
@@ -1810,7 +2183,9 @@ test_that("EsgStore$validate_files(layout = TRUE)", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    files <- store_test__result(docs = store_test__file_docs(path = "layout-target.nc"))
+    files <- store_test__result(
+        docs = store_test__file_docs(path = "layout-target.nc")
+    )
     query_id <- store$add_files(files, label = "validate layout test")
     conn <- priv(store)$conn
     file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
@@ -1827,28 +2202,40 @@ test_that("EsgStore$validate_files(layout = TRUE)", {
         file_key = file_key
     )
     rel <- store_rel_path(wrong_file, store$path)
-    ddb_exec(conn, sprintf(
-        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
-    ddb_exec(conn, sprintf(
-        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
 
     layout <- store$validate_files(query_id = query_id, layout = TRUE)
     expect_equal(layout$summary$layout_mismatch_count, 1L)
     expect_true("move_to_layout" %in% layout$actions$action)
-    expect_match(layout$actions[action == "move_to_layout"]$to_path, "downloads/layout-target[.]nc$")
+    expect_match(
+        layout$actions[action == "move_to_layout"]$to_path,
+        "downloads/layout-target[.]nc$"
+    )
 
     unlink(wrong_file)
     missing <- store$validate_files(query_id = query_id, layout = TRUE)
     expect_equal(missing$summary$missing_file_count, 1L)
-    expect_true(all(c("clear_missing_local_ref", "remove_missing_artifact") %in% missing$actions$action))
+    expect_true(all(
+        c("clear_missing_local_ref", "remove_missing_artifact") %in%
+            missing$actions$action
+    ))
     expect_false(file.exists(wrong_file))
 })
 # }}}
@@ -1860,7 +2247,9 @@ test_that("EsgStore$repair_files() clears missing records", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    files <- store_test__result(docs = store_test__file_docs(path = "repair-missing.nc"))
+    files <- store_test__result(
+        docs = store_test__file_docs(path = "repair-missing.nc")
+    )
     query_id <- store$add_files(files, label = "repair missing test")
     conn <- priv(store)$conn
     file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
@@ -1877,18 +2266,24 @@ test_that("EsgStore$repair_files() clears missing records", {
         file_key = file_key
     )
     rel <- store_rel_path(local_file, store$path)
-    ddb_exec(conn, sprintf(
-        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
-    ddb_exec(conn, sprintf(
-        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
     unlink(local_file)
 
     actions <- store$validate_files(query_id = query_id)$actions
@@ -1918,7 +2313,9 @@ test_that("EsgStore$repair_files() moves layout mismatches", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    files <- store_test__result(docs = store_test__file_docs(path = "repair-layout.nc"))
+    files <- store_test__result(
+        docs = store_test__file_docs(path = "repair-layout.nc")
+    )
     query_id <- store$add_files(files, label = "repair layout test")
     conn <- priv(store)$conn
     file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
@@ -1937,18 +2334,24 @@ test_that("EsgStore$repair_files() moves layout mismatches", {
         file_key = file_key
     )
     rel <- store_rel_path(old_file, store$path)
-    ddb_exec(conn, sprintf(
-        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
-    ddb_exec(conn, sprintf(
-        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
 
     actions <- store$validate_files(query_id = query_id)$actions
     move <- actions[action == "move_to_layout"]
@@ -1971,7 +2374,10 @@ test_that("EsgStore$repair_files() moves layout mismatches", {
     target_rel <- store_rel_path(target_file, store$path)
     expect_equal(catalog$local_path[[1L]], target_rel)
     expect_equal(esg_file$local_path[[1L]], target_rel)
-    expect_equal(artifact$relative_path[artifact$artifact_id == artifact_id], target_rel)
+    expect_equal(
+        artifact$relative_path[artifact$artifact_id == artifact_id],
+        target_rel
+    )
 })
 # }}}
 # EsgStore$cleanup_downloads() {{{
@@ -1982,7 +2388,9 @@ test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    files <- store_test__result(docs = store_test__file_docs(path = "missing-record.nc"))
+    files <- store_test__result(
+        docs = store_test__file_docs(path = "missing-record.nc")
+    )
     query_id <- store$add_files(files, label = "missing local file test")
     conn <- priv(store)$conn
     file_key <- ddb_read_table(conn, "file_catalog")$file_key[[1L]]
@@ -2000,18 +2408,24 @@ test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
     )
 
     rel <- store_rel_path(local_file, store$path)
-    ddb_exec(conn, sprintf(
-        "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
-    ddb_exec(conn, sprintf(
-        "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
-        ddb_literal(conn, rel),
-        ddb_literal(conn, artifact_id),
-        ddb_literal(conn, file_key)
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE file_catalog SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE esg_file SET local_path = %s, local_artifact_id = %s WHERE file_key = %s",
+            ddb_literal(conn, rel),
+            ddb_literal(conn, artifact_id),
+            ddb_literal(conn, file_key)
+        )
+    )
     unlink(local_file)
 
     report <- store$storage_report(detail = TRUE)
@@ -2024,7 +2438,10 @@ test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
     expect_false(is.na(ddb_read_table(conn, "file_catalog")$local_path[[1L]]))
     expect_true(artifact_id %in% ddb_read_table(conn, "artifact")$artifact_id)
 
-    cleaned <- store$cleanup_downloads(scope = "missing_records", dry_run = FALSE)
+    cleaned <- store$cleanup_downloads(
+        scope = "missing_records",
+        dry_run = FALSE
+    )
     expect_true(all(cleaned$record_removed))
     catalog <- ddb_read_table(conn, "file_catalog")
     esg_file <- ddb_read_table(conn, "esg_file")
@@ -2046,11 +2463,13 @@ test_that("EsgStore$add_files() catalogs File records", {
 
     files <- store_test__result(
         docs = store_test__file_docs(),
-        context = list(time_filter = list(
-            start = "2060-01-01T00:00:00Z",
-            stop = "2060-12-31T23:59:59Z",
-            method = "drs"
-        ))
+        context = list(
+            time_filter = list(
+                start = "2060-01-01T00:00:00Z",
+                stop = "2060-12-31T23:59:59Z",
+                method = "drs"
+            )
+        )
     )
 
     query_id <- store$add_files(files, label = "cmip6 test")
@@ -2070,8 +2489,14 @@ test_that("EsgStore$add_files() catalogs File records", {
     expect_equal(catalog$query_id, query_id)
     expect_equal(catalog$source_id, "EC-Earth3")
     expect_equal(catalog$experiment_id, "ssp585")
-    expect_equal(catalog$url_opendap, "https://example.org/dods/tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc")
-    expect_equal(catalog$url_download, "https://example.org/fileServer/tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc")
+    expect_equal(
+        catalog$url_opendap,
+        "https://example.org/dods/tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
+    )
+    expect_equal(
+        catalog$url_download,
+        "https://example.org/fileServer/tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc"
+    )
     expect_equal(nrow(artifacts), 1L)
     expect_equal(artifacts$kind, "query")
     expect_true(file.exists(store$artifact_path(artifacts$artifact_id)))
@@ -2117,7 +2542,10 @@ test_that("EsgStore$add_files() deduplicates File replicas", {
     expect_equal(nrow(links), 1L)
     expect_equal(catalog$query_id, query_id)
     expect_equal(catalog$data_node, "master.example.org")
-    expect_equal(catalog$url_download, "https://master.example.org/fileServer/tas.nc")
+    expect_equal(
+        catalog$url_download,
+        "https://master.example.org/fileServer/tas.nc"
+    )
 })
 # }}}
 # EsgStore$plan_region() {{{
@@ -2133,7 +2561,9 @@ test_that("EsgStore$plan_region() respects variable filters", {
         path = "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
         variable_id = "hurs"
     )
-    files <- store_test__result(docs = data.table::rbindlist(list(tas, hurs), fill = TRUE))
+    files <- store_test__result(
+        docs = data.table::rbindlist(list(tas, hurs), fill = TRUE)
+    )
     query_id <- store$add_files(files, label = "cmip6 multi-variable test")
 
     plan <- store$plan_region(
@@ -2182,7 +2612,9 @@ test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
     expect_equal(tasks$status, "done")
     expect_true(file.exists(file.path(dir, "downloads", "local-download.nc")))
 
-    catalog <- store$query("SELECT local_path, local_artifact_id FROM file_catalog")
+    catalog <- store$query(
+        "SELECT local_path, local_artifact_id FROM file_catalog"
+    )
     expect_equal(nrow(catalog), 1L)
     expect_false(is.na(catalog$local_path))
     expect_true(file.exists(file.path(store$path, catalog$local_path)))
@@ -2216,7 +2648,9 @@ test_that("EsgStore$download_files() releases store lock around downloader work"
     )
 
     expect_equal(session_id, "session-lock-check")
-    expect_true(all(c("data_nodes", "record_probes", "enqueue") %in% dl_files$calls))
+    expect_true(all(
+        c("data_nodes", "record_probes", "enqueue") %in% dl_files$calls
+    ))
     expect_false("run" %in% dl_files$calls)
 
     dir_catalog <- tempfile("esg-store-")
@@ -2297,7 +2731,11 @@ test_that("store download plan helpers preserve catalog identity and schema", {
         dataset_id = c("dataset-a", "dataset-b", "dataset-c"),
         checksum_type = c("SHA256", "MD5", NA_character_),
         size = c("123", "invalid", NA_character_),
-        url_download = c("https://example.org/a.nc", "https://example.org/b.nc", NA_character_),
+        url_download = c(
+            "https://example.org/a.nc",
+            "https://example.org/b.nc",
+            NA_character_
+        ),
         data_node = c("a.example.org", "b.example.org", NA_character_)
     )
 
@@ -2314,9 +2752,21 @@ test_that("store download plan helpers preserve catalog identity and schema", {
     expect_identical(
         names(plan),
         c(
-            "logical_file_id", "file_key", "esgf_id", "dataset_id", "filename",
-            "subdir", "checksum", "checksum_type", "size", "url", "service",
-            "data_node", "priority", "probe_latency", "probe_throughput"
+            "logical_file_id",
+            "file_key",
+            "esgf_id",
+            "dataset_id",
+            "filename",
+            "subdir",
+            "checksum",
+            "checksum_type",
+            "size",
+            "url",
+            "service",
+            "data_node",
+            "priority",
+            "probe_latency",
+            "probe_throughput"
         )
     )
     expect_identical(plan$logical_file_id, store__logical_file_id(catalog))
@@ -2362,7 +2812,10 @@ test_that("EsgStore download plan decoration recovers file keys from supplied ro
     )
     expect_identical(decorated$target_rel_path, plan$filename)
     expected_root <- normalizePath(dir, winslash = "/", mustWork = TRUE)
-    expect_identical(decorated$target_path, file.path(expected_root, "downloads", plan$filename))
+    expect_identical(
+        decorated$target_path,
+        file.path(expected_root, "downloads", plan$filename)
+    )
 })
 
 test_that("EsgStore$download_files() aborts ambiguous catalog target collisions", {
@@ -2398,7 +2851,12 @@ test_that("EsgStore$download_files() aborts ambiguous catalog target collisions"
     dl <- store$downloader(n_workers = 0L)
 
     expect_error(
-        store$download_files(query_id = query_id, downloader = dl, run = FALSE, probe = FALSE),
+        store$download_files(
+            query_id = query_id,
+            downloader = dl,
+            run = FALSE,
+            probe = FALSE
+        ),
         "different checksums"
     )
 })
@@ -2413,7 +2871,9 @@ test_that("EsgStore$add_files() catalogs Aggregation records", {
 
     aggs <- store_test__result(
         type = "Aggregation",
-        docs = store_test__file_docs("tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20610101-20611231.nc")
+        docs = store_test__file_docs(
+            "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20610101-20611231.nc"
+        )
     )
 
     query_id_1 <- store$add_files(aggs)
@@ -2437,7 +2897,11 @@ test_that("EsgStore$add_files() records empty child query runs", {
     empty_docs <- store_test__file_docs()[0L, ]
 
     for (type in c("File", "Aggregation")) {
-        generator <- switch(type, File = EsgResultFile, Aggregation = EsgResultAggregation)
+        generator <- switch(
+            type,
+            File = EsgResultFile,
+            Aggregation = EsgResultAggregation
+        )
         response <- store_test__response(empty_docs)
         response$response$docs <- list()
         result <- query_result__new(
@@ -2475,10 +2939,16 @@ test_that("EsgStore$add_files() preserves File publish_path in stored query resu
 
     docs <- store_test__file_docs()
     docs$publish_path <- "/css03_data/CMIP6/ScenarioMIP/mock/tas.nc"
-    query_id <- store$add_files(store_test__result(docs = docs), label = "publish-path")
+    query_id <- store$add_files(
+        store_test__result(docs = docs),
+        label = "publish-path"
+    )
 
     runs <- ddb_read_table(priv(store)$conn, "query_run")
-    query_file <- file.path(store$path, runs$query_file[runs$query_id == query_id])
+    query_file <- file.path(
+        store$path,
+        runs$query_file[runs$query_id == query_id]
+    )
     loaded <- esg_result("file")$load(query_file)
     catalog <- ddb_read_table(priv(store)$conn, "file_catalog")
 
@@ -2496,26 +2966,29 @@ test_that("EsgStore$plan_region() creates extraction plans", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    docs <- data.table::rbindlist(list(
-        store_test__file_docs(
-            "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
-            source_id = "EC-Earth3",
-            experiment_id = "ssp585",
-            variable_id = "tas"
+    docs <- data.table::rbindlist(
+        list(
+            store_test__file_docs(
+                "tas_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+                source_id = "EC-Earth3",
+                experiment_id = "ssp585",
+                variable_id = "tas"
+            ),
+            store_test__file_docs(
+                "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+                source_id = "EC-Earth3",
+                experiment_id = "ssp585",
+                variable_id = "hurs"
+            ),
+            store_test__file_docs(
+                "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
+                source_id = "AWI-CM-1-1-MR",
+                experiment_id = "ssp585",
+                variable_id = "tas"
+            )
         ),
-        store_test__file_docs(
-            "hurs_day_EC-Earth3_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
-            source_id = "EC-Earth3",
-            experiment_id = "ssp585",
-            variable_id = "hurs"
-        ),
-        store_test__file_docs(
-            "tas_day_AWI-CM-1-1-MR_ssp585_r1i1p1f1_gr_20600101-20601231.nc",
-            source_id = "AWI-CM-1-1-MR",
-            experiment_id = "ssp585",
-            variable_id = "tas"
-        )
-    ), fill = TRUE)
+        fill = TRUE
+    )
     files <- store_test__result(docs = as.data.frame(docs))
     query_id <- store$add_files(files)
 
@@ -2574,7 +3047,9 @@ test_that("EsgStore$plan_region() rejects invalid plans", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    query_id <- store$add_files(store_test__result(docs = store_test__file_docs()))
+    query_id <- store$add_files(store_test__result(
+        docs = store_test__file_docs()
+    ))
 
     expect_error(
         store$plan_region(
@@ -2659,10 +3134,13 @@ test_that("EsgStore$extract()", {
 
     parquet <- store_abs_path(results$output_path[[1L]], root = dir)
     expect_true(file.exists(parquet))
-    rows <- ddb_query(conn, sprintf(
-        "SELECT site_id, source_id, experiment_id, variable_id, method, units, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
-        ddb_literal(conn, parquet)
-    ))
+    rows <- ddb_query(
+        conn,
+        sprintf(
+            "SELECT site_id, source_id, experiment_id, variable_id, method, units, COUNT(*) AS n FROM read_parquet(%s) GROUP BY ALL",
+            ddb_literal(conn, parquet)
+        )
+    )
     expect_equal(rows$site_id, "SIN")
     expect_equal(rows$source_id, "EC-Earth3")
     expect_equal(rows$experiment_id, "ssp585")
@@ -2698,14 +3176,19 @@ test_that("EsgStore open failures use HTTP fallback only in auto mode", {
     store_test__mock_private(
         store,
         "download_plan_file",
+        # store_test__mock_private callback {{{
         function(file, overwrite = FALSE, reporter = NULL) {
             download_calls <<- download_calls + 1L
             fixture$nc
         }
+        # }}}
     )
 
     opened <- priv(store)$open_plan_dataset(file, fallback = "auto")
-    on.exit(if (isTRUE(opened$dataset$is_open)) opened$dataset$close(), add = TRUE)
+    on.exit(
+        if (isTRUE(opened$dataset$is_open)) opened$dataset$close(),
+        add = TRUE
+    )
     expect_identical(opened$access_method, "HTTPServer")
     expect_identical(download_calls, 1L)
 
@@ -2736,6 +3219,7 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
         store_test__mock_private(
             store,
             "open_plan_dataset",
+            # store_test__mock_private callback {{{
             function(
                 file,
                 fallback = "auto",
@@ -2749,14 +3233,17 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
                     access_method = "OPeNDAP"
                 )
             }
+            # }}}
         )
         store_test__mock_private(
             store,
             "download_plan_file",
+            # store_test__mock_private callback {{{
             function(file, overwrite = FALSE, reporter = NULL) {
                 download_calls <<- download_calls + 1L
                 fixture$nc
             }
+            # }}}
         )
 
         result <- priv(store)$extract_one(
@@ -2809,19 +3296,23 @@ test_that("EsgStore fallback errors retain both attempts in last_error", {
     on.exit(unlink(fixture$nc), add = TRUE)
     remote <- store_test__failing_dataset("metadata")
     download_calls <- 0L
+    # store__open_dataset {{{
     testthat::local_mocked_bindings(store__open_dataset = function(
         target,
         service
     ) {
         list(dataset = remote, target = target, access_method = service)
     })
+    # }}}
     store_test__mock_private(
         store,
         "download_plan_file",
+        # store_test__mock_private callback {{{
         function(file, overwrite = FALSE, reporter = NULL) {
             download_calls <<- download_calls + 1L
             stop("HTTP download timed out", call. = FALSE)
         }
+        # }}}
     )
 
     processed <- store$extract(
@@ -2853,6 +3344,7 @@ test_that("EsgStore fallback error mode does not download after read failure", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
+        # store_test__mock_private callback {{{
         function(
             file,
             fallback = "auto",
@@ -2866,14 +3358,17 @@ test_that("EsgStore fallback error mode does not download after read failure", {
                 access_method = "OPeNDAP"
             )
         }
+        # }}}
     )
     store_test__mock_private(
         store,
         "download_plan_file",
+        # store_test__mock_private callback {{{
         function(...) {
             download_calls <<- download_calls + 1L
             fixture$nc
         }
+        # }}}
     )
 
     error <- expect_error(
@@ -2903,6 +3398,7 @@ test_that("EsgStore classifies persistence failures without another read", {
     store_test__mock_private(
         store,
         "open_plan_dataset",
+        # store_test__mock_private callback {{{
         function(
             file,
             fallback = "auto",
@@ -2916,10 +3412,12 @@ test_that("EsgStore classifies persistence failures without another read", {
                 access_method = "HTTPServer"
             )
         }
+        # }}}
     )
     store_test__mock_private(
         store,
         "read_extract_dataset",
+        # store_test__mock_private callback {{{
         function(ds, plan, file, opened, reporter = NULL) {
             read_calls <<- read_calls + 1L
             list(
@@ -2930,11 +3428,14 @@ test_that("EsgStore classifies persistence failures without another read", {
                 actual_end = as.POSIXct("2060-12-31", tz = "UTC")
             )
         }
+        # }}}
     )
     store_test__mock_private(
         store,
         "persist_extract_payload",
+        # store_test__mock_private callback {{{
         function(...) stop("manifest write failed", call. = FALSE)
+        # }}}
     )
 
     error <- expect_error(
@@ -2998,17 +3499,22 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
     expect_true(grepl("year=2060", results$output_path[[1L]], fixed = TRUE))
     expect_true(grepl("year=2061", results$output_path[[2L]], fixed = TRUE))
 
+    # lapply callback {{{
     rows <- data.table::rbindlist(lapply(results$output_path, function(path) {
         parquet <- store_abs_path(path, root = dir)
-        ddb_query(conn, sprintf(
-            paste(
-                "SELECT year, cf_calendar, cf_year, cf_month, cf_day,",
-                "cf_day_of_year, cf_year_days, cf_second_of_day, annual_phase",
-                "FROM read_parquet(%s)"
-            ),
-            ddb_literal(conn, parquet)
-        ))
+        ddb_query(
+            conn,
+            sprintf(
+                paste(
+                    "SELECT year, cf_calendar, cf_year, cf_month, cf_day,",
+                    "cf_day_of_year, cf_year_days, cf_second_of_day, annual_phase",
+                    "FROM read_parquet(%s)"
+                ),
+                ddb_literal(conn, parquet)
+            )
+        )
     }))
+    # }}}
     data.table::setorder(rows, cf_year)
 
     expect_equal(rows$year, c(2060L, 2061L))
@@ -3083,13 +3589,19 @@ test_that("EsgStore$extract() detects output conflicts without manifest rows", {
 
     processed <- store$extract(plan_id = plan$plan_id)
     conn <- priv(store)$conn
-    output_path <- file.path(store$path, ddb_read_table(conn, "extraction_result")$output_path[[1L]])
+    output_path <- file.path(
+        store$path,
+        ddb_read_table(conn, "extraction_result")$output_path[[1L]]
+    )
     expect_true(file.exists(output_path))
 
-    ddb_exec(conn, sprintf(
-        "DELETE FROM extraction_result WHERE plan_id = %s",
-        ddb_literal(conn, plan$plan_id[[1L]])
-    ))
+    ddb_exec(
+        conn,
+        sprintf(
+            "DELETE FROM extraction_result WHERE plan_id = %s",
+            ddb_literal(conn, plan$plan_id[[1L]])
+        )
+    )
     expect_error(
         store$extract(plan_id = plan$plan_id, overwrite = FALSE),
         "Parquet output already exists"
@@ -3190,6 +3702,7 @@ test_that("worker access failures preserve fallback without remote resubmission"
     on.exit(store$close(), add = TRUE)
     withr::local_options(epwshiftr.cache = FALSE)
     original <- store__open_dataset
+    # store__open_dataset {{{
     testthat::local_mocked_bindings(store__open_dataset = function(
         target,
         service
@@ -3199,9 +3712,12 @@ test_that("worker access failures preserve fallback without remote resubmission"
         }
         original(target, service)
     })
+    # }}}
+    # store_test__mock_private callback {{{
     store_test__mock_private(store, "download_plan_file", function(...) {
         fixture$nc
     })
+    # }}}
     error <- store__access_error(
         simpleError("source disconnected"),
         "read",
@@ -3243,6 +3759,7 @@ test_that("uncached source tasks return one site plan at a time", {
         site_id = "USA"
     )
     task_count <- 0L
+    # source__apply {{{
     testthat::local_mocked_bindings(source__apply = function(
         jobs,
         read,
@@ -3256,15 +3773,22 @@ test_that("uncached source tasks return one site plan at a time", {
             collect(job, read(job))
         }
     })
+    # }}}
     reporter <- store_test__access_reporter()
     progress <- integer(2L)
     count <- 0L
+    # reporter$check_cancel {{{
     reporter$check_cancel <- function(...) invisible(NULL)
+    # }}}
+    # reporter$unit_started {{{
     reporter$unit_started <- function(...) invisible(NULL)
+    # }}}
+    # reporter$unit_completed {{{
     reporter$unit_completed <- function(message, current, ...) {
         count <<- count + 1L
         progress[[count]] <<- current
     }
+    # }}}
     expected_order <- store$query("SELECT plan_id FROM extraction_plan")$plan_id
     result <- store$extract(fallback = "error", reporter = reporter)
     expect_identical(progress, 1:2)
@@ -3296,9 +3820,11 @@ test_that("extraction persistence rolls back manifest changes on failure", {
         opened
     )
     original <- store$query("SELECT * FROM file_catalog")
+    # store_test__mock_private callback {{{
     store_test__mock_private(store, "mark_plan_status", function(...) {
         stop("injected late manifest failure", call. = FALSE)
     })
+    # }}}
     expect_error(
         priv(store)$persist_extract_payload(
             payload,
@@ -3326,3 +3852,5 @@ test_that("extraction persistence rolls back manifest changes on failure", {
     # The transaction is closed even when persistence throws.
     expect_equal(store$query("SELECT 1 AS value")$value, 1L)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

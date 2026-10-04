@@ -1,5 +1,6 @@
 # Query one current daily-temperature File set from the first responsive ESGF
 # index node, retaining node failures so a live-run error remains actionable.
+# live_esgf_tas_files {{{
 live_esgf_tas_files <- function() {
     nodes <- unique(c(INDEX_NODES[["DKRZ"]], INDEX_NODES[["ORNL"]]))
     failures <- character()
@@ -38,9 +39,11 @@ live_esgf_tas_files <- function() {
         call. = FALSE
     )
 }
+# }}}
 
 # Find one monthly temperature file small enough to exercise a real HTTP
 # recovery without turning the opt-in service check into a large data job.
+# live_esgf_bounded_http_file {{{
 live_esgf_bounded_http_file <- function(max_bytes = 64 * 1024^2) {
     nodes <- unique(c(INDEX_NODES[["DKRZ"]], INDEX_NODES[["ORNL"]]))
     failures <- character()
@@ -105,6 +108,7 @@ live_esgf_bounded_http_file <- function(max_bytes = 64 * 1024^2) {
         paste(failures, collapse = " | ")
     ))
 }
+# }}}
 
 test_that("live ESGF File coverage, service resolution, and one-cell read", {
     skip_live_esgf()
@@ -212,3 +216,5 @@ test_that("live ESGF HTTP recovery downloads one bounded real file", {
     expect_length(value, 1L)
     expect_true(is.finite(value))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

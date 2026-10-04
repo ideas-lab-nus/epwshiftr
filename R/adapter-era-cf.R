@@ -4,6 +4,7 @@ NULL
 # ERA reanalysis to CF weather input
 # Translate public and method-declared frequency labels to the temporal bins
 # that ERA normalization can construct from hourly source values.
+# era__frequency_kind {{{
 era__frequency_kind <- function(frequency) {
     checkmate::assert_string(frequency, min.chars = 1L)
     normalized <- tolower(frequency)
@@ -39,9 +40,11 @@ era__frequency_kind <- function(frequency) {
         "ERA normalization does not support frequency {.val {frequency}}."
     )
 }
+# }}}
 
 # Resolve the observed-reference requirement from the canonical recipe rather
 # than copying variable lists into the ERA provider adapter.
+# reanalysis__requirement {{{
 reanalysis__requirement <- function(recipe) {
     specification <- morpher__recipe_spec(recipe)
     requirement <- specification@required_inputs[["observed_reference"]]
@@ -50,9 +53,11 @@ reanalysis__requirement <- function(recipe) {
     }
     requirement
 }
+# }}}
 
 # Select one satisfiable observed variable alternative and preserve its method
 # order so persisted plans do not change with provider response ordering.
+# reanalysis__variables {{{
 reanalysis__variables <- function(spec, recipe) {
     requirement <- reanalysis__requirement(recipe)
     if (is.null(requirement)) {
@@ -70,11 +75,13 @@ reanalysis__variables <- function(spec, recipe) {
     # alternative, so satisfiability must be checked before applying the
     # registry's deterministic first-alternative preference.
     candidates <- Filter(
+        # Filter callback {{{
         function(variables) {
             variables <- as.character(variables)
             all(variables %in% supported) &&
                 (is.null(spec@variables) || all(variables %in% spec@variables))
         },
+        # }}}
         alternatives
     )
     selected <- if (length(candidates)) {
@@ -98,9 +105,11 @@ reanalysis__variables <- function(spec, recipe) {
     }
     selected
 }
+# }}}
 
 # Resolve variable-specific output frequencies from an explicit ERA override
 # or the observed-reference role contract.
+# reanalysis__frequencies {{{
 reanalysis__frequencies <- function(spec, recipe, variables) {
     requirement <- reanalysis__requirement(recipe)
     if (!length(variables) || is.null(requirement)) {
@@ -142,8 +151,10 @@ reanalysis__frequencies <- function(spec, recipe, variables) {
     }
     output
 }
+# }}}
 
 # Enumerate NetCDF variable names through the public RNetCDF inquiry API.
+# era__netcdf_variables {{{
 era__netcdf_variables <- function(handle) {
     info <- RNetCDF::file.inq.nc(handle)
     if (!info$nvars) {
@@ -151,24 +162,32 @@ era__netcdf_variables <- function(handle) {
     }
     vapply(
         0:(info$nvars - 1L),
+        # vapply callback {{{
         function(id) {
             RNetCDF::var.inq.nc(handle, id)$name
         },
+        # }}}
         character(1L)
     )
 }
+# }}}
 
 # Read an optional NetCDF attribute without masking errors from required
 # coordinate or data reads.
+# era__netcdf_attribute {{{
 era__netcdf_attribute <- function(handle, variable, attribute, default = NULL) {
     tryCatch(
         RNetCDF::att.get.nc(handle, variable, attribute),
+        # error {{{
         error = function(error) default
+        # }}}
     )
 }
+# }}}
 
 # Read one NetCDF coordinate variable and retain a numeric vector. Coordinates
 # with unsupported string encodings fail at the adapter boundary.
+# era__netcdf_coordinate {{{
 era__netcdf_coordinate <- function(handle, name) {
     value <- RNetCDF::var.get.nc(handle, name, collapse = TRUE)
     if (!is.numeric(value)) {
@@ -178,9 +197,11 @@ era__netcdf_coordinate <- function(handle, name) {
     }
     as.numeric(value)
 }
+# }}}
 
 # Parse both current `time` and legacy `valid_time` CF axes while rejecting
 # files that do not state a reproducible time unit.
+# era__netcdf_time {{{
 era__netcdf_time <- function(handle, names) {
     time_name <- intersect(c("time", "valid_time"), names)
     if (!length(time_name)) {
@@ -206,10 +227,12 @@ era__netcdf_time <- function(handle, names) {
         )
     )
 }
+# }}}
 
 # Read one requested ERA source field and select the nearest returned grid
 # centre. The full CDS request may return a small cell while the ARCO-backed
 # time-series service normally returns one point.
+# era__read_netcdf {{{
 era__read_netcdf <- function(path, source_variable, site) {
     checkmate::assert_string(path, min.chars = 1L)
     checkmate::assert_string(source_variable, min.chars = 1L)
@@ -230,15 +253,19 @@ era__read_netcdf <- function(path, source_variable, site) {
     }
     data_name <- data_name[[1L]]
     info <- RNetCDF::var.inq.nc(handle, data_name)
+    # lapply callback {{{
     dimensions <- lapply(info$dimids, function(id) {
         RNetCDF::dim.inq.nc(handle, id)
     })
+    # }}}
     dimension_names <- vapply(dimensions, `[[`, character(1L), "name")
     dimension_lengths <- vapply(
         dimensions,
+        # vapply callback {{{
         function(value) {
             as.integer(value$length)
         },
+        # }}}
         integer(1L)
     )
     values <- RNetCDF::var.get.nc(handle, data_name, collapse = FALSE)
@@ -355,9 +382,11 @@ era__read_netcdf <- function(path, source_variable, site) {
         path = normalizePath(path, winslash = "/", mustWork = TRUE)
     )
 }
+# }}}
 
 # Infer the interval represented by an accumulated hourly field. The first
 # sample uses the modal positive spacing because it has no preceding row.
+# era__interval_seconds {{{
 era__interval_seconds <- function(time) {
     seconds <- diff(as.numeric(time))
     seconds <- seconds[is.finite(seconds) & seconds > 0]
@@ -367,9 +396,11 @@ era__interval_seconds <- function(time) {
     interval <- stats::median(seconds)
     rep(interval, length(time))
 }
+# }}}
 
 # Convert one raw ERA source field to the CF-compatible units consumed by
 # existing weather method contracts.
+# era__convert_source {{{
 era__convert_source <- function(source, source_variable) {
     data <- data.table::copy(source$data)
     units <- tolower(gsub("[[:space:]_]", "", source$units))
@@ -399,17 +430,22 @@ era__convert_source <- function(source, source_variable) {
     }
     data[]
 }
+# }}}
 
 # Combine primitive ERA source fields and derive the canonical humidity and
 # wind variables required by weather transformations.
+# era__canonical_hourly {{{
 era__canonical_hourly <- function(raw, variables) {
+    # lapply callback {{{
     converted <- lapply(names(raw), function(variable) {
         data <- era__convert_source(raw[[variable]], variable)
         data.table::setnames(data, "value", variable)
         data[, c("utc_time", variable), with = FALSE]
     })
+    # }}}
     names(converted) <- names(raw)
     common <- Reduce(
+        # Reduce callback {{{
         function(left, right) {
             merge(
                 left,
@@ -420,6 +456,7 @@ era__canonical_hourly <- function(raw, variables) {
                 suffixes = c("", ".source")
             )
         },
+        # }}}
         converted
     )
     if (!nrow(common)) {
@@ -477,9 +514,11 @@ era__canonical_hourly <- function(raw, variables) {
         )
     )
 }
+# }}}
 
 # Resolve the fixed standard-time offset that defines calendar aggregation for
 # one EPW site. This value also participates in persistent reanalysis IDs.
+# era__site_timezone {{{
 era__site_timezone <- function(site) {
     epw <- shift_spec__resolve_epw(site)
     morpher__epw_location_numeric(
@@ -488,9 +527,11 @@ era__site_timezone <- function(site) {
         default = 0
     )
 }
+# }}}
 
 # Convert UTC hourly data to the EPW fixed standard offset before any daily or
 # monthly grouping, then attach the same CF coordinate columns used by CMIP6.
+# era__aggregate_variable {{{
 era__aggregate_variable <- function(
     data,
     variable,
@@ -611,12 +652,15 @@ era__aggregate_variable <- function(
     )
     output[]
 }
+# }}}
 
 # Normalize all requested variables and frequencies to the long CF weather
 # representation consumed by ShiftClimate and EpwMorpher.
+# era__normalize {{{
 era__normalize <- function(raw, variables, frequencies, site, years) {
     hourly <- era__canonical_hourly(raw, variables)
     timezone <- era__site_timezone(site)
+    # lapply callback {{{
     rows <- lapply(variables, function(variable) {
         era__aggregate_variable(
             hourly$data,
@@ -628,15 +672,18 @@ era__normalize <- function(raw, variables, frequencies, site, years) {
             lat = site@lat
         )
     })
+    # }}}
     list(
         data = data.table::rbindlist(rows, use.names = TRUE, fill = TRUE),
         grid = hourly$grid,
         timezone = timezone
     )
 }
+# }}}
 
 # Build stable provider, file, and plan IDs before network access so complete
 # observed references can be resumed without submitting another CDS job.
+# reanalysis__identities {{{
 reanalysis__identities <- function(spec, site, variables, frequencies, access) {
     timezone <- era__site_timezone(site)
     request_id <- store__hash(
@@ -654,9 +701,11 @@ reanalysis__identities <- function(spec, site, variables, frequencies, access) {
     file_keys <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable) {
                 store__hash("reanalysis-file-v1", request_id, variable)
             },
+            # }}}
             character(1L)
         ),
         variables
@@ -664,6 +713,7 @@ reanalysis__identities <- function(spec, site, variables, frequencies, access) {
     plan_ids <- stats::setNames(
         vapply(
             variables,
+            # vapply callback {{{
             function(variable) {
                 store__hash(
                     "reanalysis-plan-v1",
@@ -673,15 +723,18 @@ reanalysis__identities <- function(spec, site, variables, frequencies, access) {
                     frequencies[[variable]]
                 )
             },
+            # }}}
             character(1L)
         ),
         variables
     )
     list(query_id = request_id, file_keys = file_keys, plan_ids = plan_ids)
 }
+# }}}
 
 # Restore a complete provider-normalized reference without reading or
 # downloading its raw ERA files again.
+# reanalysis__existing_climate {{{
 reanalysis__existing_climate <- function(
     store,
     spec,
@@ -694,7 +747,9 @@ reanalysis__existing_climate <- function(
 ) {
     coverage <- tryCatch(
         store$coverage(plan_id = unname(identities$plan_ids)),
+        # error {{{
         error = function(error) data.table::data.table()
+        # }}}
     )
     if (
         nrow(coverage) != length(identities$plan_ids) ||
@@ -722,9 +777,11 @@ reanalysis__existing_climate <- function(
         diagnostics = shift_stage__diagnostics_from_coverage(coverage)
     )
 }
+# }}}
 
 # Construct one full-width file catalog row for provider-normalized source data
 # so existing ShiftClimate joins and artifact inspectors remain reusable.
+# reanalysis__file_row {{{
 reanalysis__file_row <- function(
     store,
     spec,
@@ -779,9 +836,11 @@ reanalysis__file_row <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Persist normalized reanalysis rows through the same plan/result/artifact
 # tables and Parquet writer used by CMIP6 extraction.
+# reanalysis__persist {{{
 reanalysis__persist <- function(
     store,
     spec,
@@ -822,7 +881,9 @@ reanalysis__persist <- function(
                 access = access,
                 request_ids = unname(vapply(
                     raw[source_variables],
+                    # vapply callback {{{
                     function(value) as.character(value$request_id),
+                    # }}}
                     character(1L)
                 )),
                 source_variables = source_variables,
@@ -920,7 +981,9 @@ reanalysis__persist <- function(
         plan_ids <- c(plan_ids, plan$plan_id)
         jobs[[variable]] <- unname(vapply(
             raw[source_variables],
+            # vapply callback {{{
             function(value) as.character(value$request_id),
+            # }}}
             character(1L)
         ))
     }
@@ -975,10 +1038,12 @@ reanalysis__persist <- function(
         diagnostics = diagnostics
     )
 }
+# }}}
 
 # Build an immutable shared-cache path for one exact reanalysis request. Child
 # stores retain their own registered artifacts, while identical method/model
 # runs can reuse the provider download safely.
+# reanalysis__cache_path {{{
 reanalysis__cache_path <- function(
     dataset_id,
     request,
@@ -1002,10 +1067,12 @@ reanalysis__cache_path <- function(
         )
     )
 }
+# }}}
 
 # Materialize one cached provider file inside a child store. A hard link avoids
 # duplicate bytes on the same filesystem; the atomic copy fallback preserves
 # portability and never exposes a partially copied NetCDF file.
+# reanalysis__materialize_source {{{
 reanalysis__materialize_source <- function(source, target, overwrite = FALSE) {
     source <- normalizePath(source, winslash = "/", mustWork = TRUE)
     target <- normalizePath(target, winslash = "/", mustWork = FALSE)
@@ -1044,10 +1111,12 @@ reanalysis__materialize_source <- function(source, target, overwrite = FALSE) {
     }
     normalizePath(target, winslash = "/", mustWork = TRUE)
 }
+# }}}
 
 # Retrieve an exact reanalysis request once under a cross-process lock, then
 # attach the immutable result to the current child store as an ordinary source
 # artifact. Credentials and tokens are never written to the cache path.
+# reanalysis__retrieve_cached {{{
 reanalysis__retrieve_cached <- function(
     retrieve,
     dataset_id,
@@ -1120,10 +1189,12 @@ reanalysis__retrieve_cached <- function(
     )
     retrieved
 }
+# }}}
 
 # Materialize an ERA5 source only when a method actually consumes the observed
 # reference role. Dry-run plans therefore remain network-free after CMIP model
 # discovery, while execution produces an ordinary ShiftClimate stage.
+# reanalysis__materialize {{{
 reanalysis__materialize <- function(
     x,
     recipe,
@@ -1278,3 +1349,6 @@ reanalysis__materialize <- function(
         overwrite = overwrite
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

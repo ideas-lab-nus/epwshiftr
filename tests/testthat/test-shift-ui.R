@@ -124,7 +124,9 @@ test_that("frame renderer paints each dashboard update atomically", {
     renderer <- ShiftFrameRenderer$new(
         output = output,
         backend = "frame",
+        # writer {{{
         writer = function(text) writes <<- c(writes, text)
+        # }}}
     )
 
     expect_true(renderer$draw(c("one", "two", "three")))
@@ -147,17 +149,23 @@ test_that("frame renderer commits a terminal frame without erasing it", {
     output <- rawConnection(raw(), "wb")
     on.exit(close(output), add = TRUE)
     testthat::local_mocked_bindings(
+        # ansi_hide_cursor {{{
         ansi_hide_cursor = function(...) invisible(NULL),
+        # }}}
+        # ansi_show_cursor {{{
         ansi_show_cursor = function(...) {
             shown <<- shown + 1L
             invisible(NULL)
         },
+        # }}}
         .package = "cli"
     )
     renderer <- ShiftFrameRenderer$new(
         output = output,
         backend = "frame",
+        # writer {{{
         writer = function(text) writes <<- c(writes, text)
+        # }}}
     )
 
     renderer$draw(c("failed one", "failed two"))
@@ -178,20 +186,30 @@ test_that("frame renderer suspends output and restores the last frame once", {
     output <- rawConnection(raw(), "wb")
     on.exit(close(output), add = TRUE)
     testthat::local_mocked_bindings(
+        # ansi_hide_cursor {{{
         ansi_hide_cursor = function(...) hidden <<- hidden + 1L,
+        # }}}
+        # ansi_show_cursor {{{
         ansi_show_cursor = function(...) shown <<- shown + 1L,
+        # }}}
         .package = "cli"
     )
     renderer <- ShiftFrameRenderer$new(
         output = output,
         backend = "frame",
+        # writer {{{
         writer = function(text) writes <<- c(writes, text)
+        # }}}
     )
     renderer$draw(c("one", "two"))
+    # renderer$suspend callback {{{
     renderer$suspend(function() {
         writes <<- c(writes, "notice\n")
+        # renderer$suspend callback {{{
         renderer$suspend(function() writes <<- c(writes, "detail\n"))
+        # }}}
     })
+    # }}}
     renderer$close()
     renderer$close()
 
@@ -210,18 +228,24 @@ test_that("compact renderer delegates one live row to cli", {
     output <- rawConnection(raw(), "wb")
     on.exit(close(output), add = TRUE)
     testthat::local_mocked_bindings(
+        # cli_progress_bar {{{
         cli_progress_bar = function(...) {
             created <<- created + 1L
             "compact-id"
         },
+        # }}}
+        # cli_progress_update {{{
         cli_progress_update = function(id, status, ...) {
             updates <<- c(updates, status)
             invisible(id)
         },
+        # }}}
+        # cli_progress_done {{{
         cli_progress_done = function(...) {
             closed <<- closed + 1L
             invisible(TRUE)
         },
+        # }}}
         .package = "cli"
     )
     renderer <- ShiftFrameRenderer$new(output, backend = "compact")
@@ -238,13 +262,17 @@ test_that("renderer backend uses cli capabilities and degrades safely", {
     output <- rawConnection(raw(), "wb")
     on.exit(close(output), add = TRUE)
     testthat::local_mocked_bindings(
+        # is_dynamic_tty {{{
         is_dynamic_tty = function(...) TRUE,
+        # }}}
         .package = "cli"
     )
     expect_identical(shift_tui__ui_renderer_backend(output), "compact")
 
     testthat::local_mocked_bindings(
+        # is_dynamic_tty {{{
         is_dynamic_tty = function(...) FALSE,
+        # }}}
         .package = "cli"
     )
     expect_identical(shift_tui__ui_renderer_backend(output), "log")
@@ -283,13 +311,17 @@ test_that("compact status preserves stage, unit, progress, and elapsed time", {
 test_that("auto mode follows terminal capability for R and Rscript callers", {
     withr::local_envvar(c(CI = NA_character_, TERM = "xterm-256color"))
     testthat::local_mocked_bindings(
+        # is_dynamic_tty {{{
         is_dynamic_tty = function(...) FALSE,
+        # }}}
         .package = "cli"
     )
     expect_identical(shift_ui__ui_mode(shift_ui("auto")), "log")
 
     testthat::local_mocked_bindings(
+        # is_dynamic_tty {{{
         is_dynamic_tty = function(...) TRUE,
+        # }}}
         .package = "cli"
     )
     expect_identical(shift_ui__ui_mode(shift_ui("auto")), "dynamic")
@@ -575,6 +607,7 @@ test_that("normal, detail, and debug keep URLs at the intended boundary", {
 })
 
 test_that("download views report files, bytes, and variable counts", {
+    # tasks {{{
     downloader <- list(tasks = function(session_id = NULL) {
         data.frame(
             status = c("done", "downloading", "queued"),
@@ -584,6 +617,7 @@ test_that("download views report files, bytes, and variable counts", {
             filename = c("done.nc", "tas.nc", "queued.nc")
         )
     })
+    # }}}
     metrics <- shift_run__download_metrics(
         downloader,
         "session",
@@ -606,6 +640,7 @@ test_that("download task progress is bridged into the workflow heartbeat", {
     callbacks <- new.env(parent = emptyenv())
     seen <- character()
     downloader <- list(
+        # tasks {{{
         tasks = function(session_id = NULL) {
             data.frame(
                 status = c("done", "downloading"),
@@ -613,22 +648,39 @@ test_that("download task progress is bridged into the workflow heartbeat", {
                 size = c(1024, 2048)
             )
         },
+        # }}}
+        # on {{{
         on = function(event, fun) {
             callbacks[[event]] <- fun
             event
         },
+        # }}}
+        # off {{{
         off = function(token) TRUE
+        # }}}
     )
     reporter <- list(
+        # ui {{{
         ui = function() shift_ui("none"),
+        # }}}
+        # unit_started {{{
         unit_started = function(...) invisible(NULL),
+        # }}}
+        # unit_updated {{{
         unit_updated = function(...) invisible(NULL),
+        # }}}
+        # unit_completed {{{
         unit_completed = function(...) invisible(NULL),
+        # }}}
+        # notice {{{
         notice = function(...) invisible(NULL),
+        # }}}
+        # heartbeat {{{
         heartbeat = function(message, ...) {
             seen <<- c(seen, message)
             invisible(TRUE)
         }
+        # }}}
     )
     cleanup <- shift_run__download_reporter_bind(
         downloader,
@@ -658,6 +710,7 @@ test_that("nested fallback downloads retain extraction unit ownership", {
     callbacks <- new.env(parent = emptyenv())
     calls <- character()
     downloader <- list(
+        # tasks {{{
         tasks = function(session_id = NULL) {
             data.frame(
                 status = "done",
@@ -666,19 +719,36 @@ test_that("nested fallback downloads retain extraction unit ownership", {
                 filename = "tas.nc"
             )
         },
+        # }}}
+        # on {{{
         on = function(event, fun) {
             callbacks[[event]] <- fun
             event
         },
+        # }}}
+        # off {{{
         off = function(token) TRUE
+        # }}}
     )
     reporter <- list(
+        # ui {{{
         ui = function() shift_ui("none"),
+        # }}}
+        # unit_started {{{
         unit_started = function(...) calls <<- c(calls, "started"),
+        # }}}
+        # unit_updated {{{
         unit_updated = function(...) calls <<- c(calls, "updated"),
+        # }}}
+        # unit_completed {{{
         unit_completed = function(...) calls <<- c(calls, "completed"),
+        # }}}
+        # notice {{{
         notice = function(...) invisible(NULL),
+        # }}}
+        # heartbeat {{{
         heartbeat = function(...) invisible(TRUE)
+        # }}}
     )
     cleanup <- shift_run__download_reporter_bind(
         downloader,
@@ -737,23 +807,33 @@ test_that("dynamic failures commit one structured terminal dashboard", {
     commits <- character()
     closes <- 0L
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(lines, compact = NULL) {
                     frames[[length(frames) + 1L]] <<- lines
                     TRUE
                 },
+                # }}}
+                # suspend {{{
                 suspend = function(code) code(),
+                # }}}
+                # commit {{{
                 commit = function(result) {
                     commits <<- c(commits, result)
                     invisible(NULL)
                 },
+                # }}}
+                # close {{{
                 close = function(...) {
                     closes <<- closes + 1L
                     invisible(NULL)
                 }
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
@@ -810,24 +890,36 @@ test_that("dynamic completions commit one durable results dashboard", {
     commits <- character()
     closes <- 0L
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(lines, compact = NULL) {
                     frames[[length(frames) + 1L]] <<- lines
                     TRUE
                 },
+                # }}}
+                # suspend {{{
                 suspend = function(code) code(),
+                # }}}
+                # backend {{{
                 backend = function() "frame",
+                # }}}
+                # commit {{{
                 commit = function(result) {
                     commits <<- c(commits, result)
                     invisible(NULL)
                 },
+                # }}}
+                # close {{{
                 close = function(...) {
                     closes <<- closes + 1L
                     invisible(NULL)
                 }
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     output_dir <- tempfile("shift-completed-output-")
@@ -885,9 +977,11 @@ test_that("dynamic completions commit one durable results dashboard", {
     expect_true(any(grepl("Output", plain, fixed = TRUE)))
     expect_true(all(vapply(
         basename(paths),
+        # vapply callback {{{
         function(path) {
             grepl(path, paste(plain, collapse = ""), fixed = TRUE)
         },
+        # }}}
         logical(1L)
     )))
 })
@@ -1158,19 +1252,27 @@ test_that("dynamic startup is a replaceable first frame rather than a transcript
     frames <- list()
     closed <- 0L
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(lines, compact = NULL) {
                     frames[[length(frames) + 1L]] <<- lines
                     TRUE
                 },
+                # }}}
+                # suspend {{{
                 suspend = function(code) code(),
+                # }}}
+                # close {{{
                 close = function(...) {
                     closed <<- closed + 1L
                     invisible(NULL)
                 }
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     reporter <- shift_reporter__reporter(shift_ui("dynamic", motion = "none"))
@@ -1421,7 +1523,9 @@ test_that("shift_watch() renders the shared status view instead of one long stri
         dry_run = TRUE
     )@meta$children[[1L]]
     test_local_dependencies(list(
+        # shift_job__launch_job {{{
         shift_job__launch_job = function(...) invisible(0L)
+        # }}}
     ))
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
     on.exit(shift_cancel(run), add = TRUE)
@@ -1483,22 +1587,34 @@ test_that("generic operation reporters preserve receipts in log and dynamic mode
     draws <- 0L
     commits <- character()
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(...) {
                     draws <<- draws + 1L
                     TRUE
                 },
+                # }}}
+                # commit {{{
                 commit = function(result = c("done", "failed", "cancelled")) {
                     result <- match.arg(result)
                     commits <<- c(commits, result)
                     invisible(NULL)
                 },
+                # }}}
+                # close {{{
                 close = function(...) invisible(NULL),
+                # }}}
+                # suspend {{{
                 suspend = function(code) code(),
+                # }}}
+                # backend {{{
                 backend = function() "frame"
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     reporter <- ShiftReporter$new(
@@ -1580,30 +1696,42 @@ test_that("dynamic watch animates cached state between store polls", {
     closes <- 0L
     clock <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
     testthat::local_mocked_bindings(
+        # shift_run_get {{{
         shift_run_get = function(...) {
             polls <<- polls + 1L
             if (polls >= 3L) completed else running
         },
+        # }}}
+        # shift_job__watch_now {{{
         shift_job__watch_now = function() clock,
+        # }}}
+        # shift_job__watch_sleep {{{
         shift_job__watch_sleep = function(seconds) {
             clock <<- clock + seconds
             invisible(NULL)
         },
+        # }}}
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(...) {
                     updates <<- updates + 1L
                     TRUE
                 },
+                # }}}
+                # close {{{
                 close = function(...) {
                     closes <<- closes + 1L
                     invisible(NULL)
                 }
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -1878,11 +2006,15 @@ test_that("transient updates do not replace the last completed milestone", {
 test_that("heartbeat details update live state without unthrottled durable touches", {
     touches <- 0L
     testthat::local_mocked_bindings(
+        # shift_job__job_touch {{{
         shift_job__job_touch = function(store, job_id, ui_state = NULL) {
             touches <<- touches + 1L
             invisible(NULL)
         },
+        # }}}
+        # shift_job__job_check_cancel {{{
         shift_job__job_check_cancel = function(...) invisible(FALSE),
+        # }}}
         .package = "epwshiftr"
     )
     reporter <- shift_reporter__reporter(
@@ -1912,24 +2044,36 @@ test_that("dynamic frames advance faster than durable liveness", {
     touches <- 0L
     updates <- 0L
     testthat::local_mocked_bindings(
+        # shift_tui__ui_renderer {{{
         shift_tui__ui_renderer = function(...) {
             list(
+                # draw {{{
                 draw = function(...) {
                     updates <<- updates + 1L
                     TRUE
                 },
+                # }}}
+                # suspend {{{
                 suspend = function(code) code(),
+                # }}}
+                # close {{{
                 close = function(...) invisible(NULL)
+                # }}}
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
+        # shift_job__job_touch {{{
         shift_job__job_touch = function(store, job_id, ui_state = NULL) {
             touches <<- touches + 1L
             invisible(NULL)
         },
+        # }}}
+        # shift_job__job_check_cancel {{{
         shift_job__job_check_cancel = function(...) invisible(FALSE),
+        # }}}
         .package = "epwshiftr"
     )
     reporter <- shift_reporter__reporter(
@@ -1961,3 +2105,5 @@ test_that("auto mode uses logs in CI and dumb terminals", {
     withr::local_envvar(c(CI = NA_character_, TERM = "dumb"))
     expect_identical(shift_ui__ui_mode(shift_ui("auto")), "log")
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -38,6 +38,7 @@ SHIFT_WORKFLOW_FILE_FIELDS <- c(
 
 # Map public standalone functions onto stable task IDs and concise dashboard
 # titles. These IDs also form the persisted object-carried step sequence.
+# shift_run__task_label {{{
 shift_run__task_label <- function(task) {
     labels <- c(
         datasets = "Collect Datasets",
@@ -55,6 +56,7 @@ shift_run__task_label <- function(task) {
     }
     shift_ui_view__ui_stage_label(key)
 }
+# }}}
 
 # A private dynamic stack transports the one active reporter through S7 dispatch
 # and nested stage calls without exposing an implementation parameter publicly.
@@ -72,6 +74,7 @@ SHIFT_CATALOG_UNIT_TOTAL_STACK <- new.env(parent = emptyenv())
 SHIFT_CATALOG_UNIT_TOTAL_STACK$values <- integer()
 
 # Return the most recently scoped value without assigning a global default.
+# shift_run__stack_current {{{
 shift_run__stack_current <- function(stack, empty = NULL) {
     values <- stack$values
     if (!length(values)) {
@@ -79,8 +82,10 @@ shift_run__stack_current <- function(stack, empty = NULL) {
     }
     values[[length(values)]]
 }
+# }}}
 
 # Evaluate one expression with a temporary value appended to a dynamic stack.
+# shift_run__with_stack {{{
 shift_run__with_stack <- function(stack, value, code) {
     previous <- stack$values
     stack$values <- c(previous, list(value))
@@ -89,37 +94,48 @@ shift_run__with_stack <- function(stack, value, code) {
     on.exit(stack$values <- previous, add = TRUE)
     force(code)
 }
+# }}}
 
 # Return the reporter owned by the current operation, if one exists.
+# shift_run__current_reporter {{{
 shift_run__current_reporter <- function() {
     shift_run__stack_current(SHIFT_REPORTER_STACK)
 }
+# }}}
 
 # Evaluate one expression with a reporter installed for internal stage methods.
 # Nested calls restore the preceding reporter deterministically on every exit.
+# shift_run__with_reporter {{{
 shift_run__with_reporter <- function(reporter, code) {
     shift_run__with_stack(SHIFT_REPORTER_STACK, reporter, code)
 }
+# }}}
 
 # Return the catalog-unit scale selected by the nearest composite operation.
+# shift_run__catalog_unit_total {{{
 shift_run__catalog_unit_total <- function(default = 1L) {
     as.integer(shift_run__stack_current(
         SHIFT_CATALOG_UNIT_TOTAL_STACK,
         empty = default
     ))
 }
+# }}}
 
 # Evaluate one nested Dataset query on its parent's catalog-unit scale.
+# shift_run__with_catalog_unit_total {{{
 shift_run__with_catalog_unit_total <- function(total, code) {
     checkmate::assert_int(total, lower = 1L)
     shift_run__with_stack(SHIFT_CATALOG_UNIT_TOTAL_STACK, total, code)
 }
+# }}}
 
 # Apply an internal stage call under the reporter scope without adding a public
 # reporter formal to the shift API.
+# shift_run__do_call_with_reporter {{{
 shift_run__do_call_with_reporter <- function(reporter, what, args) {
     shift_run__with_reporter(reporter, do.call(what, args))
 }
+# }}}
 
 # Resume uses a short-lived internal override to append a new attempt to the
 # same failed run. This is not ambient user state: it exists only while one
@@ -129,18 +145,23 @@ SHIFT_RUN_OVERRIDE_STACK <- new.env(parent = emptyenv())
 SHIFT_RUN_OVERRIDE_STACK$values <- list()
 
 # Return the run selected by the active resume operation, if any.
+# shift_run__current_run_override {{{
 shift_run__current_run_override <- function() {
     shift_run__stack_current(SHIFT_RUN_OVERRIDE_STACK)
 }
+# }}}
 
 # Evaluate one reconstructed stage call under a durable run identity.
+# shift_run__with_run_override {{{
 shift_run__with_run_override <- function(run_id, code) {
     checkmate::assert_string(run_id, min.chars = 1L)
     shift_run__with_stack(SHIFT_RUN_OVERRIDE_STACK, run_id, code)
 }
+# }}}
 
 # Resolve presentation once per operation. UI state is deliberately not
 # inherited from persisted scientific objects and never enters a spec hash.
+# shift_run__task_ui {{{
 shift_run__task_ui <- function(ui = NULL) {
     value <- shift_stage__coalesce(ui, shift_ui())
     if (!S7::S7_inherits(value, ShiftUiOptions)) {
@@ -148,9 +169,11 @@ shift_run__task_ui <- function(ui = NULL) {
     }
     value
 }
+# }}}
 
 # Find the one authoritative store for a task and reject accidental cross-store
 # input before any artifact or run row is written.
+# shift_run__task_store_value {{{
 shift_run__task_store_value <- function(x, store = NULL) {
     input_path <- if (S7::S7_inherits(x, ShiftStage)) x@store_path else NULL
     supplied_path <- if (inherits(store, "EsgStore")) store$path else store
@@ -158,9 +181,11 @@ shift_run__task_store_value <- function(x, store = NULL) {
     candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
     normalized <- unique(vapply(
         candidates,
+        # vapply callback {{{
         function(path) {
             normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
         },
+        # }}}
         character(1L)
     ))
     if (length(normalized) > 1L) {
@@ -174,9 +199,11 @@ shift_run__task_store_value <- function(x, store = NULL) {
     }
     if (length(normalized)) normalized[[1L]] else store_dir()
 }
+# }}}
 
 # Read the completed task lineage recursively. Child runs inherit display
 # history without mutating a terminal parent or copying its durable steps.
+# shift_run__run_task_history {{{
 shift_run__run_task_history <- function(store, run_id, seen = character()) {
     if (
         is.null(run_id) || is.na(run_id) || !nzchar(run_id) || run_id %in% seen
@@ -190,7 +217,9 @@ shift_run__run_task_history <- function(store, run_id, seen = character()) {
     }
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
+        # error {{{
         error = function(e) list()
+        # }}}
     )
     parent <- store__chr1(spec$parent_run_id)
     inherited <- shift_run__run_task_history(store, parent, c(seen, run_id))
@@ -208,9 +237,11 @@ shift_run__run_task_history <- function(store, run_id, seen = character()) {
     )
     unique(c(inherited, completed))
 }
+# }}}
 
 # Build the cumulative stage rail from the input run lineage plus the current
 # task. A branched child therefore remains visually connected to its source.
+# shift_run__task_sequence {{{
 shift_run__task_sequence <- function(store, run_id, task) {
     completed <- shift_run__run_task_history(store, run_id)
     list(
@@ -218,10 +249,12 @@ shift_run__task_sequence <- function(store, run_id, task) {
         completed = unique(completed)
     )
 }
+# }}}
 
 # Decide whether an input stage can append to its run. Only the latest completed
 # step of a waiting run is a valid continuation point; terminal or stale inputs
 # fork a child run so persisted history remains append-only.
+# shift_run__task_run_context {{{
 shift_run__task_run_context <- function(x, store) {
     ids <- if (S7::S7_inherits(x, ShiftStage)) x@ids else list()
     input_run_id <- store__chr1(ids$run_id)
@@ -251,7 +284,9 @@ shift_run__task_run_context <- function(x, store) {
         latest$status[[1L]] %in% c("completed", "partial")
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
+        # error {{{
         error = function(e) list()
+        # }}}
     )
     lineage_id <- as.character(shift_stage__coalesce(
         spec$lineage_id,
@@ -274,9 +309,11 @@ shift_run__task_run_context <- function(x, store) {
         continued = FALSE
     )
 }
+# }}}
 
 # Describe a stage operation without embedding low-level objects in reporter
 # state. Detailed IDs remain available through shift_explain() and the store.
+# shift_run__task_context {{{
 shift_run__task_context <- function(task, x, store) {
     input <- if (S7::S7_inherits(x, ShiftStage)) {
         sprintf("input %s", x@stage)
@@ -290,9 +327,11 @@ shift_run__task_context <- function(task, x, store) {
         message = paste("Preparing", tolower(shift_run__task_label(task)))
     )
 }
+# }}}
 
 # Summarize the persisted artifact rather than repeating implementation-level
 # callbacks in the terminal completion receipt.
+# shift_run__task_summary {{{
 shift_run__task_summary <- function(task, result) {
     switch(
         task,
@@ -331,9 +370,11 @@ shift_run__task_summary <- function(task, result) {
         sprintf("%s completed", shift_run__task_label(task))
     )
 }
+# }}}
 
 # Return delivery paths for the generic result receipt while leaving other
 # stages path-free.
+# shift_run__task_output_paths {{{
 shift_run__task_output_paths <- function(result) {
     if (!S7::S7_inherits(result, ShiftOutputs)) {
         return(character())
@@ -342,10 +383,12 @@ shift_run__task_output_paths <- function(result) {
     path <- if ("export_path" %in% names(rows)) rows$export_path else rows$path
     as.character(path[!is.na(path) & nzchar(path)])
 }
+# }}}
 
 # Attach durable recovery coordinates to the original stage condition without
 # replacing its message or call. Callers can inspect run_id/step_id/store while
 # interactive users continue to see the reporter's single failure receipt.
+# shift_run__task_condition {{{
 shift_run__task_condition <- function(condition, run_id, step_id, store_path) {
     condition$run_id <- run_id
     condition$step_id <- step_id
@@ -353,10 +396,12 @@ shift_run__task_condition <- function(condition, run_id, step_id, store_path) {
     class(condition) <- unique(c("epwshiftr_shift_error", class(condition)))
     condition
 }
+# }}}
 
 # Execute one public standalone stage through the shared reporter and durable
 # run/step state machine. The stage-specific closure remains responsible only
 # for scientific work and business-unit progress.
+# shift_run__task_execute {{{
 shift_run__task_execute <- function(
     task,
     x,
@@ -642,6 +687,7 @@ shift_run__task_execute <- function(
                 }
                 result
             },
+            # interrupt {{{
             interrupt = function(e) {
                 message <- sprintf(
                     "%s was cancelled.",
@@ -686,6 +732,8 @@ shift_run__task_execute <- function(
                 reporter$operation_failed(message, cancelled = TRUE)
                 stop(shift_run__task_condition(e, run_id, step_id, opened$path))
             },
+            # }}}
+            # error {{{
             error = function(e) {
                 message <- conditionMessage(e)
                 cancelled <- inherits(e, "epwshiftr_shift_cancelled")
@@ -734,9 +782,11 @@ shift_run__task_execute <- function(
                 )
                 stop(shift_run__task_condition(e, run_id, step_id, opened$path))
             }
+            # }}}
         )
     )
 }
+# }}}
 
 # Mark a successful intermediate stage as the intentional endpoint of its run.
 # Normal pipelines do not need this helper because EPW export completes the run
@@ -744,6 +794,7 @@ shift_run__task_execute <- function(
 # download, extract, morph, or store-local EPW writing.
 #' @rdname shift_api
 #' @export
+# shift_complete {{{
 shift_complete <- function(x) {
     shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftRun)) {
@@ -804,10 +855,12 @@ shift_complete <- function(x) {
     )
     shift_job__run_handle(store, run@ids$run_id)
 }
+# }}}
 
 # Verify that a completed run still owns every required EPW and exported file.
 # A terminal database status alone is insufficient after files have been moved
 # or manually removed from either the store or the delivery directory.
+# shift_run__run_artifacts_complete {{{
 shift_run__run_artifacts_complete <- function(store, run_id) {
     wanted_run_id <- run_id
     private <- morpher__private_store(store)
@@ -862,10 +915,12 @@ shift_run__run_artifacts_complete <- function(store, run_id) {
     )
     all(file.exists(paths))
 }
+# }}}
 
 # Resolve an identical persisted task before registering another run. Complete
 # runs are reusable only while their durable outputs exist; interrupted runs
 # remain resumable under their original run ID and resolved input selection.
+# shift_run__run_existing {{{
 shift_run__run_existing <- function(plan) {
     store <- shift_store(plan, create = TRUE)
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
@@ -903,9 +958,11 @@ shift_run__run_existing <- function(plan) {
     }
     shift_job__run_handle(store, resumable[["run_id"]][[1L]], plan = plan)
 }
+# }}}
 
 #' @rdname shift_api
 #' @export
+# shift_run {{{
 shift_run <- function(x, background = FALSE, ui = shift_ui(), ...) {
     shift_stage__assert_stage(x)
     if (S7::S7_inherits(x, ShiftBatch)) {
@@ -917,8 +974,10 @@ shift_run <- function(x, background = FALSE, ui = shift_ui(), ...) {
     }
     shift_run__run_one(x, background = background, ui = ui, ...)
 }
+# }}}
 
 # Execute one plan, optionally owned by a shared batch coordinator.
+# shift_run__run_one {{{
 shift_run__run_one <- function(
     x,
     background = FALSE,
@@ -963,9 +1022,11 @@ shift_run__run_one <- function(
     on.exit(try(store$close(), silent = TRUE), add = TRUE)
     shift_run__start_plan(x, store, run_id, background, ui, execution, ...)
 }
+# }}}
 
 # Register and execute one plan attempt for both initial runs and recovery.
 # Public dispatchers retain their return types; a batch supplies only its owner.
+# shift_run__start_plan {{{
 shift_run__start_plan <- function(
     plan,
     store,
@@ -1018,11 +1079,12 @@ shift_run__start_plan <- function(
         )
     )
 }
-
+# }}}
 
 # Persist a Dataset result outside the relational File catalog. The JSON keeps
 # the original EsgResultDataset contract intact while the lightweight stage
 # provides stable run/step recovery coordinates.
+# shift_run__datasets_stage {{{
 shift_run__datasets_stage <- function(result, request, store) {
     if (!inherits(result, "EsgResultDataset")) {
         cli::cli_abort(
@@ -1066,9 +1128,11 @@ shift_run__datasets_stage <- function(result, request, store) {
         )
     )
 }
+# }}}
 
 # Load the persisted Dataset result when the live R6 object is no longer
 # available, for example after shift_result() reconstructs a previous run.
+# shift_run__datasets_result {{{
 shift_run__datasets_result <- function(x) {
     if (!S7::S7_inherits(x, ShiftDatasets)) {
         cli::cli_abort("`x` must be an internal Dataset catalog stage.")
@@ -1086,19 +1150,23 @@ shift_run__datasets_result <- function(x) {
     }
     esg_result("dataset")$load(path)
 }
+# }}}
 
 # Carry run coordinates on the returned R6 result without changing its class or
 # method surface. shift_run_get() uses these attributes as a convenience only;
 # the store remains authoritative.
+# shift_run__datasets_attach_run {{{
 shift_run__datasets_attach_run <- function(result, stage) {
     attr(result, "epwshiftr.run_id") <- store__chr1(stage@ids$run_id)
     attr(result, "epwshiftr.step_id") <- store__chr1(stage@ids$step_id)
     attr(result, "epwshiftr.store") <- stage@store_path
     result
 }
+# }}}
 
 #' @rdname shift_api
 #' @export
+# shift_datasets {{{
 shift_datasets <- function(
     x,
     all = TRUE,
@@ -1119,6 +1187,7 @@ shift_datasets <- function(
                 ui = ui,
                 spec = list(all = all, limit = limit),
                 auto_complete = TRUE,
+                # code {{{
                 code = function(reporter, task_store) {
                     result <- shift_run__with_reporter(
                         reporter,
@@ -1131,6 +1200,7 @@ shift_datasets <- function(
                     )
                     shift_run__datasets_stage(result, x, task_store)
                 }
+                # }}}
             )
             return(shift_run__datasets_attach_run(
                 shift_run__datasets_result(stage),
@@ -1198,8 +1268,10 @@ shift_datasets <- function(
 
     cli::cli_abort("No Dataset result is available for this shift stage.")
 }
+# }}}
 
 # workflow methods
+# S7::method(shift_collect, ShiftRequest) {{{
 S7::method(shift_collect, ShiftRequest) <- function(
     x,
     store = NULL,
@@ -1330,8 +1402,10 @@ S7::method(shift_collect, ShiftRequest) <- function(
         )
     )
 }
+# }}}
 
 # Summarize downloader task state into workflow-specific byte and file metrics.
+# shift_run__download_metrics {{{
 shift_run__download_metrics <- function(
     downloader,
     session_id,
@@ -1339,7 +1413,9 @@ shift_run__download_metrics <- function(
 ) {
     tasks <- tryCatch(
         downloader$tasks(session_id = session_id),
+        # error {{{
         error = function(e) data.frame()
+        # }}}
     )
     total <- nrow(tasks)
     completed <- if (total) sum(tasks$status %in% c("done", "skipped")) else 0L
@@ -1403,9 +1479,11 @@ shift_run__download_metrics <- function(
         variables = as.integer(variables)
     )
 }
+# }}}
 
 # Format one task-specific download status shared by progress, completion, and
 # persisted workflow events.
+# shift_run__download_label {{{
 shift_run__download_label <- function(role, metrics, active = NULL) {
     label <- sprintf(
         "%s download \u00b7 %d/%d files \u00b7 %s/%s \u00b7 %d variables",
@@ -1439,9 +1517,11 @@ shift_run__download_label <- function(role, metrics, active = NULL) {
         label
     }
 }
+# }}}
 
 # Bridge downloader callbacks into the workflow reporter. Progress callbacks
 # are throttled by ShiftReporter while task/fallback milestones remain durable.
+# shift_run__download_reporter_bind {{{
 shift_run__download_reporter_bind <- function(
     downloader,
     reporter,
@@ -1451,6 +1531,7 @@ shift_run__download_reporter_bind <- function(
 ) {
     checkmate::assert_flag(nested)
     tokens <- character()
+    # callback {{{
     callback <- function(event, dl) {
         metrics <- shift_run__download_metrics(
             dl,
@@ -1572,17 +1653,22 @@ shift_run__download_reporter_bind <- function(
         )
         invisible(TRUE)
     }
+    # }}}
     for (event in DOWNLOADER_CALLBACK_EVENTS) {
         tokens <- c(tokens, downloader$on(event, callback))
     }
+    # { callback {{{
     function() {
         for (token in tokens) {
             try(downloader$off(token), silent = TRUE)
         }
         invisible(NULL)
     }
+    # }}}
 }
+# }}}
 
+# S7::method(shift_download, ShiftFiles) {{{
 S7::method(shift_download, ShiftFiles) <- function(
     x,
     downloader = NULL,
@@ -1666,7 +1752,9 @@ S7::method(shift_download, ShiftFiles) <- function(
         diagnostics = diagnostics
     )
 }
+# }}}
 
+# shift_run__extract_stage {{{
 shift_run__extract_stage <- function(
     x,
     upstream_name,
@@ -1741,10 +1829,12 @@ shift_run__extract_stage <- function(
         diagnostics = diagnostics
     )
 }
+# }}}
 
 # Run pre-existing extraction plan IDs through the same durable task boundary
 # used by shift_extract(). This adapter lets the CLI retain its plan/run split
 # without creating a second progress or persistence implementation.
+# shift_run__extract_plans_task {{{
 shift_run__extract_plans_task <- function(
     store,
     plan_id,
@@ -1821,6 +1911,7 @@ shift_run__extract_plans_task <- function(
         store = store,
         ui = ui,
         spec = spec,
+        # code {{{
         code = function(reporter, task_store) {
             processed <- task_store$extract(
                 plan_id = plan_id,
@@ -1847,9 +1938,12 @@ shift_run__extract_plans_task <- function(
                 diagnostics = shift_stage__diagnostics_from_coverage(coverage)
             )
         }
+        # }}}
     )
 }
+# }}}
 
+# S7::method(shift_extract, ShiftFiles) {{{
 S7::method(shift_extract, ShiftFiles) <- function(
     x,
     site = NULL,
@@ -1878,7 +1972,9 @@ S7::method(shift_extract, ShiftFiles) <- function(
         reporter = shift_run__current_reporter()
     )
 }
+# }}}
 
+# S7::method(shift_extract, ShiftDownload) {{{
 S7::method(shift_extract, ShiftDownload) <- function(
     x,
     site = NULL,
@@ -1907,10 +2003,11 @@ S7::method(shift_extract, ShiftDownload) <- function(
         reporter = shift_run__current_reporter()
     )
 }
-
+# }}}
 
 # Match one coverage table against the expected future cases and, when
 # required, the corresponding explicit reference extraction.
+# shift_run__case_fulfilment {{{
 shift_run__case_fulfilment <- function(
     cases,
     future_coverage,
@@ -1945,6 +2042,7 @@ shift_run__case_fulfilment <- function(
             character(nrow(reference_coverage))
         }
     }
+    # match_identity {{{
     match_identity <- function(rows, case, include_experiment = TRUE) {
         keep <- shift_resolve__catalog_match(
             rows$source_id,
@@ -1966,6 +2064,7 @@ shift_run__case_fulfilment <- function(
         }
         rows[keep]
     }
+    # }}}
 
     for (i in seq_len(nrow(cases))) {
         case <- cases[i]
@@ -2025,9 +2124,11 @@ shift_run__case_fulfilment <- function(
     }
     cases[]
 }
+# }}}
 
 # Restrict a ShiftClimate stage to the complete plans that belong to ready user
 # cases while retaining the original extraction evidence in metadata.
+# shift_run__climate_for_cases {{{
 shift_run__climate_for_cases <- function(climate, cases, reference = FALSE) {
     coverage <- shift_coverage(climate)
     ready <- cases[status == "ready"]
@@ -2064,10 +2165,12 @@ shift_run__climate_for_cases <- function(climate, cases, reference = FALSE) {
     climate@meta$coverage <- coverage[plan_id %in% selected_ids]
     climate
 }
+# }}}
 
 # Merge method-engine case failures into the user-facing run matrix by public
 # CMIP identity. Successful morph cases remain ready until their EPW artifacts
 # are written; failed siblings become terminal without hiding later successes.
+# shift_run__apply_morph_case_status {{{
 shift_run__apply_morph_case_status <- function(cases, morph_cases) {
     cases <- data.table::as.data.table(data.table::copy(cases))
     morph_cases <- data.table::as.data.table(morph_cases)
@@ -2108,9 +2211,11 @@ shift_run__apply_morph_case_status <- function(cases, morph_cases) {
     }
     cases[]
 }
+# }}}
 
 # Attach output IDs and exported paths to the expected case matrix using the
 # public CMIP identity while allowing one case to own a complete year sequence.
+# shift_run__complete_output_cases {{{
 shift_run__complete_output_cases <- function(cases, outputs) {
     cases <- data.table::as.data.table(data.table::copy(cases))
     outputs <- data.table::as.data.table(outputs)
@@ -2165,9 +2270,11 @@ shift_run__complete_output_cases <- function(cases, outputs) {
     }
     cases[]
 }
+# }}}
 
 # Record a run stage transition before executing it so failures always point to
 # the last durable workflow boundary.
+# shift_run__run_transition {{{
 shift_run__run_transition <- function(
     store,
     run_id,
@@ -2191,10 +2298,11 @@ shift_run__run_transition <- function(
     }
     invisible(stage)
 }
-
+# }}}
 
 # Build a meaningful interrupt condition after a foreground Ctrl-C so callers
 # retain interrupt semantics without rethrowing cli's message-less condition.
+# shift_run__cancelled_interrupt {{{
 shift_run__cancelled_interrupt <- function(message, run_id, store, stage) {
     structure(
         list(
@@ -2207,9 +2315,11 @@ shift_run__cancelled_interrupt <- function(message, run_id, store, stage) {
         class = c("epwshiftr_shift_cancelled", "interrupt", "condition")
     )
 }
+# }}}
 
 # Execute a persisted ShiftPlan through the existing stage primitives while
 # enforcing task-level selection, coverage, and completion contracts.
+# shift_run__plan_run {{{
 shift_run__plan_run <- function(
     x,
     run_id,
@@ -2239,6 +2349,7 @@ shift_run__plan_run <- function(
         as.integer(identical(control@download, "always")) +
         as.integer(reference_expected)
     stage_index <- 0L
+    # next_stage {{{
     next_stage <- function(stage, message) {
         stage_index <<- stage_index + 1L
         reporter$check_cancel(stage)
@@ -2252,6 +2363,7 @@ shift_run__plan_run <- function(
             total = stage_total
         )
     }
+    # }}}
     # Reopen the elapsed-time clock for a resumed attempt while preserving the
     # original run start and all prior immutable scientific selections.
     shift_job__run_update(
@@ -2264,13 +2376,16 @@ shift_run__plan_run <- function(
 
     # Both terminal paths persist one status and event. Interrupts retain their
     # condition class; ordinary errors retain the original source condition.
+    # failed {{{
     failed <- function(e) {
         interrupted <- inherits(e, "interrupt")
         requested <- interrupted &&
             !is.null(job_id) &&
             tryCatch(
                 shift_job__job_cancel_requested(store, job_id),
+                # error {{{
                 error = function(err) FALSE
+                # }}}
             )
         message <- if (requested) {
             "Cancellation requested by user."
@@ -2368,6 +2483,7 @@ shift_run__plan_run <- function(
             debug = shift_ui__ui_at_least(reporter$ui(), "debug")
         )
     }
+    # }}}
 
     result <- tryCatch(
         {
@@ -2850,8 +2966,9 @@ shift_run__plan_run <- function(
     )
     result
 }
+# }}}
 
-
+# S7::method(shift_morph, ShiftClimate) {{{
 S7::method(shift_morph, ShiftClimate) <- function(
     x,
     baseline = NULL,
@@ -2999,7 +3116,9 @@ S7::method(shift_morph, ShiftClimate) <- function(
         diagnostics = diagnostics
     )
 }
+# }}}
 
+# S7::method(shift_epw, ShiftMorphed) {{{
 S7::method(shift_epw, ShiftMorphed) <- function(
     x,
     dir = NULL,
@@ -3067,13 +3186,17 @@ S7::method(shift_epw, ShiftMorphed) <- function(
     }
     stage
 }
+# }}}
 
 # Combine independently planned extraction partitions into one climate stage.
 # Coverage is re-read from the store for the union of plan IDs so resume and
 # diagnostics use the same durable view as an ordinary shift_extract() call.
+# shift_run__combine_climate_stages {{{
 shift_run__combine_climate_stages <- function(stages) {
     stages <- Filter(
+        # Filter callback {{{
         function(stage) S7::S7_inherits(stage, ShiftClimate),
+        # }}}
         stages
     )
     if (!length(stages)) {
@@ -3086,17 +3209,24 @@ shift_run__combine_climate_stages <- function(stages) {
     }
     first <- stages[[1L]]
     plan_id <- unique(unlist(
+        # lapply callback {{{
         lapply(stages, function(stage) stage@ids$plan_id),
+        # }}}
         use.names = FALSE
     ))
     query_id <- unique(unlist(
+        # lapply callback {{{
         lapply(stages, function(stage) stage@ids$query_id),
+        # }}}
         use.names = FALSE
     ))
     store <- shift_store(first)
     coverage <- store$coverage(plan_id = plan_id)
+    # bind_meta {{{
     bind_meta <- function(name) {
+        # lapply callback {{{
         values <- lapply(stages, function(stage) stage@meta[[name]])
+        # }}}
         values <- Filter(is.data.frame, values)
         if (!length(values)) {
             NULL
@@ -3104,6 +3234,7 @@ shift_run__combine_climate_stages <- function(stages) {
             data.table::rbindlist(values, use.names = TRUE, fill = TRUE)
         }
     }
+    # }}}
     upstream_name <- if (S7::S7_inherits(first@meta$download, ShiftDownload)) {
         "download"
     } else {
@@ -3121,7 +3252,9 @@ shift_run__combine_climate_stages <- function(stages) {
                 site = first@meta$site,
                 periods = first@meta$periods,
                 variables = unique(unlist(
+                    # lapply callback {{{
                     lapply(stages, function(stage) stage@meta$variables),
+                    # }}}
                     use.names = FALSE
                 )),
                 plan = bind_meta("plan"),
@@ -3132,10 +3265,12 @@ shift_run__combine_climate_stages <- function(stages) {
         diagnostics = shift_stage__diagnostics_from_coverage(coverage)
     )
 }
+# }}}
 
 # Extract each exact source/member/table/grid partition separately and merge the
 # resulting plan IDs only after planning. Selection facets are re-applied after
 # user extraction overrides so workflow intent cannot be widened accidentally.
+# shift_run__extract_selected_partitions {{{
 shift_run__extract_selected_partitions <- function(
     stage,
     selection,
@@ -3219,3 +3354,6 @@ shift_run__extract_selected_partitions <- function(
     }
     shift_run__combine_climate_stages(stages)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

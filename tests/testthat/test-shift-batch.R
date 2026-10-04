@@ -8,7 +8,9 @@ test_that("method keys resolve through the transform registry", {
     expect_identical(
         unname(vapply(
             transforms,
+            # vapply callback {{{
             function(value) value@method,
+            # }}}
             character(1L)
         )),
         c("original_morphing", "bws_btws", "isimip3basd")
@@ -29,9 +31,11 @@ test_that("method keys resolve through the transform registry", {
 
 test_that("method key resolution does not materialize the public catalog", {
     testthat::local_mocked_bindings(
+        # weather_transforms {{{
         weather_transforms = function() {
             stop("Public transform catalog was materialized.")
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -44,7 +48,9 @@ test_that("method key resolution does not materialize the public catalog", {
     expect_identical(
         unname(vapply(
             transforms,
+            # vapply callback {{{
             function(value) value@recipe,
+            # }}}
             character(1L)
         )),
         c(
@@ -71,7 +77,9 @@ test_that("shift_run dispatches a dry-run batch to the batch runner", {
         meta = list(children = list(), manifest = data.table::data.table())
     )
     testthat::local_mocked_bindings(
+        # shift_batch__run {{{
         shift_batch__run = function(x, background, ui) "started",
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -92,9 +100,11 @@ test_that("batch child failures return their durable run handles", {
         class = c("epwshiftr_shift_error", "error", "condition")
     )
     testthat::local_mocked_bindings(
+        # shift_run_get {{{
         shift_run_get = function(run_id, store) {
             list(run_id = run_id, store = store)
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -109,10 +119,12 @@ test_that("completed batch children reuse one authoritative store", {
     closed <- 0L
     verified <- 0L
     child_store <- new.env(parent = emptyenv())
+    # child_store$close {{{
     child_store$close <- function() {
         closed <<- closed + 1L
         invisible(NULL)
     }
+    # }}}
     run <- shift_stage__new(
         ShiftRun,
         "run",
@@ -121,23 +133,29 @@ test_that("completed batch children reuse one authoritative store", {
         meta = list(run = data.table::data.table(status = "completed"))
     )
     testthat::local_mocked_bindings(
+        # shift_store {{{
         shift_store = function(x, create = FALSE) {
             opened <<- opened + 1L
             expect_identical(x, "/example/child")
             expect_false(create)
             child_store
         },
+        # }}}
+        # shift_run_get {{{
         shift_run_get = function(run_id, store) {
             expect_identical(run_id, "run-child")
             expect_identical(store, child_store)
             run
         },
+        # }}}
+        # shift_run__run_artifacts_complete {{{
         shift_run__run_artifacts_complete = function(store, run_id) {
             verified <<- verified + 1L
             expect_identical(store, child_store)
             expect_identical(run_id, "run-child")
             TRUE
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -156,7 +174,9 @@ test_that("completed batch children reuse one authoritative store", {
 test_that("completed receipt hints do not replace authoritative run status", {
     verified <- 0L
     child_store <- new.env(parent = emptyenv())
+    # child_store$close {{{
     child_store$close <- function() invisible(NULL)
+    # }}}
     run <- shift_stage__new(
         ShiftRun,
         "run",
@@ -165,12 +185,18 @@ test_that("completed receipt hints do not replace authoritative run status", {
         meta = list(run = data.table::data.table(status = "running"))
     )
     testthat::local_mocked_bindings(
+        # shift_store {{{
         shift_store = function(x, create = FALSE) child_store,
+        # }}}
+        # shift_run_get {{{
         shift_run_get = function(run_id, store) run,
+        # }}}
+        # shift_run__run_artifacts_complete {{{
         shift_run__run_artifacts_complete = function(store, run_id) {
             verified <<- verified + 1L
             TRUE
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -187,10 +213,12 @@ test_that("completed receipt hints do not replace authoritative run status", {
 test_that("completed batch child restoration rejects missing artifacts", {
     closed <- 0L
     child_store <- new.env(parent = emptyenv())
+    # child_store$close {{{
     child_store$close <- function() {
         closed <<- closed + 1L
         invisible(NULL)
     }
+    # }}}
     run <- shift_stage__new(
         ShiftRun,
         "run",
@@ -199,9 +227,15 @@ test_that("completed batch child restoration rejects missing artifacts", {
         meta = list(run = data.table::data.table(status = "completed"))
     )
     testthat::local_mocked_bindings(
+        # shift_store {{{
         shift_store = function(x, create = FALSE) child_store,
+        # }}}
+        # shift_run_get {{{
         shift_run_get = function(run_id, store) run,
+        # }}}
+        # shift_run__run_artifacts_complete {{{
         shift_run__run_artifacts_complete = function(store, run_id) FALSE,
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -225,13 +259,17 @@ test_that("locked completed children retain path-based live restoration", {
         meta = list(run = data.table::data.table(status = "running"))
     )
     testthat::local_mocked_bindings(
+        # shift_store {{{
         shift_store = function(x, create = FALSE) {
             stop("manifest locked")
         },
+        # }}}
+        # shift_run_get {{{
         shift_run_get = function(run_id, store) {
             store_arguments[[length(store_arguments) + 1L]] <<- store
             run
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -247,10 +285,12 @@ test_that("locked completed children retain path-based live restoration", {
 
 test_that("high-level workflows select common models and retain child plans", {
     availability_calls <- 0L
+    # availability {{{
     availability <- function(...) {
         availability_calls <<- availability_calls + 1L
         test_cmip6_availability(...)
     }
+    # }}}
     test_local_dependencies(list(
         availability = availability,
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
@@ -284,7 +324,9 @@ test_that("high-level workflows select common models and retain child plans", {
     expect_equal(nrow(shift_cases(batch)), 24L)
     expect_true(all(vapply(
         batch@meta$children,
+        # vapply callback {{{
         function(child) S7::S7_inherits(child, ShiftPlan),
+        # }}}
         logical(1L)
     )))
     manifest <- batch@meta$manifest
@@ -364,10 +406,12 @@ test_that("direct high-level execution builds the whole batch before running", {
     ))
     received <- NULL
     testthat::local_mocked_bindings(
+        # shift_batch__run {{{
         shift_batch__run = function(x, background, ui) {
             received <<- x
             "executed"
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -386,9 +430,11 @@ test_that("direct high-level execution builds the whole batch before running", {
     expect_true(S7::S7_inherits(received, ShiftBatch))
     expect_true(all(vapply(
         received@meta$children,
+        # vapply callback {{{
         function(child) {
             S7::S7_inherits(child, ShiftPlan)
         },
+        # }}}
         logical(1L)
     )))
 })
@@ -419,6 +465,7 @@ test_that("batch discovery keeps r1i1p1f1 as a hard default", {
 
 test_that("batch discovery applies historical coverage per method", {
     calls <- list()
+    # collect {{{
     collect <- function(
         variables,
         scenarios,
@@ -440,6 +487,7 @@ test_that("batch discovery applies historical coverage per method", {
             index_node = index_node
         )
     }
+    # }}}
     test_local_dependencies(list(
         availability = collect,
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
@@ -463,15 +511,19 @@ test_that("batch discovery applies historical coverage per method", {
     )
 
     monthly_calls <- Filter(
+        # Filter callback {{{
         function(value) {
             length(value$variables) > 1L
         },
+        # }}}
         calls
     )
     daily_calls <- Filter(
+        # Filter callback {{{
         function(value) {
             identical(value$variables, "tas")
         },
+        # }}}
         calls
     )
     expect_true(length(monthly_calls) > 0L)
@@ -520,6 +572,7 @@ test_that("NULL model selection retains every compatible common model", {
 test_that("numeric model selection prefers less fragmented complete inputs", {
     test_local_dependencies(list(
         availability = test_cmip6_availability,
+        # shift_resolve__cmip6_period_coverage {{{
         shift_resolve__cmip6_period_coverage = function(candidates, ...) {
             candidates[,
                 source_file_count := c(
@@ -530,6 +583,7 @@ test_that("numeric model selection prefers less fragmented complete inputs", {
             ]
             candidates
         }
+        # }}}
     ))
     climate <- shift_cmip6(model = 2L, scenarios = "ssp585")
     selection <- shift_batch_ui__discover_models(
@@ -553,12 +607,14 @@ test_that("numeric model selection prefers less fragmented complete inputs", {
 
 test_that("batch discovery applies period coverage before model counts", {
     coverage_calls <- list()
+    # period_coverage {{{
     period_coverage <- function(candidates, periods, ...) {
         coverage_calls[[length(coverage_calls) + 1L]] <<- sort(unique(
             periods$year
         ))
         candidates[source_id != "Model-B"]
     }
+    # }}}
     test_local_dependencies(list(
         availability = test_cmip6_availability,
         shift_resolve__cmip6_period_coverage = period_coverage
@@ -629,6 +685,7 @@ test_that("File coverage rejects gaps inside requested CMIP6 periods", {
     distractors <- data.table::rbindlist(
         lapply(
             c("member", "table", "grid"),
+            # lapply callback {{{
             function(kind) {
                 rows <- data.table::copy(catalog[source_id == "Model-B"])
                 rows[, `:=`(
@@ -646,6 +703,7 @@ test_that("File coverage rejects gaps inside requested CMIP6 periods", {
                 }
                 rows
             }
+            # }}}
         ),
         use.names = TRUE,
         fill = TRUE
@@ -656,7 +714,9 @@ test_that("File coverage rejects gaps inside requested CMIP6 periods", {
         fill = TRUE
     )
     testthat::local_mocked_bindings(
+        # shift_resolve__cmip6_coverage_catalog {{{
         shift_resolve__cmip6_coverage_catalog = function(...) catalog,
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -731,7 +791,9 @@ test_that("File coverage retains completion on the exact table mapping", {
         datetime_end = "2060-12-31T23:59:59Z"
     )
     testthat::local_mocked_bindings(
+        # shift_resolve__cmip6_coverage_catalog {{{
         shift_resolve__cmip6_coverage_catalog = function(...) catalog,
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -760,6 +822,7 @@ test_that("File coverage applies the same year kernel to historical reference", 
         frequency = c(tas = "day"),
         index_node = "https://example.org"
     ))
+    # make_catalog {{{
     make_catalog <- function(experiment, start, end) {
         rows <- data.table::data.table(
             source_id = c("Model-A", "Model-B", "Model-C")
@@ -779,6 +842,7 @@ test_that("File coverage applies the same year kernel to historical reference", 
         )]
         rows
     }
+    # }}}
     future <- make_catalog(
         "ssp585",
         "2050-01-01T00:00:00Z",
@@ -791,6 +855,7 @@ test_that("File coverage applies the same year kernel to historical reference", 
     )
     historical[source_id == "Model-B", datetime_end := "2010-12-31T23:59:59Z"]
     testthat::local_mocked_bindings(
+        # shift_resolve__cmip6_coverage_catalog {{{
         shift_resolve__cmip6_coverage_catalog = function(request, ...) {
             if (identical(request@meta$experiment, "historical")) {
                 historical
@@ -798,6 +863,7 @@ test_that("File coverage applies the same year kernel to historical reference", 
                 future
             }
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -816,3 +882,5 @@ test_that("File coverage applies the same year kernel to historical reference", 
 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

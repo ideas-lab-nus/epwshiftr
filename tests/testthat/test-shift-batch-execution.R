@@ -21,18 +21,22 @@ test_that("background batches share reads through one coordinator", {
     # Windows keeps redirected stdout exclusively open until the process exits,
     # which may follow its terminal receipt. Diagnostics must not mask that
     # receipt or turn a successful task into a log-file access failure.
+    # failure_info {{{
     failure_info <- function(job) {
         lines <- tryCatch(
             suppressWarnings(readLines(
                 file.path(batch@store_path, paste0(job$id, ".log")),
                 warn = FALSE
             )),
+            # error {{{
             error = function(error) {
                 paste("Log unavailable:", conditionMessage(error))
             }
+            # }}}
         )
         paste(c(job$status, job$message, lines), collapse = "\n")
     }
+    # }}}
     repeat {
         job <- shift_batch_execution__job_read(batch@store_path)
         if (!job$status %in% c("queued", "running", "stopping")) {
@@ -47,7 +51,9 @@ test_that("background batches share reads through one coordinator", {
         }
         current <- shift_refresh(background)
         runs <- Filter(
+            # Filter callback {{{
             function(child) S7::S7_inherits(child, ShiftRun),
+            # }}}
             current@meta$children
         )
         if (length(runs)) {
@@ -80,7 +86,9 @@ test_that("background batches share reads through one coordinator", {
     restored <- shift_refresh(background)
     expect_true(all(vapply(
         restored@meta$children,
+        # vapply callback {{{
         function(child) S7::S7_inherits(child, ShiftRun),
+        # }}}
         logical(1L)
     )))
 })
@@ -89,12 +97,15 @@ test_that("queued batch cancellation starts no source requests or children", {
     fixture <- shared_inputs_test__fixture()
     batch <- fixture$batch
     launched <- NULL
+    # shift_batch_execution__launch {{{
     local_mocked_bindings(shift_batch_execution__launch = function(root, job) {
         launched <<- job
     })
+    # }}}
     background <- shift_run(batch, background = TRUE, ui = shift_ui("none"))
     stopped <- shift_cancel(background)
     expect_identical(shift_status(stopped), "stopping")
+    # shift_batch_plan__resolve_inputs {{{
     local_mocked_bindings(shift_batch_plan__resolve_inputs = function(
         x,
         reporter
@@ -102,6 +113,7 @@ test_that("queued batch cancellation starts no source requests or children", {
         reporter$check_cancel()
         stop("unexpected input query")
     })
+    # }}}
     expect_error(
         shift_batch_execution__job_main(batch@store_path, launched$id),
         class = "epwshiftr_shift_cancelled"
@@ -128,6 +140,7 @@ test_that("queued batch cancellation starts no source requests or children", {
 test_that("shared read progress is inspectable before child registration", {
     fixture <- shared_inputs_test__fixture()
     batch <- fixture$batch
+    # shift_batch__execute {{{
     local_mocked_bindings(shift_batch__execute = function(
         x,
         ui,
@@ -154,6 +167,7 @@ test_that("shared read progress is inspectable before child registration", {
         )))
         x
     })
+    # }}}
     shift_run(batch, ui = shift_ui("none"))
     expect_false("epwshiftr.batch.context" %in% names(options()))
     expect_null(shift_batch_execution__job_read(batch@store_path)$progress)
@@ -172,3 +186,5 @@ test_that("CLI watch follows shared reads before any child is registered", {
     snapshot$children$status <- "running"
     expect_true(epwshiftr_cli_shift_watch_active(snapshot))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

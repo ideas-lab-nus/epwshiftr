@@ -34,6 +34,7 @@ EPW_MORPH_VARIABLE_LEVELS <- list(
 # Resolve canonical and optional source variables for internal recipe and
 # backend execution contracts.
 #' @noRd
+# epw_morph_variables {{{
 epw_morph_variables <- function(
     level = c("recommended", "minimal", "extended"),
     include_optional = FALSE
@@ -108,15 +109,19 @@ epw_morph_variables <- function(
     }
     variables
 }
+# }}}
 
 # Describe canonical morph variables separately from the source-variable
 # alternatives that can produce them. Keeping this at the recipe boundary lets
 # the resolver and extraction workflow share one capability contract without
 # teaching the morphing engine about ESGF catalog details.
+# morpher__variable_requirements {{{
 morpher__variable_requirements <- function(recipe) {
     canonical <- epw_morph_variables(recipe)
     requirements <- stats::setNames(
+        # lapply callback {{{
         lapply(canonical, function(variable) list(variable)),
+        # }}}
         canonical
     )
     if (
@@ -162,10 +167,12 @@ morpher__variable_requirements <- function(recipe) {
     }
     requirements
 }
+# }}}
 
 # Expand recipe capabilities to the exact ESGF variables worth querying and
 # extracting. This is deliberately internal: users still reason about the
 # canonical variables returned by epw_morph_variables().
+# morpher__input_variables {{{
 morpher__input_variables <- function(recipe) {
     requirements <- morpher__variable_requirements(recipe)
     required_inputs <- unique(unlist(
@@ -202,10 +209,12 @@ morpher__input_variables <- function(recipe) {
     }
     unique(c(required_inputs, optional))
 }
+# }}}
 
 # Test whether one set of available variables satisfies a canonical morphing
 # requirement, preserving the declared alternative order for direct-data
 # preference and deterministic diagnostics.
+# morpher__requirement_match {{{
 morpher__requirement_match <- function(available, alternatives) {
     available <- unique(as.character(available))
     for (alternative in alternatives) {
@@ -216,9 +225,11 @@ morpher__requirement_match <- function(available, alternatives) {
     }
     character()
 }
+# }}}
 
 # Construct the internal executable recipe selected by a public transform.
 #' @noRd
+# epw_morph_recipe {{{
 epw_morph_recipe <- function(
     name = "original_morphing",
     backend = NULL,
@@ -453,6 +464,7 @@ epw_morph_recipe <- function(
         class = "epw_morph_recipe"
     )
 }
+# }}}
 
 #' EPW morphing periods
 #'
@@ -460,6 +472,7 @@ epw_morph_recipe <- function(
 #'
 #' @return A data.table with columns `period` and `year`.
 #' @export
+# epw_morph_periods {{{
 epw_morph_periods <- function(...) {
     periods <- list(...)
     if (!length(periods)) {
@@ -470,6 +483,7 @@ epw_morph_periods <- function(...) {
         cli::cli_abort("All EPW morphing periods must be named.")
     }
 
+    # lapply callback {{{
     rows <- lapply(seq_along(periods), function(i) {
         years <- periods[[i]]
         checkmate::assert_integerish(
@@ -484,18 +498,23 @@ epw_morph_periods <- function(...) {
             year = as.integer(sort(years))
         )
     })
+    # }}}
     data.table::rbindlist(rows)
 }
+# }}}
 
+# morpher__recipe_rules {{{
 morpher__recipe_rules <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
     data.table::as.data.table(recipe$rules)
 }
+# }}}
 
 # Return the source-timestep padding required around extraction windows when a
 # preprocessing component reconstructs bounded sub-daily values to hourly data.
+# morpher__recipe_time_padding_seconds {{{
 morpher__recipe_time_padding_seconds <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -518,7 +537,9 @@ morpher__recipe_time_padding_seconds <- function(recipe) {
     }
     max(as.numeric(TEMPORAL_SOURCE_STEPS[source_frequencies]))
 }
+# }}}
 
+# morpher__recipe_methods {{{
 morpher__recipe_methods <- function(
     methods = NULL,
     backend = epw_morph_backend("original_morphing")
@@ -528,9 +549,11 @@ morpher__recipe_methods <- function(
     }
     backend$validate_methods(methods)
 }
+# }}}
 
 # Resolve the stable complete-recipe definition recorded with a configured
 # recipe. Ad hoc backend recipes deliberately return NULL.
+# morpher__recipe_spec {{{
 morpher__recipe_spec <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -543,10 +566,12 @@ morpher__recipe_spec <- function(recipe) {
         version = recipe$recipe_version
     )
 }
+# }}}
 
 # Report whether one semantic input role is required by a registered recipe.
 # Ad hoc backends predate role-addressable contracts and can require only the
 # historical model reference represented by their backend flag.
+# morpher__recipe_requires_role {{{
 morpher__recipe_requires_role <- function(recipe, role) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -559,9 +584,11 @@ morpher__recipe_requires_role <- function(recipe, role) {
     identical(role, "model_historical") &&
         isTRUE(epw_morph_backend(recipe$backend)$requires_reference)
 }
+# }}}
 
 # Report whether one semantic input role is accepted by a registered recipe.
 # Required roles are necessarily accepted; optional roles remain explicit.
+# morpher__recipe_accepts_role {{{
 morpher__recipe_accepts_role <- function(recipe, role) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -580,31 +607,41 @@ morpher__recipe_accepts_role <- function(recipe, role) {
     identical(role, "model_historical") &&
         isTRUE(epw_morph_backend(recipe$backend)$accepts_reference)
 }
+# }}}
 
+# morpher__recipe_requires_reference {{{
 morpher__recipe_requires_reference <- function(recipe) {
     morpher__recipe_requires_role(recipe, "model_historical")
 }
+# }}}
 
 # Report whether a recipe can consume external climate reference data while
 # still distinguishing optional-reference backends from required ones.
+# morpher__recipe_accepts_reference {{{
 morpher__recipe_accepts_reference <- function(recipe) {
     morpher__recipe_accepts_role(recipe, "model_historical")
 }
+# }}}
 
 # Keep observations separate from historical model output throughout workflow
 # validation so methods needing all four input roles cannot accept one in place
 # of the other.
+# morpher__recipe_requires_observed_reference {{{
 morpher__recipe_requires_observed_reference <- function(recipe) {
     morpher__recipe_requires_role(recipe, "observed_reference")
 }
+# }}}
 
 # Report whether a recipe can consume a multi-year observed daily reference.
+# morpher__recipe_accepts_observed_reference {{{
 morpher__recipe_accepts_observed_reference <- function(recipe) {
     morpher__recipe_accepts_role(recipe, "observed_reference")
 }
+# }}}
 
 # Return the component-declared scalar or variable-specific CMIP frequency
 # contract without duplicating it on the backend or staged workflow.
+# morpher__recipe_required_frequency {{{
 morpher__recipe_required_frequency <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -634,9 +671,11 @@ morpher__recipe_required_frequency <- function(recipe) {
     }
     choices
 }
+# }}}
 
 # Build a structural diagnostic when extracted or summarized climate data do
 # not match a backend's scalar or variable-specific CMIP frequency contract.
+# morpher__frequency_diagnostic {{{
 morpher__frequency_diagnostic <- function(
     recipe,
     frequency,
@@ -668,9 +707,11 @@ morpher__frequency_diagnostic <- function(
         matches <- length(checked) > 0L &&
             all(vapply(
                 checked,
+                # vapply callback {{{
                 function(variable) {
                     identical(actual[[variable]], unname(required[[variable]]))
                 },
+                # }}}
                 logical(1L)
             ))
     } else {
@@ -709,7 +750,9 @@ morpher__frequency_diagnostic <- function(
         )
     )
 }
+# }}}
 
+# morpher__recipe_method_overrides {{{
 morpher__recipe_method_overrides <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -733,3 +776,6 @@ morpher__recipe_method_overrides <- function(recipe) {
     ]
     if (!length(overrides)) NULL else overrides
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

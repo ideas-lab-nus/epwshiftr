@@ -1,4 +1,6 @@
+# utc {{{
 utc <- function(x) as.POSIXct(x, tz = "UTC")
+# }}}
 
 # solrdate__parse() {{{
 test_that("solrdate__parse()", {
@@ -13,17 +15,44 @@ test_that("solrdate__parse()", {
 
     expect_equal(solrdate__parse("2025-02-03"), utc("2025-02-03 00:00:00"))
     expect_equal(solrdate__parse("2025-02-03T01"), utc("2025-02-03 01:00:00"))
-    expect_equal(solrdate__parse("2025-02-03T01:02"), utc("2025-02-03 01:02:00"))
-    expect_equal(solrdate__parse("2025-02-03T01:02:03Z"), utc("2025-02-03 01:02:03"))
+    expect_equal(
+        solrdate__parse("2025-02-03T01:02"),
+        utc("2025-02-03 01:02:00")
+    )
+    expect_equal(
+        solrdate__parse("2025-02-03T01:02:03Z"),
+        utc("2025-02-03 01:02:03")
+    )
 
-    expect_equal(solrdate__parse("2025-01-01T01:02:03Z"), utc("2025-01-01 01:02:03"))
-    expect_equal(solrdate__parse("2025-01-01T01:02:03+1200"), utc("2024-12-31 13:02:03"))
-    expect_equal(solrdate__parse("2025-01-01T01:02:03+12:00"), utc("2024-12-31 13:02:03"))
-    expect_equal(solrdate__parse("2025-01-01T01:02:03+12"), utc("2024-12-31 13:02:03"))
-    expect_equal(solrdate__parse("2025-01-01T01:02:03-05:30"), utc("2025-01-01 06:32:03"))
-    expect_equal(solrdate__parse("2025-01-01T01:02:03-05"), utc("2025-01-01 06:02:03"))
+    expect_equal(
+        solrdate__parse("2025-01-01T01:02:03Z"),
+        utc("2025-01-01 01:02:03")
+    )
+    expect_equal(
+        solrdate__parse("2025-01-01T01:02:03+1200"),
+        utc("2024-12-31 13:02:03")
+    )
+    expect_equal(
+        solrdate__parse("2025-01-01T01:02:03+12:00"),
+        utc("2024-12-31 13:02:03")
+    )
+    expect_equal(
+        solrdate__parse("2025-01-01T01:02:03+12"),
+        utc("2024-12-31 13:02:03")
+    )
+    expect_equal(
+        solrdate__parse("2025-01-01T01:02:03-05:30"),
+        utc("2025-01-01 06:32:03")
+    )
+    expect_equal(
+        solrdate__parse("2025-01-01T01:02:03-05"),
+        utc("2025-01-01 06:02:03")
+    )
 
-    expect_equal(solrdate__parse(as.Date("2025-02-03")), utc("2025-02-03 00:00:00"))
+    expect_equal(
+        solrdate__parse(as.Date("2025-02-03")),
+        utc("2025-02-03 00:00:00")
+    )
     expect_equal(
         solrdate__parse(as.POSIXct("2025-02-03 01:02:03", tz = "UTC")),
         utc("2025-02-03 01:02:03")
@@ -48,14 +77,23 @@ test_that("solr_date()", {
     expect_true(S7::S7_inherits(left_open, SolrDateRange))
     expect_false(S7::prop(left_open, "start_inclusive"))
     expect_true(S7::prop(left_open, "end_inclusive"))
-    expect_identical(format(left_open), "{2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z]")
+    expect_identical(
+        format(left_open),
+        "{2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z]"
+    )
 
     expect_true(S7::prop(right_open, "start_inclusive"))
     expect_false(S7::prop(right_open, "end_inclusive"))
-    expect_identical(format(right_open), "[2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z}")
+    expect_identical(
+        format(right_open),
+        "[2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z}"
+    )
 
     expect_true(S7::S7_inherits(unbounded, SolrDateRange))
-    expect_true(S7::S7_inherits(S7::prop(unbounded, "start"), SolrDateUnbounded))
+    expect_true(S7::S7_inherits(
+        S7::prop(unbounded, "start"),
+        SolrDateUnbounded
+    ))
     expect_true(S7::S7_inherits(S7::prop(unbounded, "end"), SolrDateUnbounded))
     expect_identical(format(unbounded), "[* TO *]")
     expect_identical(format(unbounded, as = "num"), "[* TO *]")
@@ -94,12 +132,18 @@ test_that("solr_date()", {
 
     expect_identical(format(instant, as = "iso"), "2025-01-01T00:00:00Z")
     expect_identical(format(instant, as = "num"), "20250101")
-    expect_identical(format(range, as = "iso"), "[2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z]")
+    expect_identical(
+        format(range, as = "iso"),
+        "[2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z]"
+    )
     expect_identical(format(range, as = "num"), "[20000101 TO 20100101]")
     expect_warning(num <- format(timed, as = "num"), "Loss of time information")
     expect_identical(num, "20250115")
     expect_identical(as.character(instant), "2025-01-01T00:00:00Z")
-    expect_identical(as.character(range), "[2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z]")
+    expect_identical(
+        as.character(range),
+        "[2000-01-01T00:00:00Z TO 2010-01-01T00:00:00Z]"
+    )
     expect_identical(as.POSIXct(instant), utc("2025-01-01 00:00:00"))
     expect_warning(ased <- as.POSIXct(range), "start")
     expect_identical(ased, utc("2000-01-01 00:00:00"))
@@ -180,4 +224,5 @@ test_that("solrdate__eval() evaluates Solr Date Math for bridge rendering", {
     )
 })
 # }}}
-# vim: fdm=marker :
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

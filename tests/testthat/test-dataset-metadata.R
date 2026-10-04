@@ -89,6 +89,7 @@ test_that("multi-site reads fetch only selected CF bounds", {
     bounds_counts <- list()
     testthat::local_mocked_bindings(
         .package = "RNetCDF",
+        # var.get.nc {{{
         var.get.nc = function(ncfile, variable, ...) {
             arguments <- list(...)
             if (identical(variable, "time_bnds")) {
@@ -96,6 +97,7 @@ test_that("multi-site reads fetch only selected CF bounds", {
             }
             original(ncfile, variable, ...)
         }
+        # }}}
     )
     sites <- data.table::data.table(
         site_id = c("first", "last"),
@@ -137,10 +139,12 @@ test_that("native coordinates are reused only within a dataset object", {
     reads <- character()
     testthat::local_mocked_bindings(
         .package = "RNetCDF",
+        # var.get.nc {{{
         var.get.nc = function(ncfile, variable, ...) {
             reads <<- c(reads, variable)
             original(ncfile, variable, ...)
         }
+        # }}}
     )
     ds <- EsgDataset$new(path)
     ds$open()
@@ -215,12 +219,14 @@ test_that("batch prefetch shares selected bounds across value windows", {
     bounds_counts <- list()
     testthat::local_mocked_bindings(
         .package = "RNetCDF",
+        # var.get.nc {{{
         var.get.nc = function(ncfile, variable, ...) {
             if (identical(variable, "time_bnds")) {
                 bounds_counts[[length(bounds_counts) + 1L]] <<- list(...)$count
             }
             original(ncfile, variable, ...)
         }
+        # }}}
     )
     expect_equal(
         shift_batch_window__prefetch_acquisition(
@@ -272,12 +278,14 @@ test_that("point reads reuse selected actual bounds without loading the full axi
         counts <- list()
         testthat::local_mocked_bindings(
             .package = "RNetCDF",
+            # var.get.nc {{{
             var.get.nc = function(ncfile, variable, ...) {
                 if (identical(variable, "time_bnds")) {
                     counts[[length(counts) + 1L]] <<- list(...)$count
                 }
                 original(ncfile, variable, ...)
             }
+            # }}}
         )
         window <- c("2060-01-02", "2060-01-03 23:59:59")
         actual <- ds$read_region("tas", lon = 104, lat = 1, time = window)
@@ -332,24 +340,32 @@ test_that("point reads reuse selected actual bounds without loading the full axi
 # Independent Dataset objects must not reset each other's compute profiles.
 test_that("concurrent dataset tasks in one process retain separate backends", {
     skip_if_not_installed("mirai")
+    # lapply callback {{{
     datasets <- lapply(seq_len(2L), function(index) EsgDataset$new("unused.nc"))
+    # }}}
+    # lapply callback {{{
     on.exit(lapply(datasets, function(dataset) dataset$close()), add = TRUE)
+    # }}}
+    # lapply callback {{{
     tasks <- lapply(seq_along(datasets), function(index) {
         private <- datasets[[index]]$.__enclos_env__$private
         # No remote I/O is needed to exercise the task ownership boundary.
         private$urls <- character()
         private$start_async_operation(
             "return task identity",
+            # private$start_async_operation callback {{{
             function(urls, nc_handles, value) {
                 Sys.sleep(0.1)
                 value
             },
+            # }}}
             handler_args = list(value = index),
             # The ownership contract has no startup-speed requirement. covr
             # instruments the package again in each fresh worker process.
             timeout = 60
         )
     })
+    # }}}
     expect_false(identical(
         tasks[[1L]]$compute_profile,
         tasks[[2L]]$compute_profile
@@ -358,7 +374,11 @@ test_that("concurrent dataset tasks in one process retain separate backends", {
     expect_identical(tasks[[1L]]$collect(), 1L)
     expect_true(all(vapply(
         tasks,
+        # vapply callback {{{
         function(task) task$backend_released,
+        # }}}
         logical(1L)
     )))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

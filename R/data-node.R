@@ -1,4 +1,5 @@
 # data_node_status
+# data_node_http_probe {{{
 data_node_http_probe <- function(node, timeout = 3) {
     urls <- if (grepl("^https?://", node, ignore.case = TRUE)) {
         node
@@ -20,7 +21,9 @@ data_node_http_probe <- function(node, timeout = 3) {
                 curl::curl_fetch_memory(url, handle = handle)
                 TRUE
             },
+            # error {{{
             error = function(e) FALSE
+            # }}}
         )
         if (ok) {
             return((proc.time()[["elapsed"]] - start) * 1000)
@@ -29,6 +32,7 @@ data_node_http_probe <- function(node, timeout = 3) {
 
     NA_real_
 }
+# }}}
 
 #' Get status of ESGF data nodes
 #'
@@ -57,6 +61,7 @@ data_node_http_probe <- function(node, timeout = 3) {
 #' }
 #'
 #' @export
+# data_node_status {{{
 data_node_status <- function(
     speed_test = FALSE,
     timeout = 3,
@@ -65,6 +70,7 @@ data_node_status <- function(
     checkmate::assert_flag(speed_test)
     checkmate::assert_number(timeout, lower = 0)
 
+    # empty_nodes {{{
     empty_nodes <- function() {
         if (speed_test) {
             data.table::data.table(
@@ -79,6 +85,7 @@ data_node_status <- function(
             )
         }
     }
+    # }}}
 
     # use the metagrid-backend to get the data node status
     # see: https://github.com/esgf2-us/metagrid/blob/2e90dd10317506a82f120217e39c4a3cde6a7560/backend/.envs/.django#L30
@@ -98,20 +105,28 @@ data_node_status <- function(
     res <- cache__url(
         "datanode",
         url,
+        # cache__url callback {{{
         function() {
             tryCatch(
                 jsonlite::fromJSON(url),
+                # warning {{{
                 warning = function(w) {
                     msg <<- conditionMessage(w)
                     NULL
                 },
+                # }}}
+                # error {{{
                 error = function(e) {
                     msg <<- conditionMessage(e)
                     NULL
                 }
+                # }}}
             )
         },
+        # }}}
+        # validate {{{
         validate = function(res) !is.null(res)
+        # }}}
     )
 
     # nocov start
@@ -150,12 +165,17 @@ data_node_status <- function(
 
     probe <- vapply(
         nodes_up,
+        # vapply callback {{{
         function(node) {
             message(sprintf("Probing data node '%s'...", node))
             data_node_http_probe(node, timeout = timeout)
         },
+        # }}}
         numeric(1)
     )
 
     res[status == "UP", probe_ms := probe][order(probe_ms)]
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

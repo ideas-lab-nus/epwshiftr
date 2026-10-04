@@ -65,6 +65,7 @@ test_that("source workers share the execution settings snapshot", {
     actual <- vector("list", 2L)
     source__apply(
         as.list(1:2),
+        # source__apply callback {{{
         function(job) {
             options()[c(
                 "epwshiftr.query.timeout",
@@ -74,7 +75,10 @@ test_that("source workers share the execution settings snapshot", {
                 "epwshiftr.mirai_workers"
             )]
         },
+        # }}}
+        # source__apply callback {{{
         function(job, value) actual[[job]] <<- value
+        # }}}
     )
     expected <- list(
         epwshiftr.query.timeout = 47,
@@ -93,6 +97,7 @@ test_that("early standalone cancellation updates the run and step", {
     store <- shift_store(withr::local_tempdir(), create = TRUE)
     on.exit(store$close(), add = TRUE)
     create <- shift_job__job_create
+    # shift_job__job_create {{{
     local_mocked_bindings(shift_job__job_create = function(...) {
         job <- create(...)
         shift_job__cancel_request_write(
@@ -102,15 +107,18 @@ test_that("early standalone cancellation updates the run and step", {
         )
         job
     })
+    # }}}
     called <- FALSE
     expect_error(
         shift_run__task_execute(
             "collect",
             shift_request(),
+            # code {{{
             code = function(...) {
                 called <<- TRUE
                 stop("unexpected read")
             },
+            # }}}
             store = store,
             ui = shift_ui("none")
         ),
@@ -170,9 +178,11 @@ test_that("standalone progress checks cancellation once per heartbeat", {
     )
     on.exit(reporter$close(), add = TRUE)
     checks <- 0L
+    # shift_job__job_check_cancel {{{
     local_mocked_bindings(shift_job__job_check_cancel = function(...) {
         checks <<- checks + 1L
     })
+    # }}}
     reporter$heartbeat(force = TRUE)
     reporter$heartbeat()
     reporter$heartbeat()
@@ -244,10 +254,13 @@ test_that("background launch preserves strings and reports launch failure", {
     captured <- NULL
     status <- 0L
     local_mocked_bindings(
+        # shift_execution__library_paths {{{
         shift_execution__library_paths = function() libraries
+        # }}}
     )
     local_mocked_bindings(
         .package = "base",
+        # system2 {{{
         system2 = function(command, args, stdout, stderr, wait) {
             captured <<- list(
                 args = args,
@@ -257,6 +270,7 @@ test_that("background launch preserves strings and reports launch failure", {
             )
             status
         },
+        # }}}
         shQuote = identity
     )
     expect_identical(
@@ -309,3 +323,5 @@ test_that("process liveness checks do not terminate a worker", {
     expect_false(downloader__pid_alive(NA_integer_))
     expect_false(downloader__pid_alive(0L))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

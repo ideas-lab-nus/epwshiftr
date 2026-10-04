@@ -54,6 +54,7 @@ DAILY_ADJUSTMENT_OPTIONS <- list(
 
 # Validate daily adjustment adapter options without accepting source selection,
 # study periods, physical policy, or output overrides.
+# daily_adjustment__options {{{
 daily_adjustment__options <- function(options = NULL) {
     if (is.null(options)) {
         return(DAILY_ADJUSTMENT_OPTIONS)
@@ -81,17 +82,21 @@ daily_adjustment__options <- function(options = NULL) {
     resolved$signal_overrides <- pipeline__signal_overrides(resolved)
     resolved
 }
+# }}}
 
 # Normalize one role's daily temperature source onto the canonical signal
 # table and a common degrees-Celsius unit before any statistical method runs.
+# daily_adjustment__temperature_table {{{
 daily_adjustment__temperature_table <- function(data, name) {
     climate <- temperature__daily_climate(data, name)
     climate <- climate[climate[["variable_id"]] == "tas"]
     bias__daily_table(climate, name)
 }
+# }}}
 
 # Prepare the same observed, historical-model, and future-model inputs for all
 # eight signal methods without interpreting their method-owned settings.
+# daily_adjustment__preprocess_apply {{{
 daily_adjustment__preprocess_apply <- function(
     inputs,
     context,
@@ -99,16 +104,20 @@ daily_adjustment__preprocess_apply <- function(
 ) {
     morpher__validate_context(context)
     options <- daily_adjustment__options(options)
+    # lapply callback {{{
     sources <- lapply(SIGNAL_THREE_INPUT_ROLES, function(role) {
         input <- weather__get_input(inputs, role)
         daily_adjustment__temperature_table(input@source, role)
     })
+    # }}}
     names(sources) <- SIGNAL_THREE_INPUT_ROLES
     list(sources = sources, options = options)
 }
+# }}}
 
 # Preserve native CF dates and form the one aligned univariate signal group
 # consumed identically by every daily bias-adjustment component.
+# daily_adjustment__calendar_apply {{{
 daily_adjustment__calendar_apply <- function(
     data,
     inputs,
@@ -121,10 +130,12 @@ daily_adjustment__calendar_apply <- function(
         variables = "tas"
     ))
 }
+# }}}
 
 # Convert an absolute adjusted daily temperature series into a common 365-day
 # representative climatology and express it as targets relative to the same
 # baseline EPW daily means.
+# daily_adjustment__temperature_targets {{{
 daily_adjustment__temperature_targets <- function(
     adjusted,
     baseline,
@@ -147,15 +158,21 @@ daily_adjustment__temperature_targets <- function(
         window_days = window_days,
         target_year_days = 365L
     )
-    if (nrow(climatology) != 365L ||
-        !identical(as.integer(climatology[["target_day"]]), 1:365)) {
+    if (
+        nrow(climatology) != 365L ||
+            !identical(as.integer(climatology[["target_day"]]), 1:365)
+    ) {
         cli::cli_abort(
             "Adjusted daily temperature must produce one complete 365-day climatology."
         )
     }
-    baseline_daily <- baseline$template[, list(
-        baseline_mean = mean(.SD[["dry_bulb_temperature"]])
-    ), by = "target_day", .SDcols = "dry_bulb_temperature"]
+    baseline_daily <- baseline$template[,
+        list(
+            baseline_mean = mean(.SD[["dry_bulb_temperature"]])
+        ),
+        by = "target_day",
+        .SDcols = "dry_bulb_temperature"
+    ]
     targets <- merge(
         climatology,
         baseline_daily,
@@ -190,9 +207,11 @@ daily_adjustment__temperature_targets <- function(
     data.table::setorderv(targets, "target_day")
     targets[]
 }
+# }}}
 
 # Adapt a successful method result to the established daily temperature
 # sequence contract while preserving the method's output role and provenance.
+# daily_adjustment__sequence_generate {{{
 daily_adjustment__sequence_generate <- function(
     data,
     inputs,
@@ -213,9 +232,11 @@ daily_adjustment__sequence_generate <- function(
         adjusted = adjusted
     )
 }
+# }}}
 
 # Reuse the common POWER reconstruction while carrying the adjusted-series
 # record forward for the final result provenance.
+# daily_adjustment__hourly_reconstruct {{{
 daily_adjustment__hourly_reconstruct <- function(
     data,
     inputs,
@@ -230,9 +251,11 @@ daily_adjustment__hourly_reconstruct <- function(
     reconstructed$adjusted <- data$adjusted
     reconstructed
 }
+# }}}
 
 # Reuse the unified specific-humidity policy and retain the selected method's
 # adjusted series after the physical stage.
+# daily_adjustment__physics_apply {{{
 daily_adjustment__physics_apply <- function(
     data,
     inputs,
@@ -248,9 +271,11 @@ daily_adjustment__physics_apply <- function(
     physical$adjusted <- data$adjusted
     physical
 }
+# }}}
 
 # Assemble a standard representative-year result and expose the original
 # adjusted daily values with their method-owned metadata.
+# daily_adjustment__output_write {{{
 daily_adjustment__output_write <- function(
     data,
     inputs,
@@ -274,9 +299,11 @@ daily_adjustment__output_write <- function(
     )
     result
 }
+# }}}
 
 # Declare the method-neutral components surrounding all daily adjustment
 # signals so complete recipes differ at the signal stage only.
+# daily_adjustment__component_specs {{{
 daily_adjustment__component_specs <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -373,16 +400,20 @@ daily_adjustment__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the shared daily adjusted-series adapter components once.
+# daily_adjustment__register_components {{{
 daily_adjustment__register_components <- function() {
     temperature__register_components()
     component__register_builtins(daily_adjustment__component_specs())
     invisible(NULL)
 }
+# }}}
 
 # Compose one complete weather-generation pipeline by changing only the signal
 # component selected from the eight supported daily methods.
+# daily_adjustment__pipeline {{{
 daily_adjustment__pipeline <- function(method) {
     checkmate::assert_choice(
         method,
@@ -401,22 +432,32 @@ daily_adjustment__pipeline <- function(method) {
         output = "daily_adjusted_temperature_epw_result"
     ))
 }
+# }}}
 
 # Construct the eight thin backends that bind a method component to the shared
 # temperature-to-EPW adapter without duplicating its logic.
+# daily_adjustment__backend_specs {{{
 daily_adjustment__backend_specs <- function() {
-    specs <- lapply(names(DAILY_ADJUSTMENT_METHOD_COMPONENTS), function(method) {
-        component <- DAILY_ADJUSTMENT_METHOD_COMPONENTS[[method]]
-        EpwMorphBackend$new(
-            name = DAILY_ADJUSTMENT_BACKENDS[[method]],
-            label = sprintf("Daily %s temperature EPW", method),
-            methods = c(tdb = component),
-            method_choices = component,
-            rules = data.table::copy(EPW_MORPH_DAILY_ADJUSTMENT_RULES),
-            requires_reference = TRUE,
-            pipeline = daily_adjustment__pipeline(method)
-        )
-    })
+    # lapply callback {{{
+    specs <- lapply(
+        names(DAILY_ADJUSTMENT_METHOD_COMPONENTS),
+        function(method) {
+            component <- DAILY_ADJUSTMENT_METHOD_COMPONENTS[[method]]
+            EpwMorphBackend$new(
+                name = DAILY_ADJUSTMENT_BACKENDS[[method]],
+                label = sprintf("Daily %s temperature EPW", method),
+                methods = c(tdb = component),
+                method_choices = component,
+                rules = data.table::copy(EPW_MORPH_DAILY_ADJUSTMENT_RULES),
+                requires_reference = TRUE,
+                pipeline = daily_adjustment__pipeline(method)
+            )
+        }
+    )
+    # }}}
     names(specs) <- unname(DAILY_ADJUSTMENT_BACKENDS)
     specs
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

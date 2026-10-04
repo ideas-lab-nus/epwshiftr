@@ -6,16 +6,16 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
     query_id <- store$add_query(
-        esg_query("https://example.org")$
-            experiment_id("ssp585")$
-            variable_id("tas")$
-            limit(1L),
+        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
+            "tas"
+        )$limit(1L),
         label = "cli esgf",
         track = TRUE
     )
 
     file_docs <- cli_test_file_docs()
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -37,6 +37,7 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -59,16 +60,45 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
         "show"
     ))
     expect_equal(config$status, 0L)
-    expect_named(config$result, c(
-        "manifest", "data_dir", "tmp_dir", "retries", "timeout", "n_workers",
-        "network_policy", "node_policy", "transfer_policy", "resource_policy"
-    ))
+    expect_named(
+        config$result,
+        c(
+            "manifest",
+            "data_dir",
+            "tmp_dir",
+            "retries",
+            "timeout",
+            "n_workers",
+            "network_policy",
+            "node_policy",
+            "transfer_policy",
+            "resource_policy"
+        )
+    )
 
     config_set <- epwshiftr_cli(c(
-        "--quiet", "--store", dir, "download", "config", "set",
-        "--workers", "0", "--timeout", "120", "--bandwidth-limit", "4096",
-        "--host-concurrency", "2", "--ssl-verifypeer", "false", "--disk-preflight", "false",
-        "--min-free-space", "0", "--cooldown-seconds", "10"
+        "--quiet",
+        "--store",
+        dir,
+        "download",
+        "config",
+        "set",
+        "--workers",
+        "0",
+        "--timeout",
+        "120",
+        "--bandwidth-limit",
+        "4096",
+        "--host-concurrency",
+        "2",
+        "--ssl-verifypeer",
+        "false",
+        "--disk-preflight",
+        "false",
+        "--min-free-space",
+        "0",
+        "--cooldown-seconds",
+        "10"
     ))
     expect_equal(config_set$status, 0L)
     expect_equal(config_set$result$n_workers, 0L)
@@ -175,7 +205,18 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_lte(nrow(watch$result$events), 1L)
 
     watch_text <- capture.output(
-        watch_rendered <- epwshiftr_cli(c("--store", dir, "download", "watch", "--query", query_id, "--session", session_id, "--events", "1")),
+        watch_rendered <- epwshiftr_cli(c(
+            "--store",
+            dir,
+            "download",
+            "watch",
+            "--query",
+            query_id,
+            "--session",
+            session_id,
+            "--events",
+            "1"
+        )),
         type = "message"
     )
     expect_equal(watch_rendered$status, 0L)
@@ -200,7 +241,16 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_true(all(logs$result$session_id == session_id))
 
     logs_text <- capture.output(
-        logs_rendered <- epwshiftr_cli(c("--store", dir, "download", "logs", "--session", session_id, "--tail", "1")),
+        logs_rendered <- epwshiftr_cli(c(
+            "--store",
+            dir,
+            "download",
+            "logs",
+            "--session",
+            session_id,
+            "--tail",
+            "1"
+        )),
         type = "message"
     )
     expect_equal(logs_rendered$status, 0L)
@@ -208,13 +258,34 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_false(any(grepl("^\\[\\[|^\\$", logs_text)))
 
     launched <- list()
-    test_local_dependencies(list(downloader__launch_process = function(kind, id, manifest, log_path) {
-        launched[[length(launched) + 1L]] <<- list(kind = kind, id = id, manifest = manifest, log_path = log_path)
+    # downloader__launch_process {{{
+    test_local_dependencies(list(downloader__launch_process = function(
+        kind,
+        id,
+        manifest,
+        log_path
+    ) {
+        launched[[length(launched) + 1L]] <<- list(
+            kind = kind,
+            id = id,
+            manifest = manifest,
+            log_path = log_path
+        )
         TRUE
     }))
+    # }}}
     background <- epwshiftr_cli(c(
-        "--quiet", "--store", dir, "download", "run", query_id,
-        "--background", "--mode", "process", "--no-probe", "--no-progress"
+        "--quiet",
+        "--store",
+        dir,
+        "download",
+        "run",
+        query_id,
+        "--background",
+        "--mode",
+        "process",
+        "--no-probe",
+        "--no-progress"
     ))
     expect_equal(background$status, 0L)
     expect_equal(background$result$status, "queued")
@@ -259,8 +330,16 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
 
     jsonl_text <- capture.output(
         jsonl_watch <- epwshiftr_cli(c(
-            "--store", dir, "--jsonl", "download", "watch",
-            "--job", background$result$job_id, "--follow", "--count", "1"
+            "--store",
+            dir,
+            "--jsonl",
+            "download",
+            "watch",
+            "--job",
+            background$result$job_id,
+            "--follow",
+            "--count",
+            "1"
         ))
     )
     expect_equal(jsonl_watch$status, 0L)
@@ -372,3 +451,5 @@ test_that("epwshiftr_cli_download() dispatches download workflows", {
     expect_true(all(verified$result$checksum_ok))
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

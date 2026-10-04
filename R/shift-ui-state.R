@@ -6,6 +6,7 @@ NULL
 # Return the exact execution-stage sequence implied by one plan. Reporter stage
 # events persist the next stage so a background watch does not need to rebuild
 # the scientific plan merely to explain what comes next.
+# shift_ui_state__ui_stage_sequence {{{
 shift_ui_state__ui_stage_sequence <- function(plan) {
     reference <- plan@meta$reference
     reference_expected <- S7::S7_inherits(reference, ShiftReferenceSpec) &&
@@ -20,10 +21,12 @@ shift_ui_state__ui_stage_sequence <- function(plan) {
         "write_epw"
     )
 }
+# }}}
 
 # Extract the compact scientific context carried inside every foreground frame.
 # Keeping this separate from the startup receipt lets dynamic mode replace its
 # first frame instead of leaving a duplicated five-line transcript behind.
+# shift_ui_state__ui_plan_context {{{
 shift_ui_state__ui_plan_context <- function(plan) {
     request <- plan@meta$request@meta
     model <- paste(
@@ -67,8 +70,10 @@ shift_ui_state__ui_plan_context <- function(plan) {
         )
     )
 }
+# }}}
 
 # Select the stage-specific count used by the determinate progress row.
+# shift_ui_state__ui_progress_values {{{
 shift_ui_state__ui_progress_values <- function(state) {
     details <- shift_stage__coalesce(state$current_details, list())
     current <- shift_ui_view__ui_metric_number(
@@ -95,10 +100,11 @@ shift_ui_state__ui_progress_values <- function(state) {
     }
     list(current = current, total = total)
 }
-
+# }}}
 
 # Decode persisted event details without allowing a malformed historical event
 # to break shift_watch() for the rest of an otherwise readable run.
+# shift_ui_state__ui_event_details {{{
 shift_ui_state__ui_event_details <- function(events) {
     if (!nrow(events)) {
         return(list())
@@ -106,6 +112,7 @@ shift_ui_state__ui_event_details <- function(events) {
     if (!"details_json" %in% names(events)) {
         return(rep(list(list()), nrow(events)))
     }
+    # lapply callback {{{
     lapply(events$details_json, function(value) {
         if (
             is.null(value) || !length(value) || is.na(value) || !nzchar(value)
@@ -114,13 +121,18 @@ shift_ui_state__ui_event_details <- function(events) {
         }
         tryCatch(
             jsonlite::fromJSON(value, simplifyVector = TRUE),
+            # error {{{
             error = function(e) list()
+            # }}}
         )
     })
+    # }}}
 }
+# }}}
 
 # Rebuild the planned stage route from the persisted scientific specification
 # before a queued worker has emitted its first reporter event.
+# shift_ui_state__ui_stage_sequence_from_row {{{
 shift_ui_state__ui_stage_sequence_from_row <- function(row) {
     row <- data.table::as.data.table(row)
     if (
@@ -133,7 +145,9 @@ shift_ui_state__ui_stage_sequence_from_row <- function(row) {
     }
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
     if (is.null(spec)) {
         return(character())
@@ -178,9 +192,11 @@ shift_ui_state__ui_stage_sequence_from_row <- function(row) {
         "write_epw"
     )
 }
+# }}}
 
 # Format the named period list stored in a canonical workflow specification
 # without reconstructing a complete ShiftPlan in watch clients.
+# shift_ui_state__ui_periods_from_spec {{{
 shift_ui_state__ui_periods_from_spec <- function(periods) {
     if (is.null(periods) || !length(periods)) {
         return("no periods")
@@ -195,6 +211,7 @@ shift_ui_state__ui_periods_from_spec <- function(periods) {
     paste(
         vapply(
             seq_along(periods),
+            # vapply callback {{{
             function(i) {
                 years <- suppressWarnings(as.integer(periods[[i]]))
                 years <- years[!is.na(years)]
@@ -212,14 +229,17 @@ shift_ui_state__ui_periods_from_spec <- function(periods) {
                     )
                 }
             },
+            # }}}
             character(1L)
         ),
         collapse = ", "
     )
 }
+# }}}
 
 # Describe a persisted reference using only explicit values in the run spec;
 # this display helper never infers a historical reference from missing data.
+# shift_ui_state__ui_reference_from_spec {{{
 shift_ui_state__ui_reference_from_spec <- function(reference) {
     mode <- as.character(shift_stage__coalesce(reference$mode, "none"))[[1L]]
     if (identical(mode, "none")) {
@@ -244,9 +264,11 @@ shift_ui_state__ui_reference_from_spec <- function(reference) {
     }
     "supplied reference"
 }
+# }}}
 
 # Rebuild the one-line dashboard context from persisted intent so foreground,
 # R watch, and CLI watch retain the same visual hierarchy across sessions.
+# shift_ui_state__ui_plan_context_from_row {{{
 shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     row <- data.table::as.data.table(row)
     if (
@@ -259,7 +281,9 @@ shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
     }
     spec <- tryCatch(
         jsonlite::fromJSON(row$spec_json[[1L]], simplifyVector = TRUE),
+        # error {{{
         error = function(e) NULL
+        # }}}
     )
     if (is.null(spec)) {
         return(list())
@@ -364,9 +388,11 @@ shift_ui_state__ui_plan_context_from_row <- function(row, cases_total = 0L) {
         }
     )
 }
+# }}}
 
 # Reconstruct the same semantic live state from persisted tables that the
 # foreground reporter maintains in memory.
+# shift_ui_state__ui_table_state {{{
 shift_ui_state__ui_table_state <- function(row, events, cases) {
     row <- data.table::as.data.table(row)
     events <- data.table::as.data.table(events)
@@ -375,10 +401,12 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     stage <- row$current_stage[[1L]]
     stage_indices <- which(vapply(
         details,
+        # vapply callback {{{
         function(x) {
             isTRUE(x$phase %in% c("stage", "operation")) &&
                 identical(x$stage, stage)
         },
+        # }}}
         logical(1L)
     ))
     stage_index <- if (length(stage_indices)) {
@@ -388,9 +416,11 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     }
     unit_indices <- which(vapply(
         details,
+        # vapply callback {{{
         function(x) {
             identical(x$phase, "unit") && identical(x$stage, stage)
         },
+        # }}}
         logical(1L)
     ))
     unit_index <- if (length(unit_indices)) {
@@ -424,6 +454,7 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     recent_indices <- utils::tail(milestone_indices, 3L)
     completed_stages <- unique(vapply(
         seq_along(details),
+        # vapply callback {{{
         function(i) {
             operation_done <- identical(details[[i]]$phase, "operation") &&
                 isTRUE(details[[i]]$outcome %in% c("completed", "partial"))
@@ -437,6 +468,7 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
                 NA_character_
             }
         },
+        # }}}
         character(1L)
     ))
     completed_stages <- completed_stages[!is.na(completed_stages)]
@@ -510,6 +542,7 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
     # Older snapshots retain their available path evidence when no such event exists.
     exported <- vapply(
         details,
+        # vapply callback {{{
         function(value) {
             if (
                 identical(value$unit_type, "epw_export") &&
@@ -520,6 +553,7 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
                 0L
             }
         },
+        # }}}
         integer(1L)
     )
     exported <- max(c(
@@ -594,11 +628,14 @@ shift_ui_state__ui_table_state <- function(row, events, cases) {
         elapsed_seconds = elapsed
     )
 }
+# }}}
 
 # Reconstruct the resolver-attempt table from terminal index-node events.
+# shift_ui_state__ui_event_nodes {{{
 shift_ui_state__ui_event_nodes <- function(events) {
     events <- data.table::as.data.table(events)
     details <- shift_ui_state__ui_event_details(events)
+    # lapply callback {{{
     rows <- lapply(seq_along(details), function(i) {
         value <- details[[i]]
         if (
@@ -633,11 +670,14 @@ shift_ui_state__ui_event_nodes <- function(events) {
             }
         )
     })
+    # }}}
     data.table::rbindlist(rows, use.names = TRUE, fill = TRUE)
 }
+# }}}
 
 # Merge transient progress into a persisted run state. The run status remains
 # authoritative when a cancellation arrives after the worker's last frame.
+# shift_ui_state__ui_live_state {{{
 shift_ui_state__ui_live_state <- function(row, state, ui_state = NULL) {
     if (
         !length(ui_state) ||
@@ -661,11 +701,13 @@ shift_ui_state__ui_live_state <- function(row, state, ui_state = NULL) {
     }
     state
 }
+# }}}
 
 # Select an event delta before applying any presentation limit so a watch
 # client cannot silently lose milestones when more than one page arrives
 # between polls. A missing cursor is reported separately because bounded live
 # sidecars may legitimately have discarded older events.
+# shift_ui_state__ui_event_delta {{{
 shift_ui_state__ui_event_delta <- function(
     events,
     last_event_id = NA_character_,
@@ -708,3 +750,6 @@ shift_ui_state__ui_event_delta <- function(
     }
     list(rows = rows, cursor = newest, gap = FALSE)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

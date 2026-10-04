@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Handwritten R sources, tests and tools include Vim marker folds for functions,
+  classes and methods; closing markers ignore braces inside CLI strings (#278).
+
 * Background batch tests collect process logs only on failure; an exclusively
   open Windows log cannot mask the task receipt (#278).
 

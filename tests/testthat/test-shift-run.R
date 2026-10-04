@@ -299,3 +299,5 @@ test_that("failure commands are concise for default stores and explicit otherwis
     expect_match(custom, 'shift_resume\\("run-test", store = ', perl = TRUE)
     expect_match(custom, store_normalize_path(custom_store), fixed = TRUE)
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

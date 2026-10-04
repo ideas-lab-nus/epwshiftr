@@ -6,16 +6,16 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
     query_id <- store$add_query(
-        esg_query("https://example.org")$
-            experiment_id("ssp585")$
-            variable_id("tas")$
-            limit(1L),
+        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
+            "tas"
+        )$limit(1L),
         label = "cli esgf",
         track = TRUE
     )
 
     file_docs <- cli_test_file_docs()
     testthat::local_mocked_bindings(
+        # query__collect {{{
         query__collect = function(
             index_node,
             params,
@@ -37,6 +37,7 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
                 parameter = params
             )
         },
+        # }}}
         .package = "epwshiftr"
     )
 
@@ -71,7 +72,14 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
     expect_equal(status$result$summary$query_id, query_id)
 
     esgf_text <- capture.output(
-        esgf_rendered <- epwshiftr_cli(c("--store", dir, "esgf", "report", "--query", query_id)),
+        esgf_rendered <- epwshiftr_cli(c(
+            "--store",
+            dir,
+            "esgf",
+            "report",
+            "--query",
+            query_id
+        )),
         type = "message"
     )
     expect_equal(esgf_rendered$status, 0L)
@@ -125,8 +133,18 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
     expect_equal(layout$result$layout, "flat")
 
     layout_set <- epwshiftr_cli(c(
-        "--quiet", "--store", dir, "storage", "layout", "set",
-        "--layout", "drs", "--include-version", "false", "--collision", "suffix"
+        "--quiet",
+        "--store",
+        dir,
+        "storage",
+        "layout",
+        "set",
+        "--layout",
+        "drs",
+        "--include-version",
+        "false",
+        "--collision",
+        "suffix"
     ))
     expect_equal(layout_set$status, 0L)
     expect_equal(layout_set$result$layout, "drs")
@@ -168,3 +186,5 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
     expect_s3_class(cleanup$result, "data.table")
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

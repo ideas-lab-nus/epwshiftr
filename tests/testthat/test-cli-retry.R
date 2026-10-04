@@ -36,3 +36,5 @@ test_that("retry candidate preparation preserves preview and execution rules", {
     expect_false(prepared_empty$execute)
     expect_identical(names(prepared_empty$candidates), names(empty))
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

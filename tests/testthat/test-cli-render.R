@@ -17,7 +17,14 @@ test_that("epwshiftr_cli_render_table() renders stable boxed tables", {
         epwshiftr:::epwshiftr_cli_render_table(
             rows,
             title = "Snapshot table",
-            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error")
+            columns = c(
+                "status",
+                "filename",
+                "bytes_done",
+                "size",
+                "attempts",
+                "last_error"
+            )
         ),
         type = "message"
     )
@@ -47,7 +54,17 @@ test_that("epwshiftr_cli_render_table() snapshots narrow table adaptation", {
         epwshiftr:::epwshiftr_cli_render_table(
             rows,
             title = "Narrow table",
-            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error", "session_id", "task_id", "file_key")
+            columns = c(
+                "status",
+                "filename",
+                "bytes_done",
+                "size",
+                "attempts",
+                "last_error",
+                "session_id",
+                "task_id",
+                "file_key"
+            )
         ),
         type = "message"
     )
@@ -60,7 +77,13 @@ test_that("epwshiftr_cli_render_table() snapshots narrow table adaptation", {
 test_that("epwshiftr_cli_context() captures selected query search columns", {
     context <- epwshiftr:::epwshiftr_cli_context(list(
         help = FALSE,
-        args = c("query", "search", "--columns", "source_id,variable_id", "project=CMIP6")
+        args = c(
+            "query",
+            "search",
+            "--columns",
+            "source_id,variable_id",
+            "project=CMIP6"
+        )
     ))
     expect_equal(context$columns, c("source_id", "variable_id"))
 })
@@ -80,7 +103,13 @@ test_that("epwshiftr_cli_render() renders selected query search columns", {
 
     context <- epwshiftr:::epwshiftr_cli_context(list(
         help = FALSE,
-        args = c("query", "search", "--columns", "source_id,variable_id", "project=CMIP6")
+        args = c(
+            "query",
+            "search",
+            "--columns",
+            "source_id,variable_id",
+            "project=CMIP6"
+        )
     ))
 
     text <- capture.output(
@@ -98,7 +127,11 @@ test_that("epwshiftr_cli_render() renders selected query search columns", {
     expect_error(
         epwshiftr:::epwshiftr_cli_render(
             rows,
-            context = list(group = "query", command = "search", columns = "missing_column")
+            context = list(
+                group = "query",
+                command = "search",
+                columns = "missing_column"
+            )
         ),
         "Unknown display column"
     )
@@ -125,7 +158,17 @@ test_that("epwshiftr_cli_render_table() adapts table output to console width", {
         epwshiftr:::epwshiftr_cli_render_table(
             rows,
             title = "Narrow table",
-            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error", "session_id", "task_id", "file_key")
+            columns = c(
+                "status",
+                "filename",
+                "bytes_done",
+                "size",
+                "attempts",
+                "last_error",
+                "session_id",
+                "task_id",
+                "file_key"
+            )
         ),
         type = "message"
     )
@@ -193,7 +236,14 @@ test_that("epwshiftr_cli_render_table() renders progress", {
         epwshiftr:::epwshiftr_cli_render_table(
             rows,
             title = "Progress table",
-            columns = c("status", "filename", "bytes_done", "size", "attempts", "last_error")
+            columns = c(
+                "status",
+                "filename",
+                "bytes_done",
+                "size",
+                "attempts",
+                "last_error"
+            )
         ),
         type = "message"
     )
@@ -202,3 +252,5 @@ test_that("epwshiftr_cli_render_table() renders progress", {
     expect_true(any(grepl("\\[[#-]+\\]", text)))
 })
 # }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

@@ -1,3 +1,4 @@
+# dict__parse_dreq_header {{{
 dict__parse_dreq_header <- function(lst) {
     res <- list()
 
@@ -17,7 +18,9 @@ dict__parse_dreq_header <- function(lst) {
 
     res
 }
+# }}}
 
+# dict__parse_dreq {{{
 dict__parse_dreq <- function(file) {
     json <- jsonlite::read_json(file)
     header <- dict__parse_dreq_header(json[["Header"]])
@@ -26,15 +29,25 @@ dict__parse_dreq <- function(file) {
     data.table::set(d, NULL, "variable", names(json[["variable_entry"]]))
     data.table::setcolorder(d, "variable")
 
+    # empty_to_na {{{
     empty_to_na <- function(x) {
         x[x == ""] <- NA_character_
         x
     }
+    # }}}
     for (col in names(d)) {
-        data.table::set(d, NULL, col, empty_to_na(unlist(d[[col]], FALSE, FALSE)))
+        data.table::set(
+            d,
+            NULL,
+            col,
+            empty_to_na(unlist(d[[col]], FALSE, FALSE))
+        )
     }
 
     data.table::setattr(d, "metadata", header)
 
     d
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

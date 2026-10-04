@@ -4,6 +4,7 @@ NULL
 # Bounded temperature weighted stretch
 # Return the paper's additive mean-shift fallback together with the requested
 # extrema and a machine-readable reason for later diagnostics.
+# btws__mean_shift_fallback {{{
 btws__mean_shift_fallback <- function(
     value,
     mean_delta,
@@ -24,10 +25,12 @@ btws__mean_shift_fallback <- function(
         fallback_reason = reason
     )
 }
+# }}}
 
 # Project one 24-hour template using the BTWS equations (7)-(16) published by
 # Eames et al. Degenerate, unphysical, or numerically inadmissible days use the
 # documented mean shift.
+# btws__project_temperature_day {{{
 btws__project_temperature_day <- function(
     value,
     mean_delta,
@@ -175,9 +178,11 @@ btws__project_temperature_day <- function(
         fallback_reason = NA_character_
     )
 }
+# }}}
 
 # Apply the shared grouped daily projection and boundary diagnostics with the
 # BTWS day kernel selected explicitly.
+# btws__project_temperature {{{
 btws__project_temperature <- function(
     template,
     targets,
@@ -198,3 +203,6 @@ btws__project_temperature <- function(
         method = "btws"
     )
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

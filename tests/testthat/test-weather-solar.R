@@ -21,3 +21,5 @@ test_that("Original morphing declination delegates without changing its day conv
         tolerance = 0
     )
 })
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

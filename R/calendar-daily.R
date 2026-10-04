@@ -1,6 +1,7 @@
 # Daily climatology statistical primitives
 # Build a calendar-neutral daily grid at day midpoints. Midpoints avoid making
 # phase zero belong preferentially to either side of the circular year boundary.
+# daily__phase_grid {{{
 daily__phase_grid <- function(target_year_days = 365L) {
     checkmate::assert_integerish(
         target_year_days,
@@ -12,16 +13,20 @@ daily__phase_grid <- function(target_year_days = 365L) {
 
     (seq_len(target_year_days) - 0.5) / target_year_days
 }
+# }}}
 
 # Compute the shortest circular separation between an observation phase p and
 # a target phase c using min(abs(p - c), 1 - abs(p - c)).
+# daily__phase_distance {{{
 daily__phase_distance <- function(annual_phase, center) {
     direct_distance <- abs(annual_phase - center)
     pmin(direct_distance, 1 - direct_distance)
 }
+# }}}
 
 # Validate the shared target-grid and odd moving-window definition once, then
 # retain its half-width in normalized annual-phase units for downstream use.
+# daily__window_spec {{{
 daily__window_spec <- function(window_days = 31L, target_year_days = 365L) {
     checkmate::assert_integerish(
         target_year_days,
@@ -56,9 +61,11 @@ daily__window_spec <- function(window_days = 31L, target_year_days = 365L) {
         full_cycle = identical(window_days, target_year_days)
     )
 }
+# }}}
 
 # Validate canonical annual phases before circular arithmetic. A phase equal to
 # one is rejected because it aliases phase zero and would duplicate the boundary.
+# daily__check_phase {{{
 daily__check_phase <- function(annual_phase, name = "annual_phase") {
     checkmate::assert_string(name, min.chars = 1L)
     checkmate::assert_numeric(
@@ -76,9 +83,11 @@ daily__check_phase <- function(annual_phase, name = "annual_phase") {
 
     as.numeric(annual_phase)
 }
+# }}}
 
 # Map canonical annual phases to containing target-grid days without imposing
 # Gregorian dates on 360-, 365-, or 366-day source calendars.
+# daily__target_day {{{
 daily__target_day <- function(annual_phase, target_year_days = 365L) {
     annual_phase <- daily__check_phase(annual_phase)
     checkmate::assert_integerish(
@@ -93,9 +102,11 @@ daily__target_day <- function(annual_phase, target_year_days = 365L) {
         target_year_days
     )
 }
+# }}}
 
 # Interpolate a periodic coordinate by extending one complete cycle on each
 # side, leaving sorting, missing-value, and grouping policies to each caller.
+# daily__circular_interpolate {{{
 daily__circular_interpolate <- function(
     coordinate,
     value,
@@ -128,10 +139,12 @@ daily__circular_interpolate <- function(
         ties = "ordered"
     )$y
 }
+# }}}
 
 # Select observations inside an odd-width circular window expressed in target
 # grid days. Calendar-native observations participate through annual_phase, so
 # no Gregorian date or raw day-of-year pairing is introduced.
+# daily__phase_window {{{
 daily__phase_window <- function(
     annual_phase,
     center,
@@ -153,9 +166,11 @@ daily__phase_window <- function(
     tolerance <- 8 * .Machine$double.eps
     daily__phase_distance(annual_phase, center) <= spec$half_width + tolerance
 }
+# }}}
 
 # Estimate one group's climatology over the complete target phase grid. Inputs
 # are prevalidated by daily__climatology() to keep the 365-window loop lean.
+# daily__climatology_group {{{
 daily__climatology_group <- function(annual_phase, value, target_phase, spec) {
     target_count <- length(target_phase)
     sample_count <- integer(target_count)
@@ -192,9 +207,11 @@ daily__climatology_group <- function(annual_phase, value, target_phase, spec) {
         n = sample_count
     )
 }
+# }}}
 
 # Estimate a grouped circular daily climatology on a common target grid. The
 # returned n column counts only finite, non-missing values used in each mean.
+# daily__climatology {{{
 daily__climatology <- function(
     data,
     value = "value",
@@ -277,3 +294,6 @@ daily__climatology <- function(
         .SDcols = c("annual_phase", ".daily_value")
     ][]
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

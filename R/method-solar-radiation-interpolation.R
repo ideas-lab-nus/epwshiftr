@@ -21,12 +21,15 @@ SOLAR_INTEGRATION_STEP_SECONDS <- 60
 
 # Validate one role as materialized, bounded shortwave interval means before
 # any values are assigned to the hourly target lattice.
+# solar__source {{{
 solar__source <- function(input, role) {
     if (!S7::S7_inherits(input, WeatherInput)) {
         cli::cli_abort("Role {.val {role}} must contain a WeatherInput object.")
     }
-    if (!identical(input@representation, "series") ||
-        !is.data.frame(input@source)) {
+    if (
+        !identical(input@representation, "series") ||
+            !is.data.frame(input@source)
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must contain a materialized series input."
         )
@@ -53,18 +56,22 @@ solar__source <- function(input, role) {
     }
     for (column in c("time", "time_bound_start", "time_bound_end")) {
         value <- data[[column]]
-        if (!inherits(value, "POSIXt") ||
-            anyNA(value) ||
-            any(!is.finite(as.numeric(value)))) {
+        if (
+            !inherits(value, "POSIXt") ||
+                anyNA(value) ||
+                any(!is.finite(as.numeric(value)))
+        ) {
             cli::cli_abort(
                 "Role {.val {role}} must provide finite POSIX {.field {column}} values."
             )
         }
     }
     time_zone <- attr(data[["time"]], "tzone")
-    if (is.null(time_zone) ||
-        !length(time_zone) ||
-        !time_zone[[1L]] %in% c("UTC", "GMT")) {
+    if (
+        is.null(time_zone) ||
+            !length(time_zone) ||
+            !time_zone[[1L]] %in% c("UTC", "GMT")
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must express CMIP time coordinates in UTC."
         )
@@ -98,10 +105,12 @@ solar__source <- function(input, role) {
     }
     longitude <- as.numeric(data[["lon"]])
     latitude <- as.numeric(data[["lat"]])
-    if (any(!is.finite(longitude)) ||
-        any(longitude < -180 | longitude > 360) ||
-        any(!is.finite(latitude)) ||
-        any(latitude < -90 | latitude > 90)) {
+    if (
+        any(!is.finite(longitude)) ||
+            any(longitude < -180 | longitude > 360) ||
+            any(!is.finite(latitude)) ||
+            any(latitude < -90 | latitude > 90)
+    ) {
         cli::cli_abort(
             "Role {.val {role}} must provide finite longitude and latitude within their geographic ranges."
         )
@@ -114,9 +123,11 @@ solar__source <- function(input, role) {
     )
     list(data = data, frequencies = frequencies)
 }
+# }}}
 
 # Translate POSIX interval endpoints back onto the exact native CF chronology.
 # The POSIX values are used only for elapsed seconds, never as Gregorian dates.
+# solar__native_intervals {{{
 solar__native_intervals <- function(
     data,
     calendar,
@@ -135,17 +146,21 @@ solar__native_intervals <- function(
         )
     }
     sample <- temporal__native_seconds(data, calendar)
-    start <- sample + as.numeric(
-        data[["time_bound_start"]] - data[["time"]],
-        units = "secs"
-    )
-    end <- sample + as.numeric(
-        data[["time_bound_end"]] - data[["time"]],
-        units = "secs"
-    )
+    start <- sample +
+        as.numeric(
+            data[["time_bound_start"]] - data[["time"]],
+            units = "secs"
+        )
+    end <- sample +
+        as.numeric(
+            data[["time_bound_end"]] - data[["time"]],
+            units = "secs"
+        )
     tolerance <- 1e-6
-    if (any(abs(start - round(start)) > tolerance) ||
-        any(abs(end - round(end)) > tolerance)) {
+    if (
+        any(abs(start - round(start)) > tolerance) ||
+            any(abs(end - round(end)) > tolerance)
+    ) {
         cli::cli_abort(
             "Radiation interpolation group {.val {label}} must use whole-second CF interval bounds."
         )
@@ -158,8 +173,10 @@ solar__native_intervals <- function(
             "Radiation interpolation group {.val {label}} bounds do not match its declared source frequency."
         )
     }
-    if (length(start) > 1L &&
-        any(abs(start[-1L] - end[-length(end)]) > tolerance)) {
+    if (
+        length(start) > 1L &&
+            any(abs(start[-1L] - end[-length(end)]) > tolerance)
+    ) {
         cli::cli_abort(
             "Radiation interpolation group {.val {label}} contains gapped or overlapping source intervals."
         )
@@ -178,8 +195,10 @@ solar__native_intervals <- function(
     if (length(sample) > 1L) {
         native_elapsed <- diff(sample)
         posix_elapsed <- diff(as.numeric(data[["time"]]))
-        if (any(abs(native_elapsed - time_step_seconds) > tolerance) ||
-            any(abs(posix_elapsed - native_elapsed) > tolerance)) {
+        if (
+            any(abs(native_elapsed - time_step_seconds) > tolerance) ||
+                any(abs(posix_elapsed - native_elapsed) > tolerance)
+        ) {
             cli::cli_abort(
                 "Radiation interpolation group {.val {label}} has time coordinates inconsistent with its contiguous CF intervals."
             )
@@ -194,10 +213,12 @@ solar__native_intervals <- function(
         position = position
     )
 }
+# }}}
 
 # Integrate the positive cosine of solar zenith over arbitrary native-calendar
 # intervals. Native annual phase is mapped onto a 365-day solar cycle before
 # Spencer's declination and equation-of-time series are evaluated in UTC.
+# solar__interval_projection {{{
 solar__interval_projection <- function(
     start,
     end,
@@ -209,17 +230,24 @@ solar__interval_projection <- function(
     start <- as.numeric(start)
     end <- as.numeric(end)
     checkmate::assert_number(latitude, lower = -90, upper = 90, finite = TRUE)
-    checkmate::assert_number(longitude, lower = -180, upper = 360, finite = TRUE)
+    checkmate::assert_number(
+        longitude,
+        lower = -180,
+        upper = 360,
+        finite = TRUE
+    )
     checkmate::assert_number(
         integration_step_seconds,
         lower = 1,
         finite = TRUE
     )
-    if (!length(start) ||
-        length(start) != length(end) ||
-        any(!is.finite(start)) ||
-        any(!is.finite(end)) ||
-        any(end <= start)) {
+    if (
+        !length(start) ||
+            length(start) != length(end) ||
+            any(!is.finite(start)) ||
+            any(!is.finite(end)) ||
+            any(end <= start)
+    ) {
         cli::cli_abort(
             "Solar projection requires matching finite intervals with increasing bounds."
         )
@@ -257,16 +285,20 @@ solar__interval_projection <- function(
     sums <- rowsum(projection, interval, reorder = FALSE)
     as.numeric(sums[, 1L]) / samples
 }
+# }}}
 
 # Format arbitrary native-second interval bounds without relying on the POSIX
 # surrogate date assigned to a non-Gregorian calendar.
+# solar__native_labels {{{
 solar__native_labels <- function(seconds, calendar) {
     target <- temporal__target_coordinates(seconds, calendar)
     temporal__cf_time_label(target$coordinates)
 }
+# }}}
 
 # Allocate every source interval to hourly interval means and retain the exact
 # source row, bounds, geometry, weight, and conservation result for inspection.
+# solar__group {{{
 solar__group <- function(
     data,
     group_columns,
@@ -320,7 +352,8 @@ solar__group <- function(
         target_projection,
         source_index,
         reorder = FALSE
-    )) / target_counts
+    )) /
+        target_counts
     if (any(abs(source_projection - partition_projection) > 1e-12)) {
         cli::cli_abort(
             "Radiation interpolation group {.val {label}} produced inconsistent source and hourly solar integrations."
@@ -353,19 +386,22 @@ solar__group <- function(
     target <- temporal__target_coordinates(target_sample, calendar)
     target_time <- as.POSIXct(
         as.numeric(data[["time"]][source_index]) +
-            target_sample - interval$sample[source_index],
+            target_sample -
+            interval$sample[source_index],
         origin = "1970-01-01",
         tz = "UTC"
     )
     target_bound_start <- as.POSIXct(
         as.numeric(data[["time"]][source_index]) +
-            target_start - interval$sample[source_index],
+            target_start -
+            interval$sample[source_index],
         origin = "1970-01-01",
         tz = "UTC"
     )
     target_bound_end <- as.POSIXct(
         as.numeric(data[["time"]][source_index]) +
-            target_end - interval$sample[source_index],
+            target_end -
+            interval$sample[source_index],
         origin = "1970-01-01",
         tz = "UTC"
     )
@@ -425,7 +461,8 @@ solar__group <- function(
         value,
         source_index,
         reorder = FALSE
-    )) / target_counts
+    )) /
+        target_counts
     conservation_error <- reconstructed - source_value
     diagnostic <- data.table::data.table(
         group = label,
@@ -456,9 +493,11 @@ solar__group <- function(
     )
     list(data = out[], diagnostic = diagnostic)
 }
+# }}}
 
 # Interpolate every independent radiation group in one semantic role and
 # rebuild its WeatherInput descriptor with retained CF interval bounds.
+# solar__role {{{
 solar__role <- function(input, role, context) {
     source <- solar__source(input, role)
     group_columns <- temporal__group_columns(
@@ -473,6 +512,7 @@ solar__role <- function(input, role, context) {
         keep.by = TRUE,
         drop = TRUE
     )
+    # lapply callback {{{
     results <- lapply(groups, function(group) {
         frequency <- unique(as.character(group[["frequency"]]))
         if (length(frequency) != 1L) {
@@ -489,8 +529,11 @@ solar__role <- function(input, role, context) {
             )
         )
     })
+    # }}}
     data <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(results, function(result) result$data),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -548,7 +591,9 @@ solar__role <- function(input, role, context) {
         )
     )
     diagnostics <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(results, function(result) result$diagnostic),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -567,9 +612,11 @@ solar__role <- function(input, role, context) {
         provenance = interpolation_record
     )
 }
+# }}}
 
 # Apply solar-projection interpolation to matching historical and future model
 # roles while preserving template and observational inputs unchanged.
+# solar__apply {{{
 solar__apply <- function(inputs, context, options) {
     if (!S7::S7_inherits(inputs, WeatherInputs)) {
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
@@ -581,6 +628,7 @@ solar__apply <- function(inputs, context, options) {
         )
     }
     roles <- c("model_historical", "model_future")
+    # lapply callback {{{
     results <- lapply(roles, function(role) {
         solar__role(
             weather__get_input(inputs, role),
@@ -588,6 +636,7 @@ solar__apply <- function(inputs, context, options) {
             context
         )
     })
+    # }}}
     names(results) <- roles
     output_inputs <- weather__new_inputs(
         weather_template = weather__get_input(inputs, "weather_template"),
@@ -599,7 +648,9 @@ solar__apply <- function(inputs, context, options) {
         model_future = results$model_future$input
     )
     diagnostics <- data.table::rbindlist(
+        # lapply callback {{{
         lapply(results, function(result) result$diagnostics),
+        # }}}
         use.names = TRUE,
         fill = TRUE
     )
@@ -609,13 +660,17 @@ solar__apply <- function(inputs, context, options) {
         roles = roles,
         source_frequencies = lapply(
             results,
+            # lapply callback {{{
             function(result) result$provenance$source_frequencies
+            # }}}
         ),
         published_source_frequency = "3hr",
         adapted_source_frequencies = "6hr",
         source_step_seconds = lapply(
             results,
+            # lapply callback {{{
             function(result) result$provenance$source_step_seconds
+            # }}}
         ),
         target_frequency = "hour",
         target_step_seconds = 3600,
@@ -637,11 +692,14 @@ solar__apply <- function(inputs, context, options) {
         )
     )
 }
+# }}}
 
 # Describe the reusable interval-mean radiation interpolation component without
 # coupling it to a complete future-weather recipe.
+# solar__component {{{
 solar__component <- function() {
     variables <- lapply(SOLAR_RADIATION_VARIABLES, identity)
+    # requirement {{{
     requirement <- function(role) {
         component__input_requirement(
             role,
@@ -651,6 +709,7 @@ solar__component <- function() {
             variable_sets = variables
         )
     }
+    # }}}
     component__spec(
         name = "solar_radiation_interpolation",
         stage = "preprocess",
@@ -680,10 +739,15 @@ solar__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the solar radiation preprocess implementation once for recipe
 # compilation and standalone component inspection.
+# solar__register_component {{{
 solar__register_component <- function() {
     component__register_builtin(solar__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
