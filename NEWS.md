@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Bound Dataset child and replica identity queries by encoded value length as
+  well as count, preserving result order, query receipts and child row limits.
+
 * Coverage CI prints the total line coverage and retains per-file reports and
   merged counters independently of Codecov. Upload errors produce a warning without
   failing the job (#279).

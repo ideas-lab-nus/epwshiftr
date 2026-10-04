@@ -236,15 +236,21 @@ query_result__collect_identity <- function(
 
     stores <- list()
     if (length(instance_id)) {
-        stores[[length(stores) + 1L]] <- query_result__replica_store(
-            type,
-            list(instance_id = instance_id)
+        instance_batches <- query_result__query_value_batches(instance_id)
+        stores <- c(
+            stores,
+            lapply(instance_batches, function(batch) {
+                query_result__replica_store(type, list(instance_id = batch))
+            })
         )
     }
     if (length(master_id)) {
-        stores[[length(stores) + 1L]] <- query_result__replica_store(
-            type,
-            list(master_id = master_id)
+        master_batches <- query_result__query_value_batches(master_id)
+        stores <- c(
+            stores,
+            lapply(master_batches, function(batch) {
+                query_result__replica_store(type, list(master_id = batch))
+            })
         )
     }
     if (!length(stores)) {
@@ -262,6 +268,15 @@ query_result__collect_identity <- function(
         )
     })
     collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    # The result retains the original identity facet, not only its first shard.
+    query_result__merge_params(
+        collected$parameter,
+        if (length(instance_id)) {
+            list(instance_id = instance_id)
+        } else {
+            list(master_id = master_id)
+        }
+    )
     response <- collected$response
     response$response$docs <- collected$docs
 
@@ -297,15 +312,24 @@ query_result__collect_master <- function(
         index_node <- query__normalize_node(index_node)
     }
 
-    store <- query_result__replica_store(type, list(master_id = master_id))
-    collected <- query__collect(
-        index_node,
-        store,
-        required_fields = query_result__required(type),
-        all = all,
-        limit = this$data_max_limit,
-        constraints = FALSE
+    stores <- lapply(
+        query_result__query_value_batches(master_id),
+        function(batch) {
+            query_result__replica_store(type, list(master_id = batch))
+        }
     )
+    collected_parts <- lapply(stores, function(store) {
+        query__collect(
+            index_node,
+            store,
+            required_fields = query_result__required(type),
+            all = all,
+            limit = this$data_max_limit,
+            constraints = FALSE
+        )
+    })
+    collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    query_result__merge_params(collected$parameter, list(master_id = master_id))
     response <- collected$response
     response$response$docs <- collected$docs
 

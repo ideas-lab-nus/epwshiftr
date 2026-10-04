@@ -1805,25 +1805,78 @@ query_result__merge_params <- function(store, params) {
     store$restore(state)
 }
 # }}}
-# Child Dataset collection is split by Dataset count instead of URL length so
-# the behavior is deterministic and independent of JSON/url connection heuristics.
+# Bound repeated query values by count and conservative encoded byte length.
+# Reserve URL space for the endpoint, facet name, and other query parameters.
 QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE <- 50L
+QUERY_RESULT_CHILD_COLLECT_MAX_ENCODED_CHARS <- 1800L
+
+# Split values without changing order or duplicate membership. The next batch
+# depends on the current byte budget, so preallocate a single index vector.
+# query_result__query_value_batches {{{
+query_result__query_value_batches <- function(
+    values,
+    batch_size = QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE,
+    max_encoded_chars = QUERY_RESULT_CHILD_COLLECT_MAX_ENCODED_CHARS
+) {
+    checkmate::assert_character(values, any.missing = FALSE)
+    checkmate::assert_count(batch_size, positive = TRUE)
+    checkmate::assert_count(max_encoded_chars, positive = TRUE)
+    if (!length(values)) {
+        return(list())
+    }
+
+    # Count full percent encoding and separators conservatively, including
+    # characters that a proxy may re-encode after our facet renderer.
+    encoded_chars <- nchar(
+        utils::URLencode(values, reserved = TRUE),
+        type = "bytes"
+    )
+    if (any(encoded_chars > max_encoded_chars)) {
+        cli::cli_abort(
+            "A query value exceeds the encoded length limit of {max_encoded_chars} bytes."
+        )
+    }
+    batch_index <- integer(length(values))
+    current_batch <- 1L
+    current_count <- 0L
+    current_chars <- 0L
+
+    for (i in seq_along(values)) {
+        separator_chars <- if (current_count > 0L) 3L else 0L
+        item_chars <- encoded_chars[[i]] + separator_chars
+        exceeds_count <- current_count >= as.integer(batch_size)
+        exceeds_chars <- current_count > 0L &&
+            current_chars + item_chars > max_encoded_chars
+
+        if (exceeds_count || exceeds_chars) {
+            current_batch <- current_batch + 1L
+            current_count <- 0L
+            current_chars <- 0L
+            item_chars <- encoded_chars[[i]]
+        }
+
+        batch_index[[i]] <- current_batch
+        current_count <- current_count + 1L
+        current_chars <- current_chars + item_chars
+    }
+
+    split(values, batch_index)
+}
+# }}}
 
 # query_result__child_dataset_batches
 # Split Dataset IDs for child File/Aggregation collection while preserving order.
 # query_result__child_dataset_batches {{{
 query_result__child_dataset_batches <- function(
     dataset_id,
-    batch_size = QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE
+    batch_size = QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE,
+    max_encoded_chars = QUERY_RESULT_CHILD_COLLECT_MAX_ENCODED_CHARS
 ) {
-    checkmate::assert_character(dataset_id, any.missing = FALSE)
-    checkmate::assert_count(batch_size, positive = TRUE)
-    if (!length(dataset_id)) {
-        return(list())
-    }
-
-    # Keep the original Dataset order so batched results remain predictable.
-    split(dataset_id, ceiling(seq_along(dataset_id) / as.integer(batch_size)))
+    query_result__query_value_batches(
+        dataset_id,
+        batch_size = batch_size,
+        max_encoded_chars = max_encoded_chars
+    )
 }
 # }}}
 # query_result__merge_child_collects
@@ -2139,13 +2192,10 @@ EsgResultDataset <- R6::R6Class(
                     do.call(query__collect, collect_args)
                 }
 
-                if (
-                    length(selected_dataset_id) >
-                        QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE
-                ) {
-                    batches <- query_result__child_dataset_batches(
-                        selected_dataset_id
-                    )
+                batches <- query_result__child_dataset_batches(
+                    selected_dataset_id
+                )
+                if (length(batches) > 1L) {
                     collected <- vector("list", length(batches))
                     collected_count <- 0L
                     remaining <- as.integer(limit)
