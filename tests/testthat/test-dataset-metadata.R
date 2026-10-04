@@ -345,7 +345,9 @@ test_that("concurrent dataset tasks in one process retain separate backends", {
                 value
             },
             handler_args = list(value = index),
-            timeout = 10
+            # The ownership contract has no startup-speed requirement. covr
+            # instruments the package again in each fresh worker process.
+            timeout = 60
         )
     })
     expect_false(identical(

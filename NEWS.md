@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Checking a background process on Windows no longer sends a termination signal.
+  Async lifecycle tests allow for instrumented worker startup and retain
+  coordinator diagnostics on failure (#278).
+
 * Consolidate workflow validation, year parsing and durable run registration.
   Inspectors group outputs once and query relevant manifest rows; internal
   helpers follow their owning modules and tests are organized by behavior.

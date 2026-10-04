@@ -14,7 +14,9 @@ test_that("background batches share reads through one coordinator", {
         shift_batch_execution__job_read(batch@store_path)$id,
         original$id
     )
-    deadline <- Sys.time() + 90
+    # Include instrumented package loading in the coordinator and source
+    # workers. This checks lifecycle behavior, not a wall-clock performance SLA.
+    deadline <- Sys.time() + 300
     observed <- FALSE
     repeat {
         job <- shift_batch_execution__job_read(batch@store_path)
@@ -22,7 +24,14 @@ test_that("background batches share reads through one coordinator", {
             break
         }
         if (Sys.time() > deadline) {
-            stop("Background batch did not finish")
+            log <- readLines(
+                file.path(batch@store_path, paste0(job$id, ".log")),
+                warn = FALSE
+            )
+            stop(paste(
+                c("Background batch did not finish", job$message, log),
+                collapse = "\n"
+            ))
         }
         current <- shift_refresh(background)
         runs <- Filter(
@@ -38,7 +47,11 @@ test_that("background batches share reads through one coordinator", {
         file.path(batch@store_path, paste0(job$id, ".log")),
         warn = FALSE
     )
-    expect_identical(job$status, "finished", info = paste(log, collapse = "\n"))
+    expect_identical(
+        job$status,
+        "finished",
+        info = paste(c(job$message, log), collapse = "\n")
+    )
     expect_null(job$progress)
     expect_false(identical(job$pid, Sys.getpid()))
     expect_true(observed)

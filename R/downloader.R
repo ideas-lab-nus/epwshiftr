@@ -203,6 +203,8 @@ downloader__rscript <- function() {
     file.path(R.home("bin"), "Rscript")
 }
 
+# Check process existence without delivering a signal on Windows: pskill()
+# calls TerminateProcess there, even when the caller supplies signal zero.
 downloader__pid_alive <- function(pid) {
     pid <- suppressWarnings(as.integer(pid[[1L]]))
     if (is.na(pid) || pid <= 0L) {
@@ -210,6 +212,19 @@ downloader__pid_alive <- function(pid) {
     }
     if (pid == Sys.getpid()) {
         return(TRUE)
+    }
+    if (.Platform$OS.type == "windows") {
+        rows <- tryCatch(
+            suppressWarnings(system2(
+                "tasklist",
+                c("/FI", shQuote(paste("PID eq", pid)), "/FO", "CSV", "/NH"),
+                stdout = TRUE,
+                stderr = FALSE
+            )),
+            error = function(error) character()
+        )
+        # CSV field positions are stable across Windows display languages.
+        return(any(grepl(sprintf('^"[^"]*","%d",', pid), rows)))
     }
     out <- tryCatch(tools::pskill(pid, 0), error = function(e) FALSE)
     isTRUE(out)
