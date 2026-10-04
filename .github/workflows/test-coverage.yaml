@@ -58,7 +58,7 @@ jobs:
       - name: Test coverage
         id: coverage
         run: |
-          source(".github/test-coverage-report.R")
+          source(".github/coverage.R")
           coverage <- coverage__run(
             quiet = FALSE,
             install_path = file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
