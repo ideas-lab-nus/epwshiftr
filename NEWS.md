@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Background batch tests collect process logs only on failure; an exclusively
+  open Windows log cannot mask the task receipt (#278).
+
 * Windows run readers recognize DuckDB sharing violations and use existing live
   snapshots while the worker owns the manifest. Other file-open errors remain
   visible (#278).

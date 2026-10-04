@@ -18,19 +18,31 @@ test_that("background batches share reads through one coordinator", {
     # workers. This checks lifecycle behavior, not a wall-clock performance SLA.
     deadline <- Sys.time() + 300
     observed <- FALSE
+    # Windows keeps redirected stdout exclusively open until the process exits,
+    # which may follow its terminal receipt. Diagnostics must not mask that
+    # receipt or turn a successful task into a log-file access failure.
+    failure_info <- function(job) {
+        lines <- tryCatch(
+            suppressWarnings(readLines(
+                file.path(batch@store_path, paste0(job$id, ".log")),
+                warn = FALSE
+            )),
+            error = function(error) {
+                paste("Log unavailable:", conditionMessage(error))
+            }
+        )
+        paste(c(job$status, job$message, lines), collapse = "\n")
+    }
     repeat {
         job <- shift_batch_execution__job_read(batch@store_path)
         if (!job$status %in% c("queued", "running", "stopping")) {
             break
         }
         if (Sys.time() > deadline) {
-            log <- readLines(
-                file.path(batch@store_path, paste0(job$id, ".log")),
-                warn = FALSE
-            )
             stop(paste(
-                c("Background batch did not finish", job$message, log),
-                collapse = "\n"
+                "Background batch did not finish",
+                failure_info(job),
+                sep = "\n"
             ))
         }
         current <- shift_refresh(background)
@@ -43,15 +55,17 @@ test_that("background batches share reads through one coordinator", {
         }
         Sys.sleep(0.1)
     }
-    log <- readLines(
-        file.path(batch@store_path, paste0(job$id, ".log")),
-        warn = FALSE
-    )
     expect_identical(
         job$status,
         "finished",
-        info = paste(c(job$message, log), collapse = "\n")
+        info = if (!identical(job$status, "finished")) failure_info(job)
     )
+    # Completion is published before R releases handles and removes temporary
+    # launch files. Observe normal process exit before disposing this fixture.
+    while (downloader__pid_alive(job$pid) && Sys.time() < deadline) {
+        Sys.sleep(0.1)
+    }
+    expect_false(downloader__pid_alive(job$pid))
     expect_null(job$progress)
     expect_false(identical(job$pid, Sys.getpid()))
     expect_true(observed)
