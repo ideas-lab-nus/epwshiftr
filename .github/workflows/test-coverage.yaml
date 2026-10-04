@@ -10,6 +10,10 @@ jobs:
   test-coverage:
     runs-on: macOS-latest
 
+    permissions:
+      contents: read
+      id-token: write
+
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: true
@@ -48,19 +52,53 @@ jobs:
         with:
           extra-packages: |
             any::covr
+            any::xml2
           needs: coverage
 
       - name: Test coverage
+        id: coverage
         run: |
           source(".github/coverage.R")
-          covr::codecov(coverage = coverage__run(
+          coverage <- coverage__run(
             quiet = FALSE,
             install_path = file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
-          ))
+          )
+          report_path <- file.path(Sys.getenv("RUNNER_TEMP"), "coverage-report")
+          coverage__report(coverage, report_path)
+          cat(
+            readLines(file.path(report_path, "summary.md")),
+            sep = "\n", file = Sys.getenv("GITHUB_STEP_SUMMARY"), append = TRUE
+          )
         shell: Rscript {0}
 
+      - name: Preserve coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ${{ runner.temp }}/coverage-report/
+          retention-days: 14
+
+      - name: Upload coverage to Codecov
+        id: codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ runner.temp }}/coverage-report/coverage.xml
+          disable_search: true
+          # Expose the upload outcome so the next step can issue a warning.
+          fail_ci_if_error: true
+          use_oidc: true
+
+      - name: Warn about Codecov upload failure
+        if: steps.codecov.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::Codecov upload failed. Coverage results remain available in the coverage-report artifact."
+          echo "Codecov upload failed; download the coverage-report artifact for the computed results." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Preserve coverage diagnostics
-        if: failure()
+        if: failure() && steps.coverage.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-diagnostics

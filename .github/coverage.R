@@ -175,4 +175,54 @@ coverage__run <- function(path = ".", ...) {
 }
 # }}}
 
+# Persist the merged covr result before contacting an external service. All
+# summaries use covr's line tally, including lines with no recorded execution.
+# coverage__report {{{
+coverage__report <- function(coverage, path) {
+    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    saveRDS(coverage, file.path(path, "coverage.rds"))
+    lines <- data.table::as.data.table(covr::tally_coverage(
+        coverage,
+        by = "line"
+    ))
+    if (!nrow(lines)) {
+        stop("No instrumented lines were found; coverage cannot be reported.")
+    }
+    files <- lines[,
+        list(
+            covered = sum(.SD[["value"]] > 0),
+            total = .N
+        ),
+        by = "filename",
+        .SDcols = "value"
+    ]
+    data.table::set(
+        files,
+        j = "percent",
+        value = 100 * files$covered / files$total
+    )
+    data.table::setorderv(files, "filename")
+    data.table::fwrite(files, file.path(path, "coverage-by-file.csv"))
+    covr::to_cobertura(coverage, filename = file.path(path, "coverage.xml"))
+    summary <- c(
+        "## R line coverage",
+        "",
+        sprintf(
+            "**%.2f%%** (%d / %d instrumented lines covered across %d files).",
+            100 * sum(files$covered) / sum(files$total),
+            sum(files$covered),
+            sum(files$total),
+            nrow(files)
+        ),
+        "",
+        "Includes merged parent and worker traces. This measures executed R lines, not branch coverage.",
+        "",
+        "Download the coverage-report artifact for the covr result, per-file CSV and Cobertura XML."
+    )
+    writeLines(summary, file.path(path, "summary.md"))
+    cat(summary, sep = "\n")
+    invisible(files)
+}
+# }}}
+
 # vim: fdm=marker :

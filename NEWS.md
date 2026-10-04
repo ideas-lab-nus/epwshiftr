@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Coverage CI prints the total line coverage and retains per-file reports and
+  merged counters independently of Codecov. Upload errors produce a warning without
+  failing the job (#279).
+
 * Publish `standalone-downloader.R` for `usethis::use_standalone()`, with local checksum,
   manifest, validation and process helpers. Host cache and Store integration
   stay in package adapters. Downloader instances own separate worker pools.
