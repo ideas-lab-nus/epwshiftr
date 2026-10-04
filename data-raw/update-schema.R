@@ -10,6 +10,7 @@ ESGF_SCHEMA_QUERY_URL <- paste0(
     "query=*&nominal_resolution=100+km"
 )
 
+# schema_bootstrap {{{
 schema_bootstrap <- function() {
     assign("convert", S7::convert, envir = globalenv())
 
@@ -26,15 +27,22 @@ schema_bootstrap <- function() {
         source(file, local = globalenv())
     }
 }
+# }}}
 
+# schema_direct_child {{{
 schema_direct_child <- function(parent) {
     force(parent)
+    # { callback {{{
     function(path, node) {
         prefix <- paste0(parent, "$")
-        startsWith(path, prefix) && !grepl("$", substring(path, nchar(prefix) + 1L), fixed = TRUE)
+        startsWith(path, prefix) &&
+            !grepl("$", substring(path, nchar(prefix) + 1L), fixed = TRUE)
     }
+    # }}}
 }
+# }}}
 
+# schema_replace_children {{{
 schema_replace_children <- function(schema, parent, value) {
     schema_replace_where(
         schema,
@@ -43,7 +51,9 @@ schema_replace_children <- function(schema, parent, value) {
         missing = "ignore"
     )
 }
+# }}}
 
+# schema_path_join {{{
 schema_path_join <- function(parent, child) {
     if (identical(parent, "$")) {
         paste0("$", child)
@@ -51,7 +61,9 @@ schema_path_join <- function(parent, child) {
         paste0(parent, "$", child)
     }
 }
+# }}}
 
+# schema_atomic_or_null {{{
 schema_atomic_or_null <- function() {
     schema_any(
         schema_check("character", any.missing = FALSE),
@@ -61,7 +73,9 @@ schema_atomic_or_null <- function() {
         schema_check("null")
     )
 }
+# }}}
 
+# schema_saved_param {{{
 schema_saved_param <- function() {
     schema_any(
         schema_check("null"),
@@ -81,7 +95,9 @@ schema_saved_param <- function() {
         )
     )
 }
+# }}}
 
+# schema_solr_param {{{
 schema_solr_param <- function() {
     schema_any(
         schema_check("string"),
@@ -93,11 +109,15 @@ schema_solr_param <- function() {
         schema_check("null")
     )
 }
+# }}}
 
+# schema_facet_count {{{
 schema_facet_count <- function() {
     schema_check("character", any.missing = FALSE)
 }
+# }}}
 
+# schema_doc_column {{{
 schema_doc_column <- function() {
     schema_any(
         schema_check("character", any.missing = TRUE),
@@ -108,7 +128,9 @@ schema_doc_column <- function() {
         schema_check("null")
     )
 }
+# }}}
 
+# schema_doc_fields {{{
 schema_doc_fields <- function(response) {
     sort(unique(c(
         FIELDS_FACETS_ALL,
@@ -146,7 +168,9 @@ schema_doc_fields <- function(response) {
         )
     )))
 }
+# }}}
 
+# schema_relax_parameters {{{
 schema_relax_parameters <- function(schema, path = "$parameter") {
     param_schema <- schema_saved_param()
     schema <- schema_set_keys(
@@ -157,14 +181,21 @@ schema_relax_parameters <- function(schema, path = "$parameter") {
     schema <- schema_replace_children(schema, path, param_schema)
     schema <- tryCatch(
         schema_replace(schema, paste0(path, "$`fields`"), param_schema),
+        # error {{{
         error = function(e) schema
+        # }}}
     )
     schema_set_rest(schema, param_schema, path = path)
 }
+# }}}
 
+# schema_relax_response {{{
 schema_relax_response <- function(schema, response_path = "$", response) {
     docs_path <- schema_path_join(response_path, "response$docs")
-    facet_fields_path <- schema_path_join(response_path, "facet_counts$facet_fields")
+    facet_fields_path <- schema_path_join(
+        response_path,
+        "facet_counts$facet_fields"
+    )
     params_path <- schema_path_join(response_path, "responseHeader$params")
 
     doc_fields <- schema_doc_fields(response)
@@ -172,9 +203,19 @@ schema_relax_response <- function(schema, response_path = "$", response) {
     facet_count <- schema_facet_count()
     doc_column <- schema_doc_column()
 
-    schema <- schema_set_keys(schema, docs_path, type = "named", subset.of = doc_fields)
+    schema <- schema_set_keys(
+        schema,
+        docs_path,
+        type = "named",
+        subset.of = doc_fields
+    )
     schema <- schema_replace_children(schema, docs_path, doc_column)
-    schema <- schema_set_keys(schema, facet_fields_path, type = "named", subset.of = doc_fields)
+    schema <- schema_set_keys(
+        schema,
+        facet_fields_path,
+        type = "named",
+        subset.of = doc_fields
+    )
     schema <- schema_set_rest(schema, facet_count, path = facet_fields_path)
     schema <- schema_replace_children(schema, facet_fields_path, facet_count)
 
@@ -182,7 +223,9 @@ schema_relax_response <- function(schema, response_path = "$", response) {
     schema <- schema_set_rest(schema, solr_param, path = params_path)
     schema_replace_children(schema, params_path, solr_param)
 }
+# }}}
 
+# schema_infer_file {{{
 schema_infer_file <- function(file) {
     schema_compact(schema_infer(
         jsonlite::fromJSON(file, simplifyVector = TRUE, simplifyMatrix = FALSE),
@@ -190,7 +233,9 @@ schema_infer_file <- function(file) {
         arrays = "rest"
     ))
 }
+# }}}
 
+# schema_write_all {{{
 schema_write_all <- function() {
     schema_bootstrap()
 
@@ -211,24 +256,30 @@ schema_write_all <- function() {
     params$variable_id <- as_query_param("variable_id", "tas")
     params$variant_label <- as_query_param("variant_label", "r1i1p1f1")
     params$nominal_resolution <- as_query_param("nominal_resolution", "100 km")
-    params$fields <- as_query_param("fields", c("source_id", "experiment_id", "frequency"))
-    params$facets <- as_query_param("facets", c(
-        "activity_id",
-        "data_node",
-        "source_id",
-        "institution_id",
-        "source_type",
-        "experiment_id",
-        "sub_experiment_id",
-        "nominal_resolution",
-        "variant_label",
-        "grid_label",
-        "table_id",
-        "frequency",
-        "realm",
-        "variable_id",
-        "cf_standard_name"
-    ))
+    params$fields <- as_query_param(
+        "fields",
+        c("source_id", "experiment_id", "frequency")
+    )
+    params$facets <- as_query_param(
+        "facets",
+        c(
+            "activity_id",
+            "data_node",
+            "source_id",
+            "institution_id",
+            "source_type",
+            "experiment_id",
+            "sub_experiment_id",
+            "nominal_resolution",
+            "variant_label",
+            "grid_label",
+            "table_id",
+            "frequency",
+            "realm",
+            "variable_id",
+            "cf_standard_name"
+        )
+    )
     params$version_min <- as_query_param("version_min", "20231001")
     params$version_max <- as_query_param("version_max", "20251001")
     params$others$query <- as_query_param("query", "*")
@@ -258,16 +309,42 @@ schema_write_all <- function() {
         simplifyMatrix = FALSE
     )$response
 
-    response_schema <- schema_compact(schema_infer(saved_response, keys = "required", arrays = "rest"))
-    response_schema <- schema_relax_response(response_schema, response = response)
+    response_schema <- schema_compact(schema_infer(
+        saved_response,
+        keys = "required",
+        arrays = "rest"
+    ))
+    response_schema <- schema_relax_response(
+        response_schema,
+        response = response
+    )
 
     result_schema <- schema_infer_file(result_file)
     result_schema <- schema_relax_parameters(result_schema)
-    result_schema <- schema_relax_response(result_schema, response_path = "$response", response = response)
+    result_schema <- schema_relax_response(
+        result_schema,
+        response_path = "$response",
+        response = response
+    )
 
-    schema_write(query_schema, file.path(out_dir, "query.json"), overwrite = TRUE)
-    schema_write(response_schema, file.path(out_dir, "response.json"), overwrite = TRUE)
-    schema_write(result_schema, file.path(out_dir, "result-dataset.json"), overwrite = TRUE)
+    schema_write(
+        query_schema,
+        file.path(out_dir, "query.json"),
+        overwrite = TRUE
+    )
+    schema_write(
+        response_schema,
+        file.path(out_dir, "response.json"),
+        overwrite = TRUE
+    )
+    schema_write(
+        result_schema,
+        file.path(out_dir, "result-dataset.json"),
+        overwrite = TRUE
+    )
 }
+# }}}
 
 schema_write_all()
+
+# vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :
