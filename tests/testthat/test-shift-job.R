@@ -412,9 +412,10 @@ test_that("run readers distinguish Windows sharing violations from IO errors", {
         "File is already open in"
     )
 
-    # DuckDB's owner text is locale-independent; do not depend on the localized
-    # Windows system message between the path and that diagnostic.
+    # Keep both real Windows variants: current CI omits the owner paragraph,
+    # while other builds include it after a potentially localized system error.
     for (message in c(
+        "IO Error: Cannot open file 'manifest.duckdb': The process cannot access the file because it is being used by another process.",
         "IO Error: Cannot open file 'manifest.duckdb': localized system error\nFile is already open in Rscript.exe (PID 6724)",
         "IO Error: Could not set lock on file 'manifest.duckdb': Conflicting lock is held"
     )) {

@@ -52,48 +52,11 @@ jobs:
 
       - name: Test coverage
         run: |
-          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
-          tryCatch(
-            covr::codecov(
-              quiet = FALSE,
-              clean = FALSE,
-              install_path = install_path,
-              type = "none",
-              # Worker termination may interrupt covr's exit-time writes.
-              # Keep those traces for diagnosis, but measure coverage in the
-              # main test process. All real-worker assertions still execute.
-              code = r"(
-                local({
-                  traces <- file.path(
-                    dirname(find.package("epwshiftr")), "worker-traces"
-                  )
-                  dir.create(traces, showWarnings = FALSE)
-                  withr::with_envvar(c(COVERAGE_DIR = traces), {
-                    testthat::test_dir(
-                      system.file("tests/testthat", package = "epwshiftr"),
-                      package = "epwshiftr",
-                      load_package = "installed",
-                      reporter = "check",
-                      stop_on_failure = TRUE
-                    )
-                  })
-                })
-              )"
-            ),
-            error = function(error) {
-              failures <- list.files(
-                install_path,
-                pattern = "\\.Rout\\.fail$",
-                recursive = TRUE,
-                full.names = TRUE
-              )
-              for (path in failures) {
-                message("Test failure log: ", path)
-                cat(readLines(path, warn = FALSE), sep = "\n")
-              }
-              stop(error)
-            }
-          )
+          source(".github/coverage.R")
+          covr::codecov(coverage = coverage__run(
+            quiet = FALSE,
+            install_path = file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
+          ))
         shell: Rscript {0}
 
       - name: Preserve coverage diagnostics
@@ -102,6 +65,5 @@ jobs:
         with:
           name: coverage-diagnostics
           path: |
-            ${{ runner.temp }}/covr-library/**/*.Rout*
-            ${{ runner.temp }}/covr-library/worker-traces/
+            ${{ runner.temp }}/covr-library/
           retention-days: 7

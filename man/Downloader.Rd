@@ -4,6 +4,12 @@
 \alias{Downloader}
 \title{General Purpose File Downloader}
 \description{
+The implementation in \code{R/downloader.R} can be copied and sourced on its own,
+with its qualified package dependencies installed. Detached jobs retain the
+copied source path, so keep that file available until the jobs finish.
+Integration with a host's cache policy and store is optional and supplied by
+the host package; ordinary downloads do not require epwshiftr to be loaded.
+
 \code{Downloader} provides a general purpose file download system with:
 \itemize{
 \item File status management (missing, downloading, downloaded, verified)

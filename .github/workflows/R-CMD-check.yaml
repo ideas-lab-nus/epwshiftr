@@ -57,4 +57,8 @@ jobs:
             any::rcmdcheck
           needs: check
 
+      - name: Check standalone downloader
+        run: source(".github/check-downloader.R")
+        shell: Rscript {0}
+
       - uses: r-lib/actions/check-r-package@v2

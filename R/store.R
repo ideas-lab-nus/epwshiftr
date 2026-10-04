@@ -9945,4 +9945,15 @@ store__summary_cols <- function() {
 }
 # }}}
 
+# Synchronize a completed download through the package adapter, keeping the
+# copyable Downloader independent of EsgStore and its scientific manifest.
+# store__sync_download_job {{{
+store__sync_download_job <- function(path, downloader) {
+    store <- EsgStore$new(path = path)
+    on.exit(store$close(), add = TRUE)
+    store$sync_downloads(downloader)
+    invisible(NULL)
+}
+# }}}
+
 # vim: fdm=marker fmr=\{\{\{,#\ \}\}\} :

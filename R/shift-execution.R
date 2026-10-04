@@ -65,7 +65,7 @@ shift_execution__string_literal <- function(x) {
 # }}}
 
 # Start one detached entry point through the same installed library and quoting
-# rules for standalone workflows, batches and downloader jobs.
+# rules for standalone Shift workflows and batches. Downloader owns its launcher.
 # shift_execution__launch {{{
 shift_execution__launch <- function(entry, args, log_path) {
     libraries <- paste(

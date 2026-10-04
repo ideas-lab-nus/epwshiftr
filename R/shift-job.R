@@ -2025,11 +2025,13 @@ shift_job__manifest_locked <- function(error) {
     inherits(error, "error") &&
         grepl(
             # Windows reports sharing violations while opening the file, before
-            # reaching the POSIX lock path. Require DuckDB's owner diagnostic
-            # as well, so other file-open failures do not use stale snapshots.
+            # reaching the POSIX lock path. Some DuckDB builds omit the owner
+            # diagnostic, so also recognize Windows' explicit sharing error.
+            # Generic file-open, permission and corruption errors stay visible.
             paste0(
                 "Could not set lock|Conflicting lock|",
-                "Cannot open file[\\s\\S]*File is already open in"
+                "Cannot open file[\\s\\S]*(?:File is already open in|",
+                "The process cannot access the file because it is being used by another process\\.)"
             ),
             conditionMessage(error),
             ignore.case = TRUE,

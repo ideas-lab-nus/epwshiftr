@@ -1,5 +1,11 @@
 # epwshiftr (development version)
 
+* Keep Downloader copyable as a single source module, with local checksum,
+  manifest, validation and process helpers. Host cache and Store integration
+  stay in package adapters. Downloader instances own separate worker pools.
+  Coverage includes complete parent and worker traces
+  and rejects unfinished trace writes before upload (#278).
+
 * Handwritten R sources, tests and tools include Vim marker folds for functions,
   classes and methods; closing markers ignore braces inside CLI strings (#278).
 
@@ -12,9 +18,7 @@
 
 * Checking a background process on Windows no longer sends a termination signal.
   Async lifecycle tests allow for instrumented worker startup and retain
-  coordinator diagnostics on failure. Coverage measures the main test process;
-  real worker tests still execute and their exit traces are retained separately
-  (#278).
+  coordinator diagnostics on failure (#278).
 
 * Consolidate workflow validation, year parsing and durable run registration.
   Inspectors group outputs once and query relevant manifest rows; internal

@@ -10,17 +10,15 @@ downloader_http_checksum <- function(size = 4096L, algo = "md5") {
 }
 # }}}
 
-# local_downloader_http_server {{{
-local_downloader_http_server <- function(env = parent.frame()) {
-    # webfakes starts a callr-backed R process; covr can pick up partial trace
-    # files from that process and fail while merging coverage.
-    skip_on_covr()
-    skip_if_not_installed("webfakes")
-
+# Keep HTTP handlers independent of the package/test namespace. Serializing a
+# test environment into a disposable server would load the instrumented package
+# there even though the server never executes its download or climate code.
+# downloader_http_app {{{
+downloader_http_app <- function(ok, range, slow) {
     app <- webfakes::new_app()
-    app$locals$ok <- downloader_http_bytes(4096L)
-    app$locals$range <- downloader_http_bytes(8193L)
-    app$locals$slow <- downloader_http_bytes(2048L)
+    app$locals$ok <- ok
+    app$locals$range <- range
+    app$locals$slow <- slow
     app$locals$flaky_count <- 0L
 
     # request_header {{{
@@ -176,6 +174,20 @@ local_downloader_http_server <- function(env = parent.frame()) {
     })
     # }}}
 
+    app
+}
+# }}}
+environment(downloader_http_app) <- baseenv()
+
+# Start the isolated HTTP fixture and tie cleanup to the requesting test.
+# local_downloader_http_server {{{
+local_downloader_http_server <- function(env = parent.frame()) {
+    skip_if_not_installed("webfakes")
+    app <- downloader_http_app(
+        downloader_http_bytes(4096L),
+        downloader_http_bytes(8193L),
+        downloader_http_bytes(2048L)
+    )
     proc <- webfakes::new_app_process(app)
     withr::defer(proc$stop(), envir = env)
     proc

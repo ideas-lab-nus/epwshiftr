@@ -900,8 +900,6 @@ test_that("Downloader$run() downloads manifest-backed single-source pieces", {
 test_that("Downloader$run() downloads pieces inside a persistent worker", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
-    # covr cannot reliably merge coverage traces emitted by mirai worker processes.
-    skip_on_covr()
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -1925,8 +1923,6 @@ test_that("Downloader$events()", {
 test_that("Downloader$run() uses worker concurrency", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
-    # covr cannot reliably merge coverage traces emitted by mirai worker processes.
-    skip_on_covr()
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -1982,8 +1978,6 @@ test_that("Downloader$run() uses worker concurrency", {
 test_that("Downloader$run() defers tasks beyond per-host capacity", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
-    # covr cannot reliably merge coverage traces emitted by mirai worker processes.
-    skip_on_covr()
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -2038,8 +2032,6 @@ test_that("Downloader$run() defers tasks beyond per-host capacity", {
 test_that("Downloader$run() serializes tasks for the same target path", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
-    # covr cannot reliably merge coverage traces emitted by mirai worker processes.
-    skip_on_covr()
 
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -2475,6 +2467,66 @@ test_that("Downloader$print()", {
         }
         # }}}
     )
+})
+# }}}
+
+# Reuse real download inputs while exercising independent instance lifetimes.
+# Destroying the first downloader must not stop the second one's queued work.
+# test_that callback {{{
+test_that("Downloader owns its worker pool without interrupting other instances", {
+    root <- tempfile("downloader-pools-")
+    dir.create(root)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    source <- file.path(root, "source.bin")
+    writeBin(downloader_http_bytes(), source)
+    checksum <- unname(tools::md5sum(source))
+    prefix <- if (.Platform$OS.type == "windows") "file:///" else "file://"
+    url <- paste0(prefix, normalizePath(source, winslash = "/"))
+    first <- Downloader$new(dest = file.path(root, "first"), n_workers = 1L)
+    second <- Downloader$new(dest = file.path(root, "second"), n_workers = 1L)
+    on.exit(first$.__enclos_env__$private$finalize(), add = TRUE)
+    on.exit(second$.__enclos_env__$private$finalize(), add = TRUE)
+    one <- first$download(url, block = FALSE)
+    first$wait_for_tasks(one, progress = FALSE)
+    two <- second$download(
+        url,
+        checksum = checksum,
+        checksum_type = "md5",
+        block = FALSE
+    )
+    expect_false(identical(
+        first$.__enclos_env__$private$compute_profile,
+        second$.__enclos_env__$private$compute_profile
+    ))
+    first$.__enclos_env__$private$finalize()
+    second$wait_for_tasks(two, progress = FALSE)
+    expect_identical(
+        second$get_task_status(two)$status,
+        DownloadStatus$Completed
+    )
+    expect_identical(
+        unname(tools::md5sum(file.path(root, "second", "source.bin"))),
+        checksum
+    )
+})
+# }}}
+
+# A missing local source fails inside a real worker and must not be reported as
+# a completed download merely because mirai returned an atomic error object.
+# test_that callback {{{
+test_that("Downloader reports asynchronous worker failures", {
+    root <- tempfile("downloader-worker-error-")
+    dir.create(root)
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    dl <- Downloader$new(dest = root, retries = 1L, n_workers = 1L)
+    on.exit(dl$.__enclos_env__$private$finalize(), add = TRUE)
+    prefix <- if (.Platform$OS.type == "windows") "file:///" else "file://"
+    url <- paste0(prefix, normalizePath(root, winslash = "/"), "/absent.bin")
+    id <- dl$download(url, block = FALSE)
+    result <- dl$wait_for_tasks(id, progress = FALSE)[[id]]
+    expect_identical(result$status, DownloadStatus$Failed)
+    expect_true(nzchar(result$error))
+    expect_false(file.exists(file.path(root, "absent.bin")))
 })
 # }}}
 
