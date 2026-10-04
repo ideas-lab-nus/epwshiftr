@@ -1,27 +1,64 @@
-epwshiftr_cli_shift <- function(store, command, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
+# epwshiftr_cli_shift {{{
+epwshiftr_cli_shift <- function(
+    store,
+    command,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
     switch(
         command,
-        run = epwshiftr_cli_shift_run(store, args, json = json, jsonl = jsonl, quiet = quiet),
+        run = epwshiftr_cli_shift_run(
+            store,
+            args,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        ),
         show = epwshiftr_cli_shift_show(store, args),
-        config = epwshiftr_cli_shift_config(store, args,
-            json = json, jsonl = jsonl, quiet = quiet),
+        config = epwshiftr_cli_shift_config(
+            store,
+            args,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        ),
         list = cli_shift__history(store, args),
-        summary = cli_shift__summary(store, args, json = json, jsonl = jsonl, quiet = quiet),
-        watch = epwshiftr_cli_shift_watch(store, args,
-            json = json, jsonl = jsonl, quiet = quiet),
+        summary = cli_shift__summary(
+            store,
+            args,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        ),
+        watch = epwshiftr_cli_shift_watch(
+            store,
+            args,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        ),
         cancel = epwshiftr_cli_shift_cancel(store, args),
         logs = epwshiftr_cli_shift_logs(store, args),
         status = epwshiftr_cli_shift_status(store, args),
         diagnostics = epwshiftr_cli_shift_diagnostics(store, args),
         outputs = epwshiftr_cli_shift_outputs(store, args),
         data = epwshiftr_cli_shift_data(store, args),
-        resume = epwshiftr_cli_shift_resume(store, args, json = json, jsonl = jsonl, quiet = quiet),
+        resume = epwshiftr_cli_shift_resume(
+            store,
+            args,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        ),
         epwshiftr_cli_usage_abort(sprintf("Unknown shift command: %s", command))
     )
 }
+# }}}
 
-# shift -----------------------------------------------------------------------
-
+# shift
+# epwshiftr_cli_shift_run {{{
 epwshiftr_cli_shift_run <- function(
     store,
     args,
@@ -59,7 +96,7 @@ epwshiftr_cli_shift_run <- function(
     ui@batch_receipt <- FALSE
     if (isTRUE(parsed$flags[["--dry-run"]])) {
         plan <- epwshiftr_cli_config_plan(config, store = store, ui = ui)
-        result <- shift_batch__snapshot(plan, refresh = FALSE)
+        result <- shift_batch_ui__snapshot(plan, refresh = FALSE)
         result$status <- "dry_run"
         result$batch_id <- plan@ids$batch_id
         result$config <- normalizePath(
@@ -89,33 +126,38 @@ epwshiftr_cli_shift_run <- function(
     attr(result, "shift_ui_detail") <- ui@detail
     result
 }
+# }}}
 
+# epwshiftr_cli_shift_status {{{
 epwshiftr_cli_shift_status <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
     epwshiftr_cli_assert_no_positionals(parsed)
     run <- cli_shift__target(parsed, store)
     if (S7::S7_inherits(run, ShiftBatch)) {
-        snapshot <- shift_batch__snapshot(run, refresh = FALSE)
+        snapshot <- shift_batch_ui__snapshot(run, refresh = FALSE)
         return(list(batch = snapshot$batch, children = snapshot$children))
     }
     run@meta$run
 }
+# }}}
 
-
+# epwshiftr_cli_shift_diagnostics {{{
 epwshiftr_cli_shift_diagnostics <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
     epwshiftr_cli_assert_no_positionals(parsed)
     shift_diagnostics(cli_shift__target(parsed, store))
 }
+# }}}
 
-
+# epwshiftr_cli_shift_outputs {{{
 epwshiftr_cli_shift_outputs <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(args, options = c("--run", "--batch"))
     epwshiftr_cli_assert_no_positionals(parsed)
     cli_shift__output_metadata(shift_outputs(cli_shift__target(parsed, store)))
 }
+# }}}
 
-
+# epwshiftr_cli_shift_data {{{
 epwshiftr_cli_shift_data <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
@@ -123,7 +165,12 @@ epwshiftr_cli_shift_data <- function(store, args) {
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     columns <- epwshiftr_cli_csv(parsed$options[["--columns"]])
-    limit <- epwshiftr_cli_count_or_default(parsed$options[["--limit"]], "--limit", 20L, positive = FALSE)
+    limit <- epwshiftr_cli_count_or_default(
+        parsed$options[["--limit"]],
+        "--limit",
+        20L,
+        positive = FALSE
+    )
     shift_data(
         cli_shift__target(parsed, store),
         n = limit,
@@ -131,10 +178,11 @@ epwshiftr_cli_shift_data <- function(store, args) {
         columns = columns
     )
 }
-
+# }}}
 
 # Expose cooperative and force cancellation through the same persisted job
 # state used by the R API and detached worker.
+# epwshiftr_cli_shift_cancel {{{
 epwshiftr_cli_shift_cancel <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
@@ -147,9 +195,10 @@ epwshiftr_cli_shift_cancel <- function(store, args) {
         force = isTRUE(parsed$flags[["--force"]])
     ))
 }
-
+# }}}
 
 # Return the persisted stdout/stderr tail for the latest workflow attempt.
+# epwshiftr_cli_shift_logs {{{
 epwshiftr_cli_shift_logs <- function(store, args) {
     parsed <- epwshiftr_cli_parse_command(
         args,
@@ -157,26 +206,46 @@ epwshiftr_cli_shift_logs <- function(store, args) {
     )
     epwshiftr_cli_assert_no_positionals(parsed)
     tail <- epwshiftr_cli_count_or_default(
-        parsed$options[["--tail"]], "--tail", 100L, positive = FALSE
+        parsed$options[["--tail"]],
+        "--tail",
+        100L,
+        positive = FALSE
     )
     shift_logs(
         cli_shift__target(parsed, store),
         tail = tail
     )
 }
-
+# }}}
 
 # Resume an existing persisted run without rebuilding its resolved CMIP6
 # member/grid/index-node selection.
-epwshiftr_cli_shift_resume <- function(store, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
+# epwshiftr_cli_shift_resume {{{
+epwshiftr_cli_shift_resume <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
     parsed <- epwshiftr_cli_parse_command(
         args,
-        flags = c("--background", "--no-progress", "--reduced-motion",
-            "--verbose", "--debug"),
+        flags = c(
+            "--background",
+            "--no-progress",
+            "--reduced-motion",
+            "--verbose",
+            "--debug"
+        ),
         options = c("--run", "--batch")
     )
     epwshiftr_cli_assert_no_positionals(parsed)
-    ui <- epwshiftr_cli_task_ui(parsed, json = json, jsonl = jsonl, quiet = quiet)
+    ui <- epwshiftr_cli_task_ui(
+        parsed,
+        json = json,
+        jsonl = jsonl,
+        quiet = quiet
+    )
     ui@batch_receipt <- FALSE
     result <- epwshiftr_cli_shift_stage_result(
         shift_resume(
@@ -188,8 +257,10 @@ epwshiftr_cli_shift_resume <- function(store, args, json = FALSE, jsonl = FALSE,
     attr(result, "shift_ui_detail") <- ui@detail
     result
 }
+# }}}
 
 # Translate human CLI flags into the same ordered detail contract as the R API.
+# epwshiftr_cli_shift_detail {{{
 epwshiftr_cli_shift_detail <- function(parsed) {
     if (isTRUE(parsed$flags[["--debug"]])) {
         return("debug")
@@ -199,18 +270,19 @@ epwshiftr_cli_shift_detail <- function(parsed) {
     }
     "normal"
 }
-
+# }}}
 
 # Map the CLI accessibility switch onto the presentation-only motion policy.
+# epwshiftr_cli_shift_motion {{{
 epwshiftr_cli_shift_motion <- function(parsed) {
     if (isTRUE(parsed$flags[["--reduced-motion"]])) "reduced" else "auto"
 }
+# }}}
 
-
-# shared parsing --------------------------------------------------------------
-
+# shared parsing
 # Require an explicit, mutually exclusive identity before opening any store.
 # Batch IDs address independent child stores through the persisted receipt.
+# cli_shift__target {{{
 cli_shift__target <- function(parsed, store) {
     batch <- parsed$options[["--batch"]]
     run <- parsed$options[["--run"]]
@@ -219,14 +291,20 @@ cli_shift__target <- function(parsed, store) {
     }
     if (!is.null(batch)) {
         return(shift_batch_get(
-            epwshiftr_cli_required_single_id(parsed, "--batch"), store = store
+            epwshiftr_cli_required_single_id(parsed, "--batch"),
+            store = store
         ))
     }
-    shift_run_get(epwshiftr_cli_required_single_id(parsed, "--run"), store = store)
+    shift_run_get(
+        epwshiftr_cli_required_single_id(parsed, "--run"),
+        store = store
+    )
 }
+# }}}
 
 # Promote the manifest's scientific field roles to inspectable output columns.
 # These lists are descriptive provenance and do not introduce comparison scores.
+# cli_shift__output_metadata {{{
 cli_shift__output_metadata <- function(outputs) {
     outputs <- data.table::as.data.table(data.table::copy(outputs))
     if (!nrow(outputs) || !"provenance_json" %in% names(outputs)) {
@@ -236,27 +314,42 @@ cli_shift__output_metadata <- function(outputs) {
         if (is.na(value) || !nzchar(value)) {
             return(list())
         }
-        tryCatch(jsonlite::fromJSON(value)$weather_field_roles,
-            error = function(error) list())
+        tryCatch(
+            jsonlite::fromJSON(value)$weather_field_roles,
+            error = function(error) list()
+        )
     })
-    for (name in c("transformed_fields", "derived_fields",
-        "physically_closed_fields", "inherited_fields")) {
-        data.table::set(outputs, j = name, value = lapply(roles, function(role) {
-            as.character(shift_coalesce(role[[name]], character()))
-        }))
+    for (name in c(
+        "transformed_fields",
+        "derived_fields",
+        "physically_closed_fields",
+        "inherited_fields"
+    )) {
+        data.table::set(
+            outputs,
+            j = name,
+            value = lapply(roles, function(role) {
+                as.character(shift_stage__coalesce(role[[name]], character()))
+            })
+        )
     }
     outputs
 }
+# }}}
 
+# epwshiftr_cli_required_option {{{
 epwshiftr_cli_required_option <- function(parsed, option) {
     value <- parsed$options[[option]]
-    if (is.null(value) || !length(value) || !nzchar(as.character(value[[1L]]))) {
+    if (
+        is.null(value) || !length(value) || !nzchar(as.character(value[[1L]]))
+    ) {
         epwshiftr_cli_usage_abort(sprintf("%s is required.", option))
     }
     value
 }
+# }}}
 
-
+# epwshiftr_cli_ids {{{
 epwshiftr_cli_ids <- function(value, name, required = TRUE) {
     ids <- epwshiftr_cli_csv(value)
     if (isTRUE(required) && !length(ids)) {
@@ -264,22 +357,28 @@ epwshiftr_cli_ids <- function(value, name, required = TRUE) {
     }
     ids
 }
+# }}}
 
-
+# epwshiftr_cli_required_ids {{{
 epwshiftr_cli_required_ids <- function(parsed, option) {
     epwshiftr_cli_ids(parsed$options[[option]], option, required = TRUE)
 }
+# }}}
 
-
+# epwshiftr_cli_required_single_id {{{
 epwshiftr_cli_required_single_id <- function(parsed, option) {
     ids <- epwshiftr_cli_required_ids(parsed, option)
     if (length(ids) != 1L) {
-        epwshiftr_cli_usage_abort(sprintf("%s requires exactly one ID.", option))
+        epwshiftr_cli_usage_abort(sprintf(
+            "%s requires exactly one ID.",
+            option
+        ))
     }
     ids[[1L]]
 }
+# }}}
 
-
+# epwshiftr_cli_number {{{
 epwshiftr_cli_number <- function(value, name) {
     out <- suppressWarnings(as.numeric(value))
     if (length(out) != 1L || is.na(out) || !is.finite(out)) {
@@ -287,20 +386,26 @@ epwshiftr_cli_number <- function(value, name) {
     }
     out
 }
+# }}}
 
-
+# epwshiftr_cli_choice {{{
 epwshiftr_cli_choice <- function(value, choices, name, default = NULL) {
     if (is.null(value)) {
         return(default)
     }
     value <- as.character(value[[1L]])
     if (!value %in% choices) {
-        epwshiftr_cli_usage_abort(sprintf("%s must be one of: %s.", name, paste(choices, collapse = ", ")))
+        epwshiftr_cli_usage_abort(sprintf(
+            "%s must be one of: %s.",
+            name,
+            paste(choices, collapse = ", ")
+        ))
     }
     value
 }
+# }}}
 
-
+# epwshiftr_cli_time_range {{{
 epwshiftr_cli_time_range <- function(value) {
     time <- epwshiftr_cli_csv(value)
     if (length(time) != 2L) {
@@ -308,8 +413,9 @@ epwshiftr_cli_time_range <- function(value) {
     }
     time
 }
+# }}}
 
-
+# epwshiftr_cli_key_value_list {{{
 epwshiftr_cli_key_value_list <- function(values, name = "--filter") {
     if (is.null(values) || !length(values)) {
         return(list())
@@ -317,68 +423,67 @@ epwshiftr_cli_key_value_list <- function(values, name = "--filter") {
     out <- list()
     for (value in values) {
         if (!grepl("=", value, fixed = TRUE)) {
-            epwshiftr_cli_usage_abort(sprintf("%s expects key=value, got: %s", name, value))
+            epwshiftr_cli_usage_abort(sprintf(
+                "%s expects key=value, got: %s",
+                name,
+                value
+            ))
         }
         key <- sub("=.*$", "", value)
         val <- sub("^[^=]*=", "", value)
         key <- trimws(key)
         if (!nzchar(key)) {
-            epwshiftr_cli_usage_abort(sprintf("%s has an empty key: %s", name, value))
+            epwshiftr_cli_usage_abort(sprintf(
+                "%s has an empty key: %s",
+                name,
+                value
+            ))
         }
         out[[key]] <- epwshiftr_cli_csv(val)
     }
     out
 }
+# }}}
 
-
+# epwshiftr_cli_periods_from_cli {{{
 epwshiftr_cli_periods_from_cli <- function(values) {
     if (is.null(values) || !length(values)) {
-        epwshiftr_cli_usage_abort("At least one --period PERIOD=YEARS value is required.")
+        epwshiftr_cli_usage_abort(
+            "At least one --period PERIOD=YEARS value is required."
+        )
     }
     periods <- list()
     for (value in values) {
         if (!grepl("=", value, fixed = TRUE)) {
-            epwshiftr_cli_usage_abort(sprintf("--period expects PERIOD=YEARS, got: %s", value))
+            epwshiftr_cli_usage_abort(sprintf(
+                "--period expects PERIOD=YEARS, got: %s",
+                value
+            ))
         }
         name <- trimws(sub("=.*$", "", value))
         years <- sub("^[^=]*=", "", value)
         if (!nzchar(name)) {
-            epwshiftr_cli_usage_abort("--period requires a non-empty period name.")
+            epwshiftr_cli_usage_abort(
+                "--period requires a non-empty period name."
+            )
         }
         periods[[name]] <- epwshiftr_cli_years(years)
     }
     do.call(epw_morph_periods, periods)
 }
+# }}}
 
-
+# Share year syntax with the R API while retaining CLI usage-error reporting.
+# epwshiftr_cli_years {{{
 epwshiftr_cli_years <- function(value) {
-    pieces <- epwshiftr_cli_csv(as.character(value))
-    years <- integer()
-    for (piece in pieces) {
-        if (grepl(":", piece, fixed = TRUE)) {
-            bounds <- trimws(strsplit(piece, ":", fixed = TRUE)[[1L]])
-            if (length(bounds) != 2L) {
-                epwshiftr_cli_usage_abort(sprintf("Invalid year range: %s", piece))
-            }
-            rng <- suppressWarnings(as.integer(bounds))
-            if (any(is.na(rng))) {
-                epwshiftr_cli_usage_abort(sprintf("Invalid year range: %s", piece))
-            }
-            years <- c(years, seq.int(min(rng), max(rng)))
-        } else {
-            year <- suppressWarnings(as.integer(piece))
-            if (length(year) != 1L || is.na(year)) {
-                epwshiftr_cli_usage_abort(sprintf("Invalid year: %s", piece))
-            }
-            years <- c(years, year)
-        }
-    }
-    unique(years)
+    tryCatch(shift_spec__years_value(value), error = function(error) {
+        epwshiftr_cli_usage_abort(conditionMessage(error))
+    })
 }
+# }}}
 
-
-# config coercion -------------------------------------------------------------
-
+# config coercion
+# epwshiftr_cli_validate_shift_config {{{
 epwshiftr_cli_validate_shift_config <- function(config) {
     if (!identical(config$version, 3L)) {
         cli::cli_abort("Only shift workflow config version 3 is supported.")
@@ -403,16 +508,18 @@ epwshiftr_cli_validate_shift_config <- function(config) {
     epwshiftr_cli_config_control(config$control)
     invisible(config)
 }
+# }}}
 
-
+# epwshiftr_cli_config_section {{{
 epwshiftr_cli_config_section <- function(config, name) {
     value <- config[[name]]
     if (is.null(value)) list() else value
 }
-
+# }}}
 
 # Build the same task-level ShiftPlan used by the R API; the CLI does not own a
 # second collect/extract/morph execution path.
+# epwshiftr_cli_config_plan {{{
 epwshiftr_cli_config_plan <- function(
     config,
     store,
@@ -446,10 +553,11 @@ epwshiftr_cli_config_plan <- function(
         ui = ui
     )
 }
-
+# }}}
 
 # Parse one execution-owned reference object without attaching it to the
 # reusable transform specification.
+# cli_shift__config_reference {{{
 cli_shift__config_reference <- function(reference, field) {
     checkmate::assert_string(field, min.chars = 1L)
     if (is.null(reference)) {
@@ -461,21 +569,40 @@ cli_shift__config_reference <- function(reference, field) {
     observational <- field %in% c("observed_reference", "calibration")
     if (observational && !is.null(reference$dataset)) {
         dataset <- epwshiftr_cli_config_choice(
-            reference$dataset, c("era5", "era6")
+            reference$dataset,
+            c("era5", "era6")
         )
         constructor <- get(paste0("shift_", dataset), mode = "function")
-        return(do.call(constructor, c(list(
-            years = epwshiftr_cli_years(as.character(reference$years)),
-            product = epwshiftr_cli_config_string(reference$product,
-                default = "single_levels"),
-            variables = epwshiftr_cli_config_character(reference$variables),
-            frequency = cli_shift__variable_spec(reference$frequency,
-                paste0(field, ".frequency")),
-            access = epwshiftr_cli_config_string(reference$access, default = "auto")
-        ), epwshiftr_cli_config_named_list(reference$options))))
+        return(do.call(
+            constructor,
+            c(
+                list(
+                    years = epwshiftr_cli_years(as.character(reference$years)),
+                    product = epwshiftr_cli_config_string(
+                        reference$product,
+                        default = "single_levels"
+                    ),
+                    variables = epwshiftr_cli_config_character(
+                        reference$variables
+                    ),
+                    frequency = cli_shift__variable_spec(
+                        reference$frequency,
+                        paste0(field, ".frequency")
+                    ),
+                    access = epwshiftr_cli_config_string(
+                        reference$access,
+                        default = "auto"
+                    )
+                ),
+                epwshiftr_cli_config_named_list(reference$options)
+            )
+        ))
     }
 
-    reference <- epwshiftr_cli_config_section(list(reference = reference), "reference")
+    reference <- epwshiftr_cli_config_section(
+        list(reference = reference),
+        "reference"
+    )
     modes <- if (observational) {
         "plan"
     } else {
@@ -495,7 +622,10 @@ cli_shift__config_reference <- function(reference, field) {
     )
 
     if (identical(mode, "plan")) {
-        plan_id <- epwshiftr_cli_config_character(reference$plan_id, default = NULL)
+        plan_id <- epwshiftr_cli_config_character(
+            reference$plan_id,
+            default = NULL
+        )
         if (is.null(plan_id)) {
             epwshiftr_cli_usage_abort(sprintf(
                 "%s.plan_id is required when %s.mode is plan.",
@@ -513,20 +643,33 @@ cli_shift__config_reference <- function(reference, field) {
 
     shift_reference_historical(
         periods = periods,
-        experiment = epwshiftr_cli_config_string(reference$experiment, default = "historical"),
-        activity = epwshiftr_cli_config_string(reference$activity, default = "CMIP"),
+        experiment = epwshiftr_cli_config_string(
+            reference$experiment,
+            default = "historical"
+        ),
+        activity = epwshiftr_cli_config_string(
+            reference$activity,
+            default = "CMIP"
+        ),
         match = epwshiftr_cli_config_character(
             reference$match,
-            default = c("source_id", "variant_label", "frequency", "table_id", "grid_label")
+            default = c(
+                "source_id",
+                "variant_label",
+                "frequency",
+                "table_id",
+                "grid_label"
+            )
         ),
         filters = epwshiftr_cli_config_named_list(reference$filters),
         options = epwshiftr_cli_config_named_list(reference$options)
     )
 }
-
+# }}}
 
 # Construct one reusable transform from the same scale-specific public
 # constructors available to R callers.
+# cli_shift__config_transform {{{
 cli_shift__config_transform <- function(config) {
     if (is.null(config)) {
         return(NULL)
@@ -570,10 +713,11 @@ cli_shift__config_transform <- function(config) {
         )
     )
 }
-
+# }}}
 
 # Construct one complete climate specification; required model/scenario fields
 # are never recovered from other config sections or filled with defaults.
+# epwshiftr_cli_config_climate {{{
 epwshiftr_cli_config_climate <- function(config) {
     config <- epwshiftr_cli_config_section(list(climate = config), "climate")
     provider <- epwshiftr_cli_config_string(config$provider)
@@ -610,17 +754,19 @@ epwshiftr_cli_config_climate <- function(config) {
         common = epwshiftr_cli_config_flag(config$common, default = TRUE)
     )
 }
-
+# }}}
 
 # Decode either a scalar table pin or a JSON object of variable-specific table
 # overrides without flattening away object names.
+# cli_shift__table_spec {{{
 cli_shift__table_spec <- function(value) {
     cli_shift__variable_spec(value, "climate.table", default = NULL)
 }
-
+# }}}
 
 # Decode either a scalar value or a JSON object of variable-specific values
 # without flattening away the variable names needed by mixed-frequency input.
+# cli_shift__variable_spec {{{
 cli_shift__variable_spec <- function(value, field, default = NULL) {
     checkmate::assert_string(field, min.chars = 1L)
     if (is.null(value)) {
@@ -634,8 +780,7 @@ cli_shift__variable_spec <- function(value, field, default = NULL) {
                 field
             ))
         }
-        value <- vapply(value, epwshiftr_cli_config_string,
-            character(1L))
+        value <- vapply(value, epwshiftr_cli_config_string, character(1L))
     }
     value_names <- names(value)
     value <- as.character(value)
@@ -651,36 +796,68 @@ cli_shift__variable_spec <- function(value, field, default = NULL) {
     }
     value
 }
-
+# }}}
 
 # Parse task-wide completion and I/O policy without stage-list overrides.
+# epwshiftr_cli_config_control {{{
 epwshiftr_cli_config_control <- function(config) {
     config <- epwshiftr_cli_config_section(list(control = config), "control")
     shift_control(
         strict = epwshiftr_cli_config_flag(config$strict, default = TRUE),
-        allow_partial = epwshiftr_cli_config_flag(config$allow_partial, default = FALSE),
-        download = epwshiftr_cli_config_choice(config$download, c("auto", "always", "never"), default = "auto"),
+        allow_partial = epwshiftr_cli_config_flag(
+            config$allow_partial,
+            default = FALSE
+        ),
+        download = epwshiftr_cli_config_choice(
+            config$download,
+            c("auto", "always", "never"),
+            default = "auto"
+        ),
         resume = epwshiftr_cli_config_flag(config$resume, default = TRUE),
-        overwrite = epwshiftr_cli_config_flag(config$overwrite, default = FALSE),
+        overwrite = epwshiftr_cli_config_flag(
+            config$overwrite,
+            default = FALSE
+        ),
         refresh = epwshiftr_cli_config_flag(config$refresh, default = FALSE),
-        extraction_method = epwshiftr_cli_config_choice(config$extraction_method, ESG_GRID_METHOD_CHOICES, default = "nearest"),
-        output_layout = epwshiftr_cli_config_choice(config$output_layout, c("nested", "flat"), default = "nested")
+        extraction_method = epwshiftr_cli_config_choice(
+            config$extraction_method,
+            ESG_GRID_METHOD_CHOICES,
+            default = "nearest"
+        ),
+        output_layout = epwshiftr_cli_config_choice(
+            config$output_layout,
+            c("nested", "flat"),
+            default = "nested"
+        )
     )
 }
+# }}}
 
-
-epwshiftr_cli_periods_from_config <- function(value, field = "extract.periods") {
+# epwshiftr_cli_periods_from_config {{{
+epwshiftr_cli_periods_from_config <- function(
+    value,
+    field = "extract.periods"
+) {
     if (is.null(value)) {
-        epwshiftr_cli_usage_abort(sprintf("Config field %s is required.", field))
+        epwshiftr_cli_usage_abort(sprintf(
+            "Config field %s is required.",
+            field
+        ))
     }
-    if (!is.list(value) || is.null(names(value)) || any(!nzchar(names(value)))) {
-        epwshiftr_cli_usage_abort(sprintf("Config field %s must be a named object.", field))
+    if (
+        !is.list(value) || is.null(names(value)) || any(!nzchar(names(value)))
+    ) {
+        epwshiftr_cli_usage_abort(sprintf(
+            "Config field %s must be a named object.",
+            field
+        ))
     }
     periods <- lapply(value, epwshiftr_cli_years)
     do.call(epw_morph_periods, periods)
 }
+# }}}
 
-
+# epwshiftr_cli_config_character {{{
 epwshiftr_cli_config_character <- function(value, default = NULL) {
     if (is.null(value)) {
         return(default)
@@ -692,8 +869,9 @@ epwshiftr_cli_config_character <- function(value, default = NULL) {
     value <- value[!is.na(value) & nzchar(value)]
     if (!length(value)) default else value
 }
+# }}}
 
-
+# epwshiftr_cli_config_string {{{
 epwshiftr_cli_config_string <- function(value, default = NULL) {
     value <- epwshiftr_cli_config_character(value, default = NULL)
     if (is.null(value)) {
@@ -704,8 +882,9 @@ epwshiftr_cli_config_string <- function(value, default = NULL) {
     }
     value[[1L]]
 }
+# }}}
 
-
+# epwshiftr_cli_config_number {{{
 epwshiftr_cli_config_number <- function(value, default = NULL) {
     if (is.null(value)) {
         return(default)
@@ -716,8 +895,9 @@ epwshiftr_cli_config_number <- function(value, default = NULL) {
     }
     out
 }
+# }}}
 
-
+# epwshiftr_cli_config_count {{{
 epwshiftr_cli_config_count <- function(value, default = NULL) {
     if (is.null(value)) {
         return(default)
@@ -726,8 +906,9 @@ epwshiftr_cli_config_count <- function(value, default = NULL) {
     checkmate::assert_count(out, positive = TRUE)
     as.integer(out)
 }
+# }}}
 
-
+# epwshiftr_cli_config_flag {{{
 epwshiftr_cli_config_flag <- function(value, default = NULL) {
     if (is.null(value)) {
         return(default)
@@ -737,25 +918,31 @@ epwshiftr_cli_config_flag <- function(value, default = NULL) {
     }
     epwshiftr_cli_bool(as.character(value), "config flag", default = default)
 }
+# }}}
 
-
+# epwshiftr_cli_config_choice {{{
 epwshiftr_cli_config_choice <- function(value, choices, default = NULL) {
     value <- epwshiftr_cli_config_string(value, default = default)
     if (!is.null(value) && !value %in% choices) {
-        epwshiftr_cli_usage_abort(sprintf("Expected one of: %s.", paste(choices, collapse = ", ")))
+        epwshiftr_cli_usage_abort(sprintf(
+            "Expected one of: %s.",
+            paste(choices, collapse = ", ")
+        ))
     }
     value
 }
+# }}}
 
-
+# epwshiftr_cli_config_time {{{
 epwshiftr_cli_config_time <- function(value) {
     if (is.null(value)) {
         return(NULL)
     }
     epwshiftr_cli_config_character(value, default = NULL)
 }
+# }}}
 
-
+# epwshiftr_cli_config_limit {{{
 epwshiftr_cli_config_limit <- function(value, default = FALSE) {
     if (is.null(value)) {
         return(default)
@@ -765,8 +952,9 @@ epwshiftr_cli_config_limit <- function(value, default = FALSE) {
     }
     epwshiftr_cli_config_count(value, default = default)
 }
+# }}}
 
-
+# epwshiftr_cli_config_named_list {{{
 epwshiftr_cli_config_named_list <- function(value) {
     if (is.null(value) || (is.list(value) && !length(value))) {
         return(list())
@@ -780,18 +968,26 @@ epwshiftr_cli_config_named_list <- function(value) {
     }
     value
 }
+# }}}
 
-
+# epwshiftr_cli_list_value {{{
 epwshiftr_cli_list_value <- function(x, name, default = NULL) {
     value <- x[[name]]
     if (is.null(value)) default else value
 }
+# }}}
 
-
+# epwshiftr_cli_download_args_from_config {{{
 epwshiftr_cli_download_args_from_config <- function(config) {
     allowed <- c(
-        "session_label", "replica", "service", "probe", "probe_concurrency",
-        "probe_cache_seconds", "strategy", "mode"
+        "session_label",
+        "replica",
+        "service",
+        "probe",
+        "probe_concurrency",
+        "probe_cache_seconds",
+        "strategy",
+        "mode"
     )
     out <- list()
     for (name in allowed) {
@@ -800,18 +996,25 @@ epwshiftr_cli_download_args_from_config <- function(config) {
             out[[name]] <- switch(
                 name,
                 probe = epwshiftr_cli_config_flag(value, default = TRUE),
-                probe_concurrency = epwshiftr_cli_config_count(value, default = NULL),
-                probe_cache_seconds = epwshiftr_cli_config_count(value, default = 3600L),
+                probe_concurrency = epwshiftr_cli_config_count(
+                    value,
+                    default = NULL
+                ),
+                probe_cache_seconds = epwshiftr_cli_config_count(
+                    value,
+                    default = 3600L
+                ),
                 value
             )
         }
     }
     out
 }
-
+# }}}
 
 # Coerce typed built-in recipe values accepted by command-line key/value inputs.
 # Other values remain character strings for central backend validation.
+# cli_shift__recipe_options {{{
 cli_shift__recipe_options <- function(options, backend) {
     if (is.null(options) || !length(options)) {
         return(NULL)
@@ -821,18 +1024,30 @@ cli_shift__recipe_options <- function(options, backend) {
     if (!is.list(options)) {
         options <- as.list(options)
     }
-    if (backend %in% c("original_morphing", "original_morphing_absolute") &&
-        "transition_hours" %in% names(options)) {
-        transition_hours <- suppressWarnings(as.integer(options$transition_hours[[1L]]))
+    if (
+        backend %in%
+            c("original_morphing", "original_morphing_absolute") &&
+            "transition_hours" %in% names(options)
+    ) {
+        transition_hours <- suppressWarnings(as.integer(options$transition_hours[[
+            1L
+        ]]))
         if (is.na(transition_hours)) {
-            epwshiftr_cli_usage_abort("Original morphing option transition_hours must be an integer between 0 and 336.")
+            epwshiftr_cli_usage_abort(
+                "Original morphing option transition_hours must be an integer between 0 and 336."
+            )
         }
         options$transition_hours <- transition_hours
     }
-    if (backend %in% c(
-        "daily_temperature", "daily_temperature_btws", "sobie_curry_daily"
-    ) &&
-        "window_days" %in% names(options)) {
+    if (
+        backend %in%
+            c(
+                "daily_temperature",
+                "daily_temperature_btws",
+                "sobie_curry_daily"
+            ) &&
+            "window_days" %in% names(options)
+    ) {
         window_days <- suppressWarnings(as.integer(options$window_days[[1L]]))
         if (is.na(window_days)) {
             epwshiftr_cli_usage_abort(
@@ -845,12 +1060,17 @@ cli_shift__recipe_options <- function(options, backend) {
         }
         options$window_days <- window_days
     }
-    if (backend %in% c(
-        "daily_temperature", "daily_temperature_btws",
-        "bws_btws_monthly", "ek_daily_temperature",
-        "sobie_curry_daily"
-    ) &&
-        "tolerance" %in% names(options)) {
+    if (
+        backend %in%
+            c(
+                "daily_temperature",
+                "daily_temperature_btws",
+                "bws_btws_monthly",
+                "ek_daily_temperature",
+                "sobie_curry_daily"
+            ) &&
+            "tolerance" %in% names(options)
+    ) {
         tolerance <- suppressWarnings(as.numeric(options$tolerance[[1L]]))
         if (is.na(tolerance) || !is.finite(tolerance) || tolerance < 0) {
             epwshiftr_cli_usage_abort(
@@ -865,16 +1085,26 @@ cli_shift__recipe_options <- function(options, backend) {
     }
     options
 }
+# }}}
 
-
-# store backed helpers --------------------------------------------------------
-
+# store backed helpers
+# epwshiftr_cli_query_status {{{
 epwshiftr_cli_query_status <- function(store, query_id = NULL) {
     query_id <- epwshiftr_cli_ids(query_id, "--query", required = FALSE)
-    native <- tryCatch(store$workflow_status(query_id = query_id), error = function(e) data.table::data.table())
-    native_ids <- if (nrow(native) && "query_id" %in% names(native)) native$query_id else character()
+    native <- tryCatch(
+        store$workflow_status(query_id = query_id),
+        error = function(e) data.table::data.table()
+    )
+    native_ids <- if (nrow(native) && "query_id" %in% names(native)) {
+        native$query_id
+    } else {
+        character()
+    }
     fallback_ids <- if (is.null(query_id)) {
-        rows <- tryCatch(store$query("SELECT DISTINCT query_id FROM file_catalog"), error = function(e) data.table::data.table())
+        rows <- tryCatch(
+            store$query("SELECT DISTINCT query_id FROM file_catalog"),
+            error = function(e) data.table::data.table()
+        )
         if (nrow(rows)) rows$query_id else character()
     } else {
         setdiff(query_id, native_ids)
@@ -882,25 +1112,29 @@ epwshiftr_cli_query_status <- function(store, query_id = NULL) {
     fallback <- epwshiftr_cli_file_catalog_status(store, fallback_ids)
     data.table::rbindlist(list(native, fallback), use.names = TRUE, fill = TRUE)
 }
+# }}}
 
-
+# epwshiftr_cli_file_catalog_status {{{
 epwshiftr_cli_file_catalog_status <- function(store, query_id) {
     query_id <- unique(as.character(query_id))
     query_id <- query_id[!is.na(query_id) & nzchar(query_id)]
     if (!length(query_id)) {
         return(data.table::data.table())
     }
-    catalog <- shift_query_maybe(store, sprintf(
-        paste(
-            "SELECT query_id,",
-            "COUNT(*) AS file_current,",
-            "COUNT(DISTINCT file_key) AS file_total",
-            "FROM file_catalog",
-            "WHERE query_id IN (%s)",
-            "GROUP BY query_id"
-        ),
-        shift_stage_query_ids(query_id)
-    ))
+    catalog <- shift_stage__query_maybe(
+        store,
+        sprintf(
+            paste(
+                "SELECT query_id,",
+                "COUNT(*) AS file_current,",
+                "COUNT(DISTINCT file_key) AS file_total",
+                "FROM file_catalog",
+                "WHERE query_id IN (%s)",
+                "GROUP BY query_id"
+            ),
+            shift_stage__query_ids(query_id)
+        )
+    )
     if (!nrow(catalog)) {
         return(catalog)
     }
@@ -912,52 +1146,82 @@ epwshiftr_cli_file_catalog_status <- function(store, query_id) {
         download_incomplete = FALSE,
         last_download_session_id = NA_character_
     )]
-    plans <- shift_query_maybe(store, sprintf(
-        paste(
-            "SELECT query_id, status, COUNT(*) AS n",
-            "FROM extraction_plan",
-            "WHERE query_id IN (%s)",
-            "GROUP BY query_id, status"
-        ),
-        shift_stage_query_ids(catalog$query_id)
-    ))
+    plans <- shift_stage__query_maybe(
+        store,
+        sprintf(
+            paste(
+                "SELECT query_id, status, COUNT(*) AS n",
+                "FROM extraction_plan",
+                "WHERE query_id IN (%s)",
+                "GROUP BY query_id, status"
+            ),
+            shift_stage__query_ids(catalog$query_id)
+        )
+    )
     if (nrow(plans)) {
-        wide <- data.table::dcast(plans, query_id ~ status, value.var = "n", fill = 0L)
-        data.table::setnames(wide, setdiff(names(wide), "query_id"), paste0("extract_", setdiff(names(wide), "query_id")))
-        catalog <- merge(catalog, wide, by = "query_id", all.x = TRUE, sort = FALSE)
+        wide <- data.table::dcast(
+            plans,
+            query_id ~ status,
+            value.var = "n",
+            fill = 0L
+        )
+        data.table::setnames(
+            wide,
+            setdiff(names(wide), "query_id"),
+            paste0("extract_", setdiff(names(wide), "query_id"))
+        )
+        catalog <- merge(
+            catalog,
+            wide,
+            by = "query_id",
+            all.x = TRUE,
+            sort = FALSE
+        )
     }
     catalog[]
 }
+# }}}
 
-
+# epwshiftr_cli_morph_output_rows {{{
 epwshiftr_cli_morph_output_rows <- function(store, morph_id = NULL) {
     if (is.null(morph_id)) {
         return(store$query("SELECT * FROM epw_output"))
     }
-    shift_epw_output_rows(store, morph_id)
+    shift_inspect__epw_output_rows(store, morph_id)
 }
+# }}}
 
-
+# epwshiftr_cli_morph_status_rows {{{
 epwshiftr_cli_morph_status_rows <- function(store, morph_id = NULL) {
     if (is.null(morph_id)) {
         return(store$query("SELECT * FROM epw_morph_plan"))
     }
-    shift_morph_plan(store, morph_id)
+    shift_inspect__morph_plan(store, morph_id)
 }
+# }}}
 
-
-epwshiftr_cli_climate_stage_from_plan <- function(store, plan_id, periods, epw) {
-    plans <- shift_extraction_plan(store, plan_id)
+# epwshiftr_cli_climate_stage_from_plan {{{
+epwshiftr_cli_climate_stage_from_plan <- function(
+    store,
+    plan_id,
+    periods,
+    epw
+) {
+    plans <- shift_inspect__extraction_plan(store, plan_id)
     if (!nrow(plans)) {
-        epwshiftr_cli_usage_abort("No extraction plan rows were found for --plan.")
+        epwshiftr_cli_usage_abort(
+            "No extraction plan rows were found for --plan."
+        )
     }
     query_id <- unique(plans$query_id)
     query_id <- query_id[!is.na(query_id) & nzchar(query_id)]
     if (!length(query_id)) {
-        epwshiftr_cli_usage_abort("Could not resolve File query IDs from --plan.")
+        epwshiftr_cli_usage_abort(
+            "Could not resolve File query IDs from --plan."
+        )
     }
 
-    shift_stage_new(
+    shift_stage__new(
         ShiftClimate,
         "climate",
         store_path = store$path,
@@ -969,23 +1233,29 @@ epwshiftr_cli_climate_stage_from_plan <- function(store, plan_id, periods, epw) 
         )
     )
 }
+# }}}
 
-
+# epwshiftr_cli_morpher_from_morph_id {{{
 epwshiftr_cli_morpher_from_morph_id <- function(store, morph_id) {
     if (length(morph_id) != 1L) {
         epwshiftr_cli_usage_abort("morph epw requires exactly one morph ID.")
     }
-    row <- shift_query_maybe(store, sprintf(
-        paste(
-            "SELECT p.morph_id, p.recipe_json, s.path, s.site_id, s.label",
-            "FROM epw_morph_plan p",
-            "LEFT JOIN epw_source s ON p.epw_id = s.epw_id",
-            "WHERE p.morph_id IN (%s)"
-        ),
-        shift_stage_query_ids(morph_id)
-    ))
+    row <- shift_stage__query_maybe(
+        store,
+        sprintf(
+            paste(
+                "SELECT p.morph_id, p.recipe_json, s.path, s.site_id, s.label",
+                "FROM epw_morph_plan p",
+                "LEFT JOIN epw_source s ON p.epw_id = s.epw_id",
+                "WHERE p.morph_id IN (%s)"
+            ),
+            shift_stage__query_ids(morph_id)
+        )
+    )
     if (!nrow(row) || is.na(row$path[[1L]]) || !nzchar(row$path[[1L]])) {
-        cli::cli_abort("Could not resolve the baseline EPW path for morph ID {.val {morph_id}}.")
+        cli::cli_abort(
+            "Could not resolve the baseline EPW path for morph ID {.val {morph_id}}."
+        )
     }
     epw <- store_abs_path(row$path[[1L]], root = store$path)
     recipe <- cli_shift__recipe_from_json(row$recipe_json[[1L]])
@@ -997,37 +1267,47 @@ epwshiftr_cli_morpher_from_morph_id <- function(store, morph_id) {
         transform = transform__from_recipe_object(recipe)
     )
 }
+# }}}
 
 # Reconstruct the minimum ShiftMorphed graph required by the public EPW and
 # retry APIs. Climate data remain store-backed; only stable IDs, period labels,
 # the baseline EPW identity, and the recipe are materialized here.
+# epwshiftr_cli_morphed_stage_from_morph_id {{{
 epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
     if (length(morph_id) != 1L) {
         epwshiftr_cli_usage_abort("Exactly one morph ID is required.")
     }
-    row <- shift_query_maybe(store, sprintf(
-        paste(
-            "SELECT p.*, s.path, s.site_id, s.label",
-            "FROM epw_morph_plan p",
-            "LEFT JOIN epw_source s ON p.epw_id = s.epw_id",
-            "WHERE p.morph_id IN (%s)"
-        ),
-        shift_stage_query_ids(morph_id)
-    ))
+    row <- shift_stage__query_maybe(
+        store,
+        sprintf(
+            paste(
+                "SELECT p.*, s.path, s.site_id, s.label",
+                "FROM epw_morph_plan p",
+                "LEFT JOIN epw_source s ON p.epw_id = s.epw_id",
+                "WHERE p.morph_id IN (%s)"
+            ),
+            shift_stage__query_ids(morph_id)
+        )
+    )
     if (!nrow(row) || is.na(row$path[[1L]]) || !nzchar(row$path[[1L]])) {
         cli::cli_abort("Could not reconstruct morph ID {.val {morph_id}}.")
     }
-    summary <- shift_query_maybe(store, sprintf(
-        "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
-        shift_sql_string(row$summary_id[[1L]])
-    ))
+    summary <- shift_stage__query_maybe(
+        store,
+        sprintf(
+            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+            shift_stage__sql_string(row$summary_id[[1L]])
+        )
+    )
     if (!nrow(summary)) {
         cli::cli_abort("Morph ID {.val {morph_id}} has no climate summary.")
     }
     period_rows <- unique(summary[, .(period, years_json)])
     period_values <- lapply(seq_len(nrow(period_rows)), function(i) {
-        as.integer(jsonlite::fromJSON(period_rows$years_json[[i]],
-            simplifyVector = TRUE))
+        as.integer(jsonlite::fromJSON(
+            period_rows$years_json[[i]],
+            simplifyVector = TRUE
+        ))
     })
     names(period_values) <- period_rows$period
     periods <- do.call(epw_morph_periods, period_values)
@@ -1043,21 +1323,32 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             "Climate summary ID {.val {row$summary_id[[1L]]}} has no source extraction-plan lineage."
         )
     }
-    climate <- shift_stage_new(ShiftClimate, "climate",
+    climate <- shift_stage__new(
+        ShiftClimate,
+        "climate",
         store_path = store$path,
         ids = list(plan_id = plan_id, summary_id = row$summary_id[[1L]]),
-        meta = list(site = site, periods = periods,
+        meta = list(
+            site = site,
+            periods = periods,
             variables = unique(summary$variable_id),
-            coverage = store$coverage(plan_id = plan_id)))
+            coverage = store$coverage(plan_id = plan_id)
+        )
+    )
 
     reference_plan_id <- NULL
     reference_periods <- NULL
-    if (!is.na(row$reference_summary_id[[1L]]) &&
-        nzchar(row$reference_summary_id[[1L]])) {
-        reference <- shift_query_maybe(store, sprintf(
-            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
-            shift_sql_string(row$reference_summary_id[[1L]])
-        ))
+    if (
+        !is.na(row$reference_summary_id[[1L]]) &&
+            nzchar(row$reference_summary_id[[1L]])
+    ) {
+        reference <- shift_stage__query_maybe(
+            store,
+            sprintf(
+                "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+                shift_stage__sql_string(row$reference_summary_id[[1L]])
+            )
+        )
         if (nrow(reference)) {
             reference_plan_id <- morpher__summary_plan_ids(store, reference)
             if (!length(reference_plan_id)) {
@@ -1066,22 +1357,34 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
                 )
             }
             reference_rows <- unique(reference[, .(period, years_json)])
-            reference_values <- lapply(seq_len(nrow(reference_rows)),
-                function(i) as.integer(jsonlite::fromJSON(
-                    reference_rows$years_json[[i]], simplifyVector = TRUE)))
+            reference_values <- lapply(
+                seq_len(nrow(reference_rows)),
+                function(i) {
+                    as.integer(jsonlite::fromJSON(
+                        reference_rows$years_json[[i]],
+                        simplifyVector = TRUE
+                    ))
+                }
+            )
             names(reference_values) <- reference_rows$period
             reference_periods <- do.call(epw_morph_periods, reference_values)
         }
     }
     observed_plan_id <- NULL
     observed_periods <- NULL
-    if ("observed_summary_id" %in% names(row) &&
-        !is.na(row$observed_summary_id[[1L]]) &&
-        nzchar(row$observed_summary_id[[1L]])) {
-        observed <- shift_query_maybe(store, sprintf(
-            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
-            shift_sql_string(row$observed_summary_id[[1L]])
-        ))
+    if (
+        "observed_summary_id" %in%
+            names(row) &&
+            !is.na(row$observed_summary_id[[1L]]) &&
+            nzchar(row$observed_summary_id[[1L]])
+    ) {
+        observed <- shift_stage__query_maybe(
+            store,
+            sprintf(
+                "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+                shift_stage__sql_string(row$observed_summary_id[[1L]])
+            )
+        )
         if (nrow(observed)) {
             observed_plan_id <- morpher__summary_plan_ids(store, observed)
             if (!length(observed_plan_id)) {
@@ -1090,17 +1393,28 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
                 )
             }
             observed_rows <- unique(observed[, .(period, years_json)])
-            observed_values <- lapply(seq_len(nrow(observed_rows)),
-                function(i) as.integer(jsonlite::fromJSON(
-                    observed_rows$years_json[[i]], simplifyVector = TRUE)))
+            observed_values <- lapply(
+                seq_len(nrow(observed_rows)),
+                function(i) {
+                    as.integer(jsonlite::fromJSON(
+                        observed_rows$years_json[[i]],
+                        simplifyVector = TRUE
+                    ))
+                }
+            )
             names(observed_values) <- observed_rows$period
             observed_periods <- do.call(epw_morph_periods, observed_values)
         }
     }
-    by <- tryCatch(as.character(jsonlite::fromJSON(row$by_json[[1L]],
-        simplifyVector = TRUE)), error = function(e) {
-        c("source_id", "experiment_id", "variant_label", "period")
-    })
+    by <- tryCatch(
+        as.character(jsonlite::fromJSON(
+            row$by_json[[1L]],
+            simplifyVector = TRUE
+        )),
+        error = function(e) {
+            c("source_id", "experiment_id", "variant_label", "period")
+        }
+    )
     recipe <- cli_shift__recipe_from_json(row$recipe_json[[1L]])
     transform <- transform__from_recipe_object(recipe)
     reference <- if (is.null(reference_plan_id)) {
@@ -1117,10 +1431,19 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             role = "observed_reference"
         )
     }
-    shift_stage_new(ShiftMorphed, "morphed", store_path = store$path,
-        ids = list(plan_id = plan_id, summary_id = row$summary_id[[1L]],
-            baseline_id = row$baseline_id[[1L]], morph_id = morph_id),
-        meta = list(climate = climate, baseline = site,
+    shift_stage__new(
+        ShiftMorphed,
+        "morphed",
+        store_path = store$path,
+        ids = list(
+            plan_id = plan_id,
+            summary_id = row$summary_id[[1L]],
+            baseline_id = row$baseline_id[[1L]],
+            morph_id = morph_id
+        ),
+        meta = list(
+            climate = climate,
+            baseline = site,
             transform = transform,
             recipe = recipe,
             reference = reference,
@@ -1130,12 +1453,15 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             observed_plan_id = observed_plan_id,
             observed_periods = observed_periods,
             by = by,
-            strict = isTRUE(row$strict[[1L]])))
+            strict = isTRUE(row$strict[[1L]])
+        )
+    )
 }
-
+# }}}
 
 # Restore only the canonical recipe identity written by the current transform
 # API. Older profile/method-array payloads are intentionally not inferred.
+# cli_shift__recipe_from_json {{{
 cli_shift__recipe_from_json <- function(json) {
     parsed <- tryCatch(
         jsonlite::fromJSON(json, simplifyVector = TRUE),
@@ -1148,8 +1474,11 @@ cli_shift__recipe_from_json <- function(json) {
         "policy",
         "options"
     )
-    if (is.null(parsed) || !is.list(parsed) ||
-        length(setdiff(required, names(parsed)))) {
+    if (
+        is.null(parsed) ||
+            !is.list(parsed) ||
+            length(setdiff(required, names(parsed)))
+    ) {
         cli::cli_abort(c(
             "Persisted morph plan uses an unsupported recipe schema.",
             "i" = "Create a new plan with the weather transform API."
@@ -1165,7 +1494,7 @@ cli_shift__recipe_from_json <- function(json) {
     recipe <- epw_morph_recipe(
         recipe_name,
         version = as.integer(parsed$recipe_version),
-        options = shift_coalesce(parsed$options, list())
+        options = shift_stage__coalesce(parsed$options, list())
     )
     if (!identical(as.character(parsed$policy), recipe$policy)) {
         cli::cli_abort(c(
@@ -1175,68 +1504,101 @@ cli_shift__recipe_from_json <- function(json) {
     }
     recipe
 }
+# }}}
 
-
+# epwshiftr_cli_na_null {{{
 epwshiftr_cli_na_null <- function(value) {
-    if (is.null(value) || length(value) == 0L || is.na(value) || !nzchar(as.character(value))) {
+    if (
+        is.null(value) ||
+            length(value) == 0L ||
+            is.na(value) ||
+            !nzchar(as.character(value))
+    ) {
         return(NULL)
     }
     as.character(value)
 }
+# }}}
 
-
+# epwshiftr_cli_query_diagnostics {{{
 epwshiftr_cli_query_diagnostics <- function(store, query_id = NULL) {
     status <- epwshiftr_cli_query_status(store, query_id)
     if (!nrow(status)) {
-        return(shift_diagnostics_empty())
+        return(shift_stage__diagnostics_empty())
     }
     diagnostics <- vector("list", nrow(status))
     for (i in seq_len(nrow(status))) {
         row <- status[i]
         rows <- list()
-        if ("download_incomplete" %in% names(row) && isTRUE(row$download_incomplete[[1L]])) {
-            rows[[length(rows) + 1L]] <- shift_diagnostic(
-                "download", "warning", "download_incomplete",
+        if (
+            "download_incomplete" %in%
+                names(row) &&
+                isTRUE(row$download_incomplete[[1L]])
+        ) {
+            rows[[length(rows) + 1L]] <- shift_stage__diagnostic(
+                "download",
+                "warning",
+                "download_incomplete",
                 "One or more downloads are incomplete.",
                 query_id = row$query_id[[1L]],
                 action = "Run `download run` or inspect `download status`."
             )
         }
         extract_failed <- names(row)[startsWith(names(row), "extract_failed")]
-        if (length(extract_failed) && suppressWarnings(as.numeric(row[[extract_failed[[1L]]]][[1L]])) > 0) {
-            rows[[length(rows) + 1L]] <- shift_diagnostic(
-                "extract", "error", "extract_failed",
+        if (
+            length(extract_failed) &&
+                suppressWarnings(as.numeric(row[[extract_failed[[1L]]]][[
+                    1L
+                ]])) >
+                    0
+        ) {
+            rows[[length(rows) + 1L]] <- shift_stage__diagnostic(
+                "extract",
+                "error",
+                "extract_failed",
                 "One or more extraction plans failed.",
                 query_id = row$query_id[[1L]],
                 action = "Run `extract coverage` and inspect the affected plan ID."
             )
         }
-        diagnostics[[i]] <- if (length(rows)) do.call(shift_bind_diagnostics, rows) else shift_diagnostics_empty()
+        diagnostics[[i]] <- if (length(rows)) {
+            do.call(shift_stage__bind_diagnostics, rows)
+        } else {
+            shift_stage__diagnostics_empty()
+        }
     }
-    do.call(shift_bind_diagnostics, diagnostics)
+    do.call(shift_stage__bind_diagnostics, diagnostics)
 }
+# }}}
 
-
+# epwshiftr_cli_morph_diagnostics {{{
 epwshiftr_cli_morph_diagnostics <- function(store, morph_id = NULL) {
     status <- epwshiftr_cli_morph_status_rows(store, morph_id)
     if (!nrow(status)) {
-        return(shift_diagnostics_empty())
+        return(shift_stage__diagnostics_empty())
     }
     diagnostics <- vector("list", nrow(status))
     for (i in seq_len(nrow(status))) {
         id <- status$morph_id[[i]]
-        morpher <- tryCatch(epwshiftr_cli_morpher_from_morph_id(store, id), error = function(e) NULL)
+        morpher <- tryCatch(
+            epwshiftr_cli_morpher_from_morph_id(store, id),
+            error = function(e) NULL
+        )
         diagnostics[[i]] <- if (is.null(morpher)) {
-            shift_diagnostic(
-                "morph", "error", "missing_morph_inputs",
+            shift_stage__diagnostic(
+                "morph",
+                "error",
+                "missing_morph_inputs",
                 "The morphing plan exists but its baseline EPW inputs could not be resolved.",
                 morph_id = id,
                 action = "Inspect `morph status` and the `epw_source` manifest rows."
             )
         } else {
             tryCatch(morpher$diagnose(id), error = function(e) {
-                shift_diagnostic(
-                    "morph", "error", "morph_diagnostics_failed",
+                shift_stage__diagnostic(
+                    "morph",
+                    "error",
+                    "morph_diagnostics_failed",
                     conditionMessage(e),
                     morph_id = id,
                     action = "Inspect `morph status` and rerun `morph run` if needed."
@@ -1244,33 +1606,48 @@ epwshiftr_cli_morph_diagnostics <- function(store, morph_id = NULL) {
             })
         }
     }
-    do.call(shift_bind_diagnostics, diagnostics)
+    do.call(shift_stage__bind_diagnostics, diagnostics)
 }
+# }}}
 
-
-epwshiftr_cli_read_extracted_data <- function(store, results, n = 20L, columns = NULL) {
+# epwshiftr_cli_read_extracted_data {{{
+epwshiftr_cli_read_extracted_data <- function(
+    store,
+    results,
+    n = 20L,
+    columns = NULL
+) {
     results <- data.table::as.data.table(results)
     if (!nrow(results)) {
         return(data.table::data.table())
     }
     pieces <- vector("list", nrow(results))
-    remaining <- shift_data_limit(n)
+    remaining <- shift_inspect__data_limit(n)
     for (i in seq_len(nrow(results))) {
         if (!is.infinite(remaining) && remaining <= 0L) {
             break
         }
         path <- store_abs_path(results$output_path[[i]], root = store$path)
         if (!file.exists(path)) {
-            cli::cli_abort("Extracted Parquet data file is missing: {.path {path}}.")
+            cli::cli_abort(
+                "Extracted Parquet data file is missing: {.path {path}}."
+            )
         }
         limit <- if (is.infinite(remaining)) Inf else remaining
-        dt <- shift_read_parquet(store, path, n = limit)
-        dt <- shift_add_constant_columns(dt, list(
-            result_id = results$result_id[[i]],
-            plan_id = results$plan_id[[i]],
-            output_path = results$output_path[[i]]
-        ))
-        pieces[[i]] <- shift_select_data_columns(dt, columns, "extracted")
+        dt <- shift_inspect__read_parquet(store, path, n = limit)
+        dt <- shift_inspect__add_constant_columns(
+            dt,
+            list(
+                result_id = results$result_id[[i]],
+                plan_id = results$plan_id[[i]],
+                output_path = results$output_path[[i]]
+            )
+        )
+        pieces[[i]] <- shift_inspect__select_data_columns(
+            dt,
+            columns,
+            "extracted"
+        )
         if (!is.infinite(remaining)) {
             remaining <- remaining - nrow(dt)
         }
@@ -1281,20 +1658,29 @@ epwshiftr_cli_read_extracted_data <- function(store, results, n = 20L, columns =
     }
     data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
 }
+# }}}
 
-
-# compact workflow results ----------------------------------------------------
-
+# compact workflow results
+# epwshiftr_cli_shift_stage_result {{{
 epwshiftr_cli_shift_stage_result <- function(stage) {
     if (S7::S7_inherits(stage, ShiftBatch)) {
-        snapshot <- shift_batch__snapshot(stage, refresh = FALSE)
-        return(c(list(status = snapshot$batch$status,
-            batch_id = stage@ids$batch_id), snapshot,
-            list(next_steps = epwshiftr_cli_shift_next_steps(
-                stage@ids$batch_id, batch = TRUE, store = stage@store_path))))
+        snapshot <- shift_batch_ui__snapshot(stage, refresh = FALSE)
+        return(c(
+            list(status = snapshot$batch$status, batch_id = stage@ids$batch_id),
+            snapshot,
+            list(
+                next_steps = epwshiftr_cli_shift_next_steps(
+                    stage@ids$batch_id,
+                    batch = TRUE,
+                    store = stage@store_path
+                )
+            )
+        ))
     }
     if (!S7::S7_inherits(stage, ShiftRun)) {
-        epwshiftr_cli_usage_abort("The unified shift runner did not return a ShiftRun.")
+        epwshiftr_cli_usage_abort(
+            "The unified shift runner did not return a ShiftRun."
+        )
     }
     ids <- shift_ids(stage)
     diagnostics <- shift_diagnostics(stage)
@@ -1309,29 +1695,65 @@ epwshiftr_cli_shift_stage_result <- function(stage) {
         cases = shift_cases(stage),
         missing = shift_missing(stage),
         outputs = outputs,
-        next_steps = epwshiftr_cli_shift_next_steps(ids$run_id, store = stage@store_path)
+        next_steps = epwshiftr_cli_shift_next_steps(
+            ids$run_id,
+            store = stage@store_path
+        )
     )
 }
-
+# }}}
 
 # Keep follow-up commands tied to the exact receipt and store returned to the user.
-epwshiftr_cli_shift_next_steps <- function(run_id, batch = FALSE, store = NULL) {
+# epwshiftr_cli_shift_next_steps {{{
+epwshiftr_cli_shift_next_steps <- function(
+    run_id,
+    batch = FALSE,
+    store = NULL
+) {
     data.frame(
-        step = c("watch", "status", "show", "outputs", "summary", "diagnostics", "logs", "cancel", "resume"),
+        step = c(
+            "watch",
+            "status",
+            "show",
+            "outputs",
+            "summary",
+            "diagnostics",
+            "logs",
+            "cancel",
+            "resume"
+        ),
         command = sprintf(
             "epwshiftr%s shift %s --%s %s",
             if (is.null(store)) "" else paste0(" --store ", shQuote(store)),
-            c("watch", "status", "show", "outputs", "summary", "diagnostics", "logs", "cancel", "resume"),
-            if (isTRUE(batch)) "batch" else "run", run_id
+            c(
+                "watch",
+                "status",
+                "show",
+                "outputs",
+                "summary",
+                "diagnostics",
+                "logs",
+                "cancel",
+                "resume"
+            ),
+            if (isTRUE(batch)) "batch" else "run",
+            run_id
         ),
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
+# epwshiftr_cli_coverage_summary {{{
 epwshiftr_cli_coverage_summary <- function(coverage) {
     coverage <- data.table::as.data.table(coverage)
     if (!nrow(coverage)) {
-        return(data.frame(plan_count = 0L, complete = 0L, failed = 0L, output_rows = 0L))
+        return(data.frame(
+            plan_count = 0L,
+            complete = 0L,
+            failed = 0L,
+            output_rows = 0L
+        ))
     }
     data.frame(
         plan_count = nrow(coverage),
@@ -1340,3 +1762,66 @@ epwshiftr_cli_coverage_summary <- function(coverage) {
         output_rows = sum(coverage$output_rows, na.rm = TRUE)
     )
 }
+# }}}
+
+# Parse read-only history filters without opening or initializing a database.
+# cli_shift__history {{{
+cli_shift__history <- function(store, args) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = c("--type", "--status", "--limit")
+    )
+    epwshiftr_cli_assert_no_positionals(parsed)
+    type <- shift_stage__coalesce(parsed$options[["--type"]], "all")
+    if (!type %in% c("all", "run", "batch")) {
+        epwshiftr_cli_usage_abort(
+            "--type must be all, run, or batch."
+        )
+    }
+    rows <- shift_history(
+        store,
+        type = type,
+        status = epwshiftr_cli_csv(parsed$options[["--status"]])
+    )
+    limit <- epwshiftr_cli_count_or_default(
+        parsed$options[["--limit"]],
+        "--limit",
+        20L,
+        positive = FALSE
+    )
+    out <- utils::head(rows, limit)
+    attr(out, "shift_history_total") <- nrow(rows)
+    out
+}
+# }}}
+
+# Share the same comparison table between R and CLI, with optional local reads.
+# cli_shift__summary {{{
+cli_shift__summary <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        options = c("--run", "--batch"),
+        flags = c("--weather", "--no-progress", "--reduced-motion")
+    )
+    epwshiftr_cli_assert_no_positionals(parsed)
+    shift_summary(
+        cli_shift__target(parsed, store),
+        refresh = FALSE,
+        weather = isTRUE(parsed$flags[["--weather"]]),
+        ui = epwshiftr_cli_task_ui(
+            parsed,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        )
+    )
+}
+# }}}
+
+# vim: fdm=marker :

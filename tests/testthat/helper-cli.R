@@ -1,7 +1,10 @@
+# cli_test_response {{{
 cli_test_response <- function(docs) {
     esgf_test__response(docs)
 }
+# }}}
 
+# cli_test_file_docs {{{
 cli_test_file_docs <- function(path = "cli-file.nc", download_url = NULL) {
     if (is.null(download_url)) {
         download_url <- sprintf("https://example.org/fileServer/%s", path)
@@ -31,23 +34,30 @@ cli_test_file_docs <- function(path = "cli-file.nc", download_url = NULL) {
         check.names = FALSE
     )
     docs$url <- I(list(c(
-        sprintf("https://example.org/dods/%s.html|application/netcdf|OPENDAP", path),
+        sprintf(
+            "https://example.org/dods/%s.html|application/netcdf|OPENDAP",
+            path
+        ),
         sprintf("%s|application/netcdf|HTTPServer", download_url)
     )))
     docs
 }
+# }}}
 
+# cli_test_store {{{
 cli_test_store <- function(label = "cli query", track = TRUE) {
     skip_if_not_installed("duckdb")
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     query_id <- store$add_query(
-        esg_query("https://example.org")$
-            experiment_id("ssp585")$
-            variable_id("tas")$
-            limit(1L),
+        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
+            "tas"
+        )$limit(1L),
         label = label,
         track = track
     )
     list(dir = dir, store = store, query_id = query_id)
 }
+# }}}
+
+# vim: fdm=marker :

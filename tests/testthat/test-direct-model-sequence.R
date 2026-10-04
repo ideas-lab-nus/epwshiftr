@@ -1,5 +1,6 @@
 # Build one complete calendar-native year whose values expose any accidental
 # change from source chronology during sequence partitioning.
+# direct_sequence_test__year {{{
 direct_sequence_test__year <- function(
     variable,
     year,
@@ -18,11 +19,14 @@ direct_sequence_test__year <- function(
     data <- data.frame(
         variable_id = rep.int(variable, year_days),
         value = seq_len(year_days),
-        units = rep.int(if (identical(variable, "pr")) {
-            "kg m-2 s-1"
-        } else {
-            "K"
-        }, year_days),
+        units = rep.int(
+            if (identical(variable, "pr")) {
+                "kg m-2 s-1"
+            } else {
+                "K"
+            },
+            year_days
+        ),
         frequency = rep.int("day", year_days),
         cf_time__coordinates(fields, calendar),
         stringsAsFactors = FALSE
@@ -32,9 +36,11 @@ direct_sequence_test__year <- function(
     }
     data
 }
+# }}}
 
 # Construct one future-backbone adjusted series spanning the requested model
 # years while retaining a visible upstream transformation record.
+# direct_sequence_test__adjusted {{{
 direct_sequence_test__adjusted <- function(
     variable,
     years,
@@ -58,9 +64,11 @@ direct_sequence_test__adjusted <- function(
         provenance = list(method = "test_adjustment")
     )
 }
+# }}}
 
 # Build one complete regular sub-daily year whose exact native-calendar times
 # make missing, duplicated, or reordered samples observable.
+# direct_sequence_test__subdaily_year {{{
 direct_sequence_test__subdaily_year <- function(
     variable,
     year,
@@ -100,9 +108,11 @@ direct_sequence_test__subdaily_year <- function(
     }
     data
 }
+# }}}
 
 # Construct a typed future-backbone sub-daily series spanning complete source
 # years while preserving an upstream provenance record.
+# direct_sequence_test__subdaily_adjusted {{{
 direct_sequence_test__subdaily_adjusted <- function(
     variable,
     years,
@@ -131,9 +141,11 @@ direct_sequence_test__subdaily_adjusted <- function(
         provenance = list(method = "test_adjustment")
     )
 }
+# }}}
 
 # Assemble the canonical signal envelope consumed by every sequence component
 # without invoking a particular bias-adjustment kernel in these focused tests.
+# direct_sequence_test__execution {{{
 direct_sequence_test__execution <- function(
     values,
     keys = rep(list(list(site = "A")), length(values)),
@@ -181,6 +193,7 @@ direct_sequence_test__execution <- function(
         )
     )
 }
+# }}}
 
 test_that("typed sequence validators share structural invariants", {
     error <- "sequence invariant failed"
@@ -562,3 +575,5 @@ test_that("direct model sequence rejects wrong roles, duplicates, and failures",
         "aligned SignalExecutionResult"
     )
 })
+
+# vim: fdm=marker :

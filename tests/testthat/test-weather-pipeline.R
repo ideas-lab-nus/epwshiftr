@@ -1,5 +1,6 @@
 # Build a minimal valid pipeline plan for testing stage argument dispatch
 # without registering test-only components in the package-wide registry.
+# pipeline_test__plan {{{
 pipeline_test__plan <- function(signal) {
     stages <- WEATHER_COMPONENT_STAGES
     components <- lapply(stages, function(stage) {
@@ -35,6 +36,7 @@ pipeline_test__plan <- function(signal) {
         components = components
     )
 }
+# }}}
 
 test_that("pipeline signal options reach the selected component", {
     requirement <- component__input_requirement(
@@ -129,3 +131,5 @@ test_that("daily hourly projection ignores signal-owned options", {
     )
     expect_false("signal_overrides" %in% names(projection))
 })
+
+# vim: fdm=marker :

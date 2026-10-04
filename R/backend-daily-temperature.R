@@ -1,8 +1,7 @@
 #' @include weather-temperature.R component-temperature-epw.R
 NULL
 
-# Daily temperature backend {{{
-
+# Daily temperature backend
 # The backend owns only temperature and its humidity-state post-process. Other
 # EPW fields remain on the baseline hourly sequence until their daily methods
 # are implemented independently.
@@ -64,6 +63,7 @@ EPW_MORPH_DAILY_TEMPERATURE_OPTIONS <- c(
 
 # Validate and complete the JSON-safe options used by foreground, background,
 # and resumed daily temperature recipes.
+# daily__temperature_backend_options {{{
 daily__temperature_backend_options <- function(options = NULL) {
     temperature__backend_options(
         options,
@@ -72,10 +72,12 @@ daily__temperature_backend_options <- function(options = NULL) {
         unknown_label = "daily temperature"
     )
 }
+# }}}
 
 # Normalize the three role-addressable sources before calendar mapping. This
 # stage is the only daily-temperature component that interprets raw source
 # representations and units.
+# daily__temperature_preprocess_apply {{{
 daily__temperature_preprocess_apply <- function(
     inputs,
     context,
@@ -85,9 +87,11 @@ daily__temperature_preprocess_apply <- function(
     options <- daily__temperature_backend_options(options)
     temperature__preprocess_inputs(inputs, options)
 }
+# }}}
 
 # Map future and historical daily sources onto the common 365-day phase grid,
 # then build the aligned role payload consumed by the signal kernel.
+# daily__temperature_calendar_apply {{{
 daily__temperature_calendar_apply <- function(
     data,
     inputs,
@@ -125,9 +129,11 @@ daily__temperature_calendar_apply <- function(
         variables = "tas"
     ))
 }
+# }}}
 
 # Calculate future-minus-historical daily mean and range changes from calendar-
 # aligned climatologies. Calendar interpretation is intentionally absent here.
+# daily__temperature_signal_apply_group {{{
 daily__temperature_signal_apply_group <- function(
     inputs,
     settings,
@@ -141,9 +147,11 @@ daily__temperature_signal_apply_group <- function(
         )
     )
 }
+# }}}
 
 # Apply the constrained 24-hour projection to the preserved EPW sequence and
 # retain hourly and daily closure values for the later physics stage.
+# daily__temperature_hourly_reconstruct {{{
 daily__temperature_hourly_reconstruct <- function(
     data,
     inputs,
@@ -156,9 +164,11 @@ daily__temperature_hourly_reconstruct <- function(
         daily__project_temperature
     )
 }
+# }}}
 
 # Build only the components that implement the daily signal and POWER hourly
 # projection. Shared sequence, physics, and output components live separately.
+# daily__temperature_component_specs {{{
 daily__temperature_component_specs <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -243,17 +253,21 @@ daily__temperature_component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register built-in daily temperature components once without replacing an
 # existing implementation under the same stable registry key.
+# daily__register_temperature_components {{{
 daily__register_temperature_components <- function() {
     temperature__register_components()
     component__register_builtins(daily__temperature_component_specs())
 }
+# }}}
 
 # Return a seven-stage daily temperature pipeline with an explicitly selected
 # hourly reconstruction component. The climate signal and all other stages stay
 # identical so either projection can reuse the same surrounding workflow.
+# daily__temperature_pipeline {{{
 daily__temperature_pipeline <- function(
     reconstruction = c("power", "btws")
 ) {
@@ -274,5 +288,6 @@ daily__temperature_pipeline <- function(
         output = "daily_temperature_epw_result"
     ))
 }
-
 # }}}
+
+# vim: fdm=marker :

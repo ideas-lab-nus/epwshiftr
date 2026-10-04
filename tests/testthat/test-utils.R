@@ -100,7 +100,10 @@ test_that("checkmate_any() builds a union spec", {
     expect_length(spec$rules, 2)
 
     expect_error(
-        checkmate_any(checkmate_rule(S7::class_integer, checkmate::check_integer), 1),
+        checkmate_any(
+            checkmate_rule(S7::class_integer, checkmate::check_integer),
+            1
+        ),
         "CheckmateRule"
     )
 })
@@ -148,14 +151,26 @@ test_that("checkmate_class_match() handles S7 union classes", {
 })
 
 test_that("checkmate_class_match() handles S3 and S4 class boundaries", {
-    CheckmateS4ForTest <- methods::setClass("CheckmateS4ForTest", slots = c(value = "numeric"))
+    CheckmateS4ForTest <- methods::setClass(
+        "CheckmateS4ForTest",
+        slots = c(value = "numeric")
+    )
 
     expect_true(checkmate_class_match(Sys.Date(), S7::class_Date))
     expect_false(checkmate_class_match(1, S7::class_Date))
-    expect_false(checkmate_class_match(CheckmateS4ForTest(value = 1), S7::class_Date))
+    expect_false(checkmate_class_match(
+        CheckmateS4ForTest(value = 1),
+        S7::class_Date
+    ))
 
-    expect_true(checkmate_class_match(CheckmateS4ForTest(value = 1), methods::getClass("CheckmateS4ForTest")))
-    expect_false(checkmate_class_match(list(value = 1), methods::getClass("CheckmateS4ForTest")))
+    expect_true(checkmate_class_match(
+        CheckmateS4ForTest(value = 1),
+        methods::getClass("CheckmateS4ForTest")
+    ))
+    expect_false(checkmate_class_match(
+        list(value = 1),
+        methods::getClass("CheckmateS4ForTest")
+    ))
 })
 
 test_that("checkmate_property() supports union specs", {
@@ -245,8 +260,14 @@ test_that("checkmate_property() union spec uses first matching branch", {
     )
 
     expect_error(PriorityHolderForTest(PriorityChildForTest()), "\\[child\\]")
-    expect_error(PriorityHolderForTest(PriorityChildForTest()), "child branch failed")
-    expect_s3_class(PriorityHolderForTest(PriorityParentForTest())@value, "S7_object")
+    expect_error(
+        PriorityHolderForTest(PriorityChildForTest()),
+        "child branch failed"
+    )
+    expect_s3_class(
+        PriorityHolderForTest(PriorityParentForTest())@value,
+        "S7_object"
+    )
 })
 
 test_that("checkmate_property() union spec supports NULL branches", {
@@ -255,7 +276,11 @@ test_that("checkmate_property() union spec supports NULL branches", {
         properties = list(
             value = checkmate_property(
                 checkmate_any(
-                    checkmate_rule(NULL, checkmate::check_null, branch = "null"),
+                    checkmate_rule(
+                        NULL,
+                        checkmate::check_null,
+                        branch = "null"
+                    ),
                     checkmate_rule(
                         S7::class_integer,
                         checkmate::check_integer,
@@ -279,7 +304,10 @@ test_that("set_size_units()", {
     sizes <- set_size_units(c(0, 1024, 1024^2, NA_real_))
     expect_s3_class(sizes, "epwshiftr_bytes")
     expect_equal(as.numeric(sizes), c(0, 1024, 1024^2, NA_real_))
-    expect_equal(format(sizes), c("0 Byte", "1.00 KiB", "1.00 MiB", NA_character_))
+    expect_equal(
+        format(sizes),
+        c("0 Byte", "1.00 KiB", "1.00 MiB", NA_character_)
+    )
     expect_output(print(sizes), "1.00 MiB", fixed = TRUE)
 
     expect_equal(attr(now(), "tzone"), "UTC")
@@ -288,7 +316,10 @@ test_that("set_size_units()", {
 
 test_that("store_dir() resolves and creates the persistent store root", {
     root <- tempfile("epwshiftr-store-")
-    withr::local_options(list(epwshiftr.dir_store = root, epwshiftr.verbose = FALSE))
+    withr::local_options(list(
+        epwshiftr.dir_store = root,
+        epwshiftr.verbose = FALSE
+    ))
 
     expect_false(dir.exists(root))
     expect_identical(store_dir(init = FALSE), store_normalize_path(root))
@@ -310,8 +341,14 @@ test_that(".onLoad() initializes directory options without requiring existing di
         do.call(options, stats::setNames(list(NULL), opt))
     }
 
-    store_default <- store_normalize_path(tools::R_user_dir("epwshiftr", "data"))
-    cache_default <- store_normalize_path(tools::R_user_dir("epwshiftr", "cache"))
+    store_default <- store_normalize_path(tools::R_user_dir(
+        "epwshiftr",
+        "data"
+    ))
+    cache_default <- store_normalize_path(tools::R_user_dir(
+        "epwshiftr",
+        "cache"
+    ))
     store_exists <- dir.exists(store_default)
     cache_exists <- dir.exists(cache_default)
 
@@ -354,8 +391,14 @@ test_that("store_cmip6_index_path() / store_rel_path() / store_abs_path() keep p
     withr::local_options(list(epwshiftr.dir_store = root))
 
     path <- store_cmip6_index_path(strrep("a", 64L))
-    expect_identical(store_rel_path(path), sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L)))
-    expect_identical(store_abs_path(sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L))), path)
+    expect_identical(
+        store_rel_path(path),
+        sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L))
+    )
+    expect_identical(
+        store_abs_path(sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L))),
+        path
+    )
     expect_error(store_rel_path(tempfile()), "outside")
 })
 
@@ -398,3 +441,5 @@ test_that("ddb_connect() opens persisted databases read-only after closing write
         "[Rr]ead.only"
     )
 })
+
+# vim: fdm=marker :

@@ -1,5 +1,6 @@
 # Apply Dataset filter precedence shared by public and batch discovery.
 # Request identity is supplied directly to shift_request() by each caller.
+# availability__filters {{{
 availability__filters <- function(filters, selections) {
     # Core selections have one owner in both discovery entry points.
     filters[c(
@@ -16,15 +17,22 @@ availability__filters <- function(filters, selections) {
     utils::modifyList(
         filters,
         c(
-            shift__compact_list(selections),
+            compact_list(selections),
             list(
                 latest = TRUE,
-                replica = FALSE,
+                # Honor an explicit replica filter; keep primary-only discovery
+                # as the default when the caller has not selected a policy.
+                replica = if ("replica" %in% names(filters)) {
+                    filters$replica
+                } else {
+                    FALSE
+                },
                 fields = AVAILABILITY__DATASET_FIELDS
             )
         )
     )
 }
+# }}}
 
 # Dataset fields retained by the public CMIP6 availability query.
 AVAILABILITY__DATASET_FIELDS <- c(
@@ -49,6 +57,7 @@ AVAILABILITY__DATASET_FIELDS <- c(
 )
 
 # Return a typed empty availability table with the public column contract.
+# availability__empty {{{
 availability__empty <- function() {
     data.table::data.table(
         source_id = character(),
@@ -67,8 +76,10 @@ availability__empty <- function() {
         index_node = character()
     )
 }
+# }}}
 
 # Reduce variable-specific Dataset records to one row per stable CMIP6 identity.
+# availability__summarize {{{
 availability__summarize <- function(
     datasets,
     experiments,
@@ -77,12 +88,12 @@ availability__summarize <- function(
     table,
     index_node
 ) {
-    frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-    table <- shift__cmip6_table_spec(table)
+    frequencies <- shift_spec__cmip6_variable_frequencies(variables, frequency)
+    table <- shift_spec__cmip6_table_spec(table)
     tables <- if (is.null(table)) {
         NULL
     } else {
-        shift__cmip6_variable_tables(variables, frequency, table)
+        shift_spec__cmip6_variable_tables(variables, frequency, table)
     }
     # Share the narrow catalog with method discovery. Variable queries require
     # usable partitions; method queries retain them to explain rejections.
@@ -116,7 +127,10 @@ availability__summarize <- function(
         defaults <- vapply(
             unique(unname(frequencies)),
             function(value) {
-                shift_coalesce(shift__cmip6_table_id(value), NA_character_)
+                shift_stage__coalesce(
+                    shift_spec__cmip6_table_id(value),
+                    NA_character_
+                )
             },
             character(1L)
         )
@@ -210,8 +224,10 @@ availability__summarize <- function(
     )
     summary
 }
+# }}}
 
 # Collect Dataset records through the existing store-native query workflow.
+# availability__collect {{{
 availability__collect <- function(request, store, ui) {
     result <- shift_datasets(
         request,
@@ -222,8 +238,10 @@ availability__collect <- function(request, store, ui) {
     )
     data.table::as.data.table(result$to_data_table())
 }
+# }}}
 
 # Resolve a public index-node name or URL to the endpoint used by EsgQuery.
+# availability__index_node {{{
 availability__index_node <- function(index_node) {
     if (is.null(index_node)) {
         index_node <- "DKRZ"
@@ -240,9 +258,11 @@ availability__index_node <- function(index_node) {
     }
     query__normalize_node(index_node)
 }
+# }}}
 
 # Attach the chosen future input specification to each public method row.
 # Full requirement diagnostics remain internal; rejected rows retain missing reasons.
+# availability__method_summary {{{
 availability__method_summary <- function(evaluated, index_node) {
     identity <- c("source_id", "variant_label", "grid_label")
     role <- NULL
@@ -285,6 +305,7 @@ availability__method_summary <- function(evaluated, index_node) {
     data.table::setorderv(result, c(identity, "transform_key", "scenario"))
     result
 }
+# }}}
 
 #' Query CMIP6 availability by variables or weather methods
 #'
@@ -367,6 +388,7 @@ availability__method_summary <- function(evaluated, index_node) {
 #' }
 #'
 #' @export
+# shift_cmip6_avail {{{
 shift_cmip6_avail <- function(
     variables = NULL,
     scenarios = c("ssp245", "ssp585"),
@@ -477,12 +499,15 @@ shift_cmip6_avail <- function(
             unique = TRUE
         )
         checkmate::assert_flag(include_historical)
-        frequencies <- shift__cmip6_variable_frequencies(variables, frequency)
-        table <- shift__cmip6_table_spec(table)
+        frequencies <- shift_spec__cmip6_variable_frequencies(
+            variables,
+            frequency
+        )
+        table <- shift_spec__cmip6_table_spec(table)
         tables <- if (is.null(table)) {
             NULL
         } else {
-            shift__cmip6_variable_tables(variables, frequency, table)
+            shift_spec__cmip6_variable_tables(variables, frequency, table)
         }
         query_variables <- variables
         query_frequencies <- unique(unname(frequencies))
@@ -542,3 +567,6 @@ shift_cmip6_avail <- function(
         index_node = index_node
     )
 }
+# }}}
+
+# vim: fdm=marker :

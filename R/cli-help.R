@@ -1,3 +1,4 @@
+# epwshiftr_cli_help {{{
 epwshiftr_cli_help <- function(topic = character()) {
     topic <- topic[nzchar(topic)]
     if (!length(topic)) {
@@ -10,8 +11,9 @@ epwshiftr_cli_help <- function(topic = character()) {
     }
     registry[[key]]
 }
+# }}}
 
-
+# epwshiftr_cli_help_root {{{
 epwshiftr_cli_help_root <- function() {
     c(
         "Usage: epwshiftr [--store PATH] [--json|--jsonl] [--quiet] <group> <command> [options]",
@@ -29,8 +31,9 @@ epwshiftr_cli_help_root <- function() {
         "Use `epwshiftr help <group> <command>` for command-specific help."
     )
 }
+# }}}
 
-
+# epwshiftr_cli_help_registry {{{
 epwshiftr_cli_help_registry <- function() {
     list(
         doctor = c(
@@ -561,3 +564,6 @@ epwshiftr_cli_help_registry <- function() {
         )
     )
 }
+# }}}
+
+# vim: fdm=marker :

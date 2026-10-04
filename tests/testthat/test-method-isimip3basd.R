@@ -1,5 +1,6 @@
 # ISIMIP fixtures retain their dimensionless default while sharing all native
 # calendar construction and role-boundary mechanics with other signal methods.
+# isimip_test__series {{{
 isimip_test__series <- function(
     variable_id,
     year,
@@ -9,9 +10,11 @@ isimip_test__series <- function(
 ) {
     signal_test__series(variable_id, year, values, calendar, units)
 }
+# }}}
 isimip_test__execution_inputs <- signal_test__execution_inputs
 
 # Retrieve one complete publication-backed variable profile.
+# isimip_test__settings {{{
 isimip_test__settings <- function(variable) {
     profiles <- isimip__profiles()
     index <- which(vapply(
@@ -21,16 +24,18 @@ isimip_test__settings <- function(variable) {
     ))
     profiles[[index]]@settings
 }
+# }}}
 
 # Execute a compact 12-target-day test configuration while preserving the
 # method equations, variable distribution, and declared stochastic policy.
+# isimip_test__execute {{{
 isimip_test__execute <- function(
-  variable,
-  observed,
-  historical,
-  future,
-  overrides = list(),
-  key = list(site = "A")
+    variable,
+    observed,
+    historical,
+    future,
+    overrides = list(),
+    key = list(site = "A")
 ) {
     boundary <- isimip_test__execution_inputs(
         observed,
@@ -57,6 +62,7 @@ isimip_test__execute <- function(
         warn_experimental = FALSE
     )
 }
+# }}}
 
 test_that("published profiles cover direct and reconstructed components", {
     component <- isimip__component()
@@ -73,10 +79,12 @@ test_that("published profiles cover direct and reconstructed components", {
     )))
     expect_true(all(vapply(
         profiles,
-        function(profile) identical(
-            profile$references,
-            ISIMIP_REFERENCES
-        ),
+        function(profile) {
+            identical(
+                profile$references,
+                ISIMIP_REFERENCES
+            )
+        },
         logical(1L)
     )))
     expect_identical(
@@ -518,3 +526,5 @@ test_that("component remains compatible with calendar and sequence stages", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker :

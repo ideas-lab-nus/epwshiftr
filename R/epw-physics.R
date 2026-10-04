@@ -98,46 +98,67 @@ EPW_PHYS_POLICY_SPECS <- list(
 
 # Validate one data-only physical policy before it is passed to the shared
 # executor by a method-specific adapter.
+# epwphys__policy_error {{{
 epwphys__policy_error <- function(self) {
-    if (length(self@name) != 1L ||
-        is.na(self@name) ||
-        !self@name %in% names(EPW_PHYS_POLICY_SPECS)) {
+    if (
+        length(self@name) != 1L ||
+            is.na(self@name) ||
+            !self@name %in% names(EPW_PHYS_POLICY_SPECS)
+    ) {
         return("`name` must identify one built-in EPW physical policy.")
     }
-    if (length(self@humidity) != 1L ||
-        is.na(self@humidity) ||
-        !self@humidity %in% EPW_PHYS_HUMIDITY_MODES) {
+    if (
+        length(self@humidity) != 1L ||
+            is.na(self@humidity) ||
+            !self@humidity %in% EPW_PHYS_HUMIDITY_MODES
+    ) {
         return("`humidity` must identify one humidity treatment.")
     }
-    if (length(self@wind) != 1L ||
-        is.na(self@wind) ||
-        !self@wind %in% EPW_PHYS_WIND_MODES) {
+    if (
+        length(self@wind) != 1L ||
+            is.na(self@wind) ||
+            !self@wind %in% EPW_PHYS_WIND_MODES
+    ) {
         return("`wind` must identify one wind treatment.")
     }
-    if (length(self@shortwave) != 1L ||
-        is.na(self@shortwave) ||
-        !self@shortwave %in% EPW_PHYS_SHORTWAVE_MODES) {
+    if (
+        length(self@shortwave) != 1L ||
+            is.na(self@shortwave) ||
+            !self@shortwave %in% EPW_PHYS_SHORTWAVE_MODES
+    ) {
         return("`shortwave` must identify one shortwave treatment.")
     }
-    if (anyNA(self@bounded_fields) ||
-        anyDuplicated(self@bounded_fields) ||
-        any(!self@bounded_fields %in% names(EPW_FILE_FIELD_SPECS))) {
-        return("`bounded_fields` must contain unique EPW fields with specifications.")
+    if (
+        anyNA(self@bounded_fields) ||
+            anyDuplicated(self@bounded_fields) ||
+            any(!self@bounded_fields %in% names(EPW_FILE_FIELD_SPECS))
+    ) {
+        return(
+            "`bounded_fields` must contain unique EPW fields with specifications."
+        )
     }
-    if (length(self@missing_action) != 1L ||
-        is.na(self@missing_action) ||
-        !self@missing_action %in% EPW_PHYS_MISSING_ACTIONS) {
+    if (
+        length(self@missing_action) != 1L ||
+            is.na(self@missing_action) ||
+            !self@missing_action %in% EPW_PHYS_MISSING_ACTIONS
+    ) {
         return("`missing_action` must be `preserve` or `error`.")
     }
-    if (length(self@diagnose_inconsistency) != 1L ||
-        is.na(self@diagnose_inconsistency)) {
-        return("`diagnose_inconsistency` must be one non-missing logical value.")
+    if (
+        length(self@diagnose_inconsistency) != 1L ||
+            is.na(self@diagnose_inconsistency)
+    ) {
+        return(
+            "`diagnose_inconsistency` must be one non-missing logical value."
+        )
     }
     NULL
 }
+# }}}
 
 # EpwPhysicalPolicy is the internal, serializable description of how a method's
 # projected state is interpreted at the common EPW physical boundary.
+# EpwPhysicalPolicy {{{
 EpwPhysicalPolicy <- S7::new_class(
     "EpwPhysicalPolicy",
     properties = list(
@@ -154,15 +175,19 @@ EpwPhysicalPolicy <- S7::new_class(
     ),
     validator = epwphys__policy_error
 )
+# }}}
 
 # Validate role-specific candidate vectors against the number of rows in the
 # template without imposing one common statistical representation upstream.
+# epwphys__candidate_error {{{
 epwphys__candidate_error <- function(values, allowed, rows, label) {
-    if (!is.list(values) ||
-        (length(values) &&
-            (is.null(names(values)) ||
-                any(!nzchar(names(values))) ||
-                anyDuplicated(names(values))))) {
+    if (
+        !is.list(values) ||
+            (length(values) &&
+                (is.null(names(values)) ||
+                    any(!nzchar(names(values))) ||
+                    anyDuplicated(names(values))))
+    ) {
         return(sprintf("`%s` must be a uniquely named list.", label))
     }
     unknown <- setdiff(names(values), allowed)
@@ -188,9 +213,11 @@ epwphys__candidate_error <- function(values, allowed, rows, label) {
     }
     NULL
 }
+# }}}
 
 # Validate one method-neutral physical request. Candidate lists remain grouped
 # by physical role so mutually exclusive humidity and wind paths stay explicit.
+# epwphys__request_error {{{
 epwphys__request_error <- function(self) {
     if (!is.data.frame(self@template) || !nrow(self@template)) {
         return("`template` must be a non-empty weather data frame.")
@@ -226,21 +253,27 @@ epwphys__request_error <- function(self) {
     if (length(failed)) {
         return(failed[[1L]])
     }
-    if (!is.null(self@geometry) &&
-        (!is.data.frame(self@geometry) || nrow(self@geometry) != rows)) {
+    if (
+        !is.null(self@geometry) &&
+            (!is.data.frame(self@geometry) || nrow(self@geometry) != rows)
+    ) {
         return("`geometry` must be NULL or match the weather row count.")
     }
-    if (length(self@provenance) &&
-        (is.null(names(self@provenance)) ||
-            any(!nzchar(names(self@provenance))) ||
-            anyDuplicated(names(self@provenance)))) {
+    if (
+        length(self@provenance) &&
+            (is.null(names(self@provenance)) ||
+                any(!nzchar(names(self@provenance))) ||
+                anyDuplicated(names(self@provenance)))
+    ) {
         return("`provenance` must be a uniquely named list.")
     }
     NULL
 }
+# }}}
 
 # EpwPhysicalRequest carries a template plus only the candidate states produced
 # by an upstream weather method; it never parses or writes an EPW file.
+# EpwPhysicalRequest {{{
 EpwPhysicalRequest <- S7::new_class(
     "EpwPhysicalRequest",
     properties = list(
@@ -254,9 +287,11 @@ EpwPhysicalRequest <- S7::new_class(
     ),
     validator = epwphys__request_error
 )
+# }}}
 
 # Validate the shared executor result before method-specific adapters translate
 # its state and corrections back to their existing result contracts.
+# epwphys__result_error {{{
 epwphys__result_error <- function(self) {
     if (!is.data.frame(self@weather) || !nrow(self@weather)) {
         return("`weather` must be a non-empty weather data frame.")
@@ -266,18 +301,22 @@ epwphys__result_error <- function(self) {
     }
     for (property in c("state", "corrections", "provenance")) {
         value <- S7::prop(self, property)
-        if (length(value) &&
-            (is.null(names(value)) ||
-                any(!nzchar(names(value))) ||
-                anyDuplicated(names(value)))) {
+        if (
+            length(value) &&
+                (is.null(names(value)) ||
+                    any(!nzchar(names(value))) ||
+                    anyDuplicated(names(value)))
+        ) {
             return(sprintf("`%s` must be a uniquely named list.", property))
         }
     }
     NULL
 }
+# }}}
 
 # EpwPhysicalResult retains the complete weather state together with generic
 # derived quantities and correction counts used by existing diagnostics.
+# EpwPhysicalResult {{{
 EpwPhysicalResult <- S7::new_class(
     "EpwPhysicalResult",
     properties = list(
@@ -289,8 +328,10 @@ EpwPhysicalResult <- S7::new_class(
     ),
     validator = epwphys__result_error
 )
+# }}}
 
 # Construct one immutable policy from the package-owned behavioral catalog.
+# epwphys__policy {{{
 epwphys__policy <- function(name) {
     checkmate::assert_choice(name, names(EPW_PHYS_POLICY_SPECS))
     spec <- EPW_PHYS_POLICY_SPECS[[name]]
@@ -304,24 +345,29 @@ epwphys__policy <- function(name) {
         diagnose_inconsistency = spec$diagnose_inconsistency
     )
 }
+# }}}
 
 # Resolve a registered recipe through its explicit execution-policy mapping
 # while leaving unregistered custom backends responsible for their own physical
 # contract.
+# epwphys__recipe_policy {{{
 epwphys__recipe_policy <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
     spec <- morpher__recipe_spec(recipe)
     if (is.null(spec)) {
-        if (recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
-            return(epwphys__policy(if (
-                identical(recipe$profile, "enhanced")
-            ) {
-                "monthly_harmonized"
-            } else {
-                "legacy_independent_fields"
-            }))
+        if (
+            recipe$backend %in%
+                c("original_morphing", "original_morphing_absolute")
+        ) {
+            return(epwphys__policy(
+                if (identical(recipe$profile, "enhanced")) {
+                    "monthly_harmonized"
+                } else {
+                    "legacy_independent_fields"
+                }
+            ))
         }
         return(NULL)
     }
@@ -333,21 +379,25 @@ epwphys__recipe_policy <- function(recipe) {
     }
     epwphys__policy(name)
 }
+# }}}
 
 # Evaluate the ASHRAE saturation-vapour-pressure correlation in logarithmic
 # form. Separate ice and liquid-water coefficients meet at the triple point.
+# epwphys__psychro_ln_pws {{{
 epwphys__psychro_ln_pws <- function(t_c) {
     t_k <- as.numeric(t_c) + 273.15
     ice <- t_k <= 273.16
     out <- numeric(length(t_k))
-    out[ice] <- -5.6745359e3 / t_k[ice] +
+    out[ice] <- -5.6745359e3 /
+        t_k[ice] +
         6.3925247 -
         9.677843e-3 * t_k[ice] +
         6.2215701e-7 * t_k[ice]^2 +
         2.0747825e-9 * t_k[ice]^3 -
         9.484024e-13 * t_k[ice]^4 +
         4.1635019 * log(t_k[ice])
-    out[!ice] <- -5.8002206e3 / t_k[!ice] +
+    out[!ice] <- -5.8002206e3 /
+        t_k[!ice] +
         1.3914993 -
         4.8640239e-2 * t_k[!ice] +
         4.1764768e-5 * t_k[!ice]^2 -
@@ -355,29 +405,35 @@ epwphys__psychro_ln_pws <- function(t_c) {
         6.5459673 * log(t_k[!ice])
     out
 }
+# }}}
 
 # Differentiate the ASHRAE saturation-pressure equation for the vectorised
 # Newton iteration used by the dew-point inverse.
+# epwphys__psychro_d_ln_pws {{{
 epwphys__psychro_d_ln_pws <- function(t_c) {
     t_k <- as.numeric(t_c) + 273.15
     ice <- t_k <= 273.16
     out <- numeric(length(t_k))
-    out[ice] <- 5.6745359e3 / t_k[ice]^2 -
+    out[ice] <- 5.6745359e3 /
+        t_k[ice]^2 -
         9.677843e-3 +
         2 * 6.2215701e-7 * t_k[ice] +
         3 * 2.0747825e-9 * t_k[ice]^2 -
         4 * 9.484024e-13 * t_k[ice]^3 +
         4.1635019 / t_k[ice]
-    out[!ice] <- 5.8002206e3 / t_k[!ice]^2 -
+    out[!ice] <- 5.8002206e3 /
+        t_k[!ice]^2 -
         4.8640239e-2 +
         2 * 4.1764768e-5 * t_k[!ice] -
         3 * 1.4452093e-8 * t_k[!ice]^2 +
         6.5459673 / t_k[!ice]
     out
 }
+# }}}
 
 # Derive relative humidity from specific humidity, air temperature in kelvin,
 # and station pressure through the exact moist-air vapour-pressure relation.
+# epwphys__hurs_from_huss_si {{{
 epwphys__hurs_from_huss_si <- function(huss, tas, ps) {
     huss <- as.numeric(huss)
     tas <- as.numeric(tas)
@@ -403,9 +459,11 @@ epwphys__hurs_from_huss_si <- function(huss, tas, ps) {
     saturation_pressure <- exp(epwphys__psychro_ln_pws(tas - 273.15))
     100 * vapour_pressure / saturation_pressure
 }
+# }}}
 
 # Convert dry-bulb temperature, relative humidity, and station pressure to
 # specific humidity using the same exact moist-air relation.
+# epwphys__huss_from_rh_si {{{
 epwphys__huss_from_rh_si <- function(t_c, rh, ps) {
     t_c <- as.numeric(t_c)
     rh <- pmin(100, pmax(0, as.numeric(rh))) / 100
@@ -415,9 +473,11 @@ epwphys__huss_from_rh_si <- function(t_c, rh, ps) {
     epsilon <- 0.621945
     epsilon * vapour_pressure / (ps - (1 - epsilon) * vapour_pressure)
 }
+# }}}
 
 # Evaluate saturation specific humidity at the projected temperature and
 # station pressure so harmonized policies can cap supersaturated targets.
+# epwphys__saturation_huss_si {{{
 epwphys__saturation_huss_si <- function(t_c, ps) {
     t_c <- as.numeric(t_c)
     ps <- as.numeric(ps)
@@ -426,12 +486,13 @@ epwphys__saturation_huss_si <- function(t_c, ps) {
         exp(epwphys__psychro_ln_pws(t_c))
     )
     epsilon <- 0.621945
-    epsilon * saturation_pressure /
-        (ps - (1 - epsilon) * saturation_pressure)
+    epsilon * saturation_pressure / (ps - (1 - epsilon) * saturation_pressure)
 }
+# }}}
 
 # Solve vapour pressure = RH * saturation pressure for dew point using a
 # bounded Newton iteration over the ASHRAE correlation validity range.
+# epwphys__dew_point_from_rh {{{
 epwphys__dew_point_from_rh <- function(t_c, rh) {
     t_c <- as.numeric(t_c)
     rh <- pmin(1, pmax(as.numeric(rh), .Machine$double.eps))
@@ -449,13 +510,17 @@ epwphys__dew_point_from_rh <- function(t_c, rh) {
     }
     dew
 }
+# }}}
 
 # Clip a finite vector with the package-wide EPW field specification and
 # report how many values changed under the selected policy.
+# epwphys__bound_field {{{
 epwphys__bound_field <- function(value, field, upper = NULL) {
     spec <- EPW_FILE_FIELD_SPECS[[field]]
     if (is.null(spec)) {
-        cli::cli_abort("EPW field {.val {field}} has no physical specification.")
+        cli::cli_abort(
+            "EPW field {.val {field}} has no physical specification."
+        )
     }
     lower <- spec$minimum
     if (is.null(upper)) {
@@ -471,10 +536,12 @@ epwphys__bound_field <- function(value, field, upper = NULL) {
         ))
     )
 }
+# }}}
 
 # Preserve the baseline opaque-to-total cloud fraction after a method changes
 # total sky cover. The half-cover fallback retains established Belcher behavior
 # for a baseline row whose total cover is zero.
+# epwphys__opaque_sky_cover {{{
 epwphys__opaque_sky_cover <- function(
     total,
     baseline_total,
@@ -493,11 +560,16 @@ epwphys__opaque_sky_cover <- function(
     )
     checkmate::assert_flag(integer)
     lengths <- c(length(total), length(baseline_total), length(baseline_opaque))
-    if (length(unique(lengths)) != 1L || any(!is.finite(c(
-        total,
-        baseline_total,
-        baseline_opaque
-    )))) {
+    if (
+        length(unique(lengths)) != 1L ||
+            any(
+                !is.finite(c(
+                    total,
+                    baseline_total,
+                    baseline_opaque
+                ))
+            )
+    ) {
         cli::cli_abort(
             "Total and opaque sky-cover vectors must have matching finite values."
         )
@@ -514,9 +586,11 @@ epwphys__opaque_sky_cover <- function(
     }
     opaque
 }
+# }}}
 
 # Close a method-defined specific-humidity target and retain the unclipped,
 # saturation, closed, RH, dew-point, and status states for method diagnostics.
+# epwphys__close_specific_humidity {{{
 epwphys__close_specific_humidity <- function(
     temperature,
     pressure,
@@ -527,17 +601,21 @@ epwphys__close_specific_humidity <- function(
     temperature <- as.numeric(temperature)
     pressure <- as.numeric(pressure)
     target <- as.numeric(target_specific_humidity)
-    if (length(unique(c(
-        length(temperature),
-        length(pressure),
-        length(target)
-    ))) != 1L) {
+    if (
+        length(unique(c(
+            length(temperature),
+            length(pressure),
+            length(target)
+        ))) !=
+            1L
+    ) {
         cli::cli_abort(
             "Temperature, pressure, and target specific humidity must have equal lengths."
         )
     }
     valid <- is.finite(temperature) &
-        is.finite(pressure) & pressure > 0 &
+        is.finite(pressure) &
+        pressure > 0 &
         is.finite(target)
     saturation <- rep.int(NA_real_, length(target))
     specific <- rep.int(NA_real_, length(target))
@@ -592,9 +670,11 @@ epwphys__close_specific_humidity <- function(
         dew_point_clipped = dew_clipped
     )
 }
+# }}}
 
 # Preserve baseline specific humidity across a projected temperature/pressure
 # state, leaving invalid baseline rows unchanged for legacy EPW compatibility.
+# epwphys__preserve_specific_humidity {{{
 epwphys__preserve_specific_humidity <- function(template, weather) {
     required <- c(
         "dry_bulb_temperature",
@@ -614,10 +694,14 @@ epwphys__preserve_specific_humidity <- function(template, weather) {
     temperature <- as.numeric(weather[["dry_bulb_temperature"]])
     pressure <- as.numeric(weather[["atmospheric_pressure"]])
     valid <- is.finite(baseline_temperature) &
-        is.finite(baseline_rh) & baseline_rh >= 0 & baseline_rh <= 100 &
-        is.finite(baseline_pressure) & baseline_pressure > 0 &
+        is.finite(baseline_rh) &
+        baseline_rh >= 0 &
+        baseline_rh <= 100 &
+        is.finite(baseline_pressure) &
+        baseline_pressure > 0 &
         is.finite(temperature) &
-        is.finite(pressure) & pressure > 0
+        is.finite(pressure) &
+        pressure > 0
     baseline_huss <- rep.int(NA_real_, nrow(template))
     baseline_huss[valid] <- epwphys__huss_from_rh_si(
         baseline_temperature[valid],
@@ -634,9 +718,11 @@ epwphys__preserve_specific_humidity <- function(template, weather) {
     closed$status[!valid] <- "missing_baseline_state"
     closed
 }
+# }}}
 
 # Close a relative-humidity target against projected dry-bulb temperature and
 # optionally apply the strict bounds used by absolute model fields.
+# epwphys__close_relative_humidity {{{
 epwphys__close_relative_humidity <- function(
     temperature,
     relative_humidity,
@@ -675,9 +761,11 @@ epwphys__close_relative_humidity <- function(
         ))
     )
 }
+# }}}
 
 # Enforce the EPW shortwave identity jointly. Optional night-time zeroing is
 # selected by policy because legacy Belcher behavior must remain reproducible.
+# epwphys__close_shortwave {{{
 epwphys__close_shortwave <- function(
     global_horizontal,
     diffuse_horizontal,
@@ -722,16 +810,17 @@ epwphys__close_shortwave <- function(
         beam_horizontal / projection
     )
     direct <- pmin(ext_direct, pmax(0, direct))
-    closure_error <- global - (
-        closed_diffuse + direct * pmax(projection, 0)
-    )
+    closure_error <- global - (closed_diffuse + direct * pmax(projection, 0))
     list(
         ghi = global,
         dhi = closed_diffuse,
         dni = direct,
         night_values_zeroed = night_changed,
         negative_global_clipped = as.integer(sum(global_raw < 0, na.rm = TRUE)),
-        negative_diffuse_clipped = as.integer(sum(diffuse_raw < 0, na.rm = TRUE)),
+        negative_diffuse_clipped = as.integer(sum(
+            diffuse_raw < 0,
+            na.rm = TRUE
+        )),
         diffuse_above_global_clipped = as.integer(sum(
             diffuse_above_global,
             na.rm = TRUE
@@ -743,9 +832,11 @@ epwphys__close_shortwave <- function(
         maximum_closure_error = max(abs(closure_error), na.rm = TRUE)
     )
 }
+# }}}
 
 # Overlay method-provided EPW-native fields while preserving the template's
 # row order, column types, and undeclared weather fields.
+# epwphys__overlay_fields {{{
 epwphys__overlay_fields <- function(template, fields) {
     weather <- data.table::as.data.table(data.table::copy(template))
     for (field in names(fields)) {
@@ -753,10 +844,12 @@ epwphys__overlay_fields <- function(template, fields) {
     }
     weather
 }
+# }}}
 
 # Identify row-level humidity and pressure inconsistencies without correcting a
 # paper-faithful result. Retaining the masks lets method adapters combine the
 # shared checks with method-specific diagnostics without repeating equations.
+# epwphys__inconsistency_state {{{
 epwphys__inconsistency_state <- function(weather) {
     rows <- nrow(weather)
     required <- c(
@@ -785,21 +878,28 @@ epwphys__inconsistency_state <- function(weather) {
         thermodynamic = humidity | pressure
     )
 }
+# }}}
 
 # Count humidity inconsistencies through the shared row-level diagnostic so
 # existing callers retain the established scalar correction contract.
+# epwphys__humidity_inconsistent {{{
 epwphys__humidity_inconsistent <- function(weather) {
     state <- epwphys__inconsistency_state(weather)
     as.integer(sum(state$humidity))
 }
+# }}}
 
 # Convert eastward and northward wind components to scalar speed and the
 # meteorological direction from which the wind originates.
+# epwphys__wind_from_components {{{
 epwphys__wind_from_components <- function(eastward, northward) {
     eastward <- as.numeric(eastward)
     northward <- as.numeric(northward)
-    if (length(eastward) != length(northward) ||
-        any(!is.finite(eastward)) || any(!is.finite(northward))) {
+    if (
+        length(eastward) != length(northward) ||
+            any(!is.finite(eastward)) ||
+            any(!is.finite(northward))
+    ) {
         cli::cli_abort(
             "Wind components must contain matching finite numeric values."
         )
@@ -811,9 +911,11 @@ epwphys__wind_from_components <- function(eastward, northward) {
     direction[speed <= sqrt(.Machine$double.eps)] <- 0
     list(speed = speed, direction = direction)
 }
+# }}}
 
 # Apply one temperature-only candidate through the shared physical boundary.
 # Method adapters retain policy selection and all method-specific diagnostics.
+# epwphys__apply_temperature {{{
 epwphys__apply_temperature <- function(
     template,
     temperature,
@@ -830,9 +932,11 @@ epwphys__apply_temperature <- function(
         policy
     )
 }
+# }}}
 
 # Apply one validated policy to a method-neutral request. Method adapters own
 # statistical transforms; this executor owns only EPW physical interpretation.
+# epwphys__apply {{{
 epwphys__apply <- function(request, policy) {
     if (!S7::S7_inherits(request, EpwPhysicalRequest)) {
         cli::cli_abort("`request` must be an EpwPhysicalRequest object.")
@@ -871,8 +975,7 @@ epwphys__apply <- function(request, policy) {
             field,
             dry_bulb_temperature = "temperature_clipped",
             atmospheric_pressure = "pressure_clipped",
-            horizontal_infrared_radiation_intensity_from_sky =
-                "infrared_negative_clipped",
+            horizontal_infrared_radiation_intensity_from_sky = "infrared_negative_clipped",
             total_sky_cover = "total_sky_cover_clipped",
             opaque_sky_cover = "opaque_sky_cover_clipped",
             NULL
@@ -881,8 +984,12 @@ epwphys__apply <- function(request, policy) {
             corrections[[correction]] <- bounded$clipped
         }
     }
-    if (all(c("total_sky_cover", "opaque_sky_cover") %in%
-        names(request@fields))) {
+    if (
+        all(
+            c("total_sky_cover", "opaque_sky_cover") %in%
+                names(request@fields)
+        )
+    ) {
         opaque_raw <- weather[["opaque_sky_cover"]]
         opaque <- pmin(weather[["total_sky_cover"]], opaque_raw)
         corrections$opaque_sky_cover_clipped <-
@@ -926,8 +1033,10 @@ epwphys__apply <- function(request, policy) {
             weather[["atmospheric_pressure"]],
             target
         )
-        if (identical(policy@missing_action, "error") &&
-            any(humidity$status == "missing")) {
+        if (
+            identical(policy@missing_action, "error") &&
+                any(humidity$status == "missing")
+        ) {
             cli::cli_abort(
                 "Specific-humidity closure requires finite temperature, pressure, and target values."
             )
@@ -1049,10 +1158,13 @@ epwphys__apply <- function(request, policy) {
     }
 
     if (identical(policy@shortwave, "absolute")) {
-        if (!setequal(
-            names(request@shortwave),
-            c("global_horizontal", "diffuse_horizontal")
-        ) || is.null(request@geometry)) {
+        if (
+            !setequal(
+                names(request@shortwave),
+                c("global_horizontal", "diffuse_horizontal")
+            ) ||
+                is.null(request@geometry)
+        ) {
             cli::cli_abort(
                 "Absolute EPW physics requires GHI, DHI, and solar geometry."
             )
@@ -1110,9 +1222,11 @@ epwphys__apply <- function(request, policy) {
         )
     )
 }
+# }}}
 
 # Apply one physical policy independently to every complete weather case while
 # preserving the original cross-case row order used by Belcher backends.
+# epwphys__apply_groups {{{
 epwphys__apply_groups <- function(
     weather,
     policy,
@@ -1122,7 +1236,11 @@ epwphys__apply_groups <- function(
     weather <- data.table::as.data.table(data.table::copy(weather))
     checkmate::assert_subset(group_columns, names(weather))
     checkmate::assert_count(expected_rows, positive = TRUE, null.ok = TRUE)
-    data.table::set(weather, j = ".epwphys_order", value = seq_len(nrow(weather)))
+    data.table::set(
+        weather,
+        j = ".epwphys_order",
+        value = seq_len(nrow(weather))
+    )
     indices <- if (length(group_columns)) {
         # Use an explicit character-column selection so package checks do not
         # depend on data.table's `..` lookup in this internal adapter.
@@ -1150,15 +1268,21 @@ epwphys__apply_groups <- function(
             policy
         )
     })
-    output <- data.table::rbindlist(lapply(results, function(result) {
-        result@weather
-    }), use.names = TRUE, fill = TRUE)
+    output <- data.table::rbindlist(
+        lapply(results, function(result) {
+            result@weather
+        }),
+        use.names = TRUE,
+        fill = TRUE
+    )
     data.table::setorderv(output, ".epwphys_order")
     data.table::set(output, j = ".epwphys_order", value = NULL)
     list(weather = output[], results = results)
 }
+# }}}
 
-# Shared EPW location and interval-solar helpers {{{
+# Shared EPW location and interval-solar helpers
+# morpher__epw_location_numeric {{{
 morpher__epw_location_numeric <- function(epw, names, default = NA_real_) {
     loc <- tryCatch(epw$location(), error = function(e) NULL)
     if (is.null(loc)) {
@@ -1174,9 +1298,16 @@ morpher__epw_location_numeric <- function(epw, names, default = NA_real_) {
     }
     default
 }
+# }}}
 
-solar__epw_interval_geometry <- function(data, latitude, longitude, timezone,
-                                          solar_constant = 1367) {
+# solar__epw_interval_geometry {{{
+solar__epw_interval_geometry <- function(
+    data,
+    latitude,
+    longitude,
+    timezone,
+    solar_constant = 1367
+) {
     n <- nrow(data)
     if (!n) {
         return(data.table::data.table())
@@ -1185,7 +1316,9 @@ solar__epw_interval_geometry <- function(data, latitude, longitude, timezone,
     longitude <- as.numeric(longitude)
     timezone <- as.numeric(timezone)
     if (!is.finite(latitude) || !is.finite(longitude) || !is.finite(timezone)) {
-        cli::cli_abort("EPW LOCATION must provide finite latitude, longitude, and time zone for enhanced solar geometry.")
+        cli::cli_abort(
+            "EPW LOCATION must provide finite latitude, longitude, and time zone for enhanced solar geometry."
+        )
     }
 
     minute_midpoint <- (seq_len(60L) - 0.5) / 60
@@ -1194,7 +1327,9 @@ solar__epw_interval_geometry <- function(data, latitude, longitude, timezone,
     day_of_year <- as.integer(format(
         as.Date(sprintf(
             "%04d-%02d-%02d",
-            as.integer(data$year), as.integer(data$month), as.integer(data$day)
+            as.integer(data$year),
+            as.integer(data$month),
+            as.integer(data$day)
         )),
         "%j"
     ))
@@ -1210,8 +1345,10 @@ solar__epw_interval_geometry <- function(data, latitude, longitude, timezone,
         0.000077 * sin(2 * gamma)
     declination <- solar__spencer_declination(gamma)
     equation_of_time <- solar__spencer_equation_of_time(gamma)
-    apparent_solar_minutes <- clock_hour * 60 +
-        4 * (longitude - 15 * timezone) + equation_of_time
+    apparent_solar_minutes <- clock_hour *
+        60 +
+        4 * (longitude - 15 * timezone) +
+        equation_of_time
     hour_angle <- solar__radians(apparent_solar_minutes / 4 - 180)
     latitude_radian <- solar__radians(latitude)
     cos_zenith <- solar__cos_zenith(
@@ -1224,8 +1361,11 @@ solar__epw_interval_geometry <- function(data, latitude, longitude, timezone,
 
     horizontal <- rowSums(extraterrestrial_direct * pmax(cos_zenith, 0)) / 60
     direct_normal <- rowSums(extraterrestrial_direct * daylight) / 60
-    projection <- ifelse(direct_normal > .Machine$double.eps,
-        horizontal / direct_normal, 0)
+    projection <- ifelse(
+        direct_normal > .Machine$double.eps,
+        horizontal / direct_normal,
+        0
+    )
     apparent_hour <- rowMeans(apparent_solar_minutes) / 60
     apparent_hour <- apparent_hour %% 24
     data.table::data.table(
@@ -1237,17 +1377,20 @@ solar__epw_interval_geometry <- function(data, latitude, longitude, timezone,
         apparent_solar_time = apparent_hour
     )
 }
+# }}}
 
 # Compute relative optical air mass using the Kasten expression used with the
 # Perez daylight parameterization; values at and below the horizon are absent.
+# solar__relative_air_mass {{{
 solar__relative_air_mass <- function(zenith_radian) {
     zenith_degree <- as.numeric(zenith_radian) * 180 / pi
     out <- rep(NA_real_, length(zenith_degree))
     daylight <- is.finite(zenith_degree) & zenith_degree < 90
-    out[daylight] <- 1 / (
-        cos(zenith_radian[daylight]) +
-            0.15 * (93.885 - zenith_degree[daylight])^(-1.253)
-    )
+    out[daylight] <- 1 /
+        (cos(zenith_radian[daylight]) +
+            0.15 * (93.885 - zenith_degree[daylight])^(-1.253))
     out
 }
 # }}}
+
+# vim: fdm=marker :

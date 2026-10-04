@@ -33,10 +33,11 @@ CDFT_PR_SSR_THRESHOLD <- 1e-8
 # profiles. Their Africa application supplies the 17-year fitting window and
 # central 9-year output block; edge truncation is an epwshiftr policy because
 # that application does not specify how to handle missing boundary flanks.
+# cdft__default_settings {{{
 cdft__default_settings <- function(
-  bounds,
-  distribution_model = c("continuous", "precipitation_ssr"),
-  ssr_threshold = 0
+    bounds,
+    distribution_model = c("continuous", "precipitation_ssr"),
+    ssr_threshold = 0
 ) {
     distribution_model <- match.arg(distribution_model)
     list(
@@ -58,9 +59,11 @@ cdft__default_settings <- function(
         random_seed = 1L
     )
 }
+# }}}
 
 # Build only literature-supported variable profiles; unlike more generic
 # quantile methods, no unvalidated variable alternatives are added here.
+# cdft__profiles {{{
 cdft__profiles <- function() {
     settings <- list(
         pr = cdft__default_settings(
@@ -83,8 +86,7 @@ cdft__profiles <- function() {
             metadata = list(
                 method = "cdf_transform",
                 output_role = "model_future",
-                method_settings_source =
-                    "method_literature_and_author_implementation",
+                method_settings_source = "method_literature_and_author_implementation",
                 temporal_window_source = "famien_2018_application",
                 temporal_window_reference = CDFT_FAMIEN_REFERENCE,
                 edge_policy_source = "epwshiftr_implementation"
@@ -92,9 +94,11 @@ cdft__profiles <- function() {
         )
     })
 }
+# }}}
 
 # Validate every CDF-t numerical convention at the signal-kernel boundary so
 # user overrides cannot silently select an unimplemented empirical variant.
+# cdft__settings {{{
 cdft__settings <- function(settings) {
     expected <- c(
         "range_alignment",
@@ -115,13 +119,15 @@ cdft__settings <- function(settings) {
         "random_seed"
     )
     resolved <- signal__resolve_settings(settings, expected, "CDF-t")
-    if (!identical(resolved$range_alignment, "additive_mean") ||
-        !identical(resolved$seasonal_grouping, "calendar_month") ||
-        !identical(resolved$edge_policy, "truncate") ||
-        !identical(resolved$cdf_method, "empirical_step") ||
-        !identical(resolved$inverse_cdf_method, "linear_type_7") ||
-        !identical(resolved$tie_method, "left_endpoint") ||
-        !identical(resolved$tail_policy, "constant_correction")) {
+    if (
+        !identical(resolved$range_alignment, "additive_mean") ||
+            !identical(resolved$seasonal_grouping, "calendar_month") ||
+            !identical(resolved$edge_policy, "truncate") ||
+            !identical(resolved$cdf_method, "empirical_step") ||
+            !identical(resolved$inverse_cdf_method, "linear_type_7") ||
+            !identical(resolved$tie_method, "left_endpoint") ||
+            !identical(resolved$tail_policy, "constant_correction")
+    ) {
         cli::cli_abort(
             "CDF-t currently requires additive-mean range alignment, native calendar-month grouping, truncated edge windows, empirical step CDFs, type-7 inverse quantiles, left-endpoint target inversion, and constant-correction tails."
         )
@@ -136,9 +142,13 @@ cdft__settings <- function(settings) {
         "output_block_years",
         lower = 1L
     )
-    if (resolved$output_block_years > resolved$future_window_years ||
-        (resolved$future_window_years -
-            resolved$output_block_years) %% 2L != 0L) {
+    if (
+        resolved$output_block_years > resolved$future_window_years ||
+            (resolved$future_window_years -
+                resolved$output_block_years) %%
+                2L !=
+                0L
+    ) {
         cli::cli_abort(
             "`future_window_years` must exceed `output_block_years` by an even, non-negative number of years."
         )
@@ -174,14 +184,18 @@ cdft__settings <- function(settings) {
         lower = 0,
         finite = TRUE
     )
-    if (identical(resolved$distribution_model, "precipitation_ssr") &&
-        resolved$ssr_threshold <= 0) {
+    if (
+        identical(resolved$distribution_model, "precipitation_ssr") &&
+            resolved$ssr_threshold <= 0
+    ) {
         cli::cli_abort(
             "Precipitation CDF-t requires a positive `ssr_threshold`."
         )
     }
-    if (identical(resolved$distribution_model, "continuous") &&
-        resolved$ssr_threshold != 0) {
+    if (
+        identical(resolved$distribution_model, "continuous") &&
+            resolved$ssr_threshold != 0
+    ) {
         cli::cli_abort(
             "Continuous CDF-t requires `ssr_threshold = 0`."
         )
@@ -189,9 +203,11 @@ cdft__settings <- function(settings) {
     resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
 }
+# }}}
 
 # Validate the three role-addressable daily inputs while retaining every
 # source's native CF calendar and future-model row order.
+# cdft__inputs {{{
 cdft__inputs <- function(inputs, variable, distribution_model) {
     roles <- c(
         "observed_reference",
@@ -230,22 +246,26 @@ cdft__inputs <- function(inputs, variable, distribution_model) {
             "CDF-t inputs for {.val {variable}} must use identical units."
         )
     }
-    if (identical(distribution_model, "precipitation_ssr") &&
-        any(vapply(
-            series,
-            function(data) any(data[["value"]] < 0),
-            logical(1L)
-        ))) {
+    if (
+        identical(distribution_model, "precipitation_ssr") &&
+            any(vapply(
+                series,
+                function(data) any(data[["value"]] < 0),
+                logical(1L)
+            ))
+    ) {
         cli::cli_abort(
             "Precipitation CDF-t requires non-negative input values."
         )
     }
     series
 }
+# }}}
 
 # Partition future years into disjoint output blocks and symmetric fitting
 # windows. The Famien et al. defaults use 17/9 years; epwshiftr truncates a
 # missing four-year flank when the requested series starts or ends too soon.
+# cdft__future_blocks {{{
 cdft__future_blocks <- function(
     year,
     future_window_years,
@@ -258,8 +278,10 @@ cdft__future_blocks <- function(
         "CDF-t"
     )
 }
+# }}}
 
 # Evaluate the empirical step CDF used by the method authors' implementation.
+# cdft__empirical_cdf {{{
 cdft__empirical_cdf <- function(sample, values) {
     checkmate::assert_numeric(
         sample,
@@ -274,16 +296,18 @@ cdft__empirical_cdf <- function(sample, values) {
     )
     as.numeric(stats::ecdf(sample)(values))
 }
+# }}}
 
 # Extend the lower and upper plateaus of the transformed future CDF by the
 # constant-correction construction in Michelangeli et al. and the authors' R
 # implementation. The reference CDF supplies the added tail shape.
+# cdft__extend_target_tails {{{
 cdft__extend_target_tails <- function(
-  grid,
-  probability,
-  observed_probability,
-  observed,
-  future
+    grid,
+    probability,
+    observed_probability,
+    observed,
+    future
 ) {
     extended <- probability
     lower_points <- 0L
@@ -351,16 +375,18 @@ cdft__extend_target_tails <- function(
         monotonicity_repairs = sum(monotone != extended)
     )
 }
+# }}}
 
 # Estimate F_Sf(x) = F_Sh(F_Gh^-1(F_Gf(x))) on the explicit empirical grid.
 # Model historical and future values receive the same observed-minus-historical
 # mean shift before the CDFs are fitted, matching the authors' maintained code.
+# cdft__target_cdf {{{
 cdft__target_cdf <- function(
-  observed,
-  historical,
-  future,
-  target_grid_points,
-  tail_development_factor
+    observed,
+    historical,
+    future,
+    target_grid_points,
+    tail_development_factor
 ) {
     checkmate::assert_numeric(
         observed,
@@ -442,9 +468,11 @@ cdft__target_cdf <- function(
         )
     )
 }
+# }}}
 
 # Generate the corrected future sequence by quantile matching F_Gf to the
 # transformed target CDF. The future input order is retained unchanged.
+# cdft__map_window {{{
 cdft__map_window <- function(observed, historical, future, resolved) {
     target <- cdft__target_cdf(
         observed,
@@ -478,14 +506,18 @@ cdft__map_window <- function(observed, historical, future, resolved) {
         )
     )
 }
+# }}}
 
 # Replace sub-threshold precipitation singularities once per source role using
 # a reproducible method-local generator, leaving R's global RNG untouched.
+# cdft__prepared_values {{{
 cdft__prepared_values <- function(series, resolved, key, variable) {
-    if (!identical(
-        resolved$distribution_model,
-        "precipitation_ssr"
-    )) {
+    if (
+        !identical(
+            resolved$distribution_model,
+            "precipitation_ssr"
+        )
+    ) {
         return(list(
             values = lapply(series, `[[`, "value"),
             precipitation = NULL
@@ -511,17 +543,19 @@ cdft__prepared_values <- function(series, resolved, key, variable) {
         )
     )
 }
+# }}}
 
 # Record one month/block fit without retaining full empirical arrays in result
 # provenance.
+# cdft__window_record {{{
 cdft__window_record <- function(
-  month,
-  block,
-  observed_samples,
-  historical_samples,
-  future_samples,
-  output_values,
-  diagnostics
+    month,
+    block,
+    observed_samples,
+    historical_samples,
+    future_samples,
+    output_values,
+    diagnostics
 ) {
     c(
         list(
@@ -542,10 +576,12 @@ cdft__window_record <- function(
         diagnostics
     )
 }
+# }}}
 
 # Apply native-calendar monthly CDF-t fits on the configured temporal policy.
 # The defaults reproduce the Famien et al. 17/9-year application schedule, and
 # each row is written once even though adjacent fitting windows overlap.
+# cdft__adjust_values {{{
 cdft__adjust_values <- function(series, resolved, key, variable) {
     observed <- series$observed_reference
     historical <- series$model_historical
@@ -600,8 +636,7 @@ cdft__adjust_values <- function(series, resolved, key, variable) {
                 resolved
             )
             if (!is.null(prepared$precipitation)) {
-                recensored <- transformed$value <
-                    resolved$ssr_threshold
+                recensored <- transformed$value < resolved$ssr_threshold
                 transformed$value[recensored] <- 0
                 transformed$diagnostics$output_recensored_values <-
                     sum(recensored)
@@ -687,9 +722,11 @@ cdft__adjust_values <- function(series, resolved, key, variable) {
     }
     list(value = bounded, diagnostics = diagnostics)
 }
+# }}}
 
 # Execute CDF-t for one aligned univariate signal group and return the common
 # future-backbone DailyAdjustedSeries contract.
+# cdft__apply_group {{{
 cdft__apply_group <- function(inputs, settings, key) {
     resolved <- cdft__settings(settings)
     variable <- names(settings)[[1L]]
@@ -745,9 +782,11 @@ cdft__apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Return one explicit diagnostic string when CDF-t violates the package-native
 # future-model output contract.
+# cdft__validate_result {{{
 cdft__validate_result <- function(value, inputs, key) {
     signal__validate_adjusted_result(
         value,
@@ -757,9 +796,11 @@ cdft__validate_result <- function(value, inputs, key) {
         "CDF-t"
     )
 }
+# }}}
 
 # Construct the reusable daily CDF-t signal with the six variables used by
 # Famien et al. and the package-native three-role contract.
+# cdft__component {{{
 cdft__component <- function() {
     alternatives <- as.list(CDFT_FAMIEN_VARIABLES)
     requirements <- signal__three_role_requirements(
@@ -805,9 +846,14 @@ cdft__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the native CDF-t component during package load.
+# cdft__register_component {{{
 cdft__register_component <- function() {
     component__register_builtin(cdft__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker :

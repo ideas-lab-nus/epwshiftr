@@ -87,8 +87,12 @@ test_that("ERA6 is explicit and never falls back to ERA5", {
 })
 
 test_that("ERA5 access and requests reflect variable and time-zone needs", {
-    site <- shift_site(id = "SFO", lon = -122.375, lat = 37.619,
-        epw = get_cache_epw())
+    site <- shift_site(
+        id = "SFO",
+        lon = -122.375,
+        lat = 37.619,
+        epw = get_cache_epw()
+    )
     source <- shift_era5(1995:2014)
 
     expect_identical(
@@ -116,8 +120,10 @@ test_that("ERA5 access and requests reflect variable and time-zone needs", {
     cds <- era5__request(source, "tas", site, "cds")
     expect_identical(cds$variable, "2m_temperature")
     expect_identical(attr(cds, "requested_years"), 1994:2015)
-    expect_true(all(c("area", "year", "month", "day", "time") %in%
-        names(cds)))
+    expect_true(all(
+        c("area", "year", "month", "day", "time") %in%
+            names(cds)
+    ))
 })
 
 test_that("ERA5 rejects unknown provider options", {
@@ -142,3 +148,5 @@ test_that("ERA5 variables are constrained by product semantics", {
     expect_identical(era5__resolve_access(land, "snd"), "arco")
     expect_identical(era5__resolve_access(land, "rlds"), "cds")
 })
+
+# vim: fdm=marker :

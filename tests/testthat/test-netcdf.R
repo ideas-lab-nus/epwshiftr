@@ -1,3 +1,4 @@
+# local_nc_time_file {{{
 local_nc_time_file <- function(time_vals, units, calendar = "standard") {
     path <- tempfile(fileext = ".nc")
     nc <- RNetCDF::create.nc(path)
@@ -12,9 +13,14 @@ local_nc_time_file <- function(time_vals, units, calendar = "standard") {
 
     path
 }
+# }}}
 
 test_that("parse_cf_time() returns UTC POSIXct with CF metadata", {
-    time <- parse_cf_time(c(0, 1.5), "days since 2000-01-01 00:00:00", "standard")
+    time <- parse_cf_time(
+        c(0, 1.5),
+        "days since 2000-01-01 00:00:00",
+        "standard"
+    )
 
     expect_s3_class(time, "POSIXct")
     expect_equal(as.numeric(time), c(946684800, 946814400))
@@ -38,10 +44,18 @@ test_that("parse_cf_time() returns POSIXct for common CF calendars", {
 
         expect_true(inherits(time, "POSIXct"), info = calendar)
         expect_identical(attr(time, "tzone"), "UTC", info = calendar)
-        expect_identical(attr(time, "cf_units"), "days since 2000-01-01 00:00:00", info = calendar)
+        expect_identical(
+            attr(time, "cf_units"),
+            "days since 2000-01-01 00:00:00",
+            info = calendar
+        )
         expect_identical(attr(time, "cf_calendar"), calendar, info = calendar)
         expect_equal(length(time), 5L, info = calendar)
-        expect_equal(unname(diff(as.numeric(time))), rep(86400, 4L), info = calendar)
+        expect_equal(
+            unname(diff(as.numeric(time))),
+            rep(86400, 4L),
+            info = calendar
+        )
     }
 })
 
@@ -51,7 +65,18 @@ test_that("parse_cf_time() preserves fixed-calendar boundaries and aliases", {
             calendars = c("365_day", "noleap"),
             year_days = 365L,
             offsets = c(-366L, -365L, -1L, 0L, 30L, 31L, 58L, 59L, 364L, 365L),
-            year = c(1999L, 2000L, 2000L, 2001L, 2001L, 2001L, 2001L, 2001L, 2001L, 2002L),
+            year = c(
+                1999L,
+                2000L,
+                2000L,
+                2001L,
+                2001L,
+                2001L,
+                2001L,
+                2001L,
+                2001L,
+                2002L
+            ),
             month = c(12L, 1L, 12L, 1L, 1L, 2L, 2L, 3L, 12L, 1L),
             day = c(31L, 1L, 31L, 1L, 31L, 1L, 28L, 1L, 31L, 1L),
             day_of_year = c(365L, 1L, 365L, 1L, 31L, 32L, 59L, 60L, 365L, 1L)
@@ -59,11 +84,47 @@ test_that("parse_cf_time() preserves fixed-calendar boundaries and aliases", {
         list(
             calendars = c("366_day", "all_leap"),
             year_days = 366L,
-            offsets = c(-367L, -366L, -1L, 0L, 30L, 31L, 58L, 59L, 60L, 365L, 366L),
-            year = c(1999L, 2000L, 2000L, 2001L, 2001L, 2001L, 2001L, 2001L, 2001L, 2001L, 2002L),
+            offsets = c(
+                -367L,
+                -366L,
+                -1L,
+                0L,
+                30L,
+                31L,
+                58L,
+                59L,
+                60L,
+                365L,
+                366L
+            ),
+            year = c(
+                1999L,
+                2000L,
+                2000L,
+                2001L,
+                2001L,
+                2001L,
+                2001L,
+                2001L,
+                2001L,
+                2001L,
+                2002L
+            ),
             month = c(12L, 1L, 12L, 1L, 1L, 2L, 2L, 2L, 3L, 12L, 1L),
             day = c(31L, 1L, 31L, 1L, 31L, 1L, 28L, 29L, 1L, 31L, 1L),
-            day_of_year = c(366L, 1L, 366L, 1L, 31L, 32L, 59L, 60L, 61L, 366L, 1L)
+            day_of_year = c(
+                366L,
+                1L,
+                366L,
+                1L,
+                31L,
+                32L,
+                59L,
+                60L,
+                61L,
+                366L,
+                1L
+            )
         )
     )
 
@@ -124,7 +185,11 @@ test_that("parse_cf_time() retains calendar-native coordinates and annual phase"
             rep.int(calendar, 3L),
             info = calendar
         )
-        expect_identical(coordinates$cf_year, c(2000L, 2000L, 2001L), info = calendar)
+        expect_identical(
+            coordinates$cf_year,
+            c(2000L, 2000L, 2001L),
+            info = calendar
+        )
         expect_identical(coordinates$cf_month, c(1L, 12L, 1L), info = calendar)
         expect_identical(
             coordinates$cf_day,
@@ -154,20 +219,42 @@ test_that("parse_cf_time() retains calendar-native coordinates and annual phase"
 test_that("parse_cf_time() preserves native clock seconds across calendar boundaries", {
     for (calendar in CF_TIME_CALENDARS) {
         year_seconds <- cf_time__year_days(2000L, calendar) * 86400
-        offsets <- c(-0.25, 0, 0.125, 3661.25, 86399.75, 86400,
-            year_seconds - 0.25, year_seconds + 3661.25)
-        time <- parse_cf_time(offsets, "seconds since 2000-01-01 00:00:00", calendar)
+        offsets <- c(
+            -0.25,
+            0,
+            0.125,
+            3661.25,
+            86399.75,
+            86400,
+            year_seconds - 0.25,
+            year_seconds + 3661.25
+        )
+        time <- parse_cf_time(
+            offsets,
+            "seconds since 2000-01-01 00:00:00",
+            calendar
+        )
         coordinates <- attr(time, "cf_coordinates", exact = TRUE)
 
         # Expected native clock values are independent of surrogate POSIX dates.
-        expect_identical(coordinates$cf_second_of_day,
+        expect_identical(
+            coordinates$cf_second_of_day,
             c(86399.75, 0, 0.125, 3661.25, 86399.75, 0, 86399.75, 3661.25),
-            info = calendar)
-        expect_identical(coordinates$cf_year,
-            c(1999L, rep.int(2000L, 6L), 2001L), info = calendar)
-        expect_equal(coordinates$annual_phase,
-            (coordinates$cf_day_of_year - 1 + coordinates$cf_second_of_day / 86400) /
-                coordinates$cf_year_days, info = calendar)
+            info = calendar
+        )
+        expect_identical(
+            coordinates$cf_year,
+            c(1999L, rep.int(2000L, 6L), 2001L),
+            info = calendar
+        )
+        expect_equal(
+            coordinates$annual_phase,
+            (coordinates$cf_day_of_year -
+                1 +
+                coordinates$cf_second_of_day / 86400) /
+                coordinates$cf_year_days,
+            info = calendar
+        )
     }
 })
 
@@ -179,7 +266,10 @@ test_that("get_nc_time() and EsgDataset$get_time_axis() share CF time parsing", 
     )
     on.exit(unlink(path), add = TRUE)
 
-    expected <- as.POSIXct(c("2000-01-01 00:00:00", "2000-01-02 12:00:00"), tz = "UTC")
+    expected <- as.POSIXct(
+        c("2000-01-01 00:00:00", "2000-01-02 12:00:00"),
+        tz = "UTC"
+    )
 
     time <- get_nc_time(path)
     expect_s3_class(time, "POSIXct")
@@ -268,11 +358,24 @@ test_that("get_nc_meta()", {
 
     if (file.exists(path)) {
         expect_type(meta <- get_nc_meta(path), "list")
-        expect_named(meta,
-            c("mip_era", "activity_id", "institution_id", "source_id",
-              "experiment_id", "variant_label", "table_id", "grid_label",
-              "nominal_resolution", "variable_id", "tracking_id",
-              "standard_name", "units", "time_units", "time_calendar"
+        expect_named(
+            meta,
+            c(
+                "mip_era",
+                "activity_id",
+                "institution_id",
+                "source_id",
+                "experiment_id",
+                "variant_label",
+                "table_id",
+                "grid_label",
+                "nominal_resolution",
+                "variable_id",
+                "tracking_id",
+                "standard_name",
+                "units",
+                "time_units",
+                "time_calendar"
             )
         )
 
@@ -292,7 +395,10 @@ test_that("get_nc_atts()", {
     if (file.exists(path)) {
         expect_s3_class(atts <- get_nc_atts(path), "data.table")
         expect_named(atts, c("id", "variable", "attribute", "value"))
-        expect_true(all(unique(atts$variable) %in% c("height", "lat", "lon", "NC_GLOBAL", "tas", "time")))
+        expect_true(all(
+            unique(atts$variable) %in%
+                c("height", "lat", "lon", "NC_GLOBAL", "tas", "time")
+        ))
         expect_identical(atts[variable == "NC_GLOBAL", unique(id)], -1L)
 
         con <- RNetCDF::open.nc(path)
@@ -411,7 +517,10 @@ test_that("get_nc_time()", {
 
         # can stop if invlaid time unit string
         testthat::with_mocked_bindings(
-            expect_error(get_nc_time(path, range = TRUE), "CF-compliant time coordinate"),
+            expect_error(
+                get_nc_time(path, range = TRUE),
+                "CF-compliant time coordinate"
+            ),
             get_nc_atts = function(...) {
                 data.table(
                     variable = c("time", "time"),
@@ -468,3 +577,5 @@ test_that("match_nc_time()", {
         expect_equal(length(matched$which[[3]]), 0L)
     }
 })
+
+# vim: fdm=marker :

@@ -11,6 +11,11 @@ test_that("print.Cmip6CV() / print.Cmip6DReq()", {
     }
 
     expect_snapshot(print.Cmip6CV(dict$get("activity_id")))
-    expect_snapshot(print.Cmip6DReq(dict$get("request"), n = 1L), transform = normalize_dreq_indent)
+    expect_snapshot(
+        print.Cmip6DReq(dict$get("request"), n = 1L),
+        transform = normalize_dreq_indent
+    )
 })
 # }}}
+
+# vim: fdm=marker :

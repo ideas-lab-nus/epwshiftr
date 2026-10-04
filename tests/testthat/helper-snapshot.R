@@ -1,7 +1,14 @@
+# transform_json {{{
 transform_json <- function(lines) {
-    json <- jsonlite::fromJSON(lines, simplifyVector = TRUE, simplifyMatrix = FALSE)
+    json <- jsonlite::fromJSON(
+        lines,
+        simplifyVector = TRUE,
+        simplifyMatrix = FALSE
+    )
 
-    if (!is.null(json$index_node)) json$index_node <- "..."
+    if (!is.null(json$index_node)) {
+        json$index_node <- "..."
+    }
 
     if (!is.null(json$response)) {
         json$response <- transform_json_response(json$response)
@@ -16,13 +23,26 @@ transform_json <- function(lines) {
         }
 
         if (!is.null(json$last_result$response)) {
-            json$last_result$response <- transform_json_response(json$last_result$response)
+            json$last_result$response <- transform_json_response(
+                json$last_result$response
+            )
         }
     }
 
-    strsplit(jsonlite::toJSON(json, null = "null", na = "null", digits = 8, pretty = TRUE), "\n")[[1L]]
+    strsplit(
+        jsonlite::toJSON(
+            json,
+            null = "null",
+            na = "null",
+            digits = 8,
+            pretty = TRUE
+        ),
+        "\n"
+    )[[1L]]
 }
+# }}}
 
+# transform_json_response {{{
 transform_json_response <- function(response) {
     response$responseHeader$QTime <- -1L
     response$responseHeader$params$shards <- "..."
@@ -72,9 +92,14 @@ transform_json_response <- function(response) {
 
     response
 }
+# }}}
 
+# transform_print {{{
 transform_print <- function(lines) {
-    lines[grepl("^\\* Collected at: \\d", lines)] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
+    lines[grepl(
+        "^\\* Collected at: \\d",
+        lines
+    )] <- "* Collected at: yyyy-mm-dd HH:MM:SS"
     lines[grepl("^\\* Total size: [1-9]", lines)] <- "* Total size: XX GB"
 
     # replace date and data node
@@ -82,17 +107,33 @@ transform_print <- function(lines) {
     lines <- gsub("ssp[0-9]+", "sspXXX", lines)
     lines <- gsub("\\d{8}\\|\\w.+(,)?$", "20200202|esgf.data.node\\1", lines)
     # files
-    lines <- gsub("(_g\\w+_)\\d{8}-\\d{8}\\.nc\\|\\w.+$", "\\120200101-20211231.nc|esgf.data.node", lines)
+    lines <- gsub(
+        "(_g\\w+_)\\d{8}-\\d{8}\\.nc\\|\\w.+$",
+        "\\120200101-20211231.nc|esgf.data.node",
+        lines
+    )
     # aggregations
-    lines <- gsub("\\d{8}.aggregation.*?\\|\\w.+$", "20200101.aggregration|esgf.data.node", lines)
+    lines <- gsub(
+        "\\d{8}.aggregation.*?\\|\\w.+$",
+        "20200101.aggregration|esgf.data.node",
+        lines
+    )
 
     # replace file size and access methods
     lines <- gsub("^\\* Fields: [0-9]+ \\| \\[", "* Fields: XX | [", lines)
     # datasets
-    lines <- gsub("\\d+ Files, \\d+\\.\\d+ [KMGT]i?B \\| \\d+ Aggregation[s]?", "XX Files, XX GB | X Aggregations", lines)
+    lines <- gsub(
+        "\\d+ Files, \\d+\\.\\d+ [KMGT]i?B \\| \\d+ Aggregation[s]?",
+        "XX Files, XX GB | X Aggregations",
+        lines
+    )
     lines <- gsub("\\[ Access: <.+> \\]$", "[ Access: <...> ]", lines)
     # files
-    lines <- gsub("\\d+\\.\\d+ [KMGT]i?B \\| Access: <.+>", "XX MB | Access: <...>", lines)
+    lines <- gsub(
+        "\\d+\\.\\d+ [KMGT]i?B \\| Access: <.+>",
+        "XX MB | Access: <...>",
+        lines
+    )
     # aggregations
     lines <- gsub("(<Unknown> \\| Access: )<.+>", "\\1<...>", lines)
 
@@ -102,3 +143,6 @@ transform_print <- function(lines) {
 
     lines
 }
+# }}}
+
+# vim: fdm=marker :

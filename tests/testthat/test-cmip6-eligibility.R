@@ -1,4 +1,5 @@
 # Resolve public transform constructors only in this test convenience helper.
+# eligibility_test__evaluate {{{
 eligibility_test__evaluate <- function(
     catalog,
     methods = NULL,
@@ -25,8 +26,10 @@ eligibility_test__evaluate <- function(
         common
     )
 }
+# }}}
 
 # Build self-contained Dataset rows without querying any external service.
+# eligibility_test__catalog {{{
 eligibility_test__catalog <- function(
     variables = "tas",
     source = "Model-A",
@@ -47,6 +50,7 @@ eligibility_test__catalog <- function(
         sorted = FALSE
     )
 }
+# }}}
 
 test_that("method eligibility expands candidates without a universal variable list", {
     catalog <- data.table::rbindlist(list(
@@ -302,7 +306,7 @@ test_that("offline results are deterministic and do not mutate or query the cata
     original <- data.table::copy(catalog)
     local_mocked_bindings(
         availability__collect = function(...) stop("Unexpected Dataset query"),
-        shift__cmip6_period_coverage = function(...) {
+        shift_resolve__cmip6_period_coverage = function(...) {
             stop("Unexpected File query")
         },
         .package = "epwshiftr"
@@ -628,3 +632,5 @@ test_that("eligibility summaries preserve matched evidence by reference", {
     expect_null(data.table::indices(details))
     expect_true(result$matrix$selected)
 })
+
+# vim: fdm=marker :

@@ -1,21 +1,24 @@
+# downloader_http_bytes {{{
 downloader_http_bytes <- function(size = 4096L) {
     as.raw(rep(0:255, length.out = size))
 }
+# }}}
 
+# downloader_http_checksum {{{
 downloader_http_checksum <- function(size = 4096L, algo = "md5") {
     checksum_bytes(downloader_http_bytes(size), algo)
 }
+# }}}
 
-local_downloader_http_server <- function(env = parent.frame()) {
-    # webfakes starts a callr-backed R process; covr can pick up partial trace
-    # files from that process and fail while merging coverage.
-    skip_on_covr()
-    skip_if_not_installed("webfakes")
-
+# Keep HTTP handlers independent of the package/test namespace. Serializing a
+# test environment into a disposable server would load the instrumented package
+# there even though the server never executes its download or climate code.
+# downloader_http_app {{{
+downloader_http_app <- function(ok, range, slow) {
     app <- webfakes::new_app()
-    app$locals$ok <- downloader_http_bytes(4096L)
-    app$locals$range <- downloader_http_bytes(8193L)
-    app$locals$slow <- downloader_http_bytes(2048L)
+    app$locals$ok <- ok
+    app$locals$range <- range
+    app$locals$slow <- slow
     app$locals$flaky_count <- 0L
 
     request_header <- function(req, name) {
@@ -43,7 +46,13 @@ local_downloader_http_server <- function(env = parent.frame()) {
         }
         start <- as.integer(parts[[2L]])
         end <- if (nzchar(parts[[3L]])) as.integer(parts[[3L]]) else size - 1L
-        if (is.na(start) || is.na(end) || start < 0L || end < start || start >= size) {
+        if (
+            is.na(start) ||
+                is.na(end) ||
+                start < 0L ||
+                end < start ||
+                start >= size
+        ) {
             return(FALSE)
         }
         c(start = start, end = min(end, size - 1L))
@@ -51,32 +60,29 @@ local_downloader_http_server <- function(env = parent.frame()) {
 
     send_bytes <- function(req, res, bytes, range = TRUE) {
         size <- length(bytes)
-        res$
-            set_header("Accept-Ranges", if (isTRUE(range)) "bytes" else "none")$
-            set_header("Content-Type", "application/octet-stream")
+        res$set_header(
+            "Accept-Ranges",
+            if (isTRUE(range)) "bytes" else "none"
+        )$set_header("Content-Type", "application/octet-stream")
 
         req_range <- if (isTRUE(range)) parse_range(req, size) else NULL
         if (isFALSE(req_range)) {
-            return(res$
-                set_status(416L)$
-                set_header("Content-Range", sprintf("bytes */%d", size))$
-                send(raw()))
+            return(res$set_status(416L)$set_header(
+                "Content-Range",
+                sprintf("bytes */%d", size)
+            )$send(raw()))
         }
         if (!is.null(req_range)) {
             start <- unname(req_range[["start"]])
             end <- unname(req_range[["end"]])
             body <- bytes[(start + 1L):(end + 1L)]
-            return(res$
-                set_status(206L)$
-                set_header("Content-Range", sprintf("bytes %d-%d/%d", start, end, size))$
-                set_header("Content-Length", length(body))$
-                send(body))
+            return(res$set_status(206L)$set_header(
+                "Content-Range",
+                sprintf("bytes %d-%d/%d", start, end, size)
+            )$set_header("Content-Length", length(body))$send(body))
         }
 
-        res$
-            set_status(200L)$
-            set_header("Content-Length", size)$
-            send(bytes)
+        res$set_status(200L)$set_header("Content-Length", size)$send(bytes)
     }
 
     app$all("/files/ok.bin", function(req, res, locals) {
@@ -103,7 +109,10 @@ local_downloader_http_server <- function(env = parent.frame()) {
         res$set_status(404L)$send("missing")
     })
     app$all("/files/slow.bin", function(req, res, locals) {
-        res$set_status(200L)$set_header("Content-Type", "application/octet-stream")
+        res$set_status(200L)$set_header(
+            "Content-Type",
+            "application/octet-stream"
+        )
         res$send_chunk(locals$slow[1:1024])
         Sys.sleep(0.05)
         res$send_chunk(locals$slow[1025:2048])
@@ -115,25 +124,40 @@ local_downloader_http_server <- function(env = parent.frame()) {
         res$set_status(200L)$send("dataset landing page")
     })
     app$all("/dods/valid.nc.dds", function(req, res) {
-        res$
-            set_status(200L)$
-            set_header("Content-Type", "text/plain")$
-            send("Dataset { Float32 tas[time = 1]; } valid.nc;")
+        res$set_status(200L)$set_header("Content-Type", "text/plain")$send(
+            "Dataset { Float32 tas[time = 1]; } valid.nc;"
+        )
     })
     app$all("/dods/html.nc", function(req, res) {
         res$set_status(200L)$send("dataset landing page")
     })
     app$all("/dods/html.nc.dds", function(req, res) {
-        res$
-            set_status(200L)$
-            set_header("Content-Type", "text/html")$
-            send("<html><body>temporary error</body></html>")
+        res$set_status(200L)$set_header("Content-Type", "text/html")$send(
+            "<html><body>temporary error</body></html>"
+        )
     })
     app$all("/dods/missing.nc.dds", function(req, res) {
         res$set_status(404L)$send("missing")
     })
 
+    app
+}
+# }}}
+environment(downloader_http_app) <- baseenv()
+
+# Start the isolated HTTP fixture and tie cleanup to the requesting test.
+# local_downloader_http_server {{{
+local_downloader_http_server <- function(env = parent.frame()) {
+    skip_if_not_installed("webfakes")
+    app <- downloader_http_app(
+        downloader_http_bytes(4096L),
+        downloader_http_bytes(8193L),
+        downloader_http_bytes(2048L)
+    )
     proc <- webfakes::new_app_process(app)
     withr::defer(proc$stop(), envir = env)
     proc
 }
+# }}}
+
+# vim: fdm=marker :

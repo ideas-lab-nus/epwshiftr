@@ -1,5 +1,6 @@
 # Build complete canonical daily tas rows for the common adjustment-to-EPW
 # adapter tests without depending on another test file's local helpers.
+# daily_adjustment_test__climate {{{
 daily_adjustment_test__climate <- function(
     years,
     period,
@@ -45,16 +46,20 @@ daily_adjustment_test__climate <- function(
             lon = 104,
             lat = 1.37,
             units = "K",
-            value = 273.15 + 20 + offset +
+            value = 273.15 +
+                20 +
+                offset +
                 7 * sin(2 * pi * coordinates$annual_phase),
             coordinates
         )
     })
     data.table::rbindlist(rows, use.names = TRUE)
 }
+# }}}
 
 # Construct one complete context whose model identity, periods, observations,
 # and EPW template can be reused across all eight adjustment methods.
+# daily_adjustment_test__context {{{
 daily_adjustment_test__context <- function(recipe) {
     observed <- daily_adjustment_test__climate(
         1981:1982,
@@ -82,3 +87,6 @@ daily_adjustment_test__context <- function(recipe) {
         recipe = recipe
     )
 }
+# }}}
+
+# vim: fdm=marker :

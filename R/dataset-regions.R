@@ -1,5 +1,11 @@
+# Operational native-value limit for each subset request, shared by weather
+# reads, CF bounds and batch scheduling. This is a tested conservative default,
+# not a NetCDF limit or a universal optimum; retune it with transport benchmarks.
+DATASET_REQUEST_MAX_VALUES <- 8192L
+
 # Return the multi-site schema even when a file has no selected native times.
 # The provenance tables remain present so callers can inspect an empty read.
+# dataset__empty_regions {{{
 dataset__empty_regions <- function() {
     values <- data.table::data.table(
         file_index = integer(),
@@ -45,9 +51,11 @@ dataset__empty_regions <- function() {
     )
     values
 }
+# }}}
 
 # Validate one site table before opening any NetCDF variable. The site ID is
 # retained in both values and source-cell provenance to keep consumers apart.
+# dataset__region_sites {{{
 dataset__region_sites <- function(sites) {
     checkmate::assert_data_table(sites, min.rows = 1L)
     required <- c("site_id", "lon", "lat", "method")
@@ -101,10 +109,12 @@ dataset__region_sites <- function(sites) {
     }
     sites
 }
+# }}}
 
 # Partition source cells into at most 2-by-2 native rectangles. Starting at
 # the lowest unassigned latitude/longitude keeps distant sites in separate
 # requests while allowing adjacent interpolation cells to share one read.
+# dataset__region_cell_groups {{{
 dataset__region_cell_groups <- function(points) {
     data.table::setorderv(points, c("ind_lat", "ind_lon"))
     keys <- paste(points$ind_lat, points$ind_lon, sep = ":")
@@ -136,10 +146,13 @@ dataset__region_cell_groups <- function(points) {
     }
     groups[seq_len(count)]
 }
+# }}}
 
-# Keep every native request to at most 2048 time positions and four source
-# cells (8192 numeric values). Gaps remain separate native requests.
-dataset__region_runs <- function(indices, max_time = 2048L) {
+# Partition contiguous native positions into bounded runs. Spatial reads use
+# a time limit based on their spatial area; interval bounds account for both
+# endpoints. Callers derive their time limit from DATASET_REQUEST_MAX_VALUES.
+# dataset__region_runs {{{
+dataset__region_runs <- function(indices, max_time) {
     if (!length(indices)) {
         return(list())
     }
@@ -154,10 +167,12 @@ dataset__region_runs <- function(indices, max_time = 2048L) {
         recursive = FALSE
     )
 }
+# }}}
 
 # Read one variable from one file in bounded native-time and spatial slices.
 # The returned table is deliberately capped; longer acquisitions must be
 # scheduled as separate time windows by the batch execution stage.
+# dataset__read_regions_one {{{
 dataset__read_regions_one <- function(
     dataset,
     variable,
@@ -192,7 +207,7 @@ dataset__read_regions_one <- function(
         )
     }
 
-    time_info <- dataset$get_time_axis(index = index)
+    time_info <- dataset__time_axis(dataset, index)
     base_selected <- cf_time__range_indices(
         time_info$values,
         time_info$coordinates,
@@ -303,11 +318,23 @@ dataset__read_regions_one <- function(
     group_times <- lapply(groups, function(group) {
         sort(unique(unlist(point_times[group$members], use.names = FALSE)))
     })
-    block_time <- min(2048L, max(1L, 250000L %/% nrow(points)))
+    # Single-cell groups can use the full native-value allowance. The working
+    # matrix has its own limit; each spatial group splits runs independently.
+    max_times <- vapply(
+        groups,
+        function(group) {
+            DATASET_REQUEST_MAX_VALUES %/% (group$lat_count * group$lon_count)
+        },
+        integer(1L)
+    )
+    block_time <- min(max(max_times), max(1L, 250000L %/% nrow(points)))
     blocks <- split(selected, ceiling(seq_along(selected) / block_time))
     requests <- lapply(blocks, function(block) {
-        lapply(group_times, function(needed) {
-            dataset__region_runs(intersect(block, needed))
+        lapply(seq_along(groups), function(index) {
+            dataset__region_runs(
+                intersect(block, group_times[[index]]),
+                max_time = max_times[[index]]
+            )
         })
     })
     request_count <- sum(vapply(
@@ -329,22 +356,23 @@ dataset__read_regions_one <- function(
     time_position <- match("time", meta$names)
     lat_position <- match("lat", meta$names)
     lon_position <- match("lon", meta$names)
+    bounds <- dataset__selected_bounds(dataset, index, time_info, selected)
     clock <- data.table::as.data.table(time_info$coordinates[
         selected,
         CF_TIME_COORDINATE_COLUMNS,
         drop = FALSE
     ])
     data.table::set(clock, j = "time", value = time_info$values[selected])
-    if (!is.null(time_info$bounds)) {
+    if (!is.null(bounds)) {
         data.table::set(
             clock,
             j = "time_bound_start",
-            value = time_info$bounds$start[selected]
+            value = bounds$start[seq_along(selected)]
         )
         data.table::set(
             clock,
             j = "time_bound_end",
-            value = time_info$bounds$end[selected]
+            value = bounds$end[seq_along(selected)]
         )
     }
     for (block_index in seq_along(blocks)) {
@@ -475,9 +503,11 @@ dataset__read_regions_one <- function(
     attr(output, "read_slices") <- data.table::rbindlist(read_slices)
     output
 }
+# }}}
 
 # Assemble file-variable pieces without losing native CF or point provenance.
 # Missing variables follow the single-site reader's warning contract.
+# dataset__read_regions {{{
 dataset__read_regions <- function(
     dataset,
     variable,
@@ -574,3 +604,6 @@ dataset__read_regions <- function(
     )
     output
 }
+# }}}
+
+# vim: fdm=marker :

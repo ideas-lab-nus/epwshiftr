@@ -2,15 +2,20 @@
 #
 # Uses EPWSHIFTR_CHECK_CACHE env var in CI, otherwise a fixed subdir of tempdir().
 # The directory is created if it doesn't exist.
+# test_data_dir {{{
 test_data_dir <- function() {
     dir <- Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA)
     if (is.na(dir)) {
         dir <- file.path(tempdir(), "epwshiftr-test-data")
     }
-    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+    if (!dir.exists(dir)) {
+        dir.create(dir, recursive = TRUE)
+    }
     dir
 }
+# }}}
 
+# get_cache_epw {{{
 get_cache_epw <- function() {
     dir <- test_data_dir()
     fixture <- system.file(
@@ -23,46 +28,70 @@ get_cache_epw <- function() {
     # from an older fixture version.
     ok <- file.copy(fixture, path, overwrite = TRUE)
     if (!isTRUE(ok)) {
-        stop(sprintf("Failed to copy EPW fixture to test cache: %s", path), call. = FALSE)
+        stop(
+            sprintf("Failed to copy EPW fixture to test cache: %s", path),
+            call. = FALSE
+        )
     }
     normalizePath(path, winslash = "/", mustWork = TRUE)
 }
+# }}}
 
+# get_cache_nc {{{
 get_cache_nc <- function(reset = FALSE) {
     dir <- test_data_dir()
-    paths <- file.path(dir, vapply(local_cmip6_test_years, local_cmip6_nc_file, character(1)))
+    paths <- file.path(
+        dir,
+        vapply(local_cmip6_test_years, local_cmip6_nc_file, character(1))
+    )
 
-    if (reset) unlink(paths, force = TRUE)
+    if (reset) {
+        unlink(paths, force = TRUE)
+    }
     unlink(paths[file.exists(paths)], force = TRUE)
 
     for (i in seq_along(paths)) {
-        write_local_cmip6_netcdf_fixture(paths[[i]], local_cmip6_test_years[[i]])
+        write_local_cmip6_netcdf_fixture(
+            paths[[i]],
+            local_cmip6_test_years[[i]]
+        )
     }
 
     normalizePath(dir)
 }
+# }}}
 
+# read_test_parquet {{{
 read_test_parquet <- function(path) {
     conn <- ddb_connect(":memory:")
     on.exit(ddb_disconnect(conn), add = TRUE)
 
-    data.table::as.data.table(ddb_query(conn, sprintf(
-        "SELECT * FROM read_parquet(%s)",
-        ddb_literal(conn, path)
-    )))
+    data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            "SELECT * FROM read_parquet(%s)",
+            ddb_literal(conn, path)
+        )
+    ))
 }
+# }}}
 
+# get_cache_parquet {{{
 get_cache_parquet <- function(reset = FALSE) {
     dir <- get_cache_nc(reset = reset)
     path <- file.path(dir, "EC-Earth3.ssp585.tas.parquet")
 
-    if (reset && file.exists(path)) unlink(path)
+    if (reset && file.exists(path)) {
+        unlink(path)
+    }
     write_local_morph_tas_fixture(path)
 
     normalizePath(path)
 }
+# }}}
 
 # Scoped cache mode switch for tests
+# local_cache_mode {{{
 local_cache_mode <- function(mode, env = parent.frame()) {
     old <- getOption("epwshiftr.cache")
     withr::defer(options(epwshiftr.cache = old), envir = env)
@@ -75,6 +104,7 @@ local_cache_mode <- function(mode, env = parent.frame()) {
     )
     options(epwshiftr.cache = opt_val)
 }
+# }}}
 
 # Create a temporary test cache and set it as the package cache
 #
@@ -83,18 +113,32 @@ local_cache_mode <- function(mode, env = parent.frame()) {
 #   - "session": persists within the R session (tempdir()-based), not deleted
 #   - "persist": persists for the testthat run, then is deleted at teardown
 # @param env The environment for withr::defer cleanup
-local_test_cache <- function(scope = c("test", "session", "persist"), env = parent.frame()) {
+# local_test_cache {{{
+local_test_cache <- function(
+    scope = c("test", "session", "persist"),
+    env = parent.frame()
+) {
     scope <- match.arg(scope)
 
-    dir <- switch(scope,
+    dir <- switch(
+        scope,
         "test" = tempfile("epwshiftr-test-cache-"),
         "session" = file.path(tempdir(), "epwshiftr-test-cache"),
         "persist" = file.path(dirname(tempdir()), "epwshiftr-test-cache")
     )
 
-    cache <- DiskCache$new(dir = dir, max_size = "100 MB", max_age = Inf, max_n = Inf)
+    cache <- DiskCache$new(
+        dir = dir,
+        max_size = "100 MB",
+        max_age = Inf,
+        max_n = Inf
+    )
     old_cache <- cache__set(cache)
-    cleanup_env <- if (identical(scope, "persist")) testthat::teardown_env() else env
+    cleanup_env <- if (identical(scope, "persist")) {
+        testthat::teardown_env()
+    } else {
+        env
+    }
     withr::defer(
         {
             cache__set(old_cache)
@@ -104,3 +148,6 @@ local_test_cache <- function(scope = c("test", "session", "persist"), env = pare
     )
     cache
 }
+# }}}
+
+# vim: fdm=marker :

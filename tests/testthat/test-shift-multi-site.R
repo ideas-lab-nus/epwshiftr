@@ -1,11 +1,14 @@
 # Serialize test inputs through the same JSON boundary as user configs.
+# multi_site__write_config {{{
 multi_site__write_config <- function(config) {
     path <- tempfile(fileext = ".json")
     jsonlite::write_json(config, path, auto_unbox = TRUE, null = "null")
     path
 }
+# }}}
 
 # Create a genuine second EPW header while retaining deterministic weather data.
+# multi_site__epw {{{
 multi_site__epw <- function() {
     path <- tempfile(fileext = ".epw")
     lines <- readLines(get_cache_epw())
@@ -21,8 +24,10 @@ multi_site__epw <- function() {
     writeLines(lines, path)
     path
 }
+# }}}
 
 # Keep discovery deterministic but exercise public planning and persisted plans.
+# multi_site__plan {{{
 multi_site__plan <- function(
     sites,
     store = tempfile("multi-site-store-"),
@@ -40,15 +45,51 @@ multi_site__plan <- function(
         ...
     )
 }
+# }}}
+
+# Keep a failed shared source read visible in the saved batch even when no
+# child run was started, so the user can inspect and resume that batch.
+test_that("shared prefetch failure persists as a blocked batch", {
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
+    ))
+    root <- tempfile("blocked-shared-batch-")
+    batch <- multi_site__plan(
+        list(shift_site("South", epw = get_cache_epw())),
+        store = root
+    )
+    # This test isolates failure persistence after input resolution. The input
+    # resolver itself is exercised with real local catalogs in shared tests.
+    testthat::local_mocked_bindings(
+        shift_batch_plan__resolve_inputs = function(batch, reporter = NULL) {
+            batch
+        },
+        shift_batch_window__prefetch = function(...) {
+            stop("source connection closed")
+        }
+    )
+    expect_error(
+        shift_batch_execution__resume(batch),
+        "source connection closed"
+    )
+    restored <- shift_batch_get(batch@ids$batch_id, root)
+    expect_identical(shift_status(restored), "blocked")
+    expect_true(
+        "batch_shared_read_failed" %in%
+            shift_diagnostics(restored)$code
+    )
+    expect_length(restored@meta$shared_failure_history, 1L)
+})
 
 test_that("multiple sites share discovery and retain distinct durable plans", {
     calls <- 0L
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(
+        availability = function(...) {
             calls <<- calls + 1L
             test_cmip6_availability(...)
         },
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     sites <- list(
         shift_site("South", epw = get_cache_epw()),
@@ -94,19 +135,19 @@ test_that("multiple sites share discovery and retain distinct durable plans", {
     expect_identical(reopened@meta$climate, reordered@meta$climate)
     expect_identical(reopened@meta$shared_plan, reordered@meta$shared_plan)
     expect_identical(
-        lapply(reopened@meta$children, shift__plan_spec),
-        lapply(reordered@meta$children, shift__plan_spec)
+        lapply(reopened@meta$children, shift_persist__plan_spec),
+        lapply(reordered@meta$children, shift_persist__plan_spec)
     )
     expect_identical(calls, 0L)
-    snapshot <- shift_batch__snapshot(reopened, refresh = FALSE)
+    snapshot <- shift_batch_ui__snapshot(reopened, refresh = FALSE)
     expect_setequal(snapshot$children$site_id, c("North", "South"))
     expect_setequal(shift_summary(reopened)$site_id, c("North", "South"))
 })
 
 test_that("site objects preserve coordinates, metadata and EPW identities", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     epw <- get_cache_epw()
     sites <- list(
@@ -128,7 +169,9 @@ test_that("site objects preserve coordinates, metadata and EPW identities", {
     child <- batch@meta$children[[3L]]
     expect_identical(child@meta$site@metadata, list(note = "target"))
     expect_identical(
-        shift__plan_from_spec(shift__plan_spec(child))@meta$site@metadata,
+        shift_persist__plan_from_spec(shift_persist__plan_spec(
+            child
+        ))@meta$site@metadata,
         list(note = "target")
     )
     original <- batch@ids$batch_id
@@ -143,7 +186,7 @@ test_that("site objects preserve coordinates, metadata and EPW identities", {
 })
 
 test_that("site constructors and collections reject invalid inputs before discovery", {
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     epw <- get_cache_epw()
@@ -184,9 +227,9 @@ test_that("site defaults are independent of explicitly supplied coordinates", {
 })
 
 test_that("single and multiple site calls use one batch contract", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     site <- shift_site("A", epw = get_cache_epw())
     root <- tempfile()
@@ -200,9 +243,9 @@ test_that("single and multiple site calls use one batch contract", {
 })
 
 test_that("version 3 location arrays plan and restore through the CLI", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     config <- epwshiftr_cli_shift_example_config()
     config$version <- 3L
@@ -250,9 +293,9 @@ test_that("version 3 location arrays plan and restore through the CLI", {
 
 
 test_that("multi-site references are resolved for each location", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     sites <- list(
         shift_site("A", epw = get_cache_epw()),
@@ -278,7 +321,7 @@ test_that("multi-site references are resolved for each location", {
         children[[2L]]@meta$site@lon,
         children[[4L]]@meta$site@lon
     ))
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     expect_error(
@@ -300,7 +343,7 @@ test_that("new site inputs validate EPW generation metadata before discovery", {
     header[[9L]] <- "unknown"
     lines[[1L]] <- paste(header, collapse = ",")
     writeLines(lines, path)
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     sites <- shift_site("A", epw = path)
@@ -318,13 +361,13 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(
+        availability = function(...) {
             args <- list(...)
             args$source <- "EC-Earth3"
             do.call(test_cmip6_availability, args)
         },
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transform <- monthly_transform("epwshiftr")
     variables <- epw_morph_variables(transform__recipe(transform))
@@ -348,7 +391,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     withr::defer(unlink(files))
     docs <- data.table::rbindlist(
         lapply(variables, function(variable) {
-            cli_shift_test_file_docs(
+            esgf_test__file_docs(
                 basename(files[[variable]]),
                 opendap_url = files[[variable]],
                 download_url = files[[variable]],
@@ -381,6 +424,15 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         j = "id",
         value = paste0(docs$title, "|future-", docs$variable_id)
     )
+    data.table::set(
+        docs,
+        j = "checksum",
+        value = vapply(
+            docs$variable_id,
+            function(variable) store_hash_file(files[[variable]], "sha256"),
+            character(1L)
+        )
+    )
     calls <- cli_shift_test_mock_collect(docs)
     sites <- list(
         shift_site("A", lon = 103.98, lat = 1.37, epw = get_cache_epw()),
@@ -404,8 +456,29 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         control = shift_control(strict = FALSE),
         ui = shift_ui(progress = "none")
     )
+    discovery_store <- EsgStore$new(file.path(
+        plan@store_path,
+        "discovery"
+    ))
+    discovery_store$add_files(esgf_test__file_result(docs))
+    discovery_store$close()
+    plan@meta$shared_plan <- shift_batch_plan__plan_from_discovery(
+        plan@meta$children,
+        plan@meta$manifest,
+        file.path(plan@store_path, "discovery")
+    )
+    expect_gt(nrow(plan@meta$shared_plan$acquisitions), 0L)
+    shift_batch__receipt_write(plan)
     completed <- shift_run(plan, ui = shift_ui(progress = "none"))
+    expect_null(completed@meta[["shared_failure"]])
     expect_identical(shift_status(completed), "completed")
+    shared_receipts <- list.files(
+        file.path(plan@store_path, "shared-acquisitions"),
+        pattern = "[.]json$",
+        recursive = TRUE,
+        full.names = TRUE
+    )
+    expect_gt(length(shared_receipts), 0L)
     output <- shift_outputs(completed)
     expect_equal(data.table::uniqueN(output$site_id), 2L)
     expect_equal(data.table::uniqueN(output$export_path), 2L)
@@ -421,7 +494,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     RNetCDF::close.nc(nc)
     for (i in seq_along(completed@meta$children)) {
         child <- completed@meta$children[[i]]
-        climate <- shift_stage_new(
+        climate <- shift_stage__new(
             ShiftClimate,
             "climate",
             store_path = child@store_path,
@@ -434,6 +507,11 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         expect_equal(raw$lon, rep(sites[[i]]@lon, 12L))
         expect_equal(raw$lat, rep(sites[[i]]@lat, 12L))
         store <- shift_store(child)
+        shared_events <- store$query(paste(
+            "SELECT details_json FROM shift_run_event",
+            "WHERE details_json LIKE '%shared_cache%'"
+        ))
+        expect_gt(nrow(shared_events), 0L)
         grid <- morpher__private_store(store)$read_table(
             "extraction_grid_source"
         )
@@ -513,7 +591,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
 
 
 test_that("R and CLI reject invalid method periods before discovery", {
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected catalog access")
     }))
     config <- epwshiftr_cli_shift_example_config()
@@ -550,3 +628,5 @@ test_that("R and CLI reject invalid method periods before discovery", {
     )
     expect_false(dir.exists(root))
 })
+
+# vim: fdm=marker :

@@ -1,7 +1,7 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 test_that("summary plan IDs prefer normalized lineage and support legacy rows", {
@@ -216,7 +216,7 @@ test_that("shift run validates the task-oriented JSON config", {
         "--dry-run"
     ))
     expect_equal(invalid$status, 2L)
-    expect_match(invalid$error, "Invalid year")
+    expect_match(invalid$error, "invalid year")
 
     # A null optional model reference stays null and never receives a
     # parser-supplied historical default.
@@ -336,29 +336,46 @@ test_that("shift run validates the task-oriented JSON config", {
 
 test_that("shift watch JSONL follow emits typed event deltas", {
     first_events <- data.table::data.table(
-        event_id = "event-1", run_id = "run-jsonl", stage = "resolve",
-        status = "running", message = "Resolving", details_json = NA_character_,
+        event_id = "event-1",
+        run_id = "run-jsonl",
+        stage = "resolve",
+        status = "running",
+        message = "Resolving",
+        details_json = NA_character_,
         created_at = as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
     )
     second_events <- data.table::rbindlist(list(
         first_events,
         data.table::data.table(
-            event_id = "event-2", run_id = "run-jsonl", stage = "resolve",
-            status = "completed", message = "Resolved",
+            event_id = "event-2",
+            run_id = "run-jsonl",
+            stage = "resolve",
+            status = "completed",
+            message = "Resolved",
             details_json = NA_character_,
             created_at = as.POSIXct("2026-01-01 00:00:01", tz = "UTC")
         )
     ))
     snapshots <- list(
         list(
-            run = data.table::data.table(run_id = "run-jsonl", status = "running"),
-            cases = data.table::data.table(), outputs = data.table::data.table(),
-            diagnostics = data.table::data.table(), events = first_events
+            run = data.table::data.table(
+                run_id = "run-jsonl",
+                status = "running"
+            ),
+            cases = data.table::data.table(),
+            outputs = data.table::data.table(),
+            diagnostics = data.table::data.table(),
+            events = first_events
         ),
         list(
-            run = data.table::data.table(run_id = "run-jsonl", status = "completed"),
-            cases = data.table::data.table(), outputs = data.table::data.table(),
-            diagnostics = data.table::data.table(), events = second_events
+            run = data.table::data.table(
+                run_id = "run-jsonl",
+                status = "completed"
+            ),
+            cases = data.table::data.table(),
+            outputs = data.table::data.table(),
+            diagnostics = data.table::data.table(),
+            events = second_events
         )
     )
     index <- 0L
@@ -372,25 +389,36 @@ test_that("shift watch JSONL follow emits typed event deltas", {
         .package = "epwshiftr"
     )
 
-    output <- capture.output(result <- epwshiftr_cli_shift_watch_follow(
-        store = "unused", run_id = "run-jsonl", event_count = 10L,
-        interval = 0, count = 2L, jsonl = TRUE, quiet = FALSE,
-        progress = "none"
-    ))
+    output <- capture.output(
+        result <- epwshiftr_cli_shift_watch_follow(
+            store = "unused",
+            run_id = "run-jsonl",
+            event_count = 10L,
+            interval = 0,
+            count = 2L,
+            jsonl = TRUE,
+            quiet = FALSE,
+            progress = "none"
+        )
+    )
     records <- lapply(output, jsonlite::fromJSON)
 
-    expect_equal(vapply(records, `[[`, character(1L), "type"),
-        c("snapshot", "event", "terminal"))
+    expect_equal(
+        vapply(records, `[[`, character(1L), "type"),
+        c("snapshot", "event", "terminal")
+    )
     expect_equal(records[[2L]]$event$event_id, "event-2")
     expect_equal(records[[3L]]$snapshot$run$run_id, "run-jsonl")
 })
 
 test_that("shift CLI maps reduced motion independently from detail", {
-    parsed <- list(flags = list(
-        "--reduced-motion" = TRUE,
-        "--verbose" = FALSE,
-        "--debug" = FALSE
-    ))
+    parsed <- list(
+        flags = list(
+            "--reduced-motion" = TRUE,
+            "--verbose" = FALSE,
+            "--debug" = FALSE
+        )
+    )
     expect_identical(epwshiftr_cli_shift_motion(parsed), "reduced")
     expect_identical(epwshiftr_cli_shift_detail(parsed), "normal")
     parsed$flags[["--reduced-motion"]] <- FALSE
@@ -398,28 +426,18 @@ test_that("shift CLI maps reduced motion independently from detail", {
 })
 
 
-test_that("shift CLI registers, inspects, and cancels background jobs", {
+test_that("shift CLI registers, inspects, and cancels background batches", {
     skip_if_not_installed("duckdb")
-
     store <- tempfile("esg-background-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
-    launched <- new.env(parent = emptyenv())
-    withr::local_options(list(epwshiftr.shift.launcher = function(
-        store_path,
-        run_id,
-        job_id,
-        log_path
+    launched <- NULL
+    testthat::local_mocked_bindings(shift_batch_execution__launch = function(
+        root,
+        job
     ) {
-        launched$args <- list(
-            store_path = store_path,
-            run_id = run_id,
-            job_id = job_id,
-            log_path = log_path
-        )
-        invisible(0L)
-    }))
-
+        launched <<- list(root = root, job = job)
+    })
     queued <- epwshiftr_cli(c(
         "--quiet",
         "--store",
@@ -432,40 +450,68 @@ test_that("shift CLI registers, inspects, and cancels background jobs", {
     ))
     expect_equal(queued$status, 0L)
     expect_equal(queued$result$status, "queued")
-    expect_equal(launched$args$run_id, queued$result$children$run_id)
-    store <- launched$args$store_path
+    batch_id <- queued$result$batch_id
+    expect_identical(launched$job$batch_id, batch_id)
+    expect_true(all(is.na(queued$result$children$run_id)))
     expect_true(all(
         c("watch", "cancel", "logs") %in% queued$result$next_steps$step
     ))
-
     logs <- epwshiftr_cli(c(
         "--quiet",
         "--store",
         store,
         "shift",
         "logs",
-        "--run",
-        queued$result$children$run_id
+        "--batch",
+        batch_id
     ))
     expect_equal(logs$status, 0L)
     expect_equal(nrow(logs$result), 0L)
-
+    writeLines(
+        c("shared source reading", "child started"),
+        file.path(launched$root, paste0(launched$job$id, ".log"))
+    )
+    logs <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "logs",
+        "--batch",
+        batch_id,
+        "--tail",
+        "1"
+    ))
+    expect_identical(logs$result$message, "child started")
     cancelled <- epwshiftr_cli(c(
         "--quiet",
         "--store",
         store,
         "shift",
         "cancel",
-        "--run",
-        queued$result$children$run_id
+        "--batch",
+        batch_id
     ))
     expect_equal(cancelled$status, 0L)
-    expect_equal(cancelled$result$status, "cancelled")
-
+    expect_equal(cancelled$result$status, "stopping")
+    expect_error(
+        shift_batch_execution__job_main(launched$root, launched$job$id),
+        class = "epwshiftr_shift_cancelled"
+    )
+    status <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "status",
+        "--batch",
+        batch_id
+    ))
+    expect_identical(status$result$batch$status, "cancelled")
     conflict <- epwshiftr_cli(c(
         "--quiet",
         "--store",
-        tempfile("esg-background-conflict-"),
+        tempfile(),
         "shift",
         "run",
         "--config",
@@ -485,21 +531,23 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
     store <- tempfile("esg-background-lock-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
-    withr::local_options(list(
-        epwshiftr.shift.launcher = function(...) invisible(0L)
+    test_local_dependencies(list(
+        shift_job__launch_job = function(...) invisible(0L)
     ))
-    queued <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "run",
-        "--config",
-        config,
-        "--background"
-    ))
-    run_id <- queued$result$children$run_id
-    store <- queued$result$children$store
+    # This test targets a standalone run's locked-store inspection. Batch
+    # launch ownership is covered separately above.
+    plan <- epwshiftr_cli_config_plan(
+        epwshiftr_cli_read_shift_config(config),
+        store = store,
+        ui = shift_ui("none")
+    )
+    run <- shift_run(
+        plan@meta$children[[1L]],
+        background = TRUE,
+        ui = shift_ui("none")
+    )
+    run_id <- run@ids$run_id
+    store <- run@store_path
 
     ready <- tempfile("cli-shift-lock-ready-")
     done <- tempfile("cli-shift-lock-done-")
@@ -607,7 +655,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
 
     docs <- data.table::rbindlist(
         lapply(variables, function(variable_id) {
-            cli_shift_test_file_docs(
+            esgf_test__file_docs(
                 basename(nc[[variable_id]]),
                 opendap_url = nc[[variable_id]],
                 download_url = nc[[variable_id]],
@@ -626,6 +674,11 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         tracking_id = paste0("hdl:21.14100/future-", variable_id),
         id = paste0(title, "|future-", variable_id)
     )]
+    data.table::set(
+        docs,
+        j = "checksum",
+        value = vapply(nc[docs$variable_id], checksum_file, character(1L))
+    )
     calls <- cli_shift_test_mock_collect(docs)
 
     store <- tempfile("esg-store-")
@@ -655,7 +708,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         "--config",
         config
     ))
-    expect_equal(result$status, 0L)
+    expect_equal(result$status, 0L, info = result$error)
     expect_equal(result$result$status, "completed")
     expect_length(result$result$batch_id, 1L)
     expect_length(result$result$children$run_id, 1L)
@@ -769,7 +822,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         run_id
     ))
     expect_equal(diagnostics$status, 0L)
-    expect_named(diagnostics$result, shift_diagnostic_columns())
+    expect_named(diagnostics$result, shift_stage__diagnostic_columns())
 
     outputs <- epwshiftr_cli(c(
         "--quiet",
@@ -826,3 +879,5 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     expect_equal(rendered_show$status, 0L)
     expect_true(any(grepl("Shift workflow run", rendered)))
 })
+
+# vim: fdm=marker :

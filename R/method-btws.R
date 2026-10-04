@@ -1,10 +1,10 @@
 #' @include method-bws.R
 NULL
 
-# Bounded temperature weighted stretch {{{
-
+# Bounded temperature weighted stretch
 # Return the paper's additive mean-shift fallback together with the requested
 # extrema and a machine-readable reason for later diagnostics.
+# btws__mean_shift_fallback {{{
 btws__mean_shift_fallback <- function(
     value,
     mean_delta,
@@ -25,10 +25,12 @@ btws__mean_shift_fallback <- function(
         fallback_reason = reason
     )
 }
+# }}}
 
 # Project one 24-hour template using the BTWS equations (7)-(16) published by
 # Eames et al. Degenerate, unphysical, or numerically inadmissible days use the
 # documented mean shift.
+# btws__project_temperature_day {{{
 btws__project_temperature_day <- function(
     value,
     mean_delta,
@@ -67,9 +69,11 @@ btws__project_temperature_day <- function(
     target_minimum <- baseline_minimum + minimum_delta
     target_maximum <- baseline_maximum + maximum_delta
     target_range <- target_maximum - target_minimum
-    if (target_range < -tolerance ||
-        target_mean < target_minimum - tolerance ||
-        target_mean > target_maximum + tolerance) {
+    if (
+        target_range < -tolerance ||
+            target_mean < target_minimum - tolerance ||
+            target_mean > target_maximum + tolerance
+    ) {
         return(btws__mean_shift_fallback(
             value,
             mean_delta,
@@ -108,12 +112,12 @@ btws__project_temperature_day <- function(
 
     normalized <- (value - baseline_minimum) / baseline_range
     normalized <- pmin(1, pmax(0, normalized))
-    normalized_target_mean <- (
-        target_mean - target_minimum
-    ) / target_range
+    normalized_target_mean <- (target_mean - target_minimum) / target_range
     shape_tolerance <- tolerance / max(target_range, 1)
-    if (normalized_target_mean < -shape_tolerance ||
-        normalized_target_mean > 1 + shape_tolerance) {
+    if (
+        normalized_target_mean < -shape_tolerance ||
+            normalized_target_mean > 1 + shape_tolerance
+    ) {
         return(btws__mean_shift_fallback(
             value,
             mean_delta,
@@ -148,8 +152,10 @@ btws__project_temperature_day <- function(
         abs(min(projected) - target_minimum),
         abs(max(projected) - target_maximum)
     )
-    if (!is.finite(closure_error) ||
-        closure_error > max(tolerance, 1e-9)) {
+    if (
+        !is.finite(closure_error) ||
+            closure_error > max(tolerance, 1e-9)
+    ) {
         return(btws__mean_shift_fallback(
             value,
             mean_delta,
@@ -172,9 +178,11 @@ btws__project_temperature_day <- function(
         fallback_reason = NA_character_
     )
 }
+# }}}
 
 # Apply the shared grouped daily projection and boundary diagnostics with the
 # BTWS day kernel selected explicitly.
+# btws__project_temperature {{{
 btws__project_temperature <- function(
     template,
     targets,
@@ -195,5 +203,6 @@ btws__project_temperature <- function(
         method = "btws"
     )
 }
-
 # }}}
+
+# vim: fdm=marker :

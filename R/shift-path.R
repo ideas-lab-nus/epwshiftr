@@ -1,7 +1,8 @@
 # Canonicalize a workflow directory without requiring its final components to
 # exist. The deepest existing ancestor is resolved first so aliases introduced
 # by symbolic links cannot bypass output/store isolation.
-shift__canonical_workflow_path <- function(path) {
+# shift_path__canonical_workflow_path {{{
+shift_path__canonical_workflow_path <- function(path) {
     checkmate::assert_string(path, min.chars = 1L)
 
     current <- normalizePath(
@@ -40,10 +41,12 @@ shift__canonical_workflow_path <- function(path) {
     }
     normalizePath(current, winslash = "/", mustWork = FALSE)
 }
+# }}}
 
 # Flip one alphabetic character in a basename so the containing filesystem can
 # be probed for case-sensitive path identity without creating probe files.
-shift__path_case_variant <- function(path) {
+# shift_path__path_case_variant {{{
+shift_path__path_case_variant <- function(path) {
     name <- basename(path)
     chars <- strsplit(name, "", fixed = TRUE)[[1L]]
     positions <- which(grepl("[[:alpha:]]", chars))
@@ -59,12 +62,14 @@ shift__path_case_variant <- function(path) {
     }
     file.path(dirname(path), paste0(chars, collapse = ""))
 }
+# }}}
 
 # Detect the case-comparison semantics of the filesystem containing a
 # canonical path. Windows is defined as case-insensitive; other platforms are
 # detected from an existing ancestor so case-sensitive macOS volumes remain
 # distinguishable from the usual case-insensitive ones.
-shift__workflow_path_case_sensitive <- function(path) {
+# shift_path__workflow_path_case_sensitive {{{
+shift_path__workflow_path_case_sensitive <- function(path) {
     if (identical(.Platform$OS.type, "windows")) {
         return(FALSE)
     }
@@ -80,7 +85,7 @@ shift__workflow_path_case_sensitive <- function(path) {
     current <- normalizePath(current, winslash = "/", mustWork = TRUE)
 
     repeat {
-        variant <- shift__path_case_variant(current)
+        variant <- shift_path__path_case_variant(current)
         if (!is.na(variant) && file.exists(variant)) {
             resolved <- normalizePath(variant, winslash = "/", mustWork = TRUE)
             if (identical(resolved, current)) {
@@ -94,21 +99,25 @@ shift__workflow_path_case_sensitive <- function(path) {
         current <- parent
     }
 }
+# }}}
 
 # Test an ancestor relationship at a complete path-component boundary, rather
 # than by a raw prefix that would confuse sibling names such as output and
 # output-cache.
-shift__workflow_path_contains <- function(parent, child) {
+# shift_path__workflow_path_contains {{{
+shift_path__workflow_path_contains <- function(parent, child) {
     if (identical(parent, child)) {
         return(TRUE)
     }
     prefix <- if (endsWith(parent, "/")) parent else paste0(parent, "/")
     startsWith(child, prefix)
 }
+# }}}
 
 # Enforce the high-level workflow contract that the delivery directory contains
 # exported EPWs only and never overlaps persistent store artifacts.
-shift__validate_delivery_store_paths <- function(dir, store) {
+# shift_path__validate_delivery_store_paths {{{
+shift_path__validate_delivery_store_paths <- function(dir, store) {
     checkmate::assert_string(dir, min.chars = 1L)
     if (inherits(store, "EsgStore")) {
         store <- store$path
@@ -116,23 +125,26 @@ shift__validate_delivery_store_paths <- function(dir, store) {
     checkmate::assert_string(store, min.chars = 1L)
 
     paths <- list(
-        dir = shift__canonical_workflow_path(dir),
-        store = shift__canonical_workflow_path(store)
+        dir = shift_path__canonical_workflow_path(dir),
+        store = shift_path__canonical_workflow_path(store)
     )
 
     # Case folding is used only when either path is on a case-insensitive
     # filesystem. Overlapping paths necessarily share that filesystem.
     case_sensitive <- c(
-        shift__workflow_path_case_sensitive(paths$dir),
-        shift__workflow_path_case_sensitive(paths$store)
+        shift_path__workflow_path_case_sensitive(paths$dir),
+        shift_path__workflow_path_case_sensitive(paths$store)
     )
     comparable <- paths
     if (!all(case_sensitive)) {
         comparable <- lapply(comparable, tolower)
     }
 
-    overlap <- shift__workflow_path_contains(comparable$dir, comparable$store) ||
-        shift__workflow_path_contains(comparable$store, comparable$dir)
+    overlap <- shift_path__workflow_path_contains(
+        comparable$dir,
+        comparable$store
+    ) ||
+        shift_path__workflow_path_contains(comparable$store, comparable$dir)
     if (isTRUE(overlap)) {
         cli::cli_abort(c(
             "{.arg dir} and {.arg store} must be separate, non-overlapping directories.",
@@ -143,3 +155,17 @@ shift__validate_delivery_store_paths <- function(dir, store) {
     }
     invisible(paths)
 }
+# }}}
+
+# Resolve a store object or deferred path without creating filesystem state.
+# shift_path__store_path_value {{{
+shift_path__store_path_value <- function(store) {
+    if (inherits(store, "EsgStore")) {
+        store <- store$path
+    }
+    checkmate::assert_string(store, min.chars = 1L)
+    shift_path__canonical_workflow_path(store)
+}
+# }}}
+
+# vim: fdm=marker :

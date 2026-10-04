@@ -1,10 +1,11 @@
 # Construct real Dataset-shaped method inputs, with deliberately different
 # model pools. Coverage remains a separate adapter in each test.
+# batch_pool_test__catalog {{{
 batch_pool_test__catalog <- function() {
     monthly <- monthly_transform("original_morphing")
     variables <- monthly@required_inputs$model_future@variable_sets[[1L]]
-    frequencies <- shift__transform_cmip6_frequencies(monthly, variables)
-    tables <- shift__cmip6_variable_tables(variables, frequencies, NULL)
+    frequencies <- shift_spec__transform_cmip6_frequencies(monthly, variables)
+    tables <- shift_spec__cmip6_variable_tables(variables, frequencies, NULL)
     monthly_rows <- data.table::CJ(
         source_id = c("A", "B"),
         variable_id = variables,
@@ -29,8 +30,10 @@ batch_pool_test__catalog <- function() {
     )]
     data.table::rbindlist(list(monthly_rows, daily_rows), use.names = TRUE)
 }
+# }}}
 
 # Plan a small batch through the public entry point without any data transfer.
+# batch_pool_test__plan {{{
 batch_pool_test__plan <- function(
     common = TRUE,
     model = NULL,
@@ -54,14 +57,15 @@ batch_pool_test__plan <- function(
         ui = shift_ui(progress = "none")
     )
 }
+# }}}
 
 test_that("batch methods share Dataset discovery while keeping separate pools", {
     catalog <- batch_pool_test__catalog()
     original <- data.table::copy(catalog)
     calls <- list()
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     testthat::local_mocked_bindings(
         availability__collect = function(request, ...) {
@@ -126,9 +130,13 @@ test_that("batch methods share Dataset discovery while keeping separate pools", 
 
 test_that("per-method selection applies counts and explicit allowlists after coverage", {
     catalog <- batch_pool_test__catalog()
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, transform, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = function(
+            candidates,
+            transform,
+            ...
+        ) {
             # A is cheaper than B for monthly data; C is cheaper for daily data.
             candidates[,
                 source_file_count := c(A = 1, B = 10, C = 1)[source_id]
@@ -155,12 +163,14 @@ test_that("per-method selection applies counts and explicit allowlists after cov
     )
 
     # Catalogue presence does not waive missing File-year coverage for B.
-    withr::local_options(list(epwshiftr.cmip6.period_coverage = function(
-        candidates,
-        ...
-    ) {
-        candidates[source_id != "B"]
-    }))
+    test_local_dependencies(list(
+        shift_resolve__cmip6_period_coverage = function(
+            candidates,
+            ...
+        ) {
+            candidates[source_id != "B"]
+        }
+    ))
     expect_error(batch_pool_test__plan(TRUE), "No common")
     expect_error(
         batch_pool_test__plan(FALSE, model = 2L),
@@ -183,9 +193,9 @@ test_that("shared catalog failover does not repeat failed nodes or mix identity 
     )]
     catalog <- data.table::rbindlist(list(catalog, extra))
     calls <- character()
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     testthat::local_mocked_bindings(
         availability__collect = function(request, ...) {
@@ -215,10 +225,10 @@ test_that("shared catalog failover does not repeat failed nodes or mix identity 
         ),
         common = FALSE
     )
-    selected <- shift_batch__discover_models(
+    selected <- shift_batch_ui__discover_models(
         climate,
         transforms,
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         references,
         tempfile(),
         shift_ui(progress = "none")
@@ -234,8 +244,8 @@ test_that("batch alternatives remain available after File coverage rejects the f
     sets <- transform@required_inputs$model_future@variable_sets
     expect_gt(length(sets), 1L)
     variables <- unique(unlist(sets))
-    frequency <- shift__transform_cmip6_frequencies(transform, variables)
-    tables <- shift__cmip6_variable_tables(variables, frequency, NULL)
+    frequency <- shift_spec__transform_cmip6_frequencies(transform, variables)
+    tables <- shift_spec__cmip6_variable_tables(variables, frequency, NULL)
     catalog <- data.table::data.table(
         source_id = "A",
         experiment_id = "ssp585",
@@ -246,9 +256,13 @@ test_that("batch alternatives remain available after File coverage rejects the f
         table_id = unname(tables)
     )
     calls <- 0L
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, variables, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = function(
+            candidates,
+            variables,
+            ...
+        ) {
             if (identical(variables, as.character(sets[[1L]]))) {
                 candidates[0L]
             } else {
@@ -263,14 +277,14 @@ test_that("batch alternatives remain available after File coverage rejects the f
         },
         .package = "epwshiftr"
     )
-    selected <- shift_batch__discover_models(
+    selected <- shift_batch_ui__discover_models(
         shift_cmip6(
             model = 1L,
             scenarios = "ssp585",
             index_nodes = "https://example.org/esg-search"
         ),
         list(monthly = transform),
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         NULL,
         tempfile(),
         shift_ui(progress = "none")
@@ -285,37 +299,39 @@ test_that("batch alternatives remain available after File coverage rejects the f
 
 test_that("climate serialization and current batch receipts round-trip", {
     climate <- shift_cmip6(model = NULL, scenarios = "ssp585")
-    value <- shift__climate_spec_value(climate)
+    value <- shift_persist__climate_spec_value(climate)
     expect_false("common" %in% names(value))
     expect_identical(
-        shift__climate_spec_value(shift__climate_from_spec(value)),
+        shift_persist__climate_spec_value(shift_persist__climate_from_spec(
+            value
+        )),
         value
     )
-    expect_identical(shift__climate_from_spec(value)@common, TRUE)
+    expect_identical(shift_persist__climate_from_spec(value)@common, TRUE)
     climate@common <- FALSE
-    value <- shift__climate_spec_value(climate)
+    value <- shift_persist__climate_spec_value(climate)
     roundtrip <- jsonlite::fromJSON(jsonlite::toJSON(
         value,
         auto_unbox = TRUE,
         null = "null"
     ))
-    expect_identical(shift__climate_from_spec(roundtrip)@common, FALSE)
+    expect_identical(shift_persist__climate_from_spec(roundtrip)@common, FALSE)
     # A flag must reject strings, coercion, missing values, and vectors.
     for (flag in list("common", 1, NA, NULL, c(TRUE, FALSE))) {
         expect_error(shift_cmip6(scenarios = "ssp585", common = flag), "common")
     }
     expect_error(climate@common <- NA, "common")
 
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     store <- tempfile()
     batch <- batch_pool_test__plan(model = 1L, store = store)
     path <- shift_batch__receipt_path(batch@store_path)
     receipt <- readRDS(path)
     saveRDS(receipt, path)
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected discovery")
     }))
     restored <- batch_pool_test__plan(model = 1L, store = store)
@@ -332,7 +348,7 @@ test_that("workflow configuration accepts and displays a per-method pool locally
     local_mocked_bindings(
         shift_check = function(x, network = FALSE, ...) {
             expect_false(network)
-            shift_diagnostics_empty()
+            shift_stage__diagnostics_empty()
         },
         .package = "epwshiftr"
     )
@@ -344,7 +360,7 @@ test_that("workflow configuration accepts and displays a per-method pool locally
     config$calibration <- list(dataset = "era5", years = 1995:2014)
     path <- tempfile(fileext = ".json")
     jsonlite::write_json(config, path, auto_unbox = TRUE, null = "null")
-    withr::local_options(list(epwshiftr.cmip6.availability = function(...) {
+    test_local_dependencies(list(availability = function(...) {
         stop("Unexpected discovery")
     }))
     result <- epwshiftr_cli(c(
@@ -400,9 +416,9 @@ test_that("all batch alternatives share one normalized and matched catalog", {
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transforms <- shift_batch__transforms(
         transform = list(
@@ -425,7 +441,7 @@ test_that("all batch alternatives share one normalized and matched catalog", {
             index_nodes = "https://example.org/esg-search"
         ),
         transforms,
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         references,
         tempfile(),
         shift_ui(progress = "none")
@@ -461,9 +477,9 @@ test_that("public and batch discovery agree on cross-period variable alternative
         .package = "epwshiftr"
     )
     coverage_calls <- 0L
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = function(candidates, ...) {
             coverage_calls <<- coverage_calls + 1L
             candidates
         }
@@ -490,7 +506,7 @@ test_that("public and batch discovery agree on cross-period variable alternative
         shift_batch__discover_candidates(
             climate,
             transforms,
-            shift__periods_from_years(2050L),
+            shift_spec__periods_from_years(2050L),
             references,
             tempfile(),
             shift_ui(progress = "none")
@@ -510,7 +526,7 @@ test_that("public and batch discovery agree on cross-period variable alternative
     batch <- shift_batch__discover_candidates(
         climate,
         transforms,
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         references,
         tempfile(),
         shift_ui(progress = "none")
@@ -532,9 +548,9 @@ test_that("public and batch discovery apply the same Dataset filter precedence",
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     # Explicit selections override conflicting filters without dropping extras.
     filters <- list(
@@ -585,7 +601,7 @@ test_that("public and batch discovery apply the same Dataset filter precedence",
             filters = filters
         ),
         transforms,
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         references,
         tempfile(),
         shift_ui(progress = "none")
@@ -603,7 +619,7 @@ test_that("public and batch discovery apply the same Dataset filter precedence",
             grid_label = "gn",
             data_node = "data.example",
             latest = TRUE,
-            replica = FALSE,
+            replica = TRUE,
             fields = AVAILABILITY__DATASET_FIELDS,
             institution_id = "Example"
         )
@@ -626,9 +642,9 @@ test_that("cost ranking retains the least fragmented grid before selecting model
         availability__collect = function(...) catalog,
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = function(candidates, ...) {
             candidates[,
                 source_file_count := data.table::fifelse(
                     source_id == "B",
@@ -647,7 +663,7 @@ test_that("cost ranking retains the least fragmented grid before selecting model
             index_nodes = "https://example.org/esg-search"
         ),
         shift_batch__transforms(methods = "qdm"),
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         NULL,
         tempfile(),
         shift_ui(progress = "none")
@@ -678,9 +694,13 @@ test_that("native batch discovery respects explicit frequency and table pins", {
         .package = "epwshiftr"
     )
     checked <- NULL
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = function(candidates, frequency, ...) {
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = function(
+            candidates,
+            frequency,
+            ...
+        ) {
             checked <<- frequency
             candidates
         }
@@ -694,7 +714,7 @@ test_that("native batch discovery respects explicit frequency and table pins", {
             index_nodes = "https://example.org/esg-search"
         ),
         shift_batch__transforms(methods = "qdm"),
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         NULL,
         tempfile(),
         shift_ui(progress = "none")
@@ -711,7 +731,7 @@ test_that("native batch discovery respects explicit frequency and table pins", {
                 index_nodes = "https://example.org/esg-search"
             ),
             shift_batch__transforms(methods = "qdm"),
-            shift__periods_from_years(2050L),
+            shift_spec__periods_from_years(2050L),
             NULL,
             tempfile(),
             shift_ui(progress = "none")
@@ -743,7 +763,7 @@ test_that("unused optional history cannot constrain batch Dataset matching", {
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(epwshiftr.cmip6.availability = NULL))
+    test_local_dependencies(list(availability = NULL))
     for (conflict in c("frequency", "variables")) {
         optional <- transform@optional_inputs
         if (conflict == "frequency") {
@@ -790,13 +810,13 @@ test_that("unused optional history cannot constrain batch Dataset matching", {
 # future/history File checks are reused only within the current discovery call.
 test_that("batch methods share File coverage and skip public summaries", {
     file_requests <- reductions <- 0L
-    candidates <- shift__cmip6_candidates
+    candidates <- shift_resolve__cmip6_candidates
     local_mocked_bindings(
         availability__collect = function(...) batch_pool_test__catalog(),
         eligibility__summarize = function(...) {
             stop("Unexpected public summary")
         },
-        shift__cmip6_coverage_catalog = function(request, ...) {
+        shift_resolve__cmip6_coverage_catalog = function(request, ...) {
             file_requests <<- file_requests + 1L
             rows <- data.table::CJ(
                 source_id = request@meta$source,
@@ -814,15 +834,15 @@ test_that("batch methods share File coverage and skip public summaries", {
             )]
             rows
         },
-        shift__cmip6_candidates = function(...) {
+        shift_resolve__cmip6_candidates = function(...) {
             reductions <<- reductions + 1L
             candidates(...)
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = NULL,
-        epwshiftr.cmip6.period_coverage = shift__cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = shift_resolve__cmip6_period_coverage
     ))
     first <- batch_pool_test__plan(methods = c("qdm", "isimip3basd"))
     expect_equal(nrow(first@meta$manifest), 4L)
@@ -849,36 +869,38 @@ test_that("candidate frequency grouping serializes distinct maps only", {
         frequency_spec = rep(mappings, 33L)
     )
     before <- data.table::copy(rows)
-    serialize <- shift__spec_json
+    serialize <- shift_persist__spec_json
     serialized <- list()
     checked <- list()
     local_mocked_bindings(
-        shift__spec_json = function(spec) {
+        shift_persist__spec_json = function(spec) {
             serialized[[length(serialized) + 1L]] <<- spec
             serialize(spec)
         },
         .package = "epwshiftr"
     )
-    withr::local_options(list(epwshiftr.cmip6.period_coverage = function(
-        candidates,
-        climate,
-        transform,
-        variables,
-        frequency,
-        periods,
-        reference,
-        node,
-        store,
-        ui
-    ) {
-        checked[[length(checked) + 1L]] <<- frequency
-        candidates
-    }))
+    test_local_dependencies(list(
+        shift_resolve__cmip6_period_coverage = function(
+            candidates,
+            climate,
+            transform,
+            variables,
+            frequency,
+            periods,
+            reference,
+            node,
+            store,
+            ui
+        ) {
+            checked[[length(checked) + 1L]] <<- frequency
+            candidates
+        }
+    ))
     result <- shift_batch__available_alternative(
         shift_cmip6(scenarios = "ssp245", index_nodes = "https://example.org"),
         daily_transform("qdm"),
         "tas",
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         NULL,
         tempfile(),
         shift_ui(progress = "none"),
@@ -900,14 +922,14 @@ test_that("File coverage reuse respects identity and protects cached evidence", 
     fail <- FALSE
     empty <- FALSE
     local_mocked_bindings(
-        shift__cmip6_coverage_catalog = function(...) {
+        shift_resolve__cmip6_coverage_catalog = function(...) {
             calls <<- calls + 1L
             if (fail) {
                 stop("File service unavailable")
             }
             data.table::data.table()
         },
-        shift__cmip6_candidates = function(...) {
+        shift_resolve__cmip6_candidates = function(...) {
             result <- data.table::data.table(
                 source_id = "A",
                 variant_label = "r1i1p1f1",
@@ -916,7 +938,7 @@ test_that("File coverage reuse respects identity and protects cached evidence", 
             )
             if (empty) result[0L] else result
         },
-        shift__cmip6_candidate_file_count = function(...) 1L,
+        shift_resolve__cmip6_candidate_file_count = function(...) 1L,
         .package = "epwshiftr"
     )
     cache <- new.env(parent = emptyenv())
@@ -934,7 +956,7 @@ test_that("File coverage reuse respects identity and protects cached evidence", 
         years = 2041:2060,
         table = c(tas = "day")
     ) {
-        shift__cmip6_coverage_candidates(
+        shift_resolve__cmip6_coverage_candidates(
             value,
             years,
             table,
@@ -980,3 +1002,5 @@ test_that("File coverage reuse respects identity and protects cached evidence", 
     expect_equal(nrow(read(years = 2080L)), 0L)
     expect_identical(calls, 14L)
 })
+
+# vim: fdm=marker :

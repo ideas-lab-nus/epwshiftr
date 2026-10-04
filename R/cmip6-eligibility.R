@@ -2,6 +2,7 @@
 NULL
 
 # Keep typed data.table schemas even when discovery returns no identities.
+# eligibility__empty {{{
 eligibility__empty <- function() {
     list(
         matrix = data.table::data.table(
@@ -42,9 +43,11 @@ eligibility__empty <- function() {
         )
     )
 }
+# }}}
 
 # Normalize one provider catalog without copying unrelated Dataset columns.
 # Keep incomplete partitions as rejections, but discard unusable identities.
+# eligibility__catalog {{{
 eligibility__catalog <- function(datasets) {
     checkmate::assert_data_frame(datasets)
     fields <- c(
@@ -91,9 +94,11 @@ eligibility__catalog <- function(datasets) {
             nzchar(grid_label)
     ])
 }
+# }}}
 
 # Stage 2: flatten method contracts once, then expand alternatives and scenarios
 # with table joins. Only the small method and role lists need explicit loops.
+# eligibility__requirements {{{
 eligibility__requirements <- function(
     transforms,
     scenarios,
@@ -309,9 +314,11 @@ eligibility__requirements <- function(
         lookup = data.table::rbindlist(lapply(compiled, `[[`, "lookup"))
     )
 }
+# }}}
 
 # Stage 3: match all candidates in bulk, choosing one frequency/table per
 # variable across experiments, then record completeness and missing pairs.
+# eligibility__match {{{
 eligibility__match <- function(catalog, requirements) {
     pairs <- requirements$pairs
     catalog <- catalog[
@@ -367,7 +374,7 @@ eligibility__match <- function(catalog, requirements) {
     conventional <- vapply(
         frequencies,
         function(value) {
-            table <- shift__cmip6_table_id(value)
+            table <- shift_spec__cmip6_table_id(value)
             if (is.null(table)) NA_character_ else table
         },
         character(1L)
@@ -455,9 +462,11 @@ eligibility__match <- function(catalog, requirements) {
     )
     details
 }
+# }}}
 
 # Stage 4: summarize future and historical evidence, apply selection policies,
 # and return ordered eligibility and requirement data.tables with fixed schemas.
+# eligibility__summarize {{{
 eligibility__summarize <- function(details, scenarios, common) {
     checkmate::assert_flag(common)
     if (!nrow(details)) {
@@ -531,9 +540,11 @@ eligibility__summarize <- function(details, scenarios, common) {
     )
     list(matrix = matrix, requirements = details)
 }
+# }}}
 
 # Apply selection policies separately from metadata matching. Preserve one
 # joint path across scenarios and optionally intersect the method-specific pools.
+# eligibility__select {{{
 eligibility__select <- function(future, scenarios, common) {
     catalog_eligible <- method_eligible <- common_eligible <- selected <- score <-
         path_id <- missing <- NULL
@@ -584,3 +595,6 @@ eligibility__select <- function(future, scenarios, common) {
     )]
     matrix
 }
+# }}}
+
+# vim: fdm=marker :

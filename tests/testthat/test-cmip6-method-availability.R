@@ -1,4 +1,5 @@
 # Construct complete Dataset identities for offline public-query tests.
+# method_availability_test__datasets {{{
 method_availability_test__datasets <- function(
     variables = "tas",
     source = "Model-A",
@@ -29,6 +30,7 @@ method_availability_test__datasets <- function(
     rows[, `:=`(size = 1, latest = TRUE, replica = FALSE)]
     rows
 }
+# }}}
 
 test_that("method queries share a union catalog and keep rejected identities", {
     calls <- list()
@@ -237,7 +239,7 @@ test_that("method queries derive mixed frequencies and reject missing catalog fi
         table_id := vapply(
             frequency,
             function(value) {
-                shift__cmip6_table_id(value)
+                shift_spec__cmip6_table_id(value)
             },
             character(1L)
         )
@@ -353,14 +355,14 @@ test_that("public method discovery rejects incompatible cross-period alternative
 })
 
 test_that("frequency table defaults are resolved once per unique frequency", {
-    original <- shift__cmip6_table_id
+    original <- shift_spec__cmip6_table_id
     calls <- character()
     catalog <- method_availability_test__datasets(
         source = paste0("Model-", 1:100)
     )
     local_mocked_bindings(
         availability__collect = function(...) catalog,
-        shift__cmip6_table_id = function(frequency) {
+        shift_spec__cmip6_table_id = function(frequency) {
             calls <<- c(calls, frequency)
             original(frequency)
         },
@@ -371,3 +373,37 @@ test_that("frequency table defaults are resolved once per unique frequency", {
     expect_true(all(result$selected))
     expect_identical(calls, "day")
 })
+
+# Public variable and method discovery must preserve explicit replica policies.
+test_that("availability preserves explicit replica filters", {
+    requested <- NULL
+    local_mocked_bindings(availability__collect = function(request, store, ui) {
+        requested <<- request@meta$filters
+        method_availability_test__datasets()
+    })
+    for (method in list(NULL, "qdm")) {
+        for (filters in list(
+            list(),
+            list(replica = TRUE),
+            list(replica = NULL)
+        )) {
+            original <- filters
+            arguments <- list(scenarios = "ssp245", filters = filters)
+            if (is.null(method)) {
+                arguments$variables <- "tas"
+            } else {
+                arguments$methods <- method
+            }
+            do.call(shift_cmip6_avail, arguments)
+            expected <- if ("replica" %in% names(filters)) {
+                filters$replica
+            } else {
+                FALSE
+            }
+            expect_identical(requested$replica, expected)
+            expect_identical(filters, original)
+        }
+    }
+})
+
+# vim: fdm=marker :

@@ -1,15 +1,19 @@
 #' @include utils.R
 NULL
 
-# Copernicus Data Store transport --------------------------------------------
-
+# Copernicus Data Store transport
 CDS__DEFAULT_URL <- "https://cds.climate.copernicus.eu/api"
 CDS__TERMINAL_STATUSES <- c(
-    "successful", "failed", "rejected", "dismissed", "deleted"
+    "successful",
+    "failed",
+    "rejected",
+    "dismissed",
+    "deleted"
 )
 
 # Parse the simple key-value configuration format used by both current ECMWF
 # and legacy CDS client configuration files without evaluating user content.
+# cds__read_config_file {{{
 cds__read_config_file <- function(path) {
     path <- path.expand(path)
     if (!file.exists(path)) {
@@ -32,9 +36,11 @@ cds__read_config_file <- function(path) {
     }
     output
 }
+# }}}
 
 # Resolve CDS configuration in the same precedence order as the official
 # client while accepting the established `.cdsapirc` file as a fallback.
+# cds__config {{{
 cds__config <- function(require_key = TRUE) {
     checkmate::assert_flag(require_key)
     modern_path <- Sys.getenv(
@@ -47,10 +53,13 @@ cds__config <- function(require_key = TRUE) {
         "ECMWF_DATASTORES_URL",
         unset = Sys.getenv(
             "CDSAPI_URL",
-            unset = shift_coalesce(modern$url, shift_coalesce(
-                legacy$url,
-                CDS__DEFAULT_URL
-            ))
+            unset = shift_stage__coalesce(
+                modern$url,
+                shift_stage__coalesce(
+                    legacy$url,
+                    CDS__DEFAULT_URL
+                )
+            )
         )
     )
     key <- Sys.getenv(
@@ -59,31 +68,39 @@ cds__config <- function(require_key = TRUE) {
             "CDSAPI_KEY",
             unset = Sys.getenv(
                 "CDS_API_KEY",
-                unset = shift_coalesce(modern$key, legacy$key)
+                unset = shift_stage__coalesce(modern$key, legacy$key)
             )
         )
     )
     url <- sub("/+$", "", url)
     if (isTRUE(require_key) && (is.null(key) || !nzchar(key))) {
-        cli::cli_abort(c(
-            "A Copernicus Data Store API key is required to retrieve ERA data.",
-            "i" = paste(
-                "Set `ECMWF_DATASTORES_KEY` or add `key:` to",
-                "`~/.ecmwfdatastoresrc` or `~/.cdsapirc`."
-            )
-        ), class = "epwshiftr_cds_auth_error")
+        cli::cli_abort(
+            c(
+                "A Copernicus Data Store API key is required to retrieve ERA data.",
+                "i" = paste(
+                    "Set `ECMWF_DATASTORES_KEY` or add `key:` to",
+                    "`~/.ecmwfdatastoresrc` or `~/.cdsapirc`."
+                )
+            ),
+            class = "epwshiftr_cds_auth_error"
+        )
     }
     if (!is.null(key) && grepl(":", key, fixed = TRUE)) {
-        cli::cli_abort(c(
-            "The configured CDS key uses the retired `UID:key` form.",
-            "i" = "Replace it with the personal access token shown in the current CDS profile."
-        ), class = "epwshiftr_cds_auth_error")
+        cli::cli_abort(
+            c(
+                "The configured CDS key uses the retired `UID:key` form.",
+                "i" = "Replace it with the personal access token shown in the current CDS profile."
+            ),
+            class = "epwshiftr_cds_auth_error"
+        )
     }
     list(url = url, key = key)
 }
+# }}}
 
 # Resolve `.` and `..` URL path segments without introducing another HTTP
 # dependency into the provider transport.
+# cds__normalize_url_path {{{
 cds__normalize_url_path <- function(url) {
     parsed <- regmatches(
         url,
@@ -93,8 +110,8 @@ cds__normalize_url_path <- function(url) {
         return(url)
     }
     origin <- parsed[[2L]]
-    path <- shift_coalesce(parsed[[3L]], "/")
-    suffix <- shift_coalesce(parsed[[4L]], "")
+    path <- shift_stage__coalesce(parsed[[3L]], "/")
+    suffix <- shift_stage__coalesce(parsed[[4L]], "")
     stack <- character()
     for (part in strsplit(path, "/", fixed = TRUE)[[1L]]) {
         if (!nzchar(part) || identical(part, ".")) {
@@ -110,8 +127,10 @@ cds__normalize_url_path <- function(url) {
     }
     paste0(origin, "/", paste(stack, collapse = "/"), suffix)
 }
+# }}}
 
 # Join a relative API link from an OGC job response to its response URL.
+# cds__absolute_url {{{
 cds__absolute_url <- function(url, base) {
     checkmate::assert_string(url, min.chars = 1L)
     checkmate::assert_string(base, min.chars = 1L)
@@ -120,17 +139,21 @@ cds__absolute_url <- function(url, base) {
     }
     base <- sub("[#?].*$", "", base)
     base_parts <- strsplit(base, "/", fixed = TRUE)[[1L]]
-    origin <- paste(base_parts[seq_len(min(3L, length(base_parts)))],
-        collapse = "/")
+    origin <- paste(
+        base_parts[seq_len(min(3L, length(base_parts)))],
+        collapse = "/"
+    )
     if (startsWith(url, "/")) {
         return(cds__normalize_url_path(paste0(origin, url)))
     }
     parent <- sub("/[^/]*$", "/", base)
     cds__normalize_url_path(paste0(parent, url))
 }
+# }}}
 
 # Remove a configured secret from provider error text before it reaches logs,
 # diagnostics, snapshots, or a persisted run failure.
+# cds__redact {{{
 cds__redact <- function(value, key = NULL) {
     value <- as.character(value)
     if (!is.null(key) && nzchar(key)) {
@@ -138,9 +161,11 @@ cds__redact <- function(value, key = NULL) {
     }
     value
 }
+# }}}
 
 # Classify provider HTTP failures so callers can distinguish invalid
 # authentication and unaccepted data terms from transient request failures.
+# cds__http_error_classes {{{
 cds__http_error_classes <- function(status_code, provider_message) {
     checkmate::assert_count(status_code)
     provider_message <- paste(as.character(provider_message), collapse = " ")
@@ -150,11 +175,12 @@ cds__http_error_classes <- function(status_code, provider_message) {
             "epwshiftr_cds_request_error"
         ))
     }
-    licence_error <- identical(as.integer(status_code), 403L) && grepl(
-        "licen[cs]e|terms?.*(accept|agree)|(accept|agree).*terms?",
-        provider_message,
-        ignore.case = TRUE
-    )
+    licence_error <- identical(as.integer(status_code), 403L) &&
+        grepl(
+            "licen[cs]e|terms?.*(accept|agree)|(accept|agree).*terms?",
+            provider_message,
+            ignore.case = TRUE
+        )
     if (licence_error) {
         return(c(
             "epwshiftr_cds_license_error",
@@ -163,9 +189,11 @@ cds__http_error_classes <- function(status_code, provider_message) {
     }
     "epwshiftr_cds_request_error"
 }
+# }}}
 
 # Verify a configured personal access token through the official CDS profile
 # endpoint without requesting, staging, or downloading any climate dataset.
+# cds__check_authentication {{{
 cds__check_authentication <- function(config = cds__config(), timeout = 120) {
     checkmate::assert_list(config, names = "unique")
     response <- cds__http(
@@ -176,9 +204,11 @@ cds__check_authentication <- function(config = cds__config(), timeout = 120) {
     )
     invisible(identical(response$status_code, 200L))
 }
+# }}}
 
 # Build the public CDS page where a user can inspect and accept the terms for
 # one dataset. The package never accepts those terms on the user's behalf.
+# cds__dataset_license_url {{{
 cds__dataset_license_url <- function(dataset_id) {
     checkmate::assert_string(dataset_id, min.chars = 1L)
     paste0(
@@ -187,10 +217,12 @@ cds__dataset_license_url <- function(dataset_id) {
         "?tab=download#manage-licences"
     )
 }
+# }}}
 
 # Execute one JSON CDS request through curl and return status, headers, and a
 # parsed body. Keeping this function small makes the full async lifecycle easy
 # to exercise against a local mock server.
+# cds__http {{{
 cds__http <- function(
     method,
     url,
@@ -250,9 +282,12 @@ cds__http <- function(
         list()
     }
     if (response$status_code < 200L || response$status_code >= 300L) {
-        provider_message <- shift_coalesce(
+        provider_message <- shift_stage__coalesce(
             parsed$detail,
-            shift_coalesce(parsed$title, shift_coalesce(parsed$message, text))
+            shift_stage__coalesce(
+                parsed$title,
+                shift_stage__coalesce(parsed$message, text)
+            )
         )
         provider_message <- paste(
             cds__redact(provider_message, key),
@@ -278,16 +313,22 @@ cds__http <- function(
         url = url
     )
 }
+# }}}
 
 # Return the unique link matching one OGC relation from a provider response.
+# cds__link {{{
 cds__link <- function(response, relation, required = TRUE) {
     checkmate::assert_string(relation, min.chars = 1L)
     checkmate::assert_flag(required)
-    links <- shift_coalesce(response$links, list())
-    matches <- Filter(function(link) {
-        identical(as.character(link$rel), relation) &&
-            !is.null(link$href) && nzchar(as.character(link$href))
-    }, links)
+    links <- shift_stage__coalesce(response$links, list())
+    matches <- Filter(
+        function(link) {
+            identical(as.character(link$rel), relation) &&
+                !is.null(link$href) &&
+                nzchar(as.character(link$href))
+        },
+        links
+    )
     if (length(matches) == 1L) {
         return(as.character(matches[[1L]]$href))
     }
@@ -299,8 +340,10 @@ cds__link <- function(response, relation, required = TRUE) {
     }
     NULL
 }
+# }}}
 
 # Submit one dataset request and retain only the public job locator and ID.
+# cds__submit {{{
 cds__submit <- function(dataset_id, request, config = cds__config()) {
     checkmate::assert_string(dataset_id, min.chars = 1L)
     checkmate::assert_list(request, names = "unique")
@@ -340,14 +383,16 @@ cds__submit <- function(dataset_id, request, config = cds__config()) {
         dataset_id = dataset_id,
         request_id = sub(".*/", "", monitor),
         monitor_url = monitor,
-        status = as.character(shift_coalesce(
+        status = as.character(shift_stage__coalesce(
             response$body$status,
             "accepted"
         ))
     )
 }
+# }}}
 
 # Fetch one current job snapshot without retaining request parameters or auth.
+# cds__status {{{
 cds__status <- function(job, config = cds__config()) {
     checkmate::assert_list(job, names = "unique")
     response <- cds__http(
@@ -360,12 +405,14 @@ cds__status <- function(job, config = cds__config()) {
         request_id = job$request_id,
         monitor_url = job$monitor_url,
         status = as.character(response$body$status),
-        links = shift_coalesce(response$body$links, list()),
-        message = shift_coalesce(response$body$message, NULL)
+        links = shift_stage__coalesce(response$body$links, list()),
+        message = shift_stage__coalesce(response$body$message, NULL)
     )
 }
+# }}}
 
 # Poll one submitted job with bounded delays and return its successful snapshot.
+# cds__wait {{{
 cds__wait <- function(
     job,
     config = cds__config(),
@@ -379,8 +426,11 @@ cds__wait <- function(
     delay <- poll_interval
     repeat {
         current <- cds__status(job, config = config)
-        if (length(current$status) != 1L || is.na(current$status) ||
-            !nzchar(current$status)) {
+        if (
+            length(current$status) != 1L ||
+                is.na(current$status) ||
+                !nzchar(current$status)
+        ) {
             cli::cli_abort(
                 "CDS returned a missing or malformed job status.",
                 class = "epwshiftr_cds_response_error"
@@ -389,10 +439,13 @@ cds__wait <- function(
         if (identical(current$status, "successful")) {
             return(current)
         }
-        if (current$status %in% setdiff(
-            CDS__TERMINAL_STATUSES,
-            "successful"
-        )) {
+        if (
+            current$status %in%
+                setdiff(
+                    CDS__TERMINAL_STATUSES,
+                    "successful"
+                )
+        ) {
             cli::cli_abort(
                 c(
                     "CDS request {.val {current$request_id}} ended with status {.val {current$status}}.",
@@ -410,8 +463,11 @@ cds__wait <- function(
         }
         if (!is.null(reporter)) {
             reporter$heartbeat(
-                sprintf("ERA5 request %s is %s", current$request_id,
-                    current$status),
+                sprintf(
+                    "ERA5 request %s is %s",
+                    current$request_id,
+                    current$status
+                ),
                 details = list(
                     unit_type = "reanalysis_request",
                     request_id = current$request_id,
@@ -426,8 +482,10 @@ cds__wait <- function(
         delay <- min(max(1, delay * 1.5), 30)
     }
 }
+# }}}
 
 # Resolve the downloadable asset returned by one successful OGC job.
+# cds__result {{{
 cds__result <- function(job, config = cds__config()) {
     result_url <- cds__link(job, "results", required = FALSE)
     if (is.null(result_url)) {
@@ -448,27 +506,32 @@ cds__result <- function(job, config = cds__config()) {
     list(
         url = cds__absolute_url(as.character(asset$href), response$url),
         size = suppressWarnings(as.numeric(asset[["file:size"]])),
-        type = as.character(shift_coalesce(
+        type = as.character(shift_stage__coalesce(
             asset$type,
             "application/octet-stream"
         ))
     )
 }
+# }}}
 
 # Detect ZIP payloads from their signature because the CDS asset media type is
 # not consistently specific enough to distinguish an archive from NetCDF.
+# cds__is_zip_file {{{
 cds__is_zip_file <- function(path) {
     checkmate::assert_file_exists(path)
     signature <- readBin(path, what = "raw", n = 4L)
-    length(signature) >= 4L && identical(
-        as.integer(signature[seq_len(4L)]),
-        c(0x50L, 0x4bL, 0x03L, 0x04L)
-    )
+    length(signature) >= 4L &&
+        identical(
+            as.integer(signature[seq_len(4L)]),
+            c(0x50L, 0x4bL, 0x03L, 0x04L)
+        )
 }
+# }}}
 
 # Extract the single NetCDF member returned for one variable-sized CDS request.
 # Archive paths are validated before extraction so provider filenames cannot
 # escape the temporary directory or silently select an unrelated member.
+# cds__extract_netcdf_archive {{{
 cds__extract_netcdf_archive <- function(archive, directory) {
     checkmate::assert_file_exists(archive)
     checkmate::assert_directory_exists(directory)
@@ -481,8 +544,7 @@ cds__extract_netcdf_archive <- function(archive, directory) {
             )
         }
     )
-    members <- manifest$Name[grepl("[.]nc$", manifest$Name,
-        ignore.case = TRUE)]
+    members <- manifest$Name[grepl("[.]nc$", manifest$Name, ignore.case = TRUE)]
     safe_member <- length(members) == 1L &&
         identical(basename(members), members) &&
         !grepl("[\\\\/]", members)
@@ -514,8 +576,10 @@ cds__extract_netcdf_archive <- function(archive, directory) {
     }
     normalizePath(extracted, winslash = "/", mustWork = TRUE)
 }
+# }}}
 
 # Download one result atomically and verify its declared size when available.
+# cds__download {{{
 cds__download <- function(asset, target, config = cds__config()) {
     checkmate::assert_list(asset, names = "unique")
     checkmate::assert_string(target, min.chars = 1L)
@@ -543,8 +607,11 @@ cds__download <- function(asset, target, config = cds__config()) {
             )
         }
     )
-    if (length(asset$size) && is.finite(asset$size) &&
-        file.info(temporary)$size != asset$size) {
+    if (
+        length(asset$size) &&
+            is.finite(asset$size) &&
+            file.info(temporary)$size != asset$size
+    ) {
         cli::cli_abort(
             "CDS result size does not match the provider manifest.",
             class = "epwshiftr_cds_download_error"
@@ -557,8 +624,10 @@ cds__download <- function(asset, target, config = cds__config()) {
             tmpdir = dirname(target)
         )
         dir.create(extraction_directory)
-        on.exit(unlink(extraction_directory, recursive = TRUE,
-            force = TRUE), add = TRUE)
+        on.exit(
+            unlink(extraction_directory, recursive = TRUE, force = TRUE),
+            add = TRUE
+        )
         completed <- cds__extract_netcdf_archive(
             temporary,
             extraction_directory
@@ -572,10 +641,12 @@ cds__download <- function(asset, target, config = cds__config()) {
     }
     normalizePath(target, winslash = "/", mustWork = TRUE)
 }
+# }}}
 
 # Run the complete CDS submit, wait, result, and download sequence for one
 # variable-sized request. Splitting ERA fields into separate jobs keeps errors
 # attributable and avoids grouped archive outputs.
+# cds__retrieve {{{
 cds__retrieve <- function(
     dataset_id,
     request,
@@ -612,9 +683,11 @@ cds__retrieve <- function(
     path <- cds__download(asset, target, config = config)
     list(path = path, job = completed, reused = FALSE)
 }
+# }}}
 
 # Cancel one provider job when a future batch integration has a remote request
 # still in progress. Completed jobs are left untouched.
+# cds__cancel {{{
 cds__cancel <- function(job, config = cds__config()) {
     response <- cds__http(
         "DELETE",
@@ -623,3 +696,6 @@ cds__cancel <- function(job, config = cds__config()) {
     )
     invisible(response$body)
 }
+# }}}
+
+# vim: fdm=marker :

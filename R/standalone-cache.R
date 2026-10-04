@@ -13,17 +13,34 @@ cache__env$option_prefix <- "cache"
 cache__env$default_dir <- NULL
 cache__env$cache <- NULL
 
+# cache__configure {{{
 cache__configure <- function(package, option_prefix = package, dir = NULL) {
-    if (!is.character(package) || length(package) != 1L ||
-        is.na(package) || !nzchar(package)) {
+    if (
+        !is.character(package) ||
+            length(package) != 1L ||
+            is.na(package) ||
+            !nzchar(package)
+    ) {
         stop("'package' must be a single non-empty string.", call. = FALSE)
     }
-    if (!is.character(option_prefix) || length(option_prefix) != 1L ||
-        is.na(option_prefix) || !nzchar(option_prefix)) {
-        stop("'option_prefix' must be a single non-empty string.", call. = FALSE)
+    if (
+        !is.character(option_prefix) ||
+            length(option_prefix) != 1L ||
+            is.na(option_prefix) ||
+            !nzchar(option_prefix)
+    ) {
+        stop(
+            "'option_prefix' must be a single non-empty string.",
+            call. = FALSE
+        )
     }
-    if (!is.null(dir) &&
-        (!is.character(dir) || length(dir) != 1L || is.na(dir) || !nzchar(dir))) {
+    if (
+        !is.null(dir) &&
+            (!is.character(dir) ||
+                length(dir) != 1L ||
+                is.na(dir) ||
+                !nzchar(dir))
+    ) {
         stop("'dir' must be NULL or a single non-empty string.", call. = FALSE)
     }
 
@@ -33,22 +50,30 @@ cache__configure <- function(package, option_prefix = package, dir = NULL) {
     cache__env$cache <- NULL
     invisible(NULL)
 }
+# }}}
 
+# cache__option_name {{{
 cache__option_name <- function(name) {
     paste0(cache__env$option_prefix, ".", name)
 }
+# }}}
 
+# cache__option {{{
 cache__option <- function(name, default) {
     getOption(cache__option_name(name), default)
 }
+# }}}
 
+# cache__default_dir {{{
 cache__default_dir <- function() {
     if (!is.null(cache__env$default_dir)) {
         return(cache__env$default_dir)
     }
     tools::R_user_dir(cache__env$package, "cache")
 }
+# }}}
 
+# cache__hash {{{
 cache__hash <- function(x) {
     FNV_PRIME <- 16777619
     FNV_OFFSET <- 2166136261
@@ -78,17 +103,22 @@ cache__hash <- function(x) {
         sprintf("%04x%04x", hash_hi, hash_lo)
     }
 }
+# }}}
 
+# cache__verbose {{{
 cache__verbose <- function(expr) {
     if (!cache__option("verbose", FALSE)) {
         return(invisible(NULL))
     }
     force(expr)
 }
+# }}}
 
+# DiskCache {{{
 DiskCache <- R6::R6Class(
     "DiskCache",
     public = list(
+        # initialize {{{
         initialize = function(
             dir,
             max_size = Inf,
@@ -98,34 +128,75 @@ DiskCache <- R6::R6Class(
             prune_limit = 5,
             prune_on_init = TRUE
         ) {
-            if (!is.character(dir) || length(dir) != 1L || is.na(dir) || nchar(dir) == 0L) {
+            if (
+                !is.character(dir) ||
+                    length(dir) != 1L ||
+                    is.na(dir) ||
+                    nchar(dir) == 0L
+            ) {
                 stop("'dir' must be a single string.")
             }
 
             max_size <- private$parse_size(max_size)
-            if (!is.numeric(max_size) || length(max_size) != 1L || is.na(max_size) || max_size < 0) {
-                stop("'max_size' must be a non-negative number or a string like '100 MB', '10 GB'")
+            if (
+                !is.numeric(max_size) ||
+                    length(max_size) != 1L ||
+                    is.na(max_size) ||
+                    max_size < 0
+            ) {
+                stop(
+                    "'max_size' must be a non-negative number or a string like '100 MB', '10 GB'"
+                )
             }
 
             max_age <- private$parse_age(max_age)
-            if (!is.numeric(max_age) || length(max_age) != 1L || is.na(max_age) || max_age < 0) {
-                stop("'max_age' must be a non-negative number or a string like '1 hour', '10 mins', '1000 secs'")
+            if (
+                !is.numeric(max_age) ||
+                    length(max_age) != 1L ||
+                    is.na(max_age) ||
+                    max_age < 0
+            ) {
+                stop(
+                    "'max_age' must be a non-negative number or a string like '1 hour', '10 mins', '1000 secs'"
+                )
             }
 
-            if (!is.numeric(max_n) || length(max_n) != 1L || is.na(max_n) || max_n < 0) {
+            if (
+                !is.numeric(max_n) ||
+                    length(max_n) != 1L ||
+                    is.na(max_n) ||
+                    max_n < 0
+            ) {
                 stop("'max_n' must be a non-negative number")
             }
 
-            if (!is.numeric(prune_rate) || length(prune_rate) != 1L || is.na(prune_rate) ||
-                !is.finite(prune_rate) || prune_rate < 1 || prune_rate != floor(prune_rate)) {
+            if (
+                !is.numeric(prune_rate) ||
+                    length(prune_rate) != 1L ||
+                    is.na(prune_rate) ||
+                    !is.finite(prune_rate) ||
+                    prune_rate < 1 ||
+                    prune_rate != floor(prune_rate)
+            ) {
                 stop("'prune_rate' must be a positive integer")
             }
             prune_rate <- as.integer(prune_rate)
             prune_limit <- private$parse_age(prune_limit)
-            if (!is.numeric(prune_limit) || length(prune_limit) != 1L || is.na(prune_limit) || prune_limit < 0) {
-                stop("'prune_limit' must be a non-negative number or a string like '1 hour', '10 mins', '1000 secs'")
+            if (
+                !is.numeric(prune_limit) ||
+                    length(prune_limit) != 1L ||
+                    is.na(prune_limit) ||
+                    prune_limit < 0
+            ) {
+                stop(
+                    "'prune_limit' must be a non-negative number or a string like '1 hour', '10 mins', '1000 secs'"
+                )
             }
-            if (!is.logical(prune_on_init) || length(prune_on_init) != 1L || is.na(prune_on_init)) {
+            if (
+                !is.logical(prune_on_init) ||
+                    length(prune_on_init) != 1L ||
+                    is.na(prune_on_init)
+            ) {
                 stop("'prune_on_init' must be TRUE or FALSE")
             }
 
@@ -133,7 +204,10 @@ DiskCache <- R6::R6Class(
             if (!dir.exists(private$dir)) {
                 success <- dir.create(private$dir, recursive = TRUE)
                 if (!success) {
-                    stop(sprintf("Failed to create cache directory '%s'.", private$dir))
+                    stop(sprintf(
+                        "Failed to create cache directory '%s'.",
+                        private$dir
+                    ))
                 }
             }
 
@@ -150,6 +224,8 @@ DiskCache <- R6::R6Class(
 
             invisible(self)
         },
+        # }}}
+        # get {{{
         get = function(key) {
             self$is_destroyed(throw = TRUE)
 
@@ -180,9 +256,13 @@ DiskCache <- R6::R6Class(
                 return(value)
             }
 
-            tryCatch(Sys.setFileTime(path, Sys.time()), error = function(e) NULL)
+            tryCatch(Sys.setFileTime(path, Sys.time()), error = function(e) {
+                NULL
+            })
             value
         },
+        # }}}
+        # set {{{
         set = function(key, value) {
             self$is_destroyed(throw = TRUE)
 
@@ -193,7 +273,8 @@ DiskCache <- R6::R6Class(
 
             private$set_count <- private$set_count + 1L
             should_prune <- private$set_count >= private$prune_rate ||
-                difftime(Sys.time(), private$last_prune_time, units = "secs") >= private$prune_limit
+                difftime(Sys.time(), private$last_prune_time, units = "secs") >=
+                    private$prune_limit
 
             if (should_prune) {
                 self$prune()
@@ -202,17 +283,23 @@ DiskCache <- R6::R6Class(
 
             invisible(self)
         },
+        # }}}
+        # exists {{{
         exists = function(key) {
             self$is_destroyed(throw = TRUE)
 
             private$validate_key(key)
             file.exists(private$get_cache_path(key))
         },
+        # }}}
+        # keys {{{
         keys = function() {
             self$is_destroyed(throw = TRUE)
 
             tools::file_path_sans_ext(basename(private$list_files()))
         },
+        # }}}
+        # remove {{{
         remove = function(key) {
             self$is_destroyed(throw = TRUE)
 
@@ -225,6 +312,8 @@ DiskCache <- R6::R6Class(
                 invisible(FALSE)
             }
         },
+        # }}}
+        # reset {{{
         reset = function() {
             self$is_destroyed(throw = TRUE)
 
@@ -235,11 +324,15 @@ DiskCache <- R6::R6Class(
             success <- unlink(files)
             invisible(self)
         },
+        # }}}
+        # size {{{
         size = function() {
             self$is_destroyed(throw = TRUE)
 
             length(self$keys())
         },
+        # }}}
+        # destroy {{{
         destroy = function() {
             if (private$destroyed) {
                 return(invisible(FALSE))
@@ -247,7 +340,10 @@ DiskCache <- R6::R6Class(
             sentinel <- file.path(private$dir, "__destroyed__")
             success <- file.create(sentinel)
             if (!success) {
-                warning(sprintf("Failed to create sentinel file '%s'.", sentinel))
+                warning(sprintf(
+                    "Failed to create sentinel file '%s'.",
+                    sentinel
+                ))
             }
 
             files <- private$list_files()
@@ -266,12 +362,17 @@ DiskCache <- R6::R6Class(
 
             success <- unlink(private$dir, recursive = TRUE)
             if (success != 0) {
-                warning(sprintf("Failed to remove cache directory '%s'.", private$dir))
+                warning(sprintf(
+                    "Failed to remove cache directory '%s'.",
+                    private$dir
+                ))
             }
 
             private$destroyed <- TRUE
             invisible(TRUE)
         },
+        # }}}
+        # is_destroyed {{{
         is_destroyed = function(throw = FALSE) {
             if (
                 !dir.exists(private$dir) ||
@@ -284,6 +385,8 @@ DiskCache <- R6::R6Class(
             }
             private$destroyed
         },
+        # }}}
+        # prune {{{
         prune = function() {
             self$is_destroyed(throw = TRUE)
 
@@ -300,7 +403,11 @@ DiskCache <- R6::R6Class(
                     return()
                 }
 
-                info <<- info[order(info$mtime, decreasing = TRUE), , drop = FALSE]
+                info <<- info[
+                    order(info$mtime, decreasing = TRUE),
+                    ,
+                    drop = FALSE
+                ]
                 info_is_sorted <<- TRUE
             }
 
@@ -313,7 +420,9 @@ DiskCache <- R6::R6Class(
                 if (length(old) > 0) {
                     success <- unlink(old)
                     if (success != 0) {
-                        warning("Failed to remove some old cache files (max_age).")
+                        warning(
+                            "Failed to remove some old cache files (max_age)."
+                        )
                     }
                     info <- info[!info$path %in% old, , drop = FALSE]
                 }
@@ -338,7 +447,9 @@ DiskCache <- R6::R6Class(
                     if (length(rem) > 0) {
                         success <- unlink(rem)
                         if (success != 0) {
-                            warning("Failed to remove some cache files (max_size).")
+                            warning(
+                                "Failed to remove some cache files (max_size)."
+                            )
                         }
                         info <- info[!info$path %in% rem, , drop = FALSE]
                     }
@@ -348,6 +459,8 @@ DiskCache <- R6::R6Class(
             private$last_prune_time <- Sys.time()
             invisible(self)
         },
+        # }}}
+        # info {{{
         info = function() {
             list(
                 dir = private$dir,
@@ -360,6 +473,7 @@ DiskCache <- R6::R6Class(
                 size = private$get_cache_size()
             )
         }
+        # }}}
     ),
     private = list(
         dir = NULL,
@@ -373,12 +487,19 @@ DiskCache <- R6::R6Class(
         destroyed = FALSE,
         metadata_file = ".metadata.rds",
         missing = structure(list(), class = "key_missing"),
+        # list_files {{{
         list_files = function() {
-            files <- list.files(private$dir, pattern = "\\.rds$", full.names = TRUE)
+            files <- list.files(
+                private$dir,
+                pattern = "\\.rds$",
+                full.names = TRUE
+            )
             files <- files[basename(files) != private$metadata_file]
             files
         },
+        # }}}
 
+        # validate_key {{{
         validate_key = function(key) {
             if (!is.character(key) || length(key) != 1L) {
                 stop("Key must be a single string.")
@@ -390,12 +511,20 @@ DiskCache <- R6::R6Class(
                 stop("Key must be shorter than 80 characters.")
             }
             if (grepl("[<>:\"/\\\\|?*]", key)) {
-                stop("Key must not contain any of the following characters: <>:\"/\\|?*")
+                stop(
+                    "Key must not contain any of the following characters: <>:\"/\\|?*"
+                )
             }
         },
+        # }}}
 
+        # atomic_write {{{
         atomic_write = function(value, path) {
-            temp_file <- paste0(path, "-temp-", format(Sys.time(), "%Y%m%d%H%M%OS6"))
+            temp_file <- paste0(
+                path,
+                "-temp-",
+                format(Sys.time(), "%Y%m%d%H%M%OS6")
+            )
             on.exit(unlink(temp_file), add = TRUE)
             tryCatch(
                 {
@@ -410,7 +539,9 @@ DiskCache <- R6::R6Class(
                 }
             )
         },
+        # }}}
 
+        # get_file_info {{{
         get_file_info = function() {
             files <- private$list_files()
 
@@ -418,7 +549,10 @@ DiskCache <- R6::R6Class(
                 return(data.frame(
                     path = character(),
                     size = numeric(),
-                    mtime = structure(numeric(), class = c("POSIXct", "POSIXt")),
+                    mtime = structure(
+                        numeric(),
+                        class = c("POSIXct", "POSIXt")
+                    ),
                     stringsAsFactors = FALSE,
                     row.names = NULL
                 ))
@@ -430,7 +564,9 @@ DiskCache <- R6::R6Class(
 
             info[!info$isdir & !is.na(info$size), , drop = FALSE]
         },
+        # }}}
 
+        # get_cache_size {{{
         get_cache_size = function() {
             files <- private$list_files()
             if (length(files) == 0L) {
@@ -438,11 +574,15 @@ DiskCache <- R6::R6Class(
             }
             sum(file.info(files)$size, na.rm = TRUE)
         },
+        # }}}
 
+        # get_cache_path {{{
         get_cache_path = function(key) {
             file.path(private$dir, paste0(key, ".rds"))
         },
+        # }}}
 
+        # check_config {{{
         check_config = function(prune = TRUE) {
             metadata <- file.path(private$dir, private$metadata_file)
 
@@ -455,7 +595,10 @@ DiskCache <- R6::R6Class(
                     }
                 },
                 error = function(e) {
-                    warning("Failed to load cache metadata. ", conditionMessage(e))
+                    warning(
+                        "Failed to load cache metadata. ",
+                        conditionMessage(e)
+                    )
                     NULL
                 }
             )
@@ -478,9 +621,22 @@ DiskCache <- R6::R6Class(
                     new_val <- current[[field]]
 
                     if (!identical(old_val, new_val)) {
-                        old_str <- if (is.infinite(old_val)) "Inf" else as.character(old_val)
-                        new_str <- if (is.infinite(new_val)) "Inf" else as.character(new_val)
-                        message(sprintf("  - %s: %s -> %s", field, old_str, new_str))
+                        old_str <- if (is.infinite(old_val)) {
+                            "Inf"
+                        } else {
+                            as.character(old_val)
+                        }
+                        new_str <- if (is.infinite(new_val)) {
+                            "Inf"
+                        } else {
+                            as.character(new_val)
+                        }
+                        message(sprintf(
+                            "  - %s: %s -> %s",
+                            field,
+                            old_str,
+                            new_str
+                        ))
                     }
                 }
 
@@ -497,21 +653,28 @@ DiskCache <- R6::R6Class(
                 tryCatch(
                     saveRDS(current, metadata),
                     error = function(e) {
-                        warning("Failed to save cache metadata. ", conditionMessage(e))
+                        warning(
+                            "Failed to save cache metadata. ",
+                            conditionMessage(e)
+                        )
                     }
                 )
             }
 
             invisible(self)
         },
+        # }}}
 
+        # parse_size {{{
         parse_size = function(size) {
             if (is.numeric(size)) {
                 return(size)
             }
 
             if (!is.character(size) || length(size) != 1L || is.na(size)) {
-                stop("'max_size' must be a number or a string like '100 MB', '10 GB'")
+                stop(
+                    "'max_size' must be a number or a string like '100 MB', '10 GB'"
+                )
             }
 
             # string format: "number unit"
@@ -550,14 +713,18 @@ DiskCache <- R6::R6Class(
 
             num * multiplier
         },
+        # }}}
 
+        # parse_age {{{
         parse_age = function(age) {
             if (is.numeric(age)) {
                 return(age)
             }
 
             if (!is.character(age) || length(age) != 1L || is.na(age)) {
-                stop("'max_age' must be a number or a string like '1 hour', '10 mins', '1000 secs'")
+                stop(
+                    "'max_age' must be a number or a string like '1 hour', '10 mins', '1000 secs'"
+                )
             }
 
             # string format: "number unit"
@@ -587,8 +754,10 @@ DiskCache <- R6::R6Class(
             units(age_difftime) <- "secs"
             as.double(age_difftime)
         }
+        # }}}
     )
 )
+# }}}
 
 #' Convert a DiskCache object to its directory path
 #'
@@ -598,15 +767,20 @@ DiskCache <- R6::R6Class(
 #' @return A single string with the cache directory path.
 #' @keywords internal
 #' @export
+# as.character.DiskCache {{{
 as.character.DiskCache <- function(x, ...) {
     x$info()$dir
 }
+# }}}
 
+# cache__missing {{{
 cache__missing <- function(x) {
     inherits(x, "key_missing")
 }
+# }}}
 
 # Get the package-level DiskCache instance.
+# cache__get {{{
 cache__get <- function() {
     if (is.null(cache__env$cache)) {
         cache_dir <- cache__option("dir_cache", cache__default_dir())
@@ -619,22 +793,31 @@ cache__get <- function() {
     }
     cache__env$cache
 }
+# }}}
 
 # Set or replace the package-level DiskCache instance.
+# cache__set {{{
 cache__set <- function(cache) {
     old <- cache__env$cache
     cache__env$cache <- cache
     invisible(old)
 }
+# }}}
 
 # Reset the package-level cache singleton.
+# cache__reset {{{
 cache__reset <- function() {
     cache__env$cache <- NULL
     invisible(NULL)
 }
+# }}}
 
 # Resolve a cache option value into the internal mode string.
-cache__mode <- function(x = cache__option("cache", TRUE), name = cache__option_name("cache")) {
+# cache__mode {{{
+cache__mode <- function(
+    x = cache__option("cache", TRUE),
+    name = cache__option_name("cache")
+) {
     if (isTRUE(x)) {
         "normal"
     } else if (isFALSE(x)) {
@@ -650,23 +833,31 @@ cache__mode <- function(x = cache__option("cache", TRUE), name = cache__option_n
         "normal"
     }
 }
+# }}}
 
 # Check if the package cache is in offline mode.
+# cache__offline {{{
 cache__offline <- function() {
     cache__mode() == "offline"
 }
+# }}}
 
 # Generate a deterministic cache key from a prefix and hashed payload.
+# cache__key {{{
 cache__key <- function(prefix, ...) {
     paste0(prefix, "-", cache__hash(list(...)))
 }
+# }}}
 
 # Generate the fixed cache key used for JSON responses.
+# cache__response_key {{{
 cache__response_key <- function(url) {
     paste0("response-", cache__hash(url))
 }
+# }}}
 
 # Wrap a URL fetch in the package cache.
+# cache__url {{{
 cache__url <- function(key_prefix, key_data, fn, validate = NULL) {
     mode <- cache__mode()
 
@@ -702,8 +893,10 @@ cache__url <- function(key_prefix, key_data, fn, validate = NULL) {
     }
     value
 }
+# }}}
 
 # Wrap a file download in the package cache by storing raw bytes.
+# cache__download {{{
 cache__download <- function(url, destfile, fn) {
     mode <- cache__mode()
 
@@ -740,3 +933,6 @@ cache__download <- function(url, destfile, fn) {
     cache$set(key, raw_bytes)
     destfile
 }
+# }}}
+
+# vim: fdm=marker :

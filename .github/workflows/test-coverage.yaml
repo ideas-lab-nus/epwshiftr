@@ -52,25 +52,18 @@ jobs:
 
       - name: Test coverage
         run: |
-          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
-          tryCatch(
-            covr::codecov(
-              quiet = FALSE,
-              clean = FALSE,
-              install_path = install_path
-            ),
-            error = function(error) {
-              failures <- list.files(
-                install_path,
-                pattern = "\\.Rout\\.fail$",
-                recursive = TRUE,
-                full.names = TRUE
-              )
-              for (path in failures) {
-                message("Test failure log: ", path)
-                cat(readLines(path, warn = FALSE), sep = "\n")
-              }
-              stop(error)
-            }
-          )
+          source(".github/coverage.R")
+          covr::codecov(coverage = coverage__run(
+            quiet = FALSE,
+            install_path = file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
+          ))
         shell: Rscript {0}
+
+      - name: Preserve coverage diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-diagnostics
+          path: |
+            ${{ runner.temp }}/covr-library/
+          retention-days: 7

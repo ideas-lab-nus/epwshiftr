@@ -1,5 +1,6 @@
 # Build one complete hourly native-calendar series with values defined by the
 # supplied annual-phase function so calendar remapping remains directly testable.
+# hourmap_test__adjusted {{{
 hourmap_test__adjusted <- function(
     variable,
     year,
@@ -55,9 +56,11 @@ hourmap_test__adjusted <- function(
         provenance = list(source = "synthetic")
     )
 }
+# }}}
 
 # Assemble the signal envelope expected by direct_model_realization while
 # allowing repeated variables to use distinct group keys in rejection tests.
+# hourmap_test__execution {{{
 hourmap_test__execution <- function(values) {
     groups <- lapply(seq_along(values), function(index) {
         signal__group(
@@ -66,16 +69,22 @@ hourmap_test__execution <- function(values) {
             variables = unique(values[[index]]@data[["variable_id"]])
         )
     })
-    variables <- unique(unlist(lapply(
-        groups,
-        function(group) group@variables
-    ), use.names = FALSE))
+    variables <- unique(unlist(
+        lapply(
+            groups,
+            function(group) group@variables
+        ),
+        use.names = FALSE
+    ))
     SignalExecutionResult(
         groups = groups,
         values = values,
-        profiles = stats::setNames(lapply(variables, function(variable) {
-            list(variable_id = variable)
-        }), variables),
+        profiles = stats::setNames(
+            lapply(variables, function(variable) {
+                list(variable_id = variable)
+            }),
+            variables
+        ),
         diagnostics = data.frame(
             method = rep.int("test_signal", length(groups)),
             group = paste0("group-", seq_along(groups)),
@@ -91,9 +100,11 @@ hourmap_test__execution <- function(values) {
         )
     )
 }
+# }}}
 
 # Return the complete role-addressable input set required by the standalone
 # hourly component without constructing an otherwise incomplete recipe.
+# hourmap_test__inputs {{{
 hourmap_test__inputs <- function() {
     epw <- epw_file_read(get_cache_epw())
     weather__new_inputs(
@@ -106,6 +117,7 @@ hourmap_test__inputs <- function() {
         )
     )
 }
+# }}}
 
 test_that("365-day direct-model hours map exactly onto EPW rows", {
     adjusted <- hourmap_test__adjusted(
@@ -228,11 +240,12 @@ test_that("daily slot traversal shares identity and mapped placement", {
 test_that("point variables use circular annual-phase interpolation", {
     calendars <- CF_TIME_CALENDARS
     years <- ifelse(
-        calendars %in% c(
-            "standard",
-            "gregorian",
-            "proleptic_gregorian"
-        ),
+        calendars %in%
+            c(
+                "standard",
+                "gregorian",
+                "proleptic_gregorian"
+            ),
         2064L,
         2061L
     )
@@ -256,9 +269,11 @@ test_that("point variables use circular annual-phase interpolation", {
             list()
         )
         series <- result@members[[1L]]@series[[1L]]
-        expected <- 280 + 5 * sin(
-            2 * pi * series@data$target_annual_phase
-        )
+        expected <- 280 +
+            5 *
+                sin(
+                    2 * pi * series@data$target_annual_phase
+                )
 
         expect_equal(
             series@data$value,
@@ -307,9 +322,12 @@ test_that("scalar wind direction uses circular vector interpolation", {
         list()
     )
     series <- result@members[[1L]]@series[[1L]]
-    expected <- (350 + 20 * sin(
-        2 * pi * series@data$target_annual_phase
-    )) %% 360
+    expected <- (350 +
+        20 *
+            sin(
+                2 * pi * series@data$target_annual_phase
+            )) %%
+        360
     angular_error <- abs(
         ((series@data$wind_direction - expected + 180) %% 360) - 180
     )
@@ -500,3 +518,5 @@ test_that("hourly calendar mapping rejects ambiguous source contracts", {
         "must contain an internal.*EpwFile"
     )
 })
+
+# vim: fdm=marker :

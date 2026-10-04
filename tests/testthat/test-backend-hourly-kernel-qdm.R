@@ -1,11 +1,12 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 # Construct one complete hourly variable over one or more native-calendar years
 # so the integration fixture can exercise every post-interpolation component.
+# hourly_kqdm_test__series {{{
 hourly_kqdm_test__series <- function(
     variable,
     years,
@@ -42,18 +43,24 @@ hourly_kqdm_test__series <- function(
         daylight <- pmax(0, sin(pi * (fields$hour - 6) / 12))
         base <- switch(
             variable,
-            tas = 288 + 8 * sin(2 * pi * annual) +
+            tas = 288 +
+                8 * sin(2 * pi * annual) +
                 3 * sin(2 * pi * fields$hour / 24),
             ps = 101325 + 500 * sin(2 * pi * annual),
-            huss = 0.008 + 0.001 * sin(2 * pi * annual) +
+            huss = 0.008 +
+                0.001 * sin(2 * pi * annual) +
                 0.0002 * cos(2 * pi * fields$hour / 24),
-            hurs = 55 + 12 * sin(2 * pi * annual) +
+            hurs = 55 +
+                12 * sin(2 * pi * annual) +
                 3 * cos(2 * pi * fields$hour / 24),
-            uas = 2 + 0.4 * sin(2 * pi * annual) +
+            uas = 2 +
+                0.4 * sin(2 * pi * annual) +
                 0.1 * cos(2 * pi * fields$hour / 24),
-            vas = -3 + 0.3 * sin(2 * pi * annual) -
+            vas = -3 +
+                0.3 * sin(2 * pi * annual) -
                 0.1 * sin(2 * pi * fields$hour / 24),
-            sfcWind = 3 + 0.6 * sin(2 * pi * annual) +
+            sfcWind = 3 +
+                0.6 * sin(2 * pi * annual) +
                 0.2 * cos(2 * pi * fields$hour / 24),
             rsds = 1 + daylight * (450 + 80 * sin(2 * pi * annual)),
             rsdsdiff = 1 + daylight * (120 + 20 * sin(2 * pi * annual))
@@ -61,19 +68,21 @@ hourly_kqdm_test__series <- function(
         # Role-specific changes keep every distribution non-degenerate while
         # retaining physically valid values for the final closure policy.
         value <- if (variable %in% c("tas", "ps")) {
-            base + switch(
-                role,
-                observed = if (identical(variable, "tas")) -1 else -100,
-                historical = 0,
-                future = if (identical(variable, "tas")) 2 else 200
-            )
+            base +
+                switch(
+                    role,
+                    observed = if (identical(variable, "tas")) -1 else -100,
+                    historical = 0,
+                    future = if (identical(variable, "tas")) 2 else 200
+                )
         } else {
-            base * switch(
-                role,
-                observed = 1.05,
-                historical = 1,
-                future = 1.1
-            )
+            base *
+                switch(
+                    role,
+                    observed = 1.05,
+                    historical = 1,
+                    future = 1.1
+                )
         }
         value <- value + (index - 1L) * 0.01
         data.frame(
@@ -83,7 +92,12 @@ hourly_kqdm_test__series <- function(
                 length(hour_index)
             ),
             experiment_id = rep.int(
-                switch(role, observed = "observed", historical = "historical", future = "ssp585"),
+                switch(
+                    role,
+                    observed = "observed",
+                    historical = "historical",
+                    future = "ssp585"
+                ),
                 length(hour_index)
             ),
             variant_label = rep.int("r1i1p1f1", length(hour_index)),
@@ -108,27 +122,34 @@ hourly_kqdm_test__series <- function(
     })
     data.table::rbindlist(rows, use.names = TRUE)
 }
+# }}}
 
 # Assemble the six-variable role tables required by the built-in hourly
 # kernel-QDM recipe without involving remote collection or extraction.
+# hourly_kqdm_test__role {{{
 hourly_kqdm_test__role <- function(
     years,
     role = c("observed", "historical", "future"),
     calendar = "noleap"
 ) {
     role <- match.arg(role)
-    data.table::rbindlist(lapply(
-        EPW_MORPH_HOURLY_KQDM_VARIABLES,
-        hourly_kqdm_test__series,
-        years = years,
-        role = role,
-        calendar = calendar
-    ), use.names = TRUE)
+    data.table::rbindlist(
+        lapply(
+            EPW_MORPH_HOURLY_KQDM_VARIABLES,
+            hourly_kqdm_test__series,
+            years = years,
+            role = role,
+            calendar = calendar
+        ),
+        use.names = TRUE
+    )
 }
+# }}}
 
 # Reduce the hourly fixture to bounded three-hourly model samples. Point-state
 # variables use the CMIP6 `3hrPt` facet and include one following boundary
 # sample; radiation variables use the interval-mean `3hr` facet.
+# hourly_kqdm_test__model_role {{{
 hourly_kqdm_test__model_role <- function(
     years,
     role = c("historical", "future"),
@@ -150,7 +171,8 @@ hourly_kqdm_test__model_role <- function(
             source$cf_day_of_year == 1L &
             source$cf_second_of_day == 0
         source <- source[
-            (source$cf_year %in% years &
+            (source$cf_year %in%
+                years &
                 source$cf_second_of_day %% 10800 == 0) |
                 boundary,
         ]
@@ -158,7 +180,8 @@ hourly_kqdm_test__model_role <- function(
         source$table_id <- "3hr"
         native_second <- temporal__native_seconds(source, calendar)
         source$time <- as.POSIXct("2000-01-01", tz = "UTC") +
-            native_second - native_second[[1L]]
+            native_second -
+            native_second[[1L]]
         source
     })
     radiation <- lapply(SOLAR_RADIATION_VARIABLES, function(variable) {
@@ -178,14 +201,17 @@ hourly_kqdm_test__model_role <- function(
             variable,
             rsds = 450 * daylight * seasonal,
             rsdsdiff = 120 * daylight * seasonal
-        ) * if (identical(role, "future")) 1.1 else 1
+        ) *
+            if (identical(role, "future")) 1.1 else 1
         source$cf_second_of_day <- midpoint_second
-        source$annual_phase <- (
-            source$cf_day_of_year - 1 + midpoint_second / 86400
-        ) / source$cf_year_days
+        source$annual_phase <- (source$cf_day_of_year -
+            1 +
+            midpoint_second / 86400) /
+            source$cf_year_days
         native_second <- temporal__native_seconds(source, calendar)
         source$time <- as.POSIXct("2000-01-01", tz = "UTC") +
-            native_second - native_second[[1L]]
+            native_second -
+            native_second[[1L]]
         source$time_bound_start <- source$time - 5400
         source$time_bound_end <- source$time + 5400
         source$frequency <- "3hr"
@@ -196,9 +222,11 @@ hourly_kqdm_test__model_role <- function(
     })
     data.table::rbindlist(c(point, radiation), use.names = TRUE, fill = TRUE)
 }
+# }}}
 
 # Use the smallest valid KDE grid in integration tests while preserving the
 # same variable-specific settings resolution used by production execution.
+# hourly_kqdm_test__overrides {{{
 hourly_kqdm_test__overrides <- function() {
     stats::setNames(
         lapply(EPW_MORPH_HOURLY_KQDM_VARIABLES, function(variable) {
@@ -207,6 +235,7 @@ hourly_kqdm_test__overrides <- function() {
         EPW_MORPH_HOURLY_KQDM_VARIABLES
     )
 }
+# }}}
 
 test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
     reference <- historical_reference(1995:2014)
@@ -231,7 +260,7 @@ test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
     )
     periods <- epw_morph_periods(`2060s` = 2061:2062)
     plan <- shift_plan(
-        request = shift__request_from_cmip6(climate, periods, transform),
+        request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
         transform = transform,
@@ -240,8 +269,8 @@ test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
         store = tempfile("method-reference-store-")
     )
     recipe <- plan@meta$recipe
-    spec <- shift__plan_spec(plan)
-    rebuilt <- shift__plan_from_spec(spec)
+    spec <- shift_persist__plan_spec(plan)
+    rebuilt <- shift_persist__plan_from_spec(spec)
 
     expect_identical(recipe$name, "hourly_kernel_qdm")
     expect_identical(recipe$backend, "hourly_kernel_qdm")
@@ -293,7 +322,7 @@ test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
         rebuilt@meta$recipe$options$signal_overrides$tas$grid_points,
         128L
     )
-    historical_request <- shift__historical_request(
+    historical_request <- shift_resolve__historical_request(
         plan,
         "https://example.org"
     )
@@ -408,7 +437,11 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     expect_identical(result@backend, "hourly_kernel_qdm")
     expect_identical(result@output_type, "multi_year")
     expect_identical(
-        vapply(result@members, function(member) member@weather_year, integer(1L)),
+        vapply(
+            result@members,
+            function(member) member@weather_year,
+            integer(1L)
+        ),
         2061:2062
     )
     expect_true(all(vapply(
@@ -416,23 +449,31 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
         function(member) nrow(member@data) == 8760L,
         logical(1L)
     )))
-    expect_true(all(result@diagnostics$physical_policy ==
-        "absolute_model_fields"))
-    expect_true(all(result@diagnostics$wind_direction_policy ==
-        "supplied_wind_direction"))
+    expect_true(all(
+        result@diagnostics$physical_policy == "absolute_model_fields"
+    ))
+    expect_true(all(
+        result@diagnostics$wind_direction_policy == "supplied_wind_direction"
+    ))
     expect_identical(
         result@parts$component_pipeline$component,
         unname(unlist(hourly_kqdm__pipeline()@components))
     )
-    expect_true(all(vapply(result@members, function(member) {
-        weather <- member@data
-        all(weather$dew_point_temperature <= weather$dry_bulb_temperature) &&
-            all(weather$relative_humidity >= 0) &&
-            all(weather$relative_humidity <= 100) &&
-            all(weather$wind_speed >= 0) &&
-            all(weather$wind_direction >= 0) &&
-            all(weather$wind_direction < 360)
-    }, logical(1L))))
+    expect_true(all(vapply(
+        result@members,
+        function(member) {
+            weather <- member@data
+            all(
+                weather$dew_point_temperature <= weather$dry_bulb_temperature
+            ) &&
+                all(weather$relative_humidity >= 0) &&
+                all(weather$relative_humidity <= 100) &&
+                all(weather$wind_speed >= 0) &&
+                all(weather$wind_direction >= 0) &&
+                all(weather$wind_direction < 360)
+        },
+        logical(1L)
+    )))
     expect_true(all(vapply(
         result@members,
         function(member) {
@@ -441,3 +482,5 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
         logical(1L)
     )))
 })
+
+# vim: fdm=marker :

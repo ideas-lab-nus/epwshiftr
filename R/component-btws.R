@@ -1,7 +1,7 @@
-# BTWS hourly temperature component {{{
-
+# BTWS hourly temperature component
 # Reconstruct every EPW day with the BTWS projector while retaining the shared
 # target, boundary, and physical-closure payload used by daily temperature.
+# btws__hourly_reconstruct {{{
 btws__hourly_reconstruct <- function(
     data,
     inputs,
@@ -14,9 +14,11 @@ btws__hourly_reconstruct <- function(
         btws__project_temperature
     )
 }
+# }}}
 
 # Define the reusable BTWS projection stage independently of the paper or
 # complete recipe that supplies its daily temperature targets.
+# btws__hourly_component {{{
 btws__hourly_component <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -40,12 +42,15 @@ btws__hourly_component <- function() {
         )
     )
 }
+# }}}
 
 # Register the method-neutral BTWS component once without replacing another
 # process-local implementation under the same stable registry key.
+# btws__register_hourly_component {{{
 btws__register_hourly_component <- function() {
     component__register_builtin(btws__hourly_component())
     invisible(NULL)
 }
-
 # }}}
+
+# vim: fdm=marker :

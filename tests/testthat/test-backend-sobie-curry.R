@@ -1,5 +1,6 @@
 # Build deterministic daily CMIP thermodynamic rows whose derived humidity
 # state is known before the Sobie-Curry factor equations are applied.
+# sobie_test__climate {{{
 sobie_test__climate <- function(
     years,
     period,
@@ -17,16 +18,13 @@ sobie_test__climate <- function(
     rows <- lapply(seq_along(years), function(index) {
         seasonal <- 9 * sin(2 * pi * phase)
         replicate_offset <- (index - mean(seq_along(years))) * 0.4
-        mean_temperature <- 12 + seasonal + replicate_offset +
-            temperature_shift
+        mean_temperature <- 12 + seasonal + replicate_offset + temperature_shift
         dtr <- 8 + 1.5 * cos(2 * pi * phase) + dtr_shift
         minimum <- mean_temperature - dtr / 2
         maximum <- mean_temperature + dtr / 2
-        pressure <- 100000 + 300 * cos(2 * pi * phase) +
-            pressure_shift
-        relative_humidity <- (
-            62 + 8 * cos(2 * pi * phase) + replicate_offset
-        ) * relative_humidity_ratio
+        pressure <- 100000 + 300 * cos(2 * pi * phase) + pressure_shift
+        relative_humidity <- (62 + 8 * cos(2 * pi * phase) + replicate_offset) *
+            relative_humidity_ratio
         specific_humidity <- epwphys__huss_from_rh_si(
             mean_temperature,
             relative_humidity,
@@ -35,7 +33,8 @@ sobie_test__climate <- function(
         time <- as.POSIXct(
             sprintf("%04d-01-01 12:00:00", years[[index]]),
             tz = "UTC"
-        ) + seq.int(0L, calendar_days - 1L) * 86400
+        ) +
+            seq.int(0L, calendar_days - 1L) * 86400
         values <- list(
             tas = mean_temperature + 273.15,
             tasmin = minimum + 273.15,
@@ -50,38 +49,43 @@ sobie_test__climate <- function(
             huss = "kg kg-1",
             ps = "Pa"
         )
-        data.table::rbindlist(lapply(setdiff(names(values), omit), function(
-            variable_id
-        ) {
-            data.table::data.table(
-                activity_id = if (identical(experiment, "historical")) {
-                    "CMIP"
-                } else {
-                    "ScenarioMIP"
-                },
-                institution_id = "PCIC-test",
-                source_id = "TestModel",
-                experiment_id = experiment,
-                variant_label = "r1i1p1f1",
-                frequency = "day",
-                table_id = "day",
-                variable_id = variable_id,
-                time = time,
-                year = years[[index]],
-                annual_phase = phase,
-                period = period,
-                lon = -123,
-                lat = 49,
-                units = units[[variable_id]],
-                value = values[[variable_id]]
-            )
-        }))
+        data.table::rbindlist(lapply(
+            setdiff(names(values), omit),
+            function(
+                variable_id
+            ) {
+                data.table::data.table(
+                    activity_id = if (identical(experiment, "historical")) {
+                        "CMIP"
+                    } else {
+                        "ScenarioMIP"
+                    },
+                    institution_id = "PCIC-test",
+                    source_id = "TestModel",
+                    experiment_id = experiment,
+                    variant_label = "r1i1p1f1",
+                    frequency = "day",
+                    table_id = "day",
+                    variable_id = variable_id,
+                    time = time,
+                    year = years[[index]],
+                    annual_phase = phase,
+                    period = period,
+                    lon = -123,
+                    lat = 49,
+                    units = units[[variable_id]],
+                    value = values[[variable_id]]
+                )
+            }
+        ))
     })
     data.table::rbindlist(rows)
 }
+# }}}
 
 # Build one backend context from the packaged EPW fixture and aligned daily
 # future/historical thermodynamic sources.
+# sobie_test__context {{{
 sobie_test__context <- function(
     temperature_shift = 0,
     dtr_shift = 0,
@@ -120,6 +124,7 @@ sobie_test__context <- function(
         )
     )
 }
+# }}}
 
 test_that("Sobie-Curry recipe registers its published daily contract", {
     expect_true("sobie_curry_daily" %in% epw_morph_backends())
@@ -304,10 +309,13 @@ test_that("Sobie-Curry harmonized policy retains temperature and closes HUSS", {
         paper$data$atmospheric_pressure,
         tolerance = 1e-12
     )
-    expect_true(any(abs(
-        harmonized$data$relative_humidity -
-            paper$data$relative_humidity
-    ) > 1e-6))
+    expect_true(any(
+        abs(
+            harmonized$data$relative_humidity -
+                paper$data$relative_humidity
+        ) >
+            1e-6
+    ))
     expect_true(all(
         harmonized$data$relative_humidity >= 0 &
             harmonized$data$relative_humidity <= 100
@@ -405,3 +413,5 @@ test_that("Sobie-Curry rejects incomplete daily thermodynamic inputs", {
         "lacks variable alternative.*huss"
     )
 })
+
+# vim: fdm=marker :

@@ -1,9 +1,10 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
+# enhanced_test__hourly_year {{{
 enhanced_test__hourly_year <- function() {
     dates <- seq(as.Date("2001-01-01"), as.Date("2001-12-31"), by = "day")
     data.table::CJ(date = dates, hour = 1:24)[, `:=`(
@@ -15,12 +16,20 @@ enhanced_test__hourly_year <- function() {
         dry_bulb_temperature = 20 + 5 * sin(2 * pi * (hour - 8) / 24)
     )][]
 }
+# }}}
 
-
-enhanced_test__catalog <- function(experiment, variables, years,
-                                    include_snd = TRUE) {
-    variables <- if (isTRUE(include_snd)) variables else
+# enhanced_test__catalog {{{
+enhanced_test__catalog <- function(
+    experiment,
+    variables,
+    years,
+    include_snd = TRUE
+) {
+    variables <- if (isTRUE(include_snd)) {
+        variables
+    } else {
         setdiff(variables, "snd")
+    }
     data.table::data.table(
         source_id = "Model-A",
         experiment_id = experiment,
@@ -33,10 +42,11 @@ enhanced_test__catalog <- function(experiment, variables, years,
         datetime_end = sprintf("%d-12-31T23:59:59Z", max(years))
     )
 }
-
+# }}}
 
 # Build the deterministic monthly case whose full legacy EPW result is checked
 # against the real Singapore IWEC baseline fixture below.
+# enhanced_test__legacy_climate {{{
 enhanced_test__legacy_climate <- function() {
     month <- 1:12
     phase <- 2 * pi * (month - 1) / 12
@@ -52,30 +62,44 @@ enhanced_test__legacy_climate <- function() {
     )
     data.table::rbindlist(lapply(names(spec), function(variable_id) {
         data.table::data.table(
-            activity_drs = "ScenarioMIP", institution_id = "Test",
-            source_id = "Model-A", experiment_id = "ssp585",
-            member_id = "r1i1p1f1", variant_label = "r1i1p1f1",
-            table_id = "Amon", variable_id = variable_id,
+            activity_drs = "ScenarioMIP",
+            institution_id = "Test",
+            source_id = "Model-A",
+            experiment_id = "ssp585",
+            member_id = "r1i1p1f1",
+            variant_label = "r1i1p1f1",
+            table_id = "Amon",
+            variable_id = variable_id,
             time = as.POSIXct(sprintf("2060-%02d-15", month), tz = "UTC"),
-            period = "future", year = 2060L, lon = 103.98, lat = 1.37,
+            period = "future",
+            year = 2060L,
+            lon = 103.98,
+            lat = 1.37,
             units = spec[[variable_id]]$units,
             value = spec[[variable_id]]$value
         )
     }))
 }
-
+# }}}
 
 # Hash all 35 EPW fields after fixed-decimal canonicalization. This preserves a
 # full-year golden regression while ignoring platform line endings and harmless
 # sub-micro-unit floating-point differences from R and system math libraries.
+# enhanced_test__legacy_weather_digest {{{
 enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
     weather <- data.table::as.data.table(weather)[,
-        EPW_FILE_COLUMNS, with = FALSE]
+        EPW_FILE_COLUMNS,
+        with = FALSE
+    ]
     encoded <- lapply(weather, function(value) {
         missing <- is.na(value)
         if (is.numeric(value) || is.integer(value)) {
-            output <- formatC(as.numeric(value), format = "f",
-                digits = digits, decimal.mark = ".")
+            output <- formatC(
+                as.numeric(value),
+                format = "f",
+                digits = digits,
+                decimal.mark = "."
+            )
         } else {
             output <- as.character(value)
         }
@@ -85,20 +109,28 @@ enhanced_test__legacy_weather_digest <- function(weather, digits = 6L) {
     rows <- do.call(paste, c(encoded, sep = "\u001f"))
     checksum_bytes(charToRaw(paste(rows, collapse = "\n")), "sha256")
 }
-
+# }}}
 
 # Encode a result column deterministically before hashing complete runner
 # tables. Classes and factor levels are recorded separately by the snapshot.
-original_morphing_test__canonical_column <- function(value, significant_digits = 7L) {
+# original_morphing_test__canonical_column {{{
+original_morphing_test__canonical_column <- function(
+    value,
+    significant_digits = 7L
+) {
     if (is.list(value) && !is.data.frame(value)) {
-        return(vapply(value, function(item) {
-            jsonlite::toJSON(
-                item,
-                auto_unbox = TRUE,
-                null = "null",
-                na = "string"
-            )
-        }, character(1L)))
+        return(vapply(
+            value,
+            function(item) {
+                jsonlite::toJSON(
+                    item,
+                    auto_unbox = TRUE,
+                    null = "null",
+                    na = "string"
+                )
+            },
+            character(1L)
+        ))
     }
 
     if (inherits(value, "POSIXt")) {
@@ -139,39 +171,53 @@ original_morphing_test__canonical_column <- function(value, significant_digits =
     output[is.na(value) & !is.nan(value)] <- "<NA>"
     output
 }
-
+# }}}
 
 # Capture the complete schema, row order, and values of one runner table in a
 # compact, reviewable form suitable for cross-platform test snapshots.
-original_morphing_test__table_behavior <- function(data, significant_digits = 7L) {
+# original_morphing_test__table_behavior {{{
+original_morphing_test__table_behavior <- function(
+    data,
+    significant_digits = 7L
+) {
     data <- data.table::as.data.table(data)
-    schema <- vapply(seq_along(data), function(index) {
-        value <- data[[index]]
-        details <- character()
-        if (is.factor(value)) {
-            details <- c(details, sprintf(
-                "levels=%s",
-                paste(levels(value), collapse = "/")
-            ))
-        }
-        if (inherits(value, "POSIXt")) {
-            details <- c(details, sprintf(
-                "tz=%s",
-                attr(value, "tzone", exact = TRUE) %||% ""
-            ))
-        }
-        suffix <- if (length(details)) {
-            sprintf("[%s]", paste(details, collapse = ";"))
-        } else {
-            ""
-        }
-        sprintf(
-            "%s:%s%s",
-            names(data)[[index]],
-            paste(class(value), collapse = "/"),
-            suffix
-        )
-    }, character(1L))
+    schema <- vapply(
+        seq_along(data),
+        function(index) {
+            value <- data[[index]]
+            details <- character()
+            if (is.factor(value)) {
+                details <- c(
+                    details,
+                    sprintf(
+                        "levels=%s",
+                        paste(levels(value), collapse = "/")
+                    )
+                )
+            }
+            if (inherits(value, "POSIXt")) {
+                details <- c(
+                    details,
+                    sprintf(
+                        "tz=%s",
+                        attr(value, "tzone", exact = TRUE) %||% ""
+                    )
+                )
+            }
+            suffix <- if (length(details)) {
+                sprintf("[%s]", paste(details, collapse = ";"))
+            } else {
+                ""
+            }
+            sprintf(
+                "%s:%s%s",
+                names(data)[[index]],
+                paste(class(value), collapse = "/"),
+                suffix
+            )
+        },
+        character(1L)
+    )
     encoded <- lapply(
         data,
         original_morphing_test__canonical_column,
@@ -186,9 +232,13 @@ original_morphing_test__table_behavior <- function(data, significant_digits = 7L
         sprintf("rows=%d", nrow(data)),
         sprintf("columns=%d", ncol(data)),
         names(data),
-        vapply(data, function(value) {
-            paste(class(value), collapse = "/")
-        }, character(1L)),
+        vapply(
+            data,
+            function(value) {
+                paste(class(value), collapse = "/")
+            },
+            character(1L)
+        ),
         rows
     )
 
@@ -201,10 +251,11 @@ original_morphing_test__table_behavior <- function(data, significant_digits = 7L
         )
     )
 }
-
+# }}}
 
 # Render compact behavior records as stable text rather than serializing R's
 # nested object metadata into the checked-in snapshot.
+# original_morphing_test__snapshot_json {{{
 original_morphing_test__snapshot_json <- function(value) {
     jsonlite::toJSON(
         value,
@@ -214,11 +265,12 @@ original_morphing_test__snapshot_json <- function(value) {
         pretty = TRUE
     )
 }
-
+# }}}
 
 # Snapshot every persisted and intermediate surface returned by an
 # original-morphing runner while retaining the method identity and selected
 # physical policy.
+# original_morphing_test__result_behavior {{{
 original_morphing_test__result_behavior <- function(result) {
     policy <- epwphys__recipe_policy(result$recipe)
     list(
@@ -231,12 +283,19 @@ original_morphing_test__result_behavior <- function(result) {
         diagnostics = original_morphing_test__table_behavior(result$diagnostics)
     )
 }
-
+# }}}
 
 # Build the same single-case context boundary used by EpwMorpher after it has
 # separated model, scenario, member, and period cases.
-original_morphing_test__context <- function(epw, climate, backend, profile,
-                                  reference_climate = NULL, options = NULL) {
+# original_morphing_test__context {{{
+original_morphing_test__context <- function(
+    epw,
+    climate,
+    backend,
+    profile,
+    reference_climate = NULL,
+    options = NULL
+) {
     morpher__context(
         epw,
         climate,
@@ -258,10 +317,11 @@ original_morphing_test__context <- function(epw, climate, backend, profile,
         strict = TRUE
     )
 }
-
+# }}}
 
 # Build matching future/reference cases that exercise every enhanced runner
 # branch, including optional extrema, HUSS state humidity, and LImon snow.
+# enhanced_test__change_climate {{{
 enhanced_test__change_climate <- function(reference = FALSE) {
     month <- 1:12
     phase <- 2 * pi * (month - 1) / 12
@@ -285,20 +345,24 @@ enhanced_test__change_climate <- function(reference = FALSE) {
     data.table::rbindlist(lapply(names(spec), function(variable_id) {
         data.table::data.table(
             activity_drs = if (isTRUE(reference)) "CMIP" else "ScenarioMIP",
-            institution_id = "Test", source_id = "Model-A",
+            institution_id = "Test",
+            source_id = "Model-A",
             experiment_id = if (isTRUE(reference)) "historical" else "ssp585",
-            member_id = "r1i1p1f1", variant_label = "r1i1p1f1",
+            member_id = "r1i1p1f1",
+            variant_label = "r1i1p1f1",
             table_id = if (variable_id == "snd") "LImon" else "Amon",
             variable_id = variable_id,
             time = as.POSIXct(sprintf("%d-%02d-15", year, month), tz = "UTC"),
             period = if (isTRUE(reference)) "reference" else "future",
-            year = year, lon = 103.98, lat = 1.37,
+            year = year,
+            lon = 103.98,
+            lat = 1.37,
             units = spec[[variable_id]][[1L]],
             value = spec[[variable_id]][[2L]]
         )
     }))
 }
-
+# }}}
 
 test_that("disabled precipitation preserves baseline EPW fields", {
     epw <- epw_file_read(get_cache_epw())
@@ -369,19 +433,36 @@ test_that("Original morphing runner behavior is fixed across modes and profiles"
     reference <- enhanced_test__change_climate(reference = TRUE)
     contexts <- list(
         absolute_legacy = original_morphing_test__context(
-            epw, future, "original_morphing_absolute", "legacy"
+            epw,
+            future,
+            "original_morphing_absolute",
+            "legacy"
         ),
         absolute_enhanced = original_morphing_test__context(
-            epw, future, "original_morphing_absolute", "enhanced"
+            epw,
+            future,
+            "original_morphing_absolute",
+            "enhanced"
         ),
         change_legacy = original_morphing_test__context(
-            epw, future, "original_morphing", "legacy", reference
+            epw,
+            future,
+            "original_morphing",
+            "legacy",
+            reference
         ),
         change_enhanced = original_morphing_test__context(
-            epw, future, "original_morphing", "enhanced", reference
+            epw,
+            future,
+            "original_morphing",
+            "enhanced",
+            reference
         ),
         baseline_fallback = original_morphing_test__context(
-            epw, future, "original_morphing", "enhanced"
+            epw,
+            future,
+            "original_morphing",
+            "enhanced"
         )
     )
     results <- lapply(contexts, morpher__run_context)
@@ -398,9 +479,12 @@ test_that("Original morphing runner behavior is fixed across modes and profiles"
     )
     expect_identical(results$baseline_fallback$backend, "original_morphing")
 
-    expect_snapshot(cat(original_morphing_test__snapshot_json(
-        lapply(results, original_morphing_test__result_behavior)
-    )), cran = TRUE)
+    expect_snapshot(
+        cat(original_morphing_test__snapshot_json(
+            lapply(results, original_morphing_test__result_behavior)
+        )),
+        cran = TRUE
+    )
 })
 
 
@@ -418,10 +502,18 @@ test_that("Original morphing production case contexts preserve identity and isol
 
     results <- list(
         model_a = morpher__run_context(original_morphing_test__context(
-            epw, future_a, "original_morphing", "enhanced", reference_a
+            epw,
+            future_a,
+            "original_morphing",
+            "enhanced",
+            reference_a
         )),
         model_b = morpher__run_context(original_morphing_test__context(
-            epw, future_b, "original_morphing", "enhanced", reference_b
+            epw,
+            future_b,
+            "original_morphing",
+            "enhanced",
+            reference_b
         ))
     )
 
@@ -431,13 +523,19 @@ test_that("Original morphing production case contexts preserve identity and isol
         results$model_a$data$datetime,
         results$model_b$data$datetime
     )
-    expect_true(any(abs(
-        results$model_a$data$dry_bulb_temperature -
-            results$model_b$data$dry_bulb_temperature
-    ) > 1e-6))
-    expect_snapshot(cat(original_morphing_test__snapshot_json(
-        lapply(results, original_morphing_test__result_behavior)
-    )), cran = TRUE)
+    expect_true(any(
+        abs(
+            results$model_a$data$dry_bulb_temperature -
+                results$model_b$data$dry_bulb_temperature
+        ) >
+            1e-6
+    ))
+    expect_snapshot(
+        cat(original_morphing_test__snapshot_json(
+            lapply(results, original_morphing_test__result_behavior)
+        )),
+        cran = TRUE
+    )
 })
 
 
@@ -452,20 +550,30 @@ test_that("original-morphing profiles and current recipe JSON have explicit sema
     expect_identical(legacy$methods[["tdb"]], "combined")
     expect_identical(legacy$options$transition_hours, 0L)
     expect_identical(legacy$options$design_conditions, "preserve")
-    expect_error(original_morphing__options(transition_hours = 337L), "0 and 336")
+    expect_error(
+        original_morphing__options(transition_hours = 337L),
+        "0 and 336"
+    )
 
-    expect_true(all(c("tasmax", "tasmin", "snd") %in%
-        epw_morph_variables(enhanced, include_optional = TRUE)))
+    expect_true(all(
+        c("tasmax", "tasmin", "snd") %in%
+            epw_morph_variables(enhanced, include_optional = TRUE)
+    ))
 
     canonical <- transform__recipe(monthly_transform("original_morphing"))
     named_recipe <- cli_shift__recipe_from_json(morpher__json(canonical))
     expect_identical(named_recipe$recipe_spec, "original_morphing_monthly")
     expect_identical(named_recipe$methods[["tdb"]], "combined")
 
-    old_array_json <- jsonlite::toJSON(list(
-        name = "original_morphing", backend = "original_morphing",
-        methods = unname(legacy$methods)
-    ), auto_unbox = TRUE, null = "null")
+    old_array_json <- jsonlite::toJSON(
+        list(
+            name = "original_morphing",
+            backend = "original_morphing",
+            methods = unname(legacy$methods)
+        ),
+        auto_unbox = TRUE,
+        null = "null"
+    )
     expect_error(
         cli_shift__recipe_from_json(old_array_json),
         "unsupported recipe schema"
@@ -477,11 +585,15 @@ test_that("legacy profile preserves the historical 35-field EPW golden output", 
     input <- get_cache_epw()
     epw <- epw_file_read(input)
     context <- morpher__context(
-        epw, enhanced_test__legacy_climate(),
+        epw,
+        enhanced_test__legacy_climate(),
         recipe = suppressWarnings(epw_morph_recipe(
-            "original_morphing_absolute", profile = "legacy"
+            "original_morphing_absolute",
+            profile = "legacy"
         )),
-        years = 2060L, labels = "future", strict = TRUE
+        years = 2060L,
+        labels = "future",
+        strict = TRUE
     )
     result <- morpher__run_context(context)
     expect_equal(nrow(result$data), 8760L)
@@ -514,7 +626,8 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
         dry_bulb_temperature = c(10, 20, 20, 30)
     )
     dtr <- original_morphing__epw_monthly_dtr(
-        synthetic, "dry_bulb_temperature"
+        synthetic,
+        "dry_bulb_temperature"
     )
     expect_equal(dtr$val_daily_max, 25)
     expect_equal(dtr$val_daily_min, 15)
@@ -522,7 +635,8 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
 
     epw <- enhanced_test__hourly_year()
     baseline <- original_morphing__epw_monthly_dtr(
-        epw, "dry_bulb_temperature"
+        epw,
+        "dry_bulb_temperature"
     )
     target <- baseline[, .(
         month,
@@ -540,23 +654,37 @@ test_that("enhanced temperature uses mean daily DTR and guarded auto fallback", 
         units = "degC"
     )]
     morphed <- original_morphing__from_monthly_enhanced(
-        "dry_bulb_temperature", epw, target, target_max, target_min,
-        type = "auto", transition_hours = 72L
+        "dry_bulb_temperature",
+        epw,
+        target,
+        target_max,
+        target_min,
+        type = "auto",
+        transition_hours = 72L
     )
-    monthly <- morphed[, .(
-        value = mean(dry_bulb_temperature)
-    ), by = month]
+    monthly <- morphed[,
+        .(
+            value = mean(dry_bulb_temperature)
+        ),
+        by = month
+    ]
     expect_equal(monthly$value, target$value, tolerance = 1e-10)
     expect_true(all(morphed$method_applied == "combined"))
 
     target_max$value[[1L]] <- NA_real_
     fallback <- original_morphing__from_monthly_enhanced(
-        "dry_bulb_temperature", epw, target, target_max, target_min,
-        type = "auto", transition_hours = 0L
+        "dry_bulb_temperature",
+        epw,
+        target,
+        target_max,
+        target_min,
+        type = "auto",
+        transition_hours = 0L
     )
     expect_true(all(fallback[month == 1L]$method_applied == "shift"))
-    expect_true(all(fallback[month == 1L]$factor_status ==
-        "fallback_shift_missing_extremes"))
+    expect_true(all(
+        fallback[month == 1L]$factor_status == "fallback_shift_missing_extremes"
+    ))
 })
 
 
@@ -582,7 +710,9 @@ test_that("monthly extrema share aggregation with explicit scientific identities
         value = c(10, 14, 20, 22)
     )
     attached <- morpher__attach_extreme_value(
-        target, projected, "projected_max"
+        target,
+        projected,
+        "projected_max"
     )
     expect_equal(attached$projected_max, c(12, 21))
 
@@ -599,12 +729,16 @@ test_that("monthly extrema share aggregation with explicit scientific identities
         value = c(4, 8)
     )
     attached <- morpher__attach_reference_extreme(
-        target, reference, "reference_max"
+        target,
+        reference,
+        "reference_max"
     )
     expect_equal(attached$reference_max, c(6, 6))
 
     missing <- morpher__attach_extreme_value(
-        target, NULL, "projected_max"
+        target,
+        NULL,
+        "projected_max"
     )
     expect_true(all(is.na(missing$projected_max)))
 
@@ -612,14 +746,18 @@ test_that("monthly extrema share aggregation with explicit scientific identities
     without_month[, month := NULL]
     expect_error(
         morpher__attach_extreme_value(
-            without_month, projected, "projected_max"
+            without_month,
+            projected,
+            "projected_max"
         ),
         "Cannot align monthly extrema without a month column.",
         fixed = TRUE
     )
     expect_error(
         morpher__attach_reference_extreme(
-            without_month, reference, "reference_max"
+            without_month,
+            reference,
+            "reference_max"
         ),
         "Cannot align historical monthly extrema without a month column.",
         fixed = TRUE
@@ -631,10 +769,13 @@ test_that("cyclic smoothing is continuous and conserves every monthly target", {
     epw <- enhanced_test__hourly_year()
     target <- seq(-3, 8, length.out = 12L)
     factor <- morpher__constrained_month_series(
-        epw$month, target, transition_hours = 72L
+        epw$month,
+        target,
+        transition_hours = 72L
     )
     means <- data.table::data.table(
-        month = epw$month, factor = factor
+        month = epw$month,
+        factor = factor
     )[, .(factor = mean(factor)), by = month]
 
     expect_equal(means$factor, target, tolerance = 1e-12)
@@ -647,13 +788,19 @@ test_that("cyclic smoothing is continuous and conserves every monthly target", {
     # Spatial means can differ at machine precision between calendar months;
     # coordinates are metadata and must not split one scientific case.
     identity <- data.table::data.table(
-        activity_drs = "ScenarioMIP", institution_id = "Institute",
-        source_id = "Model-A", experiment_id = "ssp585",
-        member_id = "r1i1p1f1", interval = "future",
-        lon = c(103.98, 103.98 + 1e-14), lat = c(1.37, 1.37 + 1e-14)
+        activity_drs = "ScenarioMIP",
+        institution_id = "Institute",
+        source_id = "Model-A",
+        experiment_id = "ssp585",
+        member_id = "r1i1p1f1",
+        interval = "future",
+        lon = c(103.98, 103.98 + 1e-14),
+        lat = c(1.37, 1.37 + 1e-14)
     )
-    expect_false(any(c("lon", "lat") %in%
-        morpher__factor_case_columns(identity)))
+    expect_false(any(
+        c("lon", "lat") %in%
+            morpher__factor_case_columns(identity)
+    ))
 })
 
 
@@ -663,14 +810,18 @@ test_that("specific humidity round trips and saturates at physical bounds", {
     pressure <- c(80000, 90000, 101325, 105000)
     huss <- epwphys__huss_from_rh_si(temperature, humidity, pressure)
     roundtrip <- epwphys__hurs_from_huss_si(
-        huss, temperature + 273.15, pressure
+        huss,
+        temperature + 273.15,
+        pressure
     )
     expect_equal(roundtrip, humidity, tolerance = 1e-8)
 
     saturation <- epwphys__saturation_huss_si(temperature, pressure)
     expect_equal(
         epwphys__hurs_from_huss_si(
-            saturation, temperature + 273.15, pressure
+            saturation,
+            temperature + 273.15,
+            pressure
         ),
         rep(100, length(temperature)),
         tolerance = 1e-8
@@ -683,11 +834,14 @@ test_that("specific humidity round trips and saturates at physical bounds", {
 test_that("enhanced runner integrates HUSS, radiation, snow, and final headers", {
     epw <- epw_file_read(get_cache_epw())
     context <- morpher__context(
-        epw, enhanced_test__change_climate(),
+        epw,
+        enhanced_test__change_climate(),
         recipe = epw_morph_recipe("original_morphing"),
         reference_climate = enhanced_test__change_climate(reference = TRUE),
-        years = 2060L, labels = "future",
-        reference_years = 1995L, reference_labels = "reference",
+        years = 2060L,
+        labels = "future",
+        reference_years = 1995L,
+        reference_labels = "reference",
         strict = TRUE
     )
     expect_identical(original_morphing__humidity_source(context), "huss")
@@ -695,19 +849,29 @@ test_that("enhanced runner integrates HUSS, radiation, snow, and final headers",
     weather <- result$data
 
     expect_equal(nrow(weather), 8760L)
-    expect_true(all(weather$relative_humidity >= 0 &
-        weather$relative_humidity <= 100))
-    expect_true(all(weather$dew_point_temperature <=
-        weather$dry_bulb_temperature + 1e-10))
-    expect_true(all(weather$diffuse_horizontal_radiation >= 0 &
-        weather$diffuse_horizontal_radiation <=
-            weather$global_horizontal_radiation + 1e-10))
-    expect_true(all(weather$direct_normal_radiation >= 0 &
-        weather$direct_normal_radiation <=
-            weather$extraterrestrial_direct_normal_radiation + 1e-10))
+    expect_true(all(
+        weather$relative_humidity >= 0 &
+            weather$relative_humidity <= 100
+    ))
+    expect_true(all(
+        weather$dew_point_temperature <= weather$dry_bulb_temperature + 1e-10
+    ))
+    expect_true(all(
+        weather$diffuse_horizontal_radiation >= 0 &
+            weather$diffuse_horizontal_radiation <=
+                weather$global_horizontal_radiation + 1e-10
+    ))
+    expect_true(all(
+        weather$direct_normal_radiation >= 0 &
+            weather$direct_normal_radiation <=
+                weather$extraterrestrial_direct_normal_radiation + 1e-10
+    ))
 
     geometry <- solar__epw_interval_geometry(
-        weather, latitude = 1.37, longitude = 103.98, timezone = 8
+        weather,
+        latitude = 1.37,
+        longitude = 103.98,
+        timezone = 8
     )
     expect_equal(
         weather$global_horizontal_radiation,
@@ -718,7 +882,9 @@ test_that("enhanced runner integrates HUSS, radiation, snow, and final headers",
     )
     result$epw$set(weather)
     epw_file__apply_morph_headers(
-        result$epw, weather, context$recipe$options
+        result$epw,
+        weather,
+        context$recipe$options
     )
     output <- tempfile(fileext = ".epw")
     result$epw$fill_abnormal()$save(output, overwrite = TRUE)
@@ -732,10 +898,16 @@ test_that("enhanced runner integrates HUSS, radiation, snow, and final headers",
 
 test_that("integrated solar geometry and radiation models obey EPW closure", {
     hours <- data.table::data.table(
-        year = 2001L, month = 3L, day = 21L, hour = 1:24
+        year = 2001L,
+        month = 3L,
+        day = 21L,
+        hour = 1:24
     )
     geometry <- solar__epw_interval_geometry(
-        hours, latitude = 0, longitude = 0, timezone = 0
+        hours,
+        latitude = 0,
+        longitude = 0,
+        timezone = 0
     )
     expect_true(all(geometry$extraterrestrial_horizontal_radiation >= 0))
     expect_true(all(geometry$extraterrestrial_direct_normal_radiation >= 0))
@@ -744,13 +916,18 @@ test_that("integrated solar geometry and radiation models obey EPW closure", {
 
     ghi <- 0.55 * geometry$extraterrestrial_horizontal_radiation
     dhi <- radiation__rbl_2010_diffuse(
-        ghi, geometry, rep("2001-03-21", 24L)
+        ghi,
+        geometry,
+        rep("2001-03-21", 24L)
     )
     closed <- epwphys__close_shortwave(ghi, dhi, geometry)
     expect_true(all(closed$dhi >= 0 & closed$dhi <= closed$ghi))
-    expect_true(all(closed$dni >= 0 &
-        closed$dni <= geometry$extraterrestrial_direct_normal_radiation +
-            1e-10))
+    expect_true(all(
+        closed$dni >= 0 &
+            closed$dni <=
+                geometry$extraterrestrial_direct_normal_radiation +
+                    1e-10
+    ))
     expect_equal(
         closed$ghi,
         closed$dhi + closed$dni * geometry$effective_solar_projection,
@@ -758,7 +935,10 @@ test_that("integrated solar geometry and radiation models obey EPW closure", {
     )
 
     light <- illuminance__perez_1990(
-        closed$ghi, closed$dhi, closed$dni, geometry,
+        closed$ghi,
+        closed$dhi,
+        closed$dni,
+        geometry,
         dew_point = rep(15, 24L)
     )
     night <- geometry$effective_solar_projection <= .Machine$double.eps
@@ -777,33 +957,52 @@ test_that("snow depth uses metres-to-centimetres ratios without new events", {
     months <- 1:12
     climate <- data.table::data.table(
         time = as.POSIXct(sprintf("2060-%02d-15", months), tz = "UTC"),
-        variable_id = "snd", period = "future", year = 2060L,
-        lon = 0, lat = 45, units = "m", value = 0.2,
-        source_id = "Model-A", experiment_id = "ssp585",
-        variant_label = "r1i1p1f1", table_id = "LImon"
+        variable_id = "snd",
+        period = "future",
+        year = 2060L,
+        lon = 0,
+        lat = 45,
+        units = "m",
+        value = 0.2,
+        source_id = "Model-A",
+        experiment_id = "ssp585",
+        variant_label = "r1i1p1f1",
+        table_id = "LImon"
     )
     reference <- data.table::copy(climate)
     reference[, `:=`(
         time = as.POSIXct(sprintf("1995-%02d-15", months), tz = "UTC"),
-        period = "reference", year = 1995L,
-        experiment_id = "historical", value = 0.1
+        period = "reference",
+        year = 1995L,
+        experiment_id = "historical",
+        value = 0.1
     )]
-    reference[as.integer(format(time, "%m", tz = "UTC")) == 1L,
-        value := 0]
+    reference[as.integer(format(time, "%m", tz = "UTC")) == 1L, value := 0]
     context <- morpher__context(
-        epw, climate,
+        epw,
+        climate,
         recipe = epw_morph_recipe("original_morphing"),
         reference_climate = reference,
-        years = 2060L, labels = "future",
-        reference_years = 1995L, reference_labels = "reference",
+        years = 2060L,
+        labels = "future",
+        reference_years = 1995L,
+        reference_labels = "reference",
         strict = TRUE
     )
     snow <- original_morphing__snow_depth(weather, context)$data
 
     expect_equal(snow[month == 1L, mean(alpha)], 1, tolerance = 1e-10)
     expect_equal(snow[month == 2L, mean(alpha)], 2, tolerance = 1e-10)
-    expect_equal(snow[month == 1L & snow_depth > 0]$snow_depth, 10, tolerance = 0.25)
-    expect_equal(snow[month == 2L & snow_depth > 0]$snow_depth, 20, tolerance = 0.25)
+    expect_equal(
+        snow[month == 1L & snow_depth > 0]$snow_depth,
+        10,
+        tolerance = 0.25
+    )
+    expect_equal(
+        snow[month == 2L & snow_depth > 0]$snow_depth,
+        20,
+        tolerance = 0.25
+    )
     zero_time <- weather[snow_depth == 0, datetime]
     expect_true(all(snow[datetime %in% zero_time]$snow_depth == 0))
 })
@@ -839,7 +1038,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     climate <- shift_cmip6("Model-A", "ssp585")
     periods <- epw_morph_periods(`2060s` = 2055:2065)
     plan <- shift_plan(
-        request = shift__request_from_cmip6(climate, periods, transform),
+        request = shift_spec__request_from_cmip6(climate, periods, transform),
         site = shift_site(epw = get_cache_epw()),
         periods = periods,
         transform = transform,
@@ -857,12 +1056,12 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
         variables,
         1995:2014
     )
-    selection <- shift__resolve_cmip6_selection(
+    selection <- shift_resolve__resolve_cmip6_selection(
         plan,
         future,
         reference_catalog
     )
-    partitions <- shift__selection_partition_rows(selection, "future")
+    partitions <- shift_resolve__selection_partition_rows(selection, "future")
 
     expect_identical(selection$grid_label, "gn")
     expect_true(any(
@@ -878,7 +1077,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     expect_false("hurs" %in% partitions$variable_id)
     expect_true(all(c("huss", "tas", "ps") %in% partitions$variable_id))
 
-    without_reference_snd <- shift__resolve_cmip6_selection(
+    without_reference_snd <- shift_resolve__resolve_cmip6_selection(
         plan,
         future,
         enhanced_test__catalog(
@@ -890,7 +1089,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
     )
     expect_false(
         "snd" %in%
-            shift__selection_partition_rows(
+            shift_resolve__selection_partition_rows(
                 without_reference_snd,
                 "future"
             )$variable_id
@@ -911,7 +1110,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
         dry_run = TRUE
     )@meta$children[[1L]]
     expect_error(
-        shift__resolve_cmip6_selection(
+        shift_resolve__resolve_cmip6_selection(
             required_plan,
             future,
             enhanced_test__catalog(
@@ -933,39 +1132,56 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
     file_doc <- function(path, variable_id) {
         data.frame(
             id = sprintf("%s|dataset", basename(path)),
-            dataset_id = "dataset", size = 123, checksum = "abc",
-            checksum_type = "SHA256", instance_id = "instance",
-            master_id = "master", replica = FALSE,
-            tracking_id = "hdl:test/file", title = basename(path),
-            version = 20260101L, latest = TRUE, retracted = FALSE,
+            dataset_id = "dataset",
+            size = 123,
+            checksum = "abc",
+            checksum_type = "SHA256",
+            instance_id = "instance",
+            master_id = "master",
+            replica = FALSE,
+            tracking_id = "hdl:test/file",
+            title = basename(path),
+            version = 20260101L,
+            latest = TRUE,
+            retracted = FALSE,
             deprecated = FALSE,
             datetime_start = "2060-01-01T00:00:00Z",
             datetime_end = "2060-12-31T23:59:59Z",
-            data_node = "example.org", activity_id = "ScenarioMIP",
-            institution_id = "Test", source_id = "Model-A",
-            experiment_id = "ssp585", variant_label = "r1i1p1f1",
-            frequency = "mon", table_id = "Amon",
-            variable_id = variable_id, grid_label = "gn",
+            data_node = "example.org",
+            activity_id = "ScenarioMIP",
+            institution_id = "Test",
+            source_id = "Model-A",
+            experiment_id = "ssp585",
+            variant_label = "r1i1p1f1",
+            frequency = "mon",
+            table_id = "Amon",
+            variable_id = variable_id,
+            grid_label = "gn",
             url = I(list(c(
                 sprintf("%s|application/netcdf|OPENDAP", path),
                 sprintf("%s|application/netcdf|HTTPServer", path)
-            ))), check.names = FALSE
+            ))),
+            check.names = FALSE
         )
     }
     file_result <- function(docs) {
         params <- query_param__as_store(list(
-            project = "CMIP6", distrib = TRUE, limit = 10L,
-            type = "File", format = QUERY_PARAM__FORMAT_JSON
+            project = "CMIP6",
+            distrib = TRUE,
+            limit = 10L,
+            type = "File",
+            format = QUERY_PARAM__FORMAT_JSON
         ))
         response <- esgf_test__response(docs)
         query_result__new(
-            EsgResultFile, index_node = "https://example.org",
-            params = params, result = response
+            EsgResultFile,
+            index_node = "https://example.org",
+            params = params,
+            result = response
         )
     }
 
-    paths <- c(tas = tempfile(fileext = ".nc"),
-        snd = tempfile(fileext = ".nc"))
+    paths <- c(tas = tempfile(fileext = ".nc"), snd = tempfile(fileext = ".nc"))
     write_local_cmip6_netcdf_fixture(paths[["tas"]], 2060L, "tas")
     write_local_cmip6_netcdf_fixture(paths[["snd"]], 2060L, "snd")
     on.exit(unlink(paths), add = TRUE)
@@ -977,39 +1193,56 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
         table_id = c("Amon", "Amon", "LImon", "LImon"),
         grid_label = c("gn", "gr", "gr", "gn")
     )
-    docs <- data.table::rbindlist(lapply(seq_len(nrow(combinations)), function(i) {
-        variable_id <- combinations$variable_id[[i]]
-        row <- file_doc(paths[[variable_id]], variable_id)
-        suffix <- sprintf("%s-%s-%s", variable_id,
-            combinations$table_id[[i]], combinations$grid_label[[i]])
-        row$source_id <- "Model-A"
-        row$frequency <- "mon"
-        row$table_id <- combinations$table_id[[i]]
-        row$grid_label <- combinations$grid_label[[i]]
-        row$dataset_id <- paste0("dataset-", suffix)
-        row$master_id <- paste0("master-", suffix)
-        row$instance_id <- paste0("instance-", suffix)
-        row$tracking_id <- paste0("hdl:test/", suffix)
-        row$id <- paste0("file-", suffix, "|", row$dataset_id)
-        row$title <- paste0(suffix, ".nc")
-        row
-    }), fill = TRUE)
+    docs <- data.table::rbindlist(
+        lapply(seq_len(nrow(combinations)), function(i) {
+            variable_id <- combinations$variable_id[[i]]
+            row <- file_doc(paths[[variable_id]], variable_id)
+            suffix <- sprintf(
+                "%s-%s-%s",
+                variable_id,
+                combinations$table_id[[i]],
+                combinations$grid_label[[i]]
+            )
+            row$source_id <- "Model-A"
+            row$frequency <- "mon"
+            row$table_id <- combinations$table_id[[i]]
+            row$grid_label <- combinations$grid_label[[i]]
+            row$dataset_id <- paste0("dataset-", suffix)
+            row$master_id <- paste0("master-", suffix)
+            row$instance_id <- paste0("instance-", suffix)
+            row$tracking_id <- paste0("hdl:test/", suffix)
+            row$id <- paste0("file-", suffix, "|", row$dataset_id)
+            row$title <- paste0(suffix, ".nc")
+            row
+        }),
+        fill = TRUE
+    )
 
     store_path <- tempfile("enhanced-partition-store-")
     store <- EsgStore$new(store_path)
     query_id <- store$add_files(file_result(as.data.frame(docs)))
     store$close()
     request <- shift_request(
-        project = "CMIP6", source = "Model-A", experiment = "ssp585",
-        variant = "r1i1p1f1", variables = c("tas", "snd"),
+        project = "CMIP6",
+        source = "Model-A",
+        experiment = "ssp585",
+        variant = "r1i1p1f1",
+        variables = c("tas", "snd"),
         frequency = "mon"
     )
-    files <- shift_stage_new(
-        ShiftFiles, "files", store_path = store_path,
+    files <- shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = store_path,
         ids = list(query_id = query_id),
-        meta = list(request = request, dataset_count = 4L,
-            file_count = 4L, variables = c("tas", "snd"), fields = "*",
-            result_fields = names(docs))
+        meta = list(
+            request = request,
+            dataset_count = 4L,
+            file_count = 4L,
+            variables = c("tas", "snd"),
+            fields = "*",
+            result_fields = names(docs)
+        )
     )
     partitions <- data.table::data.table(
         variable_id = c("tas", "snd"),
@@ -1017,30 +1250,43 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
         grid_label = c("gn", "gr"),
         required = c(TRUE, FALSE)
     )
-    expect_identical(class(shift__cmip6_partition_json(partitions)),
-        "character")
+    expect_identical(
+        class(shift_resolve__cmip6_partition_json(partitions)),
+        "character"
+    )
     selection <- data.table::data.table(
-        source_id = "Model-A", variant_label = "r1i1p1f1",
+        source_id = "Model-A",
+        variant_label = "r1i1p1f1",
         frequency = "mon",
-        future_partitions_json = shift__cmip6_partition_json(partitions)
+        future_partitions_json = shift_resolve__cmip6_partition_json(partitions)
     )
 
-    selected <- shift__files_for_partitions(
-        files, selection, "ssp585", role = "future"
+    selected <- shift_resolve__files_for_partitions(
+        files,
+        selection,
+        "ssp585",
+        role = "future"
     )
     selected_rows <- shift_files(selected)$to_data_table()
     expect_equal(nrow(selected_rows), 2L)
     expect_setequal(
-        paste(selected_rows$variable_id, selected_rows$table_id,
-            selected_rows$grid_label, sep = "/"),
+        paste(
+            selected_rows$variable_id,
+            selected_rows$table_id,
+            selected_rows$grid_label,
+            sep = "/"
+        ),
         c("tas/Amon/gn", "snd/LImon/gr")
     )
 
-    climate <- shift__extract_selected_partitions(
-        selected, selection, "ssp585",
+    climate <- shift_run__extract_selected_partitions(
+        selected,
+        selection,
+        "ssp585",
         site = shift_site("SIN", 103.98, 1.37),
         periods = epw_morph_periods(future = 2060L),
-        role = "future", fallback = "error"
+        role = "future",
+        fallback = "error"
     )
     coverage <- shift_coverage(climate)
     expect_equal(length(shift_ids(climate)$plan_id), 2L)
@@ -1052,17 +1298,23 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
 test_that("CMIP6 table pins and named overrides persist through task specs", {
     pinned <- shift_cmip6("Model-A", "ssp585", table = "Amon")
     overridden <- shift_cmip6(
-        "Model-A", "ssp585", table = c(snd = "LImon")
+        "Model-A",
+        "ssp585",
+        table = c(snd = "LImon")
     )
     expect_identical(
-        unname(unique(shift__cmip6_variable_tables(
-            c("tas", "snd"), "mon", pinned@table
+        unname(unique(shift_spec__cmip6_variable_tables(
+            c("tas", "snd"),
+            "mon",
+            pinned@table
         ))),
         "Amon"
     )
     expect_identical(
-        unname(shift__cmip6_variable_tables(
-            c("tas", "snd"), "mon", overridden@table
+        unname(shift_spec__cmip6_variable_tables(
+            c("tas", "snd"),
+            "mon",
+            overridden@table
         )),
         c("Amon", "LImon")
     )
@@ -1075,7 +1327,10 @@ test_that("CMIP6 table pins and named overrides persist through task specs", {
 test_that("Original morphing humidity capabilities keep hurs canonical and derive from surface inputs", {
     recipe <- epw_morph_recipe("original_morphing")
     requirements <- morpher__variable_requirements(recipe)
-    guidance <- morpher__missing_variable_guidance("hurs", present_variables = c("tas", "huss"))
+    guidance <- morpher__missing_variable_guidance(
+        "hurs",
+        present_variables = c("tas", "huss")
+    )
 
     expect_equal(requirements$hurs, list(c("huss", "tas", "ps"), "hurs"))
     expect_equal(
@@ -1084,13 +1339,15 @@ test_that("Original morphing humidity capabilities keep hurs canonical and deriv
         )$hurs,
         list("hurs", c("huss", "tas", "ps"))
     )
-    expect_true(all(c("hurs", "huss", "tas", "ps") %in%
-        morpher__input_variables(recipe)))
+    expect_true(all(
+        c("hurs", "huss", "tas", "ps") %in%
+            morpher__input_variables(recipe)
+    ))
     expect_match(guidance$suffix, "huss \\+ tas \\+ ps")
     expect_no_match(guidance$suffix, "psl")
 
-    expected <- 100 * (0.01 * 100000 /
-        (0.621945 + (1 - 0.621945) * 0.01)) /
+    expected <- 100 *
+        (0.01 * 100000 / (0.621945 + (1 - 0.621945) * 0.01)) /
         exp(epwphys__psychro_ln_pws(300 - 273.15))
     expect_equal(
         epwphys__hurs_from_huss_si(0.01, 300, 100000),
@@ -1105,7 +1362,10 @@ test_that("Original morphing humidity capabilities keep hurs canonical and deriv
 
 test_that("Original morphing change-factor and solar radiation helpers follow reference formulas", {
     data_epw <- data.table::data.table(
-        datetime = as.POSIXct(c("2001-01-15 08:00:00", "2001-01-15 09:00:00"), tz = "UTC"),
+        datetime = as.POSIXct(
+            c("2001-01-15 08:00:00", "2001-01-15 09:00:00"),
+            tz = "UTC"
+        ),
         year = 2001L,
         month = 1L,
         day = 15:16,
@@ -1181,7 +1441,10 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
         lon = 0,
         lat = 0,
         interval = "future",
-        datetime = as.POSIXct(c("2001-03-21 08:00:00", "2001-03-21 01:00:00"), tz = "UTC"),
+        datetime = as.POSIXct(
+            c("2001-03-21 08:00:00", "2001-03-21 01:00:00"),
+            tz = "UTC"
+        ),
         year = 2001L,
         month = 3L,
         day = 21L,
@@ -1196,7 +1459,13 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
         global_horizontal_radiation = NULL,
         diffuse_horizontal_radiation = c(200, 200)
     )]
-    dni <- original_morphing__direct_normal_radiation(glob, diff, latitude = 0, longitude = 0, timezone = 0)
+    dni <- original_morphing__direct_normal_radiation(
+        glob,
+        diff,
+        latitude = 0,
+        longitude = 0,
+        timezone = 0
+    )
     dni_value <- dni$direct_normal_radiation
     expect_gt(dni_value[[1L]], 800)
     expect_equal(dni_value[[2L]], 0)
@@ -1225,14 +1494,21 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
         month = 1L,
         interval = "future"
     )
-    total_cover <- original_morphing__total_sky_cover(cloud_epw, NULL, data_mean = cloud_target)
+    total_cover <- original_morphing__total_sky_cover(
+        cloud_epw,
+        NULL,
+        data_mean = cloud_target
+    )
     opaque <- original_morphing__opaque_sky_cover(cloud_epw, total_cover)
     expect_equal(total_cover$total_sky_cover, 4L)
     expect_true(is.na(total_cover$alpha))
     expect_equal(opaque$opaque_sky_cover, 2L)
 
     precip_epw <- data.table::data.table(
-        datetime = as.POSIXct(c("2001-01-01 01:00:00", "2001-01-01 02:00:00"), tz = "UTC"),
+        datetime = as.POSIXct(
+            c("2001-01-01 01:00:00", "2001-01-01 02:00:00"),
+            tz = "UTC"
+        ),
         year = 2001L,
         month = 1L,
         day = 1L,
@@ -1269,12 +1545,20 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
     dry_precip_epw <- data.table::copy(precip_epw)
     dry_precip_epw[, liquid_precip_depth := 0]
     expect_error(
-        original_morphing__precip_from_monthly(dry_precip_epw, precip_target, strict = TRUE),
+        original_morphing__precip_from_monthly(
+            dry_precip_epw,
+            precip_target,
+            strict = TRUE
+        ),
         "no wet hours"
     )
     relaxed_dry <- NULL
     expect_warning(
-        relaxed_dry <- original_morphing__precip_from_monthly(dry_precip_epw, precip_target, strict = FALSE),
+        relaxed_dry <- original_morphing__precip_from_monthly(
+            dry_precip_epw,
+            precip_target,
+            strict = FALSE
+        ),
         "keeping the month dry"
     )
     expect_equal(sum(relaxed_dry$liquid_precip_depth), 0)
@@ -1305,10 +1589,13 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
     expect_true(all(is.na(relaxed_missing$liquid_precip_rate)))
 
     partial_precip_epw <- data.table::copy(precip_epw)
-    partial_precip_epw[2L, `:=`(
-        liquid_precip_depth = 999,
-        liquid_precip_rate = 99
-    )]
+    partial_precip_epw[
+        2L,
+        `:=`(
+            liquid_precip_depth = 999,
+            liquid_precip_rate = 99
+        )
+    ]
     relaxed_partial <- NULL
     expect_warning(
         relaxed_partial <- original_morphing__precip_from_monthly(
@@ -1325,10 +1612,15 @@ test_that("Original morphing change-factor and solar radiation helpers follow re
 
 test_that("Original morphing combined temperature uses average daily EPW range", {
     data_epw <- data.table::data.table(
-        datetime = as.POSIXct(c(
-            "2001-01-01 01:00:00", "2001-01-01 02:00:00",
-            "2001-01-02 01:00:00", "2001-01-02 02:00:00"
-        ), tz = "UTC"),
+        datetime = as.POSIXct(
+            c(
+                "2001-01-01 01:00:00",
+                "2001-01-01 02:00:00",
+                "2001-01-02 01:00:00",
+                "2001-01-02 02:00:00"
+            ),
+            tz = "UTC"
+        ),
         year = 2001L,
         month = 1L,
         day = rep(1:2, each = 2L),
@@ -1401,3 +1693,5 @@ test_that("Original morphing combined temperature uses average daily EPW range",
         tolerance = 1e-12
     )
 })
+
+# vim: fdm=marker :

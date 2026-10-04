@@ -1,11 +1,12 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 # Build deterministic monthly CMIP6 rows whose future changes vary by calendar
 # month and whose temperature extrema retain their monthly CMIP definitions.
+# bws_btws_monthly_test__climate {{{
 bws_btws_monthly_test__climate <- function(
     years,
     period,
@@ -90,8 +91,10 @@ bws_btws_monthly_test__climate <- function(
         }))
     }))
 }
+# }}}
 
 # Assemble one direct context for the complete registered BWS/BTWS recipe.
+# bws_btws_monthly_test__context {{{
 bws_btws_monthly_test__context <- function(
     mean_shift = seq(0.5, 1.6, by = 0.1),
     minimum_shift = seq(0.3, 1.4, by = 0.1),
@@ -122,6 +125,7 @@ bws_btws_monthly_test__context <- function(
         recipe = epw_morph_recipe(recipe_name, policy = "harmonized")
     )
 }
+# }}}
 
 test_that("BWS/BTWS monthly sources produce 12 month-constant target sets", {
     mean_shift <- seq(0.5, 1.6, by = 0.1)
@@ -301,14 +305,17 @@ test_that("BWS/BTWS closes temperature, radiation, and cloud", {
     expect_lt(max(abs(result$factors$maximum_closure_error)), 1e-8)
     expect_false(any(!is.na(result$factors$btws_fallback_reason)))
 
-    achieved <- weather[, .(
-        baseline_mean = mean(baseline_data$dry_bulb_temperature[.I]),
-        baseline_minimum = min(baseline_data$dry_bulb_temperature[.I]),
-        baseline_maximum = max(baseline_data$dry_bulb_temperature[.I]),
-        projected_mean = mean(dry_bulb_temperature),
-        projected_minimum = min(dry_bulb_temperature),
-        projected_maximum = max(dry_bulb_temperature)
-    ), by = c("daily_target_day")]
+    achieved <- weather[,
+        .(
+            baseline_mean = mean(baseline_data$dry_bulb_temperature[.I]),
+            baseline_minimum = min(baseline_data$dry_bulb_temperature[.I]),
+            baseline_maximum = max(baseline_data$dry_bulb_temperature[.I]),
+            projected_mean = mean(dry_bulb_temperature),
+            projected_minimum = min(dry_bulb_temperature),
+            projected_maximum = max(dry_bulb_temperature)
+        ),
+        by = c("daily_target_day")
+    ]
     month <- result$factors$month
     expect_equal(
         achieved$projected_mean - achieved$baseline_mean,
@@ -326,16 +333,22 @@ test_that("BWS/BTWS closes temperature, radiation, and cloud", {
         tolerance = 1e-8
     )
 
-    baseline_month <- baseline_data[, .(
-        ghi_mean = mean(global_horizontal_radiation),
-        ghi_maximum = max(global_horizontal_radiation),
-        cloud_mean = mean(total_sky_cover)
-    ), by = "month"]
-    projected_month <- weather[, .(
-        ghi_mean = mean(global_horizontal_radiation),
-        ghi_maximum = max(global_horizontal_radiation),
-        cloud_mean = mean(total_sky_cover)
-    ), by = "month"]
+    baseline_month <- baseline_data[,
+        .(
+            ghi_mean = mean(global_horizontal_radiation),
+            ghi_maximum = max(global_horizontal_radiation),
+            cloud_mean = mean(total_sky_cover)
+        ),
+        by = "month"
+    ]
+    projected_month <- weather[,
+        .(
+            ghi_mean = mean(global_horizontal_radiation),
+            ghi_maximum = max(global_horizontal_radiation),
+            cloud_mean = mean(total_sky_cover)
+        ),
+        by = "month"
+    ]
     expect_equal(
         projected_month$ghi_mean - baseline_month$ghi_mean,
         rep(1, 12L),
@@ -350,14 +363,19 @@ test_that("BWS/BTWS closes temperature, radiation, and cloud", {
         abs(
             projected_month$cloud_mean -
                 baseline_month$cloud_mean * 1.02
-        ) <= 0.5 / baseline_data[, .N, by = "month"]$N
+        ) <=
+            0.5 / baseline_data[, .N, by = "month"]$N
     ))
     expect_type(weather$total_sky_cover, "integer")
     expect_type(weather$opaque_sky_cover, "integer")
-    expect_true(all(weather$total_sky_cover >= 0L &
-        weather$total_sky_cover <= 10L))
-    expect_true(all(weather$opaque_sky_cover >= 0L &
-        weather$opaque_sky_cover <= weather$total_sky_cover))
+    expect_true(all(
+        weather$total_sky_cover >= 0L &
+            weather$total_sky_cover <= 10L
+    ))
+    expect_true(all(
+        weather$opaque_sky_cover >= 0L &
+            weather$opaque_sky_cover <= weather$total_sky_cover
+    ))
 
     geometry <- solar__epw_interval_geometry(
         baseline_data,
@@ -485,7 +503,7 @@ test_that("BWS/BTWS public transform survives dry-run plan reconstruction", {
         store = tempfile("bws_btws-monthly-store-"),
         dry_run = TRUE
     )@meta$children[[1L]]
-    rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
+    rebuilt <- shift_persist__plan_from_spec(shift_persist__plan_spec(plan))
 
     expect_identical(
         plan@meta$recipe$backend,
@@ -499,5 +517,7 @@ test_that("BWS/BTWS public transform survives dry-run plan reconstruction", {
         rebuilt@meta$recipe$components$signal,
         "bws_btws_monthly_changes"
     )
-    expect_silent(shift__validate_background_plan(plan))
+    expect_silent(shift_job__validate_background_plan(plan))
 })
+
+# vim: fdm=marker :

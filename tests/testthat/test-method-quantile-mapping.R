@@ -5,6 +5,7 @@ qm_test__execution_inputs <- signal_test__execution_inputs
 
 # Execute one variable through the common signal lifecycle while replacing the
 # default seasonal window with a full-cycle window for compact test fixtures.
+# qm_test__execute {{{
 qm_test__execute <- function(
     variable,
     observed,
@@ -37,9 +38,11 @@ qm_test__execute <- function(
         warn_experimental = warn_experimental
     )
 }
+# }}}
 
 # Retrieve one default settings record without relying on profile construction
 # order in tests that call the single-group kernel directly.
+# qm_test__settings {{{
 qm_test__settings <- function(variable) {
     profiles <- qm__profiles()
     index <- which(vapply(
@@ -49,6 +52,7 @@ qm_test__settings <- function(variable) {
     ))
     profiles[[index]]@settings
 }
+# }}}
 
 test_that("empirical CDF conventions make ties and tails explicit", {
     anchors <- quantile__cdf_anchors(c(1, 1, 2, 4))
@@ -275,9 +279,7 @@ test_that("precipitation hurdle mapping has deterministic dry-day control", {
     ))
     expect_true(any(first_values == 0))
     expect_true(any(first_values > 0))
-    precipitation <- (
-        first@values[[1L]]@provenance$diagnostics$precipitation
-    )
+    precipitation <- (first@values[[1L]]@provenance$diagnostics$precipitation)
     expect_identical(precipitation$input_dry_values, count)
     expect_identical(precipitation$randomized_dry_values, count)
     expect_true(precipitation$output_dry_values < count)
@@ -330,13 +332,15 @@ test_that("Quantile Mapping rejects unsupported or insufficient inputs", {
             qm__component(),
             "apply_group",
             inputs = incompatible_units,
-            settings = list(tas = utils::modifyList(
-                settings,
-                list(
-                    seasonal_window_days = 365L,
-                    min_samples = 2L
+            settings = list(
+                tas = utils::modifyList(
+                    settings,
+                    list(
+                        seasonal_window_days = 365L,
+                        min_samples = 2L
+                    )
                 )
-            )),
+            ),
             key = list()
         ),
         "identical units"
@@ -357,13 +361,15 @@ test_that("Quantile Mapping rejects unsupported or insufficient inputs", {
             qm__component(),
             "apply_group",
             inputs = precipitation,
-            settings = list(pr = utils::modifyList(
-                pr_settings,
-                list(
-                    seasonal_window_days = 365L,
-                    min_samples = 2L
+            settings = list(
+                pr = utils::modifyList(
+                    pr_settings,
+                    list(
+                        seasonal_window_days = 365L,
+                        min_samples = 2L
+                    )
                 )
-            )),
+            ),
             key = list()
         ),
         "non-negative"
@@ -413,3 +419,5 @@ test_that("Quantile Mapping profiles retain evidence and registration", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker :

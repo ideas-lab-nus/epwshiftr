@@ -1,26 +1,26 @@
 # Query one current daily-temperature File set from the first responsive ESGF
 # index node, retaining node failures so a live-run error remains actionable.
+# live_esgf_tas_files {{{
 live_esgf_tas_files <- function() {
     nodes <- unique(c(INDEX_NODES[["DKRZ"]], INDEX_NODES[["ORNL"]]))
     failures <- character()
     for (node in nodes) {
-        files <- tryCatch({
-            query <- esg_query(node)$
-                activity_id("ScenarioMIP")$
-                source_id("MPI-ESM1-2-LR")$
-                experiment_id("ssp585")$
-                variant_label("r1i1p1f1")$
-                frequency("day")$
-                variable_id("tas")$
-                params(table_id = "day")$
-                limit(20L)
-            allow_live_esgf_dict_warnings(query$collect(
-                type = "File",
-                fields = "*",
-                all = FALSE,
-                limit = TRUE
-            ))
-        }, error = identity)
+        files <- tryCatch(
+            {
+                query <- esg_query(node)$activity_id("ScenarioMIP")$source_id(
+                    "MPI-ESM1-2-LR"
+                )$experiment_id("ssp585")$variant_label("r1i1p1f1")$frequency(
+                    "day"
+                )$variable_id("tas")$params(table_id = "day")$limit(20L)
+                allow_live_esgf_dict_warnings(query$collect(
+                    type = "File",
+                    fields = "*",
+                    all = FALSE,
+                    limit = TRUE
+                ))
+            },
+            error = identity
+        )
         if (!inherits(files, "error") && files$count() > 0L) {
             return(list(node = node, files = files))
         }
@@ -39,30 +39,31 @@ live_esgf_tas_files <- function() {
         call. = FALSE
     )
 }
+# }}}
 
 # Find one monthly temperature file small enough to exercise a real HTTP
 # recovery without turning the opt-in service check into a large data job.
+# live_esgf_bounded_http_file {{{
 live_esgf_bounded_http_file <- function(max_bytes = 64 * 1024^2) {
     nodes <- unique(c(INDEX_NODES[["DKRZ"]], INDEX_NODES[["ORNL"]]))
     failures <- character()
     for (node in nodes) {
-        files <- tryCatch({
-            query <- esg_query(node)$
-                activity_id("ScenarioMIP")$
-                source_id("MPI-ESM1-2-LR")$
-                experiment_id("ssp585")$
-                variant_label("r1i1p1f1")$
-                frequency("mon")$
-                variable_id("tas")$
-                params(table_id = "Amon")$
-                limit(100L)
-            allow_live_esgf_dict_warnings(query$collect(
-                type = "File",
-                fields = "*",
-                all = FALSE,
-                limit = TRUE
-            ))
-        }, error = identity)
+        files <- tryCatch(
+            {
+                query <- esg_query(node)$activity_id("ScenarioMIP")$source_id(
+                    "MPI-ESM1-2-LR"
+                )$experiment_id("ssp585")$variant_label("r1i1p1f1")$frequency(
+                    "mon"
+                )$variable_id("tas")$params(table_id = "Amon")$limit(100L)
+                allow_live_esgf_dict_warnings(query$collect(
+                    type = "File",
+                    fields = "*",
+                    all = FALSE,
+                    limit = TRUE
+                ))
+            },
+            error = identity
+        )
         if (inherits(files, "error")) {
             failures <- c(
                 failures,
@@ -71,7 +72,10 @@ live_esgf_bounded_http_file <- function(max_bytes = 64 * 1024^2) {
             next
         }
         if (!files$count()) {
-            failures <- c(failures, sprintf("%s: no matching File records", node))
+            failures <- c(
+                failures,
+                sprintf("%s: no matching File records", node)
+            )
             next
         }
         data <- files$to_data_table()
@@ -104,6 +108,7 @@ live_esgf_bounded_http_file <- function(max_bytes = 64 * 1024^2) {
         paste(failures, collapse = " | ")
     ))
 }
+# }}}
 
 test_that("live ESGF File coverage, service resolution, and one-cell read", {
     skip_live_esgf()
@@ -118,7 +123,7 @@ test_that("live ESGF File coverage, service resolution, and one-cell read", {
 
     # Apply the same File-year kernel used by batch and single-model workflows
     # before touching any data endpoint.
-    candidates <- shift__cmip6_candidates(
+    candidates <- shift_resolve__cmip6_candidates(
         files$to_data_table(),
         models = "MPI-ESM1-2-LR",
         experiments = "ssp585",
@@ -211,3 +216,5 @@ test_that("live ESGF HTTP recovery downloads one bounded real file", {
     expect_length(value, 1L)
     expect_true(is.finite(value))
 })
+
+# vim: fdm=marker :

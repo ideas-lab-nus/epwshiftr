@@ -6,8 +6,12 @@ test_that("ERA NetCDF reading selects the nearest returned grid centre", {
         dim = c(2, 1, 3)
     )
     write_test_era_netcdf(path, values = values, time = time)
-    site <- shift_site(id = "SFO", lon = -122.49, lat = 37.75,
-        epw = get_cache_epw())
+    site <- shift_site(
+        id = "SFO",
+        lon = -122.49,
+        lat = 37.75,
+        epw = get_cache_epw()
+    )
 
     result <- era__read_netcdf(path, "tas", site)
 
@@ -49,8 +53,14 @@ test_that("ERA normalization closes humidity, wind, flux, and local-day fields",
     raw$rsds$units <- "J m-2"
     raw$pr$units <- "m"
     variables <- c(
-        "tas", "tasmin", "tasmax", "hurs", "huss", "sfcWind",
-        "rsds", "pr"
+        "tas",
+        "tasmin",
+        "tasmax",
+        "hurs",
+        "huss",
+        "sfcWind",
+        "rsds",
+        "pr"
     )
     canonical <- era__canonical_hourly(raw, variables)
 
@@ -73,13 +83,16 @@ test_that("ERA normalization closes humidity, wind, flux, and local-day fields",
         lat = 37.75
     )
     expect_true(all(daily$cf_year == 2000L))
-    expect_equal(daily$value[[1L]], min(
-        canonical$data[
-            utc_time >= as.POSIXct("2000-01-01 08:00:00", tz = "UTC") &
-                utc_time < as.POSIXct("2000-01-02 08:00:00", tz = "UTC"),
-            tas
-        ]
-    ))
+    expect_equal(
+        daily$value[[1L]],
+        min(
+            canonical$data[
+                utc_time >= as.POSIXct("2000-01-01 08:00:00", tz = "UTC") &
+                    utc_time < as.POSIXct("2000-01-02 08:00:00", tz = "UTC"),
+                tas
+            ]
+        )
+    )
     expect_identical(unique(daily$time_basis), "epw_local_standard")
 })
 
@@ -88,7 +101,7 @@ test_that("reanalysis materialization persists and reuses ShiftClimate data", {
     store <- EsgStore$new(store_path)
     store$close()
     site <- shift_site(epw = get_cache_epw(), id = "SIN")
-    stage <- shift_stage_new(
+    stage <- shift_stage__new(
         ShiftFiles,
         "files",
         store_path = store_path
@@ -124,9 +137,9 @@ test_that("reanalysis materialization persists and reuses ShiftClimate data", {
             )
         )
     }
-    withr::local_options(list(
-        epwshiftr.reanalysis.retrieve = retrieve,
-        epwshiftr.reanalysis.read = reader,
+    test_local_dependencies(list(
+        cds__retrieve = retrieve,
+        era__read_netcdf = reader,
         epwshiftr.dir_cache = tempfile("era-shared-cache-")
     ))
 
@@ -141,9 +154,12 @@ test_that("reanalysis materialization persists and reuses ShiftClimate data", {
     expect_identical(calls, 1L)
     store <- EsgStore$new(store_path, create = FALSE)
     on.exit(store$close(), add = TRUE)
-    expect_true("grid_elevation_m" %in% names(
-        priv(store)$read_table("extraction_grid_source")
-    ))
+    expect_true(
+        "grid_elevation_m" %in%
+            names(
+                priv(store)$read_table("extraction_grid_source")
+            )
+    )
 
     reused <- reanalysis__materialize(stage, recipe, site, source)
     expect_true(reused@meta$reused)
@@ -246,3 +262,5 @@ test_that("reanalysis identities include the EPW fixed time zone", {
 
     expect_false(identical(original_ids$query_id, shifted_ids$query_id))
 })
+
+# vim: fdm=marker :

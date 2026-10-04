@@ -1,5 +1,6 @@
 # Execute the displayed README example in a real terminal and retain its cast
 # outside the repository. Only playback timing changes in the rendered SVGs.
+# readme__terminal {{{
 readme__terminal <- function(options) {
     options$engine <- "r"
     if (!isTRUE(options$eval)) {
@@ -142,3 +143,6 @@ readme__terminal <- function(options) {
     )
     knitr::engine_output(options, options$code, "", knitr::asis_output(picture))
 }
+# }}}
+
+# vim: fdm=marker :

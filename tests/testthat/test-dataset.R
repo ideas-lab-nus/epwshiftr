@@ -1,7 +1,15 @@
-dataset_async_timeout <- 10
+# Include instrumented namespace loading in worker startup. Deliberate timeout
+# tests below keep their short deadlines and test cancellation independently.
+dataset_async_timeout <- 60
 
 # local_dataset_table_file() / local_dataset_cmip6_files() / mirai_dataset_symbols / start_mirai_dataset_runtime() / stop_mirai_dataset_runtime() / mirai_dataset_lapply() {{{
-local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along(time_vals), calendar = "standard") {
+# local_dataset_table_file {{{
+local_dataset_table_file <- function(
+    time_vals,
+    time_units,
+    tas_vals = seq_along(time_vals),
+    calendar = "standard"
+) {
     path <- tempfile(fileext = ".nc")
     nc <- RNetCDF::create.nc(path)
 
@@ -28,16 +36,23 @@ local_dataset_table_file <- function(time_vals, time_units, tas_vals = seq_along
 
     path
 }
+# }}}
 
+# local_dataset_cmip6_files {{{
 local_dataset_cmip6_files <- function(years) {
-    paths <- vapply(years, function(year) {
-        path <- tempfile(fileext = ".nc")
-        write_local_cmip6_netcdf_fixture(path, year)
-        path
-    }, character(1L))
+    paths <- vapply(
+        years,
+        function(year) {
+            path <- tempfile(fileext = ".nc")
+            write_local_cmip6_netcdf_fixture(path, year)
+            path
+        },
+        character(1L)
+    )
     withr::defer(unlink(paths), envir = parent.frame())
     paths
 }
+# }}}
 
 mirai_dataset_symbols <- c(
     "EsgDataset",
@@ -49,6 +64,7 @@ mirai_dataset_symbols <- c(
     "dataset__progress_done"
 )
 
+# start_mirai_dataset_runtime {{{
 start_mirai_dataset_runtime <- function(workers) {
     testthat::skip_if_not_installed("mirai")
 
@@ -66,7 +82,10 @@ start_mirai_dataset_runtime <- function(workers) {
     on.exit(
         {
             if (!started) {
-                try(mirai::daemons(0, .compute = compute_profile), silent = TRUE)
+                try(
+                    mirai::daemons(0, .compute = compute_profile),
+                    silent = TRUE
+                )
             }
         },
         add = TRUE
@@ -75,10 +94,17 @@ start_mirai_dataset_runtime <- function(workers) {
     startup_error <- NULL
     tryCatch(
         {
-            mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
+            mirai::daemons(
+                workers,
+                dispatcher = TRUE,
+                .compute = compute_profile
+            )
             started <- TRUE
 
-            ready <- mirai::collect_mirai(mirai::mirai(TRUE, .compute = compute_profile))
+            ready <- mirai::collect_mirai(mirai::mirai(
+                TRUE,
+                .compute = compute_profile
+            ))
             if (!isTRUE(ready)) {
                 stop("mirai readiness probe returned a non-TRUE result.")
             }
@@ -97,7 +123,9 @@ start_mirai_dataset_runtime <- function(workers) {
 
     list(compute_profile = compute_profile, workers = workers)
 }
+# }}}
 
+# stop_mirai_dataset_runtime {{{
 stop_mirai_dataset_runtime <- function(runtime) {
     if (is.null(runtime$compute_profile)) {
         return(invisible(NULL))
@@ -106,7 +134,9 @@ stop_mirai_dataset_runtime <- function(runtime) {
     try(mirai::daemons(0, .compute = runtime$compute_profile), silent = TRUE)
     invisible(NULL)
 }
+# }}}
 
+# mirai_dataset_lapply {{{
 mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
     if (!length(X)) {
         return(vector("list", 0L))
@@ -115,14 +145,24 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
     runtime <- start_mirai_dataset_runtime(workers)
     on.exit(stop_mirai_dataset_runtime(runtime), add = TRUE)
 
-    worker_symbols <- mget(mirai_dataset_symbols, envir = asNamespace("epwshiftr"), inherits = FALSE)
+    worker_symbols <- mget(
+        mirai_dataset_symbols,
+        envir = asNamespace("epwshiftr"),
+        inherits = FALSE
+    )
     dot_args <- list(...)
     tasks <- lapply(X, function(x) {
         mirai::mirai(
             {
                 list2env(worker_symbols, envir = .GlobalEnv)
-                on.exit(rm(list = names(worker_symbols), envir = .GlobalEnv), add = TRUE)
-                environment(FUN) <- list2env(worker_symbols, parent = environment(FUN))
+                on.exit(
+                    rm(list = names(worker_symbols), envir = .GlobalEnv),
+                    add = TRUE
+                )
+                environment(FUN) <- list2env(
+                    worker_symbols,
+                    parent = environment(FUN)
+                )
                 try(do.call(FUN, c(list(x), dot_args)), silent = TRUE)
             },
             FUN = FUN,
@@ -136,12 +176,7 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
     lapply(tasks, mirai::collect_mirai)
 }
 # }}}
-
-skip_dataset_async_on_covr <- function() {
-    # covr cannot reliably merge coverage traces emitted by these mirai worker
-    # processes. The async paths still run in normal R CMD check jobs.
-    skip_on_covr()
-}
+# }}}
 
 # EsgDataset$new() {{{
 test_that("EsgDataset$new()", {
@@ -474,10 +509,20 @@ test_that("EsgDataset$var_get()", {
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
-    data <- ds$var_get("tas", start = c(1, 1, 1), count = c(2, 2, 2), collapse = TRUE)
+    data <- ds$var_get(
+        "tas",
+        start = c(1, 1, 1),
+        count = c(2, 2, 2),
+        collapse = TRUE
+    )
     expect_type(data, "double")
     expect_equal(dim(data), c(2, 2, 2))
-    data <- ds$var_get("tas", start = c(1, 1, 1), count = c(2, 2, 2), collapse = FALSE)
+    data <- ds$var_get(
+        "tas",
+        start = c(1, 1, 1),
+        count = c(2, 2, 2),
+        collapse = FALSE
+    )
     expect_type(data, "double")
     expect_equal(dim(data), c(2, 2, 2))
 })
@@ -489,14 +534,24 @@ test_that("EsgDataset$read_array()", {
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
-    arr_list <- ds$read_array("tas", start = c(1, 1, 1), count = c(2, 2, 2), collapse = TRUE)
+    arr_list <- ds$read_array(
+        "tas",
+        start = c(1, 1, 1),
+        count = c(2, 2, 2),
+        collapse = TRUE
+    )
     expect_type(arr_list, "list")
     expect_length(arr_list, 1L)
     arr <- arr_list[[1L]]
     expect_type(arr, "double")
     expect_equal(dim(arr), c(2, 2, 2))
 
-    arr_list <- ds$read_array("tas", start = c(1, 1, 1), count = c(2, 2, 2), collapse = FALSE)
+    arr_list <- ds$read_array(
+        "tas",
+        start = c(1, 1, 1),
+        count = c(2, 2, 2),
+        collapse = FALSE
+    )
     expect_type(arr_list, "list")
     expect_length(arr_list, 1L)
     arr <- arr_list[[1L]]
@@ -522,17 +577,32 @@ test_that("EsgDataset$read_data_table()", {
     expect_equal(nrow(dt), prod(count))
 
     vinfo <- ds$var_inq("tas")
-    dim_names <- vapply(vinfo$dimids, function(id) ds$dim_inq(id)$name, character(1L))
+    dim_names <- vapply(
+        vinfo$dimids,
+        function(id) ds$dim_inq(id)$name,
+        character(1L)
+    )
     expect_true(all(dim_names %in% names(dt)))
     for (j in seq_along(dim_names)) {
         nm <- dim_names[[j]]
         if (identical(nm, "time")) {
-            coord <- ds$get_time_axis()$values[seq.int(start[[j]], length.out = count[[j]])]
+            coord <- ds$get_time_axis()$values[seq.int(
+                start[[j]],
+                length.out = count[[j]]
+            )]
             expect_s3_class(dt[[nm]], "POSIXct")
             expect_identical(attr(dt[[nm]], "tzone"), "UTC")
-            expect_equal(as.numeric(sort(unique(dt[[nm]]))), as.numeric(sort(coord)))
+            expect_equal(
+                as.numeric(sort(unique(dt[[nm]]))),
+                as.numeric(sort(coord))
+            )
         } else {
-            coord <- ds$var_get(nm, start = start[[j]], count = count[[j]], collapse = TRUE)
+            coord <- ds$var_get(
+                nm,
+                start = start[[j]],
+                count = count[[j]],
+                collapse = TRUE
+            )
             expect_equal(sort(unique(dt[[nm]])), sort(as.vector(coord)))
         }
     }
@@ -550,27 +620,52 @@ test_that("EsgDataset$read_data_table() handles multiple files", {
     dt_list <- ds$read_data_table("tas", start = start, count = count)
     expect_type(dt_list, "list")
     expect_length(dt_list, 2L)
-    expect_true(all(vapply(dt_list, function(x) inherits(x, "data.table"), logical(1L))))
+    expect_true(all(vapply(
+        dt_list,
+        function(x) inherits(x, "data.table"),
+        logical(1L)
+    )))
 
     vinfo <- ds$var_inq("tas")
-    dim_names <- vapply(vinfo$dimids, function(id) ds$dim_inq(id)$name, character(1L))
+    dim_names <- vapply(
+        vinfo$dimids,
+        function(id) ds$dim_inq(id)$name,
+        character(1L)
+    )
     for (i in 1:2) {
         dti <- dt_list[[i]]
         for (j in seq_along(dim_names)) {
             nm <- dim_names[[j]]
             if (identical(nm, "time")) {
-                coord <- ds$get_time_axis(i)$values[seq.int(start[[j]], length.out = count[[j]])]
+                coord <- ds$get_time_axis(i)$values[seq.int(
+                    start[[j]],
+                    length.out = count[[j]]
+                )]
                 expect_s3_class(dti[[nm]], "POSIXct")
                 expect_identical(attr(dti[[nm]], "tzone"), "UTC")
-                expect_equal(as.numeric(sort(unique(dti[[nm]]))), as.numeric(sort(coord)))
+                expect_equal(
+                    as.numeric(sort(unique(dti[[nm]]))),
+                    as.numeric(sort(coord))
+                )
             } else {
-                coord <- ds$var_get(nm, start = start[[j]], count = count[[j]], index = i, collapse = TRUE)
+                coord <- ds$var_get(
+                    nm,
+                    start = start[[j]],
+                    count = count[[j]],
+                    index = i,
+                    collapse = TRUE
+                )
                 expect_equal(sort(unique(dti[[nm]])), sort(as.vector(coord)))
             }
         }
     }
 
-    dt_all <- ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
+    dt_all <- ds$read_data_table(
+        "tas",
+        start = start,
+        count = count,
+        rbind = TRUE
+    )
     expect_s3_class(dt_all, "data.table")
     expect_true("file_index" %in% names(dt_all))
     expect_equal(sort(unique(dt_all$file_index)), c(1L, 2L))
@@ -613,11 +708,22 @@ test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like 
         expect_equal(as.numeric(time), as.numeric(expected[[i]]))
     }
 
-    dt_all <- ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
+    dt_all <- ds$read_data_table(
+        "tas",
+        start = start,
+        count = count,
+        rbind = TRUE
+    )
     expect_true(inherits(dt_all$time, "POSIXct"))
     expect_identical(attr(dt_all$time, "tzone"), "UTC")
-    expect_equal(as.numeric(dt_all[file_index == 1L, time]), as.numeric(expected[[1L]]))
-    expect_equal(as.numeric(dt_all[file_index == 2L, time]), as.numeric(expected[[2L]]))
+    expect_equal(
+        as.numeric(dt_all[file_index == 1L, time]),
+        as.numeric(expected[[1L]])
+    )
+    expect_equal(
+        as.numeric(dt_all[file_index == 2L, time]),
+        as.numeric(expected[[2L]])
+    )
 })
 # }}}
 # EsgDataset$read_region() {{{
@@ -737,9 +843,9 @@ test_that("the internal multi-site reader keeps method weights per site", {
 
 test_that("multi-site native reads split long time runs into bounded blocks", {
     path <- local_dataset_table_file(
-        time_vals = 0:2399,
+        time_vals = 0:8999,
         time_units = "days since 2060-01-01 00:00:00",
-        tas_vals = seq_len(2400L)
+        tas_vals = seq_len(9000L)
     )
     on.exit(unlink(path), add = TRUE)
     ds <- EsgDataset$new(path)
@@ -754,8 +860,8 @@ test_that("multi-site native reads split long time runs into bounded blocks", {
 
     actual <- dataset__read_regions(ds, "tas", sites)
     slices <- attr(actual, "read_slices")
-    expect_equal(actual$value, as.numeric(seq_len(2400L)))
-    expect_equal(slices$time_count, c(2048L, 352L))
+    expect_equal(actual$value, as.numeric(seq_len(9000L)))
+    expect_equal(slices$time_count, c(8192L, 808L))
     expect_true(all(slices$lat_count * slices$lon_count <= 4L))
 
     many_sites <- data.table::data.table(
@@ -933,16 +1039,24 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
         lat_vals <- c(1.0, 2.0, 41.0)
         lon_vals <- c(103.5, 104.0, 104.5, 254.0)
         time_vals <- c(1.5, 2.5)
-        vapply(time_vals, function(time) {
-            phase <- 2 * pi * time / 366
-            source_values <- vapply(seq_len(nrow(sources)), function(i) {
-                lat_i <- match(sources$grid_lat[[i]], lat_vals)
-                lon_i <- match(sources$grid_lon[[i]], lon_vals)
-                spatial <- lat_i / 10 + lon_i / 20
-                299 + 5 * sin(phase) + spatial
-            }, numeric(1L))
-            sum(source_values * sources$weight)
-        }, numeric(1L))
+        vapply(
+            time_vals,
+            function(time) {
+                phase <- 2 * pi * time / 366
+                source_values <- vapply(
+                    seq_len(nrow(sources)),
+                    function(i) {
+                        lat_i <- match(sources$grid_lat[[i]], lat_vals)
+                        lon_i <- match(sources$grid_lon[[i]], lon_vals)
+                        spatial <- lat_i / 10 + lon_i / 20
+                        299 + 5 * sin(phase) + spatial
+                    },
+                    numeric(1L)
+                )
+                sum(source_values * sources$weight)
+            },
+            numeric(1L)
+        )
     }
 
     for (method in ESG_GRID_METHOD_CHOICES) {
@@ -956,18 +1070,21 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
         sources <- attr(dt, "grid_sources")
 
         expect_s3_class(dt, "data.table")
-        expect_named(dt, c(
-            "file_index",
-            "variable",
-            "time",
-            "time_bound_start",
-            "time_bound_end",
-            CF_TIME_COORDINATE_COLUMNS,
-            "lon",
-            "lat",
-            "method",
-            "value"
-        ))
+        expect_named(
+            dt,
+            c(
+                "file_index",
+                "variable",
+                "time",
+                "time_bound_start",
+                "time_bound_end",
+                CF_TIME_COORDINATE_COLUMNS,
+                "lon",
+                "lat",
+                "method",
+                "value"
+            )
+        )
         expect_identical(unique(dt$file_index), 1L)
         expect_identical(unique(dt$variable), "tas")
         expect_identical(unique(dt$method), method)
@@ -1000,7 +1117,10 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
 
         expect_s3_class(sources, "data.table")
         expect_equal(sum(sources$weight), 1)
-        expect_equal(nrow(sources), if (identical(method, "nearest")) 1L else 4L)
+        expect_equal(
+            nrow(sources),
+            if (identical(method, "nearest")) 1L else 4L
+        )
         expect_equal(dt$value, expected_values(sources), tolerance = 1e-5)
     }
 
@@ -1013,8 +1133,16 @@ test_that("EsgDataset$read_region() reads grid-method values and time windows", 
     )
     expect_type(dt_list, "list")
     expect_length(dt_list, 2L)
-    expect_true(all(vapply(dt_list, function(x) inherits(x, "data.table"), logical(1L))))
-    expect_true(all(vapply(dt_list, function(x) inherits(attr(x, "grid_sources"), "data.table"), logical(1L))))
+    expect_true(all(vapply(
+        dt_list,
+        function(x) inherits(x, "data.table"),
+        logical(1L)
+    )))
+    expect_true(all(vapply(
+        dt_list,
+        function(x) inherits(attr(x, "grid_sources"), "data.table"),
+        logical(1L)
+    )))
 
     dt_neg_lon <- ds$read_region(
         variable = "tas",
@@ -1084,8 +1212,12 @@ test_that("EsgDataset$read_region() retains native clock schema for empty result
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
-    empty <- ds$read_region("tas", lon = 103.98, lat = 1.37,
-        time = c("2061-01-01", "2061-01-02"))
+    empty <- ds$read_region(
+        "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2061-01-01", "2061-01-02")
+    )
     expect_equal(nrow(empty), 0L)
     expect_true(all(CF_TIME_COORDINATE_COLUMNS %in% names(empty)))
     expect_identical(empty$cf_second_of_day, numeric())
@@ -1099,11 +1231,16 @@ test_that("EsgDataset$read_region() reuses recorded result time filters by defau
     on.exit(unlink(c(path1, path2)), add = TRUE)
 
     ds <- EsgDataset$new(c(path1, path2))
-    dataset__set_context(ds, list(time_filter = list(
-        start = "2060-01-02T00:00:00Z",
-        stop = "2060-01-03T23:59:59Z",
-        method = "drs"
-    )))
+    dataset__set_context(
+        ds,
+        list(
+            time_filter = list(
+                start = "2060-01-02T00:00:00Z",
+                stop = "2060-01-03T23:59:59Z",
+                method = "drs"
+            )
+        )
+    )
     ds$open()
     on.exit(ds$close(), add = TRUE)
 
@@ -1156,37 +1293,46 @@ test_that("EsgDataset$slice() selects files and preserves runtime context", {
     on.exit(unlink(paths), add = TRUE)
 
     ds <- EsgDataset$new(paths)
-    dataset__set_context(ds, list(
-        time_filter = list(
-            start = "2000-01-01T00:00:00Z",
-            stop = "2000-01-02T23:59:59Z",
-            method = "drs"
-        ),
-        selection = list(
-            source_count = 5L,
-            source_num_found = 10L,
-            source_indices = c(2L, 4L, 5L)
+    dataset__set_context(
+        ds,
+        list(
+            time_filter = list(
+                start = "2000-01-01T00:00:00Z",
+                stop = "2000-01-02T23:59:59Z",
+                method = "drs"
+            ),
+            selection = list(
+                source_count = 5L,
+                source_num_found = 10L,
+                source_indices = c(2L, 4L, 5L)
+            )
         )
-    ))
+    )
 
     sliced <- ds$slice(c(3L, 1L))
     expect_false(sliced$is_open)
     expect_identical(sliced$url, paths[c(3L, 1L)])
     expect_identical(ds$url, paths)
     expect_identical(sliced$time_filter$method, "drs")
-    expect_identical(sliced$selection(), list(
-        source_count = 5L,
-        source_num_found = 10L,
-        source_indices = c(5L, 2L)
-    ))
+    expect_identical(
+        sliced$selection(),
+        list(
+            source_count = 5L,
+            source_num_found = 10L,
+            source_indices = c(5L, 2L)
+        )
+    )
 
     chained <- sliced$slice(2L)
     expect_identical(chained$url, paths[[1L]])
-    expect_identical(chained$selection(), list(
-        source_count = 5L,
-        source_num_found = 10L,
-        source_indices = 2L
-    ))
+    expect_identical(
+        chained$selection(),
+        list(
+            source_count = 5L,
+            source_num_found = 10L,
+            source_indices = 2L
+        )
+    )
 
     logical_slice <- ds$slice(c(TRUE, FALSE, TRUE))
     expect_identical(logical_slice$url, paths[c(1L, 3L)])
@@ -1214,11 +1360,14 @@ test_that("EsgDataset$selection()", {
     on.exit(unlink(paths), add = TRUE)
 
     identity <- EsgDataset$new(paths)$selection()
-    expect_identical(identity, list(
-        source_count = 2L,
-        source_num_found = 2L,
-        source_indices = 1:2
-    ))
+    expect_identical(
+        identity,
+        list(
+            source_count = 2L,
+            source_num_found = 2L,
+            source_indices = 1:2
+        )
+    )
 })
 # }}}
 # EsgDataset$slice() {{{
@@ -1280,11 +1429,22 @@ test_that("EsgDataset$slice() reopens selected files only when requested", {
     expect_identical(sliced$url, paths[2L])
     expect_identical(sliced$selection()$source_indices, 2L)
     expect_equal(
-        as.numeric(sliced$var_get("tas", start = c(1L, 1L, 1L), count = c(1L, 1L, 1L), collapse = TRUE)),
+        as.numeric(sliced$var_get(
+            "tas",
+            start = c(1L, 1L, 1L),
+            count = c(1L, 1L, 1L),
+            collapse = TRUE
+        )),
         21
     )
     expect_equal(
-        as.numeric(ds$var_get("tas", index = 2L, start = c(1L, 1L, 1L), count = c(1L, 1L, 1L), collapse = TRUE)),
+        as.numeric(ds$var_get(
+            "tas",
+            index = 2L,
+            start = c(1L, 1L, 1L),
+            count = c(1L, 1L, 1L),
+            collapse = TRUE
+        )),
         21
     )
 })
@@ -1310,11 +1470,22 @@ test_that("EsgDataset$reachable() checks current local files and selection sourc
     sliced <- ds$slice(c(3L, 2L))
     diag <- sliced$reachable()
 
-    expect_named(diag, c(
-        "file_index", "source_index", "data_node", "service", "url",
-        "reachable", "latency_ms", "error", "probe_level",
-        "probe_url", "probe_cached"
-    ))
+    expect_named(
+        diag,
+        c(
+            "file_index",
+            "source_index",
+            "data_node",
+            "service",
+            "url",
+            "reachable",
+            "latency_ms",
+            "error",
+            "probe_level",
+            "probe_url",
+            "probe_cached"
+        )
+    )
     expect_s3_class(diag, "data.table")
     expect_identical(diag$file_index, 1:2)
     expect_identical(diag$source_index, c(3L, 2L))
@@ -1350,23 +1521,33 @@ test_that("EsgDataset$reachable() treats Windows drive paths as local files", {
 })
 
 test_that("EsgDataset$reachable() probes current remote data nodes without cached result context", {
-    urls <- c("https://ok.example.org/data.nc", "https://bad.example.org/data.nc")
+    urls <- c(
+        "https://ok.example.org/data.nc",
+        "https://bad.example.org/data.nc"
+    )
     ds <- EsgDataset$new(urls)
-    dataset__set_context(ds, list(
-        selection = list(
-            source_count = 11L,
-            source_num_found = 20L,
-            source_indices = c(10L, 11L)
-        ),
-        reachability = list(stale = TRUE)
-    ))
+    dataset__set_context(
+        ds,
+        list(
+            selection = list(
+                source_count = 11L,
+                source_num_found = 20L,
+                source_indices = c(10L, 11L)
+            ),
+            reachability = list(stale = TRUE)
+        )
+    )
 
     seen <- NULL
     testthat::local_mocked_bindings(
-        query_result__reach_nodes = function(data_node, timeout = 5, network_policy = NULL,
-                                                           probe_concurrency = 1L,
-                                                           cache_seconds = 3600L,
-                                                           cache_failures_seconds = 0L) {
+        query_result__reach_nodes = function(
+            data_node,
+            timeout = 5,
+            network_policy = NULL,
+            probe_concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
             seen <<- list(
                 data_node = data_node,
                 timeout = timeout,
@@ -1409,14 +1590,15 @@ test_that("EsgDataset$reachable() probes current remote data nodes without cache
     expect_equal(diag$latency_ms, c(12, NA))
     expect_identical(diag$error, c(NA_character_, "remote boom"))
     expect_identical(diag$probe_level, c("data_node", "data_node"))
-    expect_identical(diag$probe_url, c("https://ok.example.org/", "https://bad.example.org/"))
+    expect_identical(
+        diag$probe_url,
+        c("https://ok.example.org/", "https://bad.example.org/")
+    )
     expect_false(any(diag$probe_cached))
 })
 # }}}
 # EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return", {
-    skip_dataset_async_on_covr()
-
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1435,14 +1617,17 @@ test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return",
     expect_identical(private$async_state, "completed")
     expect_null(private$async_task)
     expect_equal(
-        as.numeric(ds$var_get("tas", start = c(1L, 1L, 1L), count = c(2L, 1L, 1L), collapse = TRUE)),
+        as.numeric(ds$var_get(
+            "tas",
+            start = c(1L, 1L, 1L),
+            count = c(2L, 1L, 1L),
+            collapse = TRUE
+        )),
         c(11, 12)
     )
 })
 
 test_that("EsgDataset$open(async = TRUE) reports progress during caller-owned reopen", {
-    skip_dataset_async_on_covr()
-
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1470,8 +1655,6 @@ test_that("EsgDataset$open(async = TRUE) reports progress during caller-owned re
 # }}}
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-state checks", {
-    skip_dataset_async_on_covr()
-
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1485,7 +1668,10 @@ test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-
     on.exit(unlink(c(path1, path2)), add = TRUE)
 
     ds_closed <- EsgDataset$new(path1)
-    expect_error(ds_closed$var_get("tas", timeout = dataset_async_timeout), "only supported")
+    expect_error(
+        ds_closed$var_get("tas", timeout = dataset_async_timeout),
+        "only supported"
+    )
 
     ds <- EsgDataset$new(c(path1, path2))
     ds$open()
@@ -1495,8 +1681,22 @@ test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-
     count <- c(2L, 1L, 1L)
 
     expect_equal(
-        ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE, async = TRUE, timeout = dataset_async_timeout),
-        ds$var_get("tas", start = start, count = count, index = 2L, collapse = TRUE)
+        ds$var_get(
+            "tas",
+            start = start,
+            count = count,
+            index = 2L,
+            collapse = TRUE,
+            async = TRUE,
+            timeout = dataset_async_timeout
+        ),
+        ds$var_get(
+            "tas",
+            start = start,
+            count = count,
+            index = 2L,
+            collapse = TRUE
+        )
     )
 
     expect_true(ds$is_open)
@@ -1504,8 +1704,6 @@ test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-
 # }}}
 # EsgDataset$read_array() {{{
 test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps open-state checks", {
-    skip_dataset_async_on_covr()
-
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1519,7 +1717,14 @@ test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps op
     on.exit(unlink(c(path1, path2)), add = TRUE)
 
     ds_closed <- EsgDataset$new(path1)
-    expect_error(ds_closed$read_array("tas", async = TRUE, timeout = dataset_async_timeout), "not open")
+    expect_error(
+        ds_closed$read_array(
+            "tas",
+            async = TRUE,
+            timeout = dataset_async_timeout
+        ),
+        "not open"
+    )
 
     ds <- EsgDataset$new(c(path1, path2))
     ds$open()
@@ -1529,7 +1734,14 @@ test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps op
     count <- c(2L, 1L, 1L)
 
     expect_equal(
-        ds$read_array("tas", start = start, count = count, collapse = FALSE, async = TRUE, timeout = dataset_async_timeout),
+        ds$read_array(
+            "tas",
+            start = start,
+            count = count,
+            collapse = FALSE,
+            async = TRUE,
+            timeout = dataset_async_timeout
+        ),
         ds$read_array("tas", start = start, count = count, collapse = FALSE)
     )
 
@@ -1538,8 +1750,6 @@ test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps op
 # }}}
 # EsgDataset$read_data_table() {{{
 test_that("EsgDataset$read_data_table(async = TRUE) matches sync results and keeps open-state checks", {
-    skip_dataset_async_on_covr()
-
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1560,7 +1770,14 @@ test_that("EsgDataset$read_data_table(async = TRUE) matches sync results and kee
     count <- c(2L, 1L, 1L)
 
     expect_equal(
-        ds$read_data_table("tas", start = start, count = count, rbind = TRUE, async = TRUE, timeout = dataset_async_timeout),
+        ds$read_data_table(
+            "tas",
+            start = start,
+            count = count,
+            rbind = TRUE,
+            async = TRUE,
+            timeout = dataset_async_timeout
+        ),
         ds$read_data_table("tas", start = start, count = count, rbind = TRUE)
     )
 
@@ -1570,7 +1787,6 @@ test_that("EsgDataset$read_data_table(async = TRUE) matches sync results and kee
 # EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
     skip_on_cran()
-    skip_dataset_async_on_covr()
 
     paths <- c(
         local_dataset_table_file(
@@ -1586,25 +1802,32 @@ test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
     )
     on.exit(unlink(paths), add = TRUE)
 
-    results <- mirai_dataset_lapply(seq_along(paths), function(i, paths) {
-        ds <- EsgDataset$new(paths[[i]])
-        private <- ds$.__enclos_env__$private
-        on.exit(ds$close(), add = TRUE)
+    results <- mirai_dataset_lapply(
+        seq_along(paths),
+        function(i, paths) {
+            ds <- EsgDataset$new(paths[[i]])
+            private <- ds$.__enclos_env__$private
+            on.exit(ds$close(), add = TRUE)
 
-        ds$open(async = TRUE, timeout = dataset_async_timeout)
+            ds$open(async = TRUE, timeout = dataset_async_timeout)
 
-        list(
-            is_open = ds$is_open,
-            async_state = private$async_state,
-            async_task_is_null = is.null(private$async_task),
-            values = as.numeric(ds$var_get("tas", collapse = TRUE))
-        )
-    }, paths = paths)
+            list(
+                is_open = ds$is_open,
+                async_state = private$async_state,
+                async_task_is_null = is.null(private$async_task),
+                values = as.numeric(ds$var_get("tas", collapse = TRUE))
+            )
+        },
+        paths = paths
+    )
 
     expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
     expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
     expect_true(all(vapply(results, `[[`, logical(1L), "async_task_is_null")))
-    expect_equal(vapply(results, `[[`, character(1L), "async_state"), rep("completed", 2L))
+    expect_equal(
+        vapply(results, `[[`, character(1L), "async_state"),
+        rep("completed", 2L)
+    )
     expect_equal(
         lapply(results, `[[`, "values"),
         list(c(11, 12, 13), c(21, 22, 23))
@@ -1614,7 +1837,6 @@ test_that("EsgDataset$open(async = TRUE) supports concurrent local datasets", {
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets", {
     skip_on_cran()
-    skip_dataset_async_on_covr()
 
     paths <- c(
         local_dataset_table_file(
@@ -1632,39 +1854,48 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
 
     start <- c(2L, 1L, 1L)
     count <- c(2L, 1L, 1L)
-    results <- mirai_dataset_lapply(seq_along(paths), function(i, paths, start, count) {
-        ds <- EsgDataset$new(paths[[i]])
-        private <- ds$.__enclos_env__$private
-        ds$open()
-        on.exit(ds$close(), add = TRUE)
+    results <- mirai_dataset_lapply(
+        seq_along(paths),
+        function(i, paths, start, count) {
+            ds <- EsgDataset$new(paths[[i]])
+            private <- ds$.__enclos_env__$private
+            ds$open()
+            on.exit(ds$close(), add = TRUE)
 
-        async_values <- as.numeric(ds$var_get(
-            "tas",
-            start = start,
-            count = count,
-            collapse = TRUE,
-            async = TRUE,
-            timeout = dataset_async_timeout
-        ))
-
-        list(
-            is_open = ds$is_open,
-            async_state = private$async_state,
-            async_task_is_null = is.null(private$async_task),
-            async_values = async_values,
-            sync_values = as.numeric(ds$var_get(
+            async_values <- as.numeric(ds$var_get(
                 "tas",
                 start = start,
                 count = count,
-                collapse = TRUE
+                collapse = TRUE,
+                async = TRUE,
+                timeout = dataset_async_timeout
             ))
-        )
-    }, paths = paths, start = start, count = count)
+
+            list(
+                is_open = ds$is_open,
+                async_state = private$async_state,
+                async_task_is_null = is.null(private$async_task),
+                async_values = async_values,
+                sync_values = as.numeric(ds$var_get(
+                    "tas",
+                    start = start,
+                    count = count,
+                    collapse = TRUE
+                ))
+            )
+        },
+        paths = paths,
+        start = start,
+        count = count
+    )
 
     expect_false(any(vapply(results, inherits, logical(1L), "try-error")))
     expect_true(all(vapply(results, `[[`, logical(1L), "is_open")))
     expect_true(all(vapply(results, `[[`, logical(1L), "async_task_is_null")))
-    expect_equal(vapply(results, `[[`, character(1L), "async_state"), rep("completed", 2L))
+    expect_equal(
+        vapply(results, `[[`, character(1L), "async_state"),
+        rep("completed", 2L)
+    )
     expect_equal(
         lapply(results, `[[`, "async_values"),
         list(c(12, 13), c(22, 23))
@@ -1677,8 +1908,6 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
 # }}}
 # EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) failures leave the dataset closed and clean", {
-    skip_dataset_async_on_covr()
-
     path <- tempfile(fileext = ".nc")
     if (file.exists(path)) {
         unlink(path)
@@ -1687,7 +1916,10 @@ test_that("EsgDataset$open(async = TRUE) failures leave the dataset closed and c
     ds <- EsgDataset$new(path)
     private <- ds$.__enclos_env__$private
 
-    expect_error(ds$open(async = TRUE, timeout = dataset_async_timeout), "Failed to open OPeNDAP connection")
+    expect_error(
+        ds$open(async = TRUE, timeout = dataset_async_timeout),
+        "Failed to open OPeNDAP connection"
+    )
 
     expect_false(ds$is_open)
     expect_identical(private$async_state, "failed")
@@ -1709,7 +1941,10 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
     )
     on.exit(unlink(c(path_opened, path_pending)), add = TRUE)
 
-    expect_error(EsgDataset$new(path_opened, nc_handles = list(NULL)), "unused argument")
+    expect_error(
+        EsgDataset$new(path_opened, nc_handles = list(NULL)),
+        "unused argument"
+    )
 
     source <- EsgDataset$new(path_opened)
     source$open()
@@ -1761,8 +1996,6 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
 # }}}
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep sync handles usable", {
-    skip_dataset_async_on_covr()
-
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1776,7 +2009,11 @@ test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep s
     private <- ds$.__enclos_env__$private
 
     expect_error(
-        ds$var_get("missing_var", async = TRUE, timeout = dataset_async_timeout),
+        ds$var_get(
+            "missing_var",
+            async = TRUE,
+            timeout = dataset_async_timeout
+        ),
         "Failed to read variable data"
     )
 
@@ -1788,8 +2025,6 @@ test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep s
 # }}}
 # private$start_async_operation() / private$collect_async_task() {{{
 test_that("private$start_async_operation() / private$collect_async_task() keep sync handle state separate", {
-    skip_dataset_async_on_covr()
-
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1803,7 +2038,13 @@ test_that("private$start_async_operation() / private$collect_async_task() keep s
     task <- private$start_async_operation(
         operation = "read variable data",
         handler = function(urls, nc_handles, variable, start, count, collapse) {
-            RNetCDF::var.get.nc(nc_handles[[1L]], variable, start = start, count = count, collapse = collapse)
+            RNetCDF::var.get.nc(
+                nc_handles[[1L]],
+                variable,
+                start = start,
+                count = count,
+                collapse = collapse
+            )
         },
         handler_args = list(
             variable = "tas",
@@ -1827,8 +2068,6 @@ test_that("private$start_async_operation() / private$collect_async_task() keep s
 })
 
 test_that("private$collect_async_task() surfaces timeout errors and clears lifecycle state", {
-    skip_dataset_async_on_covr()
-
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -1855,8 +2094,6 @@ test_that("private$collect_async_task() surfaces timeout errors and clears lifec
 # }}}
 # EsgDataset$close() {{{
 test_that("EsgDataset$close() best-effort cancels pending internal async work", {
-    skip_dataset_async_on_covr()
-
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -1887,8 +2124,6 @@ test_that("EsgDataset$close() best-effort cancels pending internal async work", 
 # }}}
 # private$cancel_async_task() {{{
 test_that("private$cancel_async_task() keeps cancelled terminal state", {
-    skip_dataset_async_on_covr()
-
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"
@@ -1954,4 +2189,5 @@ test_that("EsgDataset$print()", {
     expect_snapshot(print(ds))
 })
 # }}}
+
 # vim: fdm=marker :

@@ -9,6 +9,7 @@ BIAS_LINEAR_SCALING_REFERENCES <- c(
 
 # Return one explicit diagnostic string when Linear Scaling fails to produce
 # its package-native future-model result.
+# bias__validate_linear_scaling_result {{{
 bias__validate_linear_scaling_result <- function(value, inputs, key) {
     signal__validate_adjusted_result(
         value,
@@ -18,14 +19,18 @@ bias__validate_linear_scaling_result <- function(value, inputs, key) {
         "Linear Scaling"
     )
 }
+# }}}
 
 # Validate and normalize Linear Scaling settings through the same method
 # contract used immediately before the numerical kernel.
+# bias__linear_scaling_settings {{{
 bias__linear_scaling_settings <- function(settings) {
     bias__mean_change_settings(settings, "Linear Scaling")
 }
+# }}}
 # Define the published monthly-mean defaults separately for temperature and
 # precipitation while retaining their evidence and source in signal profiles.
+# bias__linear_scaling_profiles {{{
 bias__linear_scaling_profiles <- function() {
     temperature_settings <- list(
         grouping = "calendar_month",
@@ -65,8 +70,10 @@ bias__linear_scaling_profiles <- function() {
     )
     c(temperature, list(precipitation))
 }
+# }}}
 # Apply the published monthly additive or multiplicative Linear Scaling
 # equation and return a typed daily model-future series.
+# bias__linear_scaling_apply_group {{{
 bias__linear_scaling_apply_group <- function(inputs, settings, key) {
     method <- "Linear Scaling"
     resolved <- bias__mean_change_settings(settings, method)
@@ -86,13 +93,10 @@ bias__linear_scaling_apply_group <- function(inputs, settings, key) {
     if (identical(resolved$transformation, "additive")) {
         # Temperature uses the monthly observed-minus-historical mean bias as
         # an additive correction on every future daily value in that month.
-        monthly$correction <- (
-            monthly$observed_mean - monthly$historical_mean
-        )
+        monthly$correction <- (monthly$observed_mean - monthly$historical_mean)
     } else {
-        denominator_zero <- (
-            abs(monthly$historical_mean) <= resolved$zero_tolerance
-        )
+        denominator_zero <- (abs(monthly$historical_mean) <=
+            resolved$zero_tolerance)
         if (any(denominator_zero)) {
             cli::cli_abort(
                 "Multiplicative Linear Scaling is undefined because the historical monthly mean is zero for month(s) {.val {monthly$cf_month[denominator_zero]}}."
@@ -100,9 +104,7 @@ bias__linear_scaling_apply_group <- function(inputs, settings, key) {
         }
         # Precipitation uses the monthly observed-to-historical mean ratio as
         # a multiplicative correction on future daily values.
-        monthly$correction <- (
-            monthly$observed_mean / monthly$historical_mean
-        )
+        monthly$correction <- (monthly$observed_mean / monthly$historical_mean)
     }
 
     future <- series$model_future
@@ -133,9 +135,11 @@ bias__linear_scaling_apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Construct the package-native Linear Scaling signal component with three
 # explicit input roles and alternative supported univariate variables.
+# bias__linear_scaling_component {{{
 bias__linear_scaling_component <- function() {
     alternatives <- as.list(c("tas", "tasmin", "tasmax", "pr"))
     requirements <- signal__three_role_requirements(
@@ -163,10 +167,15 @@ bias__linear_scaling_component <- function() {
         )
     )
 }
+# }}}
 
 # Register the Linear Scaling signal component once so it is discoverable
 # through the same process-local component registry as complete recipes.
+# bias__register_linear_scaling_component {{{
 bias__register_linear_scaling_component <- function() {
     component__register_builtin(bias__linear_scaling_component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker :

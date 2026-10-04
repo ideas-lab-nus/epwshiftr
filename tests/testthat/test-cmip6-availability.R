@@ -1,4 +1,5 @@
 # Build variable-specific Dataset rows for deterministic availability tests.
+# availability_test__datasets {{{
 availability_test__datasets <- function(
     source,
     experiment,
@@ -45,6 +46,7 @@ availability_test__datasets <- function(
         fill = TRUE
     )
 }
+# }}}
 
 test_that("availability reduction requires every experiment-variable pair", {
     variables <- c("tas", "hurs", "pr")
@@ -409,7 +411,7 @@ test_that("shift_cmip6_avail supports the named ORNL Bridge endpoint", {
         index_node = "ORNL"
     )
     request <- calls$request
-    url <- shift_as_query(request)$url()
+    url <- shift_resolve__as_query(request)$url()
     decoded_url <- curl::curl_unescape(url)
 
     expect_true(result$complete[[1L]])
@@ -606,3 +608,5 @@ test_that("availability ignores invalid partitions and preserves empty types", {
         expect_identical(result, availability__empty())
     }
 })
+
+# vim: fdm=marker :

@@ -32,8 +32,14 @@ test_that("esgdict_get_default() / esgdict_set_default()", {
     expect_identical(esgdict_get_default("CMIP6PLUS"), other)
     expect_identical(esgdict_get_default("CMIP6"), dict)
 
-    expect_error(esgdict_option("activity_id", project = "CMIP5"), "not implemented")
-    expect_error(esgdict_check(activity = "CMIP", project = "CMIP5"), "not implemented")
+    expect_error(
+        esgdict_option("activity_id", project = "CMIP5"),
+        "not implemented"
+    )
+    expect_error(
+        esgdict_check(activity = "CMIP", project = "CMIP5"),
+        "not implemented"
+    )
 })
 # }}}
 # EsgDict$status() {{{
@@ -114,7 +120,14 @@ test_that("EsgDict$print()", {
 # }}}
 # EsgDict$build() {{{
 test_that("EsgDict$build() supports CV-only ESG projects", {
-    projects <- c("CMIP6PLUS", "INPUT4MIP", "OBS4REF", "CORDEX-CMIP6", "CMIP7", "EMD")
+    projects <- c(
+        "CMIP6PLUS",
+        "INPUT4MIP",
+        "OBS4REF",
+        "CORDEX-CMIP6",
+        "CMIP7",
+        "EMD"
+    )
     for (project in projects) {
         dict <- esgdict(project = project)
         expect_equal(dict$project(), project)
@@ -138,9 +151,17 @@ test_that("EsgDict$build() supports CV-only ESG projects", {
     ok <- esgdict_check(activity_id = "CMIP", dict = dict)
     expect_true(all(ok$valid))
 
-    unchecked <- esgdict_check(variable_id = "tas", table_id = "day", dict = dict)
+    unchecked <- esgdict_check(
+        variable_id = "tas",
+        table_id = "day",
+        dict = dict
+    )
     expect_false(any(!is.na(unchecked$valid) & !unchecked$valid))
-    expect_true(any(is.na(unchecked$valid) & unchecked$type == "not_checked" & unchecked$rule == "variable"))
+    expect_true(any(
+        is.na(unchecked$valid) &
+            unchecked$type == "not_checked" &
+            unchecked$rule == "variable"
+    ))
 })
 # }}}
 # EsgDict$save() / EsgDict$load() {{{
@@ -157,7 +178,12 @@ test_that("EsgDict$save() / EsgDict$load() round-trip CV-only ESG projects", {
     path <- file.path(dir, "CMIP6PLUSDICT.json")
     expect_identical(dict$save(path = path), path)
     payload <- jsonlite::read_json(path, simplifyVector = FALSE)
-    expect_true(schema_validate(SCHEMA_ESG_DICT, payload, mode = "test", name = path))
+    expect_true(schema_validate(
+        SCHEMA_ESG_DICT,
+        payload,
+        mode = "test",
+        name = path
+    ))
     expect_true(dict__validate(payload, name = path))
     expect_null(payload$payload$request)
 
@@ -207,3 +233,5 @@ test_that("dict__cache() follows package cache mode", {
     expect_true(offline_no_call_cache$offline)
 })
 # }}}
+
+# vim: fdm=marker :

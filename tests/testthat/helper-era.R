@@ -1,5 +1,6 @@
 # Create a small ERA-style NetCDF file with explicit CF time, latitude, and
 # longitude coordinates for adapter tests.
+# write_test_era_netcdf {{{
 write_test_era_netcdf <- function(
     path,
     variable = "t2m",
@@ -23,8 +24,13 @@ write_test_era_netcdf <- function(
         "NC_DOUBLE",
         c("longitude", "latitude", "time")
     )
-    RNetCDF::att.put.nc(handle, "time", "units", "NC_CHAR",
-        "hours since 2000-01-01 00:00:00")
+    RNetCDF::att.put.nc(
+        handle,
+        "time",
+        "units",
+        "NC_CHAR",
+        "hours since 2000-01-01 00:00:00"
+    )
     RNetCDF::att.put.nc(handle, "time", "calendar", "NC_CHAR", "standard")
     RNetCDF::att.put.nc(handle, variable, "units", "NC_CHAR", units)
     RNetCDF::var.put.nc(handle, "longitude", longitude)
@@ -33,9 +39,11 @@ write_test_era_netcdf <- function(
     RNetCDF::var.put.nc(handle, variable, values)
     invisible(path)
 }
+# }}}
 
 # Return a public availability-shaped table for deterministic batch workflow
 # tests without contacting an ESGF index node.
+# test_cmip6_availability {{{
 test_cmip6_availability <- function(
     variables,
     scenarios,
@@ -52,18 +60,29 @@ test_cmip6_availability <- function(
         source
     }
     grid <- if (is.null(grid)) "gn" else grid
-    tables <- stats::setNames(vapply(frequency, function(value) {
-        shift_coalesce(shift__cmip6_table_id(value), "unknown")
-    }, character(1L)), names(frequency))
+    tables <- stats::setNames(
+        vapply(
+            frequency,
+            function(value) {
+                shift_stage__coalesce(
+                    shift_spec__cmip6_table_id(value),
+                    "unknown"
+                )
+            },
+            character(1L)
+        ),
+        names(frequency)
+    )
     data.frame(
         source_id = models,
         variant_label = rep(member, length(models)),
         grid_label = rep(grid, length(models)),
-        frequency = rep(paste(unique(frequency), collapse = "+"),
-            length(models)),
+        frequency = rep(
+            paste(unique(frequency), collapse = "+"),
+            length(models)
+        ),
         frequency_spec = I(rep(list(frequency), length(models))),
-        table_id = rep(paste(unique(tables), collapse = "+"),
-            length(models)),
+        table_id = rep(paste(unique(tables), collapse = "+"), length(models)),
         table = I(rep(list(tables), length(models))),
         complete = TRUE,
         complete_experiments = length(scenarios) + 1L,
@@ -75,10 +94,15 @@ test_cmip6_availability <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Preserve Dataset candidates in tests that exercise batch construction rather
 # than live ESGF File coverage. Focused tests override this helper to model
 # period gaps explicitly.
+# test_cmip6_period_coverage {{{
 test_cmip6_period_coverage <- function(candidates, ...) {
     data.table::as.data.table(candidates)
 }
+# }}}
+
+# vim: fdm=marker :

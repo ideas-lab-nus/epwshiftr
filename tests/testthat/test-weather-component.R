@@ -50,8 +50,13 @@ test_that("component registries retain metadata but not serialized operations", 
     expect_named(
         listed,
         c(
-            "stage", "name", "label", "input_kinds", "output_kinds",
-            "scopes", "stochastic"
+            "stage",
+            "name",
+            "label",
+            "input_kinds",
+            "output_kinds",
+            "scopes",
+            "stochastic"
         )
     )
     expect_identical(listed$name, "daily_delta")
@@ -274,20 +279,24 @@ test_that("component input requirements validate frequency by variable", {
         output_kinds = "hourly_role_inputs",
         operations = list(apply = identity)
     )
-    valid <- weather__new_inputs(model_future = weather__new_input(
-        "model_future",
-        data.frame(
-            variable_id = c("tas", "rsds"),
-            frequency = c("3hrPt", "3hr")
+    valid <- weather__new_inputs(
+        model_future = weather__new_input(
+            "model_future",
+            data.frame(
+                variable_id = c("tas", "rsds"),
+                frequency = c("3hrPt", "3hr")
+            )
         )
-    ))
-    invalid <- weather__new_inputs(model_future = weather__new_input(
-        "model_future",
-        data.frame(
-            variable_id = c("tas", "rsds"),
-            frequency = c("3hr", "3hrPt")
+    )
+    invalid <- weather__new_inputs(
+        model_future = weather__new_input(
+            "model_future",
+            data.frame(
+                variable_id = c("tas", "rsds"),
+                frequency = c("3hr", "3hrPt")
+            )
         )
-    ))
+    )
 
     expect_identical(component__input_errors(component, valid), character())
     errors <- component__input_errors(component, invalid)
@@ -320,3 +329,5 @@ test_that("component specs reject missing or stage-inappropriate operations", {
         "Unknown `output` operation"
     )
 })
+
+# vim: fdm=marker :

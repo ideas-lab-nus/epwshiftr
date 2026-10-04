@@ -1,5 +1,6 @@
 # Parse common date/datetime inputs into UTC POSIXct using base R.
 # This handles the ordinary year range before signed-year fallback is needed.
+# solrdate__parse {{{
 solrdate__parse <- function(x, tz = "UTC") {
     if (is.null(x) || all(is.na(x))) {
         return(as.POSIXct(x))
@@ -19,7 +20,11 @@ solrdate__parse <- function(x, tz = "UTC") {
     # Case: "201702" -> "2017-02-01"
     x_clean <- gsub("^([0-9]{4})-?([0-9]{2})$", "\\1-\\2-01", x_clean)
     # Case: "20170202" -> "2017-02-02"
-    x_clean <- gsub("^([0-9]{4})-?([0-9]{2})-?([0-9]{2})", "\\1-\\2-\\3", x_clean)
+    x_clean <- gsub(
+        "^([0-9]{4})-?([0-9]{2})-?([0-9]{2})",
+        "\\1-\\2-\\3",
+        x_clean
+    )
     # Case: "+08" -> "+0800"
     x_clean <- gsub("([+-]\\d{2})$", "\\100", x_clean)
     # Case: "+08:00" -> "+0800"
@@ -35,6 +40,7 @@ solrdate__parse <- function(x, tz = "UTC") {
 
     as.POSIXct(x_clean, tryFormats = formats, tz = tz, optional = TRUE)
 }
+# }}}
 
 #' Parse a Solr date, Date Math expression, or range
 #'
@@ -107,6 +113,7 @@ solrdate__parse <- function(x, tz = "UTC") {
 #'
 #' @seealso [is.solr_date()]
 #' @export
+# solr_date {{{
 solr_date <- function(x) {
     if (S7::S7_inherits(x, SolrDate)) {
         return(x)
@@ -123,7 +130,9 @@ solr_date <- function(x) {
     }
 
     if (!is.character(x)) {
-        stop("`x` must be a length-1 character string, `POSIXt` object, or `Date` object.")
+        stop(
+            "`x` must be a length-1 character string, `POSIXt` object, or `Date` object."
+        )
     }
 
     if (grepl(" TO ", x, fixed = TRUE)) {
@@ -132,9 +141,11 @@ solr_date <- function(x) {
         solrdate__bound(x)
     }
 }
+# }}}
 
 # Parse a full Solr range expression and keep inclusive/exclusive brackets.
 # Boundaries are parsed recursively as regular Solr date points.
+# solrdate__range {{{
 solrdate__range <- function(x) {
     checkmate::assert_string(x)
     x <- trimws(x)
@@ -143,7 +154,11 @@ solrdate__range <- function(x) {
     end_bracket <- substr(x, nchar(x), nchar(x))
     parts <- strsplit(substr(x, 2L, nchar(x) - 1L), " TO ", fixed = TRUE)[[1L]]
 
-    if (!start_bracket %in% c("[", "{") || !end_bracket %in% c("]", "}") || length(parts) != 2L) {
+    if (
+        !start_bracket %in% c("[", "{") ||
+            !end_bracket %in% c("]", "}") ||
+            length(parts) != 2L
+    ) {
         stop(sprintf(
             "`x` contains invalid range syntax: '%s'. Expected format: [start TO end] or {start TO end}",
             x
@@ -157,9 +172,11 @@ solrdate__range <- function(x) {
         end_inclusive = end_bracket == "]"
     )
 }
+# }}}
 
 # Parse one Solr date boundary into an unbounded value, instant, or Date Math.
 # Fixed-base Date Math is split at the base datetime's trailing Z.
+# solrdate__bound {{{
 solrdate__bound <- function(x) {
     checkmate::assert_string(x)
     x <- trimws(x)
@@ -215,14 +232,18 @@ solrdate__bound <- function(x) {
         SolrDateMath(value = base_value, math = math_str)
     }
 }
+# }}}
 
 # Create the UTC POSIXct NA sentinel used internally for NOW.
+# solrdate__na {{{
 solrdate__na <- function() {
     as.POSIXct(NA_real_, tz = "UTC")
 }
+# }}}
 
 # Validate a Solr Date Math suffix without evaluating it.
 # The suffix is the portion after NOW or after a fixed base ending in Z.
+# solrdate__check_math {{{
 solrdate__check_math <- function(x) {
     UNITS <- paste(
         "YEARS?",
@@ -240,9 +261,11 @@ solrdate__check_math <- function(x) {
     seg_pat <- sprintf("^([+\\-]\\d+(%s)|/(%s))+$", UNITS, UNITS)
     checkmate::check_string(x, pattern = seg_pat, ignore.case = TRUE)
 }
+# }}}
 
 # Validate a POSIXct value and enforce the UTC timezone.
 # This mirrors checkmate::check_posixct() but adds the timezone check needed by SolrDate.
+# solrdate__check_time {{{
 solrdate__check_time <- function(
     x,
     tz = "UTC",
@@ -284,15 +307,20 @@ solrdate__check_time <- function(
 
     TRUE
 }
+# }}}
 
 # Build the reusable S7 property for SolrDate point values.
 # Values can be regular UTC POSIXct objects or signed-year SolrDateTime objects.
+# solrdate__value_prop {{{
 solrdate__value_prop <- function() {
     S7::new_property(
         class = S7::class_any,
         validator = function(value) {
             if (inherits(value, "POSIXct")) {
-                return(checkmate_result(solrdate__check_time(value, tz = "UTC")))
+                return(checkmate_result(solrdate__check_time(
+                    value,
+                    tz = "UTC"
+                )))
             }
             if (S7::S7_inherits(value, SolrDateTime)) {
                 return(NULL)
@@ -301,13 +329,17 @@ solrdate__value_prop <- function() {
         }
     )
 }
+# }}}
 
 # Detect the UTC POSIXct NA sentinel that represents NOW before evaluation.
+# solrdate__is_na {{{
 solrdate__is_na <- function(x) {
     inherits(x, "POSIXct") && length(x) == 1L && is.na(x)
 }
+# }}}
 
 # Detect years whose Solr rendering should not depend on POSIXct formatting.
+# solrdate__needs_parts_parse {{{
 solrdate__needs_parts_parse <- function(x) {
     x_clean <- trimws(as.character(x))
     x_clean <- gsub("T", " ", x_clean, fixed = TRUE)
@@ -328,16 +360,22 @@ solrdate__needs_parts_parse <- function(x) {
     # Unsigned 8-digit values are compact YYYYMMDD dates used by Solr version
     # fields. They must keep the ordinary parser path so they render as
     # YYYYMMDD, not as expanded years.
-    if (!nzchar(separator) && !grepl("^[+-]", year_text) && nchar(year_text) > 4L) {
+    if (
+        !nzchar(separator) &&
+            !grepl("^[+-]", year_text) &&
+            nchar(year_text) > 4L
+    ) {
         return(FALSE)
     }
 
     year <- as.integer(year_text)
     !is.na(year) && (year <= 0L || year > 9999L)
 }
+# }}}
 
 # Parse a datetime into either POSIXct or signed-year SolrDateTime.
 # POSIXct is preferred when it can represent and render the value safely.
+# solrdate__time {{{
 solrdate__time <- function(x) {
     if (isTRUE(solrdate__needs_parts_parse(x))) {
         return(solrdate__parts_parse(x))
@@ -351,9 +389,11 @@ solrdate__time <- function(x) {
     # Fall back to signed-year parsing for years POSIXct cannot represent well.
     solrdate__parts_parse(x)
 }
+# }}}
 
 # Parse an ISO-like datetime directly into signed-year parts.
 # This covers years such as -0009, 0000, and +10000 that POSIXct may mishandle.
+# solrdate__parts_parse {{{
 solrdate__parts_parse <- function(x) {
     x_clean <- trimws(as.character(x))
     x_clean <- gsub("T", " ", x_clean, fixed = TRUE)
@@ -371,7 +411,11 @@ solrdate__parts_parse <- function(x) {
     # Solr allows year 0000, negative years, and +10000-style expanded years.
     date_parts <- regmatches(
         date,
-        regexec("^([+-]?\\d{4,})(?:-(\\d{2})(?:-(\\d{2}))?)?$", date, perl = TRUE)
+        regexec(
+            "^([+-]?\\d{4,})(?:-(\\d{2})(?:-(\\d{2}))?)?$",
+            date,
+            perl = TRUE
+        )
     )[[1L]]
     if (!length(date_parts)) {
         return(solrdate__na())
@@ -385,15 +429,27 @@ solrdate__parts_parse <- function(x) {
     if (nzchar(time)) {
         time_parts <- regmatches(
             time,
-            regexec("^(\\d{2})(?::(\\d{2})(?::(\\d{2})(?:\\.(\\d{1,9}))?)?)?$", time, perl = TRUE)
+            regexec(
+                "^(\\d{2})(?::(\\d{2})(?::(\\d{2})(?:\\.(\\d{1,9}))?)?)?$",
+                time,
+                perl = TRUE
+            )
         )[[1L]]
         if (!length(time_parts)) {
             return(solrdate__na())
         }
 
         hour <- as.integer(time_parts[[2L]])
-        minute <- if (nzchar(time_parts[[3L]])) as.integer(time_parts[[3L]]) else 0L
-        second <- if (nzchar(time_parts[[4L]])) as.integer(time_parts[[4L]]) else 0L
+        minute <- if (nzchar(time_parts[[3L]])) {
+            as.integer(time_parts[[3L]])
+        } else {
+            0L
+        }
+        second <- if (nzchar(time_parts[[4L]])) {
+            as.integer(time_parts[[4L]])
+        } else {
+            0L
+        }
         millisecond <- if (nzchar(time_parts[[5L]])) {
             as.integer(substr(paste0(time_parts[[5L]], "000"), 1L, 3L))
         } else {
@@ -402,7 +458,13 @@ solrdate__parts_parse <- function(x) {
     }
 
     if (
-        is.na(year) || is.na(month) || is.na(day) || is.na(hour) || is.na(minute) || is.na(second) || is.na(millisecond)
+        is.na(year) ||
+            is.na(month) ||
+            is.na(day) ||
+            is.na(hour) ||
+            is.na(minute) ||
+            is.na(second) ||
+            is.na(millisecond)
     ) {
         return(solrdate__na())
     }
@@ -412,13 +474,17 @@ solrdate__parts_parse <- function(x) {
         error = function(e) solrdate__na()
     )
 }
+# }}}
 
 # Return leap-year status under the proleptic Gregorian calendar.
+# solrdate__leap {{{
 solrdate__leap <- function(year) {
     year %% 4L == 0L && (year %% 100L != 0L || year %% 400L == 0L)
 }
+# }}}
 
 # Return the valid day count for a month in a signed Solr year.
+# solrdate__month_days {{{
 solrdate__month_days <- function(year, month) {
     days <- c(31L, 28L, 31L, 30L, 31L, 30L, 31L, 31L, 30L, 31L, 30L, 31L)
     if (month == 2L && solrdate__leap(year)) {
@@ -426,15 +492,28 @@ solrdate__month_days <- function(year, month) {
     }
     days[[month]]
 }
+# }}}
 
 # Validate raw datetime parts before constructing a SolrDateTime.
 # Month length is checked after accounting for leap years.
-solrdate__check_parts <- function(year, month, day, hour, minute, second, millisecond) {
+# solrdate__check_parts {{{
+solrdate__check_parts <- function(
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+    millisecond
+) {
     if (month < 1L || month > 12L) {
         stop("SolrDateTime month must be between 1 and 12.", call. = FALSE)
     }
     if (day < 1L || day > solrdate__month_days(year, month)) {
-        stop("SolrDateTime day is outside the valid range for the month.", call. = FALSE)
+        stop(
+            "SolrDateTime day is outside the valid range for the month.",
+            call. = FALSE
+        )
     }
     if (hour < 0L || hour > 23L) {
         stop("SolrDateTime hour must be between 0 and 23.", call. = FALSE)
@@ -446,12 +525,17 @@ solrdate__check_parts <- function(year, month, day, hour, minute, second, millis
         stop("SolrDateTime second must be between 0 and 59.", call. = FALSE)
     }
     if (millisecond < 0L || millisecond > 999L) {
-        stop("SolrDateTime millisecond must be between 0 and 999.", call. = FALSE)
+        stop(
+            "SolrDateTime millisecond must be between 0 and 999.",
+            call. = FALSE
+        )
     }
 }
+# }}}
 
 # Normalize a date-like value into SolrDateTime parts for local math.
 # NOW is resolved with the supplied evaluation instant.
+# solrdate__parts {{{
 solrdate__parts <- function(value, now = Sys.time()) {
     if (S7::S7_inherits(value, SolrDateTime)) {
         return(value)
@@ -487,8 +571,10 @@ solrdate__parts <- function(value, now = Sys.time()) {
         millisecond = millisecond
     )
 }
+# }}}
 
 # Format a Solr year, including BCE and expanded years.
+# solrdate__fmt_year {{{
 solrdate__fmt_year <- function(year) {
     if (year < 0L) {
         sprintf("-%04d", abs(year))
@@ -498,9 +584,11 @@ solrdate__fmt_year <- function(year) {
         sprintf("%04d", year)
     }
 }
+# }}}
 
 # Render signed-year datetime parts as a Solr date literal.
 # Numeric rendering intentionally drops time-of-day information.
+# solrdate__fmt_parts {{{
 solrdate__fmt_parts <- function(x, as = c("iso", "num")) {
     as <- match.arg(as)
     year <- S7::prop(x, "year")
@@ -522,15 +610,25 @@ solrdate__fmt_parts <- function(x, as = c("iso", "num")) {
         return(sprintf("%s%02d%02d", year, month, day))
     }
 
-    stamp <- sprintf("%s-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second)
+    stamp <- sprintf(
+        "%s-%02d-%02dT%02d:%02d:%02d",
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second
+    )
     if (millisecond > 0L) {
         stamp <- sprintf("%s.%03d", stamp, millisecond)
     }
     paste0(stamp, "Z")
 }
+# }}}
 
 # Convert a signed Gregorian date to a day offset from 1970-01-01.
 # This avoids POSIXct for BCE and expanded-year arithmetic.
+# solrdate__to_days {{{
 solrdate__to_days <- function(year, month, day) {
     year <- year - as.integer(month <= 2L)
     era <- if (year >= 0L) year %/% 400L else (year - 399L) %/% 400L
@@ -540,8 +638,10 @@ solrdate__to_days <- function(year, month, day) {
     doe <- yoe * 365L + yoe %/% 4L - yoe %/% 100L + doy
     era * 146097L + doe - 719468L
 }
+# }}}
 
 # Convert a day offset from 1970-01-01 back to signed Gregorian parts.
+# solrdate__from_days {{{
 solrdate__from_days <- function(days) {
     days <- days + 719468L
     era <- if (days >= 0L) days %/% 146097L else (days - 146096L) %/% 146097L
@@ -553,18 +653,27 @@ solrdate__from_days <- function(days) {
     day <- doy - (153L * mp + 2L) %/% 5L + 1L
     month <- mp + if (mp < 10L) 3L else -9L
     year <- year + as.integer(month <= 2L)
-    list(year = as.integer(year), month = as.integer(month), day = as.integer(day))
+    list(
+        year = as.integer(year),
+        month = as.integer(month),
+        day = as.integer(day)
+    )
 }
+# }}}
 
 # Add calendar months to a SolrDateTime.
 # Day-of-month is clamped to match Solr/lubridate-style calendar math.
+# solrdate__add_months {{{
 solrdate__add_months <- function(x, amount) {
     year <- S7::prop(x, "year")
     month <- S7::prop(x, "month")
     month_index <- year * 12L + (month - 1L) + amount
     new_year <- month_index %/% 12L
     new_month <- month_index %% 12L + 1L
-    new_day <- min(S7::prop(x, "day"), solrdate__month_days(new_year, new_month))
+    new_day <- min(
+        S7::prop(x, "day"),
+        solrdate__month_days(new_year, new_month)
+    )
     SolrDateTime(
         new_year,
         new_month,
@@ -575,12 +684,20 @@ solrdate__add_months <- function(x, amount) {
         S7::prop(x, "millisecond")
     )
 }
+# }}}
 
 # Add fixed-duration milliseconds to a SolrDateTime.
 # DAY and smaller units use this path rather than calendar month math.
+# solrdate__add_ms {{{
 solrdate__add_ms <- function(x, amount) {
-    day <- solrdate__to_days(S7::prop(x, "year"), S7::prop(x, "month"), S7::prop(x, "day"))
-    time <- (((S7::prop(x, "hour") * 60 + S7::prop(x, "minute")) * 60 + S7::prop(x, "second")) *
+    day <- solrdate__to_days(
+        S7::prop(x, "year"),
+        S7::prop(x, "month"),
+        S7::prop(x, "day")
+    )
+    time <- (((S7::prop(x, "hour") * 60 + S7::prop(x, "minute")) *
+        60 +
+        S7::prop(x, "second")) *
         1000 +
         S7::prop(x, "millisecond") +
         amount)
@@ -593,11 +710,21 @@ solrdate__add_ms <- function(x, amount) {
     time <- time - minute * 60000
     second <- time %/% 1000
     millisecond <- time - second * 1000
-    SolrDateTime(date$year, date$month, date$day, hour, minute, second, millisecond)
+    SolrDateTime(
+        date$year,
+        date$month,
+        date$day,
+        hour,
+        minute,
+        second,
+        millisecond
+    )
 }
+# }}}
 
 # Canonicalize Solr Date Math unit aliases for dispatch.
 # The parser validates units first; this only canonicalizes Solr aliases.
+# solrdate__unit {{{
 solrdate__unit <- function(unit) {
     switch(
         toupper(unit),
@@ -621,9 +748,11 @@ solrdate__unit <- function(unit) {
         "MILLI"
     )
 }
+# }}}
 
 # Round a SolrDateTime down to the requested Date Math unit.
 # Smaller fields are reset to the start of that unit.
+# solrdate__floor {{{
 solrdate__floor <- function(x, unit) {
     unit <- solrdate__unit(unit)
     year <- S7::prop(x, "year")
@@ -644,9 +773,11 @@ solrdate__floor <- function(x, unit) {
         MILLI = x
     )
 }
+# }}}
 
 # Apply one Date Math operation to SolrDateTime parts.
 # Rounding, calendar units, and fixed-duration units each use separate paths.
+# solrdate__apply {{{
 solrdate__apply <- function(x, op, amount, unit) {
     unit <- solrdate__unit(unit)
     if (identical(op, "/")) {
@@ -665,11 +796,17 @@ solrdate__apply <- function(x, op, amount, unit) {
         MILLI = solrdate__add_ms(x, amount)
     )
 }
+# }}}
 
 # Split a Date Math suffix into ordered operation tokens.
 # The joined tokens must exactly reconstruct the input to avoid partial matches.
+# solrdate__tokens {{{
 solrdate__tokens <- function(x) {
-    matches <- gregexpr("([+\\-])(\\d+)([A-Za-z]+)|/([A-Za-z]+)", x, perl = TRUE)[[1L]]
+    matches <- gregexpr(
+        "([+\\-])(\\d+)([A-Za-z]+)|/([A-Za-z]+)",
+        x,
+        perl = TRUE
+    )[[1L]]
     if (identical(matches, -1L)) {
         return(list())
     }
@@ -680,15 +817,28 @@ solrdate__tokens <- function(x) {
 
     lapply(tokens, function(token) {
         if (startsWith(token, "/")) {
-            return(list(op = "/", amount = NA_integer_, unit = substring(token, 2L)))
+            return(list(
+                op = "/",
+                amount = NA_integer_,
+                unit = substring(token, 2L)
+            ))
         }
-        parts <- regmatches(token, regexec("^([+\\-])(\\d+)([A-Za-z]+)$", token, perl = TRUE))[[1L]]
-        list(op = parts[[2L]], amount = as.integer(parts[[3L]]), unit = parts[[4L]])
+        parts <- regmatches(
+            token,
+            regexec("^([+\\-])(\\d+)([A-Za-z]+)$", token, perl = TRUE)
+        )[[1L]]
+        list(
+            op = parts[[2L]],
+            amount = as.integer(parts[[3L]]),
+            unit = parts[[4L]]
+        )
     })
 }
+# }}}
 
 # Evaluate a Date Math suffix from left to right against a base instant.
 # The result is always returned as signed-year SolrDateTime parts.
+# solrdate__eval_math {{{
 solrdate__eval_math <- function(value, math, now = Sys.time()) {
     parts <- solrdate__parts(value, now = now)
     for (token in solrdate__tokens(math)) {
@@ -696,6 +846,7 @@ solrdate__eval_math <- function(value, math, now = Sys.time()) {
     }
     parts
 }
+# }}}
 
 #' Signed-year datetime parts
 #'
@@ -704,18 +855,58 @@ solrdate__eval_math <- function(value, math, now = Sys.time()) {
 #'
 #' @keywords internal
 #' @noRd
+# SolrDateTime {{{
 SolrDateTime <- S7::new_class(
     "SolrDateTime",
     properties = list(
         year = checkmate_property(S7::class_integer, checkmate::check_int),
-        month = checkmate_property(S7::class_integer, checkmate::check_int, lower = 1L, upper = 12L),
-        day = checkmate_property(S7::class_integer, checkmate::check_int, lower = 1L, upper = 31L),
-        hour = checkmate_property(S7::class_integer, checkmate::check_int, lower = 0L, upper = 23L),
-        minute = checkmate_property(S7::class_integer, checkmate::check_int, lower = 0L, upper = 59L),
-        second = checkmate_property(S7::class_integer, checkmate::check_int, lower = 0L, upper = 59L),
-        millisecond = checkmate_property(S7::class_integer, checkmate::check_int, lower = 0L, upper = 999L)
+        month = checkmate_property(
+            S7::class_integer,
+            checkmate::check_int,
+            lower = 1L,
+            upper = 12L
+        ),
+        day = checkmate_property(
+            S7::class_integer,
+            checkmate::check_int,
+            lower = 1L,
+            upper = 31L
+        ),
+        hour = checkmate_property(
+            S7::class_integer,
+            checkmate::check_int,
+            lower = 0L,
+            upper = 23L
+        ),
+        minute = checkmate_property(
+            S7::class_integer,
+            checkmate::check_int,
+            lower = 0L,
+            upper = 59L
+        ),
+        second = checkmate_property(
+            S7::class_integer,
+            checkmate::check_int,
+            lower = 0L,
+            upper = 59L
+        ),
+        millisecond = checkmate_property(
+            S7::class_integer,
+            checkmate::check_int,
+            lower = 0L,
+            upper = 999L
+        )
     ),
-    constructor = function(year, month = 1L, day = 1L, hour = 0L, minute = 0L, second = 0L, millisecond = 0L) {
+    # constructor {{{
+    constructor = function(
+        year,
+        month = 1L,
+        day = 1L,
+        hour = 0L,
+        minute = 0L,
+        second = 0L,
+        millisecond = 0L
+    ) {
         year <- as.integer(year)
         month <- as.integer(month)
         day <- as.integer(day)
@@ -723,7 +914,15 @@ SolrDateTime <- S7::new_class(
         minute <- as.integer(minute)
         second <- as.integer(second)
         millisecond <- as.integer(millisecond)
-        solrdate__check_parts(year, month, day, hour, minute, second, millisecond)
+        solrdate__check_parts(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            millisecond
+        )
         S7::new_object(
             S7::S7_object(),
             year = year,
@@ -735,7 +934,9 @@ SolrDateTime <- S7::new_class(
             millisecond = millisecond
         )
     }
+    # }}}
 )
+# }}}
 
 #' Base Solr date type
 #'
@@ -743,7 +944,9 @@ SolrDateTime <- S7::new_class(
 #'
 #' @keywords internal
 #' @noRd
+# SolrDate {{{
 SolrDate <- S7::new_class("SolrDate", abstract = TRUE)
+# }}}
 
 #' Base Solr date point type
 #'
@@ -752,7 +955,13 @@ SolrDate <- S7::new_class("SolrDate", abstract = TRUE)
 #'
 #' @keywords internal
 #' @noRd
-SolrDatePoint <- S7::new_class("SolrDatePoint", parent = SolrDate, abstract = TRUE)
+# SolrDatePoint {{{
+SolrDatePoint <- S7::new_class(
+    "SolrDatePoint",
+    parent = SolrDate,
+    abstract = TRUE
+)
+# }}}
 
 #' Solr date range
 #'
@@ -761,16 +970,26 @@ SolrDatePoint <- S7::new_class("SolrDatePoint", parent = SolrDate, abstract = TR
 #'
 #' @keywords internal
 #' @noRd
+# SolrDateRange {{{
 SolrDateRange <- S7::new_class(
     "SolrDateRange",
     parent = SolrDate,
     properties = list(
         start = S7::new_property(SolrDatePoint),
         end = S7::new_property(SolrDatePoint),
-        start_inclusive = checkmate_property(S7::class_logical, checkmate::check_flag, default = TRUE),
-        end_inclusive = checkmate_property(S7::class_logical, checkmate::check_flag, default = TRUE)
+        start_inclusive = checkmate_property(
+            S7::class_logical,
+            checkmate::check_flag,
+            default = TRUE
+        ),
+        end_inclusive = checkmate_property(
+            S7::class_logical,
+            checkmate::check_flag,
+            default = TRUE
+        )
     )
 )
+# }}}
 
 #' Unbounded Solr date boundary
 #'
@@ -779,10 +998,12 @@ SolrDateRange <- S7::new_class(
 #'
 #' @keywords internal
 #' @noRd
+# SolrDateUnbounded {{{
 SolrDateUnbounded <- S7::new_class(
     "SolrDateUnbounded",
     parent = SolrDatePoint
 )
+# }}}
 
 #' Concrete Solr date instant
 #'
@@ -791,19 +1012,23 @@ SolrDateUnbounded <- S7::new_class(
 #'
 #' @keywords internal
 #' @noRd
+# SolrDateInstant {{{
 SolrDateInstant <- S7::new_class(
     "SolrDateInstant",
     parent = SolrDatePoint,
     properties = list(
         value = solrdate__value_prop()
     ),
+    # constructor {{{
     constructor = function(value) {
         if (inherits(value, "Date")) {
             value <- as.POSIXct(value, tz = "UTC")
         }
         S7::new_object(S7::S7_object(), value = value)
     }
+    # }}}
 )
+# }}}
 
 #' Solr Date Math expression
 #'
@@ -812,6 +1037,7 @@ SolrDateInstant <- S7::new_class(
 #'
 #' @keywords internal
 #' @noRd
+# SolrDateMath {{{
 SolrDateMath <- S7::new_class(
     "SolrDateMath",
     parent = SolrDatePoint,
@@ -820,10 +1046,16 @@ SolrDateMath <- S7::new_class(
         math = checkmate_property(S7::class_character, solrdate__check_math)
     )
 )
+# }}}
 
 # NOTE: have to use 'convert' instead of 'S7::convert'
 # see: https://github.com/RConsortium/S7/issues/530
-S7::method(convert, list(SolrDatePoint, SolrDateRange)) <- function(from, to, side = c("start", "end")) {
+# S7::method(convert, list(SolrDatePoint, SolrDateRange)) {{{
+S7::method(convert, list(SolrDatePoint, SolrDateRange)) <- function(
+    from,
+    to,
+    side = c("start", "end")
+) {
     if (side == "start") {
         start <- S7::prop(from, "value")
         end <- SolrDateUnbounded()
@@ -839,9 +1071,11 @@ S7::method(convert, list(SolrDatePoint, SolrDateRange)) <- function(from, to, si
         end_inclusive = TRUE
     )
 }
+# }}}
 
 # Format POSIXct, SolrDateTime, or NOW sentinel as a Solr date literal.
 # Signed-year values are routed through SolrDateTime-specific formatting.
+# solrdate__format {{{
 solrdate__format <- function(x, as = c("iso", "num")) {
     match.arg(as)
 
@@ -858,18 +1092,27 @@ solrdate__format <- function(x, as = c("iso", "num")) {
     } else {
         lt <- as.POSIXlt(x)
         if (lt$hour > 0L || lt$min > 0L || lt$sec > 0) {
-            warning(sprintf("Loss of time information when rendering in 'num' format for SolrDate '%s'.", format(x)))
+            warning(sprintf(
+                "Loss of time information when rendering in 'num' format for SolrDate '%s'.",
+                format(x)
+            ))
         }
         format(x, "%Y%m%d")
     }
 }
+# }}}
 
+# S7::method(format, SolrDateUnbounded) {{{
 S7::method(format, SolrDateUnbounded) <- function(x, as = "iso", ...) {
     "*"
 }
+# }}}
+# S7::method(format, SolrDateInstant) {{{
 S7::method(format, SolrDateInstant) <- function(x, as = "iso", ...) {
     solrdate__format(S7::prop(x, "value"), as = as)
 }
+# }}}
+# S7::method(format, SolrDateMath) {{{
 S7::method(format, SolrDateMath) <- function(x, as = "iso", ...) {
     value <- S7::prop(x, "value")
     value <- if (solrdate__is_na(value)) {
@@ -880,6 +1123,8 @@ S7::method(format, SolrDateMath) <- function(x, as = "iso", ...) {
 
     paste0(value, S7::prop(x, "math"))
 }
+# }}}
+# S7::method(format, SolrDateRange) {{{
 S7::method(format, SolrDateRange) <- function(x, as = "iso", ...) {
     paste0(
         if (isTRUE(S7::prop(x, "start_inclusive"))) "[" else "{",
@@ -889,22 +1134,32 @@ S7::method(format, SolrDateRange) <- function(x, as = "iso", ...) {
         if (isTRUE(S7::prop(x, "end_inclusive"))) "]" else "}"
     )
 }
+# }}}
+# S7::method(print, SolrDate) {{{
 S7::method(print, SolrDate) <- function(x, ...) {
     cat(sprintf("<SolrDate>\n- \"%s\"\n", format(x)), sep = "")
 }
+# }}}
 
+# S7::method(as.character, SolrDate) {{{
 S7::method(as.character, SolrDate) <- function(x, as = "iso", ...) {
     format(x, ...)
 }
+# }}}
+# S7::method(as.POSIXct, SolrDateUnbounded) {{{
 S7::method(as.POSIXct, SolrDateUnbounded) <- function(x, tz = "UTC", ...) {
     stop("Cannot coerce unbounded SolrDate to POSIXct.")
 }
+# }}}
+# S7::method(as.POSIXct, SolrDateInstant) {{{
 S7::method(as.POSIXct, SolrDateInstant) <- function(x, tz = "UTC", ...) {
     value <- x@value
     if (S7::S7_inherits(value, SolrDateTime)) {
         year <- S7::prop(value, "year")
         if (year < 0L || year > 9999L) {
-            stop("Cannot coerce SolrDate with year outside 0000..9999 to POSIXct.")
+            stop(
+                "Cannot coerce SolrDate with year outside 0000..9999 to POSIXct."
+            )
         }
         value <- sprintf(
             "%04d-%02d-%02d %02d:%02d:%02d",
@@ -918,18 +1173,24 @@ S7::method(as.POSIXct, SolrDateInstant) <- function(x, tz = "UTC", ...) {
     }
     as.POSIXct(value, tz = tz, ...)
 }
+# }}}
+# S7::method(as.POSIXct, SolrDateMath) {{{
 S7::method(as.POSIXct, SolrDateMath) <- function(x, tz = "UTC", ...) {
     stop(
         "Cannot coerce SolrDate with Date Math to POSIXct, as the actual datetime value depends on the context of evaluation."
     )
 }
+# }}}
+# S7::method(as.POSIXct, SolrDateRange) {{{
 S7::method(as.POSIXct, SolrDateRange) <- function(x, tz = "UTC", ...) {
     warning("Using start datetime only when coercing SolrDateRange to POSIXct.")
     as.POSIXct(x@start, tz = tz, ...)
 }
+# }}}
 
 # Resolve Date Math inside a SolrDate object for bridge rendering.
 # Ranges are evaluated recursively while unbounded and fixed instants pass through.
+# solrdate__eval {{{
 solrdate__eval <- function(x, now = Sys.time()) {
     if (S7::S7_inherits(x, SolrDateUnbounded)) {
         return(x)
@@ -941,7 +1202,13 @@ solrdate__eval <- function(x, now = Sys.time()) {
         return(x)
     }
     if (S7::S7_inherits(x, SolrDateMath)) {
-        return(SolrDateInstant(value = solrdate__eval_math(S7::prop(x, "value"), S7::prop(x, "math"), now = now)))
+        return(SolrDateInstant(
+            value = solrdate__eval_math(
+                S7::prop(x, "value"),
+                S7::prop(x, "math"),
+                now = now
+            )
+        ))
     }
     if (S7::S7_inherits(x, SolrDateRange)) {
         return(SolrDateRange(
@@ -954,6 +1221,7 @@ solrdate__eval <- function(x, now = Sys.time()) {
 
     x
 }
+# }}}
 
 #' Check whether an object is a parsed Solr date
 #'
@@ -970,14 +1238,18 @@ solrdate__eval <- function(x, now = Sys.time()) {
 #'
 #' @seealso [solr_date()]
 #' @export
+# is.solr_date {{{
 is.solr_date <- function(x) {
     S7::S7_inherits(x, SolrDate)
 }
+# }}}
 
 #' @keywords internal
 #' @noRd
+# as.character.SolrDate {{{
 as.character.SolrDate <- function(x, ...) {
     format(x, ...)
 }
+# }}}
 
 # vim: fdm=marker :

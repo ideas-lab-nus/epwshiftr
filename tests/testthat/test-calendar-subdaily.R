@@ -2,11 +2,14 @@ test_that("sub-daily lattice identifies complete regular daily positions", {
     hourly <- temporal__daily_lattice(seq.int(0, 23 * 3600, by = 3600))
 
     expect_true(hourly$regular)
-    expect_identical(hourly$offsets, as.numeric(seq.int(
-        0,
-        23 * 3600,
-        by = 3600
-    )))
+    expect_identical(
+        hourly$offsets,
+        as.numeric(seq.int(
+            0,
+            23 * 3600,
+            by = 3600
+        ))
+    )
     expect_false(
         temporal__daily_lattice(seq.int(0, 22 * 3600, by = 3600))$regular
     )
@@ -28,3 +31,5 @@ test_that("sub-daily lattice supports explicit non-hourly expectations", {
         "must be positive"
     )
 })
+
+# vim: fdm=marker :

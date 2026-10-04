@@ -5,14 +5,15 @@ edcdf_test__execution_inputs <- signal_test__execution_inputs
 
 # Execute compact fixtures with reduced sample thresholds while retaining all
 # published distribution and package-adaptation settings.
+# edcdf_test__execute {{{
 edcdf_test__execute <- function(
-  variable,
-  observed,
-  historical,
-  future,
-  overrides = list(),
-  key = list(site = "A"),
-  warn_experimental = FALSE
+    variable,
+    observed,
+    historical,
+    future,
+    overrides = list(),
+    key = list(site = "A"),
+    warn_experimental = FALSE
 ) {
     boundary <- edcdf_test__execution_inputs(
         observed,
@@ -36,8 +37,10 @@ edcdf_test__execute <- function(
         warn_experimental = warn_experimental
     )
 }
+# }}}
 
 # Retrieve one complete default profile for direct settings validation.
+# edcdf_test__settings {{{
 edcdf_test__settings <- function(variable) {
     profiles <- edcdf__profiles()
     index <- which(vapply(
@@ -47,6 +50,7 @@ edcdf_test__settings <- function(variable) {
     ))
     profiles[[index]]@settings
 }
+# }}}
 
 test_that("four-parameter Beta fit uses the Li range convention", {
     values <- c(1, 2, 3, 4, 6, 9)
@@ -270,11 +274,14 @@ test_that("mixed Gamma precipitation preserves identity and dry values", {
     diagnostics <- adjusted@provenance$diagnostics$precipitation
 
     expect_equal(adjusted@data$value, future_values)
-    expect_identical(diagnostics$input_dry_values, c(
-        observed_reference = 2L,
-        model_historical = 2L,
-        model_future = 3L
-    ))
+    expect_identical(
+        diagnostics$input_dry_values,
+        c(
+            observed_reference = 2L,
+            model_historical = 2L,
+            model_future = 3L
+        )
+    )
     expect_identical(diagnostics$output_dry_values, 3L)
     expect_identical(
         adjusted@settings$negative_precipitation_policy,
@@ -356,10 +363,12 @@ test_that("settings and incompatible inputs fail explicitly", {
             "apply",
             inputs = boundary$inputs,
             groups = list(boundary$group),
-            overrides = list(pr = list(
-                min_samples = 2L,
-                min_positive_samples = 2L
-            )),
+            overrides = list(
+                pr = list(
+                    min_samples = 2L,
+                    min_positive_samples = 2L
+                )
+            ),
             warn_experimental = FALSE
         ),
         "non-negative"
@@ -389,18 +398,22 @@ test_that("profiles expose monthly evidence and daily adaptation", {
     )
     expect_true(all(vapply(
         profiles,
-        function(profile) identical(
-            profile$evidence,
-            "experimental"
-        ),
+        function(profile) {
+            identical(
+                profile$evidence,
+                "experimental"
+            )
+        },
         logical(1L)
     )))
     expect_true(all(vapply(
         profiles,
-        function(profile) identical(
-            profile$metadata$method_variable_source,
-            "li_2010_monthly"
-        ),
+        function(profile) {
+            identical(
+                profile$metadata$method_variable_source,
+                "li_2010_monthly"
+            )
+        },
         logical(1L)
     )))
     expect_identical(
@@ -450,3 +463,5 @@ test_that("experimental daily profile warning and contracts are retained", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker :

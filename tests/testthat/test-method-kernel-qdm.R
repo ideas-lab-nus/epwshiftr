@@ -1,5 +1,6 @@
 # Build one regular-lattice hourly series sampled at noon on every native CF
 # day, keeping tests compact while exercising sub-daily calendar metadata.
+# kqdm_test__series {{{
 kqdm_test__series <- function(
     variable,
     year,
@@ -37,17 +38,21 @@ kqdm_test__series <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Return a smooth, non-constant annual signal with the exact number of days in
 # the requested native calendar.
+# kqdm_test__annual_values {{{
 kqdm_test__annual_values <- function(year, calendar, offset = 0) {
     day_count <- cf_time__year_days(as.integer(year), calendar)
     phase <- (seq_len(day_count) - 0.5) / day_count
     10 + 2 * sin(2 * pi * phase) + 0.01 * seq_len(day_count) + offset
 }
+# }}}
 
 # Construct role descriptors and one aligned signal group for common component
 # execution tests.
+# kqdm_test__boundary {{{
 kqdm_test__boundary <- function(observed, historical, future) {
     list(
         inputs = weather__new_inputs(
@@ -75,9 +80,11 @@ kqdm_test__boundary <- function(observed, historical, future) {
         )
     )
 }
+# }}}
 
 # Execute the registered signal contract with a smaller deterministic KDE grid
 # so unit tests retain the production algorithm without unnecessary runtime.
+# kqdm_test__execute {{{
 kqdm_test__execute <- function(
     variable,
     observed,
@@ -100,8 +107,10 @@ kqdm_test__execute <- function(
         warn_experimental = warn_experimental
     )
 }
+# }}}
 
 # Retrieve one default profile by variable for direct kernel validation.
+# kqdm_test__settings {{{
 kqdm_test__settings <- function(variable) {
     profiles <- kqdm__profiles()
     index <- which(vapply(
@@ -111,6 +120,7 @@ kqdm_test__settings <- function(variable) {
     ))
     profiles[[index]]@settings
 }
+# }}}
 
 test_that("hourly kernel QDM transfers additive quantile changes", {
     base <- kqdm_test__annual_values(1991L, "noleap")
@@ -394,3 +404,5 @@ test_that("hourly kernel QDM is registered with frequency-aware contracts", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker :

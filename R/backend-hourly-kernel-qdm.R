@@ -1,8 +1,7 @@
 #' @include component-hourly-kqdm-input.R weather-pipeline.R
 NULL
 
-# Hourly kernel-QDM backend {{{
-
+# Hourly kernel-QDM backend
 # The complete workflow follows the six climate variables used by the
 # published hourly KDE-QDM weather generation path. Dew point and direct-normal
 # radiation are derived later by the common EPW physical policy.
@@ -70,6 +69,7 @@ EPW_MORPH_HOURLY_KQDM_RULES <- data.table::data.table(
 
 # Complete and validate the only backend-level option. Variable-specific
 # numerical settings remain owned by the registered signal component.
+# hourly_kqdm__options {{{
 hourly_kqdm__options <- function(options = NULL) {
     if (is.null(options)) {
         return(list(signal_overrides = list()))
@@ -83,9 +83,11 @@ hourly_kqdm__options <- function(options = NULL) {
     }
     list(signal_overrides = pipeline__signal_overrides(options))
 }
+# }}}
 
 # Register every already-independent component needed by the complete hourly
 # workflow while preserving process-local replacements under the same keys.
+# hourly_kqdm__register_components {{{
 hourly_kqdm__register_components <- function() {
     hourly_kqdm_input__register_component()
     hourly_calendar__register_component()
@@ -96,9 +98,11 @@ hourly_kqdm__register_components <- function() {
     sequence__register_epw_output_component()
     invisible(NULL)
 }
+# }}}
 
 # Compose the implemented interpolation, distribution correction, calendar,
 # physical, and output stages into one executable future-weather pipeline.
+# hourly_kqdm__pipeline {{{
 hourly_kqdm__pipeline <- function() {
     hourly_kqdm__register_components()
     pipeline__spec(list(
@@ -111,5 +115,6 @@ hourly_kqdm__pipeline <- function() {
         output = "direct_model_epw_result"
     ))
 }
-
 # }}}
+
+# vim: fdm=marker :

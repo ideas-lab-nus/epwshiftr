@@ -1,9 +1,13 @@
-# EPW output helpers ----------------------------------------------------------
-
+# EPW output helpers
+# disclaimer_comment {{{
 disclaimer_comment <- function(case) {
     paste0(
-        "This climate change adapted weather file, which bases on ", case, " ",
-        "ensemble data, has been generated using the epwshiftr tool V", utils::packageVersion("epwshiftr"), ". ",
+        "This climate change adapted weather file, which bases on ",
+        case,
+        " ",
+        "ensemble data, has been generated using the epwshiftr tool V",
+        utils::packageVersion("epwshiftr"),
+        ". ",
         "The original weather file used for generating this climate change ",
         "adapted weather data may be copyrighted material. Therefore, generated ",
         "weather files can only be used by persons or entities who possess the ",
@@ -17,3 +21,6 @@ disclaimer_comment <- function(case) {
         "consequential damages arising out of the use or inability to use this data."
     )
 }
+# }}}
+
+# vim: fdm=marker :

@@ -1,7 +1,7 @@
-# Daily temperature targets and constrained projection {{{
-
+# Daily temperature targets and constrained projection
 # Validate one long-form daily temperature source before climatology estimation.
 # Only tas, tasmax, and tasmin participate; unrelated variables are left out.
+# daily__temperature_source {{{
 daily__temperature_source <- function(data, name, by) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
@@ -25,14 +25,29 @@ daily__temperature_source <- function(data, name, by) {
     reserved_by <- intersect(
         by,
         c(
-            "variable_id", "annual_phase", "value", "target_day",
-            "climatology", "n", ".daily_value",
-            "future_mean", "future_minimum", "future_maximum",
-            "historical_mean", "historical_minimum", "historical_maximum",
-            "n_future_mean", "n_future_minimum", "n_future_maximum",
-            "n_historical_mean", "n_historical_minimum",
+            "variable_id",
+            "annual_phase",
+            "value",
+            "target_day",
+            "climatology",
+            "n",
+            ".daily_value",
+            "future_mean",
+            "future_minimum",
+            "future_maximum",
+            "historical_mean",
+            "historical_minimum",
+            "historical_maximum",
+            "n_future_mean",
+            "n_future_minimum",
+            "n_future_maximum",
+            "n_historical_mean",
+            "n_historical_minimum",
             "n_historical_maximum",
-            "mean_delta", "minimum_delta", "maximum_delta", "dtr_delta",
+            "mean_delta",
+            "minimum_delta",
+            "maximum_delta",
+            "dtr_delta",
             "dtr_status"
         )
     )
@@ -77,10 +92,16 @@ daily__temperature_source <- function(data, name, by) {
 
     source[]
 }
+# }}}
 
 # Estimate one common-grid climatology for every available temperature variable.
-daily__temperature_climatology <- function(data, by, window_days,
-                                           target_year_days) {
+# daily__temperature_climatology {{{
+daily__temperature_climatology <- function(
+    data,
+    by,
+    window_days,
+    target_year_days
+) {
     daily__climatology(
         data,
         value = "value",
@@ -89,11 +110,18 @@ daily__temperature_climatology <- function(data, by, window_days,
         target_year_days = target_year_days
     )
 }
+# }}}
 
 # Select one temperature metric from a long climatology and give its value and
 # sample-count columns source-specific names for deterministic joins.
-daily__temperature_metric <- function(climatology, variable, by, source,
-                                      metric) {
+# daily__temperature_metric {{{
+daily__temperature_metric <- function(
+    climatology,
+    variable,
+    by,
+    source,
+    metric
+) {
     keys <- c(by, "target_day", "annual_phase")
     requested_variable <- variable
     keep <- climatology[["variable_id"]] == requested_variable
@@ -112,13 +140,19 @@ daily__temperature_metric <- function(climatology, variable, by, source,
     )
     out[]
 }
+# }}}
 
 # Convert one source's tas/tasmax/tasmin climatologies into one row per target
 # day. The tas grid is authoritative; optional extrema are left-joined to it.
+# daily__temperature_wide {{{
 daily__temperature_wide <- function(climatology, by, source) {
     keys <- c(by, "target_day", "annual_phase")
     out <- daily__temperature_metric(
-        climatology, "tas", by, source, "mean"
+        climatology,
+        "tas",
+        by,
+        source,
+        "mean"
     )
     for (spec in list(
         c(variable_id = "tasmin", metric = "minimum"),
@@ -148,9 +182,11 @@ daily__temperature_wide <- function(climatology, by, source) {
     }
     out[]
 }
+# }}}
 
 # Calculate daily temperature deltas from future and historical climatologies
 # that have already been mapped onto the same calendar-neutral target grid.
+# daily__temperature_target_changes {{{
 daily__temperature_target_changes <- function(
     future_climatology,
     historical_climatology,
@@ -158,10 +194,14 @@ daily__temperature_target_changes <- function(
 ) {
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
     future_wide <- daily__temperature_wide(
-        future_climatology, by, "future"
+        future_climatology,
+        by,
+        "future"
     )
     historical_wide <- daily__temperature_wide(
-        historical_climatology, by, "historical"
+        historical_climatology,
+        by,
+        "historical"
     )
 
     keys <- c(by, "target_day", "annual_phase")
@@ -172,12 +212,10 @@ daily__temperature_target_changes <- function(
         all = TRUE,
         sort = FALSE
     )
-    missing_mean <- (
-        !is.finite(targets[["future_mean"]]) |
-            !is.finite(targets[["historical_mean"]]) |
-            targets[["n_future_mean"]] < 1L |
-            targets[["n_historical_mean"]] < 1L
-    )
+    missing_mean <- (!is.finite(targets[["future_mean"]]) |
+        !is.finite(targets[["historical_mean"]]) |
+        targets[["n_future_mean"]] < 1L |
+        targets[["n_historical_mean"]] < 1L)
     if (any(missing_mean)) {
         cli::cli_abort(
             paste0(
@@ -188,29 +226,33 @@ daily__temperature_target_changes <- function(
     }
 
     extrema_columns <- c(
-        "future_minimum", "future_maximum",
-        "historical_minimum", "historical_maximum"
+        "future_minimum",
+        "future_maximum",
+        "historical_minimum",
+        "historical_maximum"
     )
     extrema_counts <- c(
-        "n_future_minimum", "n_future_maximum",
-        "n_historical_minimum", "n_historical_maximum"
+        "n_future_minimum",
+        "n_future_maximum",
+        "n_historical_minimum",
+        "n_historical_maximum"
     )
     complete_extrema <- Reduce(
         `&`,
         lapply(extrema_columns, function(column) {
             is.finite(targets[[column]])
         })
-    ) & Reduce(
-        `&`,
-        lapply(extrema_counts, function(column) {
-            !is.na(targets[[column]]) & targets[[column]] > 0L
-        })
-    )
+    ) &
+        Reduce(
+            `&`,
+            lapply(extrema_counts, function(column) {
+                !is.na(targets[[column]]) & targets[[column]] > 0L
+            })
+        )
 
-    invalid_extrema <- complete_extrema & (
-        targets[["future_maximum"]] < targets[["future_minimum"]] |
-            targets[["historical_maximum"]] < targets[["historical_minimum"]]
-    )
+    invalid_extrema <- complete_extrema &
+        (targets[["future_maximum"]] < targets[["future_minimum"]] |
+            targets[["historical_maximum"]] < targets[["historical_minimum"]])
     if (any(invalid_extrema)) {
         cli::cli_abort(
             paste0(
@@ -231,13 +273,19 @@ daily__temperature_target_changes <- function(
         )
     )
     data.table::set(
-        targets, j = "minimum_delta", value = rep.int(NA_real_, nrow(targets))
+        targets,
+        j = "minimum_delta",
+        value = rep.int(NA_real_, nrow(targets))
     )
     data.table::set(
-        targets, j = "maximum_delta", value = rep.int(NA_real_, nrow(targets))
+        targets,
+        j = "maximum_delta",
+        value = rep.int(NA_real_, nrow(targets))
     )
     data.table::set(
-        targets, j = "dtr_delta", value = rep.int(NA_real_, nrow(targets))
+        targets,
+        j = "dtr_delta",
+        value = rep.int(NA_real_, nrow(targets))
     )
     data.table::set(
         targets,
@@ -283,22 +331,35 @@ daily__temperature_target_changes <- function(
     }
 
     ordered <- c(
-        by, "target_day", "annual_phase",
-        "mean_delta", "minimum_delta", "maximum_delta", "dtr_delta",
+        by,
+        "target_day",
+        "annual_phase",
+        "mean_delta",
+        "minimum_delta",
+        "maximum_delta",
+        "dtr_delta",
         "dtr_status",
-        "n_future_mean", "n_historical_mean",
-        "n_future_minimum", "n_historical_minimum",
-        "n_future_maximum", "n_historical_maximum"
+        "n_future_mean",
+        "n_historical_mean",
+        "n_future_minimum",
+        "n_historical_minimum",
+        "n_future_maximum",
+        "n_historical_maximum"
     )
     data.table::setcolorder(targets, ordered)
     data.table::setorderv(targets, c(by, "target_day"))
     targets[]
 }
+# }}}
 
 # Build calendar-neutral daily temperature changes from matching future and
 # historical climatologies. Missing extrema retain the mean delta explicitly.
+# daily__temperature_targets {{{
 daily__temperature_targets <- function(
-    future, historical, by = character(), window_days = 31L,
+    future,
+    historical,
+    by = character(),
+    window_days = 31L,
     target_year_days = 365L
 ) {
     checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
@@ -306,10 +367,16 @@ daily__temperature_targets <- function(
     historical <- daily__temperature_source(historical, "historical", by)
 
     future_climatology <- daily__temperature_climatology(
-        future, by, window_days, target_year_days
+        future,
+        by,
+        window_days,
+        target_year_days
     )
     historical_climatology <- daily__temperature_climatology(
-        historical, by, window_days, target_year_days
+        historical,
+        by,
+        window_days,
+        target_year_days
     )
     daily__temperature_target_changes(
         future_climatology,
@@ -317,9 +384,11 @@ daily__temperature_targets <- function(
         by
     )
 }
+# }}}
 
 # Construct a monotone normalized shape with fixed zero/one endpoints and the
 # requested mean. A power family retains all ordering and extrema positions.
+# daily__temperature_shape {{{
 daily__temperature_shape <- function(normalized, target_mean, tolerance) {
     lower_mean <- mean(normalized == 1)
     upper_mean <- mean(normalized > 0)
@@ -348,7 +417,7 @@ daily__temperature_shape <- function(normalized, target_mean, tolerance) {
     }
 
     objective <- function(log_exponent) {
-        mean(normalized ^ exp(log_exponent)) - target_mean
+        mean(normalized^exp(log_exponent)) - target_mean
     }
     log_exponent <- stats::uniroot(
         objective,
@@ -356,13 +425,19 @@ daily__temperature_shape <- function(normalized, target_mean, tolerance) {
         tol = min(tolerance, 1e-12)
     )$root
     exponent <- exp(log_exponent)
-    list(value = normalized ^ exponent, exponent = exponent)
+    list(value = normalized^exponent, exponent = exponent)
 }
+# }}}
 
 # Project one finite hourly temperature vector onto requested daily statistics.
 # Explicit shift fallbacks keep missing extrema and flat templates traceable.
+# daily__project_temperature_day {{{
 daily__project_temperature_day <- function(
-    value, mean_delta, minimum_delta, maximum_delta, dtr_status,
+    value,
+    mean_delta,
+    minimum_delta,
+    maximum_delta,
+    dtr_status,
     tolerance
 ) {
     baseline_mean <- mean(value)
@@ -432,7 +507,9 @@ daily__project_temperature_day <- function(
     normalized_mean <- (target_mean - target_minimum) / target_range
     shape_tolerance <- tolerance / max(target_range, 1)
     shape <- daily__temperature_shape(
-        normalized, normalized_mean, shape_tolerance
+        normalized,
+        normalized_mean,
+        shape_tolerance
     )
     projected <- target_minimum + target_range * shape$value
 
@@ -457,21 +534,30 @@ daily__project_temperature_day <- function(
         exponent = shape$exponent
     )
 }
+# }}}
 
 # Return cyclic previous values for annual boundary diagnostics. A single-day
 # input has no meaningful adjacent-day boundary and therefore returns NA.
+# daily__cyclic_previous {{{
 daily__cyclic_previous <- function(value) {
     if (length(value) < 2L) {
         return(rep.int(NA_real_, length(value)))
     }
     c(value[[length(value)]], value[-length(value)])
 }
+# }}}
 
 # Apply daily target changes to grouped 24-hour templates and expose closure and
 # cyclic boundary diagnostics without mutating the caller's source rows.
+# daily__project_temperature {{{
 daily__project_temperature <- function(
-    template, targets, value = "value", day = "target_day", hour = "hour",
-    by = character(), tolerance = 1e-8,
+    template,
+    targets,
+    value = "value",
+    day = "target_day",
+    hour = "hour",
+    by = character(),
+    tolerance = 1e-8,
     method = c("power", "btws")
 ) {
     checkmate::assert_data_frame(template)
@@ -488,8 +574,13 @@ daily__project_temperature <- function(
     reserved_by <- intersect(
         by,
         c(
-            value_column, day_column, hour_column,
-            "mean_delta", "minimum_delta", "maximum_delta", "dtr_status"
+            value_column,
+            day_column,
+            hour_column,
+            "mean_delta",
+            "minimum_delta",
+            "maximum_delta",
+            "dtr_status"
         )
     )
     if (length(reserved_by)) {
@@ -511,7 +602,12 @@ daily__project_temperature <- function(
 
     template_required <- unique(c(by, day, hour, value))
     target_required <- unique(c(
-        by, day, "mean_delta", "minimum_delta", "maximum_delta", "dtr_status"
+        by,
+        day,
+        "mean_delta",
+        "minimum_delta",
+        "maximum_delta",
+        "dtr_status"
     ))
     missing_template <- setdiff(template_required, names(template))
     missing_targets <- setdiff(target_required, names(targets))
@@ -530,19 +626,33 @@ daily__project_temperature <- function(
         "shape_exponent"
     } else {
         c(
-            "btws_scale", "btws_m", "btws_n",
+            "btws_scale",
+            "btws_m",
+            "btws_n",
             "btws_fallback_reason"
         )
     }
     output_columns <- c(
-        "temperature_projected", "target_mean", "target_minimum",
-        "target_maximum", "projected_mean", "projected_minimum",
-        "projected_maximum", "dtr_status", "projection_status",
-        method_output_columns, "boundary_jump", "boundary_jump_change"
+        "temperature_projected",
+        "target_mean",
+        "target_minimum",
+        "target_maximum",
+        "projected_mean",
+        "projected_minimum",
+        "projected_maximum",
+        "dtr_status",
+        "projection_status",
+        method_output_columns,
+        "boundary_jump",
+        "boundary_jump_change"
     )
     working_columns <- c(
-        "mean_delta", "minimum_delta", "maximum_delta", "dtr_status",
-        ".daily_row", ".daily_target_found"
+        "mean_delta",
+        "minimum_delta",
+        "maximum_delta",
+        "dtr_status",
+        ".daily_row",
+        ".daily_target_found"
     )
     conflicts <- intersect(
         c(output_columns, working_columns),
@@ -626,13 +736,19 @@ daily__project_temperature <- function(
 
     working <- data.table::as.data.table(data.table::copy(template))
     data.table::set(
-        working, j = ".daily_row", value = seq_len(nrow(working))
+        working,
+        j = ".daily_row",
+        value = seq_len(nrow(working))
     )
 
     # A left merge makes target coverage explicit while the private row index
     # preserves the caller's original order through all grouped calculations.
     target_join_columns <- c(
-        keys, "mean_delta", "minimum_delta", "maximum_delta", "dtr_status",
+        keys,
+        "mean_delta",
+        "minimum_delta",
+        "maximum_delta",
+        "dtr_status",
         ".daily_target_found"
     )
     working <- merge(
@@ -650,10 +766,13 @@ daily__project_temperature <- function(
     }
 
     group_columns <- c(by, day)
-    template_shape <- working[, .(
-        rows = .N,
-        unique_hours = data.table::uniqueN(get(hour_column))
-    ), by = group_columns]
+    template_shape <- working[,
+        .(
+            rows = .N,
+            unique_hours = data.table::uniqueN(get(hour_column))
+        ),
+        by = group_columns
+    ]
     if (any(template_shape$rows != 24L | template_shape$unique_hours != 24L)) {
         cli::cli_abort(
             "Each template day and group must contain exactly 24 unique hourly rows."
@@ -661,57 +780,72 @@ daily__project_temperature <- function(
     }
 
     projection_input_columns <- c(
-        value_column, ".daily_row", "mean_delta", "minimum_delta",
-        "maximum_delta", "dtr_status"
+        value_column,
+        ".daily_row",
+        "mean_delta",
+        "minimum_delta",
+        "maximum_delta",
+        "dtr_status"
     )
-    projected <- working[, {
-        # Both projectors exchange the same core daily statistics. Method-
-        # specific numerical parameters are appended without changing the
-        # established power-projection output schema.
-        projector <- if (identical(method, "power")) {
-            daily__project_temperature_day
-        } else {
-            btws__project_temperature_day
-        }
-        result <- projector(
-            value = as.numeric(.SD[[value_column]]),
-            mean_delta = unique(.SD[["mean_delta"]]),
-            minimum_delta = unique(.SD[["minimum_delta"]]),
-            maximum_delta = unique(.SD[["maximum_delta"]]),
-            dtr_status = unique(.SD[["dtr_status"]]),
-            tolerance = tolerance
-        )
-        row <- list(
-            .daily_row = .SD[[".daily_row"]],
-            temperature_projected = result$value,
-            target_mean = result$target_mean,
-            target_minimum = result$target_minimum,
-            target_maximum = result$target_maximum,
-            projected_mean = mean(result$value),
-            projected_minimum = min(result$value),
-            projected_maximum = max(result$value),
-            dtr_status = unique(.SD[["dtr_status"]]),
-            projection_status = result$status
-        )
-        if (identical(method, "power")) {
-            row$shape_exponent <- result$exponent
-        } else {
-            row$btws_scale <- result$scale
-            row$btws_m <- result$m
-            row$btws_n <- result$n
-            row$btws_fallback_reason <- result$fallback_reason
-        }
-        row
-    }, by = group_columns, .SDcols = projection_input_columns]
+    projected <- working[,
+        {
+            # Both projectors exchange the same core daily statistics. Method-
+            # specific numerical parameters are appended without changing the
+            # established power-projection output schema.
+            projector <- if (identical(method, "power")) {
+                daily__project_temperature_day
+            } else {
+                btws__project_temperature_day
+            }
+            result <- projector(
+                value = as.numeric(.SD[[value_column]]),
+                mean_delta = unique(.SD[["mean_delta"]]),
+                minimum_delta = unique(.SD[["minimum_delta"]]),
+                maximum_delta = unique(.SD[["maximum_delta"]]),
+                dtr_status = unique(.SD[["dtr_status"]]),
+                tolerance = tolerance
+            )
+            row <- list(
+                .daily_row = .SD[[".daily_row"]],
+                temperature_projected = result$value,
+                target_mean = result$target_mean,
+                target_minimum = result$target_minimum,
+                target_maximum = result$target_maximum,
+                projected_mean = mean(result$value),
+                projected_minimum = min(result$value),
+                projected_maximum = max(result$value),
+                dtr_status = unique(.SD[["dtr_status"]]),
+                projection_status = result$status
+            )
+            if (identical(method, "power")) {
+                row$shape_exponent <- result$exponent
+            } else {
+                row$btws_scale <- result$scale
+                row$btws_m <- result$m
+                row$btws_n <- result$n
+                row$btws_fallback_reason <- result$fallback_reason
+            }
+            row
+        },
+        by = group_columns,
+        .SDcols = projection_input_columns
+    ]
 
     original_columns <- names(template)
     out <- data.table::as.data.table(data.table::copy(template))
     data.table::set(out, j = ".daily_row", value = seq_len(nrow(out)))
     projection_output_columns <- c(
-        ".daily_row", "temperature_projected", "target_mean",
-        "target_minimum", "target_maximum", "projected_mean",
-        "projected_minimum", "projected_maximum", "dtr_status",
-        "projection_status", method_output_columns
+        ".daily_row",
+        "temperature_projected",
+        "target_mean",
+        "target_minimum",
+        "target_maximum",
+        "projected_mean",
+        "projected_minimum",
+        "projected_maximum",
+        "dtr_status",
+        "projection_status",
+        method_output_columns
     )
     out <- merge(
         out,
@@ -723,11 +857,13 @@ daily__project_temperature <- function(
     data.table::setorderv(out, ".daily_row")
 
     # Measure each boundary at the first chronological hour of a target day.
-    chronological <- out[
-        ,
+    chronological <- out[,
         .SD,
         .SDcols = c(
-            by, day_column, hour_column, value_column,
+            by,
+            day_column,
+            hour_column,
+            value_column,
             "temperature_projected"
         )
     ]
@@ -735,29 +871,40 @@ daily__project_temperature <- function(
         chronological,
         c(by, day_column, hour_column)
     )
-    boundary <- chronological[, {
-        daily_hour <- .SD[[hour_column]]
-        source_temperature <- .SD[[value_column]]
-        projected_temperature <- .SD[["temperature_projected"]]
-        list(
-            source_first = source_temperature[which.min(daily_hour)],
-            source_last = source_temperature[which.max(daily_hour)],
-            projected_first = projected_temperature[which.min(daily_hour)],
-            projected_last = projected_temperature[which.max(daily_hour)]
+    boundary <- chronological[,
+        {
+            daily_hour <- .SD[[hour_column]]
+            source_temperature <- .SD[[value_column]]
+            projected_temperature <- .SD[["temperature_projected"]]
+            list(
+                source_first = source_temperature[which.min(daily_hour)],
+                source_last = source_temperature[which.max(daily_hour)],
+                projected_first = projected_temperature[which.min(daily_hour)],
+                projected_last = projected_temperature[which.max(daily_hour)]
+            )
+        },
+        by = group_columns,
+        .SDcols = c(
+            hour_column,
+            value_column,
+            "temperature_projected"
         )
-    }, by = group_columns, .SDcols = c(
-        hour_column, value_column, "temperature_projected"
-    )]
+    ]
     data.table::setorderv(boundary, group_columns)
 
     previous_columns <- c(
-        "previous_source_last", "previous_projected_last"
+        "previous_source_last",
+        "previous_projected_last"
     )
     if (length(by)) {
-        boundary[, (previous_columns) := list(
-            daily__cyclic_previous(.SD[["source_last"]]),
-            daily__cyclic_previous(.SD[["projected_last"]])
-        ), by = by, .SDcols = c("source_last", "projected_last")]
+        boundary[,
+            (previous_columns) := list(
+                daily__cyclic_previous(.SD[["source_last"]]),
+                daily__cyclic_previous(.SD[["projected_last"]])
+            ),
+            by = by,
+            .SDcols = c("source_last", "projected_last")
+        ]
     } else {
         data.table::set(
             boundary,
@@ -778,7 +925,9 @@ daily__project_temperature <- function(
         boundary[["source_first"]] - boundary[["previous_source_last"]]
     )
     data.table::set(
-        boundary, j = "boundary_jump", value = projected_jump
+        boundary,
+        j = "boundary_jump",
+        value = projected_jump
     )
     data.table::set(
         boundary,
@@ -786,7 +935,9 @@ daily__project_temperature <- function(
         value = projected_jump - source_jump
     )
     boundary_output_columns <- c(
-        keys, "boundary_jump", "boundary_jump_change"
+        keys,
+        "boundary_jump",
+        "boundary_jump_change"
     )
     out <- merge(
         out,
@@ -798,11 +949,15 @@ daily__project_temperature <- function(
 
     data.table::setorderv(out, ".daily_row")
     data.table::set(out, j = ".daily_row", value = NULL)
-    data.table::setcolorder(out, c(
-        original_columns,
-        setdiff(names(out), original_columns)
-    ))
+    data.table::setcolorder(
+        out,
+        c(
+            original_columns,
+            setdiff(names(out), original_columns)
+        )
+    )
     out[]
 }
-
 # }}}
+
+# vim: fdm=marker :

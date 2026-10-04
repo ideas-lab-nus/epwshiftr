@@ -1338,46 +1338,54 @@ A data.table of extraction plan rows.
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-extract"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-extract}{}}}
-\subsection{Method \code{extract()}}{
-Execute pending or failed regional extraction plans.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgStore$extract(
+\subsection{\code{EsgStore$extract()}}{
+  Execute pending or failed regional extraction plans.
+
+Independent remote reads run concurrently, with at most
+\code{getOption("epwshiftr.mirai_workers", 4L)} source tasks per call.
+Set \code{options(epwshiftr.mirai_workers = 1L)} for serial reads. The same
+limit applies to shared batch acquisition; separate R sessions have
+separate limits. The calling process owns manifest and Parquet writes.
+With shared caching enabled, pending plans for one physical file
+reuse its connection. With caching disabled, workers return one plan
+at a time to bound memory. Complete ordinary extraction caches are
+consumed directly without starting workers. Speedup depends on the
+number of independent tasks and the remote service.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$extract(
   plan_id = NULL,
   status = c("pending", "failed"),
   fallback = c("auto", "error"),
   overwrite = FALSE,
   resume = TRUE,
   reporter = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{plan_id}}{Optional plan IDs to run.}
-
-\item{\code{status}}{Plan statuses to run when \code{plan_id} is \code{NULL}.
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan_id}}{Optional plan IDs to run.}
+      \item{\code{status}}{Plan statuses to run when \code{plan_id} is \code{NULL}.
 Default: \code{c("pending", "failed")}.}
-
-\item{\code{fallback}}{What to do when OPeNDAP open, metadata, or read
+      \item{\code{fallback}}{What to do when OPeNDAP open, metadata, or read
 access fails. \code{"auto"} downloads through HTTPServer and
 retries once when possible; \code{"error"} marks the plan failed
 without downloading. Default: \code{"auto"}.}
-
-\item{\code{overwrite}}{If \code{TRUE}, overwrite existing Parquet outputs.
+      \item{\code{overwrite}}{If \code{TRUE}, overwrite existing Parquet outputs.
 Default: \code{FALSE}.}
-
-\item{\code{resume}}{Whether to reuse complete existing extraction outputs.
+      \item{\code{resume}}{Whether to reuse complete existing extraction outputs.
 Default: \code{TRUE}.}
+      \item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table of processed extraction plan rows.
+  }
+}
 
-\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data.table of processed extraction plan rows.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-query"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-query}{}}}

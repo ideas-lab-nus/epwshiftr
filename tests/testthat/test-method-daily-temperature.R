@@ -1,6 +1,10 @@
 # Build deterministic native-calendar tas/tasmax/tasmin rows for target tests.
+# daily_test__temperature_source {{{
 daily_test__temperature_source <- function(
-    calendar_days, mean_shift = 0, minimum_shift = 0, maximum_shift = 0,
+    calendar_days,
+    mean_shift = 0,
+    minimum_shift = 0,
+    maximum_shift = 0,
     include_extrema = TRUE
 ) {
     data.table::rbindlist(lapply(names(calendar_days), function(calendar) {
@@ -23,6 +27,7 @@ daily_test__temperature_source <- function(
         }))
     }))
 }
+# }}}
 
 test_that("daily temperature targets recover mean and DTR changes across calendars", {
     calendar_days <- c(`360_day` = 360L, `365_day` = 365L, `366_day` = 366L)
@@ -35,7 +40,9 @@ test_that("daily temperature targets recover mean and DTR changes across calenda
     )
     data.table::set(future, j = "source", value = future[["calendar"]])
     data.table::set(
-        historical, j = "source", value = historical[["calendar"]]
+        historical,
+        j = "source",
+        value = historical[["calendar"]]
     )
     original_future <- data.table::copy(future)
     original_historical <- data.table::copy(historical)
@@ -53,8 +60,16 @@ test_that("daily temperature targets recover mean and DTR changes across calenda
         rep.int(365L, 3L)
     )
     expect_equal(targets$mean_delta, rep(2, nrow(targets)), tolerance = 1e-12)
-    expect_equal(targets$minimum_delta, rep(1, nrow(targets)), tolerance = 1e-12)
-    expect_equal(targets$maximum_delta, rep(3, nrow(targets)), tolerance = 1e-12)
+    expect_equal(
+        targets$minimum_delta,
+        rep(1, nrow(targets)),
+        tolerance = 1e-12
+    )
+    expect_equal(
+        targets$maximum_delta,
+        rep(3, nrow(targets)),
+        tolerance = 1e-12
+    )
     expect_equal(targets$dtr_delta, rep(2, nrow(targets)), tolerance = 1e-12)
     expect_true(all(targets$dtr_status == "adjusted"))
     expect_true(all(targets$n_future_mean > 0L))
@@ -138,7 +153,9 @@ test_that("daily temperature projection closes feasible mean and extrema targets
         projected_day <- projected[target_day == day_value]
         value_order <- order(source_day$value)
 
-        expect_true(all(diff(projected_day$temperature_projected[value_order]) >= -1e-12))
+        expect_true(all(
+            diff(projected_day$temperature_projected[value_order]) >= -1e-12
+        ))
         expect_identical(
             which.min(projected_day$temperature_projected),
             which.min(source_day$value)
@@ -167,7 +184,11 @@ test_that("daily temperature projection records inherited and flat-template fall
     expect_true(all(inherited$projection_status == "shift_inherited_dtr"))
 
     flat <- daily__project_temperature(
-        data.table::data.table(target_day = 1L, hour = hour, value = rep(20, 24L)),
+        data.table::data.table(
+            target_day = 1L,
+            hour = hour,
+            value = rep(20, 24L)
+        ),
         data.table::data.table(
             target_day = 1L,
             mean_delta = 2,
@@ -195,7 +216,11 @@ test_that("daily temperature projection rejects infeasible targets and incomplet
 
     expect_error(
         daily__project_temperature(
-            data.table::data.table(target_day = 1L, hour = hour, value = source),
+            data.table::data.table(
+                target_day = 1L,
+                hour = hour,
+                value = source
+            ),
             target
         ),
         "mean must lie between"
@@ -212,3 +237,5 @@ test_that("daily temperature projection rejects infeasible targets and incomplet
         "exactly 24 unique"
     )
 })
+
+# vim: fdm=marker :

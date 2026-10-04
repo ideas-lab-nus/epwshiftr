@@ -39,8 +39,12 @@ WEATHER_COMPONENT_ALLOWED_OPERATIONS <- list(
     preprocess = c("validate_options", "fit", "apply", "diagnose"),
     calendar = c("validate_options", "apply", "diagnose"),
     signal = c(
-        "validate_options", "fit", "apply", "apply_group",
-        "validate_result", "diagnose"
+        "validate_options",
+        "fit",
+        "apply",
+        "apply_group",
+        "validate_result",
+        "diagnose"
     ),
     sequence = c("validate_options", "fit", "generate", "diagnose"),
     hourly = c("validate_options", "fit", "reconstruct", "diagnose"),
@@ -55,6 +59,7 @@ WEATHER_COMPONENT_REGISTRY <- new.env(parent = emptyenv())
 
 # WeatherInputRequirement declares one role-specific component dependency.
 # Alternative variable sets use outer OR and inner AND semantics.
+# WeatherInputRequirement {{{
 WeatherInputRequirement <- S7::new_class(
     "WeatherInputRequirement",
     properties = list(
@@ -77,10 +82,13 @@ WeatherInputRequirement <- S7::new_class(
         ),
         variable_sets = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
-        if (length(self@role) != 1L ||
-            is.na(self@role) ||
-            !self@role %in% WEATHER_INPUT_ROLES) {
+        if (
+            length(self@role) != 1L ||
+                is.na(self@role) ||
+                !self@role %in% WEATHER_INPUT_ROLES
+        ) {
             return("`role` must identify one future-weather input role.")
         }
         for (property in c(
@@ -96,22 +104,36 @@ WeatherInputRequirement <- S7::new_class(
                 ))
             }
         }
-        if (length(self@representations) &&
-            !all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)) {
-            return("`representations` contains an unknown input representation.")
+        if (
+            length(self@representations) &&
+                !all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)
+        ) {
+            return(
+                "`representations` contains an unknown input representation."
+            )
         }
         if (length(self@variable_frequencies)) {
             mapping <- self@variable_frequencies
-            if (is.null(names(mapping)) || any(!nzchar(names(mapping))) ||
-                anyDuplicated(names(mapping))) {
+            if (
+                is.null(names(mapping)) ||
+                    any(!nzchar(names(mapping))) ||
+                    anyDuplicated(names(mapping))
+            ) {
                 return(
                     "`variable_frequencies` must be uniquely named by variable ID."
                 )
             }
-            valid <- vapply(mapping, function(value) {
-                is.character(value) && length(value) && !anyNA(value) &&
-                    all(nzchar(value)) && !anyDuplicated(value)
-            }, logical(1L))
+            valid <- vapply(
+                mapping,
+                function(value) {
+                    is.character(value) &&
+                        length(value) &&
+                        !anyNA(value) &&
+                        all(nzchar(value)) &&
+                        !anyDuplicated(value)
+                },
+                logical(1L)
+            )
             if (!all(valid)) {
                 return(
                     "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
@@ -119,11 +141,13 @@ WeatherInputRequirement <- S7::new_class(
             }
         }
         for (variable_set in self@variable_sets) {
-            if (!is.character(variable_set) ||
-                !length(variable_set) ||
-                anyNA(variable_set) ||
-                any(!nzchar(variable_set)) ||
-                anyDuplicated(variable_set)) {
+            if (
+                !is.character(variable_set) ||
+                    !length(variable_set) ||
+                    anyNA(variable_set) ||
+                    any(!nzchar(variable_set)) ||
+                    anyDuplicated(variable_set)
+            ) {
                 return(paste(
                     "Every `variable_sets` entry must contain unique,",
                     "non-missing, non-empty variable IDs."
@@ -132,10 +156,13 @@ WeatherInputRequirement <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Normalize alternative variable requirements once. One character vector is
 # one required AND-set; the list of vectors represents alternative OR-sets.
+# component__variable_sets {{{
 component__variable_sets <- function(variable_sets) {
     if (is.null(variable_sets)) {
         return(list())
@@ -159,8 +186,10 @@ component__variable_sets <- function(variable_sets) {
         as.character(variable_set)
     })
 }
+# }}}
 
 # Construct one role-specific requirement consumed by a component spec.
+# component__input_requirement {{{
 component__input_requirement <- function(
     role,
     representations = character(),
@@ -195,15 +224,19 @@ component__input_requirement <- function(
         variable_sets = component__variable_sets(variable_sets)
     )
 }
+# }}}
 
 # Validate and preserve named role requirements for component construction.
+# component__requirements {{{
 component__requirements <- function(requirements, name) {
     if (is.null(requirements)) {
         return(list())
     }
     checkmate::assert_list(requirements, names = "unique")
-    if (length(requirements) &&
-        (is.null(names(requirements)) || any(!nzchar(names(requirements))))) {
+    if (
+        length(requirements) &&
+            (is.null(names(requirements)) || any(!nzchar(names(requirements))))
+    ) {
         cli::cli_abort("{.arg {name}} must be named by input role.")
     }
     unknown <- setdiff(names(requirements), WEATHER_INPUT_ROLES)
@@ -227,9 +260,11 @@ component__requirements <- function(requirements, name) {
     }
     requirements
 }
+# }}}
 
 # WeatherComponentSpec describes one executable implementation independently
 # of any complete future-weather recipe.
+# WeatherComponentSpec {{{
 WeatherComponentSpec <- S7::new_class(
     "WeatherComponentSpec",
     properties = list(
@@ -251,22 +286,29 @@ WeatherComponentSpec <- S7::new_class(
         operations = S7::new_property(S7::class_list),
         metadata = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
-        if (length(self@name) != 1L ||
-            is.na(self@name) ||
-            !grepl("^[a-z][a-z0-9_]*$", self@name)) {
+        if (
+            length(self@name) != 1L ||
+                is.na(self@name) ||
+                !grepl("^[a-z][a-z0-9_]*$", self@name)
+        ) {
             return(
                 "`name` must use lower snake_case and start with a letter."
             )
         }
-        if (length(self@stage) != 1L ||
-            is.na(self@stage) ||
-            !self@stage %in% WEATHER_COMPONENT_STAGES) {
+        if (
+            length(self@stage) != 1L ||
+                is.na(self@stage) ||
+                !self@stage %in% WEATHER_COMPONENT_STAGES
+        ) {
             return("`stage` must identify one future-weather component stage.")
         }
-        if (length(self@label) != 1L ||
-            is.na(self@label) ||
-            !nzchar(self@label)) {
+        if (
+            length(self@label) != 1L ||
+                is.na(self@label) ||
+                !nzchar(self@label)
+        ) {
             return("`label` must be one non-empty string.")
         }
         overlap <- intersect(
@@ -281,10 +323,12 @@ WeatherComponentSpec <- S7::new_class(
         }
         for (property in c("input_kinds", "output_kinds", "scopes")) {
             value <- S7::prop(self, property)
-            if (!length(value) ||
-                anyNA(value) ||
-                any(!nzchar(value)) ||
-                anyDuplicated(value)) {
+            if (
+                !length(value) ||
+                    anyNA(value) ||
+                    any(!nzchar(value)) ||
+                    anyDuplicated(value)
+            ) {
                 return(sprintf(
                     "`%s` must contain unique, non-missing, non-empty values.",
                     property
@@ -297,10 +341,12 @@ WeatherComponentSpec <- S7::new_class(
         if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
-        if (is.null(names(self@operations)) ||
-            any(!nzchar(names(self@operations))) ||
-            anyDuplicated(names(self@operations)) ||
-            !all(vapply(self@operations, is.function, logical(1L)))) {
+        if (
+            is.null(names(self@operations)) ||
+                any(!nzchar(names(self@operations))) ||
+                anyDuplicated(names(self@operations)) ||
+                !all(vapply(self@operations, is.function, logical(1L)))
+        ) {
             return("`operations` must be a uniquely named list of functions.")
         }
         allowed <- WEATHER_COMPONENT_ALLOWED_OPERATIONS[[self@stage]]
@@ -322,16 +368,25 @@ WeatherComponentSpec <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Construct a component specification after normalizing all inspectable
 # capabilities and executable operations.
+# component__spec {{{
 component__spec <- function(
-    name, stage, label = name,
-    required_inputs = list(), optional_inputs = list(),
-    input_kinds, output_kinds,
-    scopes = "univariate", stochastic = FALSE,
-    operations, metadata = list()
+    name,
+    stage,
+    label = name,
+    required_inputs = list(),
+    optional_inputs = list(),
+    input_kinds,
+    output_kinds,
+    scopes = "univariate",
+    stochastic = FALSE,
+    operations,
+    metadata = list()
 ) {
     checkmate::assert_string(name, pattern = "^[a-z][a-z0-9_]*$")
     checkmate::assert_choice(stage, WEATHER_COMPONENT_STAGES)
@@ -372,19 +427,24 @@ component__spec <- function(
         metadata = metadata
     )
 }
+# }}}
 
 # Resolve a stable registry key without relying on environment nesting or list
 # insertion order.
+# component__registry_key {{{
 component__registry_key <- function(stage, name) {
     checkmate::assert_choice(stage, WEATHER_COMPONENT_STAGES)
     checkmate::assert_string(name, pattern = "^[a-z][a-z0-9_]*$")
     paste(stage, name, sep = "::")
 }
+# }}}
 
 # Register one executable component while keeping serialized recipes free from
 # process-specific function objects.
+# component__register {{{
 component__register <- function(
-    component, overwrite = FALSE,
+    component,
+    overwrite = FALSE,
     registry = WEATHER_COMPONENT_REGISTRY
 ) {
     if (!S7::S7_inherits(component, WeatherComponentSpec)) {
@@ -395,8 +455,10 @@ component__register <- function(
     checkmate::assert_flag(overwrite)
     checkmate::assert_environment(registry)
     key <- component__registry_key(component@stage, component@name)
-    if (exists(key, envir = registry, inherits = FALSE) &&
-        !isTRUE(overwrite)) {
+    if (
+        exists(key, envir = registry, inherits = FALSE) &&
+            !isTRUE(overwrite)
+    ) {
         cli::cli_abort(
             "Weather component {.val {key}} is already registered."
         )
@@ -404,9 +466,11 @@ component__register <- function(
     assign(key, component, envir = registry)
     invisible(component)
 }
+# }}}
 
 # Register one package-provided component without replacing a process-local
 # extension that already owns the same stable registry key.
+# component__register_builtin {{{
 component__register_builtin <- function(
     component,
     registry = WEATHER_COMPONENT_REGISTRY
@@ -426,9 +490,11 @@ component__register_builtin <- function(
     }
     component__register(component, registry = registry)
 }
+# }}}
 
 # Apply the package-provided registration policy consistently to a collection
 # of component specifications owned by one backend or shared adapter.
+# component__register_builtins {{{
 component__register_builtins <- function(
     components,
     registry = WEATHER_COMPONENT_REGISTRY
@@ -445,10 +511,13 @@ component__register_builtins <- function(
     }
     invisible(NULL)
 }
+# }}}
 
 # Retrieve one registered component by its stage and stable name.
+# component__get {{{
 component__get <- function(
-    stage, name,
+    stage,
+    name,
     registry = WEATHER_COMPONENT_REGISTRY
 ) {
     checkmate::assert_environment(registry)
@@ -458,8 +527,10 @@ component__get <- function(
     }
     get(key, envir = registry, inherits = FALSE)
 }
+# }}}
 
 # Return inspectable registry metadata without exposing executable functions.
+# component__list {{{
 component__list <- function(
     stage = NULL,
     registry = WEATHER_COMPONENT_REGISTRY
@@ -511,12 +582,16 @@ component__list <- function(
     data.table::set(out, j = ".stage_order", value = NULL)
     out[]
 }
+# }}}
 
 # Report whether an upstream component can feed a later component according to
 # declared stage order and at least one shared intermediate data kind.
+# component__compatible {{{
 component__compatible <- function(upstream, downstream) {
-    if (!S7::S7_inherits(upstream, WeatherComponentSpec) ||
-        !S7::S7_inherits(downstream, WeatherComponentSpec)) {
+    if (
+        !S7::S7_inherits(upstream, WeatherComponentSpec) ||
+            !S7::S7_inherits(downstream, WeatherComponentSpec)
+    ) {
         cli::cli_abort(
             "`upstream` and `downstream` must be WeatherComponentSpec objects."
         )
@@ -527,11 +602,14 @@ component__compatible <- function(upstream, downstream) {
         length(intersect(
             upstream@output_kinds,
             downstream@input_kinds
-        )) > 0L
+        )) >
+            0L
 }
+# }}}
 
 # Fail early with the precise stage or data-kind incompatibility that prevents
 # two components from being composed.
+# component__assert_compatible {{{
 component__assert_compatible <- function(upstream, downstream) {
     if (component__compatible(upstream, downstream)) {
         return(invisible(TRUE))
@@ -549,12 +627,16 @@ component__assert_compatible <- function(upstream, downstream) {
         "x" = "Accepted kind(s): {.val {downstream@input_kinds}}."
     ))
 }
+# }}}
 
 # Check one concrete input against a role-specific component requirement.
+# component__requirement_errors {{{
 component__requirement_errors <- function(requirement, input) {
     errors <- character()
-    if (length(requirement@representations) &&
-        !input@representation %in% requirement@representations) {
+    if (
+        length(requirement@representations) &&
+            !input@representation %in% requirement@representations
+    ) {
         errors <- c(
             errors,
             sprintf(
@@ -595,8 +677,11 @@ component__requirement_errors <- function(requirement, input) {
         )) {
             required <- requirement@variable_frequencies[[variable]]
             available <- input@variable_frequencies[[variable]]
-            if (is.null(available) || !length(available) ||
-                !all(available %in% required)) {
+            if (
+                is.null(available) ||
+                    !length(available) ||
+                    !all(available %in% required)
+            ) {
                 shown <- if (length(available)) {
                     paste(available, collapse = ", ")
                 } else {
@@ -640,9 +725,11 @@ component__requirement_errors <- function(requirement, input) {
     }
     errors
 }
+# }}}
 
 # Traverse one pair of required and optional role contracts so component and
 # recipe validation cannot drift in how they interpret the same WeatherInput.
+# weather__input_requirement_errors {{{
 weather__input_requirement_errors <- function(
     required_inputs,
     optional_inputs,
@@ -681,9 +768,11 @@ weather__input_requirement_errors <- function(
     }
     unique(errors)
 }
+# }}}
 
 # Validate all required inputs and every supplied optional input before a
 # component starts fitting or transforming data.
+# component__input_errors {{{
 component__input_errors <- function(component, inputs) {
     if (!S7::S7_inherits(component, WeatherComponentSpec)) {
         cli::cli_abort(
@@ -696,9 +785,11 @@ component__input_errors <- function(component, inputs) {
         inputs
     )
 }
+# }}}
 
 # Abort with all input-contract failures together so discovery and workflow
 # planning can explain every missing requirement in one pass.
+# component__validate_inputs {{{
 component__validate_inputs <- function(component, inputs) {
     errors <- component__input_errors(component, inputs)
     if (length(errors)) {
@@ -709,8 +800,10 @@ component__validate_inputs <- function(component, inputs) {
     }
     invisible(TRUE)
 }
+# }}}
 
 # Resolve one executable operation from a registered component specification.
+# component__operation {{{
 component__operation <- function(component, operation) {
     if (!S7::S7_inherits(component, WeatherComponentSpec)) {
         cli::cli_abort(
@@ -725,9 +818,14 @@ component__operation <- function(component, operation) {
     }
     component@operations[[operation]]
 }
+# }}}
 
 # Execute one named component operation without embedding function objects in a
 # recipe or persisted task specification.
+# component__execute {{{
 component__execute <- function(component, operation, ...) {
     component__operation(component, operation)(...)
 }
+# }}}
+
+# vim: fdm=marker :

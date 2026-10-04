@@ -29,6 +29,7 @@ DIRECT_EPW_CONSTRUCTED_FIELDS <- c(
 
 # Validate one physically closed future year without depending on a complete
 # recipe or the final WeatherSequenceResult output wrapper.
+# direct_epw__member_error {{{
 direct_epw__member_error <- function(self) {
     error <- sequence__identifier_error(
         self@sequence_id,
@@ -41,13 +42,17 @@ direct_epw__member_error <- function(self) {
     if (!is.null(error)) {
         return(error)
     }
-    if (length(self@source_calendar) != 1L ||
-        is.na(self@source_calendar) ||
-        !self@source_calendar %in% CF_TIME_CALENDARS) {
+    if (
+        length(self@source_calendar) != 1L ||
+            is.na(self@source_calendar) ||
+            !self@source_calendar %in% CF_TIME_CALENDARS
+    ) {
         return("`source_calendar` must identify one supported CF calendar.")
     }
-    if (!is.data.frame(self@data) ||
-        nrow(self@data) != HOURMAP_TARGET_HOURS) {
+    if (
+        !is.data.frame(self@data) ||
+            nrow(self@data) != HOURMAP_TARGET_HOURS
+    ) {
         return("`data` must contain exactly 8760 EPW weather rows.")
     }
     missing <- setdiff(EPW_FILE_COLUMNS, names(self@data))
@@ -62,7 +67,9 @@ direct_epw__member_error <- function(self) {
         return("Every physically closed row must match `weather_year`.")
     }
     if (!is.data.frame(self@diagnostics) || nrow(self@diagnostics) != 1L) {
-        return("`diagnostics` must contain one row for the closed weather year.")
+        return(
+            "`diagnostics` must contain one row for the closed weather year."
+        )
     }
     error <- sequence__provenance_error(self@provenance)
     if (!is.null(error)) {
@@ -70,9 +77,11 @@ direct_epw__member_error <- function(self) {
     }
     NULL
 }
+# }}}
 
 # EpwHourlyWeatherMember carries one baseline-shaped future EPW year after all
 # dependent thermodynamic, wind, and shortwave fields have been closed.
+# EpwHourlyWeatherMember {{{
 EpwHourlyWeatherMember <- S7::new_class(
     "EpwHourlyWeatherMember",
     properties = list(
@@ -85,9 +94,11 @@ EpwHourlyWeatherMember <- S7::new_class(
     ),
     validator = direct_epw__member_error
 )
+# }}}
 
 # Validate the ordered collection of closed years before an output component
 # converts it into the package's public multi-year result contract.
+# direct_epw__sequence_error {{{
 direct_epw__sequence_error <- function(self) {
     error <- sequence__member_class_error(
         self@members,
@@ -100,10 +111,12 @@ direct_epw__sequence_error <- function(self) {
     if (!identical(self@target_calendar, "epw_365_day")) {
         return("`target_calendar` must be `epw_365_day`.")
     }
-    if (!length(self@constructed_fields) ||
-        anyNA(self@constructed_fields) ||
-        any(!self@constructed_fields %in% EPW_FILE_COLUMNS) ||
-        anyDuplicated(self@constructed_fields)) {
+    if (
+        !length(self@constructed_fields) ||
+            anyNA(self@constructed_fields) ||
+            any(!self@constructed_fields %in% EPW_FILE_COLUMNS) ||
+            anyDuplicated(self@constructed_fields)
+    ) {
         return(
             "`constructed_fields` must contain unique supported EPW fields."
         )
@@ -138,9 +151,11 @@ direct_epw__sequence_error <- function(self) {
     }
     NULL
 }
+# }}}
 
 # EpwHourlyWeatherSequence is the typed output of the physics stage and the
 # direct input expected by the later multi-year EPW result writer.
+# EpwHourlyWeatherSequence {{{
 EpwHourlyWeatherSequence <- S7::new_class(
     "EpwHourlyWeatherSequence",
     properties = list(
@@ -151,14 +166,19 @@ EpwHourlyWeatherSequence <- S7::new_class(
     ),
     validator = direct_epw__sequence_error
 )
+# }}}
 
 # Collect one mapped member into unique variable tables while retaining the
 # row-level mapping metadata for provenance and validation.
+# direct_epw__variables {{{
 direct_epw__variables <- function(member) {
-    variables <- unlist(lapply(
-        member@series,
-        function(series) series@variables
-    ), use.names = FALSE)
+    variables <- unlist(
+        lapply(
+            member@series,
+            function(series) series@variables
+        ),
+        use.names = FALSE
+    )
     if (anyDuplicated(variables)) {
         cli::cli_abort(
             "Weather year {member@weather_year} contains duplicate mapped variable groups: {.val {unique(variables[duplicated(variables)])}}."
@@ -179,9 +199,11 @@ direct_epw__variables <- function(member) {
     names(tables) <- variables
     tables
 }
+# }}}
 
 # Resolve the mutually exclusive humidity and wind input paths before any
 # values are converted so ambiguity cannot be hidden by downstream clipping.
+# direct_epw__variable_contract {{{
 direct_epw__variable_contract <- function(variables, weather_year) {
     present <- names(variables)
     unsupported <- setdiff(present, DIRECT_EPW_SUPPORTED_VARIABLES)
@@ -222,13 +244,17 @@ direct_epw__variable_contract <- function(variables, weather_year) {
         has_rlds = "rlds" %in% present
     )
 }
+# }}}
 
 # Convert one mapped variable using a narrow unit schema chosen for the EPW
 # fields constructed by this component.
+# direct_epw__values {{{
 direct_epw__values <- function(variables, variable) {
     rows <- variables[[variable]]
     if (is.null(rows)) {
-        cli::cli_abort("Mapped EPW climate variable {.val {variable}} is missing.")
+        cli::cli_abort(
+            "Mapped EPW climate variable {.val {variable}} is missing."
+        )
     }
     raw_units <- unique(as.character(rows[["units"]]))
     units <- unique(vapply(
@@ -285,9 +311,11 @@ direct_epw__values <- function(variables, variable) {
     }
     converted$value
 }
+# }}}
 
 # Compute solar geometry on a fixed non-leap surrogate year so a future leap
 # year cannot shift March-through-December EPW rows by one astronomical day.
+# direct_epw__solar_geometry {{{
 direct_epw__solar_geometry <- function(template, epw) {
     latitude <- morpher__epw_location_numeric(
         epw,
@@ -315,11 +343,13 @@ direct_epw__solar_geometry <- function(template, epw) {
         timezone
     )
 }
+# }}}
 
 # Construct one future EPW weather year and retain every field outside the
 # declared climate families exactly as stored in the baseline template. The
 # adapter supplies source-specific candidates; the shared physical layer owns
 # every derivation, bound, and closure operation.
+# direct_epw__member {{{
 direct_epw__member <- function(member, epw, template, geometry) {
     variables <- direct_epw__variables(member)
     contract <- direct_epw__variable_contract(
@@ -339,8 +369,7 @@ direct_epw__member <- function(member, epw, template, geometry) {
     humidity <- if (identical(contract$humidity, "hurs")) {
         list(relative_humidity = direct_epw__values(variables, "hurs"))
     } else {
-        list(target_specific_humidity =
-            direct_epw__values(variables, "huss"))
+        list(target_specific_humidity = direct_epw__values(variables, "huss"))
     }
     wind <- if (identical(contract$wind, "sfcWind")) {
         speed <- direct_epw__values(variables, "sfcWind")
@@ -360,8 +389,10 @@ direct_epw__member <- function(member, epw, template, geometry) {
         )
     }
     constructed_fields <- DIRECT_EPW_CONSTRUCTED_FIELDS
-    if (identical(contract$wind, "uas_vas") ||
-        "direction" %in% names(wind)) {
+    if (
+        identical(contract$wind, "uas_vas") ||
+            "direction" %in% names(wind)
+    ) {
         constructed_fields <- c(constructed_fields, "wind_direction")
     }
     if (contract$has_rlds) {
@@ -380,8 +411,7 @@ direct_epw__member <- function(member, epw, template, geometry) {
             wind = wind,
             shortwave = list(
                 global_horizontal = direct_epw__values(variables, "rsds"),
-                diffuse_horizontal =
-                    direct_epw__values(variables, "rsdsdiff")
+                diffuse_horizontal = direct_epw__values(variables, "rsdsdiff")
             ),
             geometry = geometry,
             provenance = list(
@@ -419,24 +449,16 @@ direct_epw__member <- function(member, epw, template, geometry) {
         wind_direction_policy = wind_state$direction_policy,
         temperature_clipped = corrections$temperature_clipped,
         pressure_clipped = corrections$pressure_clipped,
-        humidity_saturation_clipped =
-            corrections$humidity_saturation_clipped,
-        specific_humidity_clipped =
-            corrections$specific_humidity_clipped,
+        humidity_saturation_clipped = corrections$humidity_saturation_clipped,
+        specific_humidity_clipped = corrections$specific_humidity_clipped,
         dew_point_clipped = corrections$dew_point_clipped,
         wind_speed_clipped = corrections$wind_speed_clipped,
-        radiation_night_values_zeroed =
-            corrections$radiation_night_values_zeroed,
-        radiation_negative_global_clipped =
-            corrections$radiation_negative_global_clipped,
-        radiation_negative_diffuse_clipped =
-            corrections$radiation_negative_diffuse_clipped,
-        radiation_diffuse_above_global_clipped =
-            corrections$radiation_diffuse_above_global_clipped,
-        radiation_excess_beam_reallocated =
-            corrections$radiation_excess_beam_reallocated,
-        radiation_maximum_closure_error =
-            corrections$radiation_maximum_closure_error,
+        radiation_night_values_zeroed = corrections$radiation_night_values_zeroed,
+        radiation_negative_global_clipped = corrections$radiation_negative_global_clipped,
+        radiation_negative_diffuse_clipped = corrections$radiation_negative_diffuse_clipped,
+        radiation_diffuse_above_global_clipped = corrections$radiation_diffuse_above_global_clipped,
+        radiation_excess_beam_reallocated = corrections$radiation_excess_beam_reallocated,
+        radiation_maximum_closure_error = corrections$radiation_maximum_closure_error,
         infrared_negative_clipped = corrections$infrared_negative_clipped,
         stringsAsFactors = FALSE
     )
@@ -464,9 +486,11 @@ direct_epw__member <- function(member, epw, template, geometry) {
         )
     )
 }
+# }}}
 
 # Close every mapped climate member against one shared EPW template while
 # allowing unrelated recipe options to remain owned by their declared stages.
+# direct_epw__apply {{{
 direct_epw__apply <- function(data, inputs, context, options) {
     if (!S7::S7_inherits(data, MappedHourlyClimateSequence)) {
         cli::cli_abort(
@@ -475,9 +499,11 @@ direct_epw__apply <- function(data, inputs, context, options) {
     }
     checkmate::assert_list(options, names = "unique")
     template_input <- weather__get_input(inputs, "weather_template")
-    if (!S7::S7_inherits(template_input, WeatherInput) ||
-        !identical(template_input@representation, "epw") ||
-        !inherits(template_input@source, "EpwFile")) {
+    if (
+        !S7::S7_inherits(template_input, WeatherInput) ||
+            !identical(template_input@representation, "epw") ||
+            !inherits(template_input@source, "EpwFile")
+    ) {
         cli::cli_abort(
             "Role `weather_template` must contain an EPW WeatherInput."
         )
@@ -498,10 +524,13 @@ direct_epw__apply <- function(data, inputs, context, options) {
     EpwHourlyWeatherSequence(
         members = members,
         target_calendar = "epw_365_day",
-        constructed_fields = unique(unlist(lapply(
-            members,
-            function(member) member@provenance$constructed_fields
-        ), use.names = FALSE)),
+        constructed_fields = unique(unlist(
+            lapply(
+                members,
+                function(member) member@provenance$constructed_fields
+            ),
+            use.names = FALSE
+        )),
         provenance = list(
             method = "epw_hourly_physical_closure",
             physical_policy = "absolute_model_fields",
@@ -514,9 +543,11 @@ direct_epw__apply <- function(data, inputs, context, options) {
         )
     )
 }
+# }}}
 
 # Describe the shared physical closure independently of the signal method or
 # complete future-weather recipe that supplies the mapped climate sequence.
+# direct_epw__component {{{
 direct_epw__component <- function() {
     component__spec(
         name = "epw_hourly_physical_closure",
@@ -552,10 +583,15 @@ direct_epw__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the method-neutral physical boundary once so later output and recipe
 # components can resolve it through the shared component registry.
+# direct_epw__register_component {{{
 direct_epw__register_component <- function() {
     component__register_builtin(direct_epw__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker :

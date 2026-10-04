@@ -1,31 +1,64 @@
 #' @include backend-registry.R weather-recipe.R
 NULL
 
-# EPW morphing recipe contracts {{{
-
+# EPW morphing recipe contracts
 EPW_MORPH_VARIABLE_LEVELS <- list(
     minimal = c("tas", "hurs"),
-    recommended = c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr"),
-    extended = c("tas", "tasmax", "tasmin", "hurs", "hursmax", "hursmin", "psl", "rlds", "rsds", "sfcWind", "clt", "pr", "snd")
+    recommended = c(
+        "tas",
+        "hurs",
+        "psl",
+        "rlds",
+        "rsds",
+        "sfcWind",
+        "clt",
+        "pr"
+    ),
+    extended = c(
+        "tas",
+        "tasmax",
+        "tasmin",
+        "hurs",
+        "hursmax",
+        "hursmin",
+        "psl",
+        "rlds",
+        "rsds",
+        "sfcWind",
+        "clt",
+        "pr",
+        "snd"
+    )
 )
 
 # Resolve canonical and optional source variables for internal recipe and
 # backend execution contracts.
 #' @noRd
-epw_morph_variables <- function(level = c("recommended", "minimal", "extended"),
-                                include_optional = FALSE) {
+# epw_morph_variables {{{
+epw_morph_variables <- function(
+    level = c("recommended", "minimal", "extended"),
+    include_optional = FALSE
+) {
     checkmate::assert_flag(include_optional)
     if (inherits(level, "epw_morph_recipe")) {
         rules <- morpher__recipe_rules(level)
-        required <- morpher__rules_required_variables(rules[required == TRUE & !derived])
+        required <- morpher__rules_required_variables(rules[
+            required == TRUE & !derived
+        ])
         if (!isTRUE(include_optional)) {
             return(required)
         }
-        optional <- unique(unlist(c(
-            rules[required == TRUE & !derived, optional_variables],
-            rules[required == FALSE & !derived, required_variables]
-        ), use.names = FALSE))
-        if (identical(level$backend, "original_morphing") || identical(level$backend, "original_morphing_absolute")) {
+        optional <- unique(unlist(
+            c(
+                rules[required == TRUE & !derived, optional_variables],
+                rules[required == FALSE & !derived, required_variables]
+            ),
+            use.names = FALSE
+        ))
+        if (
+            identical(level$backend, "original_morphing") ||
+                identical(level$backend, "original_morphing_absolute")
+        ) {
             if (identical(level$options$snow_depth, "off")) {
                 optional <- setdiff(optional, "snd")
             }
@@ -41,42 +74,60 @@ epw_morph_variables <- function(level = c("recommended", "minimal", "extended"),
             return(required)
         }
         rules <- level$rules()
-        optional <- unique(unlist(c(
-            rules[required == TRUE & !derived, optional_variables],
-            rules[required == FALSE & !derived, required_variables]
-        ), use.names = FALSE))
+        optional <- unique(unlist(
+            c(
+                rules[required == TRUE & !derived, optional_variables],
+                rules[required == FALSE & !derived, required_variables]
+            ),
+            use.names = FALSE
+        ))
         return(unique(c(required, optional)))
     }
-    if (is.character(level) && length(level) == 1L && !level %in% names(EPW_MORPH_VARIABLE_LEVELS)) {
+    if (
+        is.character(level) &&
+            length(level) == 1L &&
+            !level %in% names(EPW_MORPH_VARIABLE_LEVELS)
+    ) {
         if (tolower(level) %in% epw_morph_recipes()[["name"]]) {
             return(epw_morph_variables(
                 epw_morph_recipe(level),
                 include_optional = include_optional
             ))
         }
-        return(epw_morph_variables(epw_morph_backend(level), include_optional = include_optional))
+        return(epw_morph_variables(
+            epw_morph_backend(level),
+            include_optional = include_optional
+        ))
     }
     level <- match.arg(level)
     variables <- EPW_MORPH_VARIABLE_LEVELS[[level]]
     if (isTRUE(include_optional) && !identical(level, "extended")) {
-        variables <- unique(c(variables, setdiff(EPW_MORPH_VARIABLE_LEVELS$extended, variables)))
+        variables <- unique(c(
+            variables,
+            setdiff(EPW_MORPH_VARIABLE_LEVELS$extended, variables)
+        ))
     }
     variables
 }
+# }}}
 
 # Describe canonical morph variables separately from the source-variable
 # alternatives that can produce them. Keeping this at the recipe boundary lets
 # the resolver and extraction workflow share one capability contract without
 # teaching the morphing engine about ESGF catalog details.
+# morpher__variable_requirements {{{
 morpher__variable_requirements <- function(recipe) {
     canonical <- epw_morph_variables(recipe)
     requirements <- stats::setNames(
         lapply(canonical, function(variable) list(variable)),
         canonical
     )
-    if (inherits(recipe, "epw_morph_recipe") &&
-        recipe$backend %in% c("original_morphing", "original_morphing_absolute") &&
-        "hurs" %in% canonical) {
+    if (
+        inherits(recipe, "epw_morph_recipe") &&
+            recipe$backend %in%
+                c("original_morphing", "original_morphing_absolute") &&
+            "hurs" %in% canonical
+    ) {
         source <- recipe$options$humidity_source
         rh_method <- recipe$methods[["rh"]]
         # A non-shift RH override requires the original HURS path. Otherwise,
@@ -95,13 +146,18 @@ morpher__variable_requirements <- function(recipe) {
             list(c("huss", "tas", "ps"), "hurs")
         }
     }
-    if (inherits(recipe, "epw_morph_recipe") &&
-        recipe$backend %in% c("original_morphing", "original_morphing_absolute") &&
-        identical(recipe$options$snow_depth, "required")) {
+    if (
+        inherits(recipe, "epw_morph_recipe") &&
+            recipe$backend %in%
+                c("original_morphing", "original_morphing_absolute") &&
+            identical(recipe$options$snow_depth, "required")
+    ) {
         requirements[["snd"]] <- list("snd")
     }
-    if (inherits(recipe, "epw_morph_recipe") &&
-        identical(recipe$backend, "hourly_kernel_qdm")) {
+    if (
+        inherits(recipe, "epw_morph_recipe") &&
+            identical(recipe$backend, "hourly_kernel_qdm")
+    ) {
         # The statistical method exposes canonical HURS and scalar wind, while
         # the model adapter reconstructs them from the published raw inputs.
         requirements[["hurs"]] <- list(c("huss", "tas", "ps"))
@@ -109,22 +165,33 @@ morpher__variable_requirements <- function(recipe) {
     }
     requirements
 }
+# }}}
 
 # Expand recipe capabilities to the exact ESGF variables worth querying and
 # extracting. This is deliberately internal: users still reason about the
 # canonical variables returned by epw_morph_variables().
+# morpher__input_variables {{{
 morpher__input_variables <- function(recipe) {
     requirements <- morpher__variable_requirements(recipe)
-    required_inputs <- unique(unlist(requirements, recursive = TRUE, use.names = FALSE))
-    if (inherits(recipe, "epw_morph_recipe") &&
-        identical(recipe$backend, "hourly_kernel_qdm")) {
+    required_inputs <- unique(unlist(
+        requirements,
+        recursive = TRUE,
+        use.names = FALSE
+    ))
+    if (
+        inherits(recipe, "epw_morph_recipe") &&
+            identical(recipe$backend, "hourly_kernel_qdm")
+    ) {
         # Daily extrema are optional interpolation anchors and therefore do
         # not belong to the backend's required-variable alternatives.
         return(unique(c(required_inputs, HOURLY_WEATHER_EXTREMA_VARIABLES)))
     }
     optional <- epw_morph_variables(recipe, include_optional = TRUE)
-    if (inherits(recipe, "epw_morph_recipe") &&
-        recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
+    if (
+        inherits(recipe, "epw_morph_recipe") &&
+            recipe$backend %in%
+                c("original_morphing", "original_morphing_absolute")
+    ) {
         if (!recipe$methods[["tdb"]] %in% c("auto", "combined")) {
             optional <- setdiff(optional, c("tasmax", "tasmin"))
         }
@@ -140,10 +207,12 @@ morpher__input_variables <- function(recipe) {
     }
     unique(c(required_inputs, optional))
 }
+# }}}
 
 # Test whether one set of available variables satisfies a canonical morphing
 # requirement, preserving the declared alternative order for direct-data
 # preference and deterministic diagnostics.
+# morpher__requirement_match {{{
 morpher__requirement_match <- function(available, alternatives) {
     available <- unique(as.character(available))
     for (alternative in alternatives) {
@@ -154,12 +223,21 @@ morpher__requirement_match <- function(available, alternatives) {
     }
     character()
 }
+# }}}
 
 # Construct the internal executable recipe selected by a public transform.
 #' @noRd
-epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods = NULL,
-                             profile = NULL, options = NULL, policy = NULL,
-                             version = NULL, spec = NULL) {
+# epw_morph_recipe {{{
+epw_morph_recipe <- function(
+    name = "original_morphing",
+    backend = NULL,
+    methods = NULL,
+    profile = NULL,
+    options = NULL,
+    policy = NULL,
+    version = NULL,
+    spec = NULL
+) {
     checkmate::assert_string(name, min.chars = 1L)
     checkmate::assert_string(backend, min.chars = 1L, null.ok = TRUE)
     checkmate::assert_string(policy, min.chars = 1L, null.ok = TRUE)
@@ -212,8 +290,10 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
                 "Registered recipe {.val {name}} uses backend {.val {resolved$spec@backend}}, not {.val {tolower(backend)}}."
             )
         }
-        if (!is.null(profile) &&
-            !identical(tolower(profile), resolved$profile)) {
+        if (
+            !is.null(profile) &&
+                !identical(tolower(profile), resolved$profile)
+        ) {
             cli::cli_abort(
                 "Recipe policy {.val {policy}} requires backend profile {.val {resolved$profile}}."
             )
@@ -224,14 +304,19 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
     backend <- tolower(backend)
     backend_spec <- epw_morph_backend(backend)
 
-    is_belcher <- backend %in% c("original_morphing", "original_morphing_absolute")
-    is_daily_temperature <- backend %in% c(
-        "daily_temperature",
-        "daily_temperature_btws"
-    )
+    is_belcher <- backend %in%
+        c("original_morphing", "original_morphing_absolute")
+    is_daily_temperature <- backend %in%
+        c(
+            "daily_temperature",
+            "daily_temperature_btws"
+        )
     is_bws_btws <- identical(backend, "bws_btws_monthly")
     is_ek_temperature <- identical(backend, "ek_daily_temperature")
-    is_quantile_mapping_morphing <- identical(backend, "quantile_mapping_morphing")
+    is_quantile_mapping_morphing <- identical(
+        backend,
+        "quantile_mapping_morphing"
+    )
     is_sobie_curry <- identical(backend, "sobie_curry_daily")
     is_hourly_kernel_qdm <- identical(backend, "hourly_kernel_qdm")
     is_daily_adjustment <- backend %in% unname(DAILY_ADJUSTMENT_BACKENDS)
@@ -241,10 +326,20 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
         }
         checkmate::assert_choice(profile, EPW_MORPH_ORIGINAL_PROFILES)
         profile <- tolower(profile)
-        base_methods <- original_morphing__profile_methods(backend_spec, profile)
+        base_methods <- original_morphing__profile_methods(
+            backend_spec,
+            profile
+        )
         if (!is.null(methods)) {
-            checkmate::assert_character(methods, any.missing = FALSE, names = "named")
-            methods <- unlist(utils::modifyList(as.list(base_methods), as.list(methods)), use.names = TRUE)
+            checkmate::assert_character(
+                methods,
+                any.missing = FALSE,
+                names = "named"
+            )
+            methods <- unlist(
+                utils::modifyList(as.list(base_methods), as.list(methods)),
+                use.names = TRUE
+            )
         } else {
             methods <- base_methods
         }
@@ -307,7 +402,9 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
         options <- daily_adjustment__options(options)
     } else {
         if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort("Custom EPW morphing backends only support {.val default} profile metadata.")
+            cli::cli_abort(
+                "Custom EPW morphing backends only support {.val default} profile metadata."
+            )
         }
         profile <- "default"
         if (is.null(options)) {
@@ -325,10 +422,13 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
         # inputs to the executable recipe contract when combined morphing is
         # selected, so discovery and coverage checks cannot silently fall
         # back to a mean-only shift.
-        rules[step == "tdb", `:=`(
-            required_variables = list(c("tas", "tasmax", "tasmin")),
-            optional_variables = list(character())
-        )]
+        rules[
+            step == "tdb",
+            `:=`(
+                required_variables = list(c("tas", "tasmax", "tasmin")),
+                optional_variables = list(character())
+            )
+        ]
     }
     pipeline <- backend_spec$component_pipeline()
     if (is_belcher && identical(options$snow_depth, "required")) {
@@ -362,6 +462,7 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
         class = "epw_morph_recipe"
     )
 }
+# }}}
 
 #' EPW morphing periods
 #'
@@ -369,6 +470,7 @@ epw_morph_recipe <- function(name = "original_morphing", backend = NULL, methods
 #'
 #' @return A data.table with columns `period` and `year`.
 #' @export
+# epw_morph_periods {{{
 epw_morph_periods <- function(...) {
     periods <- list(...)
     if (!length(periods)) {
@@ -381,21 +483,34 @@ epw_morph_periods <- function(...) {
 
     rows <- lapply(seq_along(periods), function(i) {
         years <- periods[[i]]
-        checkmate::assert_integerish(years, lower = 1900, any.missing = FALSE, min.len = 1L, unique = TRUE)
-        data.table::data.table(period = nms[[i]], year = as.integer(sort(years)))
+        checkmate::assert_integerish(
+            years,
+            lower = 1900,
+            any.missing = FALSE,
+            min.len = 1L,
+            unique = TRUE
+        )
+        data.table::data.table(
+            period = nms[[i]],
+            year = as.integer(sort(years))
+        )
     })
     data.table::rbindlist(rows)
 }
+# }}}
 
+# morpher__recipe_rules {{{
 morpher__recipe_rules <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
     }
     data.table::as.data.table(recipe$rules)
 }
+# }}}
 
 # Return the source-timestep padding required around extraction windows when a
 # preprocessing component reconstructs bounded sub-daily values to hourly data.
+# morpher__recipe_time_padding_seconds {{{
 morpher__recipe_time_padding_seconds <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -406,25 +521,35 @@ morpher__recipe_time_padding_seconds <- function(recipe) {
         unique(unname(frequency)),
         names(TEMPORAL_SOURCE_STEPS)
     )
-    if (!preprocess %in% c(
-        "hourly_weather_interpolation",
-        "hourly_kernel_qdm_input_preparation"
-    ) ||
-        !length(source_frequencies)) {
+    if (
+        !preprocess %in%
+            c(
+                "hourly_weather_interpolation",
+                "hourly_kernel_qdm_input_preparation"
+            ) ||
+            !length(source_frequencies)
+    ) {
         return(0)
     }
     max(as.numeric(TEMPORAL_SOURCE_STEPS[source_frequencies]))
 }
+# }}}
 
-morpher__recipe_methods <- function(methods = NULL, backend = epw_morph_backend("original_morphing")) {
+# morpher__recipe_methods {{{
+morpher__recipe_methods <- function(
+    methods = NULL,
+    backend = epw_morph_backend("original_morphing")
+) {
     if (!inherits(backend, "EpwMorphBackend")) {
         cli::cli_abort("`backend` must be an {.cls EpwMorphBackend} object.")
     }
     backend$validate_methods(methods)
 }
+# }}}
 
 # Resolve the stable complete-recipe definition recorded with a configured
 # recipe. Ad hoc backend recipes deliberately return NULL.
+# morpher__recipe_spec {{{
 morpher__recipe_spec <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -437,10 +562,12 @@ morpher__recipe_spec <- function(recipe) {
         version = recipe$recipe_version
     )
 }
+# }}}
 
 # Report whether one semantic input role is required by a registered recipe.
 # Ad hoc backends predate role-addressable contracts and can require only the
 # historical model reference represented by their backend flag.
+# morpher__recipe_requires_role {{{
 morpher__recipe_requires_role <- function(recipe, role) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -453,9 +580,11 @@ morpher__recipe_requires_role <- function(recipe, role) {
     identical(role, "model_historical") &&
         isTRUE(epw_morph_backend(recipe$backend)$requires_reference)
 }
+# }}}
 
 # Report whether one semantic input role is accepted by a registered recipe.
 # Required roles are necessarily accepted; optional roles remain explicit.
+# morpher__recipe_accepts_role {{{
 morpher__recipe_accepts_role <- function(recipe, role) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -463,39 +592,52 @@ morpher__recipe_accepts_role <- function(recipe, role) {
     checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
     spec <- morpher__recipe_spec(recipe)
     if (!is.null(spec)) {
-        return(role %in% c(
-            names(spec@required_inputs),
-            names(spec@optional_inputs)
-        ))
+        return(
+            role %in%
+                c(
+                    names(spec@required_inputs),
+                    names(spec@optional_inputs)
+                )
+        )
     }
     identical(role, "model_historical") &&
         isTRUE(epw_morph_backend(recipe$backend)$accepts_reference)
 }
+# }}}
 
+# morpher__recipe_requires_reference {{{
 morpher__recipe_requires_reference <- function(recipe) {
     morpher__recipe_requires_role(recipe, "model_historical")
 }
+# }}}
 
 # Report whether a recipe can consume external climate reference data while
 # still distinguishing optional-reference backends from required ones.
+# morpher__recipe_accepts_reference {{{
 morpher__recipe_accepts_reference <- function(recipe) {
     morpher__recipe_accepts_role(recipe, "model_historical")
 }
+# }}}
 
 # Keep observations separate from historical model output throughout workflow
 # validation so methods needing all four input roles cannot accept one in place
 # of the other.
+# morpher__recipe_requires_observed_reference {{{
 morpher__recipe_requires_observed_reference <- function(recipe) {
     morpher__recipe_requires_role(recipe, "observed_reference")
 }
+# }}}
 
 # Report whether a recipe can consume a multi-year observed daily reference.
+# morpher__recipe_accepts_observed_reference {{{
 morpher__recipe_accepts_observed_reference <- function(recipe) {
     morpher__recipe_accepts_role(recipe, "observed_reference")
 }
+# }}}
 
 # Return the component-declared scalar or variable-specific CMIP frequency
 # contract without duplicating it on the backend or staged workflow.
+# morpher__recipe_required_frequency {{{
 morpher__recipe_required_frequency <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -525,11 +667,17 @@ morpher__recipe_required_frequency <- function(recipe) {
     }
     choices
 }
+# }}}
 
 # Build a structural diagnostic when extracted or summarized climate data do
 # not match a backend's scalar or variable-specific CMIP frequency contract.
+# morpher__frequency_diagnostic {{{
 morpher__frequency_diagnostic <- function(
-    recipe, frequency, variable_id = NULL, stage, plan_id = NA_character_,
+    recipe,
+    frequency,
+    variable_id = NULL,
+    stage,
+    plan_id = NA_character_,
     summary_id = NA_character_
 ) {
     required <- morpher__recipe_required_frequency(recipe)
@@ -542,8 +690,10 @@ morpher__frequency_diagnostic <- function(
         if (length(variable_id) != length(frequency)) {
             actual <- list()
         } else {
-            keep <- !is.na(variable_id) & nzchar(variable_id) &
-                !is.na(frequency) & nzchar(frequency)
+            keep <- !is.na(variable_id) &
+                nzchar(variable_id) &
+                !is.na(frequency) &
+                nzchar(frequency)
             actual <- split(frequency[keep], variable_id[keep])
             actual <- lapply(actual, unique)
         }
@@ -551,9 +701,13 @@ morpher__frequency_diagnostic <- function(
         # Additional materialized variables are validated by their owning
         # components; this diagnostic checks only the recipe-declared mapping.
         matches <- length(checked) > 0L &&
-            all(vapply(checked, function(variable) {
-                identical(actual[[variable]], unname(required[[variable]]))
-            }, logical(1L)))
+            all(vapply(
+                checked,
+                function(variable) {
+                    identical(actual[[variable]], unname(required[[variable]]))
+                },
+                logical(1L)
+            ))
     } else {
         actual <- unique(tolower(frequency))
         actual <- actual[!is.na(actual) & nzchar(actual)]
@@ -590,7 +744,9 @@ morpher__frequency_diagnostic <- function(
         )
     )
 }
+# }}}
 
+# morpher__recipe_method_overrides {{{
 morpher__recipe_method_overrides <- function(recipe) {
     if (!inherits(recipe, "epw_morph_recipe")) {
         cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
@@ -600,12 +756,20 @@ morpher__recipe_method_overrides <- function(recipe) {
     if (is.null(methods)) {
         return(NULL)
     }
-    defaults <- if (recipe$backend %in% c("original_morphing", "original_morphing_absolute")) {
+    defaults <- if (
+        recipe$backend %in% c("original_morphing", "original_morphing_absolute")
+    ) {
         original_morphing__profile_methods(backend, recipe$profile)
     } else {
         backend$methods()
     }
-    overrides <- methods[names(methods) %in% names(defaults) & methods != defaults[names(methods)]]
+    overrides <- methods[
+        names(methods) %in%
+            names(defaults) &
+            methods != defaults[names(methods)]
+    ]
     if (!length(overrides)) NULL else overrides
 }
 # }}}
+
+# vim: fdm=marker :

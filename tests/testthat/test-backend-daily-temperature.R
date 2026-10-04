@@ -1,15 +1,21 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 # Build deterministic daily CMIP temperature rows with complete canonical
 # context columns for backend and workflow tests.
+# daily_backend_test__climate {{{
 daily_backend_test__climate <- function(
-    years, period, experiment, mean_shift = 0,
-    minimum_shift = 0, maximum_shift = 0,
-    include_extrema = TRUE, frequency = "day"
+    years,
+    period,
+    experiment,
+    mean_shift = 0,
+    minimum_shift = 0,
+    maximum_shift = 0,
+    include_extrema = TRUE,
+    frequency = "day"
 ) {
     years <- as.integer(years)
     phase <- daily__phase_grid(365L)
@@ -17,7 +23,8 @@ daily_backend_test__climate <- function(
         time <- as.POSIXct(
             as.Date(sprintf("%04d-01-01", year)) + seq.int(0L, 364L),
             tz = "UTC"
-        ) + 12 * 3600
+        ) +
+            12 * 3600
         seasonal <- 7 * sin(2 * pi * phase)
         values <- list(tas = 20 + seasonal + mean_shift)
         if (isTRUE(include_extrema)) {
@@ -51,12 +58,17 @@ daily_backend_test__climate <- function(
     })
     data.table::rbindlist(rows)
 }
+# }}}
 
 # Build one direct backend context from the packaged EPW fixture and matching
 # future/historical daily climate rows.
+# daily_backend_test__context {{{
 daily_backend_test__context <- function(
-    include_extrema = TRUE, frequency = "day", mean_shift = 2,
-    minimum_shift = 1, maximum_shift = 3
+    include_extrema = TRUE,
+    frequency = "day",
+    mean_shift = 2,
+    minimum_shift = 1,
+    maximum_shift = 3
 ) {
     historical <- daily_backend_test__climate(
         2001:2002,
@@ -82,6 +94,7 @@ daily_backend_test__context <- function(
         recipe = epw_morph_recipe("daily_temperature")
     )
 }
+# }}}
 
 test_that("shared temperature conversion handles mixed supported units", {
     expect_equal(
@@ -189,14 +202,17 @@ test_that("daily temperature backend closes full-year mean and extrema targets",
     expect_lt(max(abs(result$factors$minimum_closure_error)), 1e-8)
     expect_lt(max(abs(result$factors$maximum_closure_error)), 1e-8)
 
-    achieved <- weather[, .(
-        baseline_mean = mean(baseline_data$dry_bulb_temperature[.I]),
-        baseline_minimum = min(baseline_data$dry_bulb_temperature[.I]),
-        baseline_maximum = max(baseline_data$dry_bulb_temperature[.I]),
-        projected_mean = mean(dry_bulb_temperature),
-        projected_minimum = min(dry_bulb_temperature),
-        projected_maximum = max(dry_bulb_temperature)
-    ), by = "daily_target_day"]
+    achieved <- weather[,
+        .(
+            baseline_mean = mean(baseline_data$dry_bulb_temperature[.I]),
+            baseline_minimum = min(baseline_data$dry_bulb_temperature[.I]),
+            baseline_maximum = max(baseline_data$dry_bulb_temperature[.I]),
+            projected_mean = mean(dry_bulb_temperature),
+            projected_minimum = min(dry_bulb_temperature),
+            projected_maximum = max(dry_bulb_temperature)
+        ),
+        by = "daily_target_day"
+    ]
     expect_equal(
         achieved$projected_mean - achieved$baseline_mean,
         rep(2, 365L),
@@ -213,10 +229,13 @@ test_that("daily temperature backend closes full-year mean and extrema targets",
         tolerance = 1e-8
     )
 
-    expect_true(all(weather$relative_humidity >= 0 &
-        weather$relative_humidity <= 100))
-    expect_true(all(weather$dew_point_temperature <=
-        weather$dry_bulb_temperature))
+    expect_true(all(
+        weather$relative_humidity >= 0 &
+            weather$relative_humidity <= 100
+    ))
+    expect_true(all(
+        weather$dew_point_temperature <= weather$dry_bulb_temperature
+    ))
     expect_equal(
         weather$daily_temperature_specific_humidity,
         weather$daily_temperature_baseline_specific_humidity,
@@ -224,11 +243,14 @@ test_that("daily temperature backend closes full-year mean and extrema targets",
     )
     expect_true(all(weather$daily_temperature_moisture_status == "inherited"))
     expect_identical(weather$wind_speed, baseline_data$wind_speed)
-    expect_true(all(c(
-        "daily_temperature_mean_delta",
-        "daily_temperature_projection_status",
-        "daily_temperature_boundary_jump_change"
-    ) %in% names(weather)))
+    expect_true(all(
+        c(
+            "daily_temperature_mean_delta",
+            "daily_temperature_projection_status",
+            "daily_temperature_boundary_jump_change"
+        ) %in%
+            names(weather)
+    ))
 })
 
 test_that("registered daily recipe preserves the established backend output", {
@@ -296,12 +318,10 @@ test_that("daily temperature backend records missing-extrema fallback and freque
         tolerance = 1e-10
     )
     expect_true(all(
-        result$data$daily_temperature_dtr_status ==
-            "inherited_missing_extremes"
+        result$data$daily_temperature_dtr_status == "inherited_missing_extremes"
     ))
     expect_true(all(
-        result$data$daily_temperature_projection_status ==
-            "shift_inherited_dtr"
+        result$data$daily_temperature_projection_status == "shift_inherited_dtr"
     ))
     expect_true(
         "daily_temperature_dtr_inherited" %in% result$diagnostics$code
@@ -336,7 +356,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         store = tempfile("daily-temperature-store-"),
         dry_run = TRUE
     )@meta$children[[1L]]
-    rebuilt <- shift__plan_from_spec(shift__plan_spec(plan))
+    rebuilt <- shift_persist__plan_from_spec(shift_persist__plan_spec(plan))
 
     expect_true(S7::S7_inherits(plan, ShiftPlan))
     expect_identical(plan@meta$recipe$backend, "daily_temperature")
@@ -360,7 +380,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         rebuilt@meta$recipe$components,
         plan@meta$recipe$components
     )
-    expect_silent(shift__validate_background_plan(plan))
+    expect_silent(shift_job__validate_background_plan(plan))
     inferred <- shift_future_epw(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("EC-Earth3", "ssp585"),
@@ -391,7 +411,7 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
 
     store <- EsgStore$new(tempfile("daily-temperature-workflow-"))
     on.exit(store$close(), add = TRUE)
-    docs <- cli_shift_test_file_docs(
+    docs <- esgf_test__file_docs(
         basename(nc),
         opendap_url = nc,
         download_url = nc,
@@ -399,7 +419,7 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
         datetime_start = "2061-01-01T00:00:00Z",
         datetime_end = "2061-12-31T23:59:59Z"
     )
-    query_id <- store$add_files(cli_shift_test_file_result(docs))
+    query_id <- store$add_files(esgf_test__file_result(docs))
     extraction <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -459,3 +479,5 @@ test_that("daily temperature backend runs and resumes through EpwMorpher", {
     )))
     expect_identical(resumed$result_id, workflow$results$result_id)
 })
+
+# vim: fdm=marker :

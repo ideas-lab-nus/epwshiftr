@@ -1,12 +1,12 @@
 # Keep high-level planning tests independent of live ESGF catalogs.
-withr::local_options(list(
-    epwshiftr.cmip6.availability = test_cmip6_availability,
-    epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+test_local_dependencies(list(
+    availability = test_cmip6_availability,
+    shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
 test_that("delivery and store paths may be distinct siblings", {
     root <- withr::local_tempdir()
-    paths <- shift__validate_delivery_store_paths(
+    paths <- shift_path__validate_delivery_store_paths(
         file.path(root, "delivery"),
         file.path(root, "store")
     )
@@ -15,7 +15,7 @@ test_that("delivery and store paths may be distinct siblings", {
     expect_false(identical(paths$dir, paths$store))
 
     # A lexical prefix alone is not an ancestor relationship.
-    expect_no_error(shift__validate_delivery_store_paths(
+    expect_no_error(shift_path__validate_delivery_store_paths(
         file.path(root, "output"),
         file.path(root, "output-cache")
     ))
@@ -26,12 +26,15 @@ test_that("equal delivery and store paths are rejected canonically", {
     output <- file.path(root, "output")
 
     expect_error(
-        shift__validate_delivery_store_paths(output, file.path(output, ".")),
+        shift_path__validate_delivery_store_paths(
+            output,
+            file.path(output, ".")
+        ),
         "separate, non-overlapping directories",
         fixed = TRUE
     )
     expect_error(
-        shift__validate_delivery_store_paths(
+        shift_path__validate_delivery_store_paths(
             output,
             file.path(root, "missing", "..", "output")
         ),
@@ -39,7 +42,7 @@ test_that("equal delivery and store paths are rejected canonically", {
         fixed = TRUE
     )
     expect_error(
-        shift__validate_delivery_store_paths(output, output),
+        shift_path__validate_delivery_store_paths(output, output),
         "dir.*receives exported EPW files only"
     )
 })
@@ -49,7 +52,7 @@ test_that("delivery and store paths cannot contain one another", {
 
     # Neither descendant needs to exist for the relationship to be detected.
     expect_error(
-        shift__validate_delivery_store_paths(
+        shift_path__validate_delivery_store_paths(
             file.path(root, "delivery"),
             file.path(root, "delivery", "internal", "store")
         ),
@@ -57,7 +60,7 @@ test_that("delivery and store paths cannot contain one another", {
         fixed = TRUE
     )
     expect_error(
-        shift__validate_delivery_store_paths(
+        shift_path__validate_delivery_store_paths(
             file.path(root, "store", "exports"),
             file.path(root, "store")
         ),
@@ -76,7 +79,7 @@ test_that("symbolic-link aliases cannot bypass path isolation", {
     }
 
     expect_error(
-        shift__validate_delivery_store_paths(
+        shift_path__validate_delivery_store_paths(
             file.path(real, "delivery"),
             file.path(link, "delivery", "store")
         ),
@@ -90,11 +93,14 @@ test_that("path comparison follows case-insensitive filesystem semantics", {
     output <- file.path(root, "delivery")
     case_variant <- file.path(root, "DELIVERY")
 
-    if (isTRUE(shift__workflow_path_case_sensitive(root))) {
-        expect_no_error(shift__validate_delivery_store_paths(output, case_variant))
+    if (isTRUE(shift_path__workflow_path_case_sensitive(root))) {
+        expect_no_error(shift_path__validate_delivery_store_paths(
+            output,
+            case_variant
+        ))
     } else {
         expect_error(
-            shift__validate_delivery_store_paths(output, case_variant),
+            shift_path__validate_delivery_store_paths(output, case_variant),
             "separate, non-overlapping directories",
             fixed = TRUE
         )
@@ -130,3 +136,5 @@ test_that("shift_future_epw rejects an overlapping delivery and store tree", {
         ShiftBatch
     )
 })
+
+# vim: fdm=marker :

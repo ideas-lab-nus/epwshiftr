@@ -1,5 +1,6 @@
 # Build a compact EPW-shaped state for policy-level tests without involving
 # calendar mapping or a complete morphing backend.
+# epwphys_test__weather {{{
 epwphys_test__weather <- function(rows = 2L) {
     data.table::data.table(
         dry_bulb_temperature = rep(c(20, 25), length.out = rows),
@@ -16,14 +17,17 @@ epwphys_test__weather <- function(rows = 2L) {
         horizontal_infrared_radiation_intensity_from_sky = rep(300, rows)
     )
 }
+# }}}
 
 # Construct the minimum geometry columns consumed by the shortwave policy.
+# epwphys_test__geometry {{{
 epwphys_test__geometry <- function(projection = c(0, 0.5)) {
     data.table::data.table(
         effective_solar_projection = projection,
         extraterrestrial_direct_normal_radiation = rep(1000, length(projection))
     )
 }
+# }}}
 
 test_that("all registered complete recipes resolve a physical policy", {
     recipes <- epw_morph_recipes()
@@ -42,20 +46,26 @@ test_that("all registered complete recipes resolve a physical policy", {
         logical(1L),
         class = EpwPhysicalPolicy
     )))
-    expected <- stats::setNames(vapply(
-        seq_len(nrow(recipes)),
-        function(index) {
-            spec <- epw_morph_recipe_spec(recipes$name[[index]])
-            unname(spec@physical_policies[[spec@default_policy]])
-        },
-        character(1L)
-    ), recipes$name)
-    expect_identical(
-        stats::setNames(vapply(
-            resolved,
-            function(policy) policy@name,
+    expected <- stats::setNames(
+        vapply(
+            seq_len(nrow(recipes)),
+            function(index) {
+                spec <- epw_morph_recipe_spec(recipes$name[[index]])
+                unname(spec@physical_policies[[spec@default_policy]])
+            },
             character(1L)
-        ), recipes$name),
+        ),
+        recipes$name
+    )
+    expect_identical(
+        stats::setNames(
+            vapply(
+                resolved,
+                function(policy) policy@name,
+                character(1L)
+            ),
+            recipes$name
+        ),
         expected
     )
     expect_identical(
@@ -237,10 +247,13 @@ test_that("specific-humidity policies retain targets and both clipping states", 
     )
     humidity <- result@state$humidity
 
-    expect_identical(humidity$status, c(
-        "zero_clipped",
-        "saturation_clipped"
-    ))
+    expect_identical(
+        humidity$status,
+        c(
+            "zero_clipped",
+            "saturation_clipped"
+        )
+    )
     expect_equal(humidity$target_specific_humidity, target)
     expect_true(all(result@weather$relative_humidity >= 0))
     expect_true(all(result@weather$relative_humidity <= 100))
@@ -261,8 +274,10 @@ test_that("preserved specific humidity closes only valid baseline rows", {
         epwphys__policy("preserve_specific_humidity")
     )
 
-    expect_true(result@state$humidity$status[[1L]] %in%
-        c("inherited", "saturation_clipped"))
+    expect_true(
+        result@state$humidity$status[[1L]] %in%
+            c("inherited", "saturation_clipped")
+    )
     expect_identical(
         result@state$humidity$status[[2L]],
         "missing_baseline_state"
@@ -352,3 +367,5 @@ test_that("grouped physical execution preserves case and row order", {
     expect_equal(result$weather, weather)
     expect_length(result$results, 2L)
 })
+
+# vim: fdm=marker :

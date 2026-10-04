@@ -1,11 +1,11 @@
 #' @include backend-bws-btws.R method-bws.R method-btws.R component-temperature-epw.R
 NULL
 
-# BWS and BTWS EPW components {{{
-
+# BWS and BTWS EPW components
 # Convert every adjusted BWS monthly target into a method-level diagnostic with
 # the climate means, EPW baseline, requested target, applied target, and exact
 # attainable interval needed to reproduce the decision.
+# bws_btws_epw__target_diagnostics {{{
 bws_btws_epw__target_diagnostics <- function(factors, context) {
     factors <- data.table::as.data.table(data.table::copy(factors))
     adjustment <- factors[["target_adjustment"]]
@@ -72,9 +72,11 @@ bws_btws_epw__target_diagnostics <- function(factors, context) {
     }
     morpher__bind_diagnostics(rows)
 }
+# }}}
 
 # Apply BTWS to dry-bulb temperature and BWS to the two published bounded
 # variables while retaining baseline hourly ordering for physical closure.
+# bws_btws_epw__hourly_reconstruct {{{
 bws_btws_epw__hourly_reconstruct <- function(
     data,
     inputs,
@@ -90,9 +92,14 @@ bws_btws_epw__hourly_reconstruct <- function(
     baseline <- temperature$baseline
     weather <- baseline$weather
     required <- c(
-        "year", "month", "day", "hour",
-        "global_horizontal_radiation", "diffuse_horizontal_radiation",
-        "total_sky_cover", "opaque_sky_cover"
+        "year",
+        "month",
+        "day",
+        "hour",
+        "global_horizontal_radiation",
+        "diffuse_horizontal_radiation",
+        "total_sky_cover",
+        "opaque_sky_cover"
     )
     missing <- setdiff(required, names(weather))
     if (length(missing)) {
@@ -103,8 +110,10 @@ bws_btws_epw__hourly_reconstruct <- function(
     bounded <- data.table::as.data.table(
         data.table::copy(data$monthly_bws_targets)
     )
-    if (nrow(bounded) != 12L ||
-        !identical(sort(as.integer(bounded[["month"]])), seq_len(12L))) {
+    if (
+        nrow(bounded) != 12L ||
+            !identical(sort(as.integer(bounded[["month"]])), seq_len(12L))
+    ) {
         cli::cli_abort("BWS targets must contain all 12 months.")
     }
     data.table::setorderv(bounded, "month")
@@ -112,22 +121,39 @@ bws_btws_epw__hourly_reconstruct <- function(
     month <- as.integer(weather[["month"]])
     baseline_ghi <- as.numeric(weather[["global_horizontal_radiation"]])
     baseline_cover <- as.numeric(weather[["total_sky_cover"]])
-    if (any(!is.finite(baseline_ghi) | baseline_ghi < 0) ||
-        any(!is.finite(baseline_cover) |
-            baseline_cover < 0 | baseline_cover > 10)) {
+    if (
+        any(!is.finite(baseline_ghi) | baseline_ghi < 0) ||
+            any(
+                !is.finite(baseline_cover) |
+                    baseline_cover < 0 |
+                    baseline_cover > 10
+            )
+    ) {
         cli::cli_abort(
             "Baseline EPW radiation and total sky cover must contain finite values within the BWS bounds."
         )
     }
-    ghi_mean <- vapply(seq_len(12L), function(calendar_month) {
-        mean(baseline_ghi[month == calendar_month])
-    }, numeric(1L))
-    ghi_upper <- vapply(seq_len(12L), function(calendar_month) {
-        max(baseline_ghi[month == calendar_month])
-    }, numeric(1L))
-    cover_mean <- vapply(seq_len(12L), function(calendar_month) {
-        mean(baseline_cover[month == calendar_month])
-    }, numeric(1L))
+    ghi_mean <- vapply(
+        seq_len(12L),
+        function(calendar_month) {
+            mean(baseline_ghi[month == calendar_month])
+        },
+        numeric(1L)
+    )
+    ghi_upper <- vapply(
+        seq_len(12L),
+        function(calendar_month) {
+            max(baseline_ghi[month == calendar_month])
+        },
+        numeric(1L)
+    )
+    cover_mean <- vapply(
+        seq_len(12L),
+        function(calendar_month) {
+            mean(baseline_cover[month == calendar_month])
+        },
+        numeric(1L)
+    )
 
     radiation <- bws__project_monthly(
         baseline_ghi,
@@ -220,9 +246,11 @@ bws_btws_epw__hourly_reconstruct <- function(
     )
     temperature
 }
+# }}}
 
 # Apply all BWS/BTWS candidates in one call to the common physical layer so
 # humidity and shortwave closure see the same final temperature and radiation.
+# bws_btws_epw__physics_apply {{{
 bws_btws_epw__physics_apply <- function(
     data,
     inputs,
@@ -234,8 +262,7 @@ bws_btws_epw__physics_apply <- function(
         EpwPhysicalRequest(
             template = data$baseline$weather,
             fields = list(
-                dry_bulb_temperature =
-                    data$hourly[["temperature_projected"]],
+                dry_bulb_temperature = data$hourly[["temperature_projected"]],
                 total_sky_cover = bounded$total_sky_cover,
                 opaque_sky_cover = bounded$opaque_sky_cover
             ),
@@ -286,9 +313,11 @@ bws_btws_epw__physics_apply <- function(
     }
     result
 }
+# }}}
 
 # Define the method-specific sequence, hourly, physical, and output stages around
 # the reusable BWS, BTWS, temperature-result, solar, and EPW-physics helpers.
+# bws_btws_epw__component_specs {{{
 bws_btws_epw__component_specs <- function() {
     complete_inputs <- bws_btws__inputs()
     list(
@@ -355,12 +384,15 @@ bws_btws_epw__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the complete BWS/BTWS EPW stages without replacing a
 # process-local extension that owns the same stable keys.
+# bws_btws_epw__register_components {{{
 bws_btws_epw__register_components <- function() {
     component__register_builtins(bws_btws_epw__component_specs())
     invisible(NULL)
 }
-
 # }}}
+
+# vim: fdm=marker :

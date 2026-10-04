@@ -27,6 +27,7 @@ QM_EXPERIMENTAL_VARIABLES <- c(
 
 # Construct the complete empirical Quantile Mapping settings record shared by
 # every variable profile, including conventions that publications leave open.
+# qm__default_settings {{{
 qm__default_settings <- function(
     bounds,
     distribution_model = c("continuous", "precipitation_hurdle"),
@@ -49,9 +50,11 @@ qm__default_settings <- function(
         random_seed = 1L
     )
 }
+# }}}
 
 # Build published and experimental profiles without assigning literature
 # provenance to implementation-selected variable defaults.
+# qm__profiles {{{
 qm__profiles <- function() {
     settings <- list(
         pr = qm__default_settings(
@@ -87,9 +90,11 @@ qm__profiles <- function() {
         )
     })
 }
+# }}}
 
 # Validate all method conventions at the kernel boundary so unsupported
 # empirical-CDF variants cannot be selected silently through an override.
+# qm__settings {{{
 qm__settings <- function(settings) {
     expected <- c(
         "mapping_type",
@@ -121,10 +126,12 @@ qm__settings <- function(settings) {
             "Quantile Mapping currently supports only `detrending = \"none\"`."
         )
     }
-    if (!identical(resolved$cdf_method, "linear_interpolation") ||
-        !identical(resolved$inverse_cdf_method, "linear_type_7") ||
-        !identical(resolved$tie_method, "average_rank") ||
-        !identical(resolved$tail_policy, "clamp")) {
+    if (
+        !identical(resolved$cdf_method, "linear_interpolation") ||
+            !identical(resolved$inverse_cdf_method, "linear_type_7") ||
+            !identical(resolved$tie_method, "average_rank") ||
+            !identical(resolved$tail_policy, "clamp")
+    ) {
         cli::cli_abort(
             "Quantile Mapping currently requires linear empirical CDF interpolation, type-7 inverse quantiles, average-rank ties, and clamped tails."
         )
@@ -166,9 +173,11 @@ qm__settings <- function(settings) {
     resolved$random_seed <- signal__random_seed(resolved$random_seed)
     resolved
 }
+# }}}
 
 # Validate the three role-addressable daily inputs without pairing their native
 # dates or requiring their CF calendars to be identical.
+# qm__inputs {{{
 qm__inputs <- function(inputs, variable, distribution_model) {
     roles <- c(
         "observed_reference",
@@ -207,21 +216,25 @@ qm__inputs <- function(inputs, variable, distribution_model) {
             "Quantile Mapping inputs for {.val {variable}} must use identical units."
         )
     }
-    if (identical(distribution_model, "precipitation_hurdle") &&
-        any(vapply(
-            series,
-            function(data) any(data[["value"]] < 0),
-            logical(1L)
-        ))) {
+    if (
+        identical(distribution_model, "precipitation_hurdle") &&
+            any(vapply(
+                series,
+                function(data) any(data[["value"]] < 0),
+                logical(1L)
+            ))
+    ) {
         cli::cli_abort(
             "Precipitation-hurdle Quantile Mapping requires non-negative input values."
         )
     }
     series
 }
+# }}}
 
 # Apply x* = F_obs^{-1}(F_hist(x_future)) with the declared interpolation,
 # tie, and tail conventions to one or more future values.
+# qm__map_continuous {{{
 qm__map_continuous <- function(historical, observed, future) {
     cdf <- quantile__empirical_cdf(historical, future)
     list(
@@ -234,10 +247,12 @@ qm__map_continuous <- function(historical, observed, future) {
             length(unique(observed))
     )
 }
+# }}}
 
 # Map a mixed precipitation distribution: values at or below the trace
 # threshold are randomized uniformly across the historical dry-day mass, while
 # positive amounts use empirical conditional CDFs on both sides of the hurdle.
+# qm__map_precipitation {{{
 qm__map_precipitation <- function(
     historical,
     observed,
@@ -254,9 +269,8 @@ qm__map_precipitation <- function(
     observed_positive <- observed[!observed_dry]
 
     probability <- numeric(length(future))
-    probability[future_dry] <- (
-        uniform[future_dry] * historical_dry_probability
-    )
+    probability[future_dry] <- (uniform[future_dry] *
+        historical_dry_probability)
     positive <- !future_dry
     lower_tail <- upper_tail <- rep.int(FALSE, length(future))
     tied_historical <- 0L
@@ -286,9 +300,9 @@ qm__map_precipitation <- function(
                 "A precipitation window requires positive output amounts but has no positive observed-reference calibration values."
             )
         }
-        conditional_probability <- (
-            probability[output_positive] - observed_dry_probability
-        ) / (1 - observed_dry_probability)
+        conditional_probability <- (probability[output_positive] -
+            observed_dry_probability) /
+            (1 - observed_dry_probability)
         mapped[output_positive] <- quantile__inverse_cdf(
             observed_positive,
             conditional_probability
@@ -307,9 +321,11 @@ qm__map_precipitation <- function(
         randomized_dry_values = sum(future_dry)
     )
 }
+# }}}
 
 # Summarize sample coverage and mapping behavior without storing one additional
 # provenance row for every day in a multi-decadal future series.
+# qm__diagnostics {{{
 qm__diagnostics <- function(
     observed_samples,
     historical_samples,
@@ -344,9 +360,11 @@ qm__diagnostics <- function(
     }
     diagnostics
 }
+# }}}
 
 # Apply the calendar-neutral circular window independently at each future day,
 # retaining the future series as the output backbone.
+# qm__adjust_values {{{
 qm__adjust_values <- function(series, resolved, key, variable) {
     observed <- series$observed_reference
     historical <- series$model_historical
@@ -362,10 +380,12 @@ qm__adjust_values <- function(series, resolved, key, variable) {
         variable
     )
     uniform <- quantile__uniform(n_future, effective_seed)
-    precipitation_diagnostics <- if (identical(
-        resolved$distribution_model,
-        "precipitation_hurdle"
-    )) {
+    precipitation_diagnostics <- if (
+        identical(
+            resolved$distribution_model,
+            "precipitation_hurdle"
+        )
+    ) {
         list(
             historical_dry_probability = numeric(n_future),
             observed_dry_probability = numeric(n_future),
@@ -396,17 +416,21 @@ qm__adjust_values <- function(series, resolved, key, variable) {
         historical_values <- historical[["value"]][historical_window]
         observed_samples[[index]] <- length(observed_values)
         historical_samples[[index]] <- length(historical_values)
-        if (observed_samples[[index]] < resolved$min_samples ||
-            historical_samples[[index]] < resolved$min_samples) {
+        if (
+            observed_samples[[index]] < resolved$min_samples ||
+                historical_samples[[index]] < resolved$min_samples
+        ) {
             cli::cli_abort(
                 "Quantile Mapping future row {index} has fewer than {resolved$min_samples} observed or historical calibration values in its circular window."
             )
         }
 
-        mapped <- if (identical(
-            resolved$distribution_model,
-            "precipitation_hurdle"
-        )) {
+        mapped <- if (
+            identical(
+                resolved$distribution_model,
+                "precipitation_hurdle"
+            )
+        ) {
             qm__map_precipitation(
                 historical_values,
                 observed_values,
@@ -434,7 +458,7 @@ qm__adjust_values <- function(series, resolved, key, variable) {
                 mapped$observed_dry_probability
             precipitation_diagnostics$randomized_dry_values <-
                 precipitation_diagnostics$randomized_dry_values +
-                    mapped$randomized_dry_values
+                mapped$randomized_dry_values
         }
     }
 
@@ -474,9 +498,11 @@ qm__adjust_values <- function(series, resolved, key, variable) {
         )
     )
 }
+# }}}
 
 # Execute empirical Quantile Mapping for one aligned univariate signal group
 # and return the common DailyAdjustedSeries contract.
+# qm__apply_group {{{
 qm__apply_group <- function(inputs, settings, key) {
     resolved <- qm__settings(settings)
     variable <- names(settings)[[1L]]
@@ -503,9 +529,11 @@ qm__apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Return one explicit diagnostic string when Quantile Mapping violates the
 # package-native future-model output contract.
+# qm__validate_result {{{
 qm__validate_result <- function(value, inputs, key) {
     signal__validate_adjusted_result(
         value,
@@ -515,9 +543,11 @@ qm__validate_result <- function(value, inputs, key) {
         "Quantile Mapping"
     )
 }
+# }}}
 
 # Construct the reusable Quantile Mapping signal with three explicit daily
 # input roles and method-evidence-aware variable alternatives.
+# qm__component {{{
 qm__component <- function() {
     alternatives <- as.list(c(
         QM_PUBLISHED_VARIABLES,
@@ -555,10 +585,15 @@ qm__component <- function() {
         )
     )
 }
+# }}}
 
 # Register Quantile Mapping once so package load and repeated tests share one
 # discoverable process-local component.
+# qm__register_component {{{
 qm__register_component <- function() {
     component__register_builtin(qm__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker :

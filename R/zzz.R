@@ -1,16 +1,38 @@
 # nocov start
 # reference: https://github.com/Rdatatable/data.table/blob/master/R/onLoad.R
+# .onLoad {{{
 .onLoad <- function(libname, pkgname) {
     S7::methods_register()
-    registerS3method("as.data.table", "epwshiftr::ShiftStage", shift_stage_as_data_table, envir = asNamespace("data.table"))
+    registerS3method(
+        "as.data.table",
+        "epwshiftr::ShiftStage",
+        shift_inspect__stage_as_data_table,
+        envir = asNamespace("data.table")
+    )
     # S7 refreshes the package method table during load. Re-register the
     # dependency-free byte vector methods afterwards so base format()/print()
     # keep the established human-readable EsgResult size contract.
-    registerS3method("format", "epwshiftr_bytes",
-        format.epwshiftr_bytes, envir = asNamespace("base"))
-    registerS3method("print", "epwshiftr_bytes",
-        print.epwshiftr_bytes, envir = asNamespace("base"))
+    registerS3method(
+        "format",
+        "epwshiftr_bytes",
+        format.epwshiftr_bytes,
+        envir = asNamespace("base")
+    )
+    registerS3method(
+        "print",
+        "epwshiftr_bytes",
+        print.epwshiftr_bytes,
+        envir = asNamespace("base")
+    )
     cache__configure(pkgname)
+    # Installed workers load their namespace; never retain an installation staging path.
+    DOWNLOADER_RUNTIME$source <- NULL
+    DOWNLOADER_RUNTIME$offline <- cache__offline
+    # Host logging policy is read lazily for each message.
+    DOWNLOADER_RUNTIME$verbose <- function() {
+        getOption("epwshiftr.verbose", FALSE)
+    }
+    DOWNLOADER_RUNTIME$sync_store <- store__sync_download_job
     # Register standalone scientific components at load time so downstream
     # pipelines can resolve them without constructing a complete EPW recipe.
     bias__register_linear_scaling_component()
@@ -38,8 +60,14 @@
         "epwshiftr.threshold_alpha" = 3,
         # TRUE = normal caching, FALSE = no caching, "offline" = cache-only (no network)
         "epwshiftr.cache" = TRUE,
-        "epwshiftr.dir_store" = store_normalize_path(tools::R_user_dir("epwshiftr", "data")),
-        "epwshiftr.dir_cache" = store_normalize_path(tools::R_user_dir("epwshiftr", "cache"))
+        "epwshiftr.dir_store" = store_normalize_path(tools::R_user_dir(
+            "epwshiftr",
+            "data"
+        )),
+        "epwshiftr.dir_cache" = store_normalize_path(tools::R_user_dir(
+            "epwshiftr",
+            "cache"
+        ))
     )
     missing <- setdiff(names(.opts), names(options()))
     if (length(missing)) {
@@ -48,4 +76,7 @@
 
     invisible()
 }
+# }}}
 # nocov end
+
+# vim: fdm=marker :

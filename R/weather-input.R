@@ -23,37 +23,52 @@ WEATHER_INPUT_REPRESENTATIONS <- c(
 # WeatherInput keeps the semantic role separate from source metadata so a
 # component never has to infer whether "reference" means observations or a
 # historical model run.
+# WeatherInput {{{
 WeatherInput <- S7::new_class(
     "WeatherInput",
     properties = list(
         role = S7::new_property(S7::class_character),
         source = S7::new_property(S7::class_any),
         representation = S7::new_property(S7::class_character),
-        variables = S7::new_property(S7::class_character, default = character()),
-        frequencies = S7::new_property(S7::class_character, default = character()),
+        variables = S7::new_property(
+            S7::class_character,
+            default = character()
+        ),
+        frequencies = S7::new_property(
+            S7::class_character,
+            default = character()
+        ),
         variable_frequencies = S7::new_property(
             S7::class_list,
             default = list()
         ),
-        calendars = S7::new_property(S7::class_character, default = character()),
+        calendars = S7::new_property(
+            S7::class_character,
+            default = character()
+        ),
         provenance = S7::new_property(S7::class_list, default = list()),
         metadata = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
         if (is.null(self@source)) {
             return("`source` cannot be NULL.")
         }
-        if (length(self@role) != 1L ||
-            is.na(self@role) ||
-            !self@role %in% WEATHER_INPUT_ROLES) {
+        if (
+            length(self@role) != 1L ||
+                is.na(self@role) ||
+                !self@role %in% WEATHER_INPUT_ROLES
+        ) {
             return(sprintf(
                 "`role` must be one of %s.",
                 paste(sprintf("`%s`", WEATHER_INPUT_ROLES), collapse = ", ")
             ))
         }
-        if (length(self@representation) != 1L ||
-            is.na(self@representation) ||
-            !self@representation %in% WEATHER_INPUT_REPRESENTATIONS) {
+        if (
+            length(self@representation) != 1L ||
+                is.na(self@representation) ||
+                !self@representation %in% WEATHER_INPUT_REPRESENTATIONS
+        ) {
             return(sprintf(
                 "`representation` must be one of %s.",
                 paste(
@@ -73,16 +88,26 @@ WeatherInput <- S7::new_class(
         }
         if (length(self@variable_frequencies)) {
             mapping <- self@variable_frequencies
-            if (is.null(names(mapping)) || any(!nzchar(names(mapping))) ||
-                anyDuplicated(names(mapping))) {
+            if (
+                is.null(names(mapping)) ||
+                    any(!nzchar(names(mapping))) ||
+                    anyDuplicated(names(mapping))
+            ) {
                 return(
                     "`variable_frequencies` must be uniquely named by variable ID."
                 )
             }
-            valid <- vapply(mapping, function(value) {
-                is.character(value) && length(value) && !anyNA(value) &&
-                    all(nzchar(value)) && !anyDuplicated(value)
-            }, logical(1L))
+            valid <- vapply(
+                mapping,
+                function(value) {
+                    is.character(value) &&
+                        length(value) &&
+                        !anyNA(value) &&
+                        all(nzchar(value)) &&
+                        !anyDuplicated(value)
+                },
+                logical(1L)
+            )
             if (!all(valid)) {
                 return(
                     "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
@@ -91,10 +116,13 @@ WeatherInput <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # WeatherInputs provides one named slot for every semantic role. Missing roles
 # remain explicit NULL values instead of being guessed from another input.
+# WeatherInputs {{{
 WeatherInputs <- S7::new_class(
     "WeatherInputs",
     properties = list(
@@ -103,6 +131,7 @@ WeatherInputs <- S7::new_class(
         model_historical = S7::new_property(S7::class_any, default = NULL),
         model_future = S7::new_property(S7::class_any, default = NULL)
     ),
+    # validator {{{
     validator = function(self) {
         present <- character()
         for (role in WEATHER_INPUT_ROLES) {
@@ -127,10 +156,13 @@ WeatherInputs <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Normalize optional descriptor values once so every input has stable,
 # serializable metadata even when its source table uses factors or list columns.
+# weather__descriptor_values {{{
 weather__descriptor_values <- function(value, name) {
     if (is.null(value)) {
         return(character())
@@ -146,9 +178,11 @@ weather__descriptor_values <- function(value, name) {
     }
     value
 }
+# }}}
 
 # Read one descriptor from a canonical climate table without requiring all
 # external or deferred sources to materialize their data at construction time.
+# weather__source_values {{{
 weather__source_values <- function(source, columns) {
     if (!is.data.frame(source)) {
         return(character())
@@ -160,9 +194,11 @@ weather__source_values <- function(source, columns) {
     values <- unique(as.character(source[[column[[1L]]]]))
     values[!is.na(values) & nzchar(values)]
 }
+# }}}
 
 # Normalize a named variable-to-frequency mapping while allowing requirement
 # entries to declare more than one supported frequency for a variable.
+# weather__variable_frequencies {{{
 weather__variable_frequencies <- function(value, name) {
     if (is.null(value) || !length(value)) {
         return(list())
@@ -182,16 +218,21 @@ weather__variable_frequencies <- function(value, name) {
         weather__descriptor_values(frequencies, name)
     })
 }
+# }}}
 
 # Intersect repeated variable-frequency declarations from roles or components
 # and require one resolvable source frequency for every declared variable.
+# weather__combine_variable_frequencies {{{
 weather__combine_variable_frequencies <- function(mappings, context) {
     mappings <- Filter(length, mappings)
     if (!length(mappings)) {
         return(NULL)
     }
     variables <- unique(unlist(lapply(mappings, names), use.names = FALSE))
-    resolved <- stats::setNames(rep(NA_character_, length(variables)), variables)
+    resolved <- stats::setNames(
+        rep(NA_character_, length(variables)),
+        variables
+    )
     for (variable in variables) {
         choices <- lapply(mappings, function(mapping) mapping[[variable]])
         choices <- Filter(length, choices)
@@ -205,33 +246,47 @@ weather__combine_variable_frequencies <- function(mappings, context) {
     }
     resolved
 }
+# }}}
 
 # Derive the frequency values carried by each materialized variable so input
 # validation can distinguish `3hrPt` state fields from `3hr` mean fluxes.
+# weather__source_variable_frequencies {{{
 weather__source_variable_frequencies <- function(source) {
-    if (!is.data.frame(source) ||
-        !all(c("variable_id", "frequency") %in% names(source))) {
+    if (
+        !is.data.frame(source) ||
+            !all(c("variable_id", "frequency") %in% names(source))
+    ) {
         return(list())
     }
     variables <- as.character(source[["variable_id"]])
     frequencies <- as.character(source[["frequency"]])
-    keep <- !is.na(variables) & nzchar(variables) &
-        !is.na(frequencies) & nzchar(frequencies)
+    keep <- !is.na(variables) &
+        nzchar(variables) &
+        !is.na(frequencies) &
+        nzchar(frequencies)
     variables <- variables[keep]
     frequencies <- frequencies[keep]
     ordered_variables <- unique(variables)
-    stats::setNames(lapply(ordered_variables, function(variable) {
-        unique(frequencies[variables == variable])
-    }), ordered_variables)
+    stats::setNames(
+        lapply(ordered_variables, function(variable) {
+            unique(frequencies[variables == variable])
+        }),
+        ordered_variables
+    )
 }
+# }}}
 
 # Infer only the physical representation of common in-package sources. Unknown
 # objects remain explicit external inputs instead of being inspected by class
 # name heuristics that optional packages could accidentally satisfy.
+# weather__representation {{{
 weather__representation <- function(source) {
-    if (inherits(source, "EpwFile") ||
-        (is.character(source) && length(source) == 1L &&
-            grepl("\\.epw$", source, ignore.case = TRUE))) {
+    if (
+        inherits(source, "EpwFile") ||
+            (is.character(source) &&
+                length(source) == 1L &&
+                grepl("\\.epw$", source, ignore.case = TRUE))
+    ) {
         return("epw")
     }
     if (is.data.frame(source)) {
@@ -239,14 +294,21 @@ weather__representation <- function(source) {
     }
     "external"
 }
+# }}}
 
 # Construct one role-labelled future-weather input while retaining the source
 # object unchanged and deriving only metadata that are already materialized.
+# weather__new_input {{{
 weather__new_input <- function(
-    role, source, representation = NULL,
-    variables = NULL, frequencies = NULL, variable_frequencies = NULL,
+    role,
+    source,
+    representation = NULL,
+    variables = NULL,
+    frequencies = NULL,
+    variable_frequencies = NULL,
     calendars = NULL,
-    provenance = list(), metadata = list()
+    provenance = list(),
+    metadata = list()
 ) {
     checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
     if (missing(source) || is.null(source)) {
@@ -295,9 +357,11 @@ weather__new_input <- function(
         metadata = metadata
     )
 }
+# }}}
 
 # Construct the complete role-addressable input set used by component
 # validation and execution contexts.
+# weather__new_inputs {{{
 weather__new_inputs <- function(
     weather_template = NULL,
     observed_reference = NULL,
@@ -311,9 +375,11 @@ weather__new_inputs <- function(
         model_future = model_future
     )
 }
+# }}}
 
 # Retrieve one input by semantic role without exposing callers to dynamic S7
 # property access.
+# weather__get_input {{{
 weather__get_input <- function(inputs, role) {
     if (!S7::S7_inherits(inputs, WeatherInputs)) {
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
@@ -321,11 +387,14 @@ weather__get_input <- function(inputs, role) {
     checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
     S7::prop(inputs, role)
 }
+# }}}
 
 # Build explicit role-labelled inputs for the legacy morphing context. The old
 # context fields are retained separately for custom backend compatibility.
+# weather__context_inputs {{{
 weather__context_inputs <- function(
-    epw, model_future,
+    epw,
+    model_future,
     model_historical = NULL,
     observed_reference = NULL
 ) {
@@ -350,3 +419,6 @@ weather__context_inputs <- function(
         model_future = weather__new_input("model_future", model_future)
     )
 }
+# }}}
+
+# vim: fdm=marker :

@@ -1,33 +1,39 @@
-# Bounded weighted stretch {{{
-
+# Bounded weighted stretch
 # Evaluate the Eames et al. transfer function from equation (7). Both BWS and
 # BTWS use this kernel, so the mathematical definition has one implementation.
+# bws__transfer_weight {{{
 bws__transfer_weight <- function(normalized, m = 1, n = 1) {
     normalized <- as.numeric(normalized)
     weight <- numeric(length(normalized))
     interior <- normalized > 0 & normalized < 1
-    weight[interior] <- normalized[interior] ^ m *
-        (1 - normalized[interior]) ^ n
+    weight[interior] <- normalized[interior]^m *
+        (1 - normalized[interior])^n
     weight
 }
+# }}}
 
 # Apply equation (8) for one exponent pair. Returning NULL records that the
 # input contains no interior transfer mass and therefore cannot change its mean
 # while retaining the lower and upper endpoints.
+# bws__project_normalized {{{
 bws__project_normalized <- function(normalized, scale, m, n) {
     weight <- bws__transfer_weight(normalized, m, n)
     mean_weight <- mean(weight)
-    if (!is.finite(mean_weight) ||
-        mean_weight <= .Machine$double.eps) {
+    if (
+        !is.finite(mean_weight) ||
+            mean_weight <= .Machine$double.eps
+    ) {
         return(NULL)
     }
 
     normalized + scale * mean(normalized) * weight / mean_weight
 }
+# }}}
 
 # Derive the exact mean interval that remains reachable when BWS preserves
 # values already located at either physical endpoint. Interior values may move
 # to an endpoint, but observations at the opposite endpoint cannot move away.
+# bws__attainable_mean_bounds {{{
 bws__attainable_mean_bounds <- function(
     value,
     lower,
@@ -61,11 +67,13 @@ bws__attainable_mean_bounds <- function(
         upper = upper - span * mean(fixed_lower)
     )
 }
+# }}}
 
 # Resolve a requested BWS mean against both the declared physical limits and
 # the narrower interval imposed by endpoint preservation. Adjustments are
 # returned as data so callers can retain the original signal and explain the
 # exact reason instead of silently clipping the projected series afterward.
+# bws__resolve_target_mean {{{
 bws__resolve_target_mean <- function(
     value,
     requested_target_mean,
@@ -104,18 +112,22 @@ bws__resolve_target_mean <- function(
         target_adjustment = adjustment
     )
 }
+# }}}
 
 # Retain the largest admissible exponent when the symmetric equation (7)
 # projection would cross a bound. This is the directed m/n reduction described
 # by Eames et al.; deterministic bisection supplies the unpublished solver.
+# bws__bounded_normalized_projection {{{
 bws__bounded_normalized_projection <- function(
     normalized,
     target_mean,
     tolerance
 ) {
     baseline_mean <- mean(normalized)
-    if (!is.finite(baseline_mean) ||
-        baseline_mean <= .Machine$double.eps) {
+    if (
+        !is.finite(baseline_mean) ||
+            baseline_mean <= .Machine$double.eps
+    ) {
         return(list(reason = "zero_normalized_baseline_mean"))
     }
 
@@ -202,11 +214,13 @@ bws__bounded_normalized_projection <- function(
         }
     )
 }
+# }}}
 
 # Project one bounded series to a requested mean while preserving every value
 # at the declared lower or upper bound. An unattainable mean is resolved to the
 # nearest attainable boundary and returned with its original request and reason
 # so callers can diagnose the scientific compromise explicitly.
+# bws__project {{{
 bws__project <- function(
     value,
     target_mean,
@@ -223,7 +237,9 @@ bws__project <- function(
         cli::cli_abort("BWS input must contain finite values.")
     }
     if (upper < lower) {
-        cli::cli_abort("BWS requires an upper bound at least as large as its lower bound.")
+        cli::cli_abort(
+            "BWS requires an upper bound at least as large as its lower bound."
+        )
     }
     if (any(value < lower - tolerance | value > upper + tolerance)) {
         cli::cli_abort("BWS input contains values outside its declared bounds.")
@@ -241,8 +257,10 @@ bws__project <- function(
     # A collapsed physical range has one admissible state. This matters for an
     # unchanged all-zero radiation month at sites with polar night.
     if (abs(upper - lower) <= tolerance) {
-        if (abs(target_mean - lower) > tolerance ||
-            any(abs(value - lower) > tolerance)) {
+        if (
+            abs(target_mean - lower) > tolerance ||
+                any(abs(value - lower) > tolerance)
+        ) {
             cli::cli_abort(
                 "BWS cannot change a series whose lower and upper bounds coincide.",
                 class = "epwshiftr_bws_infeasible_error"
@@ -302,8 +320,10 @@ bws__project <- function(
     }
     projected <- lower + span * shape$value
     closure_error <- mean(projected) - target_mean
-    if (!is.finite(closure_error) ||
-        abs(closure_error) > max(tolerance, 1e-9)) {
+    if (
+        !is.finite(closure_error) ||
+            abs(closure_error) > max(tolerance, 1e-9)
+    ) {
         cli::cli_abort(
             "BWS failed numerical mean closure.",
             class = "epwshiftr_bws_infeasible_error"
@@ -328,9 +348,11 @@ bws__project <- function(
         closure_error = closure_error
     )
 }
+# }}}
 
 # Convert a continuous bounded projection to the integer lattice required by
 # EPW sky-cover fields while retaining the closest attainable aggregate mean.
+# bws__round_to_mean {{{
 bws__round_to_mean <- function(value, target_mean, lower, upper) {
     value <- pmin(upper, pmax(lower, as.numeric(value)))
     checkmate::assert_number(target_mean, finite = TRUE)
@@ -357,18 +379,22 @@ bws__round_to_mean <- function(value, target_mean, lower, upper) {
             method = "radix"
         )]
         if (increment > length(order)) {
-            cli::cli_abort("Bounded integer projection cannot attain its target sum.")
+            cli::cli_abort(
+                "Bounded integer projection cannot attain its target sum."
+            )
         }
         result[order[seq_len(increment)]] <-
             result[order[seq_len(increment)]] + 1L
     }
     result
 }
+# }}}
 
 # Apply the generic BWS projection independently to calendar-month groups and
 # retain the resolved equation parameters for method-specific diagnostics.
 # Integer projection is optional so the same helper can support both continuous
 # bounded variables and discrete EPW fields such as sky cover.
+# bws__project_monthly {{{
 bws__project_monthly <- function(
     value,
     month,
@@ -385,9 +411,12 @@ bws__project_monthly <- function(
     checkmate::assert_string(variable_id, min.chars = 1L)
     checkmate::assert_flag(integer)
     checkmate::assert_number(tolerance, lower = 0, finite = TRUE)
-    if (length(value) != length(month) ||
-        !identical(sort(unique(month)), seq_len(12L)) ||
-        length(target_mean) != 12L || length(upper) != 12L) {
+    if (
+        length(value) != length(month) ||
+            !identical(sort(unique(month)), seq_len(12L)) ||
+            length(target_mean) != 12L ||
+            length(upper) != 12L
+    ) {
         cli::cli_abort(
             "Monthly BWS projection requires hourly values and 12 monthly targets and bounds."
         )
@@ -441,5 +470,6 @@ bws__project_monthly <- function(
         factors = data.table::rbindlist(factors)
     )
 }
-
 # }}}
+
+# vim: fdm=marker :

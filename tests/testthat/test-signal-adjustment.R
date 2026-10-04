@@ -1,5 +1,6 @@
 # Build a regular calendar-native sub-daily table while exposing the exact
 # time-of-day coordinate and one untouched source timestamp column.
+# adjusted_series_test__subdaily {{{
 adjusted_series_test__subdaily <- function(
     variable = "tas",
     year = 2061L,
@@ -40,9 +41,11 @@ adjusted_series_test__subdaily <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Build a compact daily table without depending on helpers from another test
 # file or assigning Gregorian dates to non-Gregorian calendars.
+# adjusted_series_test__daily {{{
 adjusted_series_test__daily <- function() {
     fields <- cf_time_offset2date(
         0:3,
@@ -61,6 +64,7 @@ adjusted_series_test__daily <- function() {
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 test_that("shared signal requirements preserve the three-role contract", {
     requirements <- signal__three_role_requirements(
@@ -264,7 +268,8 @@ test_that("sub-daily adjusted series rejects ambiguous temporal metadata", {
     irregular$cf_second_of_day[[2L]] <- 7200
     irregular$annual_phase[[2L]] <-
         irregular$cf_second_of_day[[2L]] /
-        86400 / irregular$cf_year_days[[2L]]
+        86400 /
+        irregular$cf_year_days[[2L]]
     expect_error(
         bias__subdaily_adjusted_series(
             irregular,
@@ -376,3 +381,5 @@ test_that("daily adjusted series enforces canonical calendar-native data", {
         "annual_phase"
     )
 })
+
+# vim: fdm=marker :

@@ -65,7 +65,7 @@ test_that("method key resolution does not materialize the public catalog", {
 })
 
 test_that("shift_run dispatches a dry-run batch to the batch runner", {
-    batch <- shift_stage_new(
+    batch <- shift_stage__new(
         ShiftBatch,
         "batch",
         meta = list(children = list(), manifest = data.table::data.table())
@@ -113,7 +113,7 @@ test_that("completed batch children reuse one authoritative store", {
         closed <<- closed + 1L
         invisible(NULL)
     }
-    run <- shift_stage_new(
+    run <- shift_stage__new(
         ShiftRun,
         "run",
         store_path = "/example/child",
@@ -132,7 +132,7 @@ test_that("completed batch children reuse one authoritative store", {
             expect_identical(store, child_store)
             run
         },
-        shift__run_artifacts_complete = function(store, run_id) {
+        shift_run__run_artifacts_complete = function(store, run_id) {
             verified <<- verified + 1L
             expect_identical(store, child_store)
             expect_identical(run_id, "run-child")
@@ -157,7 +157,7 @@ test_that("completed receipt hints do not replace authoritative run status", {
     verified <- 0L
     child_store <- new.env(parent = emptyenv())
     child_store$close <- function() invisible(NULL)
-    run <- shift_stage_new(
+    run <- shift_stage__new(
         ShiftRun,
         "run",
         store_path = "/example/child",
@@ -167,7 +167,7 @@ test_that("completed receipt hints do not replace authoritative run status", {
     testthat::local_mocked_bindings(
         shift_store = function(x, create = FALSE) child_store,
         shift_run_get = function(run_id, store) run,
-        shift__run_artifacts_complete = function(store, run_id) {
+        shift_run__run_artifacts_complete = function(store, run_id) {
             verified <<- verified + 1L
             TRUE
         },
@@ -191,7 +191,7 @@ test_that("completed batch child restoration rejects missing artifacts", {
         closed <<- closed + 1L
         invisible(NULL)
     }
-    run <- shift_stage_new(
+    run <- shift_stage__new(
         ShiftRun,
         "run",
         store_path = "/example/child",
@@ -201,7 +201,7 @@ test_that("completed batch child restoration rejects missing artifacts", {
     testthat::local_mocked_bindings(
         shift_store = function(x, create = FALSE) child_store,
         shift_run_get = function(run_id, store) run,
-        shift__run_artifacts_complete = function(store, run_id) FALSE,
+        shift_run__run_artifacts_complete = function(store, run_id) FALSE,
         .package = "epwshiftr"
     )
 
@@ -217,7 +217,7 @@ test_that("completed batch child restoration rejects missing artifacts", {
 
 test_that("locked completed children retain path-based live restoration", {
     store_arguments <- list()
-    run <- shift_stage_new(
+    run <- shift_stage__new(
         ShiftRun,
         "run",
         store_path = "/example/child",
@@ -251,9 +251,9 @@ test_that("high-level workflows select common models and retain child plans", {
         availability_calls <<- availability_calls + 1L
         test_cmip6_availability(...)
     }
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     output <- tempfile("batch-output-")
     store <- tempfile("batch-store-")
@@ -358,9 +358,9 @@ test_that("high-level workflows select common models and retain child plans", {
 })
 
 test_that("direct high-level execution builds the whole batch before running", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     received <- NULL
     testthat::local_mocked_bindings(
@@ -394,9 +394,9 @@ test_that("direct high-level execution builds the whole batch before running", {
 })
 
 test_that("batch discovery keeps r1i1p1f1 as a hard default", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = NULL,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     climate <- shift_cmip6(
         model = 1L,
@@ -405,10 +405,10 @@ test_that("batch discovery keeps r1i1p1f1 as a hard default", {
     )
 
     expect_error(
-        shift_batch__discover_models(
+        shift_batch_ui__discover_models(
             climate,
             shift_batch__transforms("isimip3basd"),
-            shift__periods_from_years(2050L),
+            shift_spec__periods_from_years(2050L),
             references = NULL,
             store = tempfile("discovery-"),
             ui = shift_ui(progress = "none")
@@ -440,9 +440,9 @@ test_that("batch discovery applies historical coverage per method", {
             index_node = index_node
         )
     }
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = collect,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = collect,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transforms <- list(
         monthly = monthly_transform("epwshiftr"),
@@ -453,28 +453,36 @@ test_that("batch discovery applies historical coverage per method", {
         monthly = list(reference = NULL),
         daily = list(reference = historical_reference(1995:2014))
     )
-    shift_batch__discover_models(
+    shift_batch_ui__discover_models(
         shift_cmip6(model = 1L, scenarios = "ssp585"),
         transforms,
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         references,
         tempfile("discovery-"),
         shift_ui(progress = "none")
     )
 
-    monthly_calls <- Filter(function(value) {
-        length(value$variables) > 1L
-    }, calls)
-    daily_calls <- Filter(function(value) {
-        identical(value$variables, "tas")
-    }, calls)
+    monthly_calls <- Filter(
+        function(value) {
+            length(value$variables) > 1L
+        },
+        calls
+    )
+    daily_calls <- Filter(
+        function(value) {
+            identical(value$variables, "tas")
+        },
+        calls
+    )
     expect_true(length(monthly_calls) > 0L)
-    expect_true(all(!vapply(
-        monthly_calls,
-        `[[`,
-        logical(1L),
-        "include_historical"
-    )))
+    expect_true(all(
+        !vapply(
+            monthly_calls,
+            `[[`,
+            logical(1L),
+            "include_historical"
+        )
+    ))
     expect_true(length(daily_calls) > 0L)
     expect_true(all(vapply(
         daily_calls,
@@ -485,19 +493,19 @@ test_that("batch discovery applies historical coverage per method", {
 })
 
 test_that("NULL model selection retains every compatible common model", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = test_cmip6_period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
     transforms <- shift_batch__transforms("isimip3basd")
     references <- stats::setNames(
         list(list(reference = historical_reference(1995:2014))),
         names(transforms)
     )
-    selection <- shift_batch__discover_models(
+    selection <- shift_batch_ui__discover_models(
         shift_cmip6(model = NULL, scenarios = "ssp585"),
         transforms,
-        shift__periods_from_years(2050L),
+        shift_spec__periods_from_years(2050L),
         references,
         tempfile("discovery-"),
         shift_ui(progress = "none")
@@ -510,22 +518,24 @@ test_that("NULL model selection retains every compatible common model", {
 })
 
 test_that("numeric model selection prefers less fragmented complete inputs", {
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = function(candidates, ...) {
-            candidates[, source_file_count := c(
-                `Model-A` = 1200,
-                `Model-B` = 120,
-                `Model-C` = 240
-            )[source_id]]
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = function(candidates, ...) {
+            candidates[,
+                source_file_count := c(
+                    `Model-A` = 1200,
+                    `Model-B` = 120,
+                    `Model-C` = 240
+                )[source_id]
+            ]
             candidates
         }
     ))
     climate <- shift_cmip6(model = 2L, scenarios = "ssp585")
-    selection <- shift_batch__discover_models(
+    selection <- shift_batch_ui__discover_models(
         climate,
         transforms = list(monthly = monthly_transform("original_morphing")),
-        periods = shift__periods_from_years(2050L),
+        periods = shift_spec__periods_from_years(2050L),
         references = NULL,
         store = tempfile("fragment-ranking-store-"),
         ui = shift_ui(progress = "none")
@@ -549,9 +559,9 @@ test_that("batch discovery applies period coverage before model counts", {
         ))
         candidates[source_id != "Model-B"]
     }
-    withr::local_options(list(
-        epwshiftr.cmip6.availability = test_cmip6_availability,
-        epwshiftr.cmip6.period_coverage = period_coverage
+    test_local_dependencies(list(
+        availability = test_cmip6_availability,
+        shift_resolve__cmip6_period_coverage = period_coverage
     ))
 
     batch <- shift_future_epw(
@@ -616,31 +626,41 @@ test_that("File coverage rejects gaps inside requested CMIP6 periods", {
         datetime_start = "2052-01-01T00:00:00Z",
         datetime_end = "2090-12-31T23:59:59Z"
     )]
-    distractors <- data.table::rbindlist(lapply(
-        c("member", "table", "grid"),
-        function(kind) {
-            rows <- data.table::copy(catalog[source_id == "Model-B"])
-            rows[, `:=`(
-                datetime_start = "2051-01-01T00:00:00Z",
-                datetime_end = "2051-12-31T23:59:59Z"
-            )]
-            if (identical(kind, "member")) rows[, variant_label := "r2i1p1f1"]
-            if (identical(kind, "table")) rows[, table_id := "3hr"]
-            if (identical(kind, "grid")) rows[, grid_label := "gr"]
-            rows
-        }
-    ), use.names = TRUE, fill = TRUE)
+    distractors <- data.table::rbindlist(
+        lapply(
+            c("member", "table", "grid"),
+            function(kind) {
+                rows <- data.table::copy(catalog[source_id == "Model-B"])
+                rows[, `:=`(
+                    datetime_start = "2051-01-01T00:00:00Z",
+                    datetime_end = "2051-12-31T23:59:59Z"
+                )]
+                if (identical(kind, "member")) {
+                    rows[, variant_label := "r2i1p1f1"]
+                }
+                if (identical(kind, "table")) {
+                    rows[, table_id := "3hr"]
+                }
+                if (identical(kind, "grid")) {
+                    rows[, grid_label := "gr"]
+                }
+                rows
+            }
+        ),
+        use.names = TRUE,
+        fill = TRUE
+    )
     catalog <- data.table::rbindlist(
         list(catalog, model_b_tail, distractors),
         use.names = TRUE,
         fill = TRUE
     )
     testthat::local_mocked_bindings(
-        shift__cmip6_coverage_catalog = function(...) catalog,
+        shift_resolve__cmip6_coverage_catalog = function(...) catalog,
         .package = "epwshiftr"
     )
 
-    covered <- shift__cmip6_period_coverage(
+    covered <- shift_resolve__cmip6_period_coverage(
         candidates = candidates,
         climate = shift_cmip6(
             model = NULL,
@@ -652,7 +672,7 @@ test_that("File coverage rejects gaps inside requested CMIP6 periods", {
         ),
         variables = "tas",
         frequency = c(tas = "day"),
-        periods = shift__periods_from_input(list(
+        periods = shift_spec__periods_from_input(list(
             `2050` = 2041:2060,
             `2080` = 2071:2090
         )),
@@ -663,7 +683,7 @@ test_that("File coverage rejects gaps inside requested CMIP6 periods", {
     )
 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
-    direct <- shift__cmip6_candidates(
+    direct <- shift_resolve__cmip6_candidates(
         catalog,
         models = unique(candidates$source_id),
         experiments = c("ssp126", "ssp585"),
@@ -711,17 +731,17 @@ test_that("File coverage retains completion on the exact table mapping", {
         datetime_end = "2060-12-31T23:59:59Z"
     )
     testthat::local_mocked_bindings(
-        shift__cmip6_coverage_catalog = function(...) catalog,
+        shift_resolve__cmip6_coverage_catalog = function(...) catalog,
         .package = "epwshiftr"
     )
 
-    covered <- shift__cmip6_period_coverage(
+    covered <- shift_resolve__cmip6_period_coverage(
         candidates = candidates,
         climate = shift_cmip6(model = NULL, scenarios = "ssp585"),
         transform = daily_transform("epwshiftr", reconstruction = "power"),
         variables = "tas",
         frequency = c(tas = "day"),
-        periods = shift__periods_from_input(list(`2050` = 2041:2060)),
+        periods = shift_spec__periods_from_input(list(`2050` = 2041:2060)),
         reference = NULL,
         node = "https://example.org",
         store = tempfile("table-coverage-store-"),
@@ -769,10 +789,9 @@ test_that("File coverage applies the same year kernel to historical reference", 
         "1995-01-01T00:00:00Z",
         "2014-12-31T23:59:59Z"
     )
-    historical[source_id == "Model-B",
-        datetime_end := "2010-12-31T23:59:59Z"]
+    historical[source_id == "Model-B", datetime_end := "2010-12-31T23:59:59Z"]
     testthat::local_mocked_bindings(
-        shift__cmip6_coverage_catalog = function(request, ...) {
+        shift_resolve__cmip6_coverage_catalog = function(request, ...) {
             if (identical(request@meta$experiment, "historical")) {
                 historical
             } else {
@@ -782,13 +801,13 @@ test_that("File coverage applies the same year kernel to historical reference", 
         .package = "epwshiftr"
     )
 
-    covered <- shift__cmip6_period_coverage(
+    covered <- shift_resolve__cmip6_period_coverage(
         candidates = candidates,
         climate = shift_cmip6(model = NULL, scenarios = "ssp585"),
         transform = daily_transform("isimip3basd"),
         variables = "tas",
         frequency = c(tas = "day"),
-        periods = shift__periods_from_years(2050L),
+        periods = shift_spec__periods_from_years(2050L),
         reference = historical_reference(1995:2014),
         node = "https://example.org",
         store = tempfile("historical-coverage-store-"),
@@ -797,3 +816,5 @@ test_that("File coverage applies the same year kernel to historical reference", 
 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
 })
+
+# vim: fdm=marker :

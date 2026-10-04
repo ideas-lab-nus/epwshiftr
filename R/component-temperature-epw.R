@@ -1,49 +1,64 @@
-# Shared temperature-to-EPW components {{{
-
+# Shared temperature-to-EPW components
 # The reusable hourly projectors consume only a numerical tolerance. Signal and
 # EPW-header options remain owned by their corresponding stages.
 EPW_MORPH_TEMPERATURE_PROJECTION_OPTIONS <- list(tolerance = 1e-8)
 
 # Reduce one hourly projection to auditable daily targets and numerical closure
 # values shared by POWER, daily BTWS, and monthly BTWS workflows.
+# temperature__factor_rows {{{
 temperature__factor_rows <- function(targets, projected) {
     method_columns <- intersect(
         c(
-            "shape_exponent", "btws_scale", "btws_m", "btws_n",
+            "shape_exponent",
+            "btws_scale",
+            "btws_m",
+            "btws_n",
             "btws_fallback_reason"
         ),
         names(projected)
     )
     projection_columns <- c(
-        "dry_bulb_temperature", "target_mean", "target_minimum",
-        "target_maximum", "projected_mean", "projected_minimum",
-        "projected_maximum", "dtr_status", "projection_status",
-        method_columns, "boundary_jump", "boundary_jump_change"
+        "dry_bulb_temperature",
+        "target_mean",
+        "target_minimum",
+        "target_maximum",
+        "projected_mean",
+        "projected_minimum",
+        "projected_maximum",
+        "dtr_status",
+        "projection_status",
+        method_columns,
+        "boundary_jump",
+        "boundary_jump_change"
     )
     # Explicit .SD access keeps package checks free from data.table NSE notes
     # while preserving one diagnostic value for every projected target day.
-    daily_projection <- projected[, {
-        row <- list(
-            baseline_mean = mean(.SD[["dry_bulb_temperature"]]),
-            baseline_minimum = min(.SD[["dry_bulb_temperature"]]),
-            baseline_maximum = max(.SD[["dry_bulb_temperature"]]),
-            target_mean = unique(.SD[["target_mean"]]),
-            target_minimum = unique(.SD[["target_minimum"]]),
-            target_maximum = unique(.SD[["target_maximum"]]),
-            projected_mean = unique(.SD[["projected_mean"]]),
-            projected_minimum = unique(.SD[["projected_minimum"]]),
-            projected_maximum = unique(.SD[["projected_maximum"]]),
-            dtr_status = unique(.SD[["dtr_status"]]),
-            projection_status = unique(.SD[["projection_status"]])
-        )
-        for (column in method_columns) {
-            row[[column]] <- unique(.SD[[column]])
-        }
-        row$boundary_jump <- unique(.SD[["boundary_jump"]])
-        row$boundary_jump_change <-
-            unique(.SD[["boundary_jump_change"]])
-        row
-    }, by = "target_day", .SDcols = projection_columns]
+    daily_projection <- projected[,
+        {
+            row <- list(
+                baseline_mean = mean(.SD[["dry_bulb_temperature"]]),
+                baseline_minimum = min(.SD[["dry_bulb_temperature"]]),
+                baseline_maximum = max(.SD[["dry_bulb_temperature"]]),
+                target_mean = unique(.SD[["target_mean"]]),
+                target_minimum = unique(.SD[["target_minimum"]]),
+                target_maximum = unique(.SD[["target_maximum"]]),
+                projected_mean = unique(.SD[["projected_mean"]]),
+                projected_minimum = unique(.SD[["projected_minimum"]]),
+                projected_maximum = unique(.SD[["projected_maximum"]]),
+                dtr_status = unique(.SD[["dtr_status"]]),
+                projection_status = unique(.SD[["projection_status"]])
+            )
+            for (column in method_columns) {
+                row[[column]] <- unique(.SD[[column]])
+            }
+            row$boundary_jump <- unique(.SD[["boundary_jump"]])
+            row$boundary_jump_change <-
+                unique(.SD[["boundary_jump_change"]])
+            row
+        },
+        by = "target_day",
+        .SDcols = projection_columns
+    ]
     factors <- merge(
         data.table::copy(targets),
         daily_projection,
@@ -69,9 +84,11 @@ temperature__factor_rows <- function(targets, projected) {
     data.table::setorderv(factors, "target_day")
     factors[]
 }
+# }}}
 
 # Preserve the baseline EPW day order after a temperature signal has produced
 # one successful target group.
+# temperature__sequence_generate {{{
 temperature__sequence_generate <- function(
     data,
     inputs,
@@ -80,9 +97,11 @@ temperature__sequence_generate <- function(
 ) {
     signal__single_value(data, "Daily temperature")
 }
+# }}}
 
 # Select and validate only options owned by the shared hourly temperature
 # projection contract, excluding signal overrides and header policies.
+# temperature__projection_options {{{
 temperature__projection_options <- function(options) {
     names <- intersect(
         names(options),
@@ -95,9 +114,11 @@ temperature__projection_options <- function(options) {
         unknown_label = "temperature projection"
     )
 }
+# }}}
 
 # Run one selected hourly projector and assemble the common payload consumed by
 # the shared physical closure component.
+# temperature__hourly_result {{{
 temperature__hourly_result <- function(data, options, projector) {
     checkmate::assert_function(projector)
     options <- temperature__projection_options(options)
@@ -122,8 +143,12 @@ temperature__hourly_result <- function(data, options, projector) {
 
     # Join target deltas back to every hourly row before physical closure.
     target_columns <- c(
-        "target_day", "annual_phase", "mean_delta", "minimum_delta",
-        "maximum_delta", "dtr_delta"
+        "target_day",
+        "annual_phase",
+        "mean_delta",
+        "minimum_delta",
+        "maximum_delta",
+        "dtr_delta"
     )
     hourly <- merge(
         projected,
@@ -147,9 +172,11 @@ temperature__hourly_result <- function(data, options, projector) {
     }
     result
 }
+# }}}
 
 # Translate a shared physical result back to the established daily-temperature
 # payload. BWS+BTWS reuses it after adding bounded-weather candidates.
+# temperature__physics_payload {{{
 temperature__physics_payload <- function(data, physical) {
     if (!S7::S7_inherits(physical, EpwPhysicalResult)) {
         cli::cli_abort("{.arg physical} must be an EpwPhysicalResult object.")
@@ -162,42 +189,44 @@ temperature__physics_payload <- function(data, physical) {
 
     method_diagnostic_values <- if ("shape_exponent" %in% names(hourly)) {
         list(
-            daily_temperature_shape_exponent =
-                hourly[["shape_exponent"]]
+            daily_temperature_shape_exponent = hourly[["shape_exponent"]]
         )
     } else {
         list(
             btws_scale = hourly[["btws_scale"]],
             btws_m = hourly[["btws_m"]],
             btws_n = hourly[["btws_n"]],
-            btws_fallback_reason =
-                hourly[["btws_fallback_reason"]]
+            btws_fallback_reason = hourly[["btws_fallback_reason"]]
         )
     }
-    diagnostic_values <- c(list(
-        daily_target_day = hourly[["target_day"]],
-        daily_annual_phase = hourly[["annual_phase"]],
-        daily_temperature_mean_delta = hourly[["mean_delta"]],
-        daily_temperature_minimum_delta = hourly[["minimum_delta"]],
-        daily_temperature_maximum_delta = hourly[["maximum_delta"]],
-        daily_temperature_dtr_delta = hourly[["dtr_delta"]],
-        daily_temperature_dtr_status = hourly[["dtr_status"]],
-        daily_temperature_projection_status = hourly[["projection_status"]]
-    ), method_diagnostic_values, list(
-        daily_temperature_target_mean = hourly[["target_mean"]],
-        daily_temperature_target_minimum = hourly[["target_minimum"]],
-        daily_temperature_target_maximum = hourly[["target_maximum"]],
-        daily_temperature_projected_mean = hourly[["projected_mean"]],
-        daily_temperature_projected_minimum = hourly[["projected_minimum"]],
-        daily_temperature_projected_maximum = hourly[["projected_maximum"]],
-        daily_temperature_boundary_jump = hourly[["boundary_jump"]],
-        daily_temperature_boundary_jump_change =
-            hourly[["boundary_jump_change"]],
-        daily_temperature_baseline_specific_humidity =
-            humidity$baseline_specific_humidity,
-        daily_temperature_specific_humidity = humidity$specific_humidity,
-        daily_temperature_moisture_status = humidity$status
-    ))
+    diagnostic_values <- c(
+        list(
+            daily_target_day = hourly[["target_day"]],
+            daily_annual_phase = hourly[["annual_phase"]],
+            daily_temperature_mean_delta = hourly[["mean_delta"]],
+            daily_temperature_minimum_delta = hourly[["minimum_delta"]],
+            daily_temperature_maximum_delta = hourly[["maximum_delta"]],
+            daily_temperature_dtr_delta = hourly[["dtr_delta"]],
+            daily_temperature_dtr_status = hourly[["dtr_status"]],
+            daily_temperature_projection_status = hourly[["projection_status"]]
+        ),
+        method_diagnostic_values,
+        list(
+            daily_temperature_target_mean = hourly[["target_mean"]],
+            daily_temperature_target_minimum = hourly[["target_minimum"]],
+            daily_temperature_target_maximum = hourly[["target_maximum"]],
+            daily_temperature_projected_mean = hourly[["projected_mean"]],
+            daily_temperature_projected_minimum = hourly[["projected_minimum"]],
+            daily_temperature_projected_maximum = hourly[["projected_maximum"]],
+            daily_temperature_boundary_jump = hourly[["boundary_jump"]],
+            daily_temperature_boundary_jump_change = hourly[[
+                "boundary_jump_change"
+            ]],
+            daily_temperature_baseline_specific_humidity = humidity$baseline_specific_humidity,
+            daily_temperature_specific_humidity = humidity$specific_humidity,
+            daily_temperature_moisture_status = humidity$status
+        )
+    )
     data.table::set(
         weather,
         j = names(diagnostic_values),
@@ -280,9 +309,11 @@ temperature__physics_payload <- function(data, physical) {
     }
     result
 }
+# }}}
 
 # Close a temperature-only projection through the shared physical policy while
 # preserving the existing POWER and BTWS diagnostic columns and messages.
+# temperature__physics_apply {{{
 temperature__physics_apply <- function(
     data,
     inputs,
@@ -297,9 +328,11 @@ temperature__physics_apply <- function(
     )
     temperature__physics_payload(data, physical)
 }
+# }}}
 
 # Assemble the shared physics-closed payload into the existing backend result
 # contract while leaving persistent file writes to EpwMorpher.
+# temperature__output_write {{{
 temperature__output_write <- function(
     data,
     inputs,
@@ -323,9 +356,11 @@ temperature__output_write <- function(
         factors = data$factors
     )
 }
+# }}}
 
 # Build the sequence, physics, and output components shared by every workflow
 # that produces the package's daily temperature target representation.
+# temperature__component_specs {{{
 temperature__component_specs <- function() {
     template <- component__input_requirement(
         "weather_template",
@@ -378,11 +413,14 @@ temperature__component_specs <- function() {
         )
     )
 }
+# }}}
 
 # Register the method-neutral temperature-to-EPW components once while
 # preserving any explicit process-local extensions under the same keys.
+# temperature__register_components {{{
 temperature__register_components <- function() {
     component__register_builtins(temperature__component_specs())
 }
-
 # }}}
+
+# vim: fdm=marker :

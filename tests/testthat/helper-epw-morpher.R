@@ -1,9 +1,12 @@
 # Build a stable Solr response envelope for local morphing integration tests.
+# epw_morpher_test_response {{{
 epw_morpher_test_response <- function(docs) {
     esgf_test__response(docs)
 }
+# }}}
 
 # Return the file-query parameters shared by local morphing fixtures.
+# epw_morpher_test_params {{{
 epw_morpher_test_params <- function() {
     query_param__as_store(list(
         project = "CMIP6",
@@ -14,8 +17,10 @@ epw_morpher_test_params <- function() {
         format = QUERY_PARAM__FORMAT_JSON
     ))
 }
+# }}}
 
 # Construct a typed ESGF result from local file-document fixtures.
+# epw_morpher_test_result {{{
 epw_morpher_test_result <- function(docs) {
     query_result__new(
         EsgResultFile,
@@ -24,8 +29,10 @@ epw_morpher_test_result <- function(docs) {
         result = epw_morpher_test_response(docs)
     )
 }
+# }}}
 
 # Describe one local NetCDF file with the ESGF fields consumed by EsgStore.
+# epw_morpher_test_file_docs {{{
 epw_morpher_test_file_docs <- function(
     path,
     opendap_url,
@@ -64,3 +71,6 @@ epw_morpher_test_file_docs <- function(
     )))
     docs
 }
+# }}}
+
+# vim: fdm=marker :

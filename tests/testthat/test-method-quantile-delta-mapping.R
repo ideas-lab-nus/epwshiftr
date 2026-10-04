@@ -5,6 +5,7 @@ qdm_test__execution_inputs <- signal_test__execution_inputs
 
 # Execute compact fixtures through the common signal lifecycle with a
 # full-annual seasonal pool and an explicit minimum sample count.
+# qdm_test__execute {{{
 qdm_test__execute <- function(
     variable,
     observed,
@@ -38,8 +39,10 @@ qdm_test__execute <- function(
         warn_experimental = warn_experimental
     )
 }
+# }}}
 
 # Retrieve one default profile by variable for direct kernel validation tests.
+# qdm_test__settings {{{
 qdm_test__settings <- function(variable) {
     profiles <- qdm__profiles()
     index <- which(vapply(
@@ -49,6 +52,7 @@ qdm_test__settings <- function(variable) {
     ))
     profiles[[index]]@settings
 }
+# }}}
 
 test_that("QDM transfers absolute and relative quantile changes", {
     absolute <- qdm__map_value(
@@ -146,11 +150,13 @@ test_that("QDM preserves modeled quantile deltas that QM changes", {
         "apply",
         inputs = boundary$inputs,
         groups = list(boundary$group),
-        overrides = list(tas = list(
-            seasonal_window_days = 365L,
-            target_year_days = 365L,
-            min_samples = 2L
-        )),
+        overrides = list(
+            tas = list(
+                seasonal_window_days = 365L,
+                target_year_days = 365L,
+                min_samples = 2L
+            )
+        ),
         warn_experimental = FALSE
     )@values[[1L]]@data$value
 
@@ -327,9 +333,7 @@ test_that("precipitation censoring is deterministic and RNG-independent", {
     ))
     expect_true(any(first_values == 0))
     expect_true(any(first_values > 0))
-    precipitation <- (
-        first@values[[1L]]@provenance$diagnostics$precipitation
-    )
+    precipitation <- (first@values[[1L]]@provenance$diagnostics$precipitation)
     expect_identical(
         precipitation$input_censored_values,
         c(
@@ -482,3 +486,5 @@ test_that("QDM profiles retain evidence and component registration", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker :

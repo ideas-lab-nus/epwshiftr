@@ -4,6 +4,7 @@ NULL
 # WeatherStageResult is the runtime envelope exchanged between component
 # stages. It keeps the data kind explicit and retains stage-local diagnostics
 # and provenance without imposing one physical table shape on every method.
+# WeatherStageResult {{{
 WeatherStageResult <- S7::new_class(
     "WeatherStageResult",
     properties = list(
@@ -15,20 +16,27 @@ WeatherStageResult <- S7::new_class(
         provenance = S7::new_property(S7::class_list, default = list()),
         metadata = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
-        if (length(self@stage) != 1L ||
-            is.na(self@stage) ||
-            !self@stage %in% WEATHER_COMPONENT_STAGES) {
+        if (
+            length(self@stage) != 1L ||
+                is.na(self@stage) ||
+                !self@stage %in% WEATHER_COMPONENT_STAGES
+        ) {
             return("`stage` must identify one future-weather component stage.")
         }
-        if (length(self@component) != 1L ||
-            is.na(self@component) ||
-            !grepl("^[a-z][a-z0-9_]*$", self@component)) {
+        if (
+            length(self@component) != 1L ||
+                is.na(self@component) ||
+                !grepl("^[a-z][a-z0-9_]*$", self@component)
+        ) {
             return("`component` must be one lower snake_case component name.")
         }
-        if (length(self@kind) != 1L ||
-            is.na(self@kind) ||
-            !nzchar(self@kind)) {
+        if (
+            length(self@kind) != 1L ||
+                is.na(self@kind) ||
+                !nzchar(self@kind)
+        ) {
             return("`kind` must be one non-empty intermediate data kind.")
         }
         if (is.null(self@value)) {
@@ -36,28 +44,36 @@ WeatherStageResult <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # WeatherPipelineSpec stores only stable component names. Executable functions
 # remain in the process-local registry and are resolved when a plan is compiled.
+# WeatherPipelineSpec {{{
 WeatherPipelineSpec <- S7::new_class(
     "WeatherPipelineSpec",
     properties = list(
         components = S7::new_property(S7::class_list),
         metadata = S7::new_property(S7::class_list, default = list())
     ),
+    # validator {{{
     validator = function(self) {
         if (!identical(names(self@components), WEATHER_COMPONENT_STAGES)) {
             return(
                 "`components` must contain one entry for every ordered component stage."
             )
         }
-        valid <- vapply(self@components, function(component) {
-            is.character(component) &&
-                length(component) == 1L &&
-                !is.na(component) &&
-                grepl("^[a-z][a-z0-9_]*$", component)
-        }, logical(1L))
+        valid <- vapply(
+            self@components,
+            function(component) {
+                is.character(component) &&
+                    length(component) == 1L &&
+                    !is.na(component) &&
+                    grepl("^[a-z][a-z0-9_]*$", component)
+            },
+            logical(1L)
+        )
         if (!all(valid)) {
             return(
                 "Every pipeline component must be one lower snake_case name."
@@ -65,10 +81,13 @@ WeatherPipelineSpec <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # WeatherPipelinePlan retains the resolved component specifications and the
 # role-addressable inputs that were validated before any stage executed.
+# WeatherPipelinePlan {{{
 WeatherPipelinePlan <- S7::new_class(
     "WeatherPipelinePlan",
     properties = list(
@@ -76,6 +95,7 @@ WeatherPipelinePlan <- S7::new_class(
         inputs = S7::new_property(S7::class_any),
         components = S7::new_property(S7::class_list)
     ),
+    # validator {{{
     validator = function(self) {
         if (!S7::S7_inherits(self@spec, WeatherPipelineSpec)) {
             return("`spec` must be a WeatherPipelineSpec object.")
@@ -83,23 +103,28 @@ WeatherPipelinePlan <- S7::new_class(
         if (!S7::S7_inherits(self@inputs, WeatherInputs)) {
             return("`inputs` must be a WeatherInputs object.")
         }
-        if (!identical(names(self@components), WEATHER_COMPONENT_STAGES) ||
-            !all(vapply(
-                self@components,
-                S7::S7_inherits,
-                logical(1L),
-                class = WeatherComponentSpec
-            ))) {
+        if (
+            !identical(names(self@components), WEATHER_COMPONENT_STAGES) ||
+                !all(vapply(
+                    self@components,
+                    S7::S7_inherits,
+                    logical(1L),
+                    class = WeatherComponentSpec
+                ))
+        ) {
             return(
                 "`components` must contain resolved specifications for every stage."
             )
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # WeatherPipelineExecution exposes every stage envelope for diagnostics while
 # retaining the final method result consumed by EpwMorphBackend.
+# WeatherPipelineExecution {{{
 WeatherPipelineExecution <- S7::new_class(
     "WeatherPipelineExecution",
     properties = list(
@@ -107,17 +132,20 @@ WeatherPipelineExecution <- S7::new_class(
         stages = S7::new_property(S7::class_list),
         result = S7::new_property(S7::class_any)
     ),
+    # validator {{{
     validator = function(self) {
         if (!S7::S7_inherits(self@plan, WeatherPipelinePlan)) {
             return("`plan` must be a WeatherPipelinePlan object.")
         }
-        if (!identical(names(self@stages), WEATHER_COMPONENT_STAGES) ||
-            !all(vapply(
-                self@stages,
-                S7::S7_inherits,
-                logical(1L),
-                class = WeatherStageResult
-            ))) {
+        if (
+            !identical(names(self@stages), WEATHER_COMPONENT_STAGES) ||
+                !all(vapply(
+                    self@stages,
+                    S7::S7_inherits,
+                    logical(1L),
+                    class = WeatherStageResult
+                ))
+        ) {
             return(
                 "`stages` must contain one WeatherStageResult for every stage."
             )
@@ -127,10 +155,13 @@ WeatherPipelineExecution <- S7::new_class(
         }
         NULL
     }
+    # }}}
 )
+# }}}
 
 # Construct one complete linear pipeline from stable registered component
 # names. Identity components make intentionally unchanged stages explicit.
+# pipeline__spec {{{
 pipeline__spec <- function(components, metadata = list()) {
     checkmate::assert_list(components, names = "unique")
     missing <- setdiff(WEATHER_COMPONENT_STAGES, names(components))
@@ -150,17 +181,21 @@ pipeline__spec <- function(components, metadata = list()) {
     checkmate::assert_list(metadata, names = "unique")
     WeatherPipelineSpec(components = components, metadata = metadata)
 }
+# }}}
 
 # Return the serializable stage-to-component mapping stored with a recipe.
+# pipeline__records {{{
 pipeline__records <- function(spec) {
     if (!S7::S7_inherits(spec, WeatherPipelineSpec)) {
         cli::cli_abort("{.arg spec} must be a WeatherPipelineSpec object.")
     }
     lapply(spec@components, identity)
 }
+# }}}
 
 # Reconstruct a pipeline specification from persisted stage-to-component
 # records before resolving executable operations from the registry.
+# pipeline__from_records {{{
 pipeline__from_records <- function(records) {
     if (is.null(records)) {
         return(NULL)
@@ -170,9 +205,11 @@ pipeline__from_records <- function(records) {
     }
     pipeline__spec(records)
 }
+# }}}
 
 # Resolve and validate every component before execution, including role
 # requirements and the intermediate kind exchanged across adjacent stages.
+# pipeline__compile {{{
 pipeline__compile <- function(spec, inputs) {
     if (!S7::S7_inherits(spec, WeatherPipelineSpec)) {
         cli::cli_abort("{.arg spec} must be a WeatherPipelineSpec object.")
@@ -198,9 +235,11 @@ pipeline__compile <- function(spec, inputs) {
         components = components
     )
 }
+# }}}
 
 # Find the allowed frequency intersection declared for one or more semantic
 # input roles. NULL means that no component constrains those roles.
+# pipeline__frequency_choices {{{
 pipeline__frequency_choices <- function(
     spec,
     roles = c("model_historical", "model_future")
@@ -234,9 +273,11 @@ pipeline__frequency_choices <- function(
     }
     allowed
 }
+# }}}
 
 # Resolve variable-specific source frequencies across the ordered component
 # graph so extraction planning uses the same contract as runtime validation.
+# pipeline__variable_frequencies {{{
 pipeline__variable_frequencies <- function(
     spec,
     roles = c("model_historical", "model_future")
@@ -264,13 +305,17 @@ pipeline__variable_frequencies <- function(
         "Pipeline components"
     )
 }
+# }}}
 
 # Convert either a component-provided envelope or its raw return value into the
 # single runtime representation consumed by the next stage.
+# pipeline__stage_result {{{
 pipeline__stage_result <- function(component, value) {
     if (S7::S7_inherits(value, WeatherStageResult)) {
-        if (!identical(value@stage, component@stage) ||
-            !identical(value@component, component@name)) {
+        if (
+            !identical(value@stage, component@stage) ||
+                !identical(value@component, component@name)
+        ) {
             cli::cli_abort(
                 "Component {.val {component@stage}::{component@name}} returned an envelope for another component."
             )
@@ -302,9 +347,11 @@ pipeline__stage_result <- function(component, value) {
         provenance = provenance
     )
 }
+# }}}
 
 # Extract optional signal-setting overrides from backend options while keeping
 # pipelines without configurable signal profiles on the empty-list default.
+# pipeline__signal_overrides {{{
 pipeline__signal_overrides <- function(options) {
     overrides <- options$signal_overrides
     if (is.null(overrides)) {
@@ -313,16 +360,20 @@ pipeline__signal_overrides <- function(options) {
     checkmate::assert_list(overrides, names = "unique")
     overrides
 }
+# }}}
 
 # Remove signal-owned profile overrides from the option list seen by every
 # other component while retaining any backend settings those stages declare.
+# pipeline__component_options {{{
 pipeline__component_options <- function(options) {
     options[setdiff(names(options), "signal_overrides")]
 }
+# }}}
 
 # Build the stage-specific operation arguments while retaining one generic
 # executor. Signal components receive their shared group lifecycle contract;
 # every other stage receives the previous typed value.
+# pipeline__operation_args {{{
 pipeline__operation_args <- function(
     component,
     plan,
@@ -357,34 +408,45 @@ pipeline__operation_args <- function(
         )
     )
 }
+# }}}
 
 # Render one compact execution table suitable for retaining with a backend
 # result without serializing process-local component functions.
+# pipeline__stage_table {{{
 pipeline__stage_table <- function(stages) {
-    data.table::rbindlist(lapply(stages, function(result) {
-        status <- "ok"
-        message <- NA_character_
-        signal <- result@diagnostics$signal
-        if (is.data.frame(signal) && nrow(signal) &&
-            any(signal[["status"]] == "error")) {
-            status <- "error"
-            message <- paste(
-                signal[["message"]][signal[["status"]] == "error"],
-                collapse = "; "
+    data.table::rbindlist(
+        lapply(stages, function(result) {
+            status <- "ok"
+            message <- NA_character_
+            signal <- result@diagnostics$signal
+            if (
+                is.data.frame(signal) &&
+                    nrow(signal) &&
+                    any(signal[["status"]] == "error")
+            ) {
+                status <- "error"
+                message <- paste(
+                    signal[["message"]][signal[["status"]] == "error"],
+                    collapse = "; "
+                )
+            }
+            data.table::data.table(
+                stage = result@stage,
+                component = result@component,
+                kind = result@kind,
+                status = status,
+                message = message
             )
-        }
-        data.table::data.table(
-            stage = result@stage,
-            component = result@component,
-            kind = result@kind,
-            status = status,
-            message = message
-        )
-    }), use.names = TRUE, fill = TRUE)
+        }),
+        use.names = TRUE,
+        fill = TRUE
+    )
 }
+# }}}
 
 # Execute one compiled pipeline in stage order and return both inspectable stage
 # envelopes and the final backend result.
+# pipeline__execute {{{
 pipeline__execute <- function(plan, context, options = list()) {
     if (!S7::S7_inherits(plan, WeatherPipelinePlan)) {
         cli::cli_abort("{.arg plan} must be a WeatherPipelinePlan object.")
@@ -422,8 +484,10 @@ pipeline__execute <- function(plan, context, options = list()) {
         result = final
     )
 }
+# }}}
 
 # Compile and execute a pipeline directly from the canonical backend context.
+# pipeline__run {{{
 pipeline__run <- function(spec, context) {
     checkmate::assert_class(context, "morpher__context")
     plan <- pipeline__compile(spec, context$inputs)
@@ -434,3 +498,6 @@ pipeline__run <- function(spec, context) {
     )
     execution@result
 }
+# }}}
+
+# vim: fdm=marker :

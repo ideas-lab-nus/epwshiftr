@@ -1,6 +1,10 @@
 ESGDICT_RELATION_FIELDS <- list(
     variable = c("variable_id", "table_id", "frequency", "realm"),
-    activity_experiment = c("activity_id", "experiment_id", "sub_experiment_id"),
+    activity_experiment = c(
+        "activity_id",
+        "experiment_id",
+        "sub_experiment_id"
+    ),
     activity_source = c("activity_id", "source_id", "institution_id")
 )
 
@@ -37,10 +41,18 @@ ESGDICT_FIELD_ALIASES <- c(
 #'   constraints that were not used.
 #'
 #' @export
-esgdict_option <- function(field, ..., project = NULL, dict = NULL, warn_ignored = TRUE) {
+# esgdict_option {{{
+esgdict_option <- function(
+    field,
+    ...,
+    project = NULL,
+    dict = NULL,
+    warn_ignored = TRUE
+) {
     dict <- dict__resolve(project, dict)
     dict__options(dict, field, list(...), warn_ignored = warn_ignored)
 }
+# }}}
 
 #' Check ESG Dictionary Parameter Values
 #'
@@ -62,6 +74,7 @@ esgdict_option <- function(field, ..., project = NULL, dict = NULL, warn_ignored
 #' @return An `esgdict_check_result` [data.table::data.table()].
 #'
 #' @export
+# esgdict_check {{{
 esgdict_check <- function(
     ...,
     project = NULL,
@@ -81,15 +94,23 @@ esgdict_check <- function(
         relationship = relationship
     )
 }
+# }}}
 
 #' @export
+# print.esgdict_check_result {{{
 print.esgdict_check_result <- function(x, ...) {
     out <- data.table::copy(x)
-    data.table::setattr(out, "class", setdiff(class(out), "esgdict_check_result"))
+    data.table::setattr(
+        out,
+        "class",
+        setdiff(class(out), "esgdict_check_result")
+    )
     print(out, ...)
     invisible(x)
 }
+# }}}
 
+# dict__resolve {{{
 dict__resolve <- function(project = NULL, dict = NULL) {
     if (!is.null(dict) && !inherits(dict, "EsgDict")) {
         stop("`dict` must be an `EsgDict` object.", call. = FALSE)
@@ -132,7 +153,9 @@ dict__resolve <- function(project = NULL, dict = NULL) {
 
     dict
 }
+# }}}
 
+# dict__relations {{{
 dict__relations <- function(project = "CMIP6") {
     project <- dict__project(project)
     fields <- ESGDICT_RELATION_FIELDS
@@ -141,7 +164,9 @@ dict__relations <- function(project = "CMIP6") {
     }
     fields
 }
+# }}}
 
+# dict__make_indices {{{
 dict__make_indices <- function(project, data) {
     indices <- list(values = dict__idx_values(project, data))
 
@@ -150,7 +175,9 @@ dict__make_indices <- function(project, data) {
         indices$variable <- variable
     }
 
-    activity_experiment <- dict__idx_activity_experiment(data$vocab$experiment_id)
+    activity_experiment <- dict__idx_activity_experiment(
+        data$vocab$experiment_id
+    )
     if (nrow(activity_experiment)) {
         indices$activity_experiment <- activity_experiment
     }
@@ -162,12 +189,24 @@ dict__make_indices <- function(project, data) {
 
     indices
 }
+# }}}
 
+# dict__idx_values {{{
 dict__idx_values <- function(project, data) {
     project <- dict__project(project)
     rows <- list(
-        dict__value_rows("project", project, sprintf("%s project", project), "constant"),
-        dict__value_rows("mip_era", project, sprintf("%s project", project), "constant")
+        dict__value_rows(
+            "project",
+            project,
+            sprintf("%s project", project),
+            "constant"
+        ),
+        dict__value_rows(
+            "mip_era",
+            project,
+            sprintf("%s project", project),
+            "constant"
+        )
     )
     if (identical(project, "CMIP6")) {
         rows[[length(rows) + 1L]] <- data.table::data.table(
@@ -180,15 +219,21 @@ dict__idx_values <- function(project, data) {
     }
 
     for (field in names(data$vocab)) {
-        if (field %in% c("drs", "required_global_attributes")) next
+        if (field %in% c("drs", "required_global_attributes")) {
+            next
+        }
         cv <- data$vocab[[field]]
-        if (is.null(cv)) next
+        if (is.null(cv)) {
+            next
+        }
 
         if (is.data.frame(cv)) {
             rows[[length(rows) + 1L]] <- dict__table_values(field, cv)
         } else if (is.list(cv)) {
             value <- names(cv)
-            if (is.null(value)) value <- dict__chr(cv)
+            if (is.null(value)) {
+                value <- dict__chr(cv)
+            }
             rows[[length(rows) + 1L]] <- dict__value_rows(
                 field,
                 value,
@@ -196,7 +241,12 @@ dict__idx_values <- function(project, data) {
                 "vocab"
             )
         } else {
-            rows[[length(rows) + 1L]] <- dict__value_rows(field, unclass(cv), NA_character_, "vocab")
+            rows[[length(rows) + 1L]] <- dict__value_rows(
+                field,
+                unclass(cv),
+                NA_character_,
+                "vocab"
+            )
         }
     }
 
@@ -211,7 +261,9 @@ dict__idx_values <- function(project, data) {
 
     unique(data.table::rbindlist(rows, use.names = TRUE, fill = TRUE))
 }
+# }}}
 
+# dict__table_values {{{
 dict__table_values <- function(field, dt) {
     value_col <- if (field %in% names(dt)) {
         field
@@ -221,7 +273,10 @@ dict__table_values <- function(field, dt) {
         names(dt)[[1L]]
     }
 
-    desc_cols <- intersect(c("description", "label_extended", "label", "title", "name"), names(dt))
+    desc_cols <- intersect(
+        c("description", "label_extended", "label", "title", "name"),
+        names(dt)
+    )
     desc <- rep(NA_character_, nrow(dt))
     for (col in desc_cols) {
         replacement <- as.character(dt[[col]])
@@ -231,8 +286,15 @@ dict__table_values <- function(field, dt) {
 
     dict__value_rows(field, dt[[value_col]], desc, "vocab")
 }
+# }}}
 
-dict__value_rows <- function(field, value, description = NA_character_, source = NA_character_) {
+# dict__value_rows {{{
+dict__value_rows <- function(
+    field,
+    value,
+    description = NA_character_,
+    source = NA_character_
+) {
     if (is.null(description)) {
         description <- NA_character_
     }
@@ -247,13 +309,19 @@ dict__value_rows <- function(field, value, description = NA_character_, source =
         source = source
     )
 }
+# }}}
 
+# dict__desc {{{
 dict__desc <- function(x) {
     x <- unlst(x)
-    if (length(x) == 1L) return(as.character(x))
+    if (length(x) == 1L) {
+        return(as.character(x))
+    }
     NA_character_
 }
+# }}}
 
+# dict__idx_request {{{
 dict__idx_request <- function(request) {
     if (is.null(request) || !nrow(request)) {
         return(data.table::data.table(
@@ -276,14 +344,18 @@ dict__idx_request <- function(request) {
     )
     unique(out)
 }
+# }}}
 
+# dict__idx_activity_experiment {{{
 dict__idx_activity_experiment <- function(dt) {
     dict__expand(
         dt,
         c("activity_id", "experiment_id", "sub_experiment_id")
     )
 }
+# }}}
 
+# dict__idx_activity_source {{{
 dict__idx_activity_source <- function(dt) {
     if (is.null(dt) || !nrow(dt)) {
         return(data.table::data.table(
@@ -304,29 +376,49 @@ dict__idx_activity_source <- function(dt) {
     }
     unique(data.table::rbindlist(rows, use.names = TRUE))
 }
+# }}}
 
+# dict__expand {{{
 dict__expand <- function(dt, fields) {
-    empty <- data.table::as.data.table(stats::setNames(rep(list(character()), length(fields)), fields))
-    if (is.null(dt) || !nrow(dt)) return(empty)
+    empty <- data.table::as.data.table(stats::setNames(
+        rep(list(character()), length(fields)),
+        fields
+    ))
+    if (is.null(dt) || !nrow(dt)) {
+        return(empty)
+    }
 
     rows <- vector("list", nrow(dt))
     for (i in seq_len(nrow(dt))) {
-        args <- lapply(fields, function(field) dict__cell_values(dt[[field]], i))
+        args <- lapply(fields, function(field) {
+            dict__cell_values(dt[[field]], i)
+        })
         names(args) <- fields
         args$sorted <- FALSE
         rows[[i]] <- do.call(data.table::CJ, args)
     }
     unique(data.table::rbindlist(rows, use.names = TRUE))
 }
+# }}}
 
+# dict__cell_values {{{
 dict__cell_values <- function(col, i) {
-    if (is.list(col) && !inherits(col, c("Date", "POSIXt", "numeric_version"))) {
+    if (
+        is.list(col) && !inherits(col, c("Date", "POSIXt", "numeric_version"))
+    ) {
         return(dict__chr(col[[i]]))
     }
     dict__chr(col[i])
 }
+# }}}
 
-dict__options <- function(dict, field, constraints = list(), warn_ignored = TRUE) {
+# dict__options {{{
+dict__options <- function(
+    dict,
+    field,
+    constraints = list(),
+    warn_ignored = TRUE
+) {
     field <- dict__field(field, dict)
     constraints <- dict__constraints(constraints, dict)
     constraints[[field]] <- NULL
@@ -335,7 +427,10 @@ dict__options <- function(dict, field, constraints = list(), warn_ignored = TRUE
     out <- dict$indices("values")
     target_field <- field
     target_values <- values$value
-    out <- out[out[["field"]] == target_field & (is.na(out[["value"]]) | out[["value"]] %in% target_values)]
+    out <- out[
+        out[["field"]] == target_field &
+            (is.na(out[["value"]]) | out[["value"]] %in% target_values)
+    ]
 
     if (!nrow(out) && length(values$value)) {
         out <- data.table::data.table(
@@ -362,7 +457,9 @@ dict__options <- function(dict, field, constraints = list(), warn_ignored = TRUE
 
     out
 }
+# }}}
 
+# dict__candidates {{{
 dict__candidates <- function(dict, field, constraints) {
     all_values <- dict__field_values(dict, field)
     candidates <- all_values$value
@@ -373,10 +470,14 @@ dict__candidates <- function(dict, field, constraints) {
     relation_fields <- dict__relations(dict$project())
     for (idx_name in intersect(names(relation_fields), names(indices))) {
         idx_fields <- relation_fields[[idx_name]]
-        if (!(field %in% idx_fields)) next
+        if (!(field %in% idx_fields)) {
+            next
+        }
 
         active <- intersect(names(constraints), setdiff(idx_fields, field))
-        if (!length(active)) next
+        if (!length(active)) {
+            next
+        }
 
         idx <- data.table::copy(indices[[idx_name]])
         for (constraint in active) {
@@ -394,7 +495,9 @@ dict__candidates <- function(dict, field, constraints) {
         used_constraints = used_constraints
     )
 }
+# }}}
 
+# dict__field_values {{{
 dict__field_values <- function(dict, field) {
     values <- dict$indices("values")
     target_field <- field
@@ -405,7 +508,9 @@ dict__field_values <- function(dict, field) {
     ]
     unique(out)
 }
+# }}}
 
+# dict__check {{{
 dict__check <- function(
     dict,
     args,
@@ -428,7 +533,10 @@ dict__check <- function(
         choices <- dict__field_values(dict, field)$value
         # Relation-only fields may be unknown for CV-only projects. In that
         # case, the relationship row below should report `not_checked`.
-        if (!length(choices) && field %in% unlist(ESGDICT_RELATION_FIELDS, use.names = FALSE)) {
+        if (
+            !length(choices) &&
+                field %in% unlist(ESGDICT_RELATION_FIELDS, use.names = FALSE)
+        ) {
             next
         }
         for (value in args[[field]]) {
@@ -441,59 +549,95 @@ dict__check <- function(
                 rule = "field_value",
                 source = dict__check_source(dict, field),
                 constraint_fields = character(),
-                message = if (valid) NA_character_ else sprintf("`%s` is not a valid `%s`.", value, field),
-                suggestions = if (!valid && suggest) dict__suggest(value, choices, n_suggestions) else character(),
+                message = if (valid) {
+                    NA_character_
+                } else {
+                    sprintf("`%s` is not a valid `%s`.", value, field)
+                },
+                suggestions = if (!valid && suggest) {
+                    dict__suggest(value, choices, n_suggestions)
+                } else {
+                    character()
+                },
                 compatible_values = character()
             )
         }
     }
 
-    relation_rows <- dict__check_relations(dict, args, relationship = relationship)
+    relation_rows <- dict__check_relations(
+        dict,
+        args,
+        relationship = relationship
+    )
     res <- dict__check_result(c(rows, relation_rows))
     invalid <- res[!is.na(res$valid) & !res$valid]
 
     if (error && nrow(invalid)) {
-        stop(paste(stats::na.omit(invalid$message), collapse = "\n"), call. = FALSE)
+        stop(
+            paste(stats::na.omit(invalid$message), collapse = "\n"),
+            call. = FALSE
+        )
     }
 
     res
 }
+# }}}
 
+# dict__check_source {{{
 dict__check_source <- function(dict, field) {
     values <- dict$indices("values")
     target_field <- field
-    src <- values[values[["field"]] == target_field & !is.na(values[["source"]]), unique(source)]
+    src <- values[
+        values[["field"]] == target_field & !is.na(values[["source"]]),
+        unique(source)
+    ]
     if (length(src)) src[[1L]] else NA_character_
 }
+# }}}
 
+# dict__valid {{{
 dict__valid <- function(field, value, choices) {
     if (identical(field, "variant_label")) {
         return(grepl(CMIP6DICT_VARIANT_PATTERN, value))
     }
     value %in% choices
 }
+# }}}
 
+# dict__suggest {{{
 dict__suggest <- function(value, choices, n) {
     choices <- unique(stats::na.omit(choices))
-    if (!length(choices)) return(character())
+    if (!length(choices)) {
+        return(character())
+    }
 
     exact <- choices[tolower(choices) == tolower(value)]
-    if (length(exact)) return(utils::head(exact, n))
+    if (length(exact)) {
+        return(utils::head(exact, n))
+    }
 
     dist <- utils::adist(value, choices, ignore.case = TRUE)
     choices[utils::head(order(dist[1L, ]), n)]
 }
+# }}}
 
+# dict__check_relations {{{
 dict__check_relations <- function(dict, args, relationship) {
     rows <- list()
     indices <- dict$indices()
     for (idx_name in names(ESGDICT_RELATION_FIELDS)) {
         fields <- intersect(names(args), ESGDICT_RELATION_FIELDS[[idx_name]])
-        if (length(fields) < 2L) next
+        if (length(fields) < 2L) {
+            next
+        }
 
         idx <- indices[[idx_name]]
         if (is.null(idx) || !nrow(idx)) {
-            rows[[length(rows) + 1L]] <- dict__unchecked_row(idx_name, fields, args)
+            rows[[length(rows) + 1L]] <- dict__unchecked_row(
+                idx_name,
+                fields,
+                args
+            )
             next
         }
         if (identical(relationship, "any")) {
@@ -504,11 +648,24 @@ dict__check_relations <- function(dict, args, relationship) {
     }
     rows
 }
+# }}}
 
+# dict__unchecked_row {{{
 dict__unchecked_row <- function(idx_name, fields, args) {
-    value <- paste(sprintf("%s=%s", fields, vapply(fields, function(field) {
-        paste(dict__chr(args[[field]]), collapse = "|")
-    }, character(1L))), collapse = ", ")
+    value <- paste(
+        sprintf(
+            "%s=%s",
+            fields,
+            vapply(
+                fields,
+                function(field) {
+                    paste(dict__chr(args[[field]]), collapse = "|")
+                },
+                character(1L)
+            )
+        ),
+        collapse = ", "
+    )
 
     dict__check_row(
         field = paste(fields, collapse = "+"),
@@ -518,17 +675,26 @@ dict__unchecked_row <- function(idx_name, fields, args) {
         rule = idx_name,
         source = NA_character_,
         constraint_fields = fields,
-        message = sprintf("Combination cannot be checked because `%s` relation data is not available.", idx_name),
+        message = sprintf(
+            "Combination cannot be checked because `%s` relation data is not available.",
+            idx_name
+        ),
         suggestions = character(),
         compatible_values = character()
     )
 }
+# }}}
 
+# dict__check_any {{{
 dict__check_any <- function(idx, idx_name, fields, args) {
     rows <- list()
-    valid_args <- lapply(fields, function(field) intersect(args[[field]], unique(idx[[field]])))
+    valid_args <- lapply(fields, function(field) {
+        intersect(args[[field]], unique(idx[[field]]))
+    })
     names(valid_args) <- fields
-    if (any(lengths(valid_args) == 0L)) return(rows)
+    if (any(lengths(valid_args) == 0L)) {
+        return(rows)
+    }
 
     for (field in fields) {
         other_fields <- setdiff(fields, field)
@@ -549,18 +715,29 @@ dict__check_any <- function(idx, idx_name, fields, args) {
                         value,
                         paste(other_fields, collapse = ", ")
                     ),
-                    compatible_values = dict__compatible(idx, field, value, other_fields)
+                    compatible_values = dict__compatible(
+                        idx,
+                        field,
+                        value,
+                        other_fields
+                    )
                 )
             }
         }
     }
     rows
 }
+# }}}
 
+# dict__check_all_pairs {{{
 dict__check_all_pairs <- function(idx, idx_name, fields, args) {
-    grids <- lapply(fields, function(field) intersect(args[[field]], unique(idx[[field]])))
+    grids <- lapply(fields, function(field) {
+        intersect(args[[field]], unique(idx[[field]]))
+    })
     names(grids) <- fields
-    if (any(lengths(grids) == 0L)) return(list())
+    if (any(lengths(grids) == 0L)) {
+        return(list())
+    }
 
     combos <- do.call(data.table::CJ, c(grids, sorted = FALSE))
     rows <- list()
@@ -570,27 +747,46 @@ dict__check_all_pairs <- function(idx, idx_name, fields, args) {
             filtered <- filtered[filtered[[field]] == combos[[field]][[i]]]
         }
         if (!nrow(filtered)) {
-            combo_value <- paste(sprintf("%s=%s", fields, unlist(combos[i], use.names = FALSE)), collapse = ", ")
+            combo_value <- paste(
+                sprintf("%s=%s", fields, unlist(combos[i], use.names = FALSE)),
+                collapse = ", "
+            )
             rows[[length(rows) + 1L]] <- dict__relation_row(
                 field = paste(fields, collapse = "+"),
                 value = combo_value,
                 rule = idx_name,
                 source = idx_name,
                 constraint_fields = fields,
-                message = sprintf("Combination is not valid in `%s`: %s.", idx_name, combo_value),
+                message = sprintf(
+                    "Combination is not valid in `%s`: %s.",
+                    idx_name,
+                    combo_value
+                ),
                 compatible_values = character()
             )
         }
     }
     rows
 }
+# }}}
 
+# dict__compatible {{{
 dict__compatible <- function(idx, field, value, other_fields) {
     filtered <- idx[idx[[field]] == value]
     unique(unlist(filtered[, other_fields, with = FALSE], use.names = FALSE))
 }
+# }}}
 
-dict__relation_row <- function(field, value, rule, source, constraint_fields, message, compatible_values) {
+# dict__relation_row {{{
+dict__relation_row <- function(
+    field,
+    value,
+    rule,
+    source,
+    constraint_fields,
+    message,
+    compatible_values
+) {
     dict__check_row(
         field = field,
         value = value,
@@ -604,7 +800,9 @@ dict__relation_row <- function(field, value, rule, source, constraint_fields, me
         compatible_values = compatible_values
     )
 }
+# }}}
 
+# dict__check_row {{{
 dict__check_row <- function(
     field,
     value,
@@ -630,7 +828,9 @@ dict__check_row <- function(
         compatible_values = list(compatible_values)
     )
 }
+# }}}
 
+# dict__check_result {{{
 dict__check_result <- function(rows) {
     if (!length(rows)) {
         out <- data.table::data.table(
@@ -651,7 +851,9 @@ dict__check_result <- function(rows) {
     data.table::setattr(out, "class", c("esgdict_check_result", class(out)))
     out
 }
+# }}}
 
+# dict__field {{{
 dict__field <- function(field, dict = NULL) {
     checkmate::assert_string(field, min.chars = 1L)
     field <- tolower(field)
@@ -661,14 +863,21 @@ dict__field <- function(field, dict = NULL) {
 
     choices <- CMIP6DICT_FIELDS
     if (!is.null(dict) && inherits(dict, "EsgDict") && dict$has_data()) {
-        choices <- unique(c(dict$fields(), unlist(ESGDICT_RELATION_FIELDS, use.names = FALSE)))
+        choices <- unique(c(
+            dict$fields(),
+            unlist(ESGDICT_RELATION_FIELDS, use.names = FALSE)
+        ))
     }
     checkmate::assert_choice(field, choices)
     field
 }
+# }}}
 
+# dict__constraints {{{
 dict__constraints <- function(args, dict = NULL) {
-    if (!length(args)) return(list())
+    if (!length(args)) {
+        return(list())
+    }
 
     nms <- names(args)
     if (is.null(nms) || any(!nzchar(nms))) {
@@ -678,21 +887,40 @@ dict__constraints <- function(args, dict = NULL) {
     keep <- !vapply(args, is.null, logical(1L))
     args <- args[keep]
     nms <- nms[keep]
-    if (!length(args)) return(list())
+    if (!length(args)) {
+        return(list())
+    }
 
-    nms <- vapply(nms, dict__field, character(1L), dict = dict, USE.NAMES = FALSE)
+    nms <- vapply(
+        nms,
+        dict__field,
+        character(1L),
+        dict = dict,
+        USE.NAMES = FALSE
+    )
     names(args) <- nms
 
     out <- list()
     for (nm in unique(nms)) {
-        out[[nm]] <- unlist(args[nms == nm], recursive = FALSE, use.names = FALSE)
+        out[[nm]] <- unlist(
+            args[nms == nm],
+            recursive = FALSE,
+            use.names = FALSE
+        )
     }
     out
 }
+# }}}
 
+# dict__chr {{{
 dict__chr <- function(x) {
-    if (is.null(x)) return(character())
+    if (is.null(x)) {
+        return(character())
+    }
     x <- unlst(x)
     x <- x[!is.na(x)]
     as.character(x)
 }
+# }}}
+
+# vim: fdm=marker :

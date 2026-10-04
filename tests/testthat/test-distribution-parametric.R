@@ -43,3 +43,5 @@ test_that("parametric distribution validation rejects incomplete fits", {
         "requires `shape` and `scale`"
     )
 })
+
+# vim: fdm=marker :

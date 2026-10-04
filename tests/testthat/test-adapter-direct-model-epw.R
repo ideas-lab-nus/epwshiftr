@@ -1,4 +1,5 @@
 # Return the EPW role-addressable input used by the standalone physics stage.
+# epwphys_test__inputs {{{
 epwphys_test__inputs <- function() {
     epw <- epw_file_read(get_cache_epw())
     weather__new_inputs(
@@ -11,9 +12,11 @@ epwphys_test__inputs <- function() {
         )
     )
 }
+# }}}
 
 # Construct one already-mapped hourly variable so tests can isolate physical
 # closure from the preceding signal, sequence, and calendar components.
+# epwphys_test__series {{{
 epwphys_test__series <- function(
     variable,
     value,
@@ -35,9 +38,8 @@ epwphys_test__series <- function(
     data <- data.frame(
         target,
         year = rep.int(as.integer(year), HOURMAP_TARGET_HOURS),
-        target_annual_phase = (
-            (target$epw_day - 1) + (target$hour - 1) / 24
-        ) / HOURMAP_TARGET_DAYS,
+        target_annual_phase = ((target$epw_day - 1) + (target$hour - 1) / 24) /
+            HOURMAP_TARGET_DAYS,
         variable_id = rep.int(variable, HOURMAP_TARGET_HOURS),
         value = as.numeric(value),
         units = rep.int(unit, HOURMAP_TARGET_HOURS),
@@ -73,8 +75,10 @@ epwphys_test__series <- function(
         provenance = list(source = "synthetic")
     )
 }
+# }}}
 
 # Assemble a one-year mapped sequence from named variable specifications.
+# epwphys_test__sequence {{{
 epwphys_test__sequence <- function(
     values,
     units,
@@ -117,8 +121,10 @@ epwphys_test__sequence <- function(
         provenance = list(source = "synthetic")
     )
 }
+# }}}
 
 # Execute the component with the empty option set used by the generic runner.
+# epwphys_test__apply {{{
 epwphys_test__apply <- function(values, units, year = 2064L) {
     direct_epw__apply(
         epwphys_test__sequence(values, units, year),
@@ -127,6 +133,7 @@ epwphys_test__apply <- function(values, units, year = 2064L) {
         list()
     )
 }
+# }}}
 
 test_that("relative humidity and scalar wind close an EPW weather year", {
     input <- epwphys_test__inputs()
@@ -170,15 +177,19 @@ test_that("relative humidity and scalar wind close an EPW weather year", {
     expect_equal(weather$dry_bulb_temperature, rep.int(20, 8760))
     expect_equal(weather$atmospheric_pressure, rep.int(101325, 8760))
     expect_equal(weather$relative_humidity, rep.int(50, 8760))
-    expect_true(all(weather$dew_point_temperature <=
-        weather$dry_bulb_temperature))
+    expect_true(all(
+        weather$dew_point_temperature <= weather$dry_bulb_temperature
+    ))
     expect_equal(weather$wind_speed, rep.int(3, 8760))
     expect_identical(weather$wind_direction, template$wind_direction)
     expect_identical(weather$total_sky_cover, template$total_sky_cover)
     expect_true("wind_direction" %in% member@provenance$inherited_fields)
     expect_false("wind_direction" %in% result@constructed_fields)
 
-    geometry <- direct_epw__solar_geometry(template, input@weather_template@source)
+    geometry <- direct_epw__solar_geometry(
+        template,
+        input@weather_template@source
+    )
     projection <- geometry$effective_solar_projection
     daylight <- projection > 1e-8
     expect_equal(
@@ -243,8 +254,9 @@ test_that("specific humidity and vector wind derive dependent EPW fields", {
     expect_equal(weather$atmospheric_pressure, rep.int(100000, 8760))
     expect_true(all(weather$relative_humidity >= 0))
     expect_true(all(weather$relative_humidity <= 100))
-    expect_true(all(weather$dew_point_temperature <=
-        weather$dry_bulb_temperature))
+    expect_true(all(
+        weather$dew_point_temperature <= weather$dry_bulb_temperature
+    ))
     expect_equal(weather$wind_speed, rep.int(5, 8760))
     expect_equal(
         weather$wind_direction,
@@ -465,7 +477,9 @@ test_that("direct-model output retains every physically closed weather year", {
             units = "K",
             value = 300
         ),
-        recipe = suppressWarnings(epw_morph_recipe("original_morphing_absolute"))
+        recipe = suppressWarnings(epw_morph_recipe(
+            "original_morphing_absolute"
+        ))
     )
     result <- sequence__epw_output_write(
         closed,
@@ -478,13 +492,18 @@ test_that("direct-model output retains every physically closed weather year", {
     expect_s7_class(result, WeatherSequenceResult)
     expect_identical(result@output_type, "multi_year")
     expect_identical(
-        vapply(result@members, function(member) member@weather_year, integer(1L)),
+        vapply(
+            result@members,
+            function(member) member@weather_year,
+            integer(1L)
+        ),
         c(2061L, 2062L)
     )
     expect_identical(result@provenance$method, "direct_model_epw_result")
     expect_identical(nrow(result@diagnostics), 2L)
-    expect_true(all(result@diagnostics$physical_policy ==
-        "absolute_model_fields"))
+    expect_true(all(
+        result@diagnostics$physical_policy == "absolute_model_fields"
+    ))
     expect_true("dew_point_temperature" %in% result@parts$constructed_fields)
     expect_true(component__compatible(
         direct_epw__component(),
@@ -501,3 +520,5 @@ test_that("direct-model output retains every physically closed weather year", {
         "at least two complete weather years"
     )
 })
+
+# vim: fdm=marker :

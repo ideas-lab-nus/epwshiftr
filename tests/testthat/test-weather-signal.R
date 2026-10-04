@@ -152,8 +152,10 @@ test_that("different signal kernels share one execution lifecycle", {
         },
         operations = list(
             validate_result = function(value, inputs, key) {
-                if (is.numeric(value) &&
-                    length(value) == length(inputs$model_future)) {
+                if (
+                    is.numeric(value) &&
+                        length(value) == length(inputs$model_future)
+                ) {
                     return(TRUE)
                 }
                 "Signal result must match the future input length."
@@ -399,3 +401,5 @@ test_that("signal execution validates source and group role contracts", {
         "missing required input role.*observed_reference"
     )
 })
+
+# vim: fdm=marker :

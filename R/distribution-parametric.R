@@ -3,12 +3,15 @@
 
 # Validate one fitted distribution record before it is used by a CDF or
 # inverse-CDF calculation.
+# distribution__validate_fit {{{
 distribution__validate_fit <- function(fit) {
-    if (!is.list(fit) ||
-        !identical(
-            sort(names(fit)),
-            sort(c("family", "parameters", "sample_size", "method"))
-        )) {
+    if (
+        !is.list(fit) ||
+            !identical(
+                sort(names(fit)),
+                sort(c("family", "parameters", "sample_size", "method"))
+            )
+    ) {
         cli::cli_abort(
             "A parametric distribution fit must contain `family`, `parameters`, `sample_size`, and `method`."
         )
@@ -63,10 +66,12 @@ distribution__validate_fit <- function(fit) {
     }
     invisible(TRUE)
 }
+# }}}
 
 # Fit the Normal maximum-likelihood location and scale. The scale uses the
 # population denominator n, matching a likelihood fit rather than R's
 # sample-standard-deviation denominator n - 1.
+# distribution__fit_normal {{{
 distribution__fit_normal <- function(values) {
     checkmate::assert_numeric(
         values,
@@ -88,15 +93,17 @@ distribution__fit_normal <- function(values) {
         method = "maximum_likelihood"
     )
 }
+# }}}
 
 # Fit a zero-location Gamma distribution by maximum likelihood. For positive
 # x, the profile-likelihood shape solves
 # log(shape) - digamma(shape) = log(mean(x)) - mean(log(x));
 # scale is then mean(x) / shape.
+# distribution__fit_gamma {{{
 distribution__fit_gamma <- function(
-  values,
-  tolerance = 1e-10,
-  max_iterations = 1000L
+    values,
+    tolerance = 1e-10,
+    max_iterations = 1000L
 ) {
     checkmate::assert_numeric(
         values,
@@ -158,14 +165,16 @@ distribution__fit_gamma <- function(
     distribution__validate_fit(fit)
     fit
 }
+# }}}
 
 # Dispatch the two published SDM distribution families through one
 # method-neutral fitting boundary.
+# distribution__fit {{{
 distribution__fit <- function(
-  values,
-  family,
-  tolerance = 1e-10,
-  max_iterations = 1000L
+    values,
+    family,
+    tolerance = 1e-10,
+    max_iterations = 1000L
 ) {
     checkmate::assert_choice(family, c("normal", "gamma"))
     if (identical(family, "normal")) {
@@ -177,9 +186,11 @@ distribution__fit <- function(
         max_iterations = max_iterations
     )
 }
+# }}}
 
 # Evaluate the CDF of one validated Normal, Gamma, or Weibull distribution,
 # including an optional fixed location for either positive-family fit.
+# distribution__cdf {{{
 distribution__cdf <- function(fit, values) {
     distribution__validate_fit(fit)
     checkmate::assert_numeric(
@@ -213,9 +224,11 @@ distribution__cdf <- function(fit, values) {
         scale = fit$parameters$scale
     )
 }
+# }}}
 
 # Evaluate the inverse CDF of one validated Normal, Gamma, or Weibull fit while
 # restoring the optional fixed location used by positive-family models.
+# distribution__quantile {{{
 distribution__quantile <- function(fit, probability) {
     distribution__validate_fit(fit)
     checkmate::assert_numeric(
@@ -252,9 +265,11 @@ distribution__quantile <- function(fit, probability) {
     }
     location + quantile
 }
+# }}}
 
 # Clamp fitted probabilities away from zero and one so inverse CDFs remain
 # finite under the method's declared numerical threshold.
+# distribution__clamp_probability {{{
 distribution__clamp_probability <- function(probability, epsilon) {
     checkmate::assert_numeric(
         probability,
@@ -276,10 +291,12 @@ distribution__clamp_probability <- function(probability, epsilon) {
     }
     pmin(pmax(probability, epsilon), 1 - epsilon)
 }
+# }}}
 
 # Interpolate one ordered vector onto a requested ordered length using a
 # normalized rank coordinate. This is the SDM paper's length-normalization
 # operation when calibration and projected samples differ.
+# distribution__interpolate_ordered {{{
 distribution__interpolate_ordered <- function(values, length_out) {
     checkmate::assert_numeric(
         values,
@@ -306,3 +323,6 @@ distribution__interpolate_ordered <- function(values, length_out) {
         ties = "ordered"
     )$y
 }
+# }}}
+
+# vim: fdm=marker :

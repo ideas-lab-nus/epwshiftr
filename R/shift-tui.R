@@ -2,16 +2,20 @@
 # painting algorithm follows the multiline status-bar implementation added to
 # r-lib/cli in #819, while all capability detection, width handling, styling,
 # and cursor visibility continue to use cli's public API.
+# ShiftFrameRenderer {{{
 ShiftFrameRenderer <- R6::R6Class(
     "ShiftFrameRenderer",
     lock_class = TRUE,
     public = list(
         # Bind the renderer to one output connection. `backend` is resolved by
-        # shift__ui_renderer() in production and can be explicit in byte-level
+        # shift_tui__ui_renderer() in production and can be explicit in byte-level
         # tests so tests never depend on the host terminal.
-        initialize = function(output = cli::cli_output_connection(),
-                              backend = c("frame", "compact"),
-                              writer = NULL) {
+        # initialize {{{
+        initialize = function(
+            output = cli::cli_output_connection(),
+            backend = c("frame", "compact"),
+            writer = NULL
+        ) {
             backend <- match.arg(backend)
             if (!inherits(output, "connection")) {
                 cli::cli_abort("`output` must be an R connection.")
@@ -21,31 +25,39 @@ ShiftFrameRenderer <- R6::R6Class(
             }
             private$output <- output
             private$backend_value <- backend
-            private$writer <- shift_coalesce(writer, function(text) {
+            private$writer <- shift_stage__coalesce(writer, function(text) {
                 cat(text, file = output, sep = "")
                 flush.console()
                 invisible(NULL)
             })
         },
+        # }}}
 
         # Paint a complete dashboard frame atomically. Compact terminals keep
         # cli's mature single-line status renderer instead of receiving cursor
         # movement sequences that their host IDE may not support.
+        # draw {{{
         draw = function(lines, compact = NULL) {
-            lines <- shift__tui_normalize_lines(lines)
+            lines <- shift_tui__tui_normalize_lines(lines)
             if (!length(lines)) {
                 return(invisible(FALSE))
             }
-            compact <- shift__tui_normalize_lines(
-                shift_coalesce(compact, lines[[1L]]))[[1L]]
+            compact <- shift_tui__tui_normalize_lines(
+                shift_stage__coalesce(compact, lines[[1L]])
+            )[[1L]]
             # A frame taller than the viewport cannot be repainted with
             # cursor-up sequences. Semantic batch views fit their own sections;
             # other unexpectedly tall views retain a safe compact live row.
             private$last_frame <- lines
             private$last_compact <- compact
-            private$frame_compacted <- identical(private$backend_value, "frame") &&
-                length(lines) > shift__ui_height()
-            if (private$frame_compacted) lines <- compact
+            private$frame_compacted <- identical(
+                private$backend_value,
+                "frame"
+            ) &&
+                length(lines) > shift_ui__ui_height()
+            if (private$frame_compacted) {
+                lines <- compact
+            }
             if (isTRUE(private$suspended)) {
                 return(invisible(TRUE))
             }
@@ -54,9 +66,11 @@ ShiftFrameRenderer <- R6::R6Class(
             }
             invisible(private$draw_frame(lines))
         },
+        # }}}
 
         # Remove the currently painted region without discarding the last
         # semantic frame, allowing suspend() to restore it after normal output.
+        # clear {{{
         clear = function() {
             if (identical(private$backend_value, "compact")) {
                 private$close_compact("done")
@@ -65,51 +79,65 @@ ShiftFrameRenderer <- R6::R6Class(
             private$clear_frame()
             invisible(NULL)
         },
+        # }}}
 
         # Temporarily release the framebuffer while cli emits alerts, tables,
         # or diagnostics. Nested calls are intentionally idempotent so an
         # entire table can be emitted under one clear/restore cycle.
+        # suspend {{{
         suspend = function(code) {
             if (!is.function(code)) {
                 cli::cli_abort("`code` must be a function.")
             }
-            if (isTRUE(private$suspended) ||
-                !identical(private$backend_value, "frame") ||
-                !isTRUE(private$active_value)) {
+            if (
+                isTRUE(private$suspended) ||
+                    !identical(private$backend_value, "frame") ||
+                    !isTRUE(private$active_value)
+            ) {
                 return(code())
             }
             private$clear_frame()
             private$suspended <- TRUE
-            on.exit({
-                private$suspended <- FALSE
-                if (!isTRUE(private$closed) && length(private$last_frame)) {
-                    self$draw(private$last_frame, private$last_compact)
-                }
-            }, add = TRUE)
+            on.exit(
+                {
+                    private$suspended <- FALSE
+                    if (!isTRUE(private$closed) && length(private$last_frame)) {
+                        self$draw(private$last_frame, private$last_compact)
+                    }
+                },
+                add = TRUE
+            )
             code()
         },
+        # }}}
 
         # Commit the last semantic frame to terminal scrollback before
         # releasing cursor ownership. Every terminal workflow outcome uses this
         # path so its final receipt remains visible after live animation stops.
+        # commit {{{
         commit = function(result = c("done", "failed", "cancelled")) {
             result <- match.arg(result)
             if (isTRUE(private$closed)) {
                 return(invisible(NULL))
             }
             if (identical(private$backend_value, "compact")) {
-                private$close_compact(if (identical(result, "done")) {
-                    "done"
-                } else {
-                    "failed"
-                })
+                private$close_compact(
+                    if (identical(result, "done")) {
+                        "done"
+                    } else {
+                        "failed"
+                    }
+                )
             } else {
                 # Oversized receipts are written once into scrollback after
                 # clearing the bounded live row. Keep every output path even
                 # when the terminal cannot repaint the complete receipt.
                 if (isTRUE(private$frame_compacted)) {
                     private$clear_frame()
-                    private$write(paste0(paste(private$last_frame, collapse = "\n"), "\n"))
+                    private$write(paste0(
+                        paste(private$last_frame, collapse = "\n"),
+                        "\n"
+                    ))
                 } else if (isTRUE(private$active_value)) {
                     # A full frame is already visible; release its final row.
                     private$write("\n")
@@ -126,20 +154,24 @@ ShiftFrameRenderer <- R6::R6Class(
             private$last_compact <- NULL
             invisible(NULL)
         },
+        # }}}
 
         # Release terminal resources exactly once. Every normal, error, and
         # interrupt path may call close(), so cleanup must remain idempotent.
+        # close {{{
         close = function(result = c("done", "failed", "cancelled")) {
             result <- match.arg(result)
             if (isTRUE(private$closed)) {
                 return(invisible(NULL))
             }
             if (identical(private$backend_value, "compact")) {
-                private$close_compact(if (identical(result, "done")) {
-                    "done"
-                } else {
-                    "failed"
-                })
+                private$close_compact(
+                    if (identical(result, "done")) {
+                        "done"
+                    } else {
+                        "failed"
+                    }
+                )
             } else {
                 private$clear_frame()
                 if (isTRUE(private$cursor_hidden)) {
@@ -153,13 +185,18 @@ ShiftFrameRenderer <- R6::R6Class(
             private$last_compact <- NULL
             invisible(NULL)
         },
+        # }}}
 
         # Expose the immutable backend for reporter integration tests and for
         # choosing the matching compact formatter without leaking frame state.
+        # backend {{{
         backend = function() private$backend_value,
+        # }}}
 
         # Report whether a frame or compact status line currently owns output.
+        # active {{{
         active = function() isTRUE(private$active_value)
+        # }}}
     ),
     private = list(
         output = NULL,
@@ -177,21 +214,27 @@ ShiftFrameRenderer <- R6::R6Class(
 
         # Write one control string so the terminal never exposes a partially
         # updated dashboard between individual workflow rows.
+        # write {{{
         write = function(text) {
-            tryCatch({
-                # Bound every ANSI write with a reset. An interrupted coloured
-                # message outside this renderer must not tint the entire next
-                # frame, and a frame must not leak styles into the R prompt.
-                if (cli::num_ansi_colors() > 1L) {
-                    text <- paste0("\033[0m", text, "\033[0m")
-                }
-                private$writer(text)
-                TRUE
-            }, error = function(e) FALSE)
+            tryCatch(
+                {
+                    # Bound every ANSI write with a reset. An interrupted coloured
+                    # message outside this renderer must not tint the entire next
+                    # frame, and a frame must not leak styles into the R prompt.
+                    if (cli::num_ansi_colors() > 1L) {
+                        text <- paste0("\033[0m", text, "\033[0m")
+                    }
+                    private$writer(text)
+                    TRUE
+                },
+                error = function(e) FALSE
+            )
         },
+        # }}}
 
         # Paint all rows using the same cursor-up, erase-line, and stale-tail
         # handling used by cli's upstream multiline status implementation.
+        # draw_frame {{{
         draw_frame = function(lines) {
             if (isTRUE(private$closed)) {
                 return(FALSE)
@@ -204,15 +247,20 @@ ShiftFrameRenderer <- R6::R6Class(
             current <- length(lines)
             # After a terminal shrinks, its old rows may already be in
             # scrollback. Never walk or erase beyond the current viewport.
-            previous <- min(previous, shift__ui_height())
+            previous <- min(previous, shift_ui__ui_height())
             output <- ""
             if (previous > 1L) {
-                output <- shift__tui_cursor_up(previous - 1L)
+                output <- shift_tui__tui_cursor_up(previous - 1L)
             }
             for (i in seq_len(current)) {
                 suffix <- if (i < current) "\n" else "\r"
-                output <- paste0(output, "\r", lines[[i]],
-                    SHIFT_TUI_ERASE_LINE, suffix)
+                output <- paste0(
+                    output,
+                    "\r",
+                    lines[[i]],
+                    SHIFT_TUI_ERASE_LINE,
+                    suffix
+                )
             }
             # A shorter replacement frame must explicitly erase rows that are
             # no longer present or their old content remains below the UI.
@@ -220,8 +268,11 @@ ShiftFrameRenderer <- R6::R6Class(
                 for (i in seq_len(previous - current)) {
                     output <- paste0(output, "\n\r", SHIFT_TUI_ERASE_LINE)
                 }
-                output <- paste0(output,
-                    shift__tui_cursor_up(previous - current), "\r")
+                output <- paste0(
+                    output,
+                    shift_tui__tui_cursor_up(previous - current),
+                    "\r"
+                )
             }
             if (!isTRUE(private$write(output))) {
                 return(FALSE)
@@ -230,75 +281,102 @@ ShiftFrameRenderer <- R6::R6Class(
             private$active_value <- TRUE
             TRUE
         },
+        # }}}
 
         # Clear every painted row and return the cursor to the top of the old
         # region, matching cli's behavior before emitting ordinary output.
+        # clear_frame {{{
         clear_frame = function() {
-            count <- min(private$painted_lines, shift__ui_height())
+            count <- min(private$painted_lines, shift_ui__ui_height())
             if (count <= 0L) {
                 private$active_value <- FALSE
                 return(invisible(NULL))
             }
             output <- if (count > 1L) {
-                shift__tui_cursor_up(count - 1L)
+                shift_tui__tui_cursor_up(count - 1L)
             } else {
                 ""
             }
             for (i in seq_len(count)) {
-                output <- paste0(output, "\r", SHIFT_TUI_ERASE_LINE,
-                    if (i < count) "\n" else "")
+                output <- paste0(
+                    output,
+                    "\r",
+                    SHIFT_TUI_ERASE_LINE,
+                    if (i < count) "\n" else ""
+                )
             }
             if (count > 1L) {
-                output <- paste0(output, shift__tui_cursor_up(count - 1L))
+                output <- paste0(output, shift_tui__tui_cursor_up(count - 1L))
             }
             private$write(output)
             private$painted_lines <- 0L
             private$active_value <- FALSE
             invisible(NULL)
         },
+        # }}}
 
         # Create or update the one cli-owned status row used by RStudio and
         # other dynamic consoles without reliable cursor-up support.
+        # draw_compact {{{
         draw_compact = function(line) {
             if (isTRUE(private$closed)) {
                 return(FALSE)
             }
             if (!length(private$compact_id)) {
-                private$compact_id <- tryCatch(cli::cli_progress_bar(
-                    name = "Future EPW",
-                    total = NA,
-                    status = line,
-                    format = "{cli::pb_status}",
-                    current = FALSE,
-                    auto_terminate = FALSE,
-                    .auto_close = FALSE
-                ), error = function(e) NULL)
+                private$compact_id <- tryCatch(
+                    cli::cli_progress_bar(
+                        name = "Future EPW",
+                        total = NA,
+                        status = line,
+                        format = "{cli::pb_status}",
+                        current = FALSE,
+                        auto_terminate = FALSE,
+                        .auto_close = FALSE
+                    ),
+                    error = function(e) NULL
+                )
             }
             if (!length(private$compact_id)) {
                 return(FALSE)
             }
-            ok <- tryCatch({
-                cli::cli_progress_update(id = private$compact_id, inc = 0L,
-                    status = line, force = TRUE)
-                TRUE
-            }, error = function(e) FALSE)
+            ok <- tryCatch(
+                {
+                    cli::cli_progress_update(
+                        id = private$compact_id,
+                        inc = 0L,
+                        status = line,
+                        force = TRUE
+                    )
+                    TRUE
+                },
+                error = function(e) FALSE
+            )
             private$active_value <- isTRUE(ok)
             ok
         },
+        # }}}
 
         # Close a compact cli bar defensively because an IDE may already have
         # removed it while processing another top-level console operation.
+        # close_compact {{{
         close_compact = function(result = "done") {
             if (length(private$compact_id)) {
-                try(cli::cli_progress_done(id = private$compact_id,
-                    result = result), silent = TRUE)
+                try(
+                    cli::cli_progress_done(
+                        id = private$compact_id,
+                        result = result
+                    ),
+                    silent = TRUE
+                )
             }
             private$compact_id <- NULL
             private$active_value <- FALSE
             invisible(NULL)
         }
+        # }}}
     )
 )
+# }}}
 
 # CSI erase-line is the only terminal control sequence not exposed by cli's
 # public API that the framebuffer needs in addition to cursor-up.
@@ -306,24 +384,34 @@ SHIFT_TUI_ERASE_LINE <- "\033[K"
 
 # Build a standards-based cursor-up sequence for the exact number of rows that
 # the renderer has previously painted.
-shift__tui_cursor_up <- function(lines) {
+# shift_tui__tui_cursor_up {{{
+shift_tui__tui_cursor_up <- function(lines) {
     lines <- as.integer(lines)
-    if (!length(lines) || is.na(lines) || lines <= 0L) "" else
+    if (!length(lines) || is.na(lines) || lines <= 0L) {
+        ""
+    } else {
         sprintf("\033[%dA", lines)
+    }
 }
+# }}}
 
 # Remove embedded line breaks before a semantic row reaches either renderer.
 # Dashboard formatters already bound display width; this final normalization
 # prevents one malformed label from changing framebuffer ownership.
-shift__tui_normalize_lines <- function(lines) {
-    lines <- as.character(shift_coalesce(lines, character()))
+# shift_tui__tui_normalize_lines {{{
+shift_tui__tui_normalize_lines <- function(lines) {
+    lines <- as.character(shift_stage__coalesce(lines, character()))
     gsub("[\r\n]+", " ", lines)
 }
+# }}}
 
 # Resolve the live backend with cli's public capability checks. A multi-line
 # frame additionally requires a real TTY because IDE consoles may support ANSI
 # colour without supporting cursor-up movement.
-shift__ui_renderer_backend <- function(output = cli::cli_output_connection()) {
+# shift_tui__ui_renderer_backend {{{
+shift_tui__ui_renderer_backend <- function(
+    output = cli::cli_output_connection()
+) {
     ansi <- tryCatch(
         isTRUE(base::isatty(output)) && isTRUE(cli::is_ansi_tty(output)),
         error = function(e) FALSE
@@ -331,23 +419,36 @@ shift__ui_renderer_backend <- function(output = cli::cli_output_connection()) {
     if (isTRUE(ansi)) {
         return("frame")
     }
-    dynamic <- tryCatch(isTRUE(cli::is_dynamic_tty(output)),
-        error = function(e) FALSE)
+    dynamic <- tryCatch(
+        isTRUE(cli::is_dynamic_tty(output)),
+        error = function(e) FALSE
+    )
     if (isTRUE(dynamic)) "compact" else "log"
 }
+# }}}
 
 # Construct one renderer for a complete foreground or watch lifecycle. Log and
 # null modes deliberately return NULL because they never own terminal rows.
-shift__ui_renderer <- function(mode = c("dynamic", "log", "none"),
-                               output = cli::cli_output_connection(),
-                               backend = NULL, writer = NULL) {
+# shift_tui__ui_renderer {{{
+shift_tui__ui_renderer <- function(
+    mode = c("dynamic", "log", "none"),
+    output = cli::cli_output_connection(),
+    backend = NULL,
+    writer = NULL
+) {
     mode <- match.arg(mode)
     if (!identical(mode, "dynamic")) {
         return(NULL)
     }
-    backend <- shift_coalesce(backend, shift__ui_renderer_backend(output))
+    backend <- shift_stage__coalesce(
+        backend,
+        shift_tui__ui_renderer_backend(output)
+    )
     if (identical(backend, "log")) {
         return(NULL)
     }
     ShiftFrameRenderer$new(output = output, backend = backend, writer = writer)
 }
+# }}}
+
+# vim: fdm=marker :

@@ -22,6 +22,7 @@ KQDM_EXPERIMENTAL_VARIABLES <- c("psl", "rlds")
 
 # Construct the complete settings schema while keeping the paper's method
 # choices separate from numerical KDE defaults selected by this package.
+# kqdm__default_settings {{{
 kqdm__default_settings <- function(
     transformation = c("additive", "multiplicative"),
     bounds
@@ -43,10 +44,12 @@ kqdm__default_settings <- function(
         zero_denominator_policy = "zero_future_else_error"
     )
 }
+# }}}
 
 # Build variable-specific profiles. Every profile is labelled experimental
 # because the publication does not report the kernel, bandwidth, grid, tail,
 # or zero-denominator conventions needed for an executable implementation.
+# kqdm__profiles {{{
 kqdm__profiles <- function() {
     specifications <- list(
         tas = list("additive", c(-Inf, Inf)),
@@ -98,9 +101,11 @@ kqdm__profiles <- function() {
         )
     })
 }
+# }}}
 
 # Validate every executable convention at the signal boundary so user
 # overrides cannot silently introduce an unsupported numerical method.
+# kqdm__settings {{{
 kqdm__settings <- function(settings) {
     expected <- c(
         "transformation",
@@ -132,8 +137,10 @@ kqdm__settings <- function(settings) {
         lower = 1L,
         upper = 12L
     )
-    if (!identical(resolved$window_months, 3L) ||
-        !identical(resolved$window_alignment, "centered")) {
+    if (
+        !identical(resolved$window_months, 3L) ||
+            !identical(resolved$window_alignment, "centered")
+    ) {
         cli::cli_abort(
             "Kernel-density Quantile Delta Mapping currently requires the published centered three-month window."
         )
@@ -173,8 +180,10 @@ kqdm__settings <- function(settings) {
         lower = 128L
     )
     grid_points <- resolved$grid_points
-    if (abs(log2(grid_points) - round(log2(grid_points))) >
-        sqrt(.Machine$double.eps)) {
+    if (
+        abs(log2(grid_points) - round(log2(grid_points))) >
+            sqrt(.Machine$double.eps)
+    ) {
         cli::cli_abort("`grid_points` must be a power of two.")
     }
     checkmate::assert_choice(
@@ -203,9 +212,11 @@ kqdm__settings <- function(settings) {
     resolved$grid_points <- grid_points
     resolved
 }
+# }}}
 
 # Validate the three role-addressable hourly inputs without coercing any native
 # CF calendar to Gregorian dates or discarding the time-of-day coordinate.
+# kqdm__inputs {{{
 kqdm__inputs <- function(inputs, variable, transformation) {
     roles <- c(
         "observed_reference",
@@ -249,21 +260,25 @@ kqdm__inputs <- function(inputs, variable, transformation) {
             "Kernel-density Quantile Delta Mapping inputs for {.val {variable}} must use identical units."
         )
     }
-    if (identical(transformation, "multiplicative") &&
-        any(vapply(
-            series,
-            function(data) any(data[["value"]] < 0),
-            logical(1L)
-        ))) {
+    if (
+        identical(transformation, "multiplicative") &&
+            any(vapply(
+                series,
+                function(data) any(data[["value"]] < 0),
+                logical(1L)
+            ))
+    ) {
         cli::cli_abort(
             "Multiplicative kernel-density Quantile Delta Mapping requires non-negative input values."
         )
     }
     series
 }
+# }}}
 
 # Return the previous, current, and following calendar months with December-to-
 # January wrapping independent of the number of days in either source calendar.
+# kqdm__window_months {{{
 kqdm__window_months <- function(center_month) {
     checkmate::assert_integerish(
         center_month,
@@ -274,9 +289,11 @@ kqdm__window_months <- function(center_month) {
     )
     as.integer(((as.integer(center_month) - 1L + -1L:1L) %% 12L) + 1L)
 }
+# }}}
 
 # Estimate one Gaussian kernel-density CDF on an explicit grid and retain only
 # compact fit metadata rather than serializing the full numerical curve.
+# kqdm__density_cdf {{{
 kqdm__density_cdf <- function(values, resolved, label) {
     sample_count <- length(values)
     if (sample_count < resolved$min_samples) {
@@ -313,9 +330,9 @@ kqdm__density_cdf <- function(values, resolved, label) {
             "Kernel-density Quantile Delta Mapping could not estimate a positive bandwidth for {.val {label}}."
         )
     }
-    increments <- diff(estimate$x) * (
-        head(estimate$y, -1L) + tail(estimate$y, -1L)
-    ) / 2
+    increments <- diff(estimate$x) *
+        (head(estimate$y, -1L) + tail(estimate$y, -1L)) /
+        2
     cumulative <- c(0, cumsum(pmax(increments, 0)))
     total <- cumulative[[length(cumulative)]]
     if (!is.finite(total) || total <= 0) {
@@ -343,14 +360,18 @@ kqdm__density_cdf <- function(values, resolved, label) {
         )
     )
 }
+# }}}
 
 # Evaluate one fitted KDE CDF with the declared endpoint clamp and report use
 # of the finite density-grid tails for diagnostics.
+# kqdm__cdf {{{
 kqdm__cdf <- function(distribution, values, tail_policy) {
     lower_tail <- values < distribution$x[[1L]]
     upper_tail <- values > distribution$x[[length(distribution$x)]]
-    if (identical(tail_policy, "error") &&
-        any(lower_tail | upper_tail)) {
+    if (
+        identical(tail_policy, "error") &&
+            any(lower_tail | upper_tail)
+    ) {
         cli::cli_abort(
             "Kernel-density Quantile Delta Mapping encountered {sum(lower_tail | upper_tail)} value(s) outside the fitted density grid."
         )
@@ -367,9 +388,11 @@ kqdm__cdf <- function(distribution, values, tail_policy) {
         upper_tail = upper_tail
     )
 }
+# }}}
 
 # Numerically invert one monotone KDE CDF grid using the same endpoint clamp as
 # forward evaluation so tail behavior stays explicit and deterministic.
+# kqdm__inverse_cdf {{{
 kqdm__inverse_cdf <- function(distribution, probability) {
     stats::approx(
         distribution$inverse_probability,
@@ -379,9 +402,11 @@ kqdm__inverse_cdf <- function(distribution, probability) {
         ties = "ordered"
     )$y
 }
+# }}}
 
 # Apply the additive or multiplicative QDM equation to every future value in
 # one calendar month after fitting all three role distributions.
+# kqdm__map_values {{{
 kqdm__map_values <- function(
     observed_distribution,
     historical_distribution,
@@ -412,14 +437,11 @@ kqdm__map_values <- function(
         adjusted <- observed_quantile + change
         zero_future_values <- 0L
     } else {
-        denominator_invalid <- (
-            historical_quantile <= resolved$zero_tolerance
-        )
+        denominator_invalid <- (historical_quantile <= resolved$zero_tolerance)
         future_zero <- abs(future_values) <= resolved$zero_tolerance
-        undefined <- denominator_invalid & (
-            !future_zero |
-                identical(resolved$zero_denominator_policy, "error")
-        )
+        undefined <- denominator_invalid &
+            (!future_zero |
+                identical(resolved$zero_denominator_policy, "error"))
         if (any(undefined)) {
             cli::cli_abort(
                 "Multiplicative kernel-density Quantile Delta Mapping month {center_month} encountered {sum(undefined)} positive future value(s) with a non-positive or near-zero historical-model quantile."
@@ -444,9 +466,11 @@ kqdm__map_values <- function(
         zero_future_values = zero_future_values
     )
 }
+# }}}
 
 # Fit centered three-month KDEs independently for each output month, then map
 # all rows while retaining the original future-model ordering and coordinates.
+# kqdm__adjust_values {{{
 kqdm__adjust_values <- function(series, resolved) {
     observed <- series$observed_reference
     historical <- series$model_historical
@@ -552,9 +576,11 @@ kqdm__adjust_values <- function(series, resolved) {
         )
     )
 }
+# }}}
 
 # Execute one aligned hourly univariate group and return the common
 # frequency-aware adjusted-series contract with full numerical provenance.
+# kqdm__apply_group {{{
 kqdm__apply_group <- function(inputs, settings, key) {
     resolved <- kqdm__settings(settings)
     variable <- names(settings)[[1L]]
@@ -596,9 +622,11 @@ kqdm__apply_group <- function(inputs, settings, key) {
         )
     )
 }
+# }}}
 
 # Return an explicit diagnostic if a kernel violates the future-model hourly
 # output contract expected by downstream sequence components.
+# kqdm__validate_result {{{
 kqdm__validate_result <- function(value, inputs, key) {
     signal__validate_adjusted_result(
         value,
@@ -614,9 +642,11 @@ kqdm__validate_result <- function(value, inputs, key) {
         )
     )
 }
+# }}}
 
 # Construct the reusable hourly signal with explicit role, variable, frequency,
 # intermediate-kind, and output-contract declarations.
+# kqdm__component {{{
 kqdm__component <- function() {
     alternatives <- as.list(c(
         KQDM_PUBLISHED_VARIABLES,
@@ -671,10 +701,15 @@ kqdm__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the standalone signal once so recipes and component inspection can
 # resolve it without constructing an author-specific complete workflow.
+# kqdm__register_component {{{
 kqdm__register_component <- function() {
     component__register_builtin(kqdm__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker :

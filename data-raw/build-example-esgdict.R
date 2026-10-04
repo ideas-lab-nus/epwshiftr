@@ -16,29 +16,55 @@ for (file in c(
     source(file, local = globalenv())
 }
 
-SCHEMA_ESG_DICT <- schema_read(file.path("inst", "extdata", "schema", "esg-dict.json"))
+SCHEMA_ESG_DICT <- schema_read(file.path(
+    "inst",
+    "extdata",
+    "schema",
+    "esg-dict.json"
+))
 
+# example_cv_timestamp {{{
 example_cv_timestamp <- function() {
     "Wed Jan 01 00:00:00 2025 +0000"
 }
+# }}}
 
+# example_cv_version {{{
 example_cv_version <- function(note, type = note) {
     modified <- sprintf("%s_CV_modified", type)
     note_name <- sprintf("%s_CV_note", type)
     stats::setNames(
         list("6.2.0", example_cv_timestamp(), example_cv_timestamp(), note),
-        c("CV_collection_version", "CV_collection_modified", modified, note_name)
+        c(
+            "CV_collection_version",
+            "CV_collection_modified",
+            modified,
+            note_name
+        )
     )
 }
+# }}}
 
+# example_write_cv {{{
 example_write_cv <- function(dir, type, values, version_type = type) {
     path <- file.path(dir, sprintf("CMIP6_%s.json", type))
-    payload <- list(values, version_metadata = example_cv_version(type, version_type))
+    payload <- list(
+        values,
+        version_metadata = example_cv_version(type, version_type)
+    )
     names(payload)[[1L]] <- type
-    jsonlite::write_json(payload, path, auto_unbox = TRUE, pretty = TRUE, null = "null")
+    jsonlite::write_json(
+        payload,
+        path,
+        auto_unbox = TRUE,
+        pretty = TRUE,
+        null = "null"
+    )
     path
 }
+# }}}
 
+# example_write_dreq {{{
 example_write_dreq <- function(dir, table_id, realm, variables) {
     path <- file.path(dir, sprintf("CMIP6_%s.json", table_id))
     payload <- list(
@@ -55,10 +81,18 @@ example_write_dreq <- function(dir, table_id, realm, variables) {
         ),
         variable_entry = variables
     )
-    jsonlite::write_json(payload, path, auto_unbox = TRUE, pretty = TRUE, null = "null")
+    jsonlite::write_json(
+        payload,
+        path,
+        auto_unbox = TRUE,
+        pretty = TRUE,
+        null = "null"
+    )
     path
 }
+# }}}
 
+# example_cmip6_source_store {{{
 example_cmip6_source_store <- function(root) {
     cv_dir <- file.path(root, "vocab", "test-cv")
     dreq_dir <- file.path(root, "request", "test-request")
@@ -77,7 +111,11 @@ example_cmip6_source_store <- function(root) {
             filename_template = "<variable_id>_<table_id>_<source_id>.nc"
         )
     )
-    example_write_cv(cv_dir, "activity_id", list(CMIP = "CMIP activity", ScenarioMIP = "ScenarioMIP activity"))
+    example_write_cv(
+        cv_dir,
+        "activity_id",
+        list(CMIP = "CMIP activity", ScenarioMIP = "ScenarioMIP activity")
+    )
     example_write_cv(
         cv_dir,
         "experiment_id",
@@ -114,12 +152,33 @@ example_cmip6_source_store <- function(root) {
             )
         )
     )
-    example_write_cv(cv_dir, "frequency", list(day = "daily mean", fx = "fixed field", mon = "monthly mean"))
-    example_write_cv(cv_dir, "grid_label", list(gn = "native grid", gr = "regridded"))
-    example_write_cv(cv_dir, "institution_id", list(`EC-Earth-Consortium` = "EC-Earth Consortium", CCCma = "CCCma"))
-    example_write_cv(cv_dir, "nominal_resolution", c("100 km", "250 km"), "nominal_resolution")
+    example_write_cv(
+        cv_dir,
+        "frequency",
+        list(day = "daily mean", fx = "fixed field", mon = "monthly mean")
+    )
+    example_write_cv(
+        cv_dir,
+        "grid_label",
+        list(gn = "native grid", gr = "regridded")
+    )
+    example_write_cv(
+        cv_dir,
+        "institution_id",
+        list(`EC-Earth-Consortium` = "EC-Earth Consortium", CCCma = "CCCma")
+    )
+    example_write_cv(
+        cv_dir,
+        "nominal_resolution",
+        c("100 km", "250 km"),
+        "nominal_resolution"
+    )
     example_write_cv(cv_dir, "realm", list(atmos = "atmosphere", land = "land"))
-    example_write_cv(cv_dir, "required_global_attributes", c("activity_id", "table_id", "variant_label"))
+    example_write_cv(
+        cv_dir,
+        "required_global_attributes",
+        c("activity_id", "table_id", "variant_label")
+    )
     example_write_cv(
         cv_dir,
         "source_id",
@@ -149,7 +208,11 @@ example_cmip6_source_store <- function(root) {
         )
     )
     example_write_cv(cv_dir, "source_type", list(AOGCM = "coupled model"))
-    example_write_cv(cv_dir, "sub_experiment_id", list(none = "no sub experiment", s1960 = "start year 1960"))
+    example_write_cv(
+        cv_dir,
+        "sub_experiment_id",
+        list(none = "no sub experiment", s1960 = "start year 1960")
+    )
     example_write_cv(cv_dir, "table_id", c("Amon", "day", "fx"))
 
     tas <- list(
@@ -169,8 +232,18 @@ example_cmip6_source_store <- function(root) {
         ok_min_mean_abs = "",
         ok_max_mean_abs = ""
     )
-    example_write_dreq(dreq_dir, "day", "atmos", list(tas = c(tas, frequency = "day")))
-    example_write_dreq(dreq_dir, "Amon", "atmos", list(tas = c(tas, frequency = "mon")))
+    example_write_dreq(
+        dreq_dir,
+        "day",
+        "atmos",
+        list(tas = c(tas, frequency = "day"))
+    )
+    example_write_dreq(
+        dreq_dir,
+        "Amon",
+        "atmos",
+        list(tas = c(tas, frequency = "mon"))
+    )
     example_write_dreq(
         dreq_dir,
         "fx",
@@ -199,6 +272,7 @@ example_cmip6_source_store <- function(root) {
 
     root
 }
+# }}}
 
 source_root <- tempfile("epwshiftr-example-esgdict-")
 dir.create(source_root, recursive = TRUE)
@@ -222,8 +296,18 @@ fetched <- list(
     ),
     built_time = as.POSIXct("2025-01-04 00:00:00", tz = "UTC"),
     sources = list(
-        vocab = list(repo = spec$vocab$repo, tag = "test-cv", commit = "example-vocab", source_dir = "example"),
-        request = list(repo = spec$request$repo, tag = "test-request", commit = "example-request", source_dir = "example")
+        vocab = list(
+            repo = spec$vocab$repo,
+            tag = "test-cv",
+            commit = "example-vocab",
+            source_dir = "example"
+        ),
+        request = list(
+            repo = spec$request$repo,
+            tag = "test-request",
+            commit = "example-request",
+            source_dir = "example"
+        )
     )
 )
 
@@ -244,3 +328,5 @@ esgdict__save(
 )
 
 message("Wrote ", normalizePath(out, winslash = "/", mustWork = TRUE))
+
+# vim: fdm=marker :

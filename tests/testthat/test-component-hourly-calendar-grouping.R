@@ -1,5 +1,6 @@
 # Build one complete hourly native-calendar year with stable role and case
 # metadata so grouping tests exercise the production adjusted-series contract.
+# hourly_calendar_test__series {{{
 hourly_calendar_test__series <- function(
     variable = "tas",
     year = 2001L,
@@ -49,8 +50,10 @@ hourly_calendar_test__series <- function(
         stringsAsFactors = FALSE
     )
 }
+# }}}
 
 # Assemble the three materialized roles required by hourly calendar grouping.
+# hourly_calendar_test__inputs {{{
 hourly_calendar_test__inputs <- function(
     observed = hourly_calendar_test__series(
         source_id = "station",
@@ -79,9 +82,11 @@ hourly_calendar_test__inputs <- function(
         )
     )
 }
+# }}}
 
 # Execute the calendar component directly while supplying the same input set
 # through its stage-value and role-addressable operation boundaries.
+# hourly_calendar_test__apply {{{
 hourly_calendar_test__apply <- function(inputs) {
     hourly_calendar__apply(
         data = inputs,
@@ -90,6 +95,7 @@ hourly_calendar_test__apply <- function(inputs) {
         options = list()
     )
 }
+# }}}
 
 test_that("hourly calendar grouping preserves role-native calendars", {
     observed <- hourly_calendar_test__series(
@@ -158,26 +164,29 @@ test_that("hourly calendar grouping separates variables and sites", {
         } else {
             role
         }
-        do.call(rbind, lapply(c("A", "B"), function(site) {
-            rbind(
-                hourly_calendar_test__series(
-                    "tas",
-                    year,
-                    site_id = site,
-                    source_id = source,
-                    experiment_id = experiment,
-                    value_offset = offset
-                ),
-                hourly_calendar_test__series(
-                    "hurs",
-                    year,
-                    site_id = site,
-                    source_id = source,
-                    experiment_id = experiment,
-                    value_offset = 50 + offset
+        do.call(
+            rbind,
+            lapply(c("A", "B"), function(site) {
+                rbind(
+                    hourly_calendar_test__series(
+                        "tas",
+                        year,
+                        site_id = site,
+                        source_id = source,
+                        experiment_id = experiment,
+                        value_offset = offset
+                    ),
+                    hourly_calendar_test__series(
+                        "hurs",
+                        year,
+                        site_id = site,
+                        source_id = source,
+                        experiment_id = experiment,
+                        value_offset = 50 + offset
+                    )
                 )
-            )
-        }))
+            })
+        )
     }
     result <- hourly_calendar_test__apply(hourly_calendar_test__inputs(
         role_series("observed", 2001L, -1),
@@ -310,10 +319,12 @@ test_that("hourly calendar grouping feeds hourly kernel QDM", {
         "apply",
         inputs = inputs,
         groups = calendar@value,
-        overrides = list(tas = list(
-            grid_points = 128L,
-            min_samples = 30L
-        )),
+        overrides = list(
+            tas = list(
+                grid_points = 128L,
+                min_samples = 30L
+            )
+        ),
         warn_experimental = FALSE
     )
 
@@ -434,3 +445,5 @@ test_that("three-hour source roles compile through the real hourly bridge", {
 
     expect_s7_class(pipeline__compile(spec, inputs), WeatherPipelinePlan)
 })
+
+# vim: fdm=marker :

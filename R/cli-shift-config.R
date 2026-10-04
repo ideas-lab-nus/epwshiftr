@@ -1,50 +1,115 @@
-epwshiftr_cli_shift_config <- function(store, args, json = FALSE, jsonl = FALSE, quiet = FALSE) {
+# epwshiftr_cli_shift_config {{{
+epwshiftr_cli_shift_config <- function(
+    store,
+    args,
+    json = FALSE,
+    jsonl = FALSE,
+    quiet = FALSE
+) {
     if (!length(args)) {
-        epwshiftr_cli_usage_abort("Missing shift config command: example or validate.")
+        epwshiftr_cli_usage_abort(
+            "Missing shift config command: example or validate."
+        )
     }
     action <- args[[1L]]
     rest <- args[-1L]
     switch(
         action,
         example = epwshiftr_cli_shift_config_example(rest),
-        validate = epwshiftr_cli_shift_config_validate(store, rest,
-            json = json, jsonl = jsonl, quiet = quiet),
-        epwshiftr_cli_usage_abort(sprintf("Unknown shift config command: %s", action))
+        validate = epwshiftr_cli_shift_config_validate(
+            store,
+            rest,
+            json = json,
+            jsonl = jsonl,
+            quiet = quiet
+        ),
+        epwshiftr_cli_usage_abort(sprintf(
+            "Unknown shift config command: %s",
+            action
+        ))
     )
 }
+# }}}
 
-
+# epwshiftr_cli_read_shift_config {{{
 epwshiftr_cli_read_shift_config <- function(path) {
     checkmate::assert_string(path, min.chars = 1L)
     if (!file.exists(path)) {
-        epwshiftr_cli_usage_abort(sprintf("Config file does not exist: %s", path))
+        epwshiftr_cli_usage_abort(sprintf(
+            "Config file does not exist: %s",
+            path
+        ))
     }
     config <- tryCatch(
-        jsonlite::read_json(path, simplifyVector = TRUE, simplifyDataFrame = FALSE),
-        error = function(e) epwshiftr_cli_usage_abort(sprintf("Failed to read JSON config: %s", conditionMessage(e)))
+        jsonlite::read_json(
+            path,
+            simplifyVector = TRUE,
+            simplifyDataFrame = FALSE
+        ),
+        error = function(e) {
+            epwshiftr_cli_usage_abort(sprintf(
+                "Failed to read JSON config: %s",
+                conditionMessage(e)
+            ))
+        }
     )
     tryCatch(
         {
-            schema_validate(SCHEMA_SHIFT_WORKFLOW_CONFIG, config, name = "config")
+            schema_validate(
+                SCHEMA_SHIFT_WORKFLOW_CONFIG,
+                config,
+                name = "config"
+            )
             epwshiftr_cli_validate_shift_config(config)
         },
-        error = function(e) epwshiftr_cli_usage_abort(sprintf("Invalid shift workflow config: %s", conditionMessage(e)))
+        error = function(e) {
+            epwshiftr_cli_usage_abort(sprintf(
+                "Invalid shift workflow config: %s",
+                conditionMessage(e)
+            ))
+        }
     )
     invisible(config)
 }
+# }}}
 
-
+# epwshiftr_cli_shift_config_example {{{
 epwshiftr_cli_shift_config_example <- function(args) {
-    parsed <- epwshiftr_cli_parse_command(args, flags = "--overwrite",
-        options = c("--output", "--methods", "--scale", "--method",
-            "--reconstruction", "--model"), multi_options = "--option")
+    parsed <- epwshiftr_cli_parse_command(
+        args,
+        flags = "--overwrite",
+        options = c(
+            "--output",
+            "--methods",
+            "--scale",
+            "--method",
+            "--reconstruction",
+            "--model"
+        ),
+        multi_options = "--option"
+    )
     epwshiftr_cli_assert_no_positionals(parsed)
     config <- epwshiftr_cli_shift_example_config()
     methods <- epwshiftr_cli_csv(parsed$options[["--methods"]])
     if (!is.null(methods)) {
-        if (any(vapply(parsed$options[c("--scale", "--method",
-            "--reconstruction", "--option")], length, integer(1L)) > 0L)) {
-            epwshiftr_cli_usage_abort("--methods cannot be combined with single-transform options.")
+        if (
+            any(
+                vapply(
+                    parsed$options[c(
+                        "--scale",
+                        "--method",
+                        "--reconstruction",
+                        "--option"
+                    )],
+                    length,
+                    integer(1L)
+                ) >
+                    0L
+            )
+        ) {
+            epwshiftr_cli_usage_abort(
+                "--methods cannot be combined with single-transform options."
+            )
         }
         transforms <- shift_batch__transforms(methods = methods)
         config$transform <- NULL
@@ -53,50 +118,86 @@ epwshiftr_cli_shift_config_example <- function(args) {
     } else {
         transform <- cli_morph__transform(parsed)
         transforms <- list(transform)
-        config$transform <- list(scale = transform@scale,
-            method = transform@method)
+        config$transform <- list(
+            scale = transform@scale,
+            method = transform@method
+        )
         if (!is.null(parsed$options[["--reconstruction"]])) {
-            config$transform$reconstruction <- parsed$options[["--reconstruction"]]
+            config$transform$reconstruction <- parsed$options[[
+                "--reconstruction"
+            ]]
         }
         options <- cli_morph__parse_options(parsed$options[["--option"]])
         if (length(options)) config$transform$options <- options
     }
-    if (!any(vapply(transforms, transform__accepts_input,
-        logical(1L), role = "model_historical"))) {
+    if (
+        !any(vapply(
+            transforms,
+            transform__accepts_input,
+            logical(1L),
+            role = "model_historical"
+        ))
+    ) {
         config["reference"] <- list(NULL)
     }
-    if (any(vapply(transforms, transform__requires_input,
-        logical(1L), role = "observed_reference"))) {
-        config$calibration <- list(dataset = "era5", years = "1995:2014",
-            product = "single_levels", access = "auto")
+    if (
+        any(vapply(
+            transforms,
+            transform__requires_input,
+            logical(1L),
+            role = "observed_reference"
+        ))
+    ) {
+        config$calibration <- list(
+            dataset = "era5",
+            years = "1995:2014",
+            product = "single_levels",
+            access = "auto"
+        )
     }
     model <- parsed$options[["--model"]]
     if (!is.null(model)) {
-        config$climate["model"] <- list(if (identical(model, "all")) {
-            NULL
-        } else if (grepl("^[0-9]+$", model)) {
-            epwshiftr_cli_count(model, "--model")
-        } else {
-            epwshiftr_cli_csv(model)
-        })
+        config$climate["model"] <- list(
+            if (identical(model, "all")) {
+                NULL
+            } else if (grepl("^[0-9]+$", model)) {
+                epwshiftr_cli_count(model, "--model")
+            } else {
+                epwshiftr_cli_csv(model)
+            }
+        )
     }
     output <- parsed$options[["--output"]]
     if (!is.null(output)) {
         if (file.exists(output) && !isTRUE(parsed$flags[["--overwrite"]])) {
-            epwshiftr_cli_usage_abort(sprintf("Output file already exists: %s", output))
+            epwshiftr_cli_usage_abort(sprintf(
+                "Output file already exists: %s",
+                output
+            ))
         }
         dir.create(dirname(output), recursive = TRUE, showWarnings = FALSE)
-        jsonlite::write_json(config, output, auto_unbox = TRUE, pretty = TRUE, null = "null")
+        jsonlite::write_json(
+            config,
+            output,
+            auto_unbox = TRUE,
+            pretty = TRUE,
+            null = "null"
+        )
     }
     list(
         action = "example",
         status = if (is.null(output)) "printed" else "written",
-        output = if (is.null(output)) NA_character_ else normalizePath(output, winslash = "/", mustWork = FALSE),
+        output = if (is.null(output)) {
+            NA_character_
+        } else {
+            normalizePath(output, winslash = "/", mustWork = FALSE)
+        },
         config = config
     )
 }
+# }}}
 
-
+# epwshiftr_cli_shift_config_validate {{{
 epwshiftr_cli_shift_config_validate <- function(
     store,
     args,
@@ -119,24 +220,27 @@ epwshiftr_cli_shift_config_validate <- function(
     climate <- epwshiftr_cli_config_climate(config$climate)
     reference <- cli_shift__config_reference(config$reference, "reference")
     observed <- cli_shift__config_reference(
-        shift_coalesce(
+        shift_stage__coalesce(
             config$calibration,
             config$observed_reference
         ),
         "observed_reference"
     )
-    periods <- shift__periods_from_input(config$periods)
+    periods <- shift_spec__periods_from_input(config$periods)
     references <- lapply(transforms, function(transform) {
-        shift__validate_transform_periods(transform, periods)
+        shift_spec__validate_transform_periods(transform, periods)
         if (!is.null(climate@frequency)) {
-            shift__validate_transform_frequency(transform, climate@frequency)
+            shift_spec__validate_transform_frequency(
+                transform,
+                climate@frequency
+            )
         }
         shift_batch__references(transform, reference, observed)
     })
     locations <- shift_batch__sites(lapply(config$sites, function(site) {
         do.call(shift_site, site)
     }))
-    shift__validate_delivery_store_paths(config$dir, store)
+    shift_path__validate_delivery_store_paths(config$dir, store)
     network <- isTRUE(parsed$flags[["--network"]])
     ui <- epwshiftr_cli_task_ui(
         parsed,
@@ -145,25 +249,29 @@ epwshiftr_cli_shift_config_validate <- function(
         quiet = quiet
     )
     checks <- if (S7::S7_inherits(observed, ShiftReanalysisSpec)) {
-        shift__ui_check(ui, "Calibration readiness", function(reporter) {
-            reporter$stage_started(
-                "check",
-                if (network) {
-                    "Checking CDS credentials and network access."
-                } else {
-                    "Checking local calibration settings."
-                }
-            )
-            shift_check(observed, network = network)
-        })
+        shift_reporter__ui_check(
+            ui,
+            "Calibration readiness",
+            function(reporter) {
+                reporter$stage_started(
+                    "check",
+                    if (network) {
+                        "Checking CDS credentials and network access."
+                    } else {
+                        "Checking local calibration settings."
+                    }
+                )
+                shift_check(observed, network = network)
+            }
+        )
     } else {
-        shift_diagnostics_empty()
+        shift_stage__diagnostics_empty()
     }
     discovery <- if (network) {
-        shift_batch__discover_models(
+        shift_batch_ui__discover_models(
             climate,
             transforms,
-            periods = shift__periods_from_input(config$periods),
+            periods = shift_spec__periods_from_input(config$periods),
             references = references,
             store = store,
             ui = ui
@@ -221,10 +329,12 @@ epwshiftr_cli_shift_config_validate <- function(
         diagnostics = checks
     )
 }
+# }}}
 
 # Summarize the user's scientific choices before execution without opening a
 # store or resolving remote models. Keep calibration separate from historical
 # model reference data so the two input roles remain unambiguous.
+# cli_shift__config_intent {{{
 cli_shift__config_intent <- function(config) {
     transforms <- shift_batch__transforms(
         methods = config$methods,
@@ -233,7 +343,7 @@ cli_shift__config_intent <- function(config) {
     climate <- epwshiftr_cli_config_climate(config$climate)
     reference <- cli_shift__config_reference(config$reference, "reference")
     calibration <- cli_shift__config_reference(
-        shift_coalesce(
+        shift_stage__coalesce(
             config$calibration,
             config$observed_reference
         ),
@@ -277,14 +387,17 @@ cli_shift__config_intent <- function(config) {
         },
         `Common models` = climate@common,
         Scenarios = paste(climate@scenarios, collapse = ", "),
-        Periods = shift__ui_periods(shift__periods_from_input(config$periods)),
-        Reference = shift__format_reference(reference),
-        Calibration = shift__format_reference(calibration),
+        Periods = shift_ui_view__ui_periods(shift_spec__periods_from_input(
+            config$periods
+        )),
+        Reference = shift_print__format_reference(reference),
+        Calibration = shift_print__format_reference(calibration),
         Output = config$dir
     )
 }
+# }}}
 
-
+# epwshiftr_cli_shift_example_config {{{
 epwshiftr_cli_shift_example_config <- function() {
     list(
         version = 3L,
@@ -324,3 +437,6 @@ epwshiftr_cli_shift_example_config <- function() {
         )
     )
 }
+# }}}
+
+# vim: fdm=marker :

@@ -5,13 +5,14 @@ cdft_test__execution_inputs <- signal_test__execution_inputs
 
 # Execute compact one-year fixtures through the common signal lifecycle while
 # retaining the method defaults for empirical-CDF and SSR behavior.
+# cdft_test__execute {{{
 cdft_test__execute <- function(
-  variable,
-  observed,
-  historical,
-  future,
-  overrides = list(),
-  key = list(site = "A")
+    variable,
+    observed,
+    historical,
+    future,
+    overrides = list(),
+    key = list(site = "A")
 ) {
     boundary <- cdft_test__execution_inputs(
         observed,
@@ -36,8 +37,10 @@ cdft_test__execute <- function(
         warn_experimental = FALSE
     )
 }
+# }}}
 
 # Retrieve one complete default profile for direct settings validation.
+# cdft_test__settings {{{
 cdft_test__settings <- function(variable) {
     profiles <- cdft__profiles()
     index <- which(vapply(
@@ -47,6 +50,7 @@ cdft_test__settings <- function(variable) {
     ))
     profiles[[index]]@settings
 }
+# }}}
 
 test_that("CDF-t constructs the future target CDF from the published chain", {
     values <- c(1, 2, 4, 7, 11, 16)
@@ -419,3 +423,5 @@ test_that("CDF-t profiles separate published and package provenance", {
     expect_true(component__compatible(calendar, component))
     expect_true(component__compatible(component, sequence))
 })
+
+# vim: fdm=marker :

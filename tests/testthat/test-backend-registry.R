@@ -7,21 +7,51 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     expect_true(inherits(original_morphing, "EpwMorphBackend"))
     expect_false(original_morphing$requires_reference)
     expect_true(original_morphing$accepts_reference)
-    expect_equal(original_morphing$required_variables(), c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr"))
-    expect_equal(epw_morph_variables(original_morphing), epw_morph_variables("recommended"))
-    expect_equal(epw_morph_variables("original_morphing"), epw_morph_variables("recommended"))
-    expect_equal(original_morphing$validate_methods(c(tdb = "shift"))[["tdb"]], "shift")
-    expect_false(morpher__recipe_requires_reference(epw_morph_recipe("original_morphing")))
-    expect_true(morpher__recipe_accepts_reference(epw_morph_recipe("original_morphing")))
-    if (exists("original_morphing_absolute", envir = EPW_MORPH_BACKEND_WARNINGS, inherits = FALSE)) {
+    expect_equal(
+        original_morphing$required_variables(),
+        c("tas", "hurs", "psl", "rlds", "rsds", "sfcWind", "clt", "pr")
+    )
+    expect_equal(
+        epw_morph_variables(original_morphing),
+        epw_morph_variables("recommended")
+    )
+    expect_equal(
+        epw_morph_variables("original_morphing"),
+        epw_morph_variables("recommended")
+    )
+    expect_equal(
+        original_morphing$validate_methods(c(tdb = "shift"))[["tdb"]],
+        "shift"
+    )
+    expect_false(morpher__recipe_requires_reference(epw_morph_recipe(
+        "original_morphing"
+    )))
+    expect_true(morpher__recipe_accepts_reference(epw_morph_recipe(
+        "original_morphing"
+    )))
+    if (
+        exists(
+            "original_morphing_absolute",
+            envir = EPW_MORPH_BACKEND_WARNINGS,
+            inherits = FALSE
+        )
+    ) {
         rm("original_morphing_absolute", envir = EPW_MORPH_BACKEND_WARNINGS)
     }
-    expect_warning(legacy <- epw_morph_backend("original_morphing_absolute"), "legacy absolute-target")
+    expect_warning(
+        legacy <- epw_morph_backend("original_morphing_absolute"),
+        "legacy absolute-target"
+    )
     expect_false(legacy$requires_reference)
     expect_false(legacy$accepts_reference)
-    expect_false(morpher__recipe_requires_reference(epw_morph_recipe("original_morphing_absolute")))
+    expect_false(morpher__recipe_requires_reference(epw_morph_recipe(
+        "original_morphing_absolute"
+    )))
     expect_error(epw_morph_backend("missing-backend"), "Unknown")
-    expect_error(epw_morph_register_backend("not-a-backend", list()), "EpwMorphBackend")
+    expect_error(
+        epw_morph_register_backend("not-a-backend", list()),
+        "EpwMorphBackend"
+    )
 
     backend_name <- paste0("testbackend", Sys.getpid())
     rules <- data.table::data.table(
@@ -38,7 +68,11 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
         epw <- context$epw$clone()
         suppressMessages(epw$drop_unit())
         data <- data.table::as.data.table(epw$data())
-        offset <- if (identical(context$recipe$methods[["dry"]], "plus_two")) 2 else 1
+        offset <- if (identical(context$recipe$methods[["dry"]], "plus_two")) {
+            2
+        } else {
+            1
+        }
         data[, `:=`(
             dry_bulb_temperature = dry_bulb_temperature + offset,
             custom_backend = backend$name
@@ -79,16 +113,30 @@ test_that("R6 EPW morphing backends can be looked up, registered, and selected",
     epw_morph_register_backend(backend_name, custom, overwrite = TRUE)
     epw_morph_register_backend(required_name, required, overwrite = TRUE)
     expect_identical(epw_morph_backend(backend_name), custom)
-    expect_error(epw_morph_register_backend(backend_name, custom), "already registered")
+    expect_error(
+        epw_morph_register_backend(backend_name, custom),
+        "already registered"
+    )
 
-    recipe <- epw_morph_recipe(name = backend_name, backend = backend_name, methods = c(dry = "plus_two"))
+    recipe <- epw_morph_recipe(
+        name = backend_name,
+        backend = backend_name,
+        methods = c(dry = "plus_two")
+    )
     expect_equal(recipe$methods[["dry"]], "plus_two")
     expect_equal(epw_morph_variables(recipe), "tas")
     expect_error(
-        epw_morph_recipe(name = backend_name, backend = backend_name, methods = c(dry = "scale")),
+        epw_morph_recipe(
+            name = backend_name,
+            backend = backend_name,
+            methods = c(dry = "scale")
+        ),
         "Unsupported"
     )
-    required_recipe <- epw_morph_recipe(name = required_name, backend = required_name)
+    required_recipe <- epw_morph_recipe(
+        name = required_name,
+        backend = required_name
+    )
     expect_true(morpher__recipe_requires_reference(required_recipe))
     expect_true(morpher__recipe_requires_reference(required_recipe))
     context <- morpher__context(
@@ -128,3 +176,5 @@ test_that("complete default backend registration avoids rebuilding specs", {
     expect_silent(epw_morph_backends())
     expect_silent(epw_morph_backend("original_morphing"))
 })
+
+# vim: fdm=marker :

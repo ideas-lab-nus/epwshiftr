@@ -1,5 +1,6 @@
 # Build one regular sub-daily state-variable series with native CF coordinates
 # and a POSIX surrogate whose elapsed seconds match the native calendar.
+# temporal_test__series {{{
 temporal_test__series <- function(
     calendar = "noleap",
     frequency = "3hr",
@@ -51,8 +52,10 @@ temporal_test__series <- function(
     }
     data
 }
+# }}}
 
 # Assemble the two model roles required by the standalone preprocess component.
+# temporal_test__inputs {{{
 temporal_test__inputs <- function(
     historical = temporal_test__series(),
     future = temporal_test__series(value_offset = 100),
@@ -67,6 +70,7 @@ temporal_test__inputs <- function(
         model_future = weather__new_input("model_future", future)
     )
 }
+# }}}
 
 test_that("linear temporal interpolation preserves source hours and weights", {
     source_order <- c(3L, 1L, 2L)
@@ -269,7 +273,9 @@ test_that("linear temporal interpolation supports scalar wind speed", {
     expect_identical(data$variable_id, rep.int("sfcWind", 7L))
     expect_identical(data$units, rep.int("m s-1", 7L))
     expect_identical(data$value, 10 + 0:6)
-    expect_true("sfcWind" %in% temporal__linear_component()@metadata$supported_variables)
+    expect_true(
+        "sfcWind" %in% temporal__linear_component()@metadata$supported_variables
+    )
 })
 
 test_that("linear temporal interpolation rejects unsafe source semantics", {
@@ -380,3 +386,5 @@ test_that("linear temporal interpolation is registered and compatible", {
         "frequencies `day`"
     )
 })
+
+# vim: fdm=marker :

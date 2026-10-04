@@ -50,6 +50,7 @@ HOURLY_KQDM_CANONICAL_UNITS <- c(
 
 # Convert every signal or raw-model variable to one method-owned unit before
 # roles are aligned, avoiding false mismatches between equivalent unit labels.
+# hourly_kqdm_input__canonical_units {{{
 hourly_kqdm_input__canonical_units <- function(data, role, expected) {
     data <- data.table::as.data.table(data.table::copy(data))
     present <- sort(unique(as.character(data[["variable_id"]])))
@@ -92,9 +93,11 @@ hourly_kqdm_input__canonical_units <- function(data, role, expected) {
     }
     data[]
 }
+# }}}
 
 # Derive scalar wind and meteorological direction from aligned reconstructed
 # eastward and northward model components while preserving source metadata.
+# hourly_kqdm_input__wind_rows {{{
 hourly_kqdm_input__wind_rows <- function(data, role) {
     required <- c("variable_id", "time", "value", "units")
     missing <- setdiff(required, names(data))
@@ -105,8 +108,14 @@ hourly_kqdm_input__wind_rows <- function(data, role) {
     }
     key <- intersect(
         c(
-            "source_id", "experiment_id", "variant_label", "frequency",
-            "table_id", "grid_label", "site_id", "time"
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "frequency",
+            "table_id",
+            "grid_label",
+            "site_id",
+            "time"
         ),
         names(data)
     )
@@ -120,7 +129,8 @@ hourly_kqdm_input__wind_rows <- function(data, role) {
     # their component values agree exactly at the same identity and time.
     prepare <- function(variable) {
         rows <- data[data[["variable_id"]] == variable]
-        conflicts <- rows[, list(values = data.table::uniqueN(get("value"))),
+        conflicts <- rows[,
+            list(values = data.table::uniqueN(get("value"))),
             by = key
         ][get("values") > 1L]
         if (nrow(conflicts)) {
@@ -165,9 +175,11 @@ hourly_kqdm_input__wind_rows <- function(data, role) {
     out[, ".northward" := NULL]
     out[]
 }
+# }}}
 
 # Replace reconstructed model humidity and vector wind inputs with the six
 # canonical variables consumed by the published univariate KQDM stage.
+# hourly_kqdm_input__model_role {{{
 hourly_kqdm_input__model_role <- function(input, role) {
     data <- hourly_kqdm_input__canonical_units(
         input@source,
@@ -217,10 +229,12 @@ hourly_kqdm_input__model_role <- function(input, role) {
         input = transformed,
         diagnostics = data.frame(
             role = role,
-            source_variables = paste(HOURLY_KQDM_MODEL_VARIABLES,
+            source_variables = paste(
+                HOURLY_KQDM_MODEL_VARIABLES,
                 collapse = ","
             ),
-            output_variables = paste(HOURLY_KQDM_SIGNAL_VARIABLES,
+            output_variables = paste(
+                HOURLY_KQDM_SIGNAL_VARIABLES,
                 collapse = ","
             ),
             humidity_values_bounded = sum(humidity_bounded != humidity_raw),
@@ -229,9 +243,11 @@ hourly_kqdm_input__model_role <- function(input, role) {
         )
     )
 }
+# }}}
 
 # Normalize the already-hourly observed role to the same canonical signal
 # units without applying any model-derived transformation.
+# hourly_kqdm_input__observed_role {{{
 hourly_kqdm_input__observed_role <- function(input, role) {
     data <- hourly_kqdm_input__canonical_units(
         input@source,
@@ -251,10 +267,12 @@ hourly_kqdm_input__observed_role <- function(input, role) {
         ),
         diagnostics = data.frame(
             role = role,
-            source_variables = paste(HOURLY_KQDM_SIGNAL_VARIABLES,
+            source_variables = paste(
+                HOURLY_KQDM_SIGNAL_VARIABLES,
                 collapse = ","
             ),
-            output_variables = paste(HOURLY_KQDM_SIGNAL_VARIABLES,
+            output_variables = paste(
+                HOURLY_KQDM_SIGNAL_VARIABLES,
                 collapse = ","
             ),
             humidity_values_bounded = 0L,
@@ -263,9 +281,11 @@ hourly_kqdm_input__observed_role <- function(input, role) {
         )
     )
 }
+# }}}
 
 # Execute raw-model reconstruction and canonical signal preparation through
 # the shared hourly interpolation implementation.
+# hourly_kqdm_input__apply {{{
 hourly_kqdm_input__apply <- function(inputs, context, options) {
     weather_interp__apply_core(
         inputs,
@@ -287,9 +307,11 @@ hourly_kqdm_input__apply <- function(inputs, context, options) {
         )
     )
 }
+# }}}
 
 # Describe the method-specific raw-to-signal adapter while reusing the generic
 # variable-aware interpolation stage for all temporal reconstruction.
+# hourly_kqdm_input__component {{{
 hourly_kqdm_input__component <- function() {
     component__spec(
         name = "hourly_kernel_qdm_input_preparation",
@@ -343,10 +365,15 @@ hourly_kqdm_input__component <- function() {
         )
     )
 }
+# }}}
 
 # Register the method-specific adapter once while preserving process-local
 # replacements under the same component key.
+# hourly_kqdm_input__register_component {{{
 hourly_kqdm_input__register_component <- function() {
     component__register_builtin(hourly_kqdm_input__component())
     invisible(NULL)
 }
+# }}}
+
+# vim: fdm=marker :
