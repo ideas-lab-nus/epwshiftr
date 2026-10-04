@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Check service URLs in bounded active waves and avoid large serial timeout
+  retries. No-download workflows sample exact OPeNDAP endpoints per data node
+  and discard HTTP-only candidates before checking catalog coverage.
+
 * Coverage CI prints the total line coverage and retains per-file reports and
   merged counters independently of Codecov. Upload errors produce a warning without
   failing the job (#279).

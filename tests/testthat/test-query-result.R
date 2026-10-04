@@ -4573,3 +4573,296 @@ test_that("esg_result() constructs typed empty query results", {
 # }}}
 
 # vim: fdm=marker :
+
+test_that("File service resolution can preflight OPeNDAP by sampled data node", {
+    pairs <- lapply(seq_len(6L), function(index) {
+        # Build one logical file replica on each candidate data node.
+        make_replica <- function(node, replica) {
+            doc <- query_result_test_file_docs(c(
+                sprintf(
+                    "https://%s/dods/file-%d.nc|application/netcdf|OPENDAP",
+                    node,
+                    index
+                ),
+                sprintf(
+                    "https://%s/files/file-%d.nc|application/netcdf|HTTPServer",
+                    node,
+                    index
+                )
+            ))
+            doc$id <- sprintf("file-%d-%s", index, node)
+            doc$instance_id <- sprintf("instance-%d", index)
+            doc$master_id <- sprintf("master-%d", index)
+            doc$tracking_id <- sprintf("tracking-%d", index)
+            doc$checksum <- sprintf("checksum-%d", index)
+            doc$filename <- sprintf("file-%d.nc", index)
+            doc$title <- doc$filename
+            doc$size <- 100 + index
+            doc$variable_id <- sprintf("var-%d", index)
+            doc$data_node <- node
+            doc$replica <- replica
+            doc
+        }
+        data.table::rbindlist(
+            list(
+                make_replica("bad.example.org", FALSE),
+                make_replica("good.example.org", TRUE)
+            ),
+            use.names = TRUE,
+            fill = TRUE
+        )
+    })
+    docs <- data.table::rbindlist(pairs, use.names = TRUE, fill = TRUE)
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+
+    checked_urls <- character()
+    testthat::local_mocked_bindings(
+        query_result__repair_urls = function(...) {
+            stop(
+                "sampled node preflight must not run exhaustive replica repair"
+            )
+        },
+        query_result__reach_service_urls = function(
+            urls,
+            service,
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
+            checked_urls <<- c(checked_urls, urls)
+            good <- grepl("good.example.org", urls, fixed = TRUE)
+            data.table::data.table(
+                url = urls,
+                reachable = good,
+                latency_ms = data.table::fifelse(good, 10, NA_real_),
+                error = data.table::fifelse(good, NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    resolved <- query_result__resolve_file_services(
+        result,
+        check = list(
+            level = "url",
+            sample_per_node = 3L,
+            cache_seconds = 0L,
+            cache_failures_seconds = 0L
+        )
+    )
+
+    expect_equal(resolved$result$count(), 6L)
+    expect_true(all(grepl(
+        "good.example.org",
+        resolved$result$url_opendap,
+        fixed = TRUE
+    )))
+    expect_length(checked_urls, 6L)
+    expect_equal(sum(grepl("bad.example.org", checked_urls, fixed = TRUE)), 3L)
+    expect_equal(sum(grepl("good.example.org", checked_urls, fixed = TRUE)), 3L)
+    expect_true(all(
+        resolved$diagnostics[service == "OPENDAP", probe_level] ==
+            "service_node_sample"
+    ))
+    expect_equal(
+        sum(
+            resolved$diagnostics[service == "OPENDAP", selected]
+        ),
+        6L
+    )
+})
+
+# Keep transport deterministic while exercising real callback indexing, wave
+# admission, deadlines and fallback decisions through the shared URL runner.
+test_that("URL checks bound active waves and preserve completed results", {
+    mode <- "success"
+    pools <- list()
+    deadlines <- numeric()
+    serial_urls <- character()
+    testthat::local_mocked_bindings(
+        new_pool = function(total_con, host_con) {
+            pool <- new.env(parent = emptyenv())
+            pool$callbacks <- list()
+            pool$capacity <- total_con
+            pool$index <- length(pools) + 1L
+            pools[[pool$index]] <<- pool
+            pool
+        },
+        multi_add = function(handle, done, fail, pool) {
+            pool$callbacks[[length(pool$callbacks) + 1L]] <- list(
+                done = done,
+                fail = fail
+            )
+            invisible(handle)
+        },
+        multi_run = function(timeout, poll, pool) {
+            deadlines <<- c(deadlines, timeout)
+            if (mode == "error" && pool$index == 2L) {
+                stop("pool failed")
+            }
+            if (mode == "timeout") {
+                return(invisible(NULL))
+            }
+            for (i in rev(seq_along(pool$callbacks))) {
+                if (mode == "failed" && i == 1L) {
+                    pool$callbacks[[i]]$fail("unavailable")
+                } else {
+                    pool$callbacks[[i]]$done(list(status_code = 200L))
+                }
+            }
+            invisible(NULL)
+        },
+        .package = "curl"
+    )
+    # Reset per-call observations while retaining the chosen transport mode.
+    run <- function(count, retry = FALSE) {
+        pools <<- list()
+        deadlines <<- numeric()
+        serial_urls <<- character()
+        query_result__run_url_checks(
+            if (count) {
+                paste0("https://example.org/", seq_len(count))
+            } else {
+                character()
+            },
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 3L,
+            retry_failed = retry,
+            serial_check = function(url) {
+                serial_urls <<- c(serial_urls, url)
+                list(reachable = TRUE, url = url)
+            },
+            done_result = function(response, url, started_at) {
+                list(reachable = TRUE, url = url)
+            }
+        )
+    }
+    out <- run(8L)
+    expect_identical(
+        vapply(pools, function(x) length(x$callbacks), integer(1L)),
+        c(3L, 3L, 2L)
+    )
+    expect_equal(deadlines, rep(10, 3L))
+    expect_identical(
+        vapply(out, `[[`, character(1L), "url"),
+        stats::setNames(names(out), names(out))
+    )
+    expect_length(serial_urls, 0L)
+    mode <- "failed"
+    out <- run(8L)
+    expect_equal(sum(vapply(out, `[[`, logical(1L), "reachable")), 5L)
+    expect_length(serial_urls, 0L)
+    mode <- "timeout"
+    out <- run(20L)
+    expect_false(any(vapply(out, `[[`, logical(1L), "reachable")))
+    expect_length(serial_urls, 0L)
+    out <- run(2L)
+    expect_length(serial_urls, 2L)
+    expect_true(all(vapply(out, `[[`, logical(1L), "reachable")))
+    out <- run(8L, retry = TRUE)
+    expect_length(serial_urls, 8L)
+    mode <- "error"
+    out <- run(8L)
+    expect_equal(sum(vapply(out, `[[`, logical(1L), "reachable")), 3L)
+    expect_length(serial_urls, 0L)
+    expect_identical(run(0L), stats::setNames(list(), character()))
+})
+
+# Missing catalog metadata falls back to the exact URL host. An unsuccessful
+# sample must not certify other files on that host as usable OPeNDAP inputs.
+test_that("sampled service checks handle missing metadata and partial failure", {
+    docs <- data.table::rbindlist(lapply(seq_len(4L), function(i) {
+        row <- query_result_test_file_docs(sprintf(
+            "https://node.example.org/f%d.nc|application/netcdf|OPENDAP",
+            i
+        ))
+        row$id <- paste0("id", i)
+        row$data_node <- NA_character_
+        row$variable_id <- NA_character_
+        row
+    }))
+    docs$url[[4L]] <- character()
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+    count <- 0L
+    testthat::local_mocked_bindings(
+        query_result__reach_service_urls = function(urls, ...) {
+            count <<- length(urls)
+            data.table::data.table(
+                url = urls,
+                reachable = c(TRUE, FALSE),
+                latency_ms = c(10, NA_real_),
+                error = c(NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+    out <- query_result__sample_service_nodes(result, sample_per_node = 2L)
+    expect_identical(count, 2L)
+    expect_false(any(out$reachable %in% TRUE))
+    expect_identical(out$record_index, 1:4)
+    expect_identical(out$error[4L], "Missing URL.")
+    expect_equal(
+        nrow(query_result__sample_service_nodes(result$slice(integer()))),
+        0L
+    )
+    expect_error(
+        query_result__sample_service_nodes(result, sample_per_node = 0L),
+        "Must be >= 1"
+    )
+})
+
+# Distinct endpoint hosts must remain distinct when catalog node metadata is
+# absent, otherwise a failed host could invalidate a healthy host's files.
+test_that("sampled service checks keep missing-metadata hosts separate", {
+    docs <- data.table::rbindlist(lapply(
+        c("healthy.example.org", "failed.example.org"),
+        function(host) {
+            row <- query_result_test_file_docs(paste0(
+                "https://",
+                host,
+                "/f.nc|application/netcdf|OPENDAP"
+            ))
+            row$id <- host
+            row$data_node <- NA_character_
+            row$variable_id <- NA_character_
+            row
+        }
+    ))
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query_result__reach_service_urls = function(urls, ...) {
+            calls[[length(calls) + 1L]] <<- urls
+            good <- grepl("healthy.example.org", urls, fixed = TRUE)
+            data.table::data.table(
+                url = urls,
+                reachable = good,
+                latency_ms = 1,
+                error = data.table::fifelse(good, NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+    out <- query_result__sample_service_nodes(result)
+    expect_length(calls, 2L)
+    expect_identical(out$reachable, c(TRUE, FALSE))
+    expect_identical(out$id, docs$id)
+})

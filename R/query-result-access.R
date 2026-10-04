@@ -268,7 +268,7 @@ query_result__run_url_checks <- function(
     names(out) <- urls
     failed <- rep(FALSE, length(urls))
     failure_messages <- rep(NA_character_, length(urls))
-    ok <- tryCatch(
+    tryCatch(
         {
             if (is.null(network_policy)) {
                 network_policy <- list()
@@ -282,81 +282,109 @@ query_result__run_url_checks <- function(
                 ssl_verifypeer <- TRUE
             }
 
-            # Capture each index and start value before registering its callbacks.
-            pool <- curl::new_pool(
-                total_con = concurrency,
-                host_con = concurrency
-            )
-            for (i in seq_along(urls)) {
-                local({
-                    j <- i
-                    started_at <- clock()
-                    handle <- downloader__curl_handle(
-                        timeout = timeout,
-                        connect_timeout = connect_timeout,
-                        ssl_verifypeer = ssl_verifypeer,
-                        proxy = network_policy$proxy,
-                        useragent = network_policy$useragent,
-                        nobody = nobody
-                    )
-                    if (!is.null(failonerror)) {
+            # Register one active wave at a time. libcurl counts time spent in
+            # a multi queue against CURLOPT_TIMEOUT, so enqueuing hundreds of
+            # handles at once can expire later records before they are started.
+            starts <- seq.int(1L, length(urls), by = concurrency)
+            for (start in starts) {
+                indices <- seq.int(
+                    start,
+                    min(start + concurrency - 1L, length(urls))
+                )
+                pool <- curl::new_pool(
+                    total_con = length(indices),
+                    host_con = length(indices)
+                )
+                # Capture each index and start value before registering its
+                # callbacks in the current active wave.
+                for (i in indices) {
+                    local({
+                        j <- i
+                        started_at <- clock()
+                        handle <- downloader__curl_handle(
+                            timeout = timeout,
+                            connect_timeout = connect_timeout,
+                            ssl_verifypeer = ssl_verifypeer,
+                            proxy = network_policy$proxy,
+                            useragent = network_policy$useragent,
+                            nobody = nobody
+                        )
+                        if (!is.null(failonerror)) {
+                            curl::handle_setopt(
+                                handle,
+                                failonerror = isTRUE(failonerror)
+                            )
+                        }
                         curl::handle_setopt(
                             handle,
-                            failonerror = isTRUE(failonerror)
+                            url = request_url(urls[[j]])
                         )
-                    }
-                    curl::handle_setopt(
-                        handle,
-                        url = request_url(urls[[j]])
-                    )
-                    curl::multi_add(
-                        handle,
-                        done = function(response) {
-                            out[[j]] <<- done_result(
-                                response = response,
-                                url = urls[[j]],
-                                started_at = started_at
-                            )
-                        },
-                        fail = function(error) {
-                            failed[[j]] <<- TRUE
-                            failure_messages[[j]] <<- if (
-                                inherits(
-                                    error,
-                                    "condition"
+                        curl::multi_add(
+                            handle,
+                            done = function(response) {
+                                out[[j]] <<- done_result(
+                                    response = response,
+                                    url = urls[[j]],
+                                    started_at = started_at
                                 )
-                            ) {
-                                conditionMessage(error)
-                            } else {
-                                as.character(error)[[1L]]
-                            }
-                        },
-                        pool = pool
-                    )
-                })
+                            },
+                            fail = function(error) {
+                                failed[[j]] <<- TRUE
+                                failure_messages[[j]] <<- if (
+                                    inherits(
+                                        error,
+                                        "condition"
+                                    )
+                                ) {
+                                    conditionMessage(error)
+                                } else {
+                                    as.character(error)[[1L]]
+                                }
+                            },
+                            pool = pool
+                        )
+                    })
+                }
+                curl::multi_run(
+                    timeout = max(2 * timeout, 1),
+                    poll = TRUE,
+                    pool = pool
+                )
             }
-            curl::multi_run(
-                timeout = max(timeout * length(urls), 1),
-                poll = TRUE,
-                pool = pool
-            )
             TRUE
         },
         error = function(e) FALSE
     )
 
-    if (!isTRUE(ok)) {
-        return(serial(urls))
-    }
+    # Pool errors retain completed callbacks and use the same bounded recovery
+    # as a timeout; never restart every previously successful URL.
 
     # HTTP checks may need a serial HEAD-to-Range recovery. A failed DDS GET is
     # already conclusive and should not repeat the same timeout one URL at a
     # time after the concurrent request has finished.
     unreported <- vapply(out, is.null, logical(1L)) & !failed
     if (any(unreported)) {
-        # A pool-level timeout can leave a handle without either callback.
-        # Retry only those indeterminate handles so the result is classified.
-        out[unreported] <- lapply(urls[unreported], serial_check)
+        retry_unreported <- isTRUE(retry_failed) ||
+            sum(unreported) <= min(concurrency, 8L)
+        if (isTRUE(retry_unreported)) {
+            # HTTP reachability checks and a small indeterminate tail retain
+            # serial recovery without reopening hundreds of timed-out handles.
+            out[unreported] <- lapply(urls[unreported], serial_check)
+        } else {
+            # A large OPeNDAP pool may reach its wall-clock limit before every
+            # queued handle invokes a callback. Classify those handles without
+            # turning one bounded concurrent check into hours of serial retries.
+            out[unreported] <- lapply(which(unreported), function(index) {
+                list(
+                    reachable = FALSE,
+                    latency_ms = NA_real_,
+                    error = paste(
+                        "Concurrent URL check ended without a response",
+                        "before the pool timeout."
+                    )
+                )
+            })
+        }
     }
     if (any(failed)) {
         if (isTRUE(retry_failed)) {
