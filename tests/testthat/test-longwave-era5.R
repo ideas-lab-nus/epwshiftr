@@ -93,3 +93,28 @@ test_that("ERA5 diffuse aligns mixed flux and energy units without changing inpu
     raw$fdir$data <- raw$fdir$data[0]
     expect_error(era__canonical_hourly(raw, "rsdsdiff"), "complete hourly")
 })
+
+# Public longwave options must reach the existing per-signal validator and IDs.
+test_that("public longwave settings are validated and persisted", {
+    enabled <- hourly_transform(
+        "kernel_qdm",
+        include_longwave = TRUE,
+        rlds = list(grid_points = 128L, min_samples = 3L)
+    )
+    expect_identical(enabled@options$signal_overrides$rlds$grid_points, 128L)
+    expect_identical(enabled@options$signal_overrides$rlds$min_samples, 3L)
+    restored <- transform__from_spec(transform__spec_value(enabled))
+    expect_identical(restored@options, enabled@options)
+    expect_error(
+        hourly_transform("kernel_qdm", rlds = list(grid_points = 128L)),
+        "Unknown transformation variable"
+    )
+    expect_error(
+        hourly_transform(
+            "kernel_qdm",
+            include_longwave = TRUE,
+            rlds = list(grid_points = 1L)
+        ),
+        "grid_points"
+    )
+})

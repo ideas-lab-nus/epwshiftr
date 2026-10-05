@@ -1013,43 +1013,10 @@ mirai_worker_bindings <- function(symbols = character()) {
 }
 # }}}
 
-# Start an owned local pool without changing its worker count or dispatcher.
-# macOS IPC shutdown can stall in NNG after cancellation; use a loopback TCP
-# listener with an OS-assigned port and wait for the requested workers instead.
+# Delegate pool ownership to the independently copyable downloader runtime.
+# All package callers retain the same startup and cancellation semantics.
 mirai__start_pool <- function(n, dispatcher = TRUE, .compute) {
-    checkmate::assert_count(n, positive = TRUE)
-    checkmate::assert_string(.compute, min.chars = 1L)
-    if (!identical(Sys.info()[["sysname"]], "Darwin")) {
-        return(mirai::daemons(n, dispatcher = dispatcher, .compute = .compute))
-    }
-
-    started <- FALSE
-    on.exit(
-        {
-            if (!started) {
-                try(mirai::daemons(0L, .compute = .compute), silent = TRUE)
-            }
-        },
-        add = TRUE
-    )
-    mirai::daemons(
-        n,
-        url = mirai::local_url(tcp = TRUE),
-        dispatcher = dispatcher,
-        .compute = .compute
-    )
-    # Explicit URLs configure a listener; launch_local() connects workers to
-    # its actual bound port. Passing port zero directly to workers is invalid.
-    mirai::launch_local(n, .compute = .compute)
-    deadline <- proc.time()[["elapsed"]] + 30
-    while (mirai::status(.compute = .compute)$connections < n) {
-        if (proc.time()[["elapsed"]] >= deadline) {
-            stop("Local mirai workers did not connect within 30 seconds.")
-        }
-        Sys.sleep(0.01)
-    }
-    started <- TRUE
-    invisible(TRUE)
+    downloader__start_pool(n, dispatcher = dispatcher, .compute = .compute)
 }
 
 # mirai_lapply {{{

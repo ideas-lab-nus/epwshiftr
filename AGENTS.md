@@ -152,7 +152,7 @@
 
 - 本机曾在 `R CMD check` 的测试阶段停在 `rnng_dispatcher_stop → dispatch_shutdown → nng_close → nni_sock_shutdown → pthread_cond_wait`。这类原生线程等待不能依靠 R 的 `setTimeLimit()` 中断，也不能根据最后一行测试输出直接判断是哪项测试引起的。
 - `mirai 2.7.3` / `nanonext 1.10.3` 也已复现上述阻塞，不能把升级版本或一次成功检查当作根治证据。关闭前的取消结果已返回，也不代表 worker 已停止执行。
-- 包内本地池统一通过 `mirai__start_pool()` 创建：macOS 使用 `mirai::local_url(tcp = TRUE)` 绑定回环地址和系统分配的端口，再调用 `mirai::launch_local()`，以避开 IPC 关闭路径；等待 worker 连接有 30 秒上限。保留原 worker 数量和 dispatcher 设置，不修改用户全局 mirai 配置。其他系统沿用默认传输。
+- 包内通用入口 `mirai__start_pool()` 委托 `standalone-downloader.R` 内的 `downloader__start_pool()` 创建本地池；Downloader 直接使用后者，保证单独复制模块时不依赖包内其他文件。macOS 使用 `mirai::local_url(tcp = TRUE)` 绑定回环地址和系统分配的端口，再调用 `mirai::launch_local()`，以避开 IPC 关闭路径；等待 worker 连接有 30 秒上限。保留原 worker 数量和 dispatcher 设置，不修改用户全局 mirai 配置。其他系统沿用默认传输。
 - 历史工作分支若还没有 `mirai__start_pool()`，必须先确认并纳入对应的运行时修复；仅复制检查脚本和锁定文件不会改变包内的 IPC 传输。不得为此覆盖该分支原有的未提交修改。
 - 本地检查必须使用项目 `uvr.toml` / `uvr.lock`：先执行 `uvr sync`，再执行 `uvr run tools/check-local.R`。当前锁定的并发运行时为 `mirai 2.7.3`、`nanonext 1.10.3`。不得优先加载用户全局库中的旧版本，或只在主进程临时调整 `.libPaths()`；必须通过 `R_LIBS_USER` 将同一套库路径传递给检查进程和 daemon 子进程。
 - `tools/check-local.R` 由独立父进程监督完整检查，默认总超时 1800 秒；可用 `uvr run tools/check-local.R -- 2400 /绝对路径/检查输出` 显式调整。它记录运行时和检查结果，超时时在 macOS 上采样自建 R 子进程并终止本次检查的进程树，保留日志。超时、被终止或不完整检查一律不能标记为通过。

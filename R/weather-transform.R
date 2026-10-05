@@ -821,7 +821,12 @@ transform__signal_options <- function(recipe_spec, method, options) {
     if (!is.null(include_longwave)) {
         checkmate::assert_flag(include_longwave)
     }
-    variables <- method@output_variables
+    # The optional longwave signal uses the same public settings validator as
+    # the published signals; do not require a lower-level recipe to configure it.
+    variables <- c(
+        method@output_variables,
+        if (isTRUE(include_longwave)) "rlds"
+    )
     unknown <- setdiff(names(options), variables)
     if (length(unknown)) {
         cli::cli_abort(

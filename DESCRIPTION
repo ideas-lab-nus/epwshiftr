@@ -27,7 +27,7 @@ Imports:
     data.table (>= 1.12.4),
     duckdb,
     jsonlite,
-    mirai,
+    mirai (>= 2.7.3),
     R6,
     RNetCDF,
     S7

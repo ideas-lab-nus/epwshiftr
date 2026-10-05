@@ -30,3 +30,14 @@ test_that("owned mirai pools preserve concurrency and survive interrupted tasks"
         expect_identical(mirai::status(.compute = profile)$connections, 0L)
     }
 })
+
+# The copyable module's pool helper must run without the package namespace.
+test_that("standalone worker startup has no host-package dependencies", {
+    start <- downloader__start_pool
+    environment(start) <- baseenv()
+    profile <- paste0("standalone-lifecycle-", Sys.getpid())
+    on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
+    start(1L, .compute = profile)
+    job <- mirai::mirai(42L, .compute = profile)
+    expect_identical(mirai::collect_mirai(job), 42L)
+})

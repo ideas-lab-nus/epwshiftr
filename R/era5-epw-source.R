@@ -165,7 +165,9 @@ era_epw__read_field <- function(handle, variable, site) {
         handle,
         found,
         start = starts,
-        count = counts
+        count = counts,
+        # Decode packed CF values before applying physical unit conversions.
+        unpack = TRUE
     ))
     if (length(values) != length(time$value)) {
         cli::cli_abort(

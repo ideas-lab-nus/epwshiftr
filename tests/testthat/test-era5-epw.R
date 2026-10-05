@@ -562,3 +562,45 @@ test_that("reference EPW rejects a different reanalysis provider", {
         "requires"
     )
 })
+
+# Packed CF storage must be decoded before temperatures reach weather conversion.
+test_that("reference NetCDF extraction unpacks scale and offset", {
+    path <- tempfile(fileext = ".nc")
+    withr::defer(unlink(path))
+    reference_test__netcdf(path)
+    handle <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::att.put.nc(handle, "t2m", "scale_factor", "NC_DOUBLE", 0.1)
+    RNetCDF::att.put.nc(handle, "t2m", "add_offset", "NC_DOUBLE", 250)
+    RNetCDF::close.nc(handle)
+    handle <- RNetCDF::open.nc(path)
+    withr::defer(RNetCDF::close.nc(handle))
+    field <- era_epw__read_field(handle, "tas", reference_test__site())
+    expect_equal(field$data$value, c(277.4, 277.8))
+})
+
+# An explicit local-data map cannot authorize a remote fallback for missing data.
+test_that("missing per-site local input remains offline", {
+    downloads <- 0L
+    local_mocked_bindings(era_epw__download = function(...) {
+        downloads <<- downloads + 1L
+        stop("unexpected download")
+    })
+    missing <- shift_site(
+        "missing",
+        113.3,
+        23.2,
+        metadata = list(timezone = 8, elevation = 41)
+    )
+    expect_warning(
+        result <- shift_reference_epw(
+            shift_era5(2001),
+            list(reference_test__site(), missing),
+            withr::local_tempdir(),
+            data = list(point = reference_test__bundle(), missing = NULL)
+        ),
+        "1 reference EPW job"
+    )
+    expect_identical(downloads, 0L)
+    expect_identical(result$status, c("complete", "failed"))
+    expect_match(result$error[[2L]], "Local input is missing")
+})

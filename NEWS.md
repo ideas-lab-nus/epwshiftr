@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Decode packed ERA5 NetCDF values and keep missing per-site local inputs offline.
+  Standalone downloads retain their own worker startup implementation. Optional
+  longwave settings can be configured through `hourly_transform()` (#283).
+
 * Coverage CI prints the total line coverage and retains per-file reports and
   merged counters independently of Codecov. Upload errors produce a warning without
   failing the job (#279).

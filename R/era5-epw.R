@@ -680,6 +680,11 @@ shift_reference_epw <- function(
         }
         input <- tryCatch(
             {
+                if (is.null(selected) && !is.null(data)) {
+                    cli::cli_abort(
+                        "Local input is missing for site {.val {ids[[i]]}}."
+                    )
+                }
                 if (is.null(selected)) {
                     selected <- era_epw__download(
                         source,
