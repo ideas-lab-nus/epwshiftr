@@ -1,5 +1,14 @@
 # epwshiftr (development version)
 
+* Keep Vim folding modelines at the end of extended test files (#281).
+
+* Resolve regional plans through query-file memberships, preserving earlier
+  queries when a shared file is cataloged again. Filter memberships in DuckDB
+  before materializing the selected catalog (#281).
+
+* Scope extraction plan identities to their catalog query so refreshed catalogs
+  retain correct ownership while reusing the shared source extraction cache (#281).
+
 * Keep Vim folding modelines at the end of extended test files (#280).
 
 * Coordinate batch receipt readers and writers with a short publication lock,
