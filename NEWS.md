@@ -1,5 +1,14 @@
 # epwshiftr (development version)
 
+* Keep Vim folding modelines at the end of extended test files (#283).
+
+* Route hourly options through declared component scopes and keep method-specific
+  configuration outside the shared interpolation and pipeline layers (#283).
+
+* Decode packed ERA5 NetCDF values and keep missing per-site local inputs offline.
+  Standalone downloads retain their own worker startup implementation. Optional
+  longwave settings can be configured through `hourly_transform()` (#283).
+
 * Keep Vim folding modelines at the end of extended test files (#282).
 
 * Release curl handles at every wave boundary and continue checking later URLs
@@ -220,6 +229,18 @@
   `mirai`, S7, and store-managed manifests.
 
 ## New features
+
+* `shift_reference_epw()` creates annual ERA5 reference weather without a
+  baseline EPW. It accepts existing NetCDF files or explicitly unit-labelled
+  point data, supports multiple sites and years, and retains input hashes,
+  field provenance, leap-day omissions and humidity diagnostics. Conversion
+  rejects incomplete or inconsistent input instead of filling template weather.
+  ERA5 reference inputs also support diffuse horizontal radiation from matched
+  SSRD/FDIR intervals. Hourly kernel QDM can opt into longwave correction and
+  reconstruction on the site's fixed standard clock. All reanalysis requests
+  use the new cache identity generation; earlier cached references are rebuilt.
+  macOS background workers use loopback TCP with bounded startup while retaining
+  asynchronous cancellation and timeouts (#283).
 
 * Added `common = FALSE` to `shift_cmip6()` for independent method-specific
   model selection in future-weather batches. The default `common = TRUE`

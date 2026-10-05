@@ -27,7 +27,7 @@ Imports:
     data.table (>= 1.12.4),
     duckdb,
     jsonlite,
-    mirai,
+    mirai (>= 2.7.3),
     R6,
     RNetCDF,
     S7
@@ -120,9 +120,10 @@ Collate:
     'dict.R'
     'distribution-parametric.R'
     'distribution-quantile.R'
-    'standalone-downloader.R'
     'epw-output.R'
     'epwshiftr-package.R'
+    'era5-epw-source.R'
+    'era5-epw.R'
     'geo.R'
     'gh.R'
     'import-standalone-schema.R'
@@ -167,6 +168,7 @@ Collate:
     'shift-ui-view.R'
     'source-read.R'
     'standalone-cache.R'
+    'standalone-downloader.R'
     'weather-method.R'
     'zzz.R'
 Config/testthat/edition: 3

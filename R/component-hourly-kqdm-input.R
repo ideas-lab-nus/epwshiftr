@@ -45,7 +45,8 @@ HOURLY_KQDM_CANONICAL_UNITS <- c(
     vas = "m/s",
     sfcWind = "m/s",
     rsds = "W/m^2",
-    rsdsdiff = "W/m^2"
+    rsdsdiff = "W/m^2",
+    rlds = "W/m^2"
 )
 
 # Convert every signal or raw-model variable to one method-owned unit before
@@ -177,14 +178,26 @@ hourly_kqdm_input__wind_rows <- function(data, role) {
 }
 # }}}
 
-# Replace reconstructed model humidity and vector wind inputs with the six
-# canonical variables consumed by the published univariate KQDM stage.
+# Replace reconstructed model humidity and vector wind with canonical signals.
+# The published six-signal path optionally carries the declared longwave extension.
 # hourly_kqdm_input__model_role {{{
-hourly_kqdm_input__model_role <- function(input, role) {
+hourly_kqdm_input__model_role <- function(
+    input,
+    role,
+    include_longwave = FALSE
+) {
+    model_variables <- c(
+        HOURLY_KQDM_MODEL_VARIABLES,
+        if (include_longwave) "rlds"
+    )
+    signal_variables <- c(
+        HOURLY_KQDM_SIGNAL_VARIABLES,
+        if (include_longwave) "rlds"
+    )
     data <- hourly_kqdm_input__canonical_units(
         input@source,
         role,
-        HOURLY_KQDM_MODEL_VARIABLES
+        model_variables
     )
     humidity <- morpher__derive_hurs_rows(data)
     wind <- hourly_kqdm_input__wind_rows(data, role)
@@ -192,7 +205,7 @@ hourly_kqdm_input__model_role <- function(input, role) {
     humidity_bounded <- pmin(100, pmax(0, humidity_raw))
     data.table::set(humidity, j = "value", value = humidity_bounded)
     retained <- data[
-        get("variable_id") %in% c("tas", "ps", "rsds", "rsdsdiff")
+        get("variable_id") %in% c("tas", "ps", "rsds", "rsdsdiff", "rlds")
     ]
     output <- data.table::rbindlist(
         list(retained, humidity, wind),
@@ -211,7 +224,7 @@ hourly_kqdm_input__model_role <- function(input, role) {
         role,
         as.data.frame(output, stringsAsFactors = FALSE),
         representation = "series",
-        variables = HOURLY_KQDM_SIGNAL_VARIABLES,
+        variables = signal_variables,
         frequencies = "hour",
         calendars = unique(as.character(output[["cf_calendar"]])),
         provenance = utils::modifyList(
@@ -229,14 +242,8 @@ hourly_kqdm_input__model_role <- function(input, role) {
         input = transformed,
         diagnostics = data.frame(
             role = role,
-            source_variables = paste(
-                HOURLY_KQDM_MODEL_VARIABLES,
-                collapse = ","
-            ),
-            output_variables = paste(
-                HOURLY_KQDM_SIGNAL_VARIABLES,
-                collapse = ","
-            ),
+            source_variables = paste(model_variables, collapse = ","),
+            output_variables = paste(signal_variables, collapse = ","),
             humidity_values_bounded = sum(humidity_bounded != humidity_raw),
             wind_directions_derived = nrow(wind),
             stringsAsFactors = FALSE
@@ -248,18 +255,26 @@ hourly_kqdm_input__model_role <- function(input, role) {
 # Normalize the already-hourly observed role to the same canonical signal
 # units without applying any model-derived transformation.
 # hourly_kqdm_input__observed_role {{{
-hourly_kqdm_input__observed_role <- function(input, role) {
+hourly_kqdm_input__observed_role <- function(
+    input,
+    role,
+    include_longwave = FALSE
+) {
+    signal_variables <- c(
+        HOURLY_KQDM_SIGNAL_VARIABLES,
+        if (include_longwave) "rlds"
+    )
     data <- hourly_kqdm_input__canonical_units(
         input@source,
         role,
-        HOURLY_KQDM_SIGNAL_VARIABLES
+        signal_variables
     )
     list(
         input = weather__new_input(
             role,
             as.data.frame(data, stringsAsFactors = FALSE),
             representation = "series",
-            variables = HOURLY_KQDM_SIGNAL_VARIABLES,
+            variables = signal_variables,
             frequencies = "hour",
             calendars = unique(as.character(data[["cf_calendar"]])),
             provenance = input@provenance,
@@ -267,14 +282,8 @@ hourly_kqdm_input__observed_role <- function(input, role) {
         ),
         diagnostics = data.frame(
             role = role,
-            source_variables = paste(
-                HOURLY_KQDM_SIGNAL_VARIABLES,
-                collapse = ","
-            ),
-            output_variables = paste(
-                HOURLY_KQDM_SIGNAL_VARIABLES,
-                collapse = ","
-            ),
+            source_variables = paste(signal_variables, collapse = ","),
+            output_variables = paste(signal_variables, collapse = ","),
             humidity_values_bounded = 0L,
             wind_directions_derived = 0L,
             stringsAsFactors = FALSE
@@ -287,17 +296,35 @@ hourly_kqdm_input__observed_role <- function(input, role) {
 # the shared hourly interpolation implementation.
 # hourly_kqdm_input__apply {{{
 hourly_kqdm_input__apply <- function(inputs, context, options) {
+    checkmate::assert_list(options, names = "unique")
+    if (!is.null(options$include_longwave)) {
+        checkmate::assert_flag(options$include_longwave)
+    }
+    include_longwave <- isTRUE(options$include_longwave)
+    # Consume method-owned configuration before entering shared interpolation.
+    options$include_longwave <- NULL
     weather_interp__apply_core(
         inputs,
         context,
         options,
-        model_transform = hourly_kqdm_input__model_role,
-        observed_transform = hourly_kqdm_input__observed_role,
+        model_transform = function(input, role) {
+            hourly_kqdm_input__model_role(input, role, include_longwave)
+        },
+        observed_transform = function(input, role) {
+            hourly_kqdm_input__observed_role(input, role, include_longwave)
+        },
         component_name = "hourly_kernel_qdm_input_preparation",
         method = "hourly_kernel_qdm_input_preparation",
         extra_provenance = list(
-            raw_model_variables = HOURLY_KQDM_MODEL_VARIABLES,
-            signal_variables = HOURLY_KQDM_SIGNAL_VARIABLES,
+            raw_model_variables = c(
+                HOURLY_KQDM_MODEL_VARIABLES,
+                if (include_longwave) "rlds"
+            ),
+            signal_variables = c(
+                HOURLY_KQDM_SIGNAL_VARIABLES,
+                if (include_longwave) "rlds"
+            ),
+            longwave_extension = include_longwave,
             humidity_derivation = "huss_tas_ps_to_hurs",
             wind_derivation = "uas_vas_to_speed_direction"
         ),
@@ -357,6 +384,7 @@ hourly_kqdm_input__component <- function() {
         operations = list(apply = hourly_kqdm_input__apply),
         metadata = list(
             algorithm = "raw_model_to_hourly_kqdm_signals",
+            scoped_options = c("include_longwave", "model_utc_offset_hours"),
             references = HOURLY_WEATHER_REFERENCES,
             raw_model_variables = HOURLY_KQDM_MODEL_VARIABLES,
             variable_frequencies = HOURLY_KQDM_MODEL_FREQUENCIES,

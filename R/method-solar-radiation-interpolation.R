@@ -19,10 +19,14 @@ SOLAR_RADIATION_REFERENCES <- c(
 # target while using the same samples for exact source-interval normalization.
 SOLAR_INTEGRATION_STEP_SECONDS <- 60
 
-# Validate one role as materialized, bounded shortwave interval means before
+# Validate one role as materialized, bounded radiation interval means before
 # any values are assigned to the hourly target lattice.
 # solar__source {{{
-solar__source <- function(input, role) {
+solar__source <- function(
+    input,
+    role,
+    allowed_variables = SOLAR_RADIATION_VARIABLES
+) {
     if (!S7::S7_inherits(input, WeatherInput)) {
         cli::cli_abort("Role {.val {role}} must contain a WeatherInput object.")
     }
@@ -90,7 +94,7 @@ solar__source <- function(input, role) {
     variables <- unique(as.character(data[["variable_id"]]))
     unsupported_variables <- setdiff(
         variables,
-        SOLAR_RADIATION_VARIABLES
+        allowed_variables
     )
     if (length(unsupported_variables)) {
         cli::cli_abort(
@@ -303,7 +307,8 @@ solar__group <- function(
     data,
     group_columns,
     frequency,
-    time_step_seconds
+    time_step_seconds,
+    allocation = "solar_projection"
 ) {
     data <- data.table::as.data.table(data.table::copy(data))
     data.table::set(
@@ -321,6 +326,16 @@ solar__group <- function(
         time_step_seconds,
         label
     )
+    if (allocation == "constant_interval_mean") {
+        return(solar__longwave_overlap(
+            data,
+            group_columns,
+            frequency,
+            interval,
+            calendar,
+            label
+        ))
+    }
     target_step <- 3600
     target_counts <- as.integer(interval$duration / target_step)
     source_index <- rep.int(seq_len(nrow(data)), target_counts)
@@ -435,13 +450,12 @@ solar__group <- function(
             source_solar_projection = source_projection[source_index],
             solar_weight = solar_weight,
             temporal_interpolation = rep.int(
-                "solar_projection",
+                allocation,
                 length(value)
             ),
             stringsAsFactors = FALSE
         )
     ))
-
     # Compatibility aliases describe the target coordinate rather than either
     # edge of the hourly averaging interval.
     aliases <- list(
@@ -495,11 +509,101 @@ solar__group <- function(
 }
 # }}}
 
+# Integrate piecewise-constant longwave flux over clock-hour intervals. An
+# interval may overlap two source cells when CF bounds start between hours;
+# partial edge hours are omitted rather than filled from outside the source.
+solar__longwave_overlap <- function(
+    data,
+    group_columns,
+    frequency,
+    interval,
+    calendar,
+    label
+) {
+    start <- ceiling(min(interval$start) / 3600) * 3600
+    last <- floor(max(interval$end) / 3600) * 3600 - 3600
+    if (last < start) {
+        cli::cli_abort("Longwave input contains no complete clock hour.")
+    }
+    target_start <- seq(start, last, by = 3600)
+    target_end <- target_start + 3600
+    index <- findInterval(target_start, interval$start)
+    next_index <- pmin(index + 1L, nrow(data))
+    first_seconds <- pmin(interval$end[index], target_end) - target_start
+    second_seconds <- 3600 - first_seconds
+    # Flux times overlap duration is energy per area; divide once by 3600 s.
+    value <- (data$value[index] *
+        first_seconds +
+        data$value[next_index] * second_seconds) /
+        3600
+    target <- temporal__target_coordinates(target_start, calendar)
+    time <- as.POSIXct(
+        as.numeric(data$time[index]) + target_start - interval$sample[index],
+        origin = "1970-01-01",
+        tz = "UTC"
+    )
+    constant <- as.data.frame(data)[
+        index,
+        setdiff(group_columns, c("cf_calendar", "frequency")),
+        drop = FALSE
+    ]
+    out <- data.table::as.data.table(cbind(
+        constant,
+        data.frame(
+            value = value,
+            frequency = "hour",
+            time = time,
+            time_bound_start = time,
+            time_bound_end = time + 3600,
+            target$coordinates,
+            source_frequency = frequency,
+            source_row = data$.solar_source_row[index],
+            second_source_row = data$.solar_source_row[next_index],
+            first_overlap_seconds = first_seconds,
+            second_overlap_seconds = second_seconds,
+            temporal_interpolation = "constant_interval_mean"
+        )
+    ))
+    aliases <- c(target$fields, list(datetime = time))
+    for (column in intersect(names(aliases), names(data))) {
+        data.table::set(out, j = column, value = aliases[[column]])
+    }
+    covered <- pmax(
+        0,
+        pmin(interval$end, max(target_end)) -
+            pmax(interval$start, min(target_start))
+    )
+    energy_error <- abs(sum(value * 3600) - sum(data$value * covered))
+    if (energy_error > max(1e-6, abs(sum(data$value * covered)) * 1e-12)) {
+        cli::cli_abort(
+            "Longwave clock-hour overlap integration does not conserve covered energy."
+        )
+    }
+    list(
+        data = out[],
+        diagnostic = data.table::data.table(
+            group = label,
+            variable_id = "rlds",
+            source_frequency = frequency,
+            source_samples = nrow(data),
+            target_samples = nrow(out),
+            maximum_conservation_error = energy_error / sum(covered),
+            omitted_edge_seconds = sum(interval$duration) - sum(covered),
+            interval_policy = "cf_time_bounds_clock_hour_overlap",
+            conservation_policy = "covered_interval_energy"
+        )
+    )
+}
+
 # Interpolate every independent radiation group in one semantic role and
 # rebuild its WeatherInput descriptor with retained CF interval bounds.
 # solar__role {{{
-solar__role <- function(input, role, context) {
-    source <- solar__source(input, role)
+solar__role <- function(input, role, context, longwave = FALSE) {
+    source <- solar__source(
+        input,
+        role,
+        if (longwave) "rlds" else SOLAR_RADIATION_VARIABLES
+    )
     group_columns <- temporal__group_columns(
         source$data,
         input,
@@ -525,7 +629,12 @@ solar__role <- function(input, role, context) {
             frequency = frequency,
             time_step_seconds = unname(
                 TEMPORAL_SOURCE_STEPS[[frequency]]
-            )
+            ),
+            allocation = if (longwave) {
+                "constant_interval_mean"
+            } else {
+                "solar_projection"
+            }
         )
     })
     data <- data.table::rbindlist(
@@ -563,6 +672,15 @@ solar__role <- function(input, role, context) {
         source_group_columns = group_columns,
         output_group_columns = output_group_columns
     )
+    if (longwave) {
+        interpolation_record$method <- "constant_interval_mean"
+        interpolation_record$evidence <- "experimental_package_extension"
+        interpolation_record$solar_geometry <- NULL
+        interpolation_record$integration_step_seconds <- NULL
+        interpolation_record$references <- character()
+        interpolation_record$interval_policy <- "cf_time_bounds_clock_hour_overlap"
+        interpolation_record$conservation_policy <- "covered_interval_energy"
+    }
     output <- weather__new_input(
         role,
         data,

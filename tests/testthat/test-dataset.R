@@ -94,7 +94,7 @@ start_mirai_dataset_runtime <- function(workers) {
     startup_error <- NULL
     tryCatch(
         {
-            mirai::daemons(
+            mirai__start_pool(
                 workers,
                 dispatcher = TRUE,
                 .compute = compute_profile

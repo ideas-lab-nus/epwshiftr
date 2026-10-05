@@ -67,7 +67,7 @@ EPW_MORPH_HOURLY_KQDM_RULES <- data.table::data.table(
     )
 )
 
-# Complete and validate the only backend-level option. Variable-specific
+# Validate reconstruction settings and signal-profile overrides. Variable-specific
 # numerical settings remain owned by the registered signal component.
 # hourly_kqdm__options {{{
 hourly_kqdm__options <- function(options = NULL) {
@@ -75,13 +75,61 @@ hourly_kqdm__options <- function(options = NULL) {
         return(list(signal_overrides = list()))
     }
     checkmate::assert_list(options, names = "unique")
-    unknown <- setdiff(names(options), "signal_overrides")
+    unknown <- setdiff(
+        names(options),
+        c("signal_overrides", "include_longwave", "model_utc_offset_hours")
+    )
     if (length(unknown)) {
         cli::cli_abort(
             "Unknown hourly kernel QDM option(s): {.val {unknown}}."
         )
     }
-    list(signal_overrides = pipeline__signal_overrides(options))
+    include_longwave <- isTRUE(options$include_longwave)
+    if (!is.null(options$include_longwave)) {
+        checkmate::assert_flag(options$include_longwave)
+    }
+    result <- list(signal_overrides = pipeline__signal_overrides(options))
+    # Omit the disabled option so existing serialized recipes retain their ID.
+    if (include_longwave) {
+        result$include_longwave <- TRUE
+    }
+    if (!is.null(options$model_utc_offset_hours)) {
+        checkmate::assert_number(
+            options$model_utc_offset_hours,
+            lower = -12,
+            upper = 14,
+            finite = TRUE
+        )
+        if (options$model_utc_offset_hours != 0) {
+            result$model_utc_offset_hours <- options$model_utc_offset_hours
+        }
+    }
+    result
+}
+
+# Extend a configured recipe's input contract without mutating the registered
+# six-signal publication adapter or affecting another transform in the process.
+hourly_kqdm__longwave_spec <- function(spec) {
+    requirements <- spec@required_inputs
+    for (role in c("observed_reference", "model_historical", "model_future")) {
+        requirement <- requirements[[role]]
+        requirement@variable_sets <- lapply(
+            requirement@variable_sets,
+            function(variables) unique(c(variables, "rlds"))
+        )
+        if (role != "observed_reference") {
+            requirement@variable_frequencies$rlds <- "3hr"
+        }
+        requirements[[role]] <- requirement
+    }
+    spec@required_inputs <- requirements
+    spec@source$longwave_extension <- list(
+        variable = "rlds",
+        interpolation = "constant_interval_mean",
+        correction = "multiplicative_kernel_qdm",
+        evidence = "experimental_package_extension"
+    )
+    spec
 }
 # }}}
 

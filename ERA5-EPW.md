@@ -1,0 +1,125 @@
+# ERA5 annual reference EPW
+
+`shift_reference_epw()` converts hourly ERA5 single-level data into annual EPW
+files. It accepts multiple sites and years and does not require a baseline EPW.
+Use already downloaded input when available; the optional CDS path submits
+bounded monthly requests and is not a bulk-download accelerator.
+
+```r
+site <- shift_site(
+    "Guangzhou", lon = 113.3333, lat = 23.16667,
+    metadata = list(timezone = 8, elevation = 41, country = "China")
+)
+result <- shift_reference_epw(
+    shift_era5(1995:2014),
+    sites = site,
+    dir = "reference-weather",
+    data = c("instantaneous.nc", "accumulated.nc"),
+    leap_day = "drop",
+    start_day = "Monday"
+)
+result[, c("site", "year", "status", "reused", "epw", "error")]
+```
+
+The coordinates, standard UTC offset and elevation must come from the study's
+site metadata. The selected source grid is recorded separately. Values are not
+adjusted for the difference between grid and site elevation.
+
+For a batch, pass a list of `shift_site()` objects. `data` may be a named list,
+keyed by site ID, with a file vector or data bundle for each site. A common file
+vector can also contain a larger rectilinear domain: only the nearest point of
+each variable is read into memory. Temporal, member or forecast dimensions
+must not be silently combined.
+
+A data bundle contains:
+
+- `data`: a data.frame with ordered POSIXct `utc_time` and numeric `tas`,
+  `tdps`, `ps`, `uas`, `vas`, `rsds`, `fdir`, `rlds`, `clt`, `pr`.
+- `units`: a named character vector, for example K for temperatures, Pa for
+  surface pressure, m/s for wind, J/m2 for radiation, 1 for cloud fraction and
+  m for precipitation.
+- `grid = list(latitude = ..., longitude = ...)`.
+- `interval_seconds = 3600`: accumulated variables cover the preceding hour.
+- Optional `provenance`: original files and hashes, preprocessing policy and
+  correction records. The converter never edits the caller's data.
+
+`rsds`, `fdir` and `rlds` may alternatively use hourly mean W/m2 or hourly
+Wh/m2. Cloud percent and preceding-hour precipitation depth in mm are accepted.
+Precipitation rates must be converted explicitly before constructing a bundle.
+
+The UTC validity time becomes the local **hour ending** at that time.
+Instantaneous variables remain at that endpoint. Accumulated radiation and
+precipitation cover its preceding hour. Supply boundary hours around the local
+year; the converter checks the full year before applying the leap-day policy.
+No daylight saving time or fractional-offset interpolation is inferred.
+
+FDIR is direct horizontal radiation. Diffuse horizontal radiation is
+`rsds - fdir`. DNI uses the shared hourly solar projection, including partially
+sunlit hours. The converter rejects negative energy, direct energy greater than
+total energy, missing records and impossible DNI. Source corrections, when
+justified, belong in an explicitly documented preprocessing step.
+
+Relative humidity uses the IFS liquid-water saturation relation and preserves
+the source dew point. EnergyPlus's below-freezing saturation relation can produce
+a different humidity ratio from this RH. Hourly `diagnostics.csv` records both
+interpretations; a complete EPW conversion does not establish moisture
+equivalence or validate building loads. See the
+[IFS thermodynamics definition](https://www.ecmwf.int/sites/default/files/elibrary/2016/16648-part-iv-physical-processes.pdf)
+and [EnergyPlus EPW field dictionary](https://bigladdersoftware.com/epx/docs/9-6/auxiliary-programs/energyplus-weather-file-epw-data-dictionary.html).
+
+The source humidity-ratio diagnostic uses the IFS gas-constant ratio
+`287.0597 / 461.5250`; the EnergyPlus 9.6 diagnostic uses its own `0.62198`.
+These constants are recorded separately because equality of vapour pressure
+and equality of the two software definitions of humidity ratio are different
+checks. Changing the diagnostic does not change the temperature, dew point or
+RH written to the EPW. Do not convert the EPW RH to an ice-based value and clip
+it to the field limit: doing so changes the represented moisture content.
+
+Unsupported fields use explicit EPW missing codes. Design conditions, ground
+temperatures, holidays, snow information and typical/extreme periods are not
+invented. By default liquid precipitation remains missing because ERA5 total
+precipitation does not resolve phase. Setting
+`precipitation = "total_water_equivalent"` explicitly accepts that approximation.
+The original total precipitation is always retained in the diagnostics.
+Simulation models must supply appropriate ground and rain/snow assumptions.
+
+The result has one row for every requested site/year, including failures.
+Each conversion attempt retains its receipt and artifacts. Resume accepts only
+complete, hash-matching results; damaged outputs cause a new attempt while old
+evidence remains. A directory lock prevents simultaneous writers. After a
+process interruption, inspect the recorded lock owner before moving a stale
+lock aside. Ambiguous CDS submissions without a remote request ID require
+review and are never blindly resubmitted.
+
+A successful receipt includes `weather.epw`, `fields.csv`, `diagnostics.csv`
+and `omitted-leap-hours.rds`. `last-run.csv` indexes the latest call. Output
+success means conversion and field readback passed; it does not mean that
+EnergyPlus or a particular building model has been validated.
+
+## ERA5 reference inputs for hourly transformations
+
+`shift_era5()` also supports `rsdsdiff` for hourly transformation reference
+inputs. It derives diffuse horizontal radiation from matched SSRD and FDIR
+fields and requires the full CDS single-level product. Hour-ending radiation
+is aligned to interval starts before combining it with instantaneous fields;
+energy and hourly-mean flux representations use the same time convention.
+
+For hourly kernel QDM, longwave correction is an explicit extension:
+
+```r
+transform <- hourly_transform(
+    "kernel_qdm",
+    include_longwave = TRUE,
+    model_utc_offset_hours = 8
+)
+```
+
+Enabling longwave requires `rlds` in the observed, historical-model and
+future-model inputs. Its hourly reconstruction integrates interval-mean flux
+without solar weighting and conserves energy over complete covered hours.
+The model offset is applied after UTC solar reconstruction and before complete
+local years are selected. Observed inputs must already use the site's fixed
+standard clock. Both settings are retained in the transformation identity;
+default settings preserve the existing six-signal workflow. This extension
+does not establish an improvement in joint weather dependence or building
+response.

@@ -1013,6 +1013,12 @@ mirai_worker_bindings <- function(symbols = character()) {
 }
 # }}}
 
+# Delegate pool ownership to the independently copyable downloader runtime.
+# All package callers retain the same startup and cancellation semantics.
+mirai__start_pool <- function(n, dispatcher = TRUE, .compute) {
+    downloader__start_pool(n, dispatcher = dispatcher, .compute = .compute)
+}
+
 # mirai_lapply {{{
 mirai_lapply <- function(
     X,
@@ -1045,7 +1051,7 @@ mirai_lapply <- function(
         gsub("[^A-Za-z0-9]+", "-", label),
         fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L)))
     )
-    mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
+    mirai__start_pool(workers, dispatcher = TRUE, .compute = compute_profile)
     on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
 
     worker_symbols <- mirai_worker_bindings(symbols)

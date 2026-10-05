@@ -5,12 +5,13 @@
 # copyright: Copyright (c) 2019-2026 Hongyuan Jia and Adrian Chong
 # SPDX-License-Identifier: MIT
 # license: MIT
-# imports: [checkmate (>= 2.0.0), cli (>= 3.4.0), curl, duckdb, jsonlite, mirai, R6]
+# imports: [checkmate (>= 2.0.0), cli (>= 3.4.0), curl, duckdb, jsonlite, mirai (>= 2.7.3), R6]
 # ---
 #
 # # Standalone Changelog
 #
 # ## 2026-10-05
+# - Own local worker startup, including macOS loopback TCP transport.
 # - Publish the independently copyable Downloader and its local helpers.
 # - Include checksum verification, persistent manifests, resumable transfers,
 #   background jobs and independent asynchronous worker pools.
@@ -43,6 +44,45 @@ DOWNLOADER_RUNTIME <- local({
 DOWNLOADER_RUNTIME$offline <- NULL
 DOWNLOADER_RUNTIME$verbose <- NULL
 DOWNLOADER_RUNTIME$sync_store <- NULL
+
+# Start an owned local pool without changing its worker count or dispatcher.
+# macOS IPC shutdown can stall in NNG after cancellation; use a loopback TCP
+# listener with an OS-assigned port and wait for the requested workers instead.
+downloader__start_pool <- function(n, dispatcher = TRUE, .compute) {
+    checkmate::assert_count(n, positive = TRUE)
+    checkmate::assert_string(.compute, min.chars = 1L)
+    if (!identical(Sys.info()[["sysname"]], "Darwin")) {
+        return(mirai::daemons(n, dispatcher = dispatcher, .compute = .compute))
+    }
+
+    started <- FALSE
+    on.exit(
+        {
+            if (!started) {
+                try(mirai::daemons(0L, .compute = .compute), silent = TRUE)
+            }
+        },
+        add = TRUE
+    )
+    mirai::daemons(
+        n,
+        url = mirai::local_url(tcp = TRUE),
+        dispatcher = dispatcher,
+        .compute = .compute
+    )
+    # Explicit URLs configure a listener; launch_local() connects workers to
+    # its actual bound port. Passing port zero directly to workers is invalid.
+    mirai::launch_local(n, .compute = .compute)
+    deadline <- proc.time()[["elapsed"]] + 30
+    while (mirai::status(.compute = .compute)$connections < n) {
+        if (proc.time()[["elapsed"]] >= deadline) {
+            stop("Local mirai workers did not connect within 30 seconds.")
+        }
+        Sys.sleep(0.01)
+    }
+    started <- TRUE
+    invisible(TRUE)
+}
 
 # Keep host cache policy optional; copying this module does not require a cache.
 # downloader__offline {{{
@@ -4574,7 +4614,7 @@ Downloader <- R6::R6Class(
                 daemon_count < private$worker_count
 
             if (isTRUE(needs_start)) {
-                mirai::daemons(
+                downloader__start_pool(
                     private$worker_count,
                     .compute = private$compute_profile
                 )

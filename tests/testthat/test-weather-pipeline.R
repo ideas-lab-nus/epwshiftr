@@ -132,4 +132,81 @@ test_that("daily hourly projection ignores signal-owned options", {
     expect_false("signal_overrides" %in% names(projection))
 })
 
+# Scope options by component declarations even when the backend is unrelated
+# to KQDM; shared settings still reach all ordinary component stages.
+test_that("pipeline routes scoped options without recognizing backend names", {
+    signal <- component__spec(
+        name = "routing_signal",
+        stage = "signal",
+        input_kinds = "calendar_output",
+        output_kinds = "signal_output",
+        operations = list(apply = function(...) NULL)
+    )
+    plan <- pipeline_test__plan(signal)
+    plan@components$preprocess@metadata$scoped_options <- "input_setting"
+    plan@components$hourly@metadata$scoped_options <- "hourly_setting"
+    previous <- WeatherStageResult(
+        stage = "preprocess",
+        component = "routing_preprocess",
+        kind = "role_inputs",
+        value = TRUE
+    )
+    args_for <- function(stage) {
+        pipeline__operation_args(
+            plan@components[[stage]],
+            plan,
+            previous,
+            context = list(recipe = list(backend = "unrelated_backend")),
+            options = list(
+                input_setting = 1L,
+                hourly_setting = 2L,
+                shared = 3L
+            ),
+            stages = list()
+        )
+    }
+    expect_identical(
+        args_for("preprocess")$options,
+        list(input_setting = 1L, shared = 3L)
+    )
+    expect_identical(
+        args_for("hourly")$options,
+        list(hourly_setting = 2L, shared = 3L)
+    )
+    expect_identical(args_for("calendar")$options, list(shared = 3L))
+    expect_identical(args_for("output")$options, list(shared = 3L))
+    expect_setequal(
+        hourly_kqdm_input__component()@metadata$scoped_options,
+        c("include_longwave", "model_utc_offset_hours")
+    )
+})
+
+# Method options are consumed by the adapter and cannot be accepted merely
+# by presenting its name to the generic interpolation implementation.
+test_that("generic interpolation does not recognize method-specific options", {
+    inputs <- weather__new_inputs(
+        model_future = weather__new_input(
+            "model_future",
+            data.frame(variable_id = "tas", frequency = "hour")
+        )
+    )
+    expect_error(
+        weather_interp__apply_core(
+            inputs,
+            context = list(),
+            options = list(include_longwave = TRUE),
+            component_name = "hourly_kernel_qdm_input_preparation"
+        ),
+        "does not accept"
+    )
+    expect_error(
+        hourly_kqdm_input__apply(
+            inputs,
+            context = list(),
+            options = list(include_longwave = "yes")
+        ),
+        "flag"
+    )
+})
+
 # vim: fdm=marker :

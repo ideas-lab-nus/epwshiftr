@@ -1749,7 +1749,7 @@ EsgDataset <- R6::R6Class(
             # continue synchronously without hiding an actual NetCDF error.
             mirai_obj <- tryCatch(
                 {
-                    mirai::daemons(
+                    mirai__start_pool(
                         1L,
                         dispatcher = TRUE,
                         .compute = compute_profile

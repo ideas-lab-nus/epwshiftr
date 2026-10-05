@@ -71,6 +71,25 @@ solar_test__inputs <- function(
 }
 # }}}
 
+test_that("longwave uses exact clock-hour overlap when source bounds are offset", {
+    source <- solar_test__series(
+        variable = "rlds",
+        interval_starts = c(1800, 12600),
+        values = c(100, 300)
+    )
+    input <- weather__new_input("model_future", source)
+    output <- solar__role(
+        input,
+        "model_future",
+        NULL,
+        longwave = TRUE
+    )$input@source
+    expect_equal(output$value, c(100, 100, 200, 300, 300))
+    expect_equal(sum(output$value * 3600), 100 * 2.5 * 3600 + 300 * 2.5 * 3600)
+    expect_true(all(output$cf_second_of_day %% 3600 == 0))
+    expect_equal(output$second_overlap_seconds, c(0, 0, 1800, 0, 0))
+})
+
 test_that("solar radiation interpolation conserves every source interval", {
     source <- solar_test__series(value_offset = 100)
     result <- solar__apply(

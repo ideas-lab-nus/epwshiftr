@@ -261,7 +261,7 @@ source__apply <- function(
     )
     # One reader needs no dispatcher; retain it only for distributing work
     # between several independent source connections.
-    mirai::daemons(workers, dispatcher = workers > 1L, .compute = profile)
+    mirai__start_pool(workers, dispatcher = workers > 1L, .compute = profile)
     on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
     library_paths <- shift_execution__library_paths()
     worker_options <- shift_execution__options()

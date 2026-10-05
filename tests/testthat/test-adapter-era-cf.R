@@ -263,4 +263,29 @@ test_that("reanalysis identities include the EPW fixed time zone", {
     expect_false(identical(original_ids$query_id, shifted_ids$query_id))
 })
 
+# References without diffuse radiation must no longer reuse v1 cache entries.
+test_that("reanalysis identities invalidate legacy reference caches", {
+    spec <- shift_era5(2001)
+    site <- shift_site(
+        "identity",
+        lon = 103.98,
+        lat = 1.37,
+        epw = get_cache_epw()
+    )
+    # These IDs were produced by the v1 algorithm for this fixed site and year.
+    legacy <- c(
+        query_id = "6b9a0742aca3c9c186899caad0f5b69bf77cdaba1fa0c51093b3b44225792961",
+        file_key = "3a6eb190d959957f381c711389920751295fda59d650cbaff4bdaa7258fc3c77",
+        plan_id = "8999d6e9956e0921b71553b84f77d90a7221b815e894b8a8435f83a9a9097fc9"
+    )
+    ids <- reanalysis__identities(spec, site, "tas", c(tas = "hour"), "cds")
+    expect_false(identical(ids$query_id, unname(legacy[["query_id"]])))
+    expect_false(identical(unname(ids$file_keys), unname(legacy[["file_key"]])))
+    expect_false(identical(unname(ids$plan_ids), unname(legacy[["plan_id"]])))
+    expect_identical(
+        ids,
+        reanalysis__identities(spec, site, "tas", c(tas = "hour"), "cds")
+    )
+})
+
 # vim: fdm=marker :

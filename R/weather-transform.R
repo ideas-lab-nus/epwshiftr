@@ -814,7 +814,19 @@ transform__signal_options <- function(recipe_spec, method, options) {
         return(daily_adjustment__options(adapter))
     }
 
-    variables <- method@output_variables
+    include_longwave <- options$include_longwave
+    options$include_longwave <- NULL
+    model_utc_offset_hours <- options$model_utc_offset_hours
+    options$model_utc_offset_hours <- NULL
+    if (!is.null(include_longwave)) {
+        checkmate::assert_flag(include_longwave)
+    }
+    # The optional longwave signal uses the same public settings validator as
+    # the published signals; do not require a lower-level recipe to configure it.
+    variables <- c(
+        method@output_variables,
+        if (isTRUE(include_longwave)) "rlds"
+    )
     unknown <- setdiff(names(options), variables)
     if (length(unknown)) {
         cli::cli_abort(
@@ -826,7 +838,11 @@ transform__signal_options <- function(recipe_spec, method, options) {
         variables,
         options
     )
-    hourly_kqdm__options(list(signal_overrides = signal_settings))
+    hourly_kqdm__options(list(
+        signal_overrides = signal_settings,
+        include_longwave = include_longwave,
+        model_utc_offset_hours = model_utc_offset_hours
+    ))
 }
 # }}}
 
@@ -1019,10 +1035,7 @@ transform__optional_variable_frequencies <- function(
 # so new construction and persisted-plan restoration share the same boundary.
 # transform__from_recipe {{{
 transform__from_recipe <- function(record, recipe) {
-    recipe_spec <- recipe__get(
-        recipe$recipe_spec,
-        version = recipe$recipe_version
-    )
+    recipe_spec <- morpher__recipe_spec(recipe)
     method_spec <- method__get(recipe_spec@method)
     inputs <- transform__input_contracts(recipe_spec, recipe)
     optional_variables <- transform__optional_variables(recipe, inputs)
@@ -1557,6 +1570,13 @@ transform__validate_execution_inputs <- function(
 #' @param reconstruction An hourly reconstruction choice. Supply this only for
 #'   methods that list more than one permitted reconstruction.
 #' @param ... Method-specific scientific settings. Unknown settings are errors.
+#'   For hourly `kernel_qdm`, `include_longwave = TRUE` requires and corrects
+#'   `rlds` in all three climate roles using an experimental package extension.
+#'   Its interval-mean reconstruction conserves source energy without solar
+#'   weighting. `model_utc_offset_hours` (default `0`) shifts reconstructed UTC
+#'   model series to the site's fixed standard clock before year selection;
+#'   observed-reference data must already use that clock. Both options are
+#'   persisted in transform specifications and cache identities.
 #'
 #' @return A reusable `WeatherTransformSpec`.
 #'

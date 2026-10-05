@@ -362,11 +362,26 @@ pipeline__signal_overrides <- function(options) {
 }
 # }}}
 
-# Remove signal-owned profile overrides from the option list seen by every
-# other component while retaining any backend settings those stages declare.
+# Route explicitly scoped options only to their declaring components. The
+# executor depends on component contracts rather than concrete backend names;
+# ordinary shared options retain their existing behavior.
 # pipeline__component_options {{{
-pipeline__component_options <- function(options) {
-    options[setdiff(names(options), "signal_overrides")]
+pipeline__component_options <- function(
+    options,
+    component = NULL,
+    components = list()
+) {
+    scoped <- lapply(components, function(item) {
+        keys <- item@metadata$scoped_options
+        if (is.null(keys)) {
+            return(character())
+        }
+        checkmate::assert_character(keys, any.missing = FALSE, unique = TRUE)
+        keys
+    })
+    owned <- if (is.null(component)) NULL else component@metadata$scoped_options
+    excluded <- setdiff(unlist(scoped, use.names = FALSE), owned)
+    options[setdiff(names(options), c("signal_overrides", excluded))]
 }
 # }}}
 
@@ -385,7 +400,11 @@ pipeline__operation_args <- function(
     common <- list(
         inputs = plan@inputs,
         context = context,
-        options = pipeline__component_options(options)
+        options = pipeline__component_options(
+            options,
+            component,
+            plan@components
+        )
     )
     switch(
         component@stage,
