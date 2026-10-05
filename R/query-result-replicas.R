@@ -252,9 +252,14 @@ query_result__collect_identity <- function(
     }
 
     collected_parts <- lapply(stores, function(store) {
-        query__collect(
+        query_result__collect_batched(
             index_node,
             store,
+            facet = if (!is.null(store$state()$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            },
             required_fields = query_result__required(type),
             all = all,
             limit = this$data_max_limit,
@@ -262,6 +267,15 @@ query_result__collect_identity <- function(
         )
     })
     collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    # The result retains the original identity facet, not only its first shard.
+    query_result__merge_params(
+        collected$parameter,
+        if (length(instance_id)) {
+            list(instance_id = instance_id)
+        } else {
+            list(master_id = master_id)
+        }
+    )
     response <- collected$response
     response$response$docs <- collected$docs
 
@@ -297,15 +311,27 @@ query_result__collect_master <- function(
         index_node <- query__normalize_node(index_node)
     }
 
-    store <- query_result__replica_store(type, list(master_id = master_id))
-    collected <- query__collect(
-        index_node,
-        store,
-        required_fields = query_result__required(type),
-        all = all,
-        limit = this$data_max_limit,
-        constraints = FALSE
-    )
+    stores <- list(query_result__replica_store(
+        type,
+        list(master_id = master_id)
+    ))
+    collected_parts <- lapply(stores, function(store) {
+        query_result__collect_batched(
+            index_node,
+            store,
+            facet = if (!is.null(store$state()$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            },
+            required_fields = query_result__required(type),
+            all = all,
+            limit = this$data_max_limit,
+            constraints = FALSE
+        )
+    })
+    collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    query_result__merge_params(collected$parameter, list(master_id = master_id))
     response <- collected$response
     response$response$docs <- collected$docs
 
