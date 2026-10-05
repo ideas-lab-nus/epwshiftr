@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Read CDS credentials from environment variables when configuration files are
+  absent, and report missing required credentials with the authentication
+  diagnostic (#284).
+
 * Keep Vim folding modelines at the end of extended test files (#283).
 
 * Route hourly options through declared component scopes and keep method-specific
