@@ -1805,27 +1805,208 @@ query_result__merge_params <- function(store, params) {
     store$restore(state)
 }
 # }}}
-# Child Dataset collection is split by Dataset count instead of URL length so
-# the behavior is deterministic and independent of JSON/url connection heuristics.
+# This is a soft preflight budget, not a server limit. An oversized singleton
+# is still attempted; only an actual HTTP 414 triggers failure or further splits.
 QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE <- 50L
+QUERY_RESULT_COLLECT_MAX_URL_BYTES <- 1800L
 
-# query_result__child_dataset_batches
-# Split Dataset IDs for child File/Aggregation collection while preserving order.
-# query_result__child_dataset_batches {{{
-query_result__child_dataset_batches <- function(
-    dataset_id,
-    batch_size = QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE
+# Pack IDs in input order using the fully rendered URL, including fixed params.
+# The current batch determines the next boundary, so preallocate group indices.
+# query_result__query_value_batches {{{
+query_result__query_value_batches <- function(
+    values,
+    build_url,
+    batch_size = QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE,
+    max_url_bytes = QUERY_RESULT_COLLECT_MAX_URL_BYTES
 ) {
-    checkmate::assert_character(dataset_id, any.missing = FALSE)
+    checkmate::assert_character(values, any.missing = FALSE)
+    checkmate::assert_function(build_url)
     checkmate::assert_count(batch_size, positive = TRUE)
-    if (!length(dataset_id)) {
+    checkmate::assert_count(max_url_bytes, positive = TRUE)
+    if (!length(values)) {
         return(list())
     }
-
-    # Keep the original Dataset order so batched results remain predictable.
-    split(dataset_id, ceiling(seq_along(dataset_id) / as.integer(batch_size)))
+    batch_index <- integer(length(values))
+    current_batch <- 0L
+    first <- 1L
+    while (first <= length(values)) {
+        last <- min(length(values), first + batch_size - 1L)
+        # URL length grows monotonically for these positive identity facets.
+        # Find the largest fitting prefix without rendering every added ID.
+        if (
+            last > first &&
+                nchar(build_url(values[first:last]), type = "bytes") >
+                    max_url_bytes
+        ) {
+            lower <- first
+            upper <- last - 1L
+            while (lower < upper) {
+                middle <- ceiling((lower + upper) / 2)
+                if (
+                    nchar(build_url(values[first:middle]), type = "bytes") <=
+                        max_url_bytes
+                ) {
+                    lower <- middle
+                } else {
+                    upper <- middle - 1L
+                }
+            }
+            last <- lower
+        }
+        current_batch <- current_batch + 1L
+        batch_index[first:last] <- current_batch
+        first <- last + 1L
+    }
+    split(values, batch_index)
 }
 # }}}
+
+# Collect disjoint identity groups, retrying only actual HTTP 414 responses.
+# Each attempt owns its pages: failed partial pages are discarded before restart.
+# query_result__collect_batched {{{
+query_result__collect_batched <- function(
+    index_node,
+    params,
+    facet,
+    required_fields = NULL,
+    all = FALSE,
+    limit = TRUE,
+    constraints = TRUE,
+    ...
+) {
+    checkmate::assert_choice(facet, c("dataset_id", "instance_id", "master_id"))
+    checkmate::assert_flag(all)
+    store <- query__collect_params(
+        index_node,
+        params,
+        required_fields,
+        all,
+        limit,
+        constraints
+    )
+    args <- c(
+        list(
+            index_node = index_node,
+            params = store,
+            required_fields = required_fields,
+            all = all,
+            limit = limit,
+            constraints = constraints
+        ),
+        list(...)
+    )
+    param <- store$state()[[facet]]
+    # Splitting excludes or an explicit offset would change query semantics.
+    if (
+        is.null(param) ||
+            query_param__negate(param) ||
+            query_param__value(store$offset()) != 0L
+    ) {
+        return(do.call(query__collect, args))
+    }
+    # Repeated exact IDs describe the same union; avoid fetching them twice when
+    # a boundary falls between duplicates, while retaining the original params.
+    values <- unique(query_param__value(param))
+    if (!length(values)) {
+        return(do.call(query__collect, args))
+    }
+    # Render through the same normalized store used by the actual collector.
+    build_url <- function(batch) {
+        batch_params <- store$copy()
+        query_result__merge_params(
+            batch_params,
+            stats::setNames(list(batch), facet)
+        )
+        query__build(index_node, batch_params)
+    }
+    batches <- query_result__query_value_batches(values, build_url)
+    results <- vector("list", length(values))
+    collected <- 0L
+    remaining <- query_param__value(store$limit())
+    # A binary retry tree has at most 2n - 1 requests for n distinct IDs.
+    receipts <- vector("list", 2L * length(values) - 1L)
+    receipt_count <- 0L
+    first_attempt <- TRUE
+
+    # Depth is bounded by halving the ID count; completed siblings are retained.
+    collect_batch <- function(batch, label = args$progress_label) {
+        if (!all && remaining <= 0L) {
+            return(invisible(NULL))
+        }
+        batch_params <- store$copy()
+        query_result__merge_params(
+            batch_params,
+            stats::setNames(list(batch), facet)
+        )
+        batch_args <- args
+        batch_args$params <- batch_params
+        if (!is.null(label)) {
+            batch_args$progress_label <- label
+        }
+        if (!all) {
+            batch_params$limit(remaining)
+            batch_args$limit <- remaining
+        }
+        if (!is.null(batch_args$dict_check)) {
+            batch_args$dict_check <- isTRUE(batch_args$dict_check) &&
+                first_attempt
+        }
+        first_attempt <<- FALSE
+        result <- tryCatch(
+            do.call(query__collect, batch_args),
+            epwshiftr_query_uri_too_long = function(error) error
+        )
+        if (inherits(result, "epwshiftr_query_uri_too_long")) {
+            receipt_count <<- receipt_count + 1L
+            receipts[receipt_count] <<- list(result$query_urls)
+            if (length(batch) == 1L) {
+                cli::cli_abort(
+                    c(
+                        "The index node rejected a single-ID request (HTTP 414); it cannot be split further.",
+                        "i" = "Index node: {index_node}",
+                        "i" = "Request URL: {nchar(result$url, type = 'bytes')} bytes; remaining IDs: 1."
+                    ),
+                    class = "epwshiftr_query_uri_too_long",
+                    parent = result
+                )
+            }
+            middle <- length(batch) %/% 2L
+            collect_batch(batch[seq_len(middle)], label)
+            collect_batch(batch[seq.int(middle + 1L, length(batch))], label)
+            return(invisible(NULL))
+        }
+        collected <<- collected + 1L
+        results[[collected]] <<- result
+        receipt_count <<- receipt_count + 1L
+        receipts[receipt_count] <<- list(result$context$query_url)
+        remaining <<- remaining - query__collect_nrow(result$docs)
+        invisible(NULL)
+    }
+    for (i in seq_along(batches)) {
+        label <- args$progress_label
+        if (!is.null(label) && length(batches) > 1L) {
+            label <- sprintf("%s (batch %d/%d)", label, i, length(batches))
+        }
+        collect_batch(batches[[i]], label)
+        if (!all && remaining <= 0L) {
+            break
+        }
+    }
+    result <- query_result__merge_child_collects(
+        results[seq_len(collected)],
+        store,
+        all = all,
+        limit = query_param__value(store$limit()),
+        facet = facet
+    )
+    result$context$query_url <- query_result__query_urls(
+        unlist(receipts[seq_len(receipt_count)], use.names = FALSE),
+        named = FALSE
+    )
+    result
+}
+# }}}
+
 # query_result__merge_child_collects
 # Merge several child query responses into one result object state.
 # query_result__merge_child_collects {{{
@@ -1833,7 +2014,8 @@ query_result__merge_child_collects <- function(
     results,
     params,
     all = FALSE,
-    limit = NULL
+    limit = NULL,
+    facet = "dataset_id"
 ) {
     if (!length(results)) {
         return(query_result__empty_response(params))
@@ -1872,12 +2054,15 @@ query_result__merge_child_collects <- function(
     )
 
     # The first effective parameter store contains required field expansion;
-    # restore the full Dataset selection so the final result reflects the caller
+    # restore the full identity selection so the final result reflects the caller
     # request rather than the last batch.
     parameter <- query_param__clone(results[[1L]]$parameter)
     query_result__merge_params(
         parameter,
-        list(dataset_id = query_param__value(params$state()$dataset_id))
+        stats::setNames(
+            list(query_param__value(params$state()[[facet]])),
+            facet
+        )
     )
     parameter$limit(query_param__value(params$limit()))
 
@@ -2086,15 +2271,6 @@ EsgResultDataset <- R6::R6Class(
             )
             params <- built$params
             limit <- built$limit
-            selected_dataset_id <- if (is.null(which)) {
-                self$id
-            } else {
-                self$id[which]
-            }
-            if (!length(selected_dataset_id)) {
-                selected_dataset_id <- NULL
-            }
-
             req_fld <- if (type == "File") {
                 EsgResultFile$private_fields$required_fields
             } else if (type == "Aggregation") {
@@ -2104,92 +2280,25 @@ EsgResultDataset <- R6::R6Class(
             if (self$count() == 0L) {
                 result <- query_result__empty_response(params)
             } else {
-                # Collect one child query batch. The caller decides whether the
-                # batch is the original full request or a subset of Dataset IDs.
-                collect_one <- function(
-                    batch_params,
-                    batch_limit,
-                    dict_check,
-                    batch_index = NULL,
-                    batch_count = NULL
-                ) {
-                    collect_args <- list(
-                        child_index_node,
-                        batch_params,
-                        required_fields = req_fld,
-                        all = all,
-                        limit = batch_limit,
-                        constraints = FALSE,
-                        dict_check = dict_check,
-                        progress_callback = private$progress_callback
+                collect_args <- list(
+                    index_node = child_index_node,
+                    params = params,
+                    facet = "dataset_id",
+                    required_fields = req_fld,
+                    all = all,
+                    limit = limit,
+                    constraints = FALSE,
+                    dict_check = TRUE,
+                    progress_callback = private$progress_callback
+                )
+                if (isTRUE(progress)) {
+                    collect_args$progress <- TRUE
+                    collect_args$progress_label <- sprintf(
+                        "Collecting %s records",
+                        type
                     )
-                    if (isTRUE(progress)) {
-                        label <- sprintf("Collecting %s records", type)
-                        if (!is.null(batch_index)) {
-                            label <- sprintf(
-                                "%s (batch %d/%d)",
-                                label,
-                                batch_index,
-                                batch_count
-                            )
-                        }
-                        collect_args$progress <- TRUE
-                        collect_args$progress_label <- label
-                    }
-                    do.call(query__collect, collect_args)
                 }
-
-                if (
-                    length(selected_dataset_id) >
-                        QUERY_RESULT_CHILD_COLLECT_BATCH_SIZE
-                ) {
-                    batches <- query_result__child_dataset_batches(
-                        selected_dataset_id
-                    )
-                    collected <- vector("list", length(batches))
-                    collected_count <- 0L
-                    remaining <- as.integer(limit)
-
-                    for (i in seq_along(batches)) {
-                        # Each batch starts from the validated full parameter
-                        # store, then narrows only the Dataset ID facet.
-                        batch_params <- params$copy()
-                        query_result__merge_params(
-                            batch_params,
-                            list(dataset_id = batches[[i]])
-                        )
-                        batch_limit <- if (isTRUE(all)) limit else remaining
-                        batch_params$limit(batch_limit)
-
-                        collected[[i]] <- collect_one(
-                            batch_params,
-                            batch_limit,
-                            dict_check = i == 1L,
-                            batch_index = i,
-                            batch_count = length(batches)
-                        )
-                        collected_count <- i
-
-                        if (!isTRUE(all)) {
-                            # `limit` is a global cap for the public method, not
-                            # a per-batch cap, so stop once enough rows are held.
-                            remaining <- remaining -
-                                query__collect_nrow(collected[[i]]$docs)
-                            if (remaining <= 0L) {
-                                break
-                            }
-                        }
-                    }
-
-                    result <- query_result__merge_child_collects(
-                        collected[seq_len(collected_count)],
-                        params,
-                        all = all,
-                        limit = limit
-                    )
-                } else {
-                    result <- collect_one(params, limit, dict_check = TRUE)
-                }
+                result <- do.call(query_result__collect_batched, collect_args)
             }
 
             # replace docs in the last response

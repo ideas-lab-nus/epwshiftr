@@ -9,6 +9,28 @@
   retries. No-download workflows sample exact OPeNDAP endpoints per data node
   and discard HTTP-only candidates before checking catalog coverage (#282).
 
+* Keep Vim folding modelines at the end of extended test files (#281).
+
+* Resolve regional plans through query-file memberships, preserving earlier
+  queries when a shared file is cataloged again. Filter memberships in DuckDB
+  before materializing the selected catalog (#281).
+
+* Scope extraction plan identities to their catalog query so refreshed catalogs
+  retain correct ownership while reusing the shared source extraction cache (#281).
+
+* Keep Vim folding modelines at the end of extended test files (#280).
+
+* Coordinate batch receipt readers and writers with a short publication lock,
+  preventing background refresh from observing a missing replacement file (#280).
+
+* Preallocate request receipts across recursive URI retries while preserving
+  the complete ordered request history (#280).
+
+* Batch Dataset child and replica identity queries using complete request URL
+  lengths and retry HTTP 414 responses with smaller ID groups. Attempt individual
+  long IDs without a local length rejection, preserving query receipts and global
+  row limits without duplicating partial pages when a batch restarts (#280).
+
 * Coverage CI prints the total line coverage and retains per-file reports and
   merged counters independently of Codecov. Upload errors produce a warning without
   failing the job (#279).

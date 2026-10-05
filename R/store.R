@@ -3130,16 +3130,29 @@ EsgStore <- R6::R6Class(
             private$check_open()
 
             time_range <- store__time_range(time)
-            catalog <- data.table::as.data.table(ddb_read_table(
+            # file_catalog stores one shared row per file; its query_id is
+            # only the latest writer. Use the many-to-many membership table
+            # and filter in DuckDB before materializing this query's catalog.
+            catalog <- data.table::as.data.table(ddb_query(
                 private$conn,
-                "file_catalog"
+                sprintf(
+                    paste(
+                        "SELECT catalog.* FROM file_catalog AS catalog",
+                        "INNER JOIN esg_query_file AS membership",
+                        "ON catalog.file_key = membership.file_key",
+                        "WHERE membership.query_id = %s",
+                        "AND membership.status = 'current'"
+                    ),
+                    ddb_literal(private$conn, query_id)
+                )
             ))
-            catalog <- catalog[catalog$query_id == query_id]
             if (!nrow(catalog)) {
                 cli::cli_abort(
                     "No cataloged file records were found for query ID {.val {query_id}}."
                 )
             }
+
+            data.table::set(catalog, j = "query_id", value = query_id)
 
             filter_names <- names(filters)
             if (length(filters)) {
@@ -3220,7 +3233,11 @@ EsgStore <- R6::R6Class(
                 plan_id = vapply(
                     seq_len(nrow(plan)),
                     function(i) {
+                        # Manifest ownership belongs to the current catalog query.
+                        # The source cache deliberately excludes query and plan IDs,
+                        # so query isolation does not duplicate source reads.
                         store__hash(
+                            query_id,
                             plan$file_key[[i]],
                             site_id,
                             plan$variable_id[[i]],
