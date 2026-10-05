@@ -132,8 +132,6 @@ test_that("daily hourly projection ignores signal-owned options", {
     expect_false("signal_overrides" %in% names(projection))
 })
 
-# vim: fdm=marker :
-
 # Scope options by component declarations even when the backend is unrelated
 # to KQDM; shared settings still reach all ordinary component stages.
 test_that("pipeline routes scoped options without recognizing backend names", {
@@ -210,3 +208,5 @@ test_that("generic interpolation does not recognize method-specific options", {
         "flag"
     )
 })
+
+# vim: fdm=marker :

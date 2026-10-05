@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Keep Vim folding modelines at the end of extended test files (#283).
+
 * Route hourly options through declared component scopes and keep method-specific
   configuration outside the shared interpolation and pipeline layers (#283).
 
