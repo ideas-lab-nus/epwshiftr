@@ -151,10 +151,18 @@ shift_batch__receipt_path <- function(batch_root) {
 # shift_batch__receipt_read {{{
 shift_batch__receipt_read <- function(batch_root, batch_id) {
     path <- shift_batch__receipt_path(batch_root)
-    if (!file.exists(path)) {
+    if (!dir.exists(batch_root)) {
         return(NULL)
     }
-    receipt <- tryCatch(readRDS(path), error = identity)
+    # Publication may replace an existing file on Windows. Share the short
+    # receipt lock with writers so a reader cannot observe the removal gap.
+    receipt <- manifest_with_lock(path, {
+        if (file.exists(path)) {
+            tryCatch(readRDS(path), error = identity)
+        } else {
+            NULL
+        }
+    })
     required <- c(
         "version",
         "batch_id",
@@ -231,12 +239,18 @@ shift_batch__receipt_write <- function(x) {
     )
     on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
     saveRDS(receipt, temporary, version = 3L, compress = FALSE)
-    if (file.exists(path)) {
-        unlink(path)
-    }
-    if (!file.rename(temporary, path)) {
-        cli::cli_abort("Could not publish the future-weather batch receipt.")
-    }
+    # Serialize before taking the lock; hold it only across publication, not
+    # child execution or store access, to keep polling independent of workers.
+    manifest_with_lock(path, {
+        if (file.exists(path)) {
+            unlink(path)
+        }
+        if (!file.rename(temporary, path)) {
+            cli::cli_abort(
+                "Could not publish the future-weather batch receipt."
+            )
+        }
+    })
     invisible(path)
 }
 # }}}
