@@ -416,6 +416,23 @@ epw_morph_recipe <- function(
 
     methods <- morpher__recipe_methods(methods, backend_spec)
     rules <- backend_spec$rules_with_methods(methods)
+    if (is_hourly_kernel_qdm && isTRUE(options$include_longwave)) {
+        # Make longwave a required extracted and corrected field when enabled.
+        longwave <- data.table::copy(rules[which(rules$variable_id == "rsds")])
+        data.table::set(longwave, j = "step", value = "sky_ir")
+        data.table::set(longwave, j = "variable_id", value = "rlds")
+        data.table::set(
+            longwave,
+            j = "epw_field",
+            value = "horizontal_infrared_radiation_intensity_from_sky"
+        )
+        data.table::set(
+            longwave,
+            j = "required_variables",
+            value = list("rlds")
+        )
+        rules <- data.table::rbindlist(list(rules, longwave), fill = TRUE)
+    }
     if (is_belcher && identical(methods[["tdb"]], "combined")) {
         # The published Belcher temperature equation requires all three
         # monthly change factors. Promote the extrema from opportunistic
@@ -531,7 +548,9 @@ morpher__recipe_time_padding_seconds <- function(recipe) {
     ) {
         return(0)
     }
-    max(as.numeric(TEMPORAL_SOURCE_STEPS[source_frequencies]))
+    max(as.numeric(TEMPORAL_SOURCE_STEPS[source_frequencies])) +
+        abs(shift_stage__coalesce(recipe$options$model_utc_offset_hours, 0)) *
+            3600
 }
 # }}}
 
@@ -557,10 +576,17 @@ morpher__recipe_spec <- function(recipe) {
     if (is.null(recipe$recipe_spec)) {
         return(NULL)
     }
-    recipe__get(
+    spec <- recipe__get(
         recipe$recipe_spec,
         version = recipe$recipe_version
     )
+    if (
+        identical(recipe$backend, "hourly_kernel_qdm") &&
+            isTRUE(recipe$options$include_longwave)
+    ) {
+        spec <- hourly_kqdm__longwave_spec(spec)
+    }
+    spec
 }
 # }}}
 

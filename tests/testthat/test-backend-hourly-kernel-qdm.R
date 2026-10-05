@@ -483,4 +483,83 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
     )))
 })
 
+test_that("longwave extension runs through reconstruction, QDM and EPW output", {
+    observed <- hourly_kqdm_test__role(2001L, "observed")
+    longwave <- data.table::copy(observed[variable_id == "tas"])
+    longwave[, `:=`(
+        variable_id = "rlds",
+        units = "W m-2",
+        value = 330 + value / 10
+    )]
+    observed <- data.table::rbindlist(list(observed, longwave), fill = TRUE)
+    add_longwave <- function(data) {
+        longwave <- data.table::copy(data[variable_id == "rsds"])
+        longwave[, `:=`(variable_id = "rlds", value = 330 + value / 100)]
+        data.table::rbindlist(list(data, longwave), fill = TRUE)
+    }
+    historical <- add_longwave(hourly_kqdm_test__model_role(
+        1991L,
+        "historical"
+    ))
+    future <- add_longwave(hourly_kqdm_test__model_role(2061:2062, "future"))
+    overrides <- c(
+        hourly_kqdm_test__overrides(),
+        list(rlds = list(grid_points = 128L, min_samples = 3L))
+    )
+    recipe <- epw_morph_recipe(
+        "hourly_kernel_qdm",
+        options = list(
+            include_longwave = TRUE,
+            signal_overrides = overrides
+        )
+    )
+    context <- morpher__context(
+        epw = epw_file_read(get_cache_epw()),
+        climate = future,
+        reference_climate = historical,
+        observed_reference = observed,
+        recipe = recipe,
+        by = "site_id"
+    )
+    result <- suppressWarnings(morpher__run_context(context))
+    expect_length(result@members, 2L)
+    member <- result@members[[1L]]
+    expect_true(
+        "horizontal_infrared_radiation_intensity_from_sky" %in%
+            member@provenance$constructed_fields
+    )
+    expect_true(all(
+        member@data$horizontal_infrared_radiation_intensity_from_sky > 0
+    ))
+    expect_gt(
+        stats::sd(member@data$horizontal_infrared_radiation_intensity_from_sky),
+        0
+    )
+    diagnostics <- result@parts$component_pipeline
+    expect_true(nrow(diagnostics) > 0)
+})
+
+test_that("local clock shifting crosses native year boundaries without wrapping data", {
+    data <- hourly_kqdm_test__series("tas", 2001L, "historical", "360_day")
+    input <- weather__new_input(
+        "model_historical",
+        data,
+        representation = "series",
+        variables = "tas",
+        frequencies = "hour",
+        calendars = "360_day"
+    )
+    shifted <- weather_interp__local_piece(
+        list(input = input, provenance = list()),
+        8
+    )$input@source
+    expect_equal(shifted$value, data$value)
+    expect_equal(
+        as.numeric(shifted$time - data$time, units = "hours"),
+        rep(8, nrow(data))
+    )
+    expect_equal(shifted$cf_year[nrow(shifted)], 2002L)
+    expect_equal(shifted$cf_second_of_day[1], 8 * 3600)
+})
+
 # vim: fdm=marker :

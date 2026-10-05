@@ -44,6 +44,11 @@ Constructing the source neither reads credentials nor contacts CDS. Use
 without submitting a data request. Dataset-specific terms are checked by CDS
 when retrieval begins and are never accepted by the package.
 }
+\details{
+\code{rsdsdiff} is derived from matched hourly SSRD minus FDIR accumulations
+(direct horizontal solar radiation, not DNI). It requires the full CDS
+single-level product; automatic access falls back from ARCO to CDS.
+}
 \references{
 \href{https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-timeseries}{Copernicus Climate Data Store ERA5 hourly time-series data}
 and the \href{https://cds.climate.copernicus.eu/en/how-to-api}{CDS API setup guide}.

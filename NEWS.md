@@ -190,6 +190,15 @@
 
 ## New features
 
+* `shift_reference_epw()` creates annual ERA5 reference weather without a
+  baseline EPW. It accepts existing NetCDF files or explicitly unit-labelled
+  point data, supports multiple sites and years, and retains input hashes,
+  field provenance, leap-day omissions and humidity diagnostics. Conversion
+  rejects incomplete or inconsistent input instead of filling template weather.
+  ERA5 reference inputs also support diffuse horizontal radiation from matched
+  SSRD/FDIR intervals. Hourly kernel QDM can opt into longwave correction and
+  reconstruction on the site's fixed standard clock.
+
 * Added `common = FALSE` to `shift_cmip6()` for independent method-specific
   model selection in future-weather batches. The default `common = TRUE`
   preserves shared model/member/grid identities. Batch discovery shares Dataset

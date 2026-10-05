@@ -75,6 +75,11 @@ reference:
       - Downloader
       - store_reset
 
+  - title: Historical reference weather
+    desc: Create annual ERA5 EPW files with explicit source and conversion records.
+    contents:
+      - shift_reference_epw
+
   - title: Future-weather transformations
     desc: Discover, configure, and execute built-in future-weather methods.
     contents:

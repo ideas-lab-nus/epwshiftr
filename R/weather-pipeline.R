@@ -387,6 +387,14 @@ pipeline__operation_args <- function(
         context = context,
         options = pipeline__component_options(options)
     )
+    # These hourly reconstruction settings belong only to the preprocess stage;
+    # downstream components continue to receive their established option set.
+    if (
+        identical(context$recipe$backend, "hourly_kernel_qdm") &&
+            !identical(component@stage, "preprocess")
+    ) {
+        common$options[c("include_longwave", "model_utc_offset_hours")] <- NULL
+    }
     switch(
         component@stage,
         preprocess = common,

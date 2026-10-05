@@ -66,6 +66,7 @@ export(shift_missing)
 export(shift_morph)
 export(shift_outputs)
 export(shift_plan)
+export(shift_reference_epw)
 export(shift_reference_historical)
 export(shift_reference_plan)
 export(shift_refresh)
@@ -93,16 +94,22 @@ importFrom(RNetCDF,utcal.nc)
 importFrom(S7,convert)
 importFrom(checkmate,assert_count)
 importFrom(cli,cli_rule)
-importFrom(data.table,":=")
-importFrom(data.table,data.table)
-importFrom(data.table,rbindlist)
-importFrom(data.table,set)
-importFrom(data.table,setcolorder)
-importFrom(data.table,setnames)
+importFrom(data.table,
+  ":=",
+  data.table,
+  rbindlist,
+  set,
+  setcolorder,
+  setnames
+)
 importFrom(jsonlite,fromJSON)
-importFrom(mirai,daemons)
-importFrom(mirai,mirai)
-importFrom(utils,flush.console)
-importFrom(utils,head)
-importFrom(utils,menu)
-importFrom(utils,tail)
+importFrom(mirai,
+  daemons,
+  mirai
+)
+importFrom(utils,
+  flush.console,
+  head,
+  menu,
+  tail
+)

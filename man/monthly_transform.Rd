@@ -18,7 +18,14 @@ hourly_transform(method, reconstruction = NULL, ...)
 \item{reconstruction}{An hourly reconstruction choice. Supply this only for
 methods that list more than one permitted reconstruction.}
 
-\item{...}{Method-specific scientific settings. Unknown settings are errors.}
+\item{...}{Method-specific scientific settings. Unknown settings are errors.
+For hourly \code{kernel_qdm}, \code{include_longwave = TRUE} requires and corrects
+\code{rlds} in all three climate roles using an experimental package extension.
+Its interval-mean reconstruction conserves source energy without solar
+weighting. \code{model_utc_offset_hours} (default \code{0}) shifts reconstructed UTC
+model series to the site's fixed standard clock before year selection;
+observed-reference data must already use that clock. Both options are
+persisted in transform specifications and cache identities.}
 }
 \value{
 A reusable \code{WeatherTransformSpec}.

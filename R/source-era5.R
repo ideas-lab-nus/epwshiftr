@@ -7,7 +7,7 @@ NULL
 # flags prevent an ERA5-Land request from inheriting unsupported ERA5 fields.
 # era5__variable_manifest {{{
 era5__variable_manifest <- function() {
-    data.table::data.table(
+    manifest <- data.table::data.table(
         variable_id = c(
             "tas",
             "tasmin",
@@ -137,6 +137,33 @@ era5__variable_manifest <- function() {
             TRUE
         )
     )
+    # FDIR is a direct horizontal accumulation, not direct-normal radiation.
+    # The diffuse row is a derived public variable; both require full CDS.
+    radiation <- data.table::copy(manifest[rep(
+        which(manifest$variable_id == "rsds"),
+        2L
+    )])
+    data.table::set(radiation, j = "variable_id", value = c("fdir", "rsdsdiff"))
+    data.table::set(
+        radiation,
+        j = "era_variable",
+        value = c(
+            "total_sky_direct_solar_radiation_at_surface",
+            NA_character_
+        )
+    )
+    data.table::set(
+        radiation,
+        j = "aliases",
+        value = I(list(
+            c("fdir", "total_sky_direct_solar_radiation_at_surface"),
+            character()
+        ))
+    )
+    for (column in c("land", "time_series_single_levels", "time_series_land")) {
+        data.table::set(radiation, j = column, value = FALSE)
+    }
+    data.table::rbindlist(list(manifest, radiation))
 }
 # }}}
 
@@ -156,6 +183,7 @@ era5__source_variables <- function(variables, product = "single_levels") {
         vas = "vas",
         sfcWind = c("uas", "vas"),
         rsds = "rsds",
+        rsdsdiff = c("rsds", "fdir"),
         rlds = "rlds",
         clt = "clt",
         pr = "pr",
@@ -279,6 +307,10 @@ era5__request <- function(spec, variable, site, access) {
 #' `shift_check(source, network = TRUE)` to authenticate the configured token
 #' without submitting a data request. Dataset-specific terms are checked by CDS
 #' when retrieval begins and are never accepted by the package.
+#'
+#' `rsdsdiff` is derived from matched hourly SSRD minus FDIR accumulations
+#' (direct horizontal solar radiation, not DNI). It requires the full CDS
+#' single-level product; automatic access falls back from ARCO to CDS.
 #'
 #' @param years Calendar years used as the observed reference period.
 #' @param product ERA5 single-level product. `"single_levels"` uses global

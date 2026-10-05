@@ -402,7 +402,7 @@ era__convert_source <- function(source, source_variable) {
         if (units %in% c("hpa", "mbar", "millibar")) {
             data[, value := value * 100]
         }
-    } else if (source_variable %in% c("rsds", "rlds")) {
+    } else if (source_variable %in% c("rsds", "rlds", "fdir")) {
         if (grepl("j", units, fixed = TRUE)) {
             data[, value := value / era__interval_seconds(utc_time)]
         }
@@ -426,8 +426,19 @@ era__convert_source <- function(source, source_variable) {
 # wind variables required by weather transformations.
 # era__canonical_hourly {{{
 era__canonical_hourly <- function(raw, variables) {
+    if ("rsdsdiff" %in% variables) {
+        era__validate_diffuse_sources(raw)
+    }
     converted <- lapply(names(raw), function(variable) {
         data <- era__convert_source(raw[[variable]], variable)
+        # Full ERA5 single-level radiation is labelled by interval end in
+        # either energy or hourly-mean flux units. Align both representations
+        # to interval starts before matching instantaneous reference fields.
+        if (
+            "rsdsdiff" %in% variables && variable %in% c("rsds", "fdir", "rlds")
+        ) {
+            data.table::set(data, j = "utc_time", value = data$utc_time - 3600)
+        }
         data.table::setnames(data, "value", variable)
         data[, c("utc_time", variable), with = FALSE]
     })
@@ -452,6 +463,22 @@ era__canonical_hourly <- function(raw, variables) {
     grid_lat <- first_grid$grid_lat[[1L]]
     grid_lon <- first_grid$grid_lon[[1L]]
     grid_dist_km <- first_grid$grid_dist_km[[1L]]
+
+    if ("rsdsdiff" %in% variables) {
+        # Subtraction is valid only for matched horizontal interval means.
+        diffuse <- common$rsds - common$fdir
+        if (
+            any(!is.finite(diffuse)) ||
+                any(diffuse < -1e-6) ||
+                any(common$fdir < -1e-6) ||
+                any(common$rsds < -1e-6)
+        ) {
+            cli::cli_abort(
+                "ERA5 shortwave fields contain invalid negative flux or FDIR exceeds SSRD."
+            )
+        }
+        data.table::set(common, j = "rsdsdiff", value = pmax(0, diffuse))
+    }
 
     if ("hurs" %in% variables) {
         common[,
@@ -501,6 +528,39 @@ era__canonical_hourly <- function(raw, variables) {
     )
 }
 # }}}
+
+# Require the same complete hourly accumulation intervals and grid cell before
+# subtracting ERA5 SSRD and FDIR. A missing timestamp must never be inner-joined
+# away or interpreted as a longer accumulation interval.
+era__validate_diffuse_sources <- function(raw) {
+    if (!all(c("rsds", "fdir") %in% names(raw))) {
+        cli::cli_abort("ERA5 diffuse radiation requires both SSRD and FDIR.")
+    }
+    global <- raw$rsds$data
+    direct <- raw$fdir$data
+    keys <- c("utc_time", "grid_lat", "grid_lon")
+    if (
+        !all(keys %in% names(global)) ||
+            !all(keys %in% names(direct)) ||
+            !identical(
+                global[, keys, with = FALSE],
+                direct[, keys, with = FALSE]
+            ) ||
+            nrow(global) < 2L ||
+            any(diff(as.numeric(global$utc_time)) != 3600)
+    ) {
+        cli::cli_abort(
+            "ERA5 SSRD and FDIR must have identical complete hourly intervals and grid coordinates."
+        )
+    }
+    for (variable in c("rsds", "fdir")) {
+        units <- tolower(gsub("[[:space:]^*]", "", raw[[variable]]$units))
+        if (!units %in% c("jm-2", "j/m2", "wm-2", "w/m2")) {
+            cli::cli_abort("ERA5 shortwave units must be J m-2 or W m-2.")
+        }
+    }
+    invisible(TRUE)
+}
 
 # Resolve the fixed standard-time offset that defines calendar aggregation for
 # one EPW site. This value also participates in persistent reanalysis IDs.
@@ -671,7 +731,11 @@ era__normalize <- function(raw, variables, frequencies, site, years) {
 reanalysis__identities <- function(spec, site, variables, frequencies, access) {
     timezone <- era__site_timezone(site)
     request_id <- store__hash(
-        "reanalysis-v1",
+        if ("rsdsdiff" %in% variables) {
+            "reanalysis-v2-interval-start"
+        } else {
+            "reanalysis-v1"
+        },
         spec@dataset,
         spec@product,
         paste(spec@years, collapse = ","),

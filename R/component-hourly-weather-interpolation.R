@@ -5,7 +5,8 @@ NULL
 # component. Daily temperature extrema are consumed only as interpolation anchors.
 HOURLY_WEATHER_TARGET_VARIABLES <- c(
     TEMPORAL_LINEAR_VARIABLES,
-    SOLAR_RADIATION_VARIABLES
+    SOLAR_RADIATION_VARIABLES,
+    "rlds"
 )
 
 HOURLY_WEATHER_EXTREMA_VARIABLES <- c(
@@ -112,7 +113,7 @@ weather_interp__model_source <- function(input, role) {
             )
         }
     }
-    for (variable in intersect(targets, SOLAR_RADIATION_VARIABLES)) {
+    for (variable in intersect(targets, c(SOLAR_RADIATION_VARIABLES, "rlds"))) {
         allowed <- names(TEMPORAL_SOURCE_STEPS)
         if (!all(frequency_by_variable[[variable]] %in% allowed)) {
             cli::cli_abort(
@@ -770,9 +771,23 @@ weather_interp__apply_core <- function(
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
     }
     checkmate::assert_list(options, names = "unique")
-    if (length(options)) {
+    allowed <- c(
+        "model_utc_offset_hours",
+        if (component_name == "hourly_kernel_qdm_input_preparation") {
+            "include_longwave"
+        }
+    )
+    if (length(setdiff(names(options), allowed))) {
         cli::cli_abort(
             "Component {.val {component_name}} does not accept component options."
+        )
+    }
+    if (!is.null(options$model_utc_offset_hours)) {
+        checkmate::assert_number(
+            options$model_utc_offset_hours,
+            lower = -12,
+            upper = 14,
+            finite = TRUE
         )
     }
     checkmate::assert_function(model_transform, null.ok = TRUE)
@@ -845,13 +860,31 @@ weather_interp__apply_core <- function(
         } else {
             solar__role(radiation_input, role, context)
         }
+        # Downwelling longwave is an interval mean without solar weighting.
+        longwave_input <- weather_interp__subset_input(input, role, "rlds")
+        longwave <- if (is.null(longwave_input)) {
+            NULL
+        } else {
+            solar__role(longwave_input, role, context, longwave = TRUE)
+        }
         pieces <- Filter(
             Negate(is.null),
             list(
                 point_state = state,
-                solar_radiation = radiation
+                solar_radiation = radiation,
+                longwave_radiation = longwave
             )
         )
+        # Solar allocation is performed in UTC before moving the reconstructed
+        # series to the EPW site's standard clock and trimming complete years.
+        offset <- shift_stage__coalesce(options$model_utc_offset_hours, 0)
+        if (offset != 0) {
+            pieces <- lapply(
+                pieces,
+                weather_interp__local_piece,
+                offset = offset
+            )
+        }
         list(
             input = weather_interp__combine_role(input, role, pieces),
             pieces = pieces
@@ -1059,6 +1092,52 @@ weather_interp__component <- function() {
 weather_interp__register_component <- function() {
     component__register_builtin(weather_interp__component())
     invisible(NULL)
+}
+
+# }}}
+
+# Shift a reconstructed family and its bounds on the native CF calendar. Edge
+# padding is retained until combine_role() selects complete local years.
+# weather_interp__local_piece {{{
+weather_interp__local_piece <- function(piece, offset) {
+    data <- data.table::as.data.table(data.table::copy(piece$input@source))
+    for (calendar in unique(data$cf_calendar)) {
+        index <- which(data$cf_calendar == calendar)
+        native <- temporal__native_seconds(data[index], calendar) +
+            offset * 3600
+        target <- temporal__target_coordinates(native, calendar)
+        for (column in names(target$coordinates)) {
+            data.table::set(
+                data,
+                i = index,
+                j = column,
+                value = target$coordinates[[column]]
+            )
+        }
+        for (column in intersect(names(target$fields), names(data))) {
+            data.table::set(
+                data,
+                i = index,
+                j = column,
+                value = target$fields[[column]]
+            )
+        }
+    }
+    for (column in intersect(
+        c("time", "datetime", "time_bound_start", "time_bound_end"),
+        names(data)
+    )) {
+        data.table::set(
+            data,
+            j = column,
+            value = data[[column]] + offset * 3600
+        )
+    }
+    data.table::set(data, j = "time_basis", value = "epw_local_standard")
+    data.table::set(data, j = "utc_offset_hours", value = offset)
+    piece$input@source <- as.data.frame(data)
+    piece$provenance$model_utc_offset_hours <- offset
+    piece
 }
 # }}}
 
