@@ -296,7 +296,13 @@ hourly_kqdm_input__observed_role <- function(
 # the shared hourly interpolation implementation.
 # hourly_kqdm_input__apply {{{
 hourly_kqdm_input__apply <- function(inputs, context, options) {
+    checkmate::assert_list(options, names = "unique")
+    if (!is.null(options$include_longwave)) {
+        checkmate::assert_flag(options$include_longwave)
+    }
     include_longwave <- isTRUE(options$include_longwave)
+    # Consume method-owned configuration before entering shared interpolation.
+    options$include_longwave <- NULL
     weather_interp__apply_core(
         inputs,
         context,
@@ -378,6 +384,7 @@ hourly_kqdm_input__component <- function() {
         operations = list(apply = hourly_kqdm_input__apply),
         metadata = list(
             algorithm = "raw_model_to_hourly_kqdm_signals",
+            scoped_options = c("include_longwave", "model_utc_offset_hours"),
             references = HOURLY_WEATHER_REFERENCES,
             raw_model_variables = HOURLY_KQDM_MODEL_VARIABLES,
             variable_frequencies = HOURLY_KQDM_MODEL_FREQUENCIES,

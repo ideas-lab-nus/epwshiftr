@@ -771,12 +771,7 @@ weather_interp__apply_core <- function(
         cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
     }
     checkmate::assert_list(options, names = "unique")
-    allowed <- c(
-        "model_utc_offset_hours",
-        if (component_name == "hourly_kernel_qdm_input_preparation") {
-            "include_longwave"
-        }
-    )
+    allowed <- "model_utc_offset_hours"
     if (length(setdiff(names(options), allowed))) {
         cli::cli_abort(
             "Component {.val {component_name}} does not accept component options."
@@ -877,7 +872,11 @@ weather_interp__apply_core <- function(
         )
         # Solar allocation is performed in UTC before moving the reconstructed
         # series to the EPW site's standard clock and trimming complete years.
-        offset <- shift_stage__coalesce(options$model_utc_offset_hours, 0)
+        offset <- if (is.null(options$model_utc_offset_hours)) {
+            0
+        } else {
+            options$model_utc_offset_hours
+        }
         if (offset != 0) {
             pieces <- lapply(
                 pieces,

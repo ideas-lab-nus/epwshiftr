@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Route hourly options through declared component scopes and keep method-specific
+  configuration outside the shared interpolation and pipeline layers (#283).
+
 * Decode packed ERA5 NetCDF values and keep missing per-site local inputs offline.
   Standalone downloads retain their own worker startup implementation. Optional
   longwave settings can be configured through `hourly_transform()` (#283).
