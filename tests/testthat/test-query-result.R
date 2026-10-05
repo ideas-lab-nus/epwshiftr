@@ -2587,7 +2587,8 @@ test_that("EsgResultDataset$collect() ignores record index node metadata", {
         unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE),
         datasets$id
     )
-    expect_identical(files$count(), 3L)
+    # The global row cap also applies if a backend returns too many rows.
+    expect_identical(files$count(), 1L)
     expect_length(priv(files)$context$query_url, 1L)
 })
 
@@ -4574,62 +4575,61 @@ test_that("esg_result() constructs typed empty query results", {
 
 # vim: fdm=marker :
 
-# Exercise the byte budget separately from count-based splitting, including
-# malformed values and duplicate IDs whose ordering must remain untouched.
-test_that("query value batching preserves order and enforces encoded budgets", {
-    expect_identical(query_result__query_value_batches(character()), list())
+# Check exact rendered boundaries and verify that a singleton is never rejected
+# solely because it exceeds the soft budget.
+test_that("query value batching measures complete rendered URLs", {
+    build_url <- function(x) {
+        paste0("https://example.org/?id=", paste(x, collapse = ","))
+    }
+    boundary <- nchar(build_url(c("a", "b")), type = "bytes")
+    expect_identical(
+        query_result__query_value_batches(character(), build_url),
+        list()
+    )
     expect_identical(
         unname(query_result__query_value_batches(
             c("a", "b"),
-            max_encoded_chars = 5L
+            build_url,
+            max_url_bytes = boundary
         )),
         list(c("a", "b"))
     )
     expect_identical(
         unname(query_result__query_value_batches(
             c("a", "b"),
-            max_encoded_chars = 4L
+            build_url,
+            max_url_bytes = boundary - 1L
         )),
         list("a", "b")
     )
-    values <- c("a b", "x/y", "a b", "plain", "x|y")
-    batches <- query_result__query_value_batches(
-        values,
-        batch_size = 2L,
-        max_encoded_chars = 11L
+    expect_identical(
+        unname(query_result__query_value_batches(
+            c("a", "b", "a"),
+            build_url,
+            batch_size = 2L
+        )),
+        list(c("a", "b"), "a")
     )
-    expect_identical(unlist(batches, use.names = FALSE), values)
-    expect_true(all(lengths(batches) <= 2L))
-    expect_true(all(
-        vapply(
-            batches,
-            function(x) {
-                nchar(
-                    utils::URLencode(paste(x, collapse = ","), reserved = TRUE),
-                    type = "bytes"
-                )
-            },
-            integer(1L)
-        ) <=
-            11L
-    ))
-    expect_error(query_result__query_value_batches(NA_character_), "missing")
+    expect_identical(
+        unname(query_result__query_value_batches(
+            "long",
+            build_url,
+            max_url_bytes = 1L
+        )),
+        list("long")
+    )
     expect_error(
-        query_result__query_value_batches(c("a", NA_character_)),
+        query_result__query_value_batches(NA_character_, build_url),
         "missing"
     )
-    expect_error(query_result__query_value_batches(1:2), "character")
+    expect_error(query_result__query_value_batches(1:2, build_url), "character")
     expect_error(
-        query_result__query_value_batches("a", batch_size = 0),
+        query_result__query_value_batches("a", build_url, batch_size = 0L),
         "Must be >= 1"
     )
     expect_error(
-        query_result__query_value_batches("a", max_encoded_chars = 0),
+        query_result__query_value_batches("a", build_url, max_url_bytes = 0L),
         "Must be >= 1"
-    )
-    expect_error(
-        query_result__query_value_batches("a b", max_encoded_chars = 4L),
-        "exceeds the encoded length"
     )
 })
 
@@ -4708,7 +4708,7 @@ test_that("short Dataset lists with long IDs preserve limits and query receipts"
     limited <- datasets$collect(limit = 4L)
     expect_equal(limited$count(), 4L)
     expect_identical(limited$dataset_id, ids[1:4])
-    expect_equal(vapply(calls, `[[`, integer(1L), "limit"), c(4L, 1L))
+    expect_equal(vapply(calls, `[[`, integer(1L), "limit"), c(4L, 2L))
 })
 
 # Both replica discovery entry points must shard long identities and retain
@@ -4795,7 +4795,7 @@ test_that("replica collection batches long instance and master identities", {
                 },
                 integer(1L)
             ) <=
-                QUERY_RESULT_CHILD_COLLECT_MAX_ENCODED_CHARS
+                QUERY_RESULT_COLLECT_MAX_URL_BYTES
         ))
     }
 })

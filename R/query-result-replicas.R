@@ -236,21 +236,15 @@ query_result__collect_identity <- function(
 
     stores <- list()
     if (length(instance_id)) {
-        instance_batches <- query_result__query_value_batches(instance_id)
-        stores <- c(
-            stores,
-            lapply(instance_batches, function(batch) {
-                query_result__replica_store(type, list(instance_id = batch))
-            })
+        stores[[length(stores) + 1L]] <- query_result__replica_store(
+            type,
+            list(instance_id = instance_id)
         )
     }
     if (length(master_id)) {
-        master_batches <- query_result__query_value_batches(master_id)
-        stores <- c(
-            stores,
-            lapply(master_batches, function(batch) {
-                query_result__replica_store(type, list(master_id = batch))
-            })
+        stores[[length(stores) + 1L]] <- query_result__replica_store(
+            type,
+            list(master_id = master_id)
         )
     }
     if (!length(stores)) {
@@ -258,9 +252,14 @@ query_result__collect_identity <- function(
     }
 
     collected_parts <- lapply(stores, function(store) {
-        query__collect(
+        query_result__collect_batched(
             index_node,
             store,
+            facet = if (!is.null(store$state()$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            },
             required_fields = query_result__required(type),
             all = all,
             limit = this$data_max_limit,
@@ -312,16 +311,19 @@ query_result__collect_master <- function(
         index_node <- query__normalize_node(index_node)
     }
 
-    stores <- lapply(
-        query_result__query_value_batches(master_id),
-        function(batch) {
-            query_result__replica_store(type, list(master_id = batch))
-        }
-    )
+    stores <- list(query_result__replica_store(
+        type,
+        list(master_id = master_id)
+    ))
     collected_parts <- lapply(stores, function(store) {
-        query__collect(
+        query_result__collect_batched(
             index_node,
             store,
+            facet = if (!is.null(store$state()$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            },
             required_fields = query_result__required(type),
             all = all,
             limit = this$data_max_limit,

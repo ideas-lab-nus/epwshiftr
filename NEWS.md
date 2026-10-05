@@ -1,7 +1,9 @@
 # epwshiftr (development version)
 
-* Bound Dataset child and replica identity queries by encoded value length as
-  well as count, preserving result order, query receipts and child row limits (#280).
+* Batch Dataset child and replica identity queries using complete request URL
+  lengths and retry HTTP 414 responses with smaller ID groups. Attempt individual
+  long IDs without a local length rejection, preserving query receipts and global
+  row limits without duplicating partial pages when a batch restarts (#280).
 
 * Coverage CI prints the total line coverage and retains per-file reports and
   merged counters independently of Codecov. Upload errors produce a warning without
