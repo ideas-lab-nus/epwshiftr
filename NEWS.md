@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Keep Vim folding modelines at the end of extended test files (#282).
+
 * Release curl handles at every wave boundary and continue checking later URLs
   after an individual pool error; recover only unresolved results (#282).
 

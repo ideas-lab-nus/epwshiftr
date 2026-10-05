@@ -853,8 +853,6 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
 })
 
-# vim: fdm=marker :
-
 test_that("workflow resolver removes HTTP-only files when downloads are forbidden", {
     skip_if_not_installed("duckdb")
 
@@ -914,3 +912,5 @@ test_that("workflow resolver removes HTTP-only files when downloads are forbidde
 
     expect_equal(nrow(catalog), 0L)
 })
+
+# vim: fdm=marker :
