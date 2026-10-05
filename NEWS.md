@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Keep Vim folding modelines at the end of extended test files (#280).
+
 * Coordinate batch receipt readers and writers with a short publication lock,
   preventing background refresh from observing a missing replacement file (#280).
 

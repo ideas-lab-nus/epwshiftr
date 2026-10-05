@@ -4573,8 +4573,6 @@ test_that("esg_result() constructs typed empty query results", {
 })
 # }}}
 
-# vim: fdm=marker :
-
 # Check exact rendered boundaries and verify that a singleton is never rejected
 # solely because it exceeds the soft budget.
 test_that("query value batching measures complete rendered URLs", {
@@ -4799,3 +4797,5 @@ test_that("replica collection batches long instance and master identities", {
         ))
     }
 })
+
+# vim: fdm=marker :

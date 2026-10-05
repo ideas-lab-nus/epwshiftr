@@ -817,8 +817,6 @@ test_that("File coverage applies the same year kernel to historical reference", 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
 })
 
-# vim: fdm=marker :
-
 # Model the handoff while an existing receipt is temporarily absent: the
 # reader must acquire the publication lock before deciding that it is missing.
 test_that("batch receipt reads wait for publication before checking existence", {
@@ -888,3 +886,5 @@ test_that("batch receipt publication holds its own lock", {
         fixture$batch@ids$batch_id
     )))
 })
+
+# vim: fdm=marker :
