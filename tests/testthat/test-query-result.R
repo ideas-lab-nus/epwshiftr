@@ -2587,7 +2587,8 @@ test_that("EsgResultDataset$collect() ignores record index node metadata", {
         unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE),
         datasets$id
     )
-    expect_identical(files$count(), 3L)
+    # The global row cap also applies if a backend returns too many rows.
+    expect_identical(files$count(), 1L)
     expect_length(priv(files)$context$query_url, 1L)
 })
 
@@ -3138,6 +3139,309 @@ test_that("EsgResultFile$url_opendap warns with robust nested or missing field c
     )
     expect_identical(opendap, "https://example.org/dods/file-1")
 })
+# }}}
+# Service preflight checks {{{
+test_that("File service resolution can preflight OPeNDAP by sampled data node", {
+    pairs <- lapply(seq_len(6L), function(index) {
+        # Build one logical file replica on each candidate data node.
+        make_replica <- function(node, replica) {
+            doc <- query_result_test_file_docs(c(
+                sprintf(
+                    "https://%s/dods/file-%d.nc|application/netcdf|OPENDAP",
+                    node,
+                    index
+                ),
+                sprintf(
+                    "https://%s/files/file-%d.nc|application/netcdf|HTTPServer",
+                    node,
+                    index
+                )
+            ))
+            doc$id <- sprintf("file-%d-%s", index, node)
+            doc$instance_id <- sprintf("instance-%d", index)
+            doc$master_id <- sprintf("master-%d", index)
+            doc$tracking_id <- sprintf("tracking-%d", index)
+            doc$checksum <- sprintf("checksum-%d", index)
+            doc$filename <- sprintf("file-%d.nc", index)
+            doc$title <- doc$filename
+            doc$size <- 100 + index
+            doc$variable_id <- sprintf("var-%d", index)
+            doc$data_node <- node
+            doc$replica <- replica
+            doc
+        }
+        data.table::rbindlist(
+            list(
+                make_replica("bad.example.org", FALSE),
+                make_replica("good.example.org", TRUE)
+            ),
+            use.names = TRUE,
+            fill = TRUE
+        )
+    })
+    docs <- data.table::rbindlist(pairs, use.names = TRUE, fill = TRUE)
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+
+    checked_urls <- character()
+    testthat::local_mocked_bindings(
+        query_result__repair_urls = function(...) {
+            stop(
+                "sampled node preflight must not run exhaustive replica repair"
+            )
+        },
+        query_result__reach_service_urls = function(
+            urls,
+            service,
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 1L,
+            cache_seconds = 3600L,
+            cache_failures_seconds = 0L
+        ) {
+            checked_urls <<- c(checked_urls, urls)
+            good <- grepl("good.example.org", urls, fixed = TRUE)
+            data.table::data.table(
+                url = urls,
+                reachable = good,
+                latency_ms = data.table::fifelse(good, 10, NA_real_),
+                error = data.table::fifelse(good, NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    resolved <- query_result__resolve_file_services(
+        result,
+        check = list(
+            level = "url",
+            sample_per_node = 3L,
+            cache_seconds = 0L,
+            cache_failures_seconds = 0L
+        )
+    )
+
+    expect_equal(resolved$result$count(), 6L)
+    expect_true(all(grepl(
+        "good.example.org",
+        resolved$result$url_opendap,
+        fixed = TRUE
+    )))
+    expect_length(checked_urls, 6L)
+    expect_equal(sum(grepl("bad.example.org", checked_urls, fixed = TRUE)), 3L)
+    expect_equal(sum(grepl("good.example.org", checked_urls, fixed = TRUE)), 3L)
+    expect_true(all(
+        resolved$diagnostics[service == "OPENDAP", probe_level] ==
+            "service_node_sample"
+    ))
+    expect_equal(
+        sum(
+            resolved$diagnostics[service == "OPENDAP", selected]
+        ),
+        6L
+    )
+})
+
+# Keep transport deterministic while exercising real callback indexing, wave
+# admission, deadlines and fallback decisions through the shared URL runner.
+test_that("URL checks bound active waves and preserve completed results", {
+    mode <- "success"
+    pools <- list()
+    deadlines <- numeric()
+    serial_urls <- character()
+    cancelled <- 0L
+    testthat::local_mocked_bindings(
+        multi_cancel = function(handle) {
+            cancelled <<- cancelled + 1L
+        },
+        new_pool = function(total_con, host_con) {
+            pool <- new.env(parent = emptyenv())
+            pool$callbacks <- list()
+            pool$capacity <- total_con
+            pool$index <- length(pools) + 1L
+            pools[[pool$index]] <<- pool
+            pool
+        },
+        multi_add = function(handle, done, fail, pool) {
+            pool$callbacks[[length(pool$callbacks) + 1L]] <- list(
+                done = done,
+                fail = fail
+            )
+            invisible(handle)
+        },
+        multi_run = function(timeout, poll, pool) {
+            deadlines <<- c(deadlines, timeout)
+            if (mode == "error" && pool$index == 2L) {
+                stop("pool failed")
+            }
+            if (mode == "timeout") {
+                return(invisible(NULL))
+            }
+            for (i in rev(seq_along(pool$callbacks))) {
+                if (mode == "failed" && i == 1L) {
+                    pool$callbacks[[i]]$fail("unavailable")
+                } else {
+                    pool$callbacks[[i]]$done(list(status_code = 200L))
+                }
+            }
+            invisible(NULL)
+        },
+        .package = "curl"
+    )
+    # Reset per-call observations while retaining the chosen transport mode.
+    run <- function(count, retry = FALSE) {
+        pools <<- list()
+        deadlines <<- numeric()
+        serial_urls <<- character()
+        cancelled <<- 0L
+        query_result__run_url_checks(
+            if (count) {
+                paste0("https://example.org/", seq_len(count))
+            } else {
+                character()
+            },
+            timeout = 5,
+            network_policy = NULL,
+            concurrency = 3L,
+            retry_failed = retry,
+            serial_check = function(url) {
+                serial_urls <<- c(serial_urls, url)
+                list(reachable = TRUE, url = url)
+            },
+            done_result = function(response, url, started_at) {
+                list(reachable = TRUE, url = url)
+            }
+        )
+    }
+    out <- run(8L)
+    expect_identical(
+        vapply(pools, function(x) length(x$callbacks), integer(1L)),
+        c(3L, 3L, 2L)
+    )
+    expect_equal(deadlines, rep(10, 3L))
+    expect_identical(cancelled, 8L)
+    expect_identical(
+        vapply(out, `[[`, character(1L), "url"),
+        stats::setNames(names(out), names(out))
+    )
+    expect_length(serial_urls, 0L)
+    mode <- "failed"
+    out <- run(8L)
+    expect_equal(sum(vapply(out, `[[`, logical(1L), "reachable")), 5L)
+    expect_length(serial_urls, 0L)
+    mode <- "timeout"
+    out <- run(20L)
+    expect_false(any(vapply(out, `[[`, logical(1L), "reachable")))
+    expect_length(serial_urls, 0L)
+    out <- run(2L)
+    expect_length(serial_urls, 2L)
+    expect_true(all(vapply(out, `[[`, logical(1L), "reachable")))
+    out <- run(8L, retry = TRUE)
+    expect_length(serial_urls, 8L)
+    mode <- "error"
+    out <- run(8L)
+    expect_equal(sum(vapply(out, `[[`, logical(1L), "reachable")), 8L)
+    expect_identical(serial_urls, paste0("https://example.org/", 4:6))
+    expect_length(pools, 3L)
+    expect_identical(cancelled, 8L)
+    expect_identical(run(0L), stats::setNames(list(), character()))
+})
+
+# Missing catalog metadata falls back to the exact URL host. An unsuccessful
+# sample must not certify other files on that host as usable OPeNDAP inputs.
+test_that("sampled service checks handle missing metadata and partial failure", {
+    docs <- data.table::rbindlist(lapply(seq_len(4L), function(i) {
+        row <- query_result_test_file_docs(sprintf(
+            "https://node.example.org/f%d.nc|application/netcdf|OPENDAP",
+            i
+        ))
+        row$id <- paste0("id", i)
+        row$data_node <- NA_character_
+        row$variable_id <- NA_character_
+        row
+    }))
+    docs$url[[4L]] <- character()
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+    count <- 0L
+    testthat::local_mocked_bindings(
+        query_result__reach_service_urls = function(urls, ...) {
+            count <<- length(urls)
+            data.table::data.table(
+                url = urls,
+                reachable = c(TRUE, FALSE),
+                latency_ms = c(10, NA_real_),
+                error = c(NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+    out <- query_result__sample_service_nodes(result, sample_per_node = 2L)
+    expect_identical(count, 2L)
+    expect_false(any(out$reachable %in% TRUE))
+    expect_identical(out$record_index, 1:4)
+    expect_identical(out$error[4L], "Missing URL.")
+    expect_equal(
+        nrow(query_result__sample_service_nodes(result$slice(integer()))),
+        0L
+    )
+    expect_error(
+        query_result__sample_service_nodes(result, sample_per_node = 0L),
+        "Must be >= 1"
+    )
+})
+
+# Distinct endpoint hosts must remain distinct when catalog node metadata is
+# absent, otherwise a failed host could invalidate a healthy host's files.
+test_that("sampled service checks keep missing-metadata hosts separate", {
+    docs <- data.table::rbindlist(lapply(
+        c("healthy.example.org", "failed.example.org"),
+        function(host) {
+            row <- query_result_test_file_docs(paste0(
+                "https://",
+                host,
+                "/f.nc|application/netcdf|OPENDAP"
+            ))
+            row$id <- host
+            row$data_node <- NA_character_
+            row$variable_id <- NA_character_
+            row
+        }
+    ))
+    result <- query_result_test_object(
+        "File",
+        docs,
+        query_result_test_params("File")
+    )
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query_result__reach_service_urls = function(urls, ...) {
+            calls[[length(calls) + 1L]] <<- urls
+            good <- grepl("healthy.example.org", urls, fixed = TRUE)
+            data.table::data.table(
+                url = urls,
+                reachable = good,
+                latency_ms = 1,
+                error = data.table::fifelse(good, NA_character_, "unavailable"),
+                probe_cached = FALSE
+            )
+        },
+        .package = "epwshiftr"
+    )
+    out <- query_result__sample_service_nodes(result)
+    expect_length(calls, 2L)
+    expect_identical(out$reachable, c(TRUE, FALSE))
+    expect_identical(out$id, docs$id)
+})
+
 # }}}
 # EsgResultFile$download_plan() {{{
 test_that("EsgResultFile$download_plan() builds current HTTPServer plans with logical file identity", {
@@ -4571,5 +4875,230 @@ test_that("esg_result() constructs typed empty query results", {
     )
 })
 # }}}
+
+# Check exact rendered boundaries and verify that a singleton is never rejected
+# solely because it exceeds the soft budget.
+test_that("query value batching measures complete rendered URLs", {
+    build_url <- function(x) {
+        paste0("https://example.org/?id=", paste(x, collapse = ","))
+    }
+    boundary <- nchar(build_url(c("a", "b")), type = "bytes")
+    expect_identical(
+        query_result__query_value_batches(character(), build_url),
+        list()
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            c("a", "b"),
+            build_url,
+            max_url_bytes = boundary
+        )),
+        list(c("a", "b"))
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            c("a", "b"),
+            build_url,
+            max_url_bytes = boundary - 1L
+        )),
+        list("a", "b")
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            c("a", "b", "a"),
+            build_url,
+            batch_size = 2L
+        )),
+        list(c("a", "b"), "a")
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            "long",
+            build_url,
+            max_url_bytes = 1L
+        )),
+        list("long")
+    )
+    expect_error(
+        query_result__query_value_batches(NA_character_, build_url),
+        "missing"
+    )
+    expect_error(query_result__query_value_batches(1:2, build_url), "character")
+    expect_error(
+        query_result__query_value_batches("a", build_url, batch_size = 0L),
+        "Must be >= 1"
+    )
+    expect_error(
+        query_result__query_value_batches("a", build_url, max_url_bytes = 0L),
+        "Must be >= 1"
+    )
+})
+
+# Realistic long IDs trigger multiple requests even below the former 50-ID
+# threshold; mock only transport so the public collection/merge path still runs.
+test_that("short Dataset lists with long IDs preserve limits and query receipts", {
+    ids <- paste0(strrep("long.model.", 50L), seq_len(6L), "|node.example.org")
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = ids, size = 1),
+        query_result_test_params("Dataset")
+    )
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            batch <- query_param__value(params$state()$dataset_id)
+            calls[[length(calls) + 1L]] <<- list(
+                ids = batch,
+                limit = limit,
+                dict_check = dict_check
+            )
+            take <- if (isTRUE(all)) {
+                length(batch)
+            } else {
+                min(length(batch), as.integer(limit))
+            }
+            docs <- data.frame(
+                id = paste0("file-", batch[seq_len(take)]),
+                dataset_id = batch[seq_len(take)],
+                size = 1
+            )
+            docs$url <- I(rep(
+                list(
+                    "https://example.org/file.nc|application/netcdf|HTTPServer"
+                ),
+                take
+            ))
+            params$fields(unique(c(
+                query_param__value(params$fields()),
+                required_fields
+            )))
+            list(
+                response = query_result_test_response(docs),
+                docs = docs,
+                parameter = params,
+                context = list(
+                    query_url = paste0(
+                        "https://example.org/search?batch=",
+                        length(calls)
+                    )
+                )
+            )
+        },
+        .package = "epwshiftr"
+    )
+    files <- datasets$collect(all = TRUE)
+    expect_gt(length(calls), 1L)
+    expect_identical(files$dataset_id, ids)
+    expect_length(priv(files)$context$query_url, length(calls))
+    expect_identical(
+        query_param__value(priv(files)$parameter$state()$dataset_id),
+        ids
+    )
+    expect_true(calls[[1L]]$dict_check)
+    expect_false(any(vapply(calls[-1L], `[[`, logical(1L), "dict_check")))
+    calls <- list()
+    limited <- datasets$collect(limit = 4L)
+    expect_equal(limited$count(), 4L)
+    expect_identical(limited$dataset_id, ids[1:4])
+    expect_equal(vapply(calls, `[[`, integer(1L), "limit"), c(4L, 2L))
+})
+
+# Both replica discovery entry points must shard long identities and retain
+# their complete original facet and every transport receipt after merging.
+test_that("replica collection batches long instance and master identities", {
+    ids <- paste0(strrep("long.model.", 50L), seq_len(6L))
+    result <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(),
+        query_result_test_params("File")
+    )
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = TRUE,
+            limit = TRUE,
+            constraints = TRUE
+        ) {
+            state <- params$params()
+            facet <- if (!is.null(state$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            }
+            batch <- query_param__value(state[[facet]])
+            calls[[length(calls) + 1L]] <<- batch
+            docs <- data.frame(id = batch, size = 1)
+            docs$url <- I(rep(
+                list(
+                    "https://example.org/file.nc|application/netcdf|HTTPServer"
+                ),
+                length(batch)
+            ))
+            list(
+                response = query_result_test_response(docs),
+                docs = docs,
+                parameter = params,
+                context = list(
+                    query_url = paste0(
+                        "https://example.org/search?batch=",
+                        length(calls)
+                    )
+                )
+            )
+        },
+        .package = "epwshiftr"
+    )
+    for (mode in c("instance", "identity_master", "master")) {
+        calls <- list()
+        identity <- data.table::data.table(
+            instance_id = ids,
+            master_id = ids,
+            has_instance = mode == "instance",
+            has_master_version = mode != "instance"
+        )
+        out <- if (mode == "master") {
+            query_result__collect_master(result, ids, "File")
+        } else {
+            query_result__collect_identity(result, identity, "File")
+        }
+        expect_gt(length(calls), 1L)
+        expect_identical(unlist(calls, use.names = FALSE), ids)
+        expect_identical(out$id, ids)
+        expect_length(priv(out)$context$query_url, length(calls))
+        facet <- if (mode == "instance") "instance_id" else "master_id"
+        expect_identical(
+            query_param__value(priv(out)$parameter$params()[[facet]]),
+            ids
+        )
+        expect_true(all(
+            vapply(
+                calls,
+                function(x) {
+                    nchar(
+                        utils::URLencode(
+                            paste(x, collapse = ","),
+                            reserved = TRUE
+                        ),
+                        type = "bytes"
+                    )
+                },
+                integer(1L)
+            ) <=
+                QUERY_RESULT_COLLECT_MAX_URL_BYTES
+        ))
+    }
+})
 
 # vim: fdm=marker :

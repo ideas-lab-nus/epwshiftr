@@ -252,9 +252,14 @@ query_result__collect_identity <- function(
     }
 
     collected_parts <- lapply(stores, function(store) {
-        query__collect(
+        query_result__collect_batched(
             index_node,
             store,
+            facet = if (!is.null(store$state()$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            },
             required_fields = query_result__required(type),
             all = all,
             limit = this$data_max_limit,
@@ -262,6 +267,15 @@ query_result__collect_identity <- function(
         )
     })
     collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    # The result retains the original identity facet, not only its first shard.
+    query_result__merge_params(
+        collected$parameter,
+        if (length(instance_id)) {
+            list(instance_id = instance_id)
+        } else {
+            list(master_id = master_id)
+        }
+    )
     response <- collected$response
     response$response$docs <- collected$docs
 
@@ -297,15 +311,27 @@ query_result__collect_master <- function(
         index_node <- query__normalize_node(index_node)
     }
 
-    store <- query_result__replica_store(type, list(master_id = master_id))
-    collected <- query__collect(
-        index_node,
-        store,
-        required_fields = query_result__required(type),
-        all = all,
-        limit = this$data_max_limit,
-        constraints = FALSE
-    )
+    stores <- list(query_result__replica_store(
+        type,
+        list(master_id = master_id)
+    ))
+    collected_parts <- lapply(stores, function(store) {
+        query_result__collect_batched(
+            index_node,
+            store,
+            facet = if (!is.null(store$state()$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            },
+            required_fields = query_result__required(type),
+            all = all,
+            limit = this$data_max_limit,
+            constraints = FALSE
+        )
+    })
+    collected <- query_result__merge_collects(collected_parts, stores[[1L]])
+    query_result__merge_params(collected$parameter, list(master_id = master_id))
     response <- collected$response
     response$response$docs <- collected$docs
 
@@ -654,6 +680,133 @@ query_result__deferred_service_rows <- function(result, service) {
 }
 # }}}
 
+# Check representative exact service endpoints across variables per data node.
+# This is a preflight estimate; extraction still validates every selected file.
+# query_result__sample_service_nodes {{{
+query_result__sample_service_nodes <- function(
+    result,
+    service = "OPENDAP",
+    check = NULL,
+    sample_per_node = 3L
+) {
+    checkmate::assert_count(sample_per_node, positive = TRUE)
+    config <- query_result__reach_config(check)
+    docs <- priv(result)$get_docs()
+    urls <- priv(result)$get_url(service, service)
+    data_node <- as.character(query_result__col(docs, "data_node"))
+    variable_id <- as.character(query_result__col(docs, "variable_id"))
+    valid_url <- !is.na(urls) & nzchar(urls) & query_result__url_http(urls)
+
+    # Fall back to the service URL host only when catalog data_node metadata is
+    # missing, preserving a stable grouping for otherwise usable records.
+    node_key <- data_node
+    missing_node <- valid_url & (is.na(node_key) | !nzchar(node_key))
+    node_key[missing_node] <- sub(
+        "^https?://([^/]+).*$",
+        "\\1",
+        urls[missing_node],
+        ignore.case = TRUE
+    )
+    out <- query_result__deferred_service_rows(result, service)
+    data.table::set(
+        out,
+        j = "error",
+        value = data.table::fifelse(valid_url, NA_character_, "Missing URL.")
+    )
+    data.table::set(out, j = "probe_level", value = "service_node_sample")
+
+    nodes <- unique(node_key[valid_url & !is.na(node_key) & nzchar(node_key)])
+    for (node in nodes) {
+        members <- which(valid_url & !is.na(node_key) & node_key == node)
+        candidates <- unique(urls[members])
+        variables <- unique(variable_id[members])
+        variables <- variables[!is.na(variables) & nzchar(variables)]
+        if (length(variables)) {
+            variable_count <- min(
+                as.integer(sample_per_node),
+                length(variables)
+            )
+            variable_positions <- unique(as.integer(round(seq(
+                1,
+                length(variables),
+                length.out = variable_count
+            ))))
+            selected_variables <- variables[variable_positions]
+            # Use the middle catalog file for each selected variable so the
+            # sample is not concentrated at only the first scenario or year.
+            sampled_urls <- vapply(
+                selected_variables,
+                function(variable) {
+                    variable_members <- members[which(
+                        variable_id[members] == variable
+                    )]
+                    choices <- unique(urls[variable_members])
+                    choices[[ceiling(length(choices) / 2)]]
+                },
+                character(1L)
+            )
+        } else {
+            sample_count <- min(as.integer(sample_per_node), length(candidates))
+            sample_positions <- unique(as.integer(round(seq(
+                1,
+                length(candidates),
+                length.out = sample_count
+            ))))
+            sampled_urls <- candidates[sample_positions]
+        }
+        checked <- query_result__reach_service_urls(
+            sampled_urls,
+            service = service,
+            timeout = config$timeout,
+            network_policy = config$network_policy,
+            concurrency = config$concurrency,
+            cache_seconds = config$cache_seconds,
+            cache_failures_seconds = config$cache_failures_seconds
+        )
+        successes <- checked$reachable %in% TRUE
+        # Every sampled variable must pass before a node can supply the full
+        # catalog; exhaustive file validation follows during point extraction.
+        required <- length(successes)
+        node_ok <- required == length(sampled_urls) &&
+            required > 0L &&
+            all(successes)
+        latency <- if (any(successes)) {
+            stats::median(checked$latency_ms[successes], na.rm = TRUE)
+        } else {
+            NA_real_
+        }
+        if (!is.finite(latency)) {
+            latency <- NA_real_
+        }
+        errors <- unique(checked$error[!successes])
+        errors <- errors[!is.na(errors) & nzchar(errors)]
+        node_error <- if (isTRUE(node_ok)) {
+            NA_character_
+        } else if (length(errors)) {
+            errors[[1L]]
+        } else {
+            "Representative service checks failed."
+        }
+        values <- list(
+            reachable = node_ok,
+            latency_ms = latency,
+            error = node_error,
+            probe_url = sampled_urls[[1L]],
+            probe_cached = all(checked$probe_cached %in% TRUE)
+        )
+        for (column in names(values)) {
+            data.table::set(
+                out,
+                i = members,
+                j = column,
+                value = values[[column]]
+            )
+        }
+    }
+    out[]
+}
+# }}}
+
 # Resolve the preferred OPeNDAP service before extraction and retain a
 # compatible HTTPServer recovery candidate without checking it eagerly. The
 # HTTP endpoint is checked and repaired only if execution actually falls back.
@@ -669,6 +822,15 @@ query_result__resolve_file_services <- function(
         )
     }
     services <- c("OPENDAP", "HTTPServer")
+    sample_per_node <- if (is.null(check)) NULL else check$sample_per_node
+    if (!is.null(sample_per_node)) {
+        checkmate::assert_count(sample_per_node, positive = TRUE)
+    }
+    exact_check <- if (is.null(check)) {
+        NULL
+    } else {
+        check[setdiff(names(check), "sample_per_node")]
+    }
     original_docs <- priv(result)$get_docs()
     resolved <- stats::setNames(vector("list", length(services)), services)
     resolved_urls <- stats::setNames(vector("list", length(services)), services)
@@ -678,17 +840,30 @@ query_result__resolve_file_services <- function(
     for (i in seq_along(services)) {
         service <- services[[i]]
         if (identical(service, "OPENDAP")) {
-            current <- query_result__repair_urls(
-                result,
-                service = service,
-                index_node = index_node,
-                probe = check
-            )
-            diagnostics[[i]] <- data.table::as.data.table(current$reachable(
-                service = service,
-                level = "url",
-                probe = check[names(check) != "level"]
-            ))
+            if (is.null(sample_per_node)) {
+                current <- query_result__repair_urls(
+                    result,
+                    service = service,
+                    index_node = index_node,
+                    probe = exact_check
+                )
+                diagnostics[[i]] <- data.table::as.data.table(current$reachable(
+                    service = service,
+                    level = "url",
+                    probe = exact_check[names(exact_check) != "level"]
+                ))
+            } else {
+                # Distributed File catalogs already contain compatible replica
+                # rows. Select among nodes that pass representative exact DDS
+                # checks and defer exhaustive validation to point extraction.
+                current <- result
+                diagnostics[[i]] <- query_result__sample_service_nodes(
+                    current,
+                    service = service,
+                    check = exact_check[names(exact_check) != "level"],
+                    sample_per_node = sample_per_node
+                )
+            }
         } else {
             current <- result
             diagnostics[[i]] <- query_result__deferred_service_rows(

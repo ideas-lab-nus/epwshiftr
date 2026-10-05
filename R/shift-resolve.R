@@ -1966,10 +1966,12 @@ shift_resolve__resolve_file_services <- function(
     files,
     role,
     reporter = NULL,
-    refresh = FALSE
+    refresh = FALSE,
+    require_opendap = FALSE
 ) {
     checkmate::assert_string(role, min.chars = 1L)
     checkmate::assert_flag(refresh)
+    checkmate::assert_flag(require_opendap)
     store <- shift_store(files)
     on.exit(store$close(), add = TRUE)
     result <- shift_inspect__stage_query_result(
@@ -1983,8 +1985,11 @@ shift_resolve__resolve_file_services <- function(
         index_node = NULL,
         check = list(
             level = "url",
-            timeout = 5,
-            concurrency = 32L,
+            # No-download workflows sample exact DDS endpoints per data node;
+            # the extraction stage still opens and validates every chosen file.
+            timeout = if (isTRUE(require_opendap)) 20 else 5,
+            concurrency = if (isTRUE(require_opendap)) 1L else 32L,
+            sample_per_node = if (isTRUE(require_opendap)) 9L else NULL,
             # Explicit refresh bypasses both successful and failed endpoint
             # health entries; ordinary runs retain the shared performance
             # cache used by adjacent method children.
@@ -2005,6 +2010,18 @@ shift_resolve__resolve_file_services <- function(
     }
     result <- resolved$result
     checks <- resolved$diagnostics
+    if (isTRUE(require_opendap)) {
+        # A no-download workflow cannot execute HTTP-only recovery candidates.
+        # Remove them before coverage is rechecked so the resolver can try the
+        # next index node instead of pinning an unusable selection.
+        opendap_url <- result$url_opendap
+        keep <- if (is.null(opendap_url)) {
+            integer()
+        } else {
+            which(!is.na(opendap_url) & nzchar(opendap_url))
+        }
+        result <- result$slice(keep)
+    }
     query_id <- store$add_files(
         result,
         label = sprintf("resolved-%s-services", role)
@@ -2578,7 +2595,11 @@ shift_resolve__collect_resolved_inputs <- function(
                     files,
                     role = "future",
                     reporter = reporter,
-                    refresh = plan@meta$control@refresh
+                    refresh = plan@meta$control@refresh,
+                    require_opendap = identical(
+                        plan@meta$control@download,
+                        "never"
+                    )
                 )
                 node_future_files <- as.integer(files@meta$file_count)
                 if (!is.null(reference_files)) {
@@ -2595,7 +2616,11 @@ shift_resolve__collect_resolved_inputs <- function(
                         reference_files,
                         role = "reference",
                         reporter = reporter,
-                        refresh = plan@meta$control@refresh
+                        refresh = plan@meta$control@refresh,
+                        require_opendap = identical(
+                            plan@meta$control@download,
+                            "never"
+                        )
                     )
                     node_reference_files <- as.integer(
                         reference_files@meta$file_count
