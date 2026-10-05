@@ -150,7 +150,19 @@ cache__read_json <- function(
             error = function(e) e
         )
         if (inherits(fetched, "error")) {
-            json_source <- fetched
+            # Preserve the HTTP status as a typed condition so identity queries
+            # can split on 414 without treating unrelated transport errors alike.
+            status <- curl::handle_data(handle)$status_code
+            json_source <- if (identical(as.integer(status), 414L)) {
+                errorCondition(
+                    "The index node rejected the request URI (HTTP 414).",
+                    class = "epwshiftr_query_uri_too_long",
+                    status_code = 414L,
+                    url = url
+                )
+            } else {
+                fetched
+            }
         } else {
             json_source <- rawToChar(fetched$content)
             if (!is.null(progress_callback)) {
@@ -181,6 +193,9 @@ cache__read_json <- function(
             conditionMessage(res)
         )
         if (isTRUE(strict)) {
+            if (inherits(res, "epwshiftr_query_uri_too_long")) {
+                stop(res)
+            }
             stop(msg, call. = FALSE)
         }
         warning(msg, call. = FALSE)
@@ -2120,65 +2135,19 @@ query__collect_nrow <- function(docs) {
 }
 # }}}
 
-# query__collect {{{
-query__collect <- function(
+# Normalize collection parameters before measuring or sending the final URL.
+# Both preflight batching and collection use the same field/page expansion.
+# query__collect_params {{{
+query__collect_params <- function(
     index_node,
     params,
     required_fields = NULL,
     all = FALSE,
     limit = TRUE,
-    constraints = TRUE,
-    dict_check = FALSE,
-    progress = FALSE,
-    progress_label = NULL,
-    progress_callback = NULL
+    constraints = TRUE
 ) {
-    checkmate::assert_flag(all)
-    checkmate::assert_flag(constraints)
-    checkmate::assert_flag(dict_check)
-    checkmate::assert_flag(progress)
-    checkmate::assert_string(progress_label, null.ok = TRUE)
-    checkmate::assert(
-        checkmate::check_flag(limit),
-        checkmate::check_integerish(
-            limit,
-            lower = 1L,
-            upper = this$data_max_limit,
-            len = 1L
-        )
-    )
-
     store <- query_param__clone(params)
     params <- store$state()
-
-    progress_id <- NULL
-    progress_ok <- FALSE
-    if (isTRUE(progress)) {
-        progress_initial_total <- 1L
-        progress_id <- cli::cli_progress_bar(
-            if (is.null(progress_label)) {
-                "Collecting ESGF records"
-            } else {
-                progress_label
-            },
-            total = progress_initial_total,
-            .auto_close = FALSE
-        )
-        on.exit(
-            cli::cli_progress_done(
-                id = progress_id,
-                result = if (isTRUE(progress_ok)) "done" else "failed"
-            ),
-            add = TRUE
-        )
-        cli::cli_progress_update(
-            id = progress_id,
-            total = progress_initial_total,
-            set = 0L,
-            force = TRUE
-        )
-    }
-
     # include necessary fields
     if (!is.null(params$fields)) {
         if (query__is_bridge(index_node)) {
@@ -2215,6 +2184,90 @@ query__collect <- function(
         store$offset(0L)
     }
 
+    store
+}
+# }}}
+
+# Attach all attempted page URLs when a collection must restart with fewer IDs.
+# The caller receives no partial docs from a failed pagination attempt.
+# query__read_page {{{
+query__read_page <- function(url, query_urls, progress_callback = NULL) {
+    tryCatch(
+        cache__read_json(url, progress_callback = progress_callback),
+        epwshiftr_query_uri_too_long = function(error) {
+            error$query_urls <- query_urls
+            stop(error)
+        }
+    )
+}
+# }}}
+
+# Collect one complete request, including pagination, before exposing its docs.
+# query__collect {{{
+query__collect <- function(
+    index_node,
+    params,
+    required_fields = NULL,
+    all = FALSE,
+    limit = TRUE,
+    constraints = TRUE,
+    dict_check = FALSE,
+    progress = FALSE,
+    progress_label = NULL,
+    progress_callback = NULL
+) {
+    checkmate::assert_flag(all)
+    checkmate::assert_flag(constraints)
+    checkmate::assert_flag(dict_check)
+    checkmate::assert_flag(progress)
+    checkmate::assert_string(progress_label, null.ok = TRUE)
+    checkmate::assert(
+        checkmate::check_flag(limit),
+        checkmate::check_integerish(
+            limit,
+            lower = 1L,
+            upper = this$data_max_limit,
+            len = 1L
+        )
+    )
+
+    progress_id <- NULL
+    progress_ok <- FALSE
+    if (isTRUE(progress)) {
+        progress_initial_total <- 1L
+        progress_id <- cli::cli_progress_bar(
+            if (is.null(progress_label)) {
+                "Collecting ESGF records"
+            } else {
+                progress_label
+            },
+            total = progress_initial_total,
+            .auto_close = FALSE
+        )
+        on.exit(
+            cli::cli_progress_done(
+                id = progress_id,
+                result = if (isTRUE(progress_ok)) "done" else "failed"
+            ),
+            add = TRUE
+        )
+        cli::cli_progress_update(
+            id = progress_id,
+            total = progress_initial_total,
+            set = 0L,
+            force = TRUE
+        )
+    }
+
+    store <- query__collect_params(
+        index_node,
+        params,
+        required_fields,
+        all,
+        limit,
+        constraints
+    )
+
     if (dict_check) {
         query__warn_dict(store)
     }
@@ -2224,7 +2277,7 @@ query__collect <- function(
 
     url <- query__build(index_node, store)
     query_urls <- c(query_urls, url)
-    response <- cache__read_json(url, progress_callback = progress_callback)
+    response <- query__read_page(url, query_urls, progress_callback)
     docs <- response$response$docs
     doc_pages <- list(docs)
 
@@ -2255,9 +2308,10 @@ query__collect <- function(
 
                 url <- query__build(index_node, store)
                 query_urls <- c(query_urls, url)
-                response <- cache__read_json(
+                response <- query__read_page(
                     url,
-                    progress_callback = progress_callback
+                    query_urls,
+                    progress_callback
                 )
                 page_docs <- response$response$docs
                 page_n <- query__collect_nrow(page_docs)

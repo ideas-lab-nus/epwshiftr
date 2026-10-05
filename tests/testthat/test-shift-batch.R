@@ -817,4 +817,74 @@ test_that("File coverage applies the same year kernel to historical reference", 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
 })
 
+# Model the handoff while an existing receipt is temporarily absent: the
+# reader must acquire the publication lock before deciding that it is missing.
+test_that("batch receipt reads wait for publication before checking existence", {
+    root <- withr::local_tempdir()
+    path <- shift_batch__receipt_path(root)
+    receipt <- list(
+        version = 1L,
+        batch_id = "batch-handoff",
+        discovery = list(
+            identities = list(),
+            candidates = list(),
+            selection = list()
+        ),
+        manifest = data.frame(),
+        children = list(),
+        output_dir = root,
+        status = "running",
+        climate = list(),
+        periods = data.frame()
+    )
+    acquired <- 0L
+    released <- 0L
+    local_mocked_bindings(manifest_acquire_lock = function(path, ...) {
+        acquired <<- acquired + 1L
+        saveRDS(receipt, path)
+        function() {
+            released <<- released + 1L
+        }
+    })
+    expect_false(file.exists(path))
+    expect_identical(shift_batch__receipt_read(root, "batch-handoff"), receipt)
+    expect_identical(acquired, 1L)
+    expect_identical(released, 1L)
+    expect_null(shift_batch__receipt_read(root, "wrong-batch"))
+    expect_identical(released, 2L)
+    expect_null(shift_batch__receipt_read(
+        file.path(root, "absent"),
+        "batch-handoff"
+    ))
+    expect_identical(acquired, 2L)
+})
+
+# Receipt publication owns a separate, short lock, allowing observers to
+# coordinate without holding the coordinator or child-store execution lock.
+test_that("batch receipt publication holds its own lock", {
+    fixture <- shared_inputs_test__fixture()
+    path <- shift_batch__receipt_path(fixture$batch@store_path)
+    original_rename <- base::file.rename
+    observed <- FALSE
+    writer <- shift_batch__receipt_write
+    # Bind the filesystem observation only in this function's environment;
+    # changing base::file.rename would affect unrelated package activity.
+    environment(writer) <- list2env(
+        list(file.rename = function(from, to) {
+            expect_identical(to, path)
+            expect_true(dir.exists(manifest_lock_path(path)))
+            observed <<- TRUE
+            original_rename(from, to)
+        }),
+        parent = environment(writer)
+    )
+    writer(fixture$batch)
+    expect_true(observed)
+    expect_false(dir.exists(manifest_lock_path(path)))
+    expect_false(is.null(shift_batch__receipt_read(
+        fixture$batch@store_path,
+        fixture$batch@ids$batch_id
+    )))
+})
+
 # vim: fdm=marker :

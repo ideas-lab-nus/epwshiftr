@@ -2587,7 +2587,8 @@ test_that("EsgResultDataset$collect() ignores record index node metadata", {
         unlist(lapply(calls, `[[`, "dataset_id"), use.names = FALSE),
         datasets$id
     )
-    expect_identical(files$count(), 3L)
+    # The global row cap also applies if a backend returns too many rows.
+    expect_identical(files$count(), 1L)
     expect_length(priv(files)$context$query_url, 1L)
 })
 
@@ -4571,5 +4572,230 @@ test_that("esg_result() constructs typed empty query results", {
     )
 })
 # }}}
+
+# Check exact rendered boundaries and verify that a singleton is never rejected
+# solely because it exceeds the soft budget.
+test_that("query value batching measures complete rendered URLs", {
+    build_url <- function(x) {
+        paste0("https://example.org/?id=", paste(x, collapse = ","))
+    }
+    boundary <- nchar(build_url(c("a", "b")), type = "bytes")
+    expect_identical(
+        query_result__query_value_batches(character(), build_url),
+        list()
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            c("a", "b"),
+            build_url,
+            max_url_bytes = boundary
+        )),
+        list(c("a", "b"))
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            c("a", "b"),
+            build_url,
+            max_url_bytes = boundary - 1L
+        )),
+        list("a", "b")
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            c("a", "b", "a"),
+            build_url,
+            batch_size = 2L
+        )),
+        list(c("a", "b"), "a")
+    )
+    expect_identical(
+        unname(query_result__query_value_batches(
+            "long",
+            build_url,
+            max_url_bytes = 1L
+        )),
+        list("long")
+    )
+    expect_error(
+        query_result__query_value_batches(NA_character_, build_url),
+        "missing"
+    )
+    expect_error(query_result__query_value_batches(1:2, build_url), "character")
+    expect_error(
+        query_result__query_value_batches("a", build_url, batch_size = 0L),
+        "Must be >= 1"
+    )
+    expect_error(
+        query_result__query_value_batches("a", build_url, max_url_bytes = 0L),
+        "Must be >= 1"
+    )
+})
+
+# Realistic long IDs trigger multiple requests even below the former 50-ID
+# threshold; mock only transport so the public collection/merge path still runs.
+test_that("short Dataset lists with long IDs preserve limits and query receipts", {
+    ids <- paste0(strrep("long.model.", 50L), seq_len(6L), "|node.example.org")
+    datasets <- query_result_test_object(
+        "Dataset",
+        data.frame(id = ids, size = 1),
+        query_result_test_params("Dataset")
+    )
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            batch <- query_param__value(params$state()$dataset_id)
+            calls[[length(calls) + 1L]] <<- list(
+                ids = batch,
+                limit = limit,
+                dict_check = dict_check
+            )
+            take <- if (isTRUE(all)) {
+                length(batch)
+            } else {
+                min(length(batch), as.integer(limit))
+            }
+            docs <- data.frame(
+                id = paste0("file-", batch[seq_len(take)]),
+                dataset_id = batch[seq_len(take)],
+                size = 1
+            )
+            docs$url <- I(rep(
+                list(
+                    "https://example.org/file.nc|application/netcdf|HTTPServer"
+                ),
+                take
+            ))
+            params$fields(unique(c(
+                query_param__value(params$fields()),
+                required_fields
+            )))
+            list(
+                response = query_result_test_response(docs),
+                docs = docs,
+                parameter = params,
+                context = list(
+                    query_url = paste0(
+                        "https://example.org/search?batch=",
+                        length(calls)
+                    )
+                )
+            )
+        },
+        .package = "epwshiftr"
+    )
+    files <- datasets$collect(all = TRUE)
+    expect_gt(length(calls), 1L)
+    expect_identical(files$dataset_id, ids)
+    expect_length(priv(files)$context$query_url, length(calls))
+    expect_identical(
+        query_param__value(priv(files)$parameter$state()$dataset_id),
+        ids
+    )
+    expect_true(calls[[1L]]$dict_check)
+    expect_false(any(vapply(calls[-1L], `[[`, logical(1L), "dict_check")))
+    calls <- list()
+    limited <- datasets$collect(limit = 4L)
+    expect_equal(limited$count(), 4L)
+    expect_identical(limited$dataset_id, ids[1:4])
+    expect_equal(vapply(calls, `[[`, integer(1L), "limit"), c(4L, 2L))
+})
+
+# Both replica discovery entry points must shard long identities and retain
+# their complete original facet and every transport receipt after merging.
+test_that("replica collection batches long instance and master identities", {
+    ids <- paste0(strrep("long.model.", 50L), seq_len(6L))
+    result <- query_result_test_object(
+        "File",
+        query_result_test_file_docs(),
+        query_result_test_params("File")
+    )
+    calls <- list()
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = TRUE,
+            limit = TRUE,
+            constraints = TRUE
+        ) {
+            state <- params$params()
+            facet <- if (!is.null(state$instance_id)) {
+                "instance_id"
+            } else {
+                "master_id"
+            }
+            batch <- query_param__value(state[[facet]])
+            calls[[length(calls) + 1L]] <<- batch
+            docs <- data.frame(id = batch, size = 1)
+            docs$url <- I(rep(
+                list(
+                    "https://example.org/file.nc|application/netcdf|HTTPServer"
+                ),
+                length(batch)
+            ))
+            list(
+                response = query_result_test_response(docs),
+                docs = docs,
+                parameter = params,
+                context = list(
+                    query_url = paste0(
+                        "https://example.org/search?batch=",
+                        length(calls)
+                    )
+                )
+            )
+        },
+        .package = "epwshiftr"
+    )
+    for (mode in c("instance", "identity_master", "master")) {
+        calls <- list()
+        identity <- data.table::data.table(
+            instance_id = ids,
+            master_id = ids,
+            has_instance = mode == "instance",
+            has_master_version = mode != "instance"
+        )
+        out <- if (mode == "master") {
+            query_result__collect_master(result, ids, "File")
+        } else {
+            query_result__collect_identity(result, identity, "File")
+        }
+        expect_gt(length(calls), 1L)
+        expect_identical(unlist(calls, use.names = FALSE), ids)
+        expect_identical(out$id, ids)
+        expect_length(priv(out)$context$query_url, length(calls))
+        facet <- if (mode == "instance") "instance_id" else "master_id"
+        expect_identical(
+            query_param__value(priv(out)$parameter$params()[[facet]]),
+            ids
+        )
+        expect_true(all(
+            vapply(
+                calls,
+                function(x) {
+                    nchar(
+                        utils::URLencode(
+                            paste(x, collapse = ","),
+                            reserved = TRUE
+                        ),
+                        type = "bytes"
+                    )
+                },
+                integer(1L)
+            ) <=
+                QUERY_RESULT_COLLECT_MAX_URL_BYTES
+        ))
+    }
+})
 
 # vim: fdm=marker :

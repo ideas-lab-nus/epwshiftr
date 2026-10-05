@@ -432,11 +432,14 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     calls$file_fields <- list()
     shift_test__mock_collect(esgf_test__file_docs("tas_day.nc"), calls)
 
+    # Inspect the wildcard on a standard node; bridge requests normalize away
+    # the unsupported fields parameter before the mocked collector sees it.
     req <- shift_request(
         project = "CMIP6",
         experiment = "ssp585",
         variables = "tas",
-        frequency = "day"
+        frequency = "day",
+        options = list(index_node = "https://example.org")
     )
     store_path <- tempfile("shift-store-")
     dataset_store_path <- tempfile("shift-datasets-store-")
