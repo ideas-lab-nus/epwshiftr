@@ -319,3 +319,53 @@ test_that("real HTTP 414 responses split and singleton URLs reach the server", {
         class = "epwshiftr_query_uri_too_long"
     )
 })
+
+# A bridge omits fields on the wire while returning its available metadata.
+# Exercise normalization before preflight and again through the 414 retry path.
+test_that("bridge batching preserves response metadata without sending fields", {
+    node <- "https://esgf-node.ornl.gov/esgf-1-5-bridge"
+    for (facet in c("dataset_id", "instance_id", "master_id")) {
+        seen <- character()
+        reject_multiple <- FALSE
+        local_mocked_bindings(cache__read_json = function(url, ...) {
+            seen <<- c(seen, url)
+            ids <- query_uri__param(url, facet)
+            if (reject_multiple && length(ids) > 1L) {
+                query_uri__reject(url)
+            }
+            response <- query_uri__response(ids)
+            response$response$docs$size <- seq_along(ids)
+            response$response$docs$variable_id <- "tas"
+            response
+        })
+        store <- QueryParamStore$new()$fields("*")
+        query_result__merge_params(
+            store,
+            stats::setNames(list(c("a", "b")), facet)
+        )
+        for (retry in c(FALSE, TRUE)) {
+            seen <- character()
+            reject_multiple <- retry
+            out <- query_result__collect_batched(
+                node,
+                store,
+                facet,
+                all = TRUE,
+                required_fields = paste0("field", seq_len(300L))
+            )
+            expect_length(seen, if (retry) 3L else 1L)
+            expect_true(all(vapply(
+                seen,
+                function(url) {
+                    length(query_uri__param(url, "fields")) == 0L
+                },
+                logical(1L)
+            )))
+            expect_identical(out$docs$id, c("a", "b"))
+            expect_identical(out$docs$variable_id, c("tas", "tas"))
+            expect_true("size" %in% names(out$docs))
+            expect_null(out$parameter$fields())
+            expect_identical(query_param__value(store$fields()), "*")
+        }
+    }
+})
