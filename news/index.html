@@ -89,7 +89,10 @@
 
     <div class="section level2">
 <h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
-<ul><li><p>Keep Vim folding modelines at the end of extended test files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/280" class="external-link">#280</a>).</p></li>
+<ul><li><p>Keep Vim folding modelines at the end of extended test files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/281" class="external-link">#281</a>).</p></li>
+<li><p>Resolve regional plans through query-file memberships, preserving earlier queries when a shared file is cataloged again. Filter memberships in DuckDB before materializing the selected catalog (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/281" class="external-link">#281</a>).</p></li>
+<li><p>Scope extraction plan identities to their catalog query so refreshed catalogs retain correct ownership while reusing the shared source extraction cache (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/281" class="external-link">#281</a>).</p></li>
+<li><p>Keep Vim folding modelines at the end of extended test files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/280" class="external-link">#280</a>).</p></li>
 <li><p>Coordinate batch receipt readers and writers with a short publication lock, preventing background refresh from observing a missing replacement file (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/280" class="external-link">#280</a>).</p></li>
 <li><p>Preallocate request receipts across recursive URI retries while preserving the complete ordered request history (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/280" class="external-link">#280</a>).</p></li>
 <li><p>Batch Dataset child and replica identity queries using complete request URL lengths and retry HTTP 414 responses with smaller ID groups. Attempt individual long IDs without a local length rejection, preserving query receipts and global row limits without duplicating partial pages when a batch restarts (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/280" class="external-link">#280</a>).</p></li>
