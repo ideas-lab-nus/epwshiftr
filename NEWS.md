@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Keep Vim folding modelines at the end of extended test files (#281).
+
 * Resolve regional plans through query-file memberships, preserving earlier
   queries when a shared file is cataloged again. Filter memberships in DuckDB
   before materializing the selected catalog (#281).

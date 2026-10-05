@@ -3737,8 +3737,6 @@ test_that("extraction persistence rolls back manifest changes on failure", {
     expect_equal(store$query("SELECT 1 AS value")$value, 1L)
 })
 
-# vim: fdm=marker :
-
 test_that("EsgStore$plan_region() keeps identical files scoped to the current query", {
     skip_if_not_installed("duckdb")
 
@@ -3852,3 +3850,5 @@ test_that("regional plans exclude files owned by other queries", {
         "No cataloged file records"
     )
 })
+
+# vim: fdm=marker :
