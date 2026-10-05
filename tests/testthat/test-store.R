@@ -3813,3 +3813,42 @@ test_that("EsgStore$plan_region() keeps identical files scoped to the current qu
     expect_identical(calls, 1L)
     expect_identical(cached$payload$data$value, 280)
 })
+
+# Different catalogs must remain isolated even when they share variable names.
+test_that("regional plans exclude files owned by other queries", {
+    store <- EsgStore$new(withr::local_tempdir())
+    on.exit(store$close(), add = TRUE)
+    first <- store$add_files(store_test__result(
+        docs = store_test__file_docs("first.nc")
+    ))
+    second <- store$add_files(store_test__result(
+        docs = store_test__file_docs("second.nc")
+    ))
+    catalog <- data.table::as.data.table(ddb_read_table(
+        priv(store)$conn,
+        "file_catalog"
+    ))
+    for (id in c(first, second)) {
+        plan <- store$plan_region(
+            id,
+            103.98,
+            1.37,
+            c("2060-01-01", "2060-12-31")
+        )
+        expect_equal(nrow(plan), 1L)
+        expect_identical(plan$query_id, id)
+        expect_identical(
+            plan$file_key,
+            catalog$file_key[catalog$query_id == id]
+        )
+    }
+    expect_error(
+        store$plan_region(
+            "absent-query",
+            103.98,
+            1.37,
+            c("2060-01-01", "2060-12-31")
+        ),
+        "No cataloged file records"
+    )
+})

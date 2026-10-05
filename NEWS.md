@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Resolve regional plans through query-file memberships, preserving earlier
+  queries when a shared file is cataloged again. Filter memberships in DuckDB
+  before materializing the selected catalog (#281).
+
 * Scope extraction plan identities to their catalog query so refreshed catalogs
   retain correct ownership while reusing the shared source extraction cache (#281).
 
