@@ -67,7 +67,7 @@ EPW_MORPH_HOURLY_KQDM_RULES <- data.table::data.table(
     )
 )
 
-# Complete and validate the only backend-level option. Variable-specific
+# Validate reconstruction settings and signal-profile overrides. Variable-specific
 # numerical settings remain owned by the registered signal component.
 # hourly_kqdm__options {{{
 hourly_kqdm__options <- function(options = NULL) {

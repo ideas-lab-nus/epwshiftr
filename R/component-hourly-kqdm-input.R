@@ -178,8 +178,8 @@ hourly_kqdm_input__wind_rows <- function(data, role) {
 }
 # }}}
 
-# Replace reconstructed model humidity and vector wind inputs with the six
-# canonical variables consumed by the published univariate KQDM stage.
+# Replace reconstructed model humidity and vector wind with canonical signals.
+# The published six-signal path optionally carries the declared longwave extension.
 # hourly_kqdm_input__model_role {{{
 hourly_kqdm_input__model_role <- function(
     input,

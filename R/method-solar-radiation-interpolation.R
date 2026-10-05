@@ -19,7 +19,7 @@ SOLAR_RADIATION_REFERENCES <- c(
 # target while using the same samples for exact source-interval normalization.
 SOLAR_INTEGRATION_STEP_SECONDS <- 60
 
-# Validate one role as materialized, bounded shortwave interval means before
+# Validate one role as materialized, bounded radiation interval means before
 # any values are assigned to the hourly target lattice.
 # solar__source {{{
 solar__source <- function(
