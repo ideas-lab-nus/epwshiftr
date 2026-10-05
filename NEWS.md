@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Preallocate request receipts across recursive URI retries while preserving
+  the complete ordered request history (#280).
+
 * Batch Dataset child and replica identity queries using complete request URL
   lengths and retry HTTP 414 responses with smaller ID groups. Attempt individual
   long IDs without a local length rejection, preserving query receipts and global

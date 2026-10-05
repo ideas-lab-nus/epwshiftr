@@ -1923,7 +1923,9 @@ query_result__collect_batched <- function(
     results <- vector("list", length(values))
     collected <- 0L
     remaining <- query_param__value(store$limit())
-    receipts <- list()
+    # A binary retry tree has at most 2n - 1 requests for n distinct IDs.
+    receipts <- vector("list", 2L * length(values) - 1L)
+    receipt_count <- 0L
     first_attempt <- TRUE
 
     # Depth is bounded by halving the ID count; completed siblings are retained.
@@ -1955,7 +1957,8 @@ query_result__collect_batched <- function(
             epwshiftr_query_uri_too_long = function(error) error
         )
         if (inherits(result, "epwshiftr_query_uri_too_long")) {
-            receipts[[length(receipts) + 1L]] <<- result$query_urls
+            receipt_count <<- receipt_count + 1L
+            receipts[receipt_count] <<- list(result$query_urls)
             if (length(batch) == 1L) {
                 cli::cli_abort(
                     c(
@@ -1974,7 +1977,8 @@ query_result__collect_batched <- function(
         }
         collected <<- collected + 1L
         results[[collected]] <<- result
-        receipts[[length(receipts) + 1L]] <<- result$context$query_url
+        receipt_count <<- receipt_count + 1L
+        receipts[receipt_count] <<- list(result$context$query_url)
         remaining <<- remaining - query__collect_nrow(result$docs)
         invisible(NULL)
     }
@@ -1996,7 +2000,7 @@ query_result__collect_batched <- function(
         facet = facet
     )
     result$context$query_url <- query_result__query_urls(
-        unlist(receipts, use.names = FALSE),
+        unlist(receipts[seq_len(receipt_count)], use.names = FALSE),
         named = FALSE
     )
     result
