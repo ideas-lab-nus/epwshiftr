@@ -4574,7 +4574,7 @@ Downloader <- R6::R6Class(
                 daemon_count < private$worker_count
 
             if (isTRUE(needs_start)) {
-                mirai::daemons(
+                mirai__start_pool(
                     private$worker_count,
                     .compute = private$compute_profile
                 )

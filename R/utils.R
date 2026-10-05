@@ -1013,6 +1013,45 @@ mirai_worker_bindings <- function(symbols = character()) {
 }
 # }}}
 
+# Start an owned local pool without changing its worker count or dispatcher.
+# macOS IPC shutdown can stall in NNG after cancellation; use a loopback TCP
+# listener with an OS-assigned port and wait for the requested workers instead.
+mirai__start_pool <- function(n, dispatcher = TRUE, .compute) {
+    checkmate::assert_count(n, positive = TRUE)
+    checkmate::assert_string(.compute, min.chars = 1L)
+    if (!identical(Sys.info()[["sysname"]], "Darwin")) {
+        return(mirai::daemons(n, dispatcher = dispatcher, .compute = .compute))
+    }
+
+    started <- FALSE
+    on.exit(
+        {
+            if (!started) {
+                try(mirai::daemons(0L, .compute = .compute), silent = TRUE)
+            }
+        },
+        add = TRUE
+    )
+    mirai::daemons(
+        n,
+        url = mirai::local_url(tcp = TRUE),
+        dispatcher = dispatcher,
+        .compute = .compute
+    )
+    # Explicit URLs configure a listener; launch_local() connects workers to
+    # its actual bound port. Passing port zero directly to workers is invalid.
+    mirai::launch_local(n, .compute = .compute)
+    deadline <- proc.time()[["elapsed"]] + 30
+    while (mirai::status(.compute = .compute)$connections < n) {
+        if (proc.time()[["elapsed"]] >= deadline) {
+            stop("Local mirai workers did not connect within 30 seconds.")
+        }
+        Sys.sleep(0.01)
+    }
+    started <- TRUE
+    invisible(TRUE)
+}
+
 # mirai_lapply {{{
 mirai_lapply <- function(
     X,
@@ -1045,7 +1084,7 @@ mirai_lapply <- function(
         gsub("[^A-Za-z0-9]+", "-", label),
         fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L)))
     )
-    mirai::daemons(workers, dispatcher = TRUE, .compute = compute_profile)
+    mirai__start_pool(workers, dispatcher = TRUE, .compute = compute_profile)
     on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
 
     worker_symbols <- mirai_worker_bindings(symbols)

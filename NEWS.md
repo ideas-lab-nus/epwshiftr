@@ -198,8 +198,9 @@
   ERA5 reference inputs also support diffuse horizontal radiation from matched
   SSRD/FDIR intervals. Hourly kernel QDM can opt into longwave correction and
   reconstruction on the site's fixed standard clock. All reanalysis requests
-  use the new cache identity generation; earlier cached references are rebuilt
-  (#283).
+  use the new cache identity generation; earlier cached references are rebuilt.
+  macOS background workers use loopback TCP with bounded startup while retaining
+  asynchronous cancellation and timeouts (#283).
 
 * Added `common = FALSE` to `shift_cmip6()` for independent method-specific
   model selection in future-weather batches. The default `common = TRUE`
