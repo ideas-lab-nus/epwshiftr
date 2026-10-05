@@ -856,4 +856,64 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
     )
 })
 
+test_that("workflow resolver removes HTTP-only files when downloads are forbidden", {
+    skip_if_not_installed("duckdb")
+
+    store_path <- tempfile("shift-opendap-only-store-")
+    store <- EsgStore$new(store_path)
+    docs <- esgf_test__file_docs(
+        "tas_day_Model_ssp585_r1i1p1f1_gn_20600101-20601231.nc"
+    )
+    docs$url <- I(list(
+        "https://example.org/files/tas.nc|application/netcdf|HTTPServer"
+    ))
+    query_id <- store$add_files(esgf_test__file_result(docs))
+    store$close()
+    files <- shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = store_path,
+        ids = list(query_id = query_id),
+        meta = list(
+            request = shift_request(),
+            dataset_count = 1L,
+            file_count = 1L,
+            fields = SHIFT_WORKFLOW_FILE_FIELDS
+        )
+    )
+
+    test_local_dependencies(list(
+        query_result__resolve_file_services = function(
+            value,
+            index_node = NULL,
+            check = NULL
+        ) {
+            expect_identical(check$sample_per_node, 9L)
+            expect_identical(check$concurrency, 1L)
+            expect_equal(check$timeout, 20)
+            list(
+                result = value,
+                diagnostics = data.table::data.table(
+                    service = "HTTPServer",
+                    selected = TRUE
+                )
+            )
+        }
+    ))
+
+    resolved <- shift_resolve__resolve_file_services(
+        files,
+        "future",
+        require_opendap = TRUE
+    )
+    resolved_store <- shift_store(resolved)
+    on.exit(resolved_store$close(), add = TRUE)
+    catalog <- shift_inspect__file_catalog(
+        resolved_store,
+        resolved@ids$query_id
+    )
+
+    expect_equal(nrow(catalog), 0L)
+})
+
 # vim: fdm=marker :

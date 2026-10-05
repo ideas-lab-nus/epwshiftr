@@ -1,5 +1,14 @@
 # epwshiftr (development version)
 
+* Keep Vim folding modelines at the end of extended test files (#282).
+
+* Release curl handles at every wave boundary and continue checking later URLs
+  after an individual pool error; recover only unresolved results (#282).
+
+* Check service URLs in bounded active waves and avoid large serial timeout
+  retries. No-download workflows sample exact OPeNDAP endpoints per data node
+  and discard HTTP-only candidates before checking catalog coverage (#282).
+
 * Keep Vim folding modelines at the end of extended test files (#281).
 
 * Resolve regional plans through query-file memberships, preserving earlier
