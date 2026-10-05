@@ -23,3 +23,8 @@
 ^OPENDAP_IMPLEMENTATION\.md$
 ^ERA5-EPW\.md$
 ^air\.toml$
+^\.uvr$
+^uvr\.toml$
+^uvr\.lock$
+^AGENTS\.md$
+^\.vscode$

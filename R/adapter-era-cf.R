@@ -725,17 +725,15 @@ era__normalize <- function(raw, variables, frequencies, site, years) {
 }
 # }}}
 
+# All references use the current identity generation; existing v1 caches are
+# intentionally invalidated, including references without diffuse radiation.
 # Build stable provider, file, and plan IDs before network access so complete
 # observed references can be resumed without submitting another CDS job.
 # reanalysis__identities {{{
 reanalysis__identities <- function(spec, site, variables, frequencies, access) {
     timezone <- era__site_timezone(site)
     request_id <- store__hash(
-        if ("rsdsdiff" %in% variables) {
-            "reanalysis-v2-interval-start"
-        } else {
-            "reanalysis-v1"
-        },
+        "reanalysis-v2-interval-start",
         spec@dataset,
         spec@product,
         paste(spec@years, collapse = ","),

@@ -197,7 +197,9 @@
   rejects incomplete or inconsistent input instead of filling template weather.
   ERA5 reference inputs also support diffuse horizontal radiation from matched
   SSRD/FDIR intervals. Hourly kernel QDM can opt into longwave correction and
-  reconstruction on the site's fixed standard clock (#283).
+  reconstruction on the site's fixed standard clock. All reanalysis requests
+  use the new cache identity generation; earlier cached references are rebuilt
+  (#283).
 
 * Added `common = FALSE` to `shift_cmip6()` for independent method-specific
   model selection in future-weather batches. The default `common = TRUE`
