@@ -1,3 +1,48 @@
+# Isolate configuration files so environment-only authentication is independent
+# of the developer's home directory and matches a fresh CI runner.
+test_that("CDS configuration accepts environment-only credentials in priority order", {
+    testthat::local_mocked_bindings(
+        cds__read_config_file = function(path) list(),
+        .package = "epwshiftr"
+    )
+    withr::local_envvar(c(
+        ECMWF_DATASTORES_URL = NA,
+        CDSAPI_URL = NA,
+        ECMWF_DATASTORES_KEY = "modern-token",
+        CDSAPI_KEY = "legacy-token",
+        CDS_API_KEY = "alternate-token"
+    ))
+
+    expect_identical(
+        cds__config(),
+        list(url = CDS__DEFAULT_URL, key = "modern-token")
+    )
+    Sys.unsetenv("ECMWF_DATASTORES_KEY")
+    expect_identical(cds__config()$key, "legacy-token")
+    Sys.unsetenv("CDSAPI_KEY")
+    expect_identical(cds__config()$key, "alternate-token")
+})
+
+# Missing optional credentials must remain representable, while retrieval must
+# report the package authentication error rather than a base R type error.
+test_that("CDS configuration handles missing and empty credentials", {
+    testthat::local_mocked_bindings(
+        cds__read_config_file = function(path) list(),
+        .package = "epwshiftr"
+    )
+    withr::local_envvar(c(
+        ECMWF_DATASTORES_KEY = NA,
+        CDSAPI_KEY = NA,
+        CDS_API_KEY = NA
+    ))
+
+    expect_identical(cds__config(require_key = FALSE)$key, "")
+    expect_error(cds__config(), class = "epwshiftr_cds_auth_error")
+    Sys.setenv(ECMWF_DATASTORES_KEY = "")
+    expect_identical(cds__config(require_key = FALSE)$key, "")
+    expect_error(cds__config(), class = "epwshiftr_cds_auth_error")
+})
+
 test_that("CDS configuration parses current files and rejects retired keys", {
     current <- tempfile()
     writeLines(

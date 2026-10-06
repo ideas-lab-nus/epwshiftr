@@ -68,7 +68,12 @@ cds__config <- function(require_key = TRUE) {
             "CDSAPI_KEY",
             unset = Sys.getenv(
                 "CDS_API_KEY",
-                unset = shift_stage__coalesce(modern$key, legacy$key)
+                # Sys.getenv evaluates fallback arguments even when a key is
+                # present, so absent config files must yield a string, not NULL.
+                unset = shift_stage__coalesce(
+                    modern$key,
+                    shift_stage__coalesce(legacy$key, "")
+                )
             )
         )
     )
