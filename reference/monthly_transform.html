@@ -120,7 +120,14 @@ methods that list more than one permitted reconstruction.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Method-specific scientific settings. Unknown settings are errors.</p></dd>
+<dd><p>Method-specific scientific settings. Unknown settings are errors.
+For hourly <code>kernel_qdm</code>, <code>include_longwave = TRUE</code> requires and corrects
+<code>rlds</code> in all three climate roles using an experimental package extension.
+Its interval-mean reconstruction conserves source energy without solar
+weighting. <code>model_utc_offset_hours</code> (default <code>0</code>) shifts reconstructed UTC
+model series to the site's fixed standard clock before year selection;
+observed-reference data must already use that clock. Both options are
+persisted in transform specifications and cache identities.</p></dd>
 
 </dl></div>
     <div id="value">
