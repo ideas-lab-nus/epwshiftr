@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Use loopback TCP consistently for local mirai worker pools, preserving worker
+  counts and dispatcher behaviour across platforms; clarify connection-wait
+  diagnostics (#285).
+
 * Read CDS credentials from environment variables when configuration files are
   absent, and report missing required credentials with the authentication
   diagnostic (#284).

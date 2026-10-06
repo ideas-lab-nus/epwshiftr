@@ -46,7 +46,7 @@ DOWNLOADER_RUNTIME$verbose <- NULL
 DOWNLOADER_RUNTIME$sync_store <- NULL
 
 # Start an owned local pool without changing its worker count or dispatcher.
-# Use mirai's public loopback TCP transport on each platform. This candidate
+# Use mirai's public loopback TCP transport on each platform. This choice
 # avoids the default transport implicated in a local macOS shutdown wait; it
 # does not establish the cause of that wait or prevent all native shutdown hangs.
 downloader__start_pool <- function(n, dispatcher = TRUE, .compute) {
