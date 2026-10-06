@@ -5,7 +5,6 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
-^codecov\.yml$
 ^LICENSE\.md$
 ^.*\.Rproj$
 ^\.Rproj\.user$
@@ -25,4 +24,3 @@
 ^uvr\.lock$
 ^AGENTS\.md$
 ^\.vscode$
-^transport-results$

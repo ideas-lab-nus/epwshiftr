@@ -25,6 +25,3 @@ uvr.lock
 .vscode/
 *.Rproj
 reports/local-check-*/
-
-# CI transport comparison artifacts
-transport-results/
