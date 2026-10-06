@@ -1,11 +1,30 @@
-# ERA5 annual reference EPW
+---
+title: "Create ERA5 Reference EPW Files"
+author: "Hongyuan Jia"
+output:
+    rmarkdown::html_vignette:
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{Create ERA5 Reference EPW Files}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+description: >
+    Convert hourly ERA5 data into annual reference weather files with explicit
+    input requirements, conversion assumptions, and source records.
+---
 
 `shift_reference_epw()` converts hourly ERA5 single-level data into annual EPW
 files. It accepts multiple sites and years and does not require a baseline EPW.
 Use already downloaded input when available; the optional CDS path submits
 bounded monthly requests and is not a bulk-download accelerator.
 
+The example below uses local NetCDF files that you supply. Replace the file
+paths and site metadata before running it; it is not executed when building
+this article.
+
 ```r
+library(epwshiftr)
+
 site <- shift_site(
     "Guangzhou", lon = 113.3333, lat = 23.16667,
     metadata = list(timezone = 8, elevation = 41, country = "China")

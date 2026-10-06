@@ -23,6 +23,8 @@ navbar:
       menu:
       - text: "Create Future EPW Files"
         href: articles/future-epw-workflow.html
+      - text: "Create ERA5 Reference EPW Files"
+        href: articles/era5-reference-epw.html
       - text: "Work with ESGF Query Results"
         href: articles/esgf-query-results.html
       - text: "Manage ESG Dictionaries"

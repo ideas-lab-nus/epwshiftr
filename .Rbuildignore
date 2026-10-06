@@ -5,9 +5,7 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
-^codecov\.yml$
 ^LICENSE\.md$
-^cran-comments\.md$
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^\.git$
@@ -20,12 +18,9 @@
 ^cache$
 ^reports$
 ^outputs$
-^OPENDAP_IMPLEMENTATION\.md$
-^ERA5-EPW\.md$
 ^air\.toml$
 ^\.uvr$
 ^uvr\.toml$
 ^uvr\.lock$
 ^AGENTS\.md$
 ^\.vscode$
-^transport-results$

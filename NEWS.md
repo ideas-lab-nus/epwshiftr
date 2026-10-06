@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+* Remove obsolete repository-only papers, project/environment configuration,
+  community templates, test notes, and local check scripts; retire the transport
+  comparison workflow after TCP selection and the legacy PR command workflow. Move the ERA5 reference EPW guide
+  into the website articles and relocate Codecov settings to `.github/` (#286).
+
 * Use loopback TCP consistently for local mirai worker pools, preserving worker
   counts and dispatcher behaviour across platforms; clarify connection-wait
   diagnostics (#285).
