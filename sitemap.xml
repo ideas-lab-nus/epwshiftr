@@ -1,16 +1,11 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/404.html</loc></url>
-<url><loc>https://ideas-lab-nus.github.io/epwshiftr/CODE_OF_CONDUCT.html</loc></url>
-<url><loc>https://ideas-lab-nus.github.io/epwshiftr/CONTRIBUTING.html</loc></url>
-<url><loc>https://ideas-lab-nus.github.io/epwshiftr/ERA5-EPW.html</loc></url>
-<url><loc>https://ideas-lab-nus.github.io/epwshiftr/ISSUE_TEMPLATE.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/LICENSE-text.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/LICENSE.html</loc></url>
-<url><loc>https://ideas-lab-nus.github.io/epwshiftr/PULL_REQUEST_TEMPLATE.html</loc></url>
-<url><loc>https://ideas-lab-nus.github.io/epwshiftr/SUPPORT.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/cli-esgf-store.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/downloader.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/epw-morpher.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/era5-reference-epw.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/esg-dictionaries.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/esg-store.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/esgf-query-results.html</loc></url>
@@ -18,7 +13,6 @@
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/index.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/legacy-migration.html</loc></url>
-<url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/paper.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/authors.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/index.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/news/index.html</loc></url>

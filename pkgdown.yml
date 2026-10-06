@@ -5,14 +5,14 @@ articles:
   articles/cli-esgf-store: cli-esgf-store.html
   articles/downloader: downloader.html
   articles/epw-morpher: epw-morpher.html
+  articles/era5-reference-epw: era5-reference-epw.html
   articles/esg-dictionaries: esg-dictionaries.html
   articles/esg-store: esg-store.html
   articles/esgf-query-results: esgf-query-results.html
   articles/esgf-troubleshooting: esgf-troubleshooting.html
   articles/future-epw-workflow: future-epw-workflow.html
   articles/legacy-migration: legacy-migration.html
-  paper: paper.html
-last_built: 2026-10-06T12:26Z
+last_built: 2026-10-06T14:44Z
 urls:
   reference: https://ideas-lab-nus.github.io/epwshiftr/reference
   article: https://ideas-lab-nus.github.io/epwshiftr/articles

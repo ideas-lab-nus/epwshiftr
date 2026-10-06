@@ -38,6 +38,9 @@
       <a href="../articles/future-epw-workflow.html">Create Future EPW Files</a>
     </li>
     <li>
+      <a href="../articles/era5-reference-epw.html">Create ERA5 Reference EPW Files</a>
+    </li>
+    <li>
       <a href="../articles/esgf-query-results.html">Work with ESGF Query Results</a>
     </li>
     <li>
@@ -89,7 +92,8 @@
 
     <div class="section level2">
 <h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
-<ul><li><p>Use loopback TCP consistently for local mirai worker pools, preserving worker counts and dispatcher behaviour across platforms; clarify connection-wait diagnostics (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/285" class="external-link">#285</a>).</p></li>
+<ul><li><p>Remove obsolete repository-only papers, project/environment configuration, community templates, test notes, and local check scripts; retire the transport comparison workflow after TCP selection and the legacy PR command workflow. Move the ERA5 reference EPW guide into the website articles and relocate Codecov settings to <code>.github/</code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/286" class="external-link">#286</a>).</p></li>
+<li><p>Use loopback TCP consistently for local mirai worker pools, preserving worker counts and dispatcher behaviour across platforms; clarify connection-wait diagnostics (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/285" class="external-link">#285</a>).</p></li>
 <li><p>Read CDS credentials from environment variables when configuration files are absent, and report missing required credentials with the authentication diagnostic (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/284" class="external-link">#284</a>).</p></li>
 <li><p>Keep Vim folding modelines at the end of extended test files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/283" class="external-link">#283</a>).</p></li>
 <li><p>Route hourly options through declared component scopes and keep method-specific configuration outside the shared interpolation and pipeline layers (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/283" class="external-link">#283</a>).</p></li>
