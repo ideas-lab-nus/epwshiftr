@@ -2,7 +2,7 @@
 
 * Remove obsolete repository-only papers, project/environment configuration,
   test notes, and the local check wrapper; move the ERA5 reference EPW guide
-  into the website articles.
+  into the website articles (#286).
 
 * Use loopback TCP consistently for local mirai worker pools, preserving worker
   counts and dispatcher behaviour across platforms; clarify connection-wait
