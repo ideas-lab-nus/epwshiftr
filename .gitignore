@@ -17,8 +17,13 @@ outputs/
 *.epw
 !inst/extdata/examples/*.epw
 
-# Local uvr libraries and supervised package-check artifacts
+# Local R environment and check artifacts
 .uvr/
+uvr.toml
+uvr.lock
+.Rprofile
+.vscode/
+*.Rproj
 reports/local-check-*/
 
 # CI transport comparison artifacts
