@@ -46,15 +46,12 @@ DOWNLOADER_RUNTIME$verbose <- NULL
 DOWNLOADER_RUNTIME$sync_store <- NULL
 
 # Start an owned local pool without changing its worker count or dispatcher.
-# macOS IPC shutdown can stall in NNG after cancellation; use a loopback TCP
-# listener with an OS-assigned port and wait for the requested workers instead.
+# Use mirai's public loopback TCP transport on each platform. This choice
+# avoids the default transport implicated in a local macOS shutdown wait; it
+# does not establish the cause of that wait or prevent all native shutdown hangs.
 downloader__start_pool <- function(n, dispatcher = TRUE, .compute) {
     checkmate::assert_count(n, positive = TRUE)
     checkmate::assert_string(.compute, min.chars = 1L)
-    if (!identical(Sys.info()[["sysname"]], "Darwin")) {
-        return(mirai::daemons(n, dispatcher = dispatcher, .compute = .compute))
-    }
-
     started <- FALSE
     on.exit(
         {
@@ -73,10 +70,25 @@ downloader__start_pool <- function(n, dispatcher = TRUE, .compute) {
     # Explicit URLs configure a listener; launch_local() connects workers to
     # its actual bound port. Passing port zero directly to workers is invalid.
     mirai::launch_local(n, .compute = .compute)
+    # This bounds the connection polling interval after launch_local() returns,
+    # not native startup/status/cleanup calls or task execution.
     deadline <- proc.time()[["elapsed"]] + 30
-    while (mirai::status(.compute = .compute)$connections < n) {
+    repeat {
+        connections <- mirai::status(.compute = .compute)$connections
+        if (connections >= n) {
+            break
+        }
         if (proc.time()[["elapsed"]] >= deadline) {
-            stop("Local mirai workers did not connect within 30 seconds.")
+            stop(
+                "Local mirai connection wait exceeded 30 seconds for profile '",
+                .compute,
+                "': expected ",
+                n,
+                " worker(s), connected ",
+                connections,
+                ".",
+                call. = FALSE
+            )
         }
         Sys.sleep(0.01)
     }

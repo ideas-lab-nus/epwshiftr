@@ -20,3 +20,6 @@ outputs/
 # Local uvr libraries and supervised package-check artifacts
 .uvr/
 reports/local-check-*/
+
+# CI transport comparison artifacts
+transport-results/

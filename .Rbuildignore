@@ -28,3 +28,4 @@
 ^uvr\.lock$
 ^AGENTS\.md$
 ^\.vscode$
+^transport-results$
