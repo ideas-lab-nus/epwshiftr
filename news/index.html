@@ -89,7 +89,8 @@
 
     <div class="section level2">
 <h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
-<ul><li><p>Read CDS credentials from environment variables when configuration files are absent, and report missing required credentials with the authentication diagnostic (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/284" class="external-link">#284</a>).</p></li>
+<ul><li><p>Use loopback TCP consistently for local mirai worker pools, preserving worker counts and dispatcher behaviour across platforms; clarify connection-wait diagnostics (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/285" class="external-link">#285</a>).</p></li>
+<li><p>Read CDS credentials from environment variables when configuration files are absent, and report missing required credentials with the authentication diagnostic (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/284" class="external-link">#284</a>).</p></li>
 <li><p>Keep Vim folding modelines at the end of extended test files (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/283" class="external-link">#283</a>).</p></li>
 <li><p>Route hourly options through declared component scopes and keep method-specific configuration outside the shared interpolation and pipeline layers (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/283" class="external-link">#283</a>).</p></li>
 <li><p>Decode packed ERA5 NetCDF values and keep missing per-site local inputs offline. Standalone downloads retain their own worker startup implementation. Optional longwave settings can be configured through <code><a href="../reference/monthly_transform.html">hourly_transform()</a></code> (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/283" class="external-link">#283</a>).</p></li>
