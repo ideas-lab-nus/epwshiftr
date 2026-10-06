@@ -12,6 +12,7 @@ name: R-CMD-check
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 60
 
     name: ${{ matrix.config.os }} (${{ matrix.config.r }})
 
@@ -21,6 +22,7 @@ jobs:
         config:
           - {os: windows-latest, r: 'release', not_cran: false}
           - {os: ubuntu-latest,  r: 'release', not_cran: true}
+          - {os: macos-latest,   r: 'release', not_cran: true}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -50,6 +52,14 @@ jobs:
           path: ${{ env.EPWSHIFTR_CHECK_CACHE }}
           key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('DESCRIPTION') }}
           restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
+
+      - name: Install macOS system libraries
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install gettext
+          echo "PKG_CPPFLAGS=-I$(brew --prefix gettext)/include" >> $GITHUB_ENV
+          echo "PKG_LIBS=-L$(brew --prefix gettext)/lib -lintl" >> $GITHUB_ENV
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
