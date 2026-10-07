@@ -1119,4 +1119,145 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_equal(nrow(workflow$outputs), 1L)
 })
 
+# A controlled threshold makes multiple backend components report identical
+# fallback warnings. The public workflow must persist them and still write EPW.
+test_that("repeated runtime warnings do not block EPW output or resume", {
+    skip_if_not_installed("duckdb")
+    skip_if_not_installed("RNetCDF")
+    local_test_cache()
+    withr::local_options(epwshiftr.threshold_alpha = 0)
+    root <- withr::local_tempdir()
+    store <- EsgStore$new(file.path(root, "store"))
+    withr::defer(store$close())
+    morpher <- epw_morpher(
+        store,
+        epw = get_cache_epw(),
+        site_id = "SIN",
+        transform = monthly_transform("epwshiftr")
+    )
+    variables <- unique(c(morpher$required_variables(), "tasmin", "tasmax"))
+    docs <- lapply(variables, function(variable) {
+        path <- file.path(root, paste0(variable, ".nc"))
+        write_local_cmip6_netcdf_fixture(
+            path,
+            2060L,
+            variable_id = variable,
+            frequency = "mon"
+        )
+        epw_morpher_test_file_docs(
+            basename(path),
+            path,
+            path,
+            variable_id = variable,
+            frequency = "mon"
+        )
+    })
+    query_id <- store$add_files(epw_morpher_test_result(
+        as.data.frame(data.table::rbindlist(docs, fill = TRUE))
+    ))
+    plan <- store$plan_region(
+        query_id,
+        lon = 103.98,
+        lat = 1.37,
+        site_id = "SIN",
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
+    )
+    expect_true(all(store$extract(plan_id = plan$plan_id)$status == "done"))
+    # Repeat the same public workflow to check durable diagnostics on reuse.
+    run <- function() {
+        suppressWarnings(morpher$workflow(
+            plan_id = plan$plan_id,
+            periods = epw_morph_periods(future = 2060L),
+            strict = TRUE,
+            dir = "outputs"
+        ))
+    }
+    result <- run()
+    expect_equal(nrow(result$outputs), 1L)
+    expect_true(file.exists(store_abs_path(result$outputs$path, store$path)))
+    diagnostics <- morpher__read_table(store, "epw_morph_diagnostic")
+    expect_identical(anyDuplicated(diagnostics$diagnostic_id), 0L)
+    fallback <- diagnostics[
+        diagnostics$code == "fallback_shift_alpha_threshold"
+    ]
+    expect_gt(nrow(fallback), 1L)
+    expect_gt(data.table::uniqueN(fallback$month), 1L)
+    expect_true(all(fallback$severity == "warning"))
+    expect_true(all(fallback$morph_id == result$plan$morph_id))
+    resumed <- run()
+    expect_identical(resumed$outputs$output_id, result$outputs$output_id)
+    expect_equal(
+        morpher__read_table(store, "epw_morph_diagnostic"),
+        diagnostics
+    )
+    # Read actual backend parameters through the public interface. The preview
+    # still requests auto, while this controlled execution applies only shift.
+    process <- morpher$process_data(result$plan$morph_id)
+    expect_named(process, result$results$case_id)
+    actual <- process[[1L]]
+    expect_identical(actual$morph_id, result$plan$morph_id)
+    expect_equal(actual$results$result_id, result$results$result_id)
+    expect_identical(actual$runtime_options$epwshiftr.threshold_alpha, 0)
+    expect_equal(nrow(actual$parts$tdb), 8760L)
+    expect_gt(nrow(actual$factors), 0L)
+    expect_true(all(actual$parts$tdb$method_applied == "shift"))
+    expect_true(all(actual$parts$tdb$alpha == 0))
+    expect_true(any(
+        actual$diagnostics$code == "fallback_shift_alpha_threshold"
+    ))
+    expect_equal(nrow(actual$diagnostics), nrow(diagnostics))
+    expect_true(any(result$preview$factors$method == "auto"))
+    baseline <- epw_file_read(get_cache_epw())$data()
+    # Match calendar positions explicitly, rather than relying on row order.
+    calendar_key <- function(data) {
+        paste(data$month, data$day, data$hour, data$minute)
+    }
+    index <- match(calendar_key(actual$parts$tdb), calendar_key(baseline))
+    expect_false(anyNA(index))
+    expect_equal(
+        as.numeric(actual$parts$tdb$dry_bulb_temperature),
+        as.numeric(baseline$dry_bulb_temperature[index]) +
+            actual$parts$tdb$delta,
+        tolerance = 1e-10
+    )
+    expect_error(
+        morpher$process_data(result$plan$morph_id, case_id = "absent"),
+        "No saved results"
+    )
+    store$close()
+    store <- EsgStore$new(file.path(root, "store"))
+    morpher <- epw_morpher(
+        store,
+        get_cache_epw(),
+        site_id = "SIN",
+        transform = monthly_transform("epwshiftr")
+    )
+    reopened <- morpher$process_data(result$plan$morph_id)[[1L]]
+    expect_equal(reopened$parts, actual$parts)
+    expect_equal(reopened$factors, actual$factors)
+
+    # A damaged payload must not be returned or silently accepted on resume.
+    reference <- jsonlite::fromJSON(result$results$provenance_json)$process_data
+    path <- store_abs_path(reference$path, store$path)
+    bytes <- readBin(path, "raw", n = file.info(path)$size)
+    writeBin(charToRaw("damaged process data"), path)
+    expect_error(
+        morpher$process_data(result$plan$morph_id),
+        "missing or damaged"
+    )
+    expect_error(morpher$run(result$plan$morph_id), "missing or damaged")
+    writeBin(bytes, path)
+    expect_equal(
+        morpher$process_data(result$plan$morph_id)[[1L]]$factors,
+        actual$factors
+    )
+    writeBin(charToRaw("damaged again"), path)
+    repaired <- morpher$run(result$plan$morph_id, overwrite = TRUE)
+    expect_equal(nrow(repaired), 1L)
+    expect_equal(
+        morpher$process_data(result$plan$morph_id)[[1L]]$parts,
+        actual$parts
+    )
+})
+
 # vim: fdm=marker :

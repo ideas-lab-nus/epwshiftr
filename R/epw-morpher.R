@@ -489,6 +489,109 @@ morpher__json_int_vector <- function(x) {
 }
 # }}}
 
+# Persist only backend-owned scientific products, without serializing the EPW
+# object, component functions or store connection. Content-addressed files keep
+# earlier result references valid if a later execution stops partway through.
+# morpher__process_write {{{
+morpher__process_write <- function(store, result, plan, case, diagnostics) {
+    sequence <- S7::S7_inherits(result, WeatherSequenceResult)
+    plan <- data.table::copy(plan)
+    data.table::set(
+        plan,
+        j = intersect(
+            c("status", "updated_at", "last_error"),
+            names(plan)
+        ),
+        value = NULL
+    )
+    payload <- list(
+        schema_version = 1L,
+        morph_id = plan$morph_id[[1L]],
+        case_id = case$case_id[[1L]],
+        plan = as.data.frame(plan),
+        case = as.data.frame(case),
+        package_version = as.character(utils::packageVersion("epwshiftr")),
+        runtime_options = list(
+            epwshiftr.threshold_alpha = getOption("epwshiftr.threshold_alpha")
+        ),
+        factors = if (sequence) result@factors else result$factors,
+        parts = if (sequence) result@parts else result$parts,
+        diagnostics = unique(diagnostics),
+        provenance = if (sequence) result@provenance else list()
+    )
+    root <- file.path(
+        store$path,
+        "outputs",
+        "epw-morph",
+        payload$morph_id,
+        paste0("case=", morpher__safe_path(payload$case_id))
+    )
+    dir.create(root, recursive = TRUE, showWarnings = FALSE)
+    temporary <- tempfile("process-", tmpdir = root)
+    on.exit(unlink(temporary), add = TRUE)
+    saveRDS(payload, temporary, version = 3L)
+    sha256 <- checksum_file(temporary)
+    path <- file.path(root, paste0("process-", sha256, ".rds"))
+    if (!file.exists(path) || !identical(checksum_file(path), sha256)) {
+        if (!file.rename(temporary, path)) {
+            cli::cli_abort("Could not save morphing process data.")
+        }
+    }
+    artifact_id <- store$register_artifact(
+        kind = "output",
+        path = path,
+        role = "derived",
+        checksum = sha256,
+        metadata = list(
+            morph_id = payload$morph_id,
+            case_id = payload$case_id,
+            content = "morph_process_data",
+            schema_version = 1L
+        )
+    )
+    list(
+        path = store_rel_path(path, root = store$path),
+        sha256 = sha256,
+        artifact_id = artifact_id,
+        schema_version = 1L
+    )
+}
+# }}}
+
+# Resolve a case's shared process reference and verify its content before either
+# resuming results or exposing data. Old results remain usable as weather files
+# but their missing scientific products must never be reconstructed as actuals.
+# morpher__process_reference {{{
+morpher__process_reference <- function(rows, store_root, required = TRUE) {
+    references <- lapply(rows$provenance_json, function(value) {
+        jsonlite::fromJSON(value, simplifyVector = FALSE)$process_data
+    })
+    absent <- vapply(references, is.null, logical(1L))
+    if (all(absent) && !required) {
+        return(NULL)
+    }
+    if (any(absent)) {
+        cli::cli_abort(
+            "Process data were not saved for this case. Rerun with `overwrite = TRUE` to capture actual execution data."
+        )
+    }
+    reference <- references[[1L]]
+    if (!all(vapply(references, identical, logical(1L), reference))) {
+        cli::cli_abort("Result members reference different process data.")
+    }
+    path <- store_abs_path(reference$path, root = store_root)
+    if (
+        !file.exists(path) ||
+            !identical(checksum_file(path), reference$sha256)
+    ) {
+        cli::cli_abort(
+            "Morphing process data are missing or damaged. Restore the saved artifact or rerun with `overwrite = TRUE`."
+        )
+    }
+    reference
+}
+# }}}
+
 # morpher__normalize_result_manifest {{{
 morpher__normalize_result_manifest <- function(rows) {
     rows <- data.table::as.data.table(data.table::copy(rows))
@@ -560,6 +663,8 @@ morpher__result_case_complete <- function(rows, store_root = NULL) {
         if (any(!file.exists(paths))) {
             return(FALSE)
         }
+        # New results promise durable process data as well as hourly weather.
+        morpher__process_reference(rows, store_root, required = FALSE)
     }
     expected <- unique(as.integer(rows$member_count))
     member_keys <- paste(
@@ -1625,6 +1730,9 @@ EpwMorpher <- R6::R6Class(
             complete_cases <- cases[vapply(
                 cases,
                 function(case_id) {
+                    if (isTRUE(overwrite)) {
+                        return(FALSE)
+                    }
                     rows <- complete_existing[
                         complete_existing[["case_id"]] == case_id
                     ]
@@ -2528,6 +2636,71 @@ EpwMorpher <- R6::R6Class(
                 plans <- plans[plans[["morph_id"]] %in% target_morph_id]
             }
             plans[]
+        },
+        # }}}
+
+        #' @description
+        #' Read saved execution products for one morphing plan. The result is a
+        #' list named by case ID. Each entry contains the saved plan and case,
+        #' runtime options, backend `factors`, method-specific `parts`, runtime
+        #' diagnostics and provenance, plus the associated result manifest rows
+        #' in `results`. These are execution products, not preview factors.
+        #'
+        #' Factor tables may summarize hourly values. Use method-specific parts
+        #' for hourly application parameters where supplied by the backend.
+        #' Empty or NULL products mean that the backend did not supply them.
+        #' This interface does not reconstruct unrecorded pipeline stages.
+        #' Multi-year members share one case payload. Reading checks its SHA256.
+        #' Older runs without saved process data require an explicit rerun with
+        #' `overwrite = TRUE`. No climate data are fetched by this method.
+        #'
+        #' @param morph_id Morphing plan ID.
+        #' @param case_id Optional case ID to read.
+        # process_data {{{
+        process_data = function(morph_id, case_id = NULL) {
+            checkmate::assert_string(morph_id, min.chars = 1L)
+            checkmate::assert_string(case_id, min.chars = 1L, null.ok = TRUE)
+            private$get_plan(morph_id)
+            rows <- morpher__normalize_result_manifest(
+                morpher__read_table(private$store, "epw_morph_result")
+            )
+            target_morph_id <- morph_id
+            rows <- rows[rows[["morph_id"]] == target_morph_id]
+            if (!is.null(case_id)) {
+                target_case_id <- case_id
+                rows <- rows[rows[["case_id"]] == target_case_id]
+            }
+            if (!nrow(rows)) {
+                cli::cli_abort(
+                    "No saved results match the requested morphing plan and case."
+                )
+            }
+            cases <- unique(rows[["case_id"]])
+            stats::setNames(
+                lapply(cases, function(id) {
+                    members <- rows[rows[["case_id"]] == id]
+                    reference <- morpher__process_reference(
+                        members,
+                        private$store$path
+                    )
+                    value <- readRDS(store_abs_path(
+                        reference$path,
+                        private$store$path
+                    ))
+                    if (
+                        !identical(value$schema_version, 1L) ||
+                            !identical(value$morph_id, morph_id) ||
+                            !identical(value$case_id, id)
+                    ) {
+                        cli::cli_abort(
+                            "Saved process data have an unsupported schema or mismatched case identity."
+                        )
+                    }
+                    value$results <- members
+                    value
+                }),
+                cases
+            )
         },
         # }}}
 
@@ -3873,6 +4046,11 @@ EpwMorpher <- R6::R6Class(
             if (!nrow(diagnostics)) {
                 return(invisible(diagnostics))
             }
+            # Components can report the same case-level warning more than once.
+            # Its content-derived identity denotes one diagnostic, so retain a
+            # single exact row before inserting primary keys. Distinct actions,
+            # variables, months and cases remain separate records.
+            diagnostics <- unique(diagnostics)
             rows <- data.table::copy(diagnostics)
             rows[,
                 diagnostic_id := vapply(
@@ -3982,6 +4160,31 @@ EpwMorpher <- R6::R6Class(
             )
             member_records <- sequence__records(case_result)
             member_count <- length(member_records)
+            process_reference <- morpher__process_write(
+                private$store,
+                case_result,
+                private$get_plan(morph_id),
+                case,
+                diagnostics
+            )
+            # Partial recovery may retain intact weather members only when the
+            # rerun produced the same scientific products and configuration.
+            if (!overwrite && resume && nrow(existing_case)) {
+                previous_reference <- morpher__process_reference(
+                    existing_case,
+                    private$store$path
+                )
+                if (
+                    !identical(
+                        previous_reference$sha256,
+                        process_reference$sha256
+                    )
+                ) {
+                    cli::cli_abort(
+                        "Process data changed during partial recovery. Rerun with `overwrite = TRUE` to keep all members consistent."
+                    )
+                }
+            }
             rows <- list()
             for (member in member_records) {
                 case_data <- member$data
@@ -4026,6 +4229,7 @@ EpwMorpher <- R6::R6Class(
                 provenance <- utils::modifyList(
                     member$provenance,
                     list(
+                        process_data = process_reference,
                         weather_field_roles = morpher__weather_field_roles(
                             private$recipe
                         )
