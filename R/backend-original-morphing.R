@@ -782,7 +782,9 @@ original_morphing__huss_state <- function(data_epw, context, tdb, pressure) {
         } else {
             data.table::copy(hourly)
         }
-        data.table::setorder(rows, datetime)
+        # A representative EPW may assemble months from different source years.
+        # Smooth adjacent calendar months without changing those source labels.
+        data.table::setorderv(rows, c("month", "day", "hour", "minute"))
         if (external_reference) {
             delta_target <- morpher__monthly_target_vector(
                 rows,
@@ -1852,8 +1854,25 @@ morpher__smooth_enhanced_factors <- function(
         } else {
             data.table::copy(data)
         }
-        data.table::setorder(rows, datetime)
+        # The source year is provenance, not the order of a representative year.
+        # Calendar sorting also keeps the December-January transition cyclic.
+        data.table::setorderv(rows, c("month", "day", "hour", "minute"))
         month <- rows$month
+        # An additive fallback has no multiplicative target. Use the neutral
+        # multiplier while blending adjacent valid stretch months, so a missing
+        # denominator cannot pull their factors toward zero. The fallback rows
+        # themselves are applied as shifts below and expose alpha = 0.
+        if (identical(transform, "stretch")) {
+            fallback <- which(rows[["method_applied"]] == "shift")
+            if (length(fallback)) {
+                data.table::set(
+                    rows,
+                    i = fallback,
+                    j = "alpha_target",
+                    value = 1
+                )
+            }
+        }
         # Relaxed workflows may intentionally contain only a subset of months.
         # Without all twelve constraints, retain piecewise factors for the
         # available months instead of inventing values for missing climate.
@@ -1912,6 +1931,25 @@ morpher__smooth_enhanced_factors <- function(
     data.table::setorder(out, .factor_order)
     out[, .factor_order := NULL]
     out[]
+}
+# }}}
+
+# Apply enhanced stretch factors according to the recorded monthly decision.
+# Both absolute targets and historical changes may fall back to an additive
+# shift. Preserve that decision in the actual values and saved factors, rather
+# than multiplying fallback rows by the old zero-valued placeholder.
+# morpher__apply_enhanced_stretch {{{
+morpher__apply_enhanced_stretch <- function(data, var) {
+    data <- data.table::copy(data)
+    baseline <- as.numeric(data[[var]])
+    value <- baseline * data[["alpha"]]
+    fallback <- which(data[["method_applied"]] == "shift")
+    if (length(fallback)) {
+        value[fallback] <- baseline[fallback] + data[["delta"]][fallback]
+        data.table::set(data, i = fallback, j = "alpha", value = 0)
+    }
+    data.table::set(data, j = var, value = value)
+    data[]
 }
 # }}}
 
@@ -2039,7 +2077,7 @@ original_morphing__from_monthly_enhanced <- function(
         transition_hours = transition_hours
     )
     if (identical(type, "stretch")) {
-        hourly[, (var) := as.numeric(get(var)) * alpha]
+        hourly <- morpher__apply_enhanced_stretch(hourly, var)
     } else if (type %in% c("combined", "auto")) {
         hourly[,
             (var) := as.numeric(get(var)) +
@@ -2630,7 +2668,7 @@ original_morphing__from_monthly_change_enhanced <- function(
         transition_hours = transition_hours
     )
     if (identical(type, "stretch")) {
-        hourly[, (var) := as.numeric(get(var)) * alpha]
+        hourly <- morpher__apply_enhanced_stretch(hourly, var)
     } else if (type %in% c("combined", "auto")) {
         hourly[,
             (var) := as.numeric(get(var)) +
@@ -3244,7 +3282,9 @@ original_morphing__snow_depth <- function(data_epw, context) {
         } else {
             data.table::copy(hourly)
         }
-        data.table::setorder(rows, datetime)
+        # Snow factors use the same representative calendar as other fields,
+        # including EPWs assembled from several historical source years.
+        data.table::setorderv(rows, c("month", "day", "hour", "minute"))
         alpha_target <- morpher__monthly_target_vector(rows, "alpha_target")
         alpha <- morpher__constrained_month_series(
             rows$month,

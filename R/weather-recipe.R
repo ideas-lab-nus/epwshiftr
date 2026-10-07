@@ -793,6 +793,13 @@ recipe__default_specs <- function() {
                 references = c(
                     "https://doi.org/10.1191/0143624405bt112oa",
                     "https://github.com/ideas-lab-nus/epwshiftr/pull/126"
+                ),
+                equation_note = paste(
+                    "Invalid stretch factors use the recorded additive shift.",
+                    "Neutral multipliers support cyclic interpolation next to",
+                    "fallback months; fallback rows retain shift arithmetic.",
+                    "Cyclic factors follow the representative month/day/hour",
+                    "calendar independently of historical source-year labels."
                 )
             ),
             required_inputs = enhanced_inputs[
@@ -820,7 +827,8 @@ recipe__default_specs <- function() {
                 "component_names",
                 "physical_policies"
             ),
-            status = "production"
+            status = "production",
+            version = 3L
         ),
         epwshiftr_daily_power = recipe__spec(
             name = "epwshiftr_daily_power",
