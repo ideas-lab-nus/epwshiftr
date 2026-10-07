@@ -1,6 +1,6 @@
 # epwshiftr (development version)
 
-* Distinguish climate files that share an ESGF dataset-level master ID, retaining file names in store and shared-batch identities without changing raw provider metadata.
+* Distinguish climate files that share an ESGF dataset-level master ID, retaining file names in store and shared-batch identities without changing raw provider metadata (#287).
 
 * Remove obsolete repository-only papers, project/environment configuration,
   community templates, test notes, and local check scripts; retire the transport
