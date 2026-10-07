@@ -3,10 +3,25 @@
 # shift_batch_execution__job_read {{{
 shift_batch_execution__job_read <- function(root) {
     path <- file.path(root, "batch-job.json")
-    if (!file.exists(path)) {
+    if (!dir.exists(root)) {
         return(NULL)
     }
-    job <- jsonlite::read_json(path, simplifyVector = TRUE)
+    # Share a short receipt lock with every publisher. In particular, Windows
+    # copy-overwrite fallback must finish before any reader opens the JSON file.
+    job <- manifest_with_lock(
+        path,
+        {
+            if (file.exists(path)) {
+                jsonlite::read_json(path, simplifyVector = TRUE)
+            } else {
+                NULL
+            }
+        },
+        timeout = 5
+    )
+    if (is.null(job)) {
+        return(NULL)
+    }
     if (job$status %in% c("queued", "running", "stopping")) {
         alive <- if (is.null(job$pid) || is.na(job$pid)) {
             as.numeric(Sys.time()) - job$started < 60
@@ -22,6 +37,35 @@ shift_batch_execution__job_read <- function(root) {
         }
     }
     job
+}
+# }}}
+
+# Serialize receipt publication with readers, independently of the long-lived
+# execution lock. Check both publication operations so an unwritable receipt
+# cannot be reported as a successful state transition.
+# shift_batch_execution__job_write {{{
+shift_batch_execution__job_write <- function(root, job) {
+    path <- file.path(root, "batch-job.json")
+    dir.create(root, recursive = TRUE, showWarnings = FALSE)
+    manifest_with_lock(
+        path,
+        {
+            tmp <- tempfile(pattern = "batch-job-", tmpdir = root)
+            on.exit(unlink(tmp, force = TRUE), add = TRUE)
+            jsonlite::write_json(job, tmp)
+            # Renaming is preferred. The copy fallback is safe for readers only
+            # because they acquire the same lock before checking or opening it.
+            if (!suppressWarnings(file.rename(tmp, path))) {
+                if (!file.copy(tmp, path, overwrite = TRUE)) {
+                    cli::cli_abort(
+                        "Could not publish batch receipt: {.path {path}}."
+                    )
+                }
+            }
+            path
+        },
+        timeout = 5
+    )
 }
 # }}}
 
@@ -127,15 +171,14 @@ shift_batch_execution__resume <- function(
                 )
             )
             shift_batch__receipt_write(x)
-            path <- file.path(x@store_path, "batch-job.json")
-            store_write_json_atomic(job, path)
+            shift_batch_execution__job_write(x@store_path, job)
             if (background) {
                 tryCatch(
                     shift_batch_execution__launch(x@store_path, job),
                     error = function(error) {
                         job$status <- "failed"
                         job$message <- conditionMessage(error)
-                        store_write_json_atomic(job, path)
+                        shift_batch_execution__job_write(x@store_path, job)
                         stop(error)
                     }
                 )

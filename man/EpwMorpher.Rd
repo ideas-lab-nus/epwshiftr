@@ -12,74 +12,76 @@ Hongyuan Jia
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-EpwMorpher-new}{\code{EpwMorpher$new()}}
-\item \href{#method-EpwMorpher-required_variables}{\code{EpwMorpher$required_variables()}}
-\item \href{#method-EpwMorpher-preflight}{\code{EpwMorpher$preflight()}}
-\item \href{#method-EpwMorpher-summarise_climate}{\code{EpwMorpher$summarise_climate()}}
-\item \href{#method-EpwMorpher-summarise_baseline}{\code{EpwMorpher$summarise_baseline()}}
-\item \href{#method-EpwMorpher-plan}{\code{EpwMorpher$plan()}}
-\item \href{#method-EpwMorpher-preview_plan}{\code{EpwMorpher$preview_plan()}}
-\item \href{#method-EpwMorpher-diagnose}{\code{EpwMorpher$diagnose()}}
-\item \href{#method-EpwMorpher-check}{\code{EpwMorpher$check()}}
-\item \href{#method-EpwMorpher-run}{\code{EpwMorpher$run()}}
-\item \href{#method-EpwMorpher-write_epw}{\code{EpwMorpher$write_epw()}}
-\item \href{#method-EpwMorpher-workflow}{\code{EpwMorpher$workflow()}}
-\item \href{#method-EpwMorpher-status}{\code{EpwMorpher$status()}}
-\item \href{#method-EpwMorpher-outputs}{\code{EpwMorpher$outputs()}}
-\item \href{#method-EpwMorpher-clone}{\code{EpwMorpher$clone()}}
-}
+  \itemize{
+    \item \href{#method-EpwMorpher-initialize}{\code{EpwMorpher$new()}}
+    \item \href{#method-EpwMorpher-required_variables}{\code{EpwMorpher$required_variables()}}
+    \item \href{#method-EpwMorpher-preflight}{\code{EpwMorpher$preflight()}}
+    \item \href{#method-EpwMorpher-summarise_climate}{\code{EpwMorpher$summarise_climate()}}
+    \item \href{#method-EpwMorpher-summarise_baseline}{\code{EpwMorpher$summarise_baseline()}}
+    \item \href{#method-EpwMorpher-plan}{\code{EpwMorpher$plan()}}
+    \item \href{#method-EpwMorpher-preview_plan}{\code{EpwMorpher$preview_plan()}}
+    \item \href{#method-EpwMorpher-diagnose}{\code{EpwMorpher$diagnose()}}
+    \item \href{#method-EpwMorpher-check}{\code{EpwMorpher$check()}}
+    \item \href{#method-EpwMorpher-run}{\code{EpwMorpher$run()}}
+    \item \href{#method-EpwMorpher-write_epw}{\code{EpwMorpher$write_epw()}}
+    \item \href{#method-EpwMorpher-workflow}{\code{EpwMorpher$workflow()}}
+    \item \href{#method-EpwMorpher-status}{\code{EpwMorpher$status()}}
+    \item \href{#method-EpwMorpher-process_data}{\code{EpwMorpher$process_data()}}
+    \item \href{#method-EpwMorpher-outputs}{\code{EpwMorpher$outputs()}}
+    \item \href{#method-EpwMorpher-clone}{\code{EpwMorpher$clone()}}
+  }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EpwMorpher-new"></a>}}
-\if{latex}{\out{\hypertarget{method-EpwMorpher-new}{}}}
-\subsection{Method \code{new()}}{
-Create an EPW morpher.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$new(
+\if{html}{\out{<a id="method-EpwMorpher-initialize"></a>}}
+\if{latex}{\out{\hypertarget{method-EpwMorpher-initialize}{}}}
+\subsection{\code{EpwMorpher$new()}}{
+  Create an EPW morpher.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$new(
   store,
   epw,
   site_id = NULL,
   transform = monthly_transform("original_morphing"),
   label = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{store}}{An \link{EsgStore} object.}
-
-\item{\code{epw}}{Baseline EPW path, internal \code{EpwFile}, or an external
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{store}}{An \link{EsgStore} object.}
+      \item{\code{epw}}{Baseline EPW path, internal \code{EpwFile}, or an external
 object inheriting from \code{"Epw"}.}
-
-\item{\code{site_id}}{Optional site identifier.}
-
-\item{\code{transform}}{A reusable weather transformation created by a
+      \item{\code{site_id}}{Optional site identifier.}
+      \item{\code{transform}}{A reusable weather transformation created by a
 scale-specific transform constructor.}
+      \item{\code{label}}{Optional source label.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
 
-\item{\code{label}}{Optional source label.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-required_variables"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-required_variables}{}}}
-\subsection{Method \code{required_variables()}}{
-Return transform-required CMIP variable IDs.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$required_variables()}\if{html}{\out{</div>}}
+\subsection{\code{EpwMorpher$required_variables()}}{
+  Return transform-required CMIP variable IDs.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$required_variables()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-preflight"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-preflight}{}}}
-\subsection{Method \code{preflight()}}{
-Preflight EPW morphing inputs without writing store state.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$preflight(
+\subsection{\code{EpwMorpher$preflight()}}{
+  Preflight EPW morphing inputs without writing store state.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$preflight(
   plan_id = NULL,
   periods = NULL,
   reference_plan_id = NULL,
@@ -92,95 +94,87 @@ Preflight EPW morphing inputs without writing store state.
   baseline_id = NULL,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   strict = TRUE
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{plan_id}}{Optional extraction plan IDs.}
-
-\item{\code{periods}}{Optional period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
-
-\item{\code{reference_plan_id}}{Optional reference extraction plan IDs for
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan_id}}{Optional extraction plan IDs.}
+      \item{\code{periods}}{Optional period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+      \item{\code{reference_plan_id}}{Optional reference extraction plan IDs for
 change-factor backends.}
-
-\item{\code{reference_periods}}{Optional reference period table from
+      \item{\code{reference_periods}}{Optional reference period table from
 \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
-
-\item{\code{summary_id}}{Optional climate summary ID.}
-
-\item{\code{reference_summary_id}}{Optional reference climate summary ID for
+      \item{\code{summary_id}}{Optional climate summary ID.}
+      \item{\code{reference_summary_id}}{Optional reference climate summary ID for
 change-factor backends.}
-
-\item{\code{observed_plan_id}}{Optional observed-weather extraction plan
+      \item{\code{observed_plan_id}}{Optional observed-weather extraction plan
 IDs.}
-
-\item{\code{observed_periods}}{Optional observed-weather period table.}
-
-\item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
-
-\item{\code{baseline_id}}{Optional baseline summary ID.}
-
-\item{\code{by}}{Climate grouping columns.}
-
-\item{\code{strict}}{Whether required-data issues are errors.}
+      \item{\code{observed_periods}}{Optional observed-weather period table.}
+      \item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
+      \item{\code{baseline_id}}{Optional baseline summary ID.}
+      \item{\code{by}}{Climate grouping columns.}
+      \item{\code{strict}}{Whether required-data issues are errors.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-summarise_climate"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-summarise_climate}{}}}
-\subsection{Method \code{summarise_climate()}}{
-Summarise extracted climate data by period and month.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$summarise_climate(
+\subsection{\code{EpwMorpher$summarise_climate()}}{
+  Summarise extracted climate data by period and month.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$summarise_climate(
   plan_id,
   periods,
   strict = TRUE,
   overwrite = FALSE
-)}\if{html}{\out{</div>}}
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan_id}}{Extraction plan IDs.}
+      \item{\code{periods}}{Period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+      \item{\code{strict}}{Whether incomplete extraction coverage is an error.}
+      \item{\code{overwrite}}{Whether to replace existing rows for this summary.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{plan_id}}{Extraction plan IDs.}
-
-\item{\code{periods}}{Period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
-
-\item{\code{strict}}{Whether incomplete extraction coverage is an error.}
-
-\item{\code{overwrite}}{Whether to replace existing rows for this summary.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-summarise_baseline"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-summarise_baseline}{}}}
-\subsection{Method \code{summarise_baseline()}}{
-Summarise baseline EPW weather by month.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$summarise_baseline(overwrite = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{EpwMorpher$summarise_baseline()}}{
+  Summarise baseline EPW weather by month.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$summarise_baseline(overwrite = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{overwrite}}{Whether to replace existing rows.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{overwrite}}{Whether to replace existing rows.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-plan"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-plan}{}}}
-\subsection{Method \code{plan()}}{
-Create a morphing plan and monthly factors.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$plan(
+\subsection{\code{EpwMorpher$plan()}}{
+  Create a morphing plan and monthly factors.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$plan(
   summary_id,
   reference_summary_id = NULL,
   observed_summary_id = NULL,
@@ -188,167 +182,160 @@ Create a morphing plan and monthly factors.
   by = c("source_id", "experiment_id", "variant_label", "period"),
   strict = TRUE,
   overwrite = FALSE
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{summary_id}}{Climate summary ID.}
-
-\item{\code{reference_summary_id}}{Optional reference climate summary ID for
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{summary_id}}{Climate summary ID.}
+      \item{\code{reference_summary_id}}{Optional reference climate summary ID for
 change-factor backends.}
-
-\item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
-
-\item{\code{baseline_id}}{Baseline summary ID. If \code{NULL}, baseline summary is created.}
-
-\item{\code{by}}{Climate grouping columns.}
-
-\item{\code{strict}}{Whether missing required variables are blocking errors.}
-
-\item{\code{overwrite}}{Whether to replace an existing plan.}
+      \item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
+      \item{\code{baseline_id}}{Baseline summary ID. If \code{NULL}, baseline summary is created.}
+      \item{\code{by}}{Climate grouping columns.}
+      \item{\code{strict}}{Whether missing required variables are blocking errors.}
+      \item{\code{overwrite}}{Whether to replace an existing plan.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-preview_plan"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-preview_plan}{}}}
-\subsection{Method \code{preview_plan()}}{
-Preview a morphing plan and monthly factors without writing store state.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$preview_plan(
+\subsection{\code{EpwMorpher$preview_plan()}}{
+  Preview a morphing plan and monthly factors without writing store state.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$preview_plan(
   summary_id,
   reference_summary_id = NULL,
   observed_summary_id = NULL,
   baseline_id = NULL,
   by = c("source_id", "experiment_id", "variant_label", "period"),
   strict = TRUE
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{summary_id}}{Climate summary ID.}
-
-\item{\code{reference_summary_id}}{Optional reference climate summary ID for
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{summary_id}}{Climate summary ID.}
+      \item{\code{reference_summary_id}}{Optional reference climate summary ID for
 change-factor backends.}
-
-\item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
-
-\item{\code{baseline_id}}{Baseline summary ID. If \code{NULL}, baseline summary is created.}
-
-\item{\code{by}}{Climate grouping columns.}
-
-\item{\code{strict}}{Whether missing required variables are blocking errors.}
+      \item{\code{observed_summary_id}}{Optional observed-weather summary ID.}
+      \item{\code{baseline_id}}{Baseline summary ID. If \code{NULL}, baseline summary is created.}
+      \item{\code{by}}{Climate grouping columns.}
+      \item{\code{strict}}{Whether missing required variables are blocking errors.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-diagnose"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-diagnose}{}}}
-\subsection{Method \code{diagnose()}}{
-Diagnose a morphing plan.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$diagnose(morph_id)}\if{html}{\out{</div>}}
+\subsection{\code{EpwMorpher$diagnose()}}{
+  Diagnose a morphing plan.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$diagnose(morph_id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{morph_id}}{Morphing plan ID.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{morph_id}}{Morphing plan ID.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-check"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-check}{}}}
-\subsection{Method \code{check()}}{
-Abort if a morphing plan has blocking diagnostics.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$check(morph_id)}\if{html}{\out{</div>}}
+\subsection{\code{EpwMorpher$check()}}{
+  Abort if a morphing plan has blocking diagnostics.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$check(morph_id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{morph_id}}{Morphing plan ID.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{morph_id}}{Morphing plan ID.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-run"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-run}{}}}
-\subsection{Method \code{run()}}{
-Execute a morphing plan and write one hourly Parquet file per result
+\subsection{\code{EpwMorpher$run()}}{
+  Execute a morphing plan and write one hourly Parquet file per result
 member and weather year.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$run(morph_id, overwrite = FALSE, resume = TRUE, reporter = NULL)}\if{html}{\out{</div>}}
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$run(morph_id, overwrite = FALSE, resume = TRUE, reporter = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{morph_id}}{Morphing plan ID.}
+      \item{\code{overwrite}}{Whether to overwrite existing result files.}
+      \item{\code{resume}}{Whether to reuse complete existing results.}
+      \item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{morph_id}}{Morphing plan ID.}
-
-\item{\code{overwrite}}{Whether to overwrite existing result files.}
-
-\item{\code{resume}}{Whether to reuse complete existing results.}
-
-\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-write_epw"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-write_epw}{}}}
-\subsection{Method \code{write_epw()}}{
-Write one future EPW file for every persisted result member.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$write_epw(
+\subsection{\code{EpwMorpher$write_epw()}}{
+  Write one future EPW file for every persisted result member.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$write_epw(
   morph_id,
   dir,
   separate = TRUE,
   overwrite = FALSE,
   resume = TRUE,
   reporter = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{morph_id}}{Morphing plan ID.}
-
-\item{\code{dir}}{Output directory inside the store root. Relative paths are
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{morph_id}}{Morphing plan ID.}
+      \item{\code{dir}}{Output directory inside the store root. Relative paths are
 resolved under the store root. If \code{NULL}, the workflow stops
 after writing morph result Parquet files and does not write EPW
 outputs.}
-
-\item{\code{separate}}{Whether to create case subdirectories.}
-
-\item{\code{overwrite}}{Whether to overwrite existing EPW files.}
-
-\item{\code{resume}}{Whether to reuse complete existing EPW outputs.}
-
-\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
+      \item{\code{separate}}{Whether to create case subdirectories.}
+      \item{\code{overwrite}}{Whether to overwrite existing EPW files.}
+      \item{\code{resume}}{Whether to reuse complete existing EPW outputs.}
+      \item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-workflow"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-workflow}{}}}
-\subsection{Method \code{workflow()}}{
-Run the store-native EPW morphing workflow.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$workflow(
+\subsection{\code{EpwMorpher$workflow()}}{
+  Run the store-native EPW morphing workflow.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$workflow(
   plan_id,
   periods,
   reference_plan_id = NULL,
@@ -362,93 +349,120 @@ Run the store-native EPW morphing workflow.
   overwrite = FALSE,
   resume = TRUE,
   reporter = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{plan_id}}{Extraction plan IDs.}
-
-\item{\code{periods}}{Period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
-
-\item{\code{reference_plan_id}}{Optional reference extraction plan IDs for
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan_id}}{Extraction plan IDs.}
+      \item{\code{periods}}{Period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
+      \item{\code{reference_plan_id}}{Optional reference extraction plan IDs for
 change-factor backends.}
-
-\item{\code{reference_periods}}{Optional reference period table from
+      \item{\code{reference_periods}}{Optional reference period table from
 \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
-
-\item{\code{observed_plan_id}}{Optional observed-weather extraction plan
+      \item{\code{observed_plan_id}}{Optional observed-weather extraction plan
 IDs.}
-
-\item{\code{observed_periods}}{Optional observed-weather period table.}
-
-\item{\code{by}}{Climate grouping columns.}
-
-\item{\code{strict}}{Whether blocking diagnostics should abort the workflow.}
-
-\item{\code{dir}}{Output directory. Relative paths are resolved under the store root.}
-
-\item{\code{separate}}{Whether to create case subdirectories.}
-
-\item{\code{overwrite}}{Whether to overwrite existing plan, result, and EPW outputs.}
-
-\item{\code{resume}}{Whether to reuse complete existing result and EPW outputs.}
-
-\item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
+      \item{\code{observed_periods}}{Optional observed-weather period table.}
+      \item{\code{by}}{Climate grouping columns.}
+      \item{\code{strict}}{Whether blocking diagnostics should abort the workflow.}
+      \item{\code{dir}}{Output directory. Relative paths are resolved under the store root.}
+      \item{\code{separate}}{Whether to create case subdirectories.}
+      \item{\code{overwrite}}{Whether to overwrite existing plan, result, and EPW outputs.}
+      \item{\code{resume}}{Whether to reuse complete existing result and EPW outputs.}
+      \item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-status"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-status}{}}}
-\subsection{Method \code{status()}}{
-Return morphing plan status rows.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$status(morph_id = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{EpwMorpher$status()}}{
+  Return morphing plan status rows.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$status(morph_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{morph_id}}{Optional morphing plan IDs.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{morph_id}}{Optional morphing plan IDs.}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EpwMorpher-process_data"></a>}}
+\if{latex}{\out{\hypertarget{method-EpwMorpher-process_data}{}}}
+\subsection{\code{EpwMorpher$process_data()}}{
+  Read saved execution products for one morphing plan. The result is a
+list named by case ID. Each entry contains the saved plan and case,
+runtime options, backend \code{factors}, method-specific \code{parts}, runtime
+diagnostics and provenance, plus the associated result manifest rows
+in \code{results}. These are execution products, not preview factors.
+
+Factor tables may summarize hourly values. Use method-specific parts
+for hourly application parameters where supplied by the backend.
+Empty or NULL products mean that the backend did not supply them.
+This interface does not reconstruct unrecorded pipeline stages.
+Multi-year members share one case payload. Reading checks its SHA256.
+Older runs without saved process data require an explicit rerun with
+\code{overwrite = TRUE}. No climate data are fetched by this method.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$process_data(morph_id, case_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{morph_id}}{Morphing plan ID.}
+      \item{\code{case_id}}{Optional case ID to read.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-outputs"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-outputs}{}}}
-\subsection{Method \code{outputs()}}{
-Return future EPW output rows.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$outputs(morph_id = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{EpwMorpher$outputs()}}{
+  Return future EPW output rows.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$outputs(morph_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{morph_id}}{Optional morphing plan IDs.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{morph_id}}{Optional morphing plan IDs.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EpwMorpher-clone"></a>}}
 \if{latex}{\out{\hypertarget{method-EpwMorpher-clone}{}}}
-\subsection{Method \code{clone()}}{
-The objects of this class are cloneable with this method.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EpwMorpher$clone(deep = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{EpwMorpher$clone()}}{
+  The objects of this class are cloneable with this method.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EpwMorpher$clone(deep = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{deep}}{Whether to make a deep clone.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{deep}}{Whether to make a deep clone.}
-}
-\if{html}{\out{</div>}}
-}
-}
 }
