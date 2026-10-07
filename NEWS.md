@@ -1,6 +1,6 @@
 # epwshiftr (development version)
 
-* Save backend execution factors, intermediate products, runtime diagnostics and result links for each morphing case. `EpwMorpher$process_data()` verifies saved checksums when reading them. Repeated identical warnings no longer block output, and explicit overwrite rebuilds completed products.
+* Save backend execution factors, intermediate products, runtime diagnostics and result links for each morphing case. `EpwMorpher$process_data()` verifies saved checksums when reading them. Repeated identical warnings no longer block output, and explicit overwrite rebuilds completed products (#290).
 
 * Distinguish climate files that share an ESGF dataset-level master ID, retaining file names in store and shared-batch identities without changing raw provider metadata (#287).
 
