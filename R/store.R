@@ -9662,6 +9662,8 @@ store__file_table <- function(files) {
 }
 # }}}
 
+# Preserve file-scoped provider identities, qualifying dataset-scoped master IDs
+# with the filename so separate native time slices cannot share one store key.
 # store__file_keys {{{
 store__file_keys <- function(dt) {
     if (!nrow(dt)) {
@@ -9672,6 +9674,30 @@ store__file_keys <- function(dt) {
         seq_len(nrow(dt)),
         function(i) {
             master_id <- store__cell(dt, "master_id", i)
+            dataset_id <- store__cell(dt, "dataset_id", i)
+            dataset_master <- sub(
+                "\\.v[0-9]+$",
+                "",
+                sub("\\|.*$", "", dataset_id)
+            )
+            if (
+                !is.na(master_id) &&
+                    nzchar(master_id) &&
+                    identical(master_id, dataset_master)
+            ) {
+                # Some ESGF bridges return the dataset's master_id on every
+                # File record. Keep the raw metadata, but restore file scope
+                # for storage. Without a filename, use the existing fallbacks.
+                filename <- store__cell(dt, "filename", i)
+                if (is.na(filename) || !nzchar(filename)) {
+                    filename <- store__cell(dt, "title", i)
+                }
+                master_id <- if (!is.na(filename) && nzchar(filename)) {
+                    paste0(master_id, ".", filename)
+                } else {
+                    NA_character_
+                }
+            }
             if (!is.na(master_id) && nzchar(master_id)) {
                 return(paste0("master:", master_id))
             }

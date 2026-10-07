@@ -189,6 +189,11 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
     if (!"master_id" %in% names(catalog)) {
         data.table::set(catalog, j = "master_id", value = NA_character_)
     }
+    # Generic filenames need the dataset identity to distinguish a provider's
+    # dataset-level master ID from a file-level ID, just as child stores do.
+    if (!"dataset_id" %in% names(catalog)) {
+        data.table::set(catalog, j = "dataset_id", value = NA_character_)
+    }
     keys <- c(
         "source_id",
         "experiment_id",
@@ -206,6 +211,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
             "file_key",
             "filename",
             "master_id",
+            "dataset_id",
             "version",
             "tracking_id",
             "checksum",
@@ -341,6 +347,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
         "file_key",
         "filename",
         "master_id",
+        "dataset_id",
         "source_id",
         "experiment_id",
         "variant_label",
