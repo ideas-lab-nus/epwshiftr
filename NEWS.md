@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Validate Kernel-QDM model and observed inputs by role, retain interpolation boundary samples and allow CMIP/ScenarioMIP activity differences between roles. Save fitted CDF grids, per-value quantile mappings, direct-model signal series and bounding corrections with runtime diagnostics. Manual summaries accept `input_role`.
+
 * Isolate observed-reference selection, result reuse, diagnostics and completion status by morphing plan and case in shared stores. Recipes requiring observed references now use version 2 to prevent reuse of earlier plans (#291).
 
 * Save backend execution factors, intermediate products, runtime diagnostics and result links for each morphing case. `EpwMorpher$process_data()` verifies saved checksums when reading them. Repeated identical warnings no longer block output, and explicit overwrite rebuilds completed products (#290).

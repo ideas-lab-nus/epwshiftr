@@ -918,7 +918,8 @@ EpwMorpher <- R6::R6Class(
                     private$preflight_extraction(
                         reference_plan_id,
                         reference_periods,
-                        strict = strict
+                        strict = strict,
+                        input_role = "model_historical"
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -927,7 +928,8 @@ EpwMorpher <- R6::R6Class(
                     private$preflight_extraction(
                         observed_plan_id,
                         observed_periods,
-                        strict = strict
+                        strict = strict,
+                        input_role = "observed_reference"
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -941,7 +943,8 @@ EpwMorpher <- R6::R6Class(
                     private$preflight_summary(
                         reference_summary_id,
                         morpher__reference_case_by(by),
-                        strict = strict
+                        strict = strict,
+                        input_role = "model_historical"
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -950,7 +953,8 @@ EpwMorpher <- R6::R6Class(
                     private$preflight_summary(
                         observed_summary_id,
                         morpher__observed_case_by(by),
-                        strict = strict
+                        strict = strict,
+                        input_role = "observed_reference"
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -984,7 +988,7 @@ EpwMorpher <- R6::R6Class(
                         stage = "observed_reference",
                         severity = "error",
                         code = "missing_observed_reference",
-                        message = "The selected morphing backend requires observed daily weather.",
+                        message = "The selected morphing backend requires observed reference weather.",
                         action = "Supply `observed_plan_id` and `observed_periods`."
                     )
                 } else {
@@ -998,7 +1002,7 @@ EpwMorpher <- R6::R6Class(
                         stage = "observed_reference",
                         severity = "error",
                         code = "unexpected_observed_reference",
-                        message = "The selected morphing backend does not accept observed daily weather.",
+                        message = "The selected morphing backend does not accept observed reference weather.",
                         action = "Remove the observed reference or select a backend that accepts it."
                     )
                 } else {
@@ -1012,6 +1016,10 @@ EpwMorpher <- R6::R6Class(
         #' @description
         #' Summarise extracted climate data by period and month.
         #'
+        #' @param input_role Source role used to validate raw variables and
+        #'   frequencies, one of `model_future`, `model_historical`, or
+        #'   `observed_reference`. Workflow calls select this automatically.
+        #'
         #' @param plan_id Extraction plan IDs.
         #' @param periods Period table from [epw_morph_periods()].
         #' @param strict Whether incomplete extraction coverage is an error.
@@ -1021,7 +1029,8 @@ EpwMorpher <- R6::R6Class(
             plan_id,
             periods,
             strict = TRUE,
-            overwrite = FALSE
+            overwrite = FALSE,
+            input_role = "model_future"
         ) {
             checkmate::assert_character(
                 plan_id,
@@ -1037,10 +1046,15 @@ EpwMorpher <- R6::R6Class(
             checkmate::assert_flag(strict)
             checkmate::assert_flag(overwrite)
 
+            checkmate::assert_choice(
+                input_role,
+                c("model_future", "model_historical", "observed_reference")
+            )
             diagnostics <- private$preflight_extraction(
                 plan_id,
                 periods,
-                strict = strict
+                strict = strict,
+                input_role = input_role
             )
             if (isTRUE(strict)) {
                 morpher__abort_diagnostics(
@@ -1541,7 +1555,8 @@ EpwMorpher <- R6::R6Class(
                     private$preflight_summary(
                         reference_summary_id,
                         morpher__reference_case_by(by),
-                        strict = strict
+                        strict = strict,
+                        input_role = "model_historical"
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -1550,7 +1565,8 @@ EpwMorpher <- R6::R6Class(
                     private$preflight_summary(
                         observed_summary_id,
                         morpher__observed_case_by(by),
-                        strict = strict
+                        strict = strict,
+                        input_role = "observed_reference"
                     )
                 } else {
                     morpher__empty_diagnostics()
@@ -1586,7 +1602,7 @@ EpwMorpher <- R6::R6Class(
                         stage = "observed_reference",
                         severity = "error",
                         code = "missing_observed_reference",
-                        message = "The selected morphing backend requires observed daily weather.",
+                        message = "The selected morphing backend requires observed reference weather.",
                         morph_id = morph_id,
                         action = "Supply `observed_summary_id`."
                     )
@@ -1598,7 +1614,7 @@ EpwMorpher <- R6::R6Class(
                         stage = "observed_reference",
                         severity = "error",
                         code = "unexpected_observed_reference",
-                        message = "The selected morphing backend does not accept observed daily weather.",
+                        message = "The selected morphing backend does not accept observed reference weather.",
                         morph_id = morph_id,
                         action = "Remove `observed_summary_id` or select a backend that accepts it."
                     )
@@ -1652,6 +1668,28 @@ EpwMorpher <- R6::R6Class(
         diagnose = function(morph_id) {
             checkmate::assert_string(morph_id, min.chars = 1L)
             plan <- private$get_plan(morph_id)
+            if (identical(private$recipe$backend, "hourly_kernel_qdm")) {
+                # Revalidate role-specific inputs for a saved distribution-based
+                # plan without requiring inapplicable monthly factors.
+                observed <- morpher__read_table(
+                    private$store,
+                    "epw_morph_observed_reference"
+                )
+                selected <- which(observed[["morph_id"]] == morph_id)
+                observed <- observed[selected]
+                return(self$preflight(
+                    summary_id = plan$summary_id[[1L]],
+                    reference_summary_id = plan$reference_summary_id[[1L]],
+                    observed_summary_id = if (nrow(observed)) {
+                        observed$observed_summary_id[[1L]]
+                    } else {
+                        NULL
+                    },
+                    baseline_id = plan$baseline_id[[1L]],
+                    by = private$plan_by(plan),
+                    strict = isTRUE(plan$strict[[1L]])
+                ))
+            }
             factors <- morpher__read_table(private$store, "epw_morph_factor")
             target_morph_id <- morph_id
             factors <- factors[factors[["morph_id"]] == target_morph_id]
@@ -1847,7 +1885,7 @@ EpwMorpher <- R6::R6Class(
                             is.null(observed_summary_id)
                     ) {
                         cli::cli_abort(
-                            "Backend {.val {private$recipe$backend}} requires observed daily weather."
+                            "Backend {.val {private$recipe$backend}} requires observed reference weather."
                         )
                     }
                     observed_climate <- if (is.null(observed_summary_id)) {
@@ -2481,7 +2519,7 @@ EpwMorpher <- R6::R6Class(
                     is.null(observed_plan_id)
             ) {
                 cli::cli_abort(c(
-                    "The selected morphing backend requires explicit observed daily weather.",
+                    "The selected morphing backend requires explicit observed reference weather.",
                     "i" = "Supply `observed_plan_id` and `observed_periods`."
                 ))
             }
@@ -2494,7 +2532,7 @@ EpwMorpher <- R6::R6Class(
                     )
             ) {
                 cli::cli_abort(
-                    "The selected morphing backend does not accept observed daily weather."
+                    "The selected morphing backend does not accept observed reference weather."
                 )
             }
 
@@ -2524,7 +2562,8 @@ EpwMorpher <- R6::R6Class(
                     plan_id = reference_plan_id,
                     periods = reference_periods,
                     strict = strict,
-                    overwrite = overwrite
+                    overwrite = overwrite,
+                    input_role = "model_historical"
                 )
             }
             reference_summary_id <- if (is.null(reference_climate)) {
@@ -2539,7 +2578,8 @@ EpwMorpher <- R6::R6Class(
                     plan_id = observed_plan_id,
                     periods = observed_periods,
                     strict = strict,
-                    overwrite = overwrite
+                    overwrite = overwrite,
+                    input_role = "observed_reference"
                 )
             }
             observed_summary_id <- if (is.null(observed_climate)) {
@@ -3010,12 +3050,14 @@ EpwMorpher <- R6::R6Class(
             }
             climate <- morpher__resolve_calendar_columns(climate)
             period_years <- private$summary_period_years(summary_id)
-            climate <- climate[
+            climate <- morpher__period_climate(
+                climate,
                 period_years,
-                on = "year",
-                nomatch = 0L,
-                allow.cartesian = TRUE
-            ]
+                retain_padding = identical(
+                    private$recipe$backend,
+                    "hourly_kernel_qdm"
+                )
+            )
             if (!nrow(climate)) {
                 cli::cli_abort(
                     "No extracted climate rows matched the stored EPW morphing periods."
@@ -3100,7 +3142,16 @@ EpwMorpher <- R6::R6Class(
         # }}}
 
         # preflight_extraction {{{
-        preflight_extraction = function(plan_id, periods, strict = TRUE) {
+        preflight_extraction = function(
+            plan_id,
+            periods,
+            strict = TRUE,
+            input_role = "model_future"
+        ) {
+            required_variables <- morpher__preflight_variables(
+                private$recipe,
+                input_role
+            )
             severity <- if (isTRUE(strict)) "error" else "warning"
             diagnostics <- list()
             coverage <- private$store$coverage(plan_id = plan_id)
@@ -3151,10 +3202,11 @@ EpwMorpher <- R6::R6Class(
                     },
                     variable_id = coverage$variable_id,
                     stage = "extraction",
-                    plan_id = paste(plan_id, collapse = ", ")
+                    plan_id = paste(plan_id, collapse = ", "),
+                    input_role = input_role
                 )
             missing_variables <- setdiff(
-                self$required_variables(),
+                required_variables,
                 present_variables
             )
             for (variable_id in missing_variables) {
@@ -3256,7 +3308,7 @@ EpwMorpher <- R6::R6Class(
             }
             present <- unique(climate[, .(variable_id, period, month)])
             expected <- data.table::CJ(
-                variable_id = self$required_variables(),
+                variable_id = required_variables,
                 period = unique(periods$period),
                 month = 1:12,
                 unique = TRUE
@@ -3287,7 +3339,16 @@ EpwMorpher <- R6::R6Class(
         # }}}
 
         # preflight_summary {{{
-        preflight_summary = function(summary_id, by, strict = TRUE) {
+        preflight_summary = function(
+            summary_id,
+            by,
+            strict = TRUE,
+            input_role = "model_future"
+        ) {
+            required_variables <- morpher__preflight_variables(
+                private$recipe,
+                input_role
+            )
             severity <- if (isTRUE(strict)) "error" else "warning"
             diagnostics <- list()
             climate <- morpher__read_table(private$store, "epw_climate_summary")
@@ -3336,11 +3397,12 @@ EpwMorpher <- R6::R6Class(
                     },
                     variable_id = climate$variable_id,
                     stage = "climate_summary",
-                    summary_id = summary_id
+                    summary_id = summary_id,
+                    input_role = input_role
                 )
             present_variables <- unique(climate$variable_id)
             missing_variables <- setdiff(
-                self$required_variables(),
+                required_variables,
                 present_variables
             )
             for (variable_id in missing_variables) {
@@ -3380,7 +3442,7 @@ EpwMorpher <- R6::R6Class(
                 )
                 present <- unique(case_climate[, .(variable_id, period, month)])
                 expected <- data.table::CJ(
-                    variable_id = self$required_variables(),
+                    variable_id = required_variables,
                     period = unique(case_climate$period),
                     month = 1:12,
                     unique = TRUE
@@ -3672,6 +3734,13 @@ EpwMorpher <- R6::R6Class(
             strict = TRUE,
             reference = NULL
         ) {
+            if (identical(private$recipe$backend, "hourly_kernel_qdm")) {
+                # Distribution mappings are computed from full hourly series.
+                # A monthly factor table would misrepresent this method.
+                return(morpher__read_table(private$store, "epw_morph_factor")[
+                    0L
+                ])
+            }
             rules <- morpher__recipe_rules(private$recipe)
             rules <- rules[required == TRUE & !derived]
             cases <- unique(climate[, by, with = FALSE])

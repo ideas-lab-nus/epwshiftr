@@ -238,6 +238,11 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     expect_identical(repaired$result_id, results$result_id)
     expect_true(all(file.exists(result_paths)))
     expect_identical(file.info(result_paths[[1L]])$mtime, sibling_mtime)
+    # Both years must retain one shared execution payload after partial repair.
+    process <- morpher$process_data(morph_plan$morph_id)[[1L]]
+    expect_identical(process$results$weather_year, c(2061L, 2062L))
+    expect_identical(process$provenance$backend, backend_name)
+    expect_null(process$factors)
 
     outputs <- morpher$write_epw(
         morph_id = morph_plan$morph_id,

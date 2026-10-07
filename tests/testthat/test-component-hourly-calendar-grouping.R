@@ -446,4 +446,32 @@ test_that("three-hour source roles compile through the real hourly bridge", {
     expect_s7_class(pipeline__compile(spec, inputs), WeatherPipelinePlan)
 })
 
+# Activity labels identify experiments rather than a model/member pair.
+test_that("hourly grouping allows role-specific activities without mixing series", {
+    historical <- list(
+        activity_id = "CMIP",
+        activity_drs = "CMIP",
+        source_id = "same-model",
+        variant_label = "r1i1p1f1",
+        grid_label = "gn"
+    )
+    future <- historical
+    future$activity_id <- future$activity_drs <- "ScenarioMIP"
+    expect_true(hourly_calendar__validate_model_identity(
+        historical,
+        future,
+        "tas"
+    ))
+    future$variant_label <- "r2i1p1f1"
+    expect_error(
+        hourly_calendar__validate_model_identity(historical, future, "tas"),
+        "identities differ.*variant_label"
+    )
+    mixed <- data.frame(activity_id = c("CMIP", "ScenarioMIP"))
+    expect_error(
+        hourly_calendar__series_identity(mixed, "model_future", "tas", "A"),
+        "multiple.*activity_id"
+    )
+})
+
 # vim: fdm=marker :

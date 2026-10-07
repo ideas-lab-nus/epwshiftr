@@ -490,6 +490,14 @@ sequence__slice_adjusted <- function(adjusted, year) {
         c("cf_day_of_year", "annual_phase", "variable_id")
     )
     variables <- unique(data[["variable_id"]])
+    # Mapping curves and row-level evidence cover the entire signal group.
+    # Retain them once in the output parts rather than duplicating them in each
+    # year member's JSON provenance or mislabelling full-period rows as a slice.
+    provenance <- adjusted@provenance
+    if (!is.null(provenance$mapping)) {
+        provenance$mapping <- NULL
+        provenance$mapping_location <- "parts$signal$groups"
+    }
     bias__adjusted_series(
         data = data,
         frequency = adjusted@frequency,
@@ -498,7 +506,7 @@ sequence__slice_adjusted <- function(adjusted, year) {
         transformation = adjusted@transformation,
         variable_metadata = adjusted@variable_metadata[variables],
         settings = adjusted@settings,
-        provenance = adjusted@provenance
+        provenance = provenance
     )
 }
 # }}}
@@ -944,6 +952,111 @@ sequence__result <- function(
 }
 # }}}
 
+# Preserve the signal's scientific values and resolved settings as plain data.
+# Group inputs and executable components are deliberately not serialized.
+# sequence__signal_products {{{
+sequence__signal_products <- function(stages) {
+    stage <- stages$signal
+    if (is.null(stage)) {
+        return(NULL)
+    }
+    execution <- stage@value
+    if (!S7::S7_inherits(execution, SignalExecutionResult)) {
+        cli::cli_abort(
+            "Direct-model output requires a signal execution record."
+        )
+    }
+    groups <- lapply(seq_along(execution@values), function(i) {
+        value <- execution@values[[i]]
+        if (!S7::S7_inherits(value, AdjustedWeatherSeries)) {
+            cli::cli_abort(
+                "Direct-model signal products must be adjusted weather series."
+            )
+        }
+        list(
+            group_index = i,
+            group_id = sequence__direct_group_id(execution@groups[[i]]),
+            key = execution@groups[[i]]@key,
+            variables = execution@groups[[i]]@variables,
+            data = value@data,
+            frequency = value@frequency,
+            time_step_seconds = value@time_step_seconds,
+            output_role = value@output_role,
+            transformation = value@transformation,
+            variable_metadata = value@variable_metadata,
+            settings = value@settings,
+            provenance = value@provenance
+        )
+    })
+    list(
+        component = stage@component,
+        profiles = execution@profiles,
+        diagnostics = execution@diagnostics,
+        groups = groups
+    )
+}
+# }}}
+
+# Translate correction counts to the common runtime diagnostic schema while
+# retaining the full physical table and row-addressable signal evidence in
+# parts. Messages identify the exact group/month or output year to inspect.
+# sequence__runtime_diagnostics {{{
+sequence__runtime_diagnostics <- function(physical, signal) {
+    count_names <- grep(
+        "(_clipped|_zeroed|_reallocated)$",
+        names(physical),
+        value = TRUE
+    )
+    physical_rows <- lapply(count_names, function(name) {
+        indices <- which(!is.na(physical[[name]]) & physical[[name]] > 0)
+        lapply(indices, function(i) {
+            morpher__diagnostic(
+                stage = "physics",
+                severity = "warning",
+                code = paste0("physical_", name),
+                message = sprintf(
+                    "%s affected %d hourly state(s) in weather year %d.",
+                    name,
+                    physical[[name]][[i]],
+                    physical$weather_year[[i]]
+                ),
+                action = "Inspect the matching weather_year in parts$physical_diagnostics. Counts may overlap across correction rules."
+            )
+        })
+    })
+    signal_rows <- lapply(signal$groups, function(group) {
+        months <- group$provenance$diagnostics$months
+        if (!is.data.frame(months) || !"clipped_values" %in% names(months)) {
+            return(list())
+        }
+        lapply(which(months$clipped_values > 0), function(i) {
+            morpher__diagnostic(
+                stage = "signal",
+                severity = "warning",
+                code = "signal_bounds_clipped",
+                variable_id = paste(group$variables, collapse = ","),
+                month = months$center_month[[i]],
+                message = sprintf(
+                    "Signal group %d bounded %d value(s) in native calendar month %d.",
+                    group$group_index,
+                    months$clipped_values[[i]],
+                    months$center_month[[i]]
+                ),
+                action = sprintf(
+                    "Inspect parts$signal$groups[[%d]]$settings$bounds and provenance$mapping$rows for input, unbounded and adjusted values and native CF dates.",
+                    group$group_index
+                )
+            )
+        })
+    })
+    rows <- c(
+        unlist(physical_rows, recursive = FALSE),
+        unlist(signal_rows, recursive = FALSE)
+    )
+    morpher__bind_diagnostics(rows)
+}
+# }}}
+
 # Convert physically closed direct-model years into the package's persistent
 # multi-year result contract. File creation remains owned by EpwMorpher.
 # sequence__epw_output_write {{{
@@ -983,6 +1096,7 @@ sequence__epw_output_write <- function(
         use.names = TRUE,
         fill = TRUE
     )
+    signal <- sequence__signal_products(stages)
 
     sequence__result(
         context,
@@ -990,7 +1104,12 @@ sequence__epw_output_write <- function(
         output_type = "multi_year",
         parts = list(
             physical_diagnostics = diagnostics,
-            constructed_fields = data@constructed_fields
+            constructed_fields = data@constructed_fields,
+            signal = signal,
+            runtime_diagnostics = sequence__runtime_diagnostics(
+                diagnostics,
+                signal
+            )
         ),
         diagnostics = diagnostics,
         provenance = list(
