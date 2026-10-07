@@ -1642,8 +1642,28 @@ shift_resolve__cmip6_partition_summary <- function(partitions) {
 shift_resolve__resolve_cmip6_selection <- function(
     plan,
     future_catalog,
-    reference_catalog = NULL
+    reference_catalog = NULL,
+    record = NULL
 ) {
+    # Snapshot the exact candidates on success and on selection failure. The
+    # callback persists evidence without changing the resolver's return table.
+    checkmate::assert_function(record, null.ok = TRUE)
+    future_candidates <- historical_candidates <- selected <- NULL
+    reference_required <- FALSE
+    on.exit(
+        {
+            if (!is.null(record)) {
+                record(shift_selection__evidence(
+                    plan,
+                    future_candidates,
+                    historical_candidates,
+                    selected,
+                    reference_required
+                ))
+            }
+        },
+        add = TRUE
+    )
     meta <- plan@meta
     request <- meta$request@meta
     climate <- meta$climate
@@ -1697,11 +1717,13 @@ shift_resolve__resolve_cmip6_selection <- function(
         )
     }
 
+    future_candidates <- data.table::copy(future)
     reference <- meta$reference
     if (
         S7::S7_inherits(reference, ShiftReferenceSpec) &&
             identical(reference@mode, "historical")
     ) {
+        reference_required <- TRUE
         # Monthly CMIP datasets usually end at a representative timestamp such
         # as December 16, not at the last second of the calendar year. An empty
         # reference result therefore needs its own diagnosis instead of being
@@ -2476,7 +2498,16 @@ shift_resolve__collect_resolved_inputs <- function(
     }
     fields <- unique(c(SHIFT_WORKFLOW_FILE_FIELDS, plan@meta$collect$fields))
     failures <- list()
+    selection_records <- list()
     for (node_index in seq_along(nodes)) {
+        node_records <- list()
+        query_ids <- list(future = NULL, reference = NULL)
+        phase <- "catalog"
+        record_selection <- function(value) {
+            value$phase <- phase
+            value$query_ids <- query_ids
+            node_records[[length(node_records) + 1L]] <<- value
+        }
         node <- nodes[[node_index]]
         reference_request_for_node <- shift_resolve__historical_request(
             plan,
@@ -2561,11 +2592,20 @@ shift_resolve__collect_resolved_inputs <- function(
                     )
                     collected_reference
                 }
+                query_ids <- list(
+                    future = files@ids$query_id,
+                    reference = if (is.null(reference_files)) {
+                        NULL
+                    } else {
+                        reference_files@ids$query_id
+                    }
+                )
                 # Resolve the scientific identity before making network calls for
                 # individual file services. Batch children pin one model/member/
                 # grid, so this removes unrelated partitions and gap years first.
                 selection <- shift_resolve__resolve_cmip6_selection(
                     plan,
+                    record = record_selection,
                     future_catalog = shift_inspect__file_catalog(
                         store,
                         files@ids$query_id
@@ -2591,6 +2631,7 @@ shift_resolve__collect_resolved_inputs <- function(
                     years = unique(as.integer(plan@meta$periods$year)),
                     role = "future"
                 )
+                phase <- "services"
                 files <- shift_resolve__resolve_file_services(
                     files,
                     role = "future",
@@ -2626,10 +2667,20 @@ shift_resolve__collect_resolved_inputs <- function(
                         reference_files@meta$file_count
                     )
                 }
+                phase <- "services"
+                query_ids <- list(
+                    future = files@ids$query_id,
+                    reference = if (is.null(reference_files)) {
+                        NULL
+                    } else {
+                        reference_files@ids$query_id
+                    }
+                )
                 # Service repair can remove an unusable logical file. Re-run the
                 # same coverage kernel so only executable selections are pinned.
                 selection <- shift_resolve__resolve_cmip6_selection(
                     plan,
+                    record = record_selection,
                     future_catalog = shift_inspect__file_catalog(
                         store,
                         files@ids$query_id
@@ -2652,7 +2703,33 @@ shift_resolve__collect_resolved_inputs <- function(
             },
             error = function(e) e
         )
+        evidence <- list(
+            schema_version = 1L,
+            index_node = node,
+            failure_phase = if (inherits(attempt, "error")) phase else NULL,
+            outcome = if (inherits(attempt, "error")) "failed" else "resolved",
+            checks = node_records,
+            error = if (inherits(attempt, "error")) {
+                conditionMessage(attempt)
+            } else {
+                NULL
+            },
+            error_class = if (inherits(attempt, "error")) {
+                class(attempt)
+            } else {
+                NULL
+            }
+        )
+        # JSON text keeps record boundaries stable in shared batch receipts,
+        # including singleton arrays restored in a fresh worker process.
+        selection_records[[
+            length(selection_records) + 1L
+        ]] <- shift_persist__spec_json(evidence)
+        if (!is.null(run_id)) {
+            shift_selection__persist(store, run_id, evidence)
+        }
         if (!inherits(attempt, "error")) {
+            attempt$selection_records <- selection_records
             if (!is.null(reporter)) {
                 selected_members <- paste(
                     unique(
@@ -2692,6 +2769,7 @@ shift_resolve__collect_resolved_inputs <- function(
             return(attempt)
         }
         if (inherits(attempt, "epwshiftr_shift_resolution_ambiguity")) {
+            attempt$selection_records <- selection_records
             stop(attempt)
         }
         resolution <- if (
@@ -2738,7 +2816,13 @@ shift_resolve__collect_resolved_inputs <- function(
             resolution = resolution
         )
     }
-    shift_resolve__abort_resolver_exhausted(failures)
+    tryCatch(
+        shift_resolve__abort_resolver_exhausted(failures),
+        error = function(error) {
+            error$selection_records <- selection_records
+            stop(error)
+        }
+    )
 }
 # }}}
 

@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Record evaluated File-level candidates and node/service outcomes during climate input resolution. `shift_selection()` reads saved configuration, selected inputs and candidate explanations for completed or failed runs and shared batch children. Older runs explicitly report missing records.
+
 * Validate Kernel-QDM model and observed inputs by role, retain interpolation boundary samples and allow CMIP/ScenarioMIP activity differences between roles. Save fitted CDF grids, per-value quantile mappings, direct-model signal series and bounding corrections with runtime diagnostics. Manual summaries accept `input_role` (#292).
 
 * Isolate observed-reference selection, result reuse, diagnostics and completion status by morphing plan and case in shared stores. Recipes requiring observed references now use version 2 to prevent reuse of earlier plans (#291).

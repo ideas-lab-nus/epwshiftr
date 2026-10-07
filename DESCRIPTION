@@ -162,6 +162,7 @@ Collate:
     'shift-reporter.R'
     'shift-resolve.R'
     'shift-run.R'
+    'shift-selection.R'
     'shift-spec.R'
     'shift-tui.R'
     'shift-ui-state.R'
