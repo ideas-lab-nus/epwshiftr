@@ -147,10 +147,7 @@ shift_execution__update <- function(context, status, message = NULL) {
         if (!is.null(message)) {
             context$job$message <- message
         }
-        store_write_json_atomic(
-            context$job,
-            file.path(context$root, "batch-job.json")
-        )
+        shift_batch_execution__job_write(context$root, context$job)
     } else {
         values <- list(
             status = status,
@@ -233,10 +230,7 @@ shift_execution__checkpoint <- function(context, details = list()) {
     context$heartbeat <- now
     context$job$heartbeat <- now
     context$job$progress <- details
-    store_write_json_atomic(
-        context$job,
-        file.path(context$root, "batch-job.json")
-    )
+    shift_batch_execution__job_write(context$root, context$job)
     invisible(NULL)
 }
 # }}}
