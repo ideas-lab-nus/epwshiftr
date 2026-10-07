@@ -286,6 +286,11 @@ shift_persist__plan_spec <- function(x) {
     # Only resolved batch children carry shared inputs; ordinary task identity
     # stays independent of batch scheduling.
     spec$stages$shared_inputs <- meta$shared_inputs
+    # Candidate explanations are execution evidence, not scientific intent.
+    # Child registration persists them separately before a worker is launched.
+    if (!is.null(spec$stages$shared_inputs)) {
+        spec$stages$shared_inputs$selection_records <- NULL
+    }
     spec
 }
 # }}}

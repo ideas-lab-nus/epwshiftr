@@ -1543,6 +1543,11 @@ shift_job__run_register <- function(plan) {
         shift_persist__plan_spec(plan)
     )
     shift_job__run_cases_write(store, run_id, plan@meta$expected_cases)
+    # Shared catalog checks belong to every consuming child and survive fresh
+    # worker sessions even though they are excluded from the plan hash.
+    for (record in plan@meta$shared_inputs$selection_records) {
+        shift_selection__persist(store, run_id, record)
+    }
     run_id
 }
 # }}}

@@ -525,6 +525,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
             # Let each child persist its ordinary failed-run diagnostics without
             # repeating the same failed catalog request for every city.
             inputs <- list(
+                selection_records = resolved$selection_records,
                 failure = list(
                     message = conditionMessage(resolved),
                     class = class(resolved),
@@ -581,6 +582,7 @@ shift_batch_plan__resolve_inputs <- function(batch, reporter = NULL) {
             files = snapshots[[1L]],
             reference_files = snapshots[[2L]],
             selection = resolved$selection,
+            selection_records = resolved$selection_records,
             index_node = resolved$index_node,
             input_id = store__hash(
                 resolved$files@ids$query_id,
