@@ -242,7 +242,8 @@ IDs.</p></dd>
 <span>  <span class="va">plan_id</span>,</span>
 <span>  <span class="va">periods</span>,</span>
 <span>  strict <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  input_role <span class="op">=</span> <span class="st">"model_future"</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div><p></p><div class="section">
 <h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
@@ -257,6 +258,11 @@ IDs.</p></dd>
 
       <dt><code>overwrite</code></dt>
 <dd><p>Whether to replace existing rows for this summary.</p></dd>
+
+      <dt><code>input_role</code></dt>
+<dd><p>Source role used to validate raw variables and
+frequencies, one of <code>model_future</code>, <code>model_historical</code>, or
+<code>observed_reference</code>. Workflow calls select this automatically.</p></dd>
 
 
 </dl><p></p></div>
