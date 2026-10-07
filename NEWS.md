@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Distinguish climate files that share an ESGF dataset-level master ID, retaining file names in store and shared-batch identities without changing raw provider metadata.
+
 * Remove obsolete repository-only papers, project/environment configuration,
   community templates, test notes, and local check scripts; retire the transport
   comparison workflow after TCP selection and the legacy PR command workflow. Move the ERA5 reference EPW guide
