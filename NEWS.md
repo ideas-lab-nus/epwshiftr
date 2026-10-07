@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Apply additive shifts when enhanced monthly stretching falls back, and interpolate factors in representative month/day/hour order for typical-year EPWs assembled from different source years. Enhanced monthly recipe version 3 prevents reuse of plans with the earlier arithmetic or calendar semantics.
+
 * Record evaluated File-level candidates and node/service outcomes during climate input resolution. `shift_selection()` reads saved configuration, selected inputs and candidate explanations for completed or failed runs and shared batch children. Older runs explicitly report missing records (#288).
 
 * Validate Kernel-QDM model and observed inputs by role, retain interpolation boundary samples and allow CMIP/ScenarioMIP activity differences between roles. Save fitted CDF grids, per-value quantile mappings, direct-model signal series and bounding corrections with runtime diagnostics. Manual summaries accept `input_role` (#292).

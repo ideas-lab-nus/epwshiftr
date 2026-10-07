@@ -1694,4 +1694,101 @@ test_that("Original morphing combined temperature uses average daily EPW range",
     )
 })
 
+# Humidity and snow have their own smoothing paths. Changing only provenance
+# years must not change either physical result or its saved factors.
+test_that("humidity and snow smoothing ignore representative source-year labels", {
+    epw <- epw_file_read(get_cache_epw())
+    weather <- data.table::copy(epw$data())
+    data.table::set(weather, j = "year", value = 2001L)
+    data.table::set(
+        weather,
+        j = "datetime",
+        value = as.POSIXct(
+            sprintf("2001-%02d-%02d", weather$month, weather$day),
+            tz = "UTC"
+        ) +
+            weather$hour * 3600
+    )
+    data.table::set(weather, j = "snow_depth", value = 10)
+    mixed <- data.table::copy(weather)
+    years <- c(
+        1991L,
+        1985L,
+        1994L,
+        1982L,
+        1993L,
+        1987L,
+        1992L,
+        1981L,
+        1990L,
+        1983L,
+        1989L,
+        1986L
+    )[mixed$month]
+    data.table::set(mixed, j = "year", value = years)
+    data.table::set(
+        mixed,
+        j = "datetime",
+        value = as.POSIXct(
+            sprintf("%d-%02d-%02d", years, mixed$month, mixed$day),
+            tz = "UTC"
+        ) +
+            mixed$hour * 3600
+    )
+    future <- enhanced_test__change_climate()
+    for (variable in c("huss", "snd")) {
+        index <- which(future$variable_id == variable)
+        data.table::set(
+            future,
+            i = index,
+            j = "value",
+            value = future$value[index] *
+                (1 + 0.1 * sin(2 * pi * seq_along(index) / 12))
+        )
+    }
+    context <- morpher__context(
+        epw,
+        future,
+        recipe = epw_morph_recipe("original_morphing"),
+        reference_climate = enhanced_test__change_climate(reference = TRUE),
+        years = 2060L,
+        labels = "future",
+        reference_years = 1995L,
+        reference_labels = "reference",
+        strict = TRUE
+    )
+    results <- lapply(list(weather, mixed), function(data) {
+        temperature <- original_morphing__change_tdb(data, context, "auto")
+        list(
+            humidity = original_morphing__huss_state(
+                data,
+                context,
+                temperature,
+                data.table::data.table()
+            ),
+            snow = original_morphing__snow_depth(data, context)$data
+        )
+    })
+    expect_equal(
+        results[[1L]]$humidity$rh$delta,
+        results[[2L]]$humidity$rh$delta,
+        tolerance = 1e-12
+    )
+    expect_equal(
+        results[[1L]]$humidity$rh$relative_humidity,
+        results[[2L]]$humidity$rh$relative_humidity,
+        tolerance = 1e-12
+    )
+    expect_equal(
+        results[[1L]]$snow$alpha,
+        results[[2L]]$snow$alpha,
+        tolerance = 1e-12
+    )
+    expect_equal(
+        results[[1L]]$snow$snow_depth,
+        results[[2L]]$snow$snow_depth,
+        tolerance = 1e-12
+    )
+})
+
 # vim: fdm=marker :

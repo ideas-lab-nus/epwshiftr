@@ -459,7 +459,8 @@ method__default_specs <- function() {
             references = c(
                 "https://doi.org/10.1191/0143624405bt112oa",
                 "https://github.com/ideas-lab-nus/epwshiftr/pull/126"
-            )
+            ),
+            version = 3L
         ),
         daily_temperature_delta = method__from_signal_component(
             name = "daily_temperature_delta",
