@@ -132,7 +132,8 @@ IDs.}
   plan_id,
   periods,
   strict = TRUE,
-  overwrite = FALSE
+  overwrite = FALSE,
+  input_role = "model_future"
 )}
     \if{html}{\out{</div>}}
   }
@@ -143,6 +144,9 @@ IDs.}
       \item{\code{periods}}{Period table from \code{\link[=epw_morph_periods]{epw_morph_periods()}}.}
       \item{\code{strict}}{Whether incomplete extraction coverage is an error.}
       \item{\code{overwrite}}{Whether to replace existing rows for this summary.}
+      \item{\code{input_role}}{Source role used to validate raw variables and
+frequencies, one of \code{model_future}, \code{model_historical}, or
+\code{observed_reference}. Workflow calls select this automatically.}
     }
     \if{html}{\out{</div>}}
   }

@@ -433,6 +433,11 @@ morpher__case_error_diagnostic <- function(error, morph_id, case_id, case) {
 # morpher__result_diagnostics {{{
 morpher__result_diagnostics <- function(result) {
     if (S7::S7_inherits(result, WeatherSequenceResult)) {
+        # Direct-model results retain their physical statistics for backend
+        # inspection and supply canonical rows separately for store consumers.
+        if (!is.null(result@parts$runtime_diagnostics)) {
+            return(result@parts$runtime_diagnostics)
+        }
         return(result@diagnostics)
     }
     result$diagnostics

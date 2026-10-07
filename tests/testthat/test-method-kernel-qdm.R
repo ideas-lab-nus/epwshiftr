@@ -287,6 +287,57 @@ test_that("hourly kernel QDM is deterministic and records clipping", {
         sum(first@provenance$diagnostics$months$clipped_values),
         first@provenance$diagnostics$clipped_values
     )
+    # Persisted mapping rows identify exact CF times and both sides of clipping.
+    mapping <- first@provenance$mapping
+    expect_identical(mapping$rows$row_index, seq_len(nrow(first@data)))
+    expect_equal(mapping$rows$adjusted_value, first@data$value)
+    expect_equal(mapping$rows$cf_year, first@data$cf_year)
+    expect_equal(
+        mapping$rows$bounds_correction,
+        mapping$rows$adjusted_value - mapping$rows$unbounded_value
+    )
+    expect_equal(
+        sum(mapping$rows$bounds_correction != 0),
+        first@provenance$diagnostics$clipped_values
+    )
+    expect_equal(mapping, second@provenance$mapping)
+    # Re-evaluate the numerical curves without calling the method's mapping
+    # helpers. This verifies that the saved products suffice for recalculation.
+    for (fit in mapping$distributions) {
+        rows <- mapping$rows[mapping$rows$cf_month == fit$center_month]
+        p <- stats::approx(
+            fit$model_future$x,
+            fit$model_future$probability,
+            xout = rows$input_value,
+            rule = 2,
+            ties = "ordered"
+        )$y
+        observed <- stats::approx(
+            fit$observed_reference$inverse_probability,
+            fit$observed_reference$inverse_x,
+            xout = p,
+            rule = 2,
+            ties = "ordered"
+        )$y
+        historical <- stats::approx(
+            fit$model_historical$inverse_probability,
+            fit$model_historical$inverse_x,
+            xout = p,
+            rule = 2,
+            ties = "ordered"
+        )$y
+        expect_equal(p, rows$probability)
+        expect_equal(observed, rows$observed_quantile)
+        expect_equal(historical, rows$historical_quantile)
+        expect_equal(
+            observed * rows$input_value / historical,
+            rows$unbounded_value
+        )
+        expect_equal(
+            pmin(pmax(rows$unbounded_value, 0), 100),
+            rows$adjusted_value
+        )
+    }
 })
 
 test_that("hourly kernel QDM rejects invalid inputs and numerical settings", {

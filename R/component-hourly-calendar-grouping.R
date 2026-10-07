@@ -7,10 +7,9 @@ HOURLY_CALENDAR_ROLES <- c(
 )
 
 # Model identity fields must agree between historical and future roles within
-# one signal group; scenario and period remain future-case provenance instead.
+# one signal group. Activity, scenario and period are role-specific provenance
+# because historical CMIP and future ScenarioMIP belong to different activities.
 HOURLY_CALENDAR_MODEL_ID_COLUMNS <- c(
-    "activity_drs",
-    "activity_id",
     "institution_id",
     "source_id",
     "variant_label",
@@ -22,6 +21,8 @@ HOURLY_CALENDAR_MODEL_ID_COLUMNS <- c(
 # before calendar validation is reduced to one variable and one site.
 HOURLY_CALENDAR_SERIES_ID_COLUMNS <- c(
     HOURLY_CALENDAR_MODEL_ID_COLUMNS,
+    "activity_drs",
+    "activity_id",
     "experiment_id",
     "table_id",
     "period",

@@ -695,6 +695,59 @@ morpher__recipe_required_frequency <- function(recipe) {
 }
 # }}}
 
+# Select requested native years and, for hourly reconstruction, retain at most
+# two adjacent days already present in the extraction. UTC/local conversion and
+# three-hour point interpolation need these edge samples. They remain support
+# rows and are removed by the component's complete-year selection, never added
+# to monthly summaries or manufactured when the extraction lacks them.
+# morpher__period_climate {{{
+morpher__period_climate <- function(
+    climate,
+    period_years,
+    retain_padding = FALSE
+) {
+    if (!isTRUE(retain_padding)) {
+        return(climate[
+            period_years,
+            on = "year",
+            nomatch = 0L,
+            allow.cartesian = TRUE
+        ])
+    }
+    pieces <- lapply(unique(period_years$period), function(period_name) {
+        years <- period_years$year[period_years$period == period_name]
+        selected <- climate$year %in% years
+        padding <- (climate$year %in%
+            (years - 1L) &
+            climate$cf_day_of_year >= climate$cf_year_days - 1L) |
+            (climate$year %in% (years + 1L) & climate$cf_day_of_year <= 2L)
+        rows <- data.table::copy(climate[selected | padding])
+        data.table::set(rows, j = "period", value = period_name)
+        rows
+    })
+    data.table::rbindlist(pieces, use.names = TRUE)
+}
+# }}}
+
+# Resolve the raw source contract separately from canonical output variables.
+# Hourly model humidity and wind are derived during input preparation, whereas
+# observed reference data already provide the canonical variables.
+# morpher__preflight_variables {{{
+morpher__preflight_variables <- function(recipe, input_role) {
+    if (
+        identical(recipe$backend, "hourly_kernel_qdm") &&
+            input_role != "observed_reference"
+    ) {
+        return(unique(unlist(
+            morpher__variable_requirements(recipe),
+            recursive = TRUE,
+            use.names = FALSE
+        )))
+    }
+    epw_morph_variables(recipe)
+}
+# }}}
+
 # Build a structural diagnostic when extracted or summarized climate data do
 # not match a backend's scalar or variable-specific CMIP frequency contract.
 # morpher__frequency_diagnostic {{{
@@ -704,9 +757,19 @@ morpher__frequency_diagnostic <- function(
     variable_id = NULL,
     stage,
     plan_id = NA_character_,
-    summary_id = NA_character_
+    summary_id = NA_character_,
+    input_role = "model_future"
 ) {
     required <- morpher__recipe_required_frequency(recipe)
+    if (identical(input_role, "observed_reference")) {
+        spec <- morpher__recipe_spec(recipe)
+        if (!is.null(spec)) {
+            contracts <- transform__input_contracts(spec, recipe)
+            required <- transform__source_frequencies(
+                contracts$required_inputs
+            )[[input_role]]
+        }
+    }
     if (is.null(required)) {
         return(morpher__empty_diagnostics())
     }
@@ -757,8 +820,9 @@ morpher__frequency_diagnostic <- function(
         severity = "error",
         code = "unsupported_climate_frequency",
         message = sprintf(
-            "Backend %s requires CMIP frequencies %s; found %s.",
+            "Backend %s requires %s frequencies %s; found %s.",
             recipe$backend,
+            input_role,
             required_label,
             shown
         ),

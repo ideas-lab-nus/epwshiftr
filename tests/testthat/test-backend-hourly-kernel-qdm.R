@@ -459,6 +459,31 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
         result@parts$component_pipeline$component,
         unname(unlist(hourly_kqdm__pipeline()@components))
     )
+    # The complete output must retain signal products and expose canonical
+    # runtime rows to store persistence, without expanding yearly JSON records.
+    signal <- result@parts$signal
+    expect_length(signal$groups, 6L)
+    expect_true(all(vapply(
+        signal$groups,
+        function(group) {
+            nrow(group$data) == nrow(group$provenance$mapping$rows) &&
+                length(group$provenance$mapping$distributions) == 12L
+        },
+        logical(1L)
+    )))
+    runtime <- morpher__result_diagnostics(result)
+    expect_named(runtime, morpher__diagnostic_columns())
+    expect_equal(morpher__bind_diagnostics(runtime), runtime)
+    expect_true(all(
+        nchar(vapply(
+            sequence__records(result),
+            function(member) {
+                as.character(morpher__json(member$provenance))
+            },
+            character(1L)
+        )) <
+            100000L
+    ))
     expect_true(all(vapply(
         result@members,
         function(member) {
@@ -560,6 +585,83 @@ test_that("local clock shifting crosses native year boundaries without wrapping 
     )
     expect_equal(shifted$cf_year[nrow(shifted)], 2002L)
     expect_equal(shifted$cf_second_of_day[1], 8 * 3600)
+})
+
+# Raw model and observed sources have distinct humidity, wind and time contracts.
+test_that("hourly preflight validates each source role before derivation", {
+    recipe <- epw_morph_recipe("hourly_kernel_qdm")
+    model <- c("tas", "ps", "huss", "uas", "vas", "rsds", "rsdsdiff")
+    observed <- c("tas", "ps", "hurs", "sfcWind", "rsds", "rsdsdiff")
+    expect_setequal(morpher__preflight_variables(recipe, "model_future"), model)
+    expect_setequal(
+        morpher__preflight_variables(recipe, "model_historical"),
+        model
+    )
+    expect_setequal(
+        morpher__preflight_variables(recipe, "observed_reference"),
+        observed
+    )
+    expect_setequal(epw_morph_variables(recipe), observed)
+    frequencies <- data.table::fifelse(
+        model %in% c("rsds", "rsdsdiff"),
+        "3hr",
+        "3hrPt"
+    )
+    expect_equal(
+        nrow(morpher__frequency_diagnostic(
+            recipe,
+            frequencies,
+            variable_id = model,
+            stage = "extraction"
+        )),
+        0L
+    )
+    expect_equal(
+        nrow(morpher__frequency_diagnostic(
+            recipe,
+            rep("hour", 6L),
+            variable_id = observed,
+            stage = "extraction",
+            input_role = "observed_reference"
+        )),
+        0L
+    )
+    bad <- morpher__frequency_diagnostic(
+        recipe,
+        rep("day", 6L),
+        variable_id = observed,
+        stage = "extraction",
+        input_role = "observed_reference"
+    )
+    expect_identical(bad$severity, "error")
+    expect_identical(bad$code, "unsupported_climate_frequency")
+    bad <- morpher__frequency_diagnostic(
+        recipe,
+        rep("hour", 7L),
+        variable_id = model,
+        stage = "extraction"
+    )
+    expect_identical(bad$severity, "error")
+})
+
+# Boundary samples supply interpolation support without adding full extra years.
+test_that("hourly period selection retains bounded native-calendar padding", {
+    source <- data.table::data.table(
+        year = c(2059L, 2060L, 2060L, 2061L, 2062L, 2062L),
+        cf_day_of_year = c(360L, 358L, 360L, 180L, 1L, 3L),
+        cf_year_days = 360L,
+        value = seq_len(6L)
+    )
+    periods <- data.table::data.table(
+        period = c("first", "second"),
+        year = c(2061L, 2062L)
+    )
+    result <- morpher__period_climate(source, periods, TRUE)
+    expect_identical(result$value[result$period == "first"], c(3L, 4L, 5L))
+    expect_identical(result$value[result$period == "second"], c(5L, 6L))
+    expect_false("period" %in% names(source))
+    ordinary <- morpher__period_climate(source, periods)
+    expect_identical(ordinary$value, c(4L, 5L, 6L))
 })
 
 # vim: fdm=marker :

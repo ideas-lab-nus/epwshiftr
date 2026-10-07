@@ -291,8 +291,8 @@ kqdm__window_months <- function(center_month) {
 }
 # }}}
 
-# Estimate one Gaussian kernel-density CDF on an explicit grid and retain only
-# compact fit metadata rather than serializing the full numerical curve.
+# Estimate a kernel-density CDF on an explicit grid. Both forward and inverse
+# grids are retained so a saved mapping can be evaluated without refitting.
 # kqdm__density_cdf {{{
 kqdm__density_cdf <- function(values, resolved, label) {
     sample_count <- length(values)
@@ -436,6 +436,7 @@ kqdm__map_values <- function(
         change <- future_values - historical_quantile
         adjusted <- observed_quantile + change
         zero_future_values <- 0L
+        zero_denominator_used <- rep(FALSE, length(future_values))
     } else {
         denominator_invalid <- (historical_quantile <= resolved$zero_tolerance)
         future_zero <- abs(future_values) <= resolved$zero_tolerance
@@ -456,11 +457,15 @@ kqdm__map_values <- function(
         adjusted <- numeric(length(future_values))
         adjusted[valid] <- observed_quantile[valid] * change[valid]
         zero_future_values <- sum(denominator_invalid & future_zero)
+        zero_denominator_used <- denominator_invalid & future_zero
     }
     list(
         value = adjusted,
         probability = probability,
         change = change,
+        observed_quantile = observed_quantile,
+        historical_quantile = historical_quantile,
+        zero_denominator_used = zero_denominator_used,
         lower_tail = future_cdf$lower_tail,
         upper_tail = future_cdf$upper_tail,
         zero_future_values = zero_future_values
@@ -478,6 +483,38 @@ kqdm__adjust_values <- function(series, resolved) {
     adjusted <- rep.int(NA_real_, nrow(future))
     diagnostics <- vector("list", length(unique(future[["cf_month"]])))
     center_months <- sort(unique(future[["cf_month"]]))
+    fits <- vector("list", length(center_months))
+    names(fits) <- as.character(center_months)
+    # Row indices refer to the adjusted series in its original future order.
+    # Native CF coordinates avoid silently turning a 360-day date into UTC.
+    coordinates <- intersect(
+        c(
+            "variable_id",
+            "cf_calendar",
+            "cf_year",
+            "cf_month",
+            "cf_day",
+            "cf_second_of_day"
+        ),
+        names(future)
+    )
+    mapping <- data.table::as.data.table(future)[,
+        coordinates,
+        with = FALSE
+    ]
+    data.table::set(mapping, j = "row_index", value = seq_len(nrow(future)))
+    data.table::set(mapping, j = "input_value", value = future[["value"]])
+    for (name in c(
+        "probability",
+        "observed_quantile",
+        "historical_quantile",
+        "change"
+    )) {
+        data.table::set(mapping, j = name, value = rep(NA_real_, nrow(future)))
+    }
+    for (name in c("lower_tail", "upper_tail", "zero_denominator_used")) {
+        data.table::set(mapping, j = name, value = rep(FALSE, nrow(future)))
+    }
 
     for (month_index in seq_along(center_months)) {
         center_month <- center_months[[month_index]]
@@ -517,6 +554,29 @@ kqdm__adjust_values <- function(series, resolved) {
             center_month
         )
         adjusted[output_index] <- mapped$value
+        fits[[month_index]] <- list(
+            center_month = center_month,
+            window_months = window_months,
+            observed_reference = observed_distribution,
+            model_historical = historical_distribution,
+            model_future = future_distribution
+        )
+        for (name in c(
+            "probability",
+            "observed_quantile",
+            "historical_quantile",
+            "change",
+            "lower_tail",
+            "upper_tail",
+            "zero_denominator_used"
+        )) {
+            data.table::set(
+                mapping,
+                i = output_index,
+                j = name,
+                value = mapped[[name]]
+            )
+        }
         diagnostics[[month_index]] <- data.frame(
             center_month = center_month,
             window_months = paste(window_months, collapse = ","),
@@ -544,6 +604,13 @@ kqdm__adjust_values <- function(series, resolved) {
 
     bounded_result <- signal__bound_values(adjusted, resolved$bounds)
     bounded <- bounded_result$value
+    data.table::set(mapping, j = "unbounded_value", value = adjusted)
+    data.table::set(mapping, j = "adjusted_value", value = bounded)
+    data.table::set(
+        mapping,
+        j = "bounds_correction",
+        value = bounded - adjusted
+    )
     month_diagnostics <- do.call(rbind, diagnostics)
     month_diagnostics$clipped_values <- vapply(
         month_diagnostics$center_month,
@@ -554,8 +621,16 @@ kqdm__adjust_values <- function(series, resolved) {
         integer(1L)
     )
     rownames(month_diagnostics) <- NULL
+    month_diagnostics$maximum_bounds_correction <- vapply(
+        month_diagnostics$center_month,
+        function(month) {
+            max(abs(mapping$bounds_correction[future[["cf_month"]] == month]))
+        },
+        numeric(1L)
+    )
     list(
         value = bounded,
+        mapping = list(distributions = fits, rows = mapping),
         diagnostics = list(
             months = month_diagnostics,
             mapped_probability_range = range(c(
@@ -618,7 +693,8 @@ kqdm__apply_group <- function(inputs, settings, key) {
                 tail_policy = resolved$tail_policy,
                 zero_denominator_policy = resolved$zero_denominator_policy
             ),
-            diagnostics = mapped$diagnostics
+            diagnostics = mapped$diagnostics,
+            mapping = mapped$mapping
         )
     )
 }
