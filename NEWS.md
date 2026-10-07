@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Isolate observed-reference selection, result reuse, diagnostics and completion status by morphing plan and case in shared stores. Recipes requiring observed references now use version 2 to prevent reuse of earlier plans.
+
 * Save backend execution factors, intermediate products, runtime diagnostics and result links for each morphing case. `EpwMorpher$process_data()` verifies saved checksums when reading them. Repeated identical warnings no longer block output, and explicit overwrite rebuilds completed products (#290).
 
 * Serialize background batch receipt reads and publication with a short shared lock, and report failed writes (#290).
