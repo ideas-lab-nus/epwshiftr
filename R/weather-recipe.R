@@ -620,7 +620,9 @@ recipe__daily_adjustment_specs <- function() {
                 "signal_settings",
                 "physical_policy"
             ),
-            status = "experimental"
+            status = "experimental",
+            # Version 2 rejects plans created before per-plan observation isolation.
+            version = 2L
         )
     })
     names(specs) <- vapply(specs, function(spec) spec@name, character(1L))
@@ -1120,7 +1122,9 @@ recipe__default_specs <- function() {
                 "smoothing",
                 "physical_policy"
             ),
-            status = "experimental"
+            status = "experimental",
+            # Version 2 rejects plans created before per-plan observation isolation.
+            version = 2L
         ),
         hourly_kernel_qdm = recipe__spec(
             name = "hourly_kernel_qdm",
@@ -1172,7 +1176,9 @@ recipe__default_specs <- function() {
                 "physical_policies",
                 "source_weather_years"
             ),
-            status = "experimental"
+            status = "experimental",
+            # Version 2 rejects plans created before per-plan observation isolation.
+            version = 2L
         ),
         sobie_curry_daily = recipe__spec(
             name = "sobie_curry_daily",

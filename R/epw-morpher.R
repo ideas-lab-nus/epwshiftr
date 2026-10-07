@@ -223,10 +223,13 @@ morpher__delete_by_key <- function(store, table, key, values) {
 # morpher__delete_case_diagnostics {{{
 morpher__delete_case_diagnostics <- function(store, morph_id, case_id) {
     diagnostics <- morpher__read_table(store, "epw_morph_diagnostic")
-    diagnostics <- diagnostics[
+    # Resolve scalar identifiers outside data.table's column lookup so other
+    # plans and cases keep their diagnostic evidence when this case is retried.
+    selected <- which(
         diagnostics[["morph_id"]] == morph_id &
             diagnostics[["case_id"]] == case_id
-    ]
+    )
+    diagnostics <- diagnostics[selected]
     if (nrow(diagnostics)) {
         morpher__delete_by_key(
             store,
@@ -1733,9 +1736,10 @@ EpwMorpher <- R6::R6Class(
                     if (isTRUE(overwrite)) {
                         return(FALSE)
                     }
-                    rows <- complete_existing[
+                    selected <- which(
                         complete_existing[["case_id"]] == case_id
-                    ]
+                    )
+                    rows <- complete_existing[selected]
                     morpher__result_case_complete(
                         rows,
                         store_root = private$store$path
@@ -1815,9 +1819,13 @@ EpwMorpher <- R6::R6Class(
                         private$store,
                         "epw_morph_observed_reference"
                     )
-                    observed_rows <- observed_rows[
+                    # The requested plan must select its own calibration data.
+                    # Evaluating this comparison inside DT[...] would resolve
+                    # the argument name to the same-named column instead.
+                    selected <- which(
                         observed_rows[["morph_id"]] == morph_id
-                    ]
+                    )
+                    observed_rows <- observed_rows[selected]
                     observed_summary_id <- if (nrow(observed_rows)) {
                         store__chr1(observed_rows$observed_summary_id)
                     } else {
@@ -2320,9 +2328,10 @@ EpwMorpher <- R6::R6Class(
                         private$store,
                         "epw_morph_case"
                     )
-                    morph_cases <- morph_cases[
+                    selected <- which(
                         morph_cases[["morph_id"]] == morph_id
-                    ]
+                    )
+                    morph_cases <- morph_cases[selected]
                     private$set_plan_status(
                         morph_id,
                         if (
@@ -4091,7 +4100,8 @@ EpwMorpher <- R6::R6Class(
             resume
         ) {
             case_id <- case$case_id[[1L]]
-            existing_case <- existing[existing[["case_id"]] == case_id]
+            selected <- which(existing[["case_id"]] == case_id)
+            existing_case <- existing[selected]
             reusable <- existing_case
             if (
                 !isTRUE(overwrite) &&
@@ -4201,10 +4211,11 @@ EpwMorpher <- R6::R6Class(
                     weather_year = member$weather_year
                 )
                 path_rel <- store_rel_path(path, root = private$store$path)
-                existing_member <- existing[
+                selected <- which(
                     existing[["case_id"]] == case_id &
                         existing[["output_path"]] == path_rel
-                ]
+                )
+                existing_member <- existing[selected]
                 if (
                     !isTRUE(overwrite) &&
                         isTRUE(resume) &&
