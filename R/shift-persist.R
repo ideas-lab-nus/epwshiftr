@@ -81,7 +81,7 @@ shift_persist__reference_from_spec <- function(spec) {
         arg = "reference$periods"
     )
     if (identical(spec$mode, "plan")) {
-        return(shift_reference_plan(
+        return(shift_reference_from_plan(
             as.character(spec$plan_id),
             periods,
             role = as.character(spec$role)

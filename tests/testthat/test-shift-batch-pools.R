@@ -40,7 +40,7 @@ batch_pool_test__plan <- function(
     store = tempfile(),
     methods = c("original_morphing", "isimip3basd")
 ) {
-    shift_future_epw(
+    shift_epw_future(
         shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = model,
@@ -777,7 +777,7 @@ test_that("unused optional history cannot constrain batch Dataset matching", {
         expect_true(public$selected)
         for (reference in list(
             NULL,
-            shift_reference_plan(
+            shift_reference_from_plan(
                 "local-plan",
                 data.table::data.table(period = "reference", year = 1995L)
             )

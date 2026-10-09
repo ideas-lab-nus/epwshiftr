@@ -42,7 +42,7 @@ shared_inputs_test__fixture <- function(env = parent.frame()) {
         shift_site(id = "one", lon = 104, lat = 1, epw = get_cache_epw()),
         shift_site(id = "two", lon = 254, lat = 41, epw = get_cache_epw())
     )
-    batch <- shift_future_epw(
+    batch <- shift_epw_future(
         sites,
         shift_cmip6(
             model = "EC-Earth3",

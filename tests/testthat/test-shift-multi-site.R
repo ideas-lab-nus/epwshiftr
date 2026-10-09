@@ -33,7 +33,7 @@ multi_site__plan <- function(
     store = tempfile("multi-site-store-"),
     ...
 ) {
-    shift_future_epw(
+    shift_epw_future(
         sites = sites,
         climate = shift_cmip6(model = 1L, scenarios = c("ssp126", "ssp585")),
         periods = list(mid = 2050:2051),
@@ -238,8 +238,8 @@ test_that("single and multiple site calls use one batch contract", {
     expect_s7_class(single, ShiftBatch)
     expect_identical(single@ids$batch_id, wrapped@ids$batch_id)
     expect_identical(single@meta$manifest$site_id, c("A", "A"))
-    expect_false("epw" %in% names(formals(shift_future_epw)))
-    expect_identical(names(formals(shift_future_epw))[[1L]], "sites")
+    expect_false("epw" %in% names(formals(shift_epw_future)))
+    expect_identical(names(formals(shift_epw_future))[[1L]], "sites")
 })
 
 test_that("version 3 location arrays plan and restore through the CLI", {
@@ -301,7 +301,7 @@ test_that("multi-site references are resolved for each location", {
         shift_site("A", epw = get_cache_epw()),
         shift_site("B", epw = multi_site__epw())
     )
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = sites,
         climate = shift_cmip6(model = 1L, scenarios = "ssp585"),
         periods = 2050:2051,
@@ -327,7 +327,7 @@ test_that("multi-site references are resolved for each location", {
     expect_error(
         multi_site__plan(
             sites,
-            reference = shift_reference_plan(
+            reference = shift_reference_from_plan(
                 "existing-plan",
                 epw_morph_periods(hist = 1995:2014)
             )
@@ -438,7 +438,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         shift_site("A", lon = 103.98, lat = 1.37, epw = get_cache_epw()),
         shift_site("B", lon = 104.4, lat = 2, epw = get_cache_epw())
     )
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = sites,
         climate = shift_cmip6(
             model = 1L,
@@ -552,7 +552,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     expect_identical(tools::md5sum(shift_outputs(resumed)$export_path), hashes)
     expect_identical(length(calls$types), collected)
     expect_setequal(shift_summary(resumed)$site_id, c("A", "B"))
-    restored <- shift_future_epw(
+    restored <- shift_epw_future(
         sites,
         plan@meta$climate,
         2060,
@@ -567,7 +567,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
         shift_control(strict = TRUE),
         shift_control(strict = FALSE, extraction_method = "idw")
     )) {
-        changed <- shift_future_epw(
+        changed <- shift_epw_future(
             sites,
             plan@meta$climate,
             2060,
@@ -614,7 +614,7 @@ test_that("R and CLI reject invalid method periods before discovery", {
         expect_match(result$error, "at least two weather years")
     }
     expect_error(
-        shift_future_epw(
+        shift_epw_future(
             shift_site(epw = get_cache_epw()),
             shift_cmip6("Model-A", "ssp585"),
             2050L,

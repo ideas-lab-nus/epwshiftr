@@ -1580,7 +1580,7 @@ transform__validate_execution_inputs <- function(
 #'
 #' @return A reusable `WeatherTransformSpec`.
 #'
-#' @seealso [weather_transforms()], [shift_future_epw()]
+#' @seealso [weather_transforms()], [shift_epw_future()]
 #' @export
 # monthly_transform {{{
 monthly_transform <- function(method, reconstruction = NULL, ...) {

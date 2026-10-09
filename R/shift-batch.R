@@ -262,7 +262,7 @@ shift_batch__receipt_write <- function(x) {
 #' climate catalogs. Dry-run batches retain their child plans; executed batches
 #' retain their durable child run identifiers.
 #' @param batch_id Batch identifier returned by [shift_ids()].
-#' @param store Root store used for [shift_future_epw()], or the batch directory.
+#' @param store Root store used for [shift_epw_future()], or the batch directory.
 #' @return A `ShiftBatch` accepted by the ordinary `shift_*()` inspectors,
 #'   [shift_run()], [shift_resume()], [shift_cancel()], and [shift_watch()].
 #' @export

@@ -23,7 +23,7 @@ description: >
   =====================================================================
 -->
 
-`shift_future_epw()` is the recommended interface for generating future EPW
+`shift_epw_future()` is the recommended interface for generating future EPW
 files. A weather transform selects the scientific calculation, while each run
 supplies the EPW template, climate data, study periods, references, and output
 directory. Keeping those responsibilities separate lets the same transform be
@@ -136,7 +136,7 @@ The main roles are:
 | `model_historical` | `reference` |
 | `observed_reference` | `observed_reference` |
 
-`shift_future_epw()` checks these roles before collecting or calculating data.
+`shift_epw_future()` checks these roles before collecting or calculating data.
 Supplying an irrelevant reference is an error, as is omitting a required one.
 References are execution inputs and never become part of a reusable transform.
 
@@ -153,7 +153,7 @@ contract and its humidity alternatives are visible in
 `monthly_transform("original_morphing")@required_inputs`.
 
 ```r
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = system.file(
         "extdata/examples/SGP_Singapore.486980_IWEC.epw",
         package = "epwshiftr"
@@ -178,7 +178,7 @@ reference when one is available and can also use the EPW climatology without
 one:
 
 ```r
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
     periods = list(`2080s` = 2075:2085),
@@ -196,7 +196,7 @@ resolves its own reference data.
 historical <- historical_reference(1995:2014)
 observed <- shift_era5(1995:2014)
 
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = future_cmip6,
     periods = c(2050, 2080),
@@ -211,7 +211,7 @@ Use `dry_run = TRUE` to discover eligible datasets and inspect the batch without
 extracting climate values or generating EPWs:
 
 ```r
-plan <- shift_future_epw(
+plan <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
     periods = list(`2060s` = 2055:2065),

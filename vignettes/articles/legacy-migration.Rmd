@@ -34,6 +34,25 @@ constructors. This article maps old workflow concepts to store-native concepts;
 projects that require exact legacy numerical output should retain their frozen
 legacy software environment.
 
+# Development API naming update
+
+Earlier development versions used the names below. Update calls and qualified
+references to the current names; argument lists, return values, and execution
+behavior are unchanged. The old development names are no longer exported.
+This naming update does not change the CRAN v0.1.4 API retained on `legacy`.
+
+| Earlier development name | Current name | Responsibility |
+| --- | --- | --- |
+| `shift_future_epw()` | `shift_epw_future()` | Run a future-weather batch from baseline EPWs and climate scenarios. |
+| `shift_reference_epw()` | `shift_epw_reanalysis()` | Generate annual ERA5 EPWs from local or downloaded data. |
+| `shift_epw()` | `shift_epw_write()` | Write transformed weather to EPWs in the store. |
+| `shift_export_epw()` | `shift_epw_export()` | Export workflow EPWs, writing them first when given transformed weather. |
+| `shift_reference_plan()` | `shift_reference_from_plan()` | Configure a reference using existing extraction plan IDs. |
+
+`shift_plan()` and `shift_reference_historical()` keep their names. Reference
+constructors configure inputs; EPW entry points execute generation or delivery.
+The CLI command names and persisted workflow stage names are unchanged.
+
 # Concept Map
 
 | Legacy step | Store-native replacement | Why it changed |
@@ -43,7 +62,7 @@ legacy software environment.
 | `match_coord()` | `shift_site()` and `EsgStore$plan_region()` | Site metadata and extraction plans are explicit workflow objects. |
 | `extract_data()` | `shift_extract()` or `EsgStore$extract()` | Extraction writes partitioned Parquet artifacts and records coverage. |
 | `morphing_epw()` | `shift_morph()` or `EpwMorpher$run()` | Morphing factors and diagnostics are store-native and resumable. |
-| `future_epw()` | `shift_epw()` or `EpwMorpher$write_epw()` | EPW outputs are registered with case metadata and artifact provenance. |
+| `future_epw()` | `shift_epw_write()` or `EpwMorpher$write_epw()` | EPW outputs are registered with case metadata and artifact provenance. |
 
 # Old Shape
 
@@ -102,7 +121,7 @@ epws <- request |>
         transform = transform,
         strict = TRUE
     ) |>
-    shift_epw()
+    shift_epw_write()
 ```
 
 Use `shift_status()`, `shift_diagnostics()`, `shift_coverage()`,
@@ -116,7 +135,7 @@ run and is not stored inside the
 reusable transform:
 
 ```r
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = shift_cmip6(
         model = "MPI-ESM1-2-LR",

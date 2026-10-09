@@ -3,8 +3,8 @@ NULL
 
 #' @rdname shift_api
 #' @export
-# shift_export_epw {{{
-shift_export_epw <- function(
+# shift_epw_export {{{
+shift_epw_export <- function(
     x,
     dir,
     separate = TRUE,
@@ -38,7 +38,7 @@ shift_export_epw <- function(
             code = function(reporter, task_store) {
                 shift_run__with_reporter(
                     reporter,
-                    shift_export_epw(
+                    shift_epw_export(
                         x,
                         dir = dir,
                         separate = separate,
@@ -51,7 +51,7 @@ shift_export_epw <- function(
     }
 
     if (S7::S7_inherits(x, ShiftMorphed)) {
-        x <- shift_epw(
+        x <- shift_epw_write(
             x,
             separate = separate,
             overwrite = overwrite,
@@ -60,7 +60,7 @@ shift_export_epw <- function(
     }
     if (!S7::S7_inherits(x, ShiftOutputs)) {
         cli::cli_abort(
-            "{.fn shift_export_epw} expects a {.cls ShiftOutputs} or {.cls ShiftMorphed} stage."
+            "{.fn shift_epw_export} expects a {.cls ShiftOutputs} or {.cls ShiftMorphed} stage."
         )
     }
 

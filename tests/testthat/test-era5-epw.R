@@ -259,7 +259,7 @@ test_that("public reference conversion is offline, resumable and failure preserv
     dir <- tempfile()
     withr::defer(unlink(dir, recursive = TRUE))
     input <- reference_test__bundle()
-    one <- shift_reference_epw(
+    one <- shift_epw_reanalysis(
         shift_era5(2001),
         reference_test__site(),
         dir,
@@ -269,7 +269,7 @@ test_that("public reference conversion is offline, resumable and failure preserv
     expect_false(one$reused)
     expect_true(file.exists(one$epw))
     expect_equal(EpwFile$new(one$epw)$header("GROUND TEMPERATURES"), "0")
-    two <- shift_reference_epw(
+    two <- shift_epw_reanalysis(
         shift_era5(2001),
         reference_test__site(),
         dir,
@@ -279,7 +279,7 @@ test_that("public reference conversion is offline, resumable and failure preserv
     expect_identical(two$epw, one$epw)
     # A damaged output must not be accepted on a subsequent run.
     cat("\ncorrupt\n", file = one$epw, append = TRUE)
-    three <- shift_reference_epw(
+    three <- shift_epw_reanalysis(
         shift_era5(2001),
         reference_test__site(),
         dir,
@@ -289,7 +289,7 @@ test_that("public reference conversion is offline, resumable and failure preserv
     expect_true(file.exists(one$epw))
     expect_false(identical(one$epw, three$epw))
     hash <- checksum_file(three$epw)
-    four <- shift_reference_epw(
+    four <- shift_epw_reanalysis(
         shift_era5(2001),
         reference_test__site(),
         dir,
@@ -299,7 +299,7 @@ test_that("public reference conversion is offline, resumable and failure preserv
     expect_identical(checksum_file(four$epw), hash)
     input$data$tdps[1] <- input$data$tas[1] + 1
     expect_warning(
-        failed <- shift_reference_epw(
+        failed <- shift_epw_reanalysis(
             shift_era5(2001),
             reference_test__site(),
             dir,
@@ -312,7 +312,7 @@ test_that("public reference conversion is offline, resumable and failure preserv
     expect_true(file.exists(failed$receipt))
     expect_false(dir.exists(file.path(dir, ".reference-lock")))
     expect_error(
-        shift_reference_epw(
+        shift_epw_reanalysis(
             shift_era5(2001, product = "land"),
             reference_test__site(),
             dir,
@@ -321,7 +321,7 @@ test_that("public reference conversion is offline, resumable and failure preserv
         "single_levels"
     )
     no_height <- shift_site("point", 113, 23, metadata = list(timezone = 8))
-    expect_error(shift_reference_epw(
+    expect_error(shift_epw_reanalysis(
         shift_era5(2001),
         no_height,
         dir,
@@ -458,7 +458,7 @@ test_that("batch results retain absent years and lock ownership is respected", {
     dir.create(lock)
     writeLines("active test owner", file.path(lock, "owner.json"))
     expect_error(
-        shift_reference_epw(
+        shift_epw_reanalysis(
             shift_era5(2001),
             reference_test__site(),
             dir,
@@ -478,7 +478,7 @@ test_that("batch results retain absent years and lock ownership is respected", {
         )
     )
     expect_warning(
-        result <- shift_reference_epw(
+        result <- shift_epw_reanalysis(
             shift_era5(2001:2002),
             sites,
             dir,
@@ -538,7 +538,7 @@ test_that("a complete native NetCDF converts without contacting CDS", {
     )
     expect_equal(read$data$rlds, bundle$data$rlds)
     expect_identical(read$provenance$files$sha256, checksum_file(path))
-    result <- shift_reference_epw(
+    result <- shift_epw_reanalysis(
         shift_era5(2001),
         reference_test__site(),
         dir,
@@ -558,7 +558,7 @@ test_that("reference EPW rejects a different reanalysis provider", {
     source <- shift_era5(2001)
     source@dataset <- "era6"
     expect_error(
-        shift_reference_epw(source, reference_test__site(), tempfile()),
+        shift_epw_reanalysis(source, reference_test__site(), tempfile()),
         "requires"
     )
 })
@@ -592,7 +592,7 @@ test_that("missing per-site local input remains offline", {
         metadata = list(timezone = 8, elevation = 41)
     )
     expect_warning(
-        result <- shift_reference_epw(
+        result <- shift_epw_reanalysis(
             shift_era5(2001),
             list(reference_test__site(), missing),
             withr::local_tempdir(),

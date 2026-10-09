@@ -2885,7 +2885,7 @@ shift_run__plan_run <- function(
             )
             outputs_stage <- shift_run__do_call_with_reporter(
                 reporter,
-                shift_epw,
+                shift_epw_write,
                 c(list(morphed), epw_args)
             )
             output_rows <- shift_outputs(outputs_stage)
@@ -3090,8 +3090,8 @@ S7::method(shift_morph, ShiftClimate) <- function(
 }
 # }}}
 
-# S7::method(shift_epw, ShiftMorphed) {{{
-S7::method(shift_epw, ShiftMorphed) <- function(
+# S7::method(shift_epw_write, ShiftMorphed) {{{
+S7::method(shift_epw_write, ShiftMorphed) <- function(
     x,
     dir = NULL,
     separate = TRUE,
@@ -3148,7 +3148,7 @@ S7::method(shift_epw, ShiftMorphed) <- function(
         diagnostics = shift_stage__diagnostics_empty()
     )
     if (!is.null(export_dir)) {
-        stage <- shift_export_epw(
+        stage <- shift_epw_export(
             stage,
             dir = export_dir,
             separate = separate,

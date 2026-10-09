@@ -701,7 +701,7 @@ shift_download <- S7::new_generic(
 #' @rdname shift_api
 #' @param site A `shift_site()` object.
 #' @param periods A period table, usually from [epw_morph_periods()].
-#'   [shift_future_epw()] and [shift_plan()] also accept a numeric vector of
+#'   [shift_epw_future()] and [shift_plan()] also accept a numeric vector of
 #'   target years; each year becomes an independently named output period.
 #' @param method Grid extraction method used by [shift_extract()].
 #' @param fallback Extraction fallback policy.
@@ -859,15 +859,15 @@ shift_morph <- S7::new_generic(
 )
 
 #' @rdname shift_api
-#' @param dir In [shift_future_epw()], the user-facing delivery directory. In
-#'   [shift_epw()], an output directory inside the store root; relative paths
+#' @param dir In [shift_epw_future()], the user-facing delivery directory. In
+#'   [shift_epw_write()], an output directory inside the store root; relative paths
 #'   are resolved under the store root.
 #' @param separate Whether to create separate output directories per morphing case.
 #' @param export_dir Optional directory outside or inside the store where EPW
 #'   files should also be copied for user-facing delivery.
 #' @export
-shift_epw <- S7::new_generic(
-    "shift_epw",
+shift_epw_write <- S7::new_generic(
+    "shift_epw_write",
     "x",
     function(
         x,
@@ -895,7 +895,7 @@ shift_epw <- S7::new_generic(
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
-                        shift_epw(
+                        shift_epw_write(
                             x,
                             dir = dir,
                             separate = separate,
@@ -1207,7 +1207,7 @@ S7::method(shift_check, ShiftOutputs) <- function(
             "missing_epw_output",
             "Expected EPW output files were not found.",
             morph_id = x@ids$morph_id,
-            action = "Run `shift_epw()` again or check the output directory."
+            action = "Run `shift_epw_write()` again or check the output directory."
         )
     }
     diagnostics <- shift_stage__bind_diagnostics(x@diagnostics, diagnostics)

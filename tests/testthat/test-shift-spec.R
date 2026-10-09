@@ -251,7 +251,7 @@ test_that("target-year vectors expand to independently named periods", {
 
 test_that("weather transforms remain reusable and validate execution references", {
     historical <- historical_reference(1995:2014)
-    manual <- shift_reference_plan(
+    manual <- shift_reference_from_plan(
         "plan-reference",
         epw_morph_periods(reference = 1995L)
     )
@@ -278,7 +278,7 @@ test_that("weather transforms remain reusable and validate execution references"
     )
 })
 
-test_that("shift_future_epw() validates explicit transforms and returns a task plan", {
+test_that("shift_epw_future() validates explicit transforms and returns a task plan", {
     transform <- monthly_transform("epwshiftr")
     climate <- shift_cmip6(
         model = "EC-Earth3",
@@ -288,7 +288,7 @@ test_that("shift_future_epw() validates explicit transforms and returns a task p
         frequency = "mon",
         table = "Amon"
     )
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = climate,
         periods = list(`2060s` = 2060L),
@@ -323,7 +323,7 @@ test_that("shift_future_epw() validates explicit transforms and returns a task p
     external_store <- tempfile("shift-external-epw-store-")
     external <- test_external_epw(get_cache_epw())
     original_external_path <- external$path()
-    external_plan <- shift_future_epw(
+    external_plan <- shift_epw_future(
         sites = shift_site(epw = external),
         climate = climate,
         periods = list(`2060s` = 2060L),
@@ -340,7 +340,7 @@ test_that("shift_future_epw() validates explicit transforms and returns a task p
     ))
     expect_identical(external$path(), original_external_path)
     expect_error(
-        shift_future_epw(
+        shift_epw_future(
             sites = shift_site(epw = get_cache_epw()),
             climate = shift_cmip6("EC-Earth3", "ssp585"),
             periods = list(`2060s` = 2060L),
@@ -351,7 +351,7 @@ test_that("shift_future_epw() validates explicit transforms and returns a task p
         "WeatherTransformSpec"
     )
     expect_error(
-        shift_future_epw(
+        shift_epw_future(
             sites = shift_site(epw = get_cache_epw()),
             model = "EC-Earth3",
             scenarios = "ssp585",
@@ -366,7 +366,7 @@ test_that("shift_future_epw() validates explicit transforms and returns a task p
 
 test_that("weather transforms remain reusable across execution contexts", {
     transform <- monthly_transform("epwshiftr")
-    first <- shift_future_epw(
+    first <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = "EC-Earth3",
@@ -383,7 +383,7 @@ test_that("weather transforms remain reusable across execution contexts", {
         store = tempfile("first-shift-store-"),
         dry_run = TRUE
     )@meta$children[[1L]]
-    second <- shift_future_epw(
+    second <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR",

@@ -125,7 +125,7 @@ shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
             )
         ),
         write_epw = list(
-            what = shift_epw,
+            what = shift_epw_write,
             args = list(
                 input,
                 dir = store__chr1(spec$dir),
@@ -137,7 +137,7 @@ shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
             )
         ),
         export_epw = list(
-            what = shift_export_epw,
+            what = shift_epw_export,
             args = list(
                 input,
                 dir = as.character(spec$dir),

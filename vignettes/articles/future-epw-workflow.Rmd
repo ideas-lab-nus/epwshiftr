@@ -159,7 +159,7 @@ san_francisco_epw <- eplusr::path_eplus_weather(
     strict = TRUE
 )
 
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = san_francisco_epw),
     climate = shift_cmip6(
         model = 3L,
@@ -296,7 +296,7 @@ epw <- system.file(
     mustWork = TRUE
 )
 
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = shift_cmip6(
         model = "BCC-CSM2-MR",
@@ -364,7 +364,7 @@ climate <- shift_cmip6(
     scenarios = c("ssp126", "ssp585")
 )
 transform <- monthly_transform("original_morphing")
-plan <- shift_future_epw(
+plan <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = climate,
     periods = list(`2060s` = 2055:2065),
@@ -441,7 +441,7 @@ setting controls durable worker liveness and is independent of animation.
 
 
 ``` r
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
@@ -459,7 +459,7 @@ events shown by the foreground reporter.
 
 
 ``` r
-run <- shift_future_epw(
+run <- shift_epw_future(
     sites = shift_site(epw = epw),
     climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
     periods = list(`2060s` = 2055:2065),
@@ -666,7 +666,7 @@ session object to create or pass.
   <div class="shift-arrow">&rarr;</div>
 <div class="shift-node"><strong>shift_morph()</strong><span>Hourly future weather Parquet</span><code>ShiftMorphed</code></div>
   <div class="shift-arrow">&rarr;</div>
-<div class="shift-node"><strong>shift_epw()</strong><span>Write EnergyPlus Weather files</span><code>ShiftOutputs</code></div>
+<div class="shift-node"><strong>shift_epw_write()</strong><span>Write EnergyPlus Weather files</span><code>ShiftOutputs</code></div>
 </div>
 
 <div class="shift-side-note">
@@ -1042,7 +1042,7 @@ morphed_data
 
 ## Write EPW Files
 
-`shift_epw()` writes EnergyPlus Weather files from the morphed hourly results.
+`shift_epw_write()` writes EnergyPlus Weather files from the morphed hourly results.
 It returns a `ShiftOutputs` stage. The first chunk assigns the result while
 hiding verbose writer output; the second prints the stage object.
 
@@ -1051,7 +1051,7 @@ For the lower-level write path and output registry, see
 
 
 ``` r
-epws <- shift_epw(morphed)
+epws <- shift_epw_write(morphed)
 ```
 
 
@@ -1059,7 +1059,7 @@ epws <- shift_epw(morphed)
 epws
 ```
 
-`shift_outputs()` lists the EPW files written by `shift_epw()`. These are the
+`shift_outputs()` lists the EPW files written by `shift_epw_write()`. These are the
 files you can pass directly to EnergyPlus.
 
 
@@ -1124,7 +1124,7 @@ data.table::data.table(
 Stage status and run status answer different questions. `shift_status(epws)`
 reports that the EPW artifact is `written`; `shift_status(shift_run_get(epws))`
 is `waiting` because a store-local EPW can still be exported. Calling
-`shift_export_epw(epws, dir)` completes the run. If the store-local file is the
+`shift_epw_export(epws, dir)` completes the run. If the store-local file is the
 intentional endpoint, use `shift_complete(epws)` instead.
 
 ## Read Diagnostics When Something Looks Wrong

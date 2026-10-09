@@ -9,7 +9,7 @@ test_that("an identical complete workflow returns its original durable run", {
 
     store_path <- tempfile("shift-idempotent-run-store-")
     output_dir <- tempfile("shift-idempotent-run-output-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "EC-Earth3",
@@ -138,7 +138,7 @@ test_that("an identical interrupted workflow resumes its original run ID", {
     skip_if_not_installed("duckdb")
 
     store_path <- tempfile("shift-idempotent-resume-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "EC-Earth3",

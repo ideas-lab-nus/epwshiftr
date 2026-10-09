@@ -301,7 +301,7 @@ era5__request <- function(spec, variable, site, access) {
 #'
 #' `shift_era5()` describes an ERA5 calibration source. Variables, temporal
 #' frequency, and the target coordinate are normally inferred from the weather
-#' method and baseline EPW when [shift_future_epw()] builds the run.
+#' method and baseline EPW when [shift_epw_future()] builds the run.
 #' Constructing the source neither reads credentials nor contacts CDS. Use
 #' `shift_check(source)` to validate local configuration and
 #' `shift_check(source, network = TRUE)` to authenticate the configured token
@@ -330,7 +330,7 @@ era5__request <- function(spec, variable, site, access) {
 #' [Copernicus Climate Data Store ERA5 hourly time-series data](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-timeseries)
 #' and the [CDS API setup guide](https://cds.climate.copernicus.eu/en/how-to-api).
 #'
-#' @seealso [shift_future_epw()], [shift_check()]
+#' @seealso [shift_epw_future()], [shift_check()]
 #' @export
 # shift_era5 {{{
 shift_era5 <- function(

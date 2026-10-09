@@ -61,7 +61,7 @@ Missing baseline precipitation is retained with `precipitation = "off"`.
 ``` r
 library(epwshiftr)
 
-batch <- shift_future_epw(
+batch <- shift_epw_future(
     sites = list(
         shift_site("Singapore", epw = "Singapore.epw"),
         shift_site("SanFrancisco", epw = "SanFrancisco.epw")
@@ -88,7 +88,7 @@ batch <- shift_future_epw(
 <img src="man/figures/README/example.svg" width="100%" alt="Actual terminal recording of two-city future EPW generation.">
 </picture>
 
-*Actual terminal recording of `shift_future_epw()`, regenerated from
+*Actual terminal recording of `shift_epw_future()`, regenerated from
 cached climate inputs. Playback is accelerated 4×, with long waits
 shortened.*
 

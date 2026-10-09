@@ -427,7 +427,7 @@ test_that("Ek public transform survives dry-run plan reconstruction", {
         frequency = "day",
         table = "day"
     )
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = climate,
         periods = list(`2060s` = 2061L),

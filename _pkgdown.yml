@@ -80,7 +80,7 @@ reference:
   - title: Historical reference weather
     desc: Create annual ERA5 EPW files with explicit source and conversion records.
     contents:
-      - shift_reference_epw
+      - shift_epw_reanalysis
 
   - title: Future-weather transformations
     desc: Discover, configure, and execute built-in future-weather methods.
@@ -89,11 +89,13 @@ reference:
       - monthly_transform
       - daily_transform
       - hourly_transform
-      - shift_future_epw
+      - shift_epw_future
       - shift_cmip6
       - shift_era5
       - shift_era6
       - shift_plan
+      - shift_reference_from_plan
+      - shift_reference_historical
       - EpwMorpher
       - epw_morpher
       - epw_morph_periods
@@ -117,7 +119,8 @@ reference:
       - shift_download
       - shift_extract
       - shift_morph
-      - shift_epw
+      - shift_epw_write
+      - shift_epw_export
       - shift_status
       - shift_batch_get
       - shift_history
