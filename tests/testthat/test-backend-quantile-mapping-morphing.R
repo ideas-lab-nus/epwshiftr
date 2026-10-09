@@ -273,7 +273,7 @@ test_that("Quantile-mapping morphing harmonized policy closes the humidity state
 
 test_that("Quantile-mapping morphing public method persists both reference roles", {
     historical <- historical_reference(years = 1995:2014)
-    observed <- shift_reference_plan(
+    observed <- shift_reference_from_plan(
         "observed-plan",
         periods = epw_morph_periods(observed = 1995:2014),
         role = "observed_reference"

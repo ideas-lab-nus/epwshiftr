@@ -6,7 +6,7 @@ test_local_dependencies(list(
 
 test_that("historical workflow queries preserve years without exact datetime bounds", {
     reference_years <- 1995:2014
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "BCC-CSM2-MR",
@@ -589,7 +589,7 @@ test_that("rejected resolver nodes remain results rather than diagnostics", {
     skip_if_not_installed("duckdb")
 
     store_path <- tempfile("shift-rejected-node-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "BCC-CSM2-MR",

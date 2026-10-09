@@ -1110,7 +1110,7 @@ shift_inspect__read_epw_output_data <- function(store, outputs, n, columns) {
         missing = c(
             "EPW output file is missing.",
             "x" = "{.path {path}}",
-            "i" = "Run {.fn shift_epw} again or inspect {.fn shift_outputs}."
+            "i" = "Run {.fn shift_epw_write} again or inspect {.fn shift_outputs}."
         ),
         stage = "EPW output"
     )

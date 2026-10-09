@@ -258,7 +258,7 @@ test_that("high-level workflows select common models and retain child plans", {
     output <- tempfile("batch-output-")
     store <- tempfile("batch-store-")
 
-    batch <- shift_future_epw(
+    batch <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
@@ -300,7 +300,7 @@ test_that("high-level workflows select common models and retain child plans", {
 
     # Delivery paths do not change the scientific batch identity or reusable
     # store root selected for the same EPW, climate, periods, and methods.
-    second <- shift_future_epw(
+    second <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
@@ -319,7 +319,7 @@ test_that("high-level workflows select common models and retain child plans", {
 
     # Explicit refresh bypasses the persisted batch selection without changing
     # the scientific batch identity.
-    refreshed <- shift_future_epw(
+    refreshed <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
@@ -337,7 +337,7 @@ test_that("high-level workflows select common models and retain child plans", {
     expect_identical(refreshed@ids$batch_id, batch@ids$batch_id)
     expect_gt(availability_calls, first_discovery_calls)
 
-    changed_calibration <- shift_future_epw(
+    changed_calibration <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,
@@ -371,7 +371,7 @@ test_that("direct high-level execution builds the whole batch before running", {
         .package = "epwshiftr"
     )
 
-    result <- shift_future_epw(
+    result <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(model = 1L, scenarios = "ssp585"),
         periods = list(`2050` = 2049:2050),
@@ -564,7 +564,7 @@ test_that("batch discovery applies period coverage before model counts", {
         shift_resolve__cmip6_period_coverage = period_coverage
     ))
 
-    batch <- shift_future_epw(
+    batch <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = 2L,

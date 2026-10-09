@@ -437,7 +437,10 @@ epwshiftr_cli_morph_run <- function(
         )
     }
     if (identical(reference_mode, "plan")) {
-        reference <- shift_reference_plan(reference_plan_id, reference_periods)
+        reference <- shift_reference_from_plan(
+            reference_plan_id,
+            reference_periods
+        )
     }
     observed_reference <- NULL
     observed_plan_id <- epwshiftr_cli_ids(
@@ -449,7 +452,7 @@ epwshiftr_cli_morph_run <- function(
         observed_periods <- epwshiftr_cli_periods_from_cli(
             parsed$options[["--observed-period"]]
         )
-        observed_reference <- shift_reference_plan(
+        observed_reference <- shift_reference_from_plan(
             observed_plan_id,
             observed_periods,
             role = "observed_reference"
@@ -512,7 +515,7 @@ epwshiftr_cli_morph_epw <- function(
     epwshiftr_cli_assert_no_positionals(parsed)
     morph_id <- epwshiftr_cli_required_ids(parsed, "--morph")
     morphed <- epwshiftr_cli_morphed_stage_from_morph_id(store, morph_id)
-    outputs <- shift_epw(
+    outputs <- shift_epw_write(
         morphed,
         dir = epwshiftr_cli_config_string(
             parsed$options[["--dir"]],

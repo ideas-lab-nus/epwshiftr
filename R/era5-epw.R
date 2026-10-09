@@ -582,11 +582,11 @@ era_epw__job <- function(
 #' site <- shift_site("example", lon = 113.3, lat = 23.2,
 #'     metadata = list(timezone = 8, elevation = 10))
 #' \dontrun{
-#' shift_reference_epw(shift_era5(1995), site, "reference-weather",
+#' shift_epw_reanalysis(shift_era5(1995), site, "reference-weather",
 #'     data = c("instantaneous.nc", "accumulated.nc"))
 #' }
 #' @export
-shift_reference_epw <- function(
+shift_epw_reanalysis <- function(
     source,
     sites,
     dir,

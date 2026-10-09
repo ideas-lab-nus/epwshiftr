@@ -82,7 +82,7 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         reference = climate,
         strict = FALSE
     )
-    epws <- shift_epw(morphed, dir = "shift-epw")
+    epws <- shift_epw_write(morphed, dir = "shift-epw")
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
     expect_true(S7::S7_inherits(dl, ShiftDownload))
@@ -265,8 +265,8 @@ test_that("standalone shift APIs carry run context without session arguments", {
         shift_download,
         shift_extract,
         shift_morph,
-        shift_epw,
-        shift_export_epw
+        shift_epw_write,
+        shift_epw_export
     )
     for (api in apis) {
         arguments <- names(formals(api))

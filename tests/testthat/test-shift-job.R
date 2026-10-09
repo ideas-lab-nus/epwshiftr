@@ -82,7 +82,7 @@ test_that("foreground interrupts persist one meaningful cancelled state", {
     skip_if_not_installed("duckdb")
 
     store_path <- tempfile("shift-interrupt-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "EC-Earth3",
@@ -132,7 +132,7 @@ test_that("background live sidecars carry transient reporter state without event
     skip_if_not_installed("duckdb")
 
     store_path <- tempfile("shift-live-ui-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "EC-Earth3",
@@ -199,7 +199,7 @@ test_that("successful-run scientific diagnostics survive refresh", {
     skip_if_not_installed("duckdb")
 
     store_path <- tempfile("shift-scientific-diagnostic-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("Model-A", "ssp585"),
         periods = list(`2050` = 2050L),
@@ -243,7 +243,7 @@ test_that("background runs register live jobs before launching workers", {
     skip_if_not_installed("duckdb")
 
     store_path <- tempfile("shift-background-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "EC-Earth3",
@@ -304,7 +304,7 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
     skip_on_os("windows")
 
     store_path <- tempfile("shift-live-lock-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             "EC-Earth3",

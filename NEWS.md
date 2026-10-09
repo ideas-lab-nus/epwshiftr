@@ -1,5 +1,13 @@
 # epwshiftr (development version)
 
+* Group EPW entry points under `shift_epw_*()`: rename
+  `shift_future_epw()` to `shift_epw_future()`, `shift_reference_epw()` to
+  `shift_epw_reanalysis()`, `shift_epw()` to `shift_epw_write()`, and
+  `shift_export_epw()` to `shift_epw_export()`. Rename `shift_reference_plan()`
+  to `shift_reference_from_plan()` to distinguish reference configuration from
+  plan construction. Arguments, return values and execution behavior are
+  unchanged; the previous development names are no longer exported (#293).
+
 * Apply additive shifts when enhanced monthly stretching falls back, and interpolate factors in representative month/day/hour order for typical-year EPWs assembled from different source years. Enhanced monthly recipe version 3 prevents reuse of plans with the earlier arithmetic or calendar semantics (#289).
 
 * Record evaluated File-level candidates and node/service outcomes during climate input resolution. `shift_selection()` reads saved configuration, selected inputs and candidate explanations for completed or failed runs and shared batch children. Older runs explicitly report missing records (#288).
@@ -170,7 +178,7 @@
   intervals are planned once; native multi-point reading remains a subsequent
   execution change. (#275)
 
-* `shift_future_epw()` now takes `shift_site()` objects through its first
+* `shift_epw_future()` now takes `shift_site()` objects through its first
   argument, `sites`, and always returns a batch. Workflow configurations use
   a `sites` array with constructor field names. Site/model/method plans share
   discovery and baseline identities, with distinct output directories (#273).
@@ -222,7 +230,7 @@
 * Replaced public method and recipe construction with reusable
   `WeatherTransformSpec` objects from `monthly_transform()`,
   `daily_transform()`, or `hourly_transform()`. The task-oriented
-  `shift_future_epw(epw, climate, periods, transform, dir, reference,
+  `shift_epw_future(epw, climate, periods, transform, dir, reference,
   observed_reference, control, ui, store, dry_run, background)` interface now
   keeps historical model and observed-reference inputs at execution scope.
   `weather_transforms()` exposes each selectable method's temporal, input,
@@ -257,7 +265,7 @@
 
 ## New features
 
-* `shift_reference_epw()` creates annual ERA5 reference weather without a
+* `shift_epw_reanalysis()` creates annual ERA5 reference weather without a
   baseline EPW. It accepts existing NetCDF files or explicitly unit-labelled
   point data, supports multiple sites and years, and retains input hashes,
   field provenance, leap-day omissions and humidity diagnostics. Conversion
@@ -320,7 +328,7 @@
   overview, workflow, and result sections. Local config validation stays offline;
   `--network` explicitly checks provider coverage and readiness (#255).
 
-* Added an ergonomic `shift_future_epw()` workflow for multiple weather methods
+* Added an ergonomic `shift_epw_future()` workflow for multiple weather methods
   and CMIP6 models. Method keys resolve through `weather_transforms()`, model
   discovery selects common model/member/grid identities across every method,
   required historical periods are created automatically, and `ShiftBatch`
@@ -816,7 +824,7 @@
   complete future/reference CMIP6 resolution, strict expected-case coverage,
   and explicit partial-output policy.
 * Added the store-native `shift_request()` -> `shift_collect()` ->
-  `shift_download()` -> `shift_extract()` -> `shift_morph()` -> `shift_epw()`
+  `shift_download()` -> `shift_extract()` -> `shift_morph()` -> `shift_epw_write()`
   workflow, with inspection helpers such as `shift_status()`,
   `shift_diagnostics()`, `shift_coverage()`, `shift_outputs()`, and
   `shift_data()`.
@@ -976,7 +984,7 @@
 * `EsgQuery$collect(all = TRUE)` now warns and returns partial results when
   ESGF pagination stops making progress, instead of repeatedly requesting the
   same offset (#116).
-* `shift_epw()` and `EpwMorpher$write_epw()` now fill missing, out-of-range,
+* `shift_epw_write()` and `EpwMorpher$write_epw()` now fill missing, out-of-range,
   and special EPW values before saving generated weather files (#87).
 
 ## Documentation

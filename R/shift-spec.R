@@ -1398,8 +1398,8 @@ shift_plan <- function(
 #' @param dry_run If `TRUE`, discover eligible datasets and return a planned
 #'   batch without extracting climate values or generating EPWs.
 #' @export
-# shift_future_epw {{{
-shift_future_epw <- function(
+# shift_epw_future {{{
+shift_epw_future <- function(
     sites,
     climate,
     periods,

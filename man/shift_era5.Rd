@@ -37,7 +37,7 @@ A reusable \code{ShiftReanalysisSpec} containing no credentials.
 \description{
 \code{shift_era5()} describes an ERA5 calibration source. Variables, temporal
 frequency, and the target coordinate are normally inferred from the weather
-method and baseline EPW when \code{\link[=shift_future_epw]{shift_future_epw()}} builds the run.
+method and baseline EPW when \code{\link[=shift_epw_future]{shift_epw_future()}} builds the run.
 Constructing the source neither reads credentials nor contacts CDS. Use
 \code{shift_check(source)} to validate local configuration and
 \code{shift_check(source, network = TRUE)} to authenticate the configured token
@@ -54,5 +54,5 @@ single-level product; automatic access falls back from ARCO to CDS.
 and the \href{https://cds.climate.copernicus.eu/en/how-to-api}{CDS API setup guide}.
 }
 \seealso{
-\code{\link[=shift_future_epw]{shift_future_epw()}}, \code{\link[=shift_check]{shift_check()}}
+\code{\link[=shift_epw_future]{shift_epw_future()}}, \code{\link[=shift_check]{shift_check()}}
 }

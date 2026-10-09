@@ -353,7 +353,7 @@ ui_workflows__batch <- function(root) {
         availability = test_cmip6_availability,
         shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
     ))
-    shift_future_epw(
+    shift_epw_future(
         shift_site(epw = get_cache_epw()),
         shift_cmip6(model = 2L, scenarios = "ssp585"),
         periods = list(mid = 2049:2050),

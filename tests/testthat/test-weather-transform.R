@@ -484,8 +484,8 @@ test_that("transform specifications contain no execution-owned data", {
 
 test_that("reference objects retain distinct semantic input roles", {
     periods <- epw_morph_periods(reference = 1995:2014)
-    historical <- shift_reference_plan("historical-plan", periods)
-    observed <- shift_reference_plan(
+    historical <- shift_reference_from_plan("historical-plan", periods)
+    observed <- shift_reference_from_plan(
         "observed-plan",
         periods,
         role = "observed_reference"

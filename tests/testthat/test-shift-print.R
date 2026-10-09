@@ -265,7 +265,7 @@ test_that("ShiftRun print refreshes state and reuses the static dashboard", {
     skip_if_not_installed("duckdb")
     withr::local_options(cli.num_colors = 1L)
     store_path <- tempfile("shift-print-run-store-")
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
         periods = list(`2060s` = 2055:2065),
@@ -417,7 +417,7 @@ test_that("shift_ui() validates presentation options without changing scientific
         table = "Amon"
     )
     make_plan <- function(ui) {
-        shift_future_epw(
+        shift_epw_future(
             sites = shift_site(epw = get_cache_epw()),
             climate = climate,
             periods = list(`2060s` = 2060L),

@@ -7,8 +7,8 @@ NULL
 #' @param role Semantic role of the plan-backed climate. Use
 #'   `"observed_reference"` only for an observational extraction plan.
 #' @export
-# shift_reference_plan {{{
-shift_reference_plan <- function(
+# shift_reference_from_plan {{{
+shift_reference_from_plan <- function(
     plan_id,
     periods,
     role = c("model_historical", "observed_reference")

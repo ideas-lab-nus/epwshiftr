@@ -527,7 +527,7 @@ epwshiftr_cli_config_plan <- function(
     background = FALSE,
     ui = shift_ui()
 ) {
-    shift_future_epw(
+    shift_epw_future(
         sites = lapply(config$sites, function(site) do.call(shift_site, site)),
         climate = epwshiftr_cli_config_climate(config$climate),
         periods = config$periods,
@@ -638,7 +638,7 @@ cli_shift__config_reference <- function(reference, field) {
         } else {
             "model_historical"
         }
-        return(shift_reference_plan(plan_id, periods, role = role))
+        return(shift_reference_from_plan(plan_id, periods, role = role))
     }
 
     shift_reference_historical(
@@ -1420,12 +1420,12 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
     reference <- if (is.null(reference_plan_id)) {
         NULL
     } else {
-        shift_reference_plan(reference_plan_id, reference_periods)
+        shift_reference_from_plan(reference_plan_id, reference_periods)
     }
     observed_reference <- if (is.null(observed_plan_id)) {
         NULL
     } else {
-        shift_reference_plan(
+        shift_reference_from_plan(
             observed_plan_id,
             observed_periods,
             role = "observed_reference"

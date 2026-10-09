@@ -1099,7 +1099,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
         "epwshiftr",
         snow_depth = "required"
     )
-    required_plan <- shift_future_epw(
+    required_plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("Model-A", "ssp585"),
         periods = list(`2060s` = 2055:2065),

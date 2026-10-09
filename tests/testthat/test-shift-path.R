@@ -107,11 +107,11 @@ test_that("path comparison follows case-insensitive filesystem semantics", {
     }
 })
 
-test_that("shift_future_epw rejects an overlapping delivery and store tree", {
+test_that("shift_epw_future rejects an overlapping delivery and store tree", {
     root <- withr::local_tempdir()
     common <- file.path(root, "workflow")
     make_plan <- function(dir, store) {
-        shift_future_epw(
+        shift_epw_future(
             sites = shift_site(epw = get_cache_epw()),
             climate = shift_cmip6("BCC-CSM2-MR", "ssp126"),
             periods = list(`2060s` = 2060L),

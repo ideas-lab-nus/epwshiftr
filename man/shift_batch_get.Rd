@@ -9,7 +9,7 @@ shift_batch_get(batch_id, store = NULL)
 \arguments{
 \item{batch_id}{Batch identifier returned by \code{\link[=shift_ids]{shift_ids()}}.}
 
-\item{store}{Root store used for \code{\link[=shift_future_epw]{shift_future_epw()}}, or the batch directory.}
+\item{store}{Root store used for \code{\link[=shift_epw_future]{shift_epw_future()}}, or the batch directory.}
 }
 \value{
 A \code{ShiftBatch} accepted by the ordinary \verb{shift_*()} inspectors,

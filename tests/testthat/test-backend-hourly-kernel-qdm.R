@@ -239,7 +239,7 @@ hourly_kqdm_test__overrides <- function() {
 
 test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
     reference <- historical_reference(1995:2014)
-    observed <- shift_reference_plan(
+    observed <- shift_reference_from_plan(
         "observed-hourly-plan",
         epw_morph_periods(observed = 1995:2014),
         role = "observed_reference"
@@ -353,7 +353,7 @@ test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
         "requires.*observed_reference"
     )
     expect_error(
-        shift_future_epw(
+        shift_epw_future(
             sites = shift_site(epw = get_cache_epw()),
             climate = shift_cmip6(
                 "EC-Earth3",
@@ -372,7 +372,7 @@ test_that("hourly kernel QDM configures an explicit site-specific shift plan", {
         "requires CMIP frequencies"
     )
     expect_error(
-        shift_future_epw(
+        shift_epw_future(
             sites = shift_site(epw = get_cache_epw()),
             climate = climate,
             periods = list(`2060s` = 2061L),

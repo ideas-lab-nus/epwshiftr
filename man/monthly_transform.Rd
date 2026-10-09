@@ -37,5 +37,5 @@ a scientific method on its transformation scale. The resulting
 or output path and can therefore be reused across runs.
 }
 \seealso{
-\code{\link[=weather_transforms]{weather_transforms()}}, \code{\link[=shift_future_epw]{shift_future_epw()}}
+\code{\link[=weather_transforms]{weather_transforms()}}, \code{\link[=shift_epw_future]{shift_epw_future()}}
 }

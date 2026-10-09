@@ -346,7 +346,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         frequency = "day",
         table = "day"
     )
-    plan <- shift_future_epw(
+    plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = daily_climate,
         periods = list(`2060s` = 2061L),
@@ -381,7 +381,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
         plan@meta$recipe$components
     )
     expect_silent(shift_job__validate_background_plan(plan))
-    inferred <- shift_future_epw(
+    inferred <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("EC-Earth3", "ssp585"),
         periods = list(`2060s` = 2061L),

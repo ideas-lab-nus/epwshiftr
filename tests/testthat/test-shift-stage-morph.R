@@ -107,7 +107,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     expect_equal(shift_ids(reused)$plan_id, shift_ids(derived)$plan_id)
 })
 
-test_that("shift_future_epw() completes baseline and explicit-reference scenario cases", {
+test_that("shift_epw_future() completes baseline and explicit-reference scenario cases", {
     local_test_cache()
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
     skip_if_not_installed("duckdb")
@@ -331,7 +331,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
 
     store_path <- tempfile("shift-run-store-")
     output_dir <- tempfile("shift-run-output-")
-    baseline_reference_run <- shift_future_epw(
+    baseline_reference_run <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR",
@@ -350,7 +350,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     expect_equal(nrow(shift_outputs(baseline_reference_run)), 2L)
     expect_equal(calls$historical_file_calls, 0L)
 
-    run <- shift_future_epw(
+    run <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR",
@@ -400,7 +400,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
 
     calls$future_scenarios <- "ssp585"
     missing_store <- tempfile("shift-default-missing-store-")
-    missing_run <- (shift_future_epw(
+    missing_run <- (shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR",
@@ -421,7 +421,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
     expect_true("shift_resolver_exhausted" %in% missing_diagnostics$code)
     expect_true(any(grepl("ssp126", missing_diagnostics$message, fixed = TRUE)))
 
-    partial <- shift_future_epw(
+    partial <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR",
@@ -460,7 +460,7 @@ test_that("shift_future_epw() completes baseline and explicit-reference scenario
         },
         .package = "epwshiftr"
     )
-    failed_run <- (shift_future_epw(
+    failed_run <- (shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
             model = "BCC-CSM2-MR",
@@ -730,7 +730,7 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     )))
     reference_climate <- auto@meta$reference
     reference_ids <- shift_ids(reference_climate)
-    plan_reference <- shift_reference_plan(
+    plan_reference <- shift_reference_from_plan(
         reference_ids$plan_id,
         reference_periods
     )
