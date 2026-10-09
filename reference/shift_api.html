@@ -94,7 +94,7 @@ child plans or resumes interrupted runs independently."><meta property="og:image
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Store-native shift workflow API</h1>
-    <small class="dont-index">Source: <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/R/shift-stage.R" class="external-link"><code>R/shift-stage.R</code></a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/R/shift-inspect.R" class="external-link"><code>R/shift-inspect.R</code></a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/R/shift-job.R" class="external-link"><code>R/shift-job.R</code></a>, and 5 more</small>
+    <small class="dont-index">Source: <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/R/shift-stage.R" class="external-link"><code>R/shift-stage.R</code></a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/R/shift-export.R" class="external-link"><code>R/shift-export.R</code></a>, <a href="https://github.com/ideas-lab-nus/epwshiftr/blob/master/R/shift-inspect.R" class="external-link"><code>R/shift-inspect.R</code></a>, and 5 more</small>
     <div class="hidden name"><code>shift_api.Rd</code></div>
     </div>
 
@@ -161,7 +161,7 @@ child plans or resumes interrupted runs independently.</p>
 <span>  ui <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">shift_epw</span><span class="op">(</span></span>
+<span><span class="fu">shift_epw_write</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
 <span>  dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  separate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -172,6 +172,15 @@ child plans or resumes interrupted runs independently.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_check</span><span class="op">(</span><span class="va">x</span>, strict <span class="op">=</span> <span class="cn">FALSE</span>, network <span class="op">=</span> <span class="cn">FALSE</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">shift_epw_export</span><span class="op">(</span></span>
+<span>  <span class="va">x</span>,</span>
+<span>  <span class="va">dir</span>,</span>
+<span>  separate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  ui <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_explain</span><span class="op">(</span><span class="va">x</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
@@ -228,6 +237,25 @@ child plans or resumes interrupted runs independently.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_cancel</span><span class="op">(</span><span class="va">x</span>, store <span class="op">=</span> <span class="cn">NULL</span>, force <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">shift_reference_from_plan</span><span class="op">(</span></span>
+<span>  <span class="va">plan_id</span>,</span>
+<span>  <span class="va">periods</span>,</span>
+<span>  role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"model_historical"</span>, <span class="st">"observed_reference"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">historical_reference</span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span>, period <span class="op">=</span> <span class="st">"reference"</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">shift_reference_historical</span><span class="op">(</span></span>
+<span>  <span class="va">periods</span>,</span>
+<span>  experiment <span class="op">=</span> <span class="st">"historical"</span>,</span>
+<span>  activity <span class="op">=</span> <span class="st">"CMIP"</span>,</span>
+<span>  match <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"frequency"</span>, <span class="st">"table_id"</span>, <span class="st">"grid_label"</span><span class="op">)</span>,</span>
+<span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  collect <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  extract <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fallback <span class="op">=</span> <span class="st">"auto"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">shift_ui</span><span class="op">(</span></span>
 <span>  progress <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"dynamic"</span>, <span class="st">"log"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
@@ -323,7 +351,7 @@ child plans or resumes interrupted runs independently.</p>
 <span>  epw <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">shift_future_epw</span><span class="op">(</span></span>
+<span><span class="fu">shift_epw_future</span><span class="op">(</span></span>
 <span>  <span class="va">sites</span>,</span>
 <span>  <span class="va">climate</span>,</span>
 <span>  <span class="va">periods</span>,</span>
@@ -338,34 +366,6 @@ child plans or resumes interrupted runs independently.</p>
 <span>  background <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  methods <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  calibration <span class="op">=</span> <span class="cn">NULL</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">shift_export_epw</span><span class="op">(</span></span>
-<span>  <span class="va">x</span>,</span>
-<span>  <span class="va">dir</span>,</span>
-<span>  separate <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  ui <span class="op">=</span> <span class="cn">NULL</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">shift_reference_plan</span><span class="op">(</span></span>
-<span>  <span class="va">plan_id</span>,</span>
-<span>  <span class="va">periods</span>,</span>
-<span>  role <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"model_historical"</span>, <span class="st">"observed_reference"</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">historical_reference</span><span class="op">(</span>years <span class="op">=</span> <span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span>, period <span class="op">=</span> <span class="st">"reference"</span>, <span class="va">...</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu">shift_reference_historical</span><span class="op">(</span></span>
-<span>  <span class="va">periods</span>,</span>
-<span>  experiment <span class="op">=</span> <span class="st">"historical"</span>,</span>
-<span>  activity <span class="op">=</span> <span class="st">"CMIP"</span>,</span>
-<span>  match <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"source_id"</span>, <span class="st">"variant_label"</span>, <span class="st">"frequency"</span>, <span class="st">"table_id"</span>, <span class="st">"grid_label"</span><span class="op">)</span>,</span>
-<span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  options <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  collect <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  extract <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fallback <span class="op">=</span> <span class="st">"auto"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -446,7 +446,7 @@ morphing results, or EPW outputs.</p></dd>
 
 <dt id="arg-periods">periods<a class="anchor" aria-label="anchor" href="#arg-periods"></a></dt>
 <dd><p>A period table, usually from <code><a href="epw_morph_periods.html">epw_morph_periods()</a></code>.
-<code>shift_future_epw()</code> and <code>shift_plan()</code> also accept a numeric vector of
+<code>shift_epw_future()</code> and <code>shift_plan()</code> also accept a numeric vector of
 target years; each year becomes an independently named output period.</p></dd>
 
 
@@ -511,8 +511,8 @@ plans.</p></dd>
 
 
 <dt id="arg-dir">dir<a class="anchor" aria-label="anchor" href="#arg-dir"></a></dt>
-<dd><p>In <code>shift_future_epw()</code>, the user-facing delivery directory. In
-<code>shift_epw()</code>, an output directory inside the store root; relative paths
+<dd><p>In <code>shift_epw_future()</code>, the user-facing delivery directory. In
+<code>shift_epw_write()</code>, an output directory inside the store root; relative paths
 are resolved under the store root.</p></dd>
 
 
@@ -588,6 +588,53 @@ interrupt to the owner so it can close its source workers; cooperative
 cancellation remains requested if the platform cannot deliver the interrupt.</p></dd>
 
 
+<dt id="arg-plan-id">plan_id<a class="anchor" aria-label="anchor" href="#arg-plan-id"></a></dt>
+<dd><p>Store extraction plan IDs for manually selected reference
+climate data.</p></dd>
+
+
+<dt id="arg-role">role<a class="anchor" aria-label="anchor" href="#arg-role"></a></dt>
+<dd><p>Semantic role of the plan-backed climate. Use
+<code>"observed_reference"</code> only for an observational extraction plan.</p></dd>
+
+
+<dt id="arg-years">years<a class="anchor" aria-label="anchor" href="#arg-years"></a></dt>
+<dd><p>Optional years used to constrain the future request time window.</p></dd>
+
+
+<dt id="arg-period">period<a class="anchor" aria-label="anchor" href="#arg-period"></a></dt>
+<dd><p>Reference period name used when constructing periods from
+<code>years</code>.</p></dd>
+
+
+<dt id="arg-activity">activity<a class="anchor" aria-label="anchor" href="#arg-activity"></a></dt>
+<dd><p>CMIP6 activity ID. <code>shift_cmip6_scenario()</code> defaults to
+<code>"ScenarioMIP"</code> and <code>shift_reference_historical()</code> defaults to <code>"CMIP"</code>.</p></dd>
+
+
+<dt id="arg-match">match<a class="anchor" aria-label="anchor" href="#arg-match"></a></dt>
+<dd><p>File metadata fields copied from the future climate stage when
+resolving an automatic historical reference.</p></dd>
+
+
+<dt id="arg-options">options<a class="anchor" aria-label="anchor" href="#arg-options"></a></dt>
+<dd><p>Provider-specific request options. For ESGF, <code>index_node</code> and
+<code>time_filter_method</code> are recognized.</p></dd>
+
+
+<dt id="arg-collect">collect<a class="anchor" aria-label="anchor" href="#arg-collect"></a></dt>
+<dd><p>Named collection options. Historical reference collection may
+use <code>fields</code>, <code>all</code>, <code>limit</code>, <code>label</code>, and <code>time</code>; <code>shift_plan()</code> applies
+the same strict field validation to its collection stage.</p></dd>
+
+
+<dt id="arg-extract">extract<a class="anchor" aria-label="anchor" href="#arg-extract"></a></dt>
+<dd><p>Named extraction options. Historical reference extraction may
+use <code>variables</code>, <code>time</code>, <code>filters</code>, <code>method</code>, and <code>fallback</code>;
+<code>shift_plan()</code> applies the same strict field validation to its extraction
+stage.</p></dd>
+
+
 <dt id="arg-progress">progress<a class="anchor" aria-label="anchor" href="#arg-progress"></a></dt>
 <dd><p>In <code>shift_ui()</code>, workflow presentation mode: <code>"auto"</code>,
 <code>"dynamic"</code>, <code>"log"</code>, or <code>"none"</code>.</p></dd>
@@ -629,11 +676,6 @@ source variable so <code>3hrPt</code>, <code>3hr</code>, and <code>day</code> da
 In <code>shift_reference_historical()</code>, <code>experiment</code> is the historical
 reference experiment filter. Values are not translated; for ESGF, use
 exact facet values such as <code>project = "CMIP6"</code> and <code>frequency = "mon"</code>.</p></dd>
-
-
-<dt id="arg-options">options<a class="anchor" aria-label="anchor" href="#arg-options"></a></dt>
-<dd><p>Provider-specific request options. For ESGF, <code>index_node</code> and
-<code>time_filter_method</code> are recognized.</p></dd>
 
 
 <dt id="arg-id">id<a class="anchor" aria-label="anchor" href="#arg-id"></a></dt>
@@ -684,11 +726,6 @@ scalar pins every variable to one table; a named character vector
 overrides individual variables.</p></dd>
 
 
-<dt id="arg-activity">activity<a class="anchor" aria-label="anchor" href="#arg-activity"></a></dt>
-<dd><p>CMIP6 activity ID. <code>shift_cmip6_scenario()</code> defaults to
-<code>"ScenarioMIP"</code> and <code>shift_reference_historical()</code> defaults to <code>"CMIP"</code>.</p></dd>
-
-
 <dt id="arg-index-nodes">index_nodes<a class="anchor" aria-label="anchor" href="#arg-index-nodes"></a></dt>
 <dd><p>Ordered ESGF index nodes used for failover.</p></dd>
 
@@ -731,10 +768,6 @@ before either selection policy is applied.</p></dd>
 <code>"ssp126"</code> or <code>"ssp585"</code>.</p></dd>
 
 
-<dt id="arg-years">years<a class="anchor" aria-label="anchor" href="#arg-years"></a></dt>
-<dd><p>Optional years used to constrain the future request time window.</p></dd>
-
-
 <dt id="arg-table-id">table_id<a class="anchor" aria-label="anchor" href="#arg-table-id"></a></dt>
 <dd><p>One or more CMIP6 table IDs. If <code>NULL</code>, the native table is
 inferred for each variable's <code>frequency</code>.</p></dd>
@@ -755,19 +788,6 @@ inferred for each variable's <code>frequency</code>.</p></dd>
 
 <dt id="arg-control">control<a class="anchor" aria-label="anchor" href="#arg-control"></a></dt>
 <dd><p>Workflow controls from <code>shift_control()</code>.</p></dd>
-
-
-<dt id="arg-collect">collect<a class="anchor" aria-label="anchor" href="#arg-collect"></a></dt>
-<dd><p>Named collection options. Historical reference collection may
-use <code>fields</code>, <code>all</code>, <code>limit</code>, <code>label</code>, and <code>time</code>; <code>shift_plan()</code> applies
-the same strict field validation to its collection stage.</p></dd>
-
-
-<dt id="arg-extract">extract<a class="anchor" aria-label="anchor" href="#arg-extract"></a></dt>
-<dd><p>Named extraction options. Historical reference extraction may
-use <code>variables</code>, <code>time</code>, <code>filters</code>, <code>method</code>, and <code>fallback</code>;
-<code>shift_plan()</code> applies the same strict field validation to its extraction
-stage.</p></dd>
 
 
 <dt id="arg-morph">morph<a class="anchor" aria-label="anchor" href="#arg-morph"></a></dt>
@@ -805,26 +825,6 @@ every selected method and model.</p></dd>
 <dt id="arg-calibration">calibration<a class="anchor" aria-label="anchor" href="#arg-calibration"></a></dt>
 <dd><p>Alias for <code>observed_reference</code> in high-level multi-method
 workflows. It is routed only to methods that accept observational input.</p></dd>
-
-
-<dt id="arg-plan-id">plan_id<a class="anchor" aria-label="anchor" href="#arg-plan-id"></a></dt>
-<dd><p>Store extraction plan IDs for manually selected reference
-climate data.</p></dd>
-
-
-<dt id="arg-role">role<a class="anchor" aria-label="anchor" href="#arg-role"></a></dt>
-<dd><p>Semantic role of the plan-backed climate. Use
-<code>"observed_reference"</code> only for an observational extraction plan.</p></dd>
-
-
-<dt id="arg-period">period<a class="anchor" aria-label="anchor" href="#arg-period"></a></dt>
-<dd><p>Reference period name used when constructing periods from
-<code>years</code>.</p></dd>
-
-
-<dt id="arg-match">match<a class="anchor" aria-label="anchor" href="#arg-match"></a></dt>
-<dd><p>File metadata fields copied from the future climate stage when
-resolving an automatic historical reference.</p></dd>
 
 </dl></div>
     <div id="value">

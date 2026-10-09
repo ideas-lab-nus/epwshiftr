@@ -124,7 +124,7 @@ Jia</h4>
 
     
     
-<p><code><a href="../reference/shift_reference_epw.html">shift_reference_epw()</a></code> converts hourly ERA5 single-level
+<p><code><a href="../reference/shift_epw_reanalysis.html">shift_epw_reanalysis()</a></code> converts hourly ERA5 single-level
 data into annual EPW files. It accepts multiple sites and years and does
 not require a baseline EPW. Use already downloaded input when available;
 the optional CDS path submits bounded monthly requests and is not a
@@ -139,7 +139,7 @@ when building this article.</p>
 <span>    <span class="st">"Guangzhou"</span>, lon <span class="op">=</span> <span class="fl">113.3333</span>, lat <span class="op">=</span> <span class="fl">23.16667</span>,</span>
 <span>    metadata <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>timezone <span class="op">=</span> <span class="fl">8</span>, elevation <span class="op">=</span> <span class="fl">41</span>, country <span class="op">=</span> <span class="st">"China"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
-<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_reference_epw.html">shift_reference_epw</a></span><span class="op">(</span></span>
+<span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_epw_reanalysis.html">shift_epw_reanalysis</a></span><span class="op">(</span></span>
 <span>    <span class="fu"><a href="../reference/shift_era5.html">shift_era5</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span>,</span>
 <span>    sites <span class="op">=</span> <span class="va">site</span>,</span>
 <span>    dir <span class="op">=</span> <span class="st">"reference-weather"</span>,</span>

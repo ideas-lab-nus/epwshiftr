@@ -154,7 +154,7 @@
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ideas-lab-nus.github.io/epwshiftr/">epwshiftr</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">batch</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span><span class="va">batch</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>        <span class="fu"><a href="reference/shift_api.html">shift_site</a></span><span class="op">(</span><span class="st">"Singapore"</span>, epw <span class="op">=</span> <span class="st">"Singapore.epw"</span><span class="op">)</span>,</span>
 <span>        <span class="fu"><a href="reference/shift_api.html">shift_site</a></span><span class="op">(</span><span class="st">"SanFrancisco"</span>, epw <span class="op">=</span> <span class="st">"SanFrancisco.epw"</span><span class="op">)</span></span>
@@ -175,7 +175,7 @@
 <span>    <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p><picture><source media="(prefers-color-scheme: dark)" srcset="reference/figures/README/example-dark.svg"><img src="reference/figures/README/example.svg" width="100%" alt="Actual terminal recording of two-city future EPW generation."></source></picture></p>
-<p><em>Actual terminal recording of <code><a href="reference/shift_api.html">shift_future_epw()</a></code>, regenerated from cached climate inputs. Playback is accelerated 4×, with long waits shortened.</em></p>
+<p><em>Actual terminal recording of <code><a href="reference/shift_api.html">shift_epw_future()</a></code>, regenerated from cached climate inputs. Playback is accelerated 4×, with long waits shortened.</em></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/shift_api.html">shift_status</a></span><span class="op">(</span><span class="va">batch</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "completed"</span></span>

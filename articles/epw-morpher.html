@@ -131,7 +131,7 @@ Jia</h4>
   Regenerate with: rawvignette::precompile_raw_vignettes()
   =====================================================================
 -->
-<p><code><a href="../reference/shift_api.html">shift_future_epw()</a></code> is the recommended interface for
+<p><code><a href="../reference/shift_api.html">shift_epw_future()</a></code> is the recommended interface for
 generating future EPW files. A weather transform selects the scientific
 calculation, while each run supplies the EPW template, climate data,
 study periods, references, and output directory. Keeping those
@@ -277,7 +277,7 @@ alternatives, source frequencies, and calendars.</p>
 </tr>
 </tbody>
 </table>
-<p><code><a href="../reference/shift_api.html">shift_future_epw()</a></code> checks these roles before collecting
+<p><code><a href="../reference/shift_api.html">shift_epw_future()</a></code> checks these roles before collecting
 or calculating data. Supplying an irrelevant reference is an error, as
 is omitting a required one. References are execution inputs and never
 become part of a reusable transform.</p>
@@ -296,7 +296,7 @@ monthly average daily range. The remaining input contract and its
 humidity alternatives are visible in
 <code>monthly_transform("original_morphing")@required_inputs</code>.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span></span>
 <span>        <span class="st">"extdata/examples/SGP_Singapore.486980_IWEC.epw"</span>,</span>
 <span>        package <span class="op">=</span> <span class="st">"epwshiftr"</span></span>
@@ -318,7 +318,7 @@ humidity alternatives are visible in
 model reference when one is available and can also use the EPW
 climatology without one:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2080s` <span class="op">=</span> <span class="fl">2075</span><span class="op">:</span><span class="fl">2085</span><span class="op">)</span>,</span>
@@ -334,7 +334,7 @@ its own reference data.</p>
 <code class="sourceCode R"><span><span class="va">historical</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">historical_reference</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
 <span><span class="va">observed</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_era5.html">shift_era5</a></span><span class="op">(</span><span class="fl">1995</span><span class="op">:</span><span class="fl">2014</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="va">future_cmip6</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2050</span>, <span class="fl">2080</span><span class="op">)</span>,</span>
@@ -347,7 +347,7 @@ its own reference data.</p>
 inspect the batch without extracting climate values or generating
 EPWs:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="st">"ssp585"</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>

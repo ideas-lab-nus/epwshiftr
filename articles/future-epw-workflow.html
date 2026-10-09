@@ -252,7 +252,7 @@ and ISIMIP3BASD.</p>
 <span>    strict <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">san_francisco_epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>        model <span class="op">=</span> <span class="fl">3L</span>,</span>
@@ -385,7 +385,7 @@ execution inputs.</p>
 <span>    mustWork <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span></span>
 <span>        model <span class="op">=</span> <span class="st">"BCC-CSM2-MR"</span>,</span>
@@ -446,7 +446,7 @@ prints the same static dashboard used by <code><a href="../reference/shift_api.h
 <span>    scenarios <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="va">transform</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/monthly_transform.html">monthly_transform</a></span><span class="op">(</span><span class="st">"original_morphing"</span><span class="op">)</span></span>
-<span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="va">climate</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
@@ -552,7 +552,7 @@ refreshes remote catalog and service information. Ordinary resume
 retains the resolved selection. The <code>heartbeat</code> setting
 controls durable worker liveness and is independent of animation.</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
@@ -567,7 +567,7 @@ outlive the current R session. The call returns a queued
 the store, and <code><a href="../reference/shift_api.html">shift_watch()</a></code> follows the same structured
 events shown by the foreground reporter.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_future_epw</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">run</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_future</a></span><span class="op">(</span></span>
 <span>    sites <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_site</a></span><span class="op">(</span>epw <span class="op">=</span> <span class="va">epw</span><span class="op">)</span>,</span>
 <span>    climate <span class="op">=</span> <span class="fu"><a href="../reference/shift_api.html">shift_cmip6</a></span><span class="op">(</span><span class="st">"BCC-CSM2-MR"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ssp126"</span>, <span class="st">"ssp585"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>    periods <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`2060s` <span class="op">=</span> <span class="fl">2055</span><span class="op">:</span><span class="fl">2065</span><span class="op">)</span>,</span>
@@ -790,7 +790,7 @@ Parquet</span><code>ShiftMorphed</code>
 →
 </div>
 <div class="shift-node">
-<strong>shift_epw()</strong><span>Write EnergyPlus Weather
+<strong>shift_epw_write()</strong><span>Write EnergyPlus Weather
 files</span><code>ShiftOutputs</code>
 </div>
 </div>
@@ -1115,18 +1115,18 @@ need to join rows back to a specific morphing case.</p>
 <div class="section level3">
 <h3 id="write-epw-files">Write EPW Files<a class="anchor" aria-label="anchor" href="#write-epw-files"></a>
 </h3>
-<p><code><a href="../reference/shift_api.html">shift_epw()</a></code> writes EnergyPlus Weather files from the
-morphed hourly results. It returns a <code>ShiftOutputs</code> stage.
-The first chunk assigns the result while hiding verbose writer output;
-the second prints the stage object.</p>
+<p><code><a href="../reference/shift_api.html">shift_epw_write()</a></code> writes EnergyPlus Weather files from
+the morphed hourly results. It returns a <code>ShiftOutputs</code>
+stage. The first chunk assigns the result while hiding verbose writer
+output; the second prints the stage object.</p>
 <p>For the lower-level write path and output registry, see <a href="epw-morpher.html">EpwMorpher</a>.</p>
 <div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">epws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_epw_write</a></span><span class="op">(</span><span class="va">morphed</span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">epws</span></span></code></pre></div>
 <p><code><a href="../reference/shift_api.html">shift_outputs()</a></code> lists the EPW files written by
-<code><a href="../reference/shift_api.html">shift_epw()</a></code>. These are the files you can pass directly to
-EnergyPlus.</p>
+<code><a href="../reference/shift_api.html">shift_epw_write()</a></code>. These are the files you can pass
+directly to EnergyPlus.</p>
 <div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">outputs</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/shift_api.html">shift_outputs</a></span><span class="op">(</span><span class="va">epws</span><span class="op">)</span></span>
 <span><span class="va">outputs</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">path</span>, <span class="va">source_id</span>, <span class="va">experiment_id</span>, <span class="va">variant_label</span>, <span class="va">period</span><span class="op">)</span><span class="op">]</span></span></code></pre></div>
@@ -1187,7 +1187,7 @@ with an EPW stage marked <code>written</code>.</p>
 <code>shift_status(epws)</code> reports that the EPW artifact is
 <code>written</code>; <code>shift_status(shift_run_get(epws))</code> is
 <code>waiting</code> because a store-local EPW can still be exported.
-Calling <code>shift_export_epw(epws, dir)</code> completes the run. If
+Calling <code>shift_epw_export(epws, dir)</code> completes the run. If
 the store-local file is the intentional endpoint, use
 <code>shift_complete(epws)</code> instead.</p>
 </div>
