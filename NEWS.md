@@ -6,7 +6,7 @@
   `shift_export_epw()` to `shift_epw_export()`. Rename `shift_reference_plan()`
   to `shift_reference_from_plan()` to distinguish reference configuration from
   plan construction. Arguments, return values and execution behavior are
-  unchanged; the previous development names are no longer exported.
+  unchanged; the previous development names are no longer exported (#293).
 
 * Apply additive shifts when enhanced monthly stretching falls back, and interpolate factors in representative month/day/hour order for typical-year EPWs assembled from different source years. Enhanced monthly recipe version 3 prevents reuse of plans with the earlier arithmetic or calendar semantics (#289).
 
