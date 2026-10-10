@@ -148,8 +148,9 @@ local_cmip6_variable_array <- function(variable_id, lon, lat, time) {
 }
 # }}}
 
-# write_local_cmip6_netcdf_fixture {{{
-write_local_cmip6_netcdf_fixture <- function(
+# Write and close a real NetCDF fixture before any template becomes reusable.
+# cmip6_fixture__write {{{
+cmip6_fixture__write <- function(
     path,
     year,
     variable_id = "tas",
@@ -286,6 +287,67 @@ write_local_cmip6_netcdf_fixture <- function(
 
     invisible(path)
 }
+# }}}
+
+# Reuse only completed deterministic content within this R process. Every caller
+# receives a physical copy, so mutations, deletion, and rename tests remain
+# isolated. Exact serialized arguments avoid hash collisions and lossy keys.
+# write_local_cmip6_netcdf_fixture {{{
+write_local_cmip6_netcdf_fixture <- local({
+    owner <- NULL
+    root <- NULL
+    templates <- new.env(parent = emptyenv())
+    function(
+        path,
+        year,
+        variable_id = "tas",
+        calendar = "proleptic_gregorian",
+        n_years = 1L,
+        frequency = "day"
+    ) {
+        if (!identical(owner, Sys.getpid()) || !dir.exists(root)) {
+            owner <<- Sys.getpid()
+            root <<- tempfile("cmip6-fixtures-")
+            dir.create(root)
+            templates <<- new.env(parent = emptyenv())
+        }
+        key <- paste(
+            as.character(serialize(
+                list(year, variable_id, calendar, n_years, frequency),
+                NULL,
+                version = 2L
+            )),
+            collapse = ""
+        )
+        template <- templates[[key]]
+        if (is.null(template) || !file.exists(template)) {
+            template <- tempfile("content-", tmpdir = root, fileext = ".nc")
+            completed <- FALSE
+            # A failed writer cannot publish partial content for a later test.
+            on.exit(if (!completed) unlink(template), add = TRUE)
+            cmip6_fixture__write(
+                template,
+                year,
+                variable_id,
+                calendar,
+                n_years,
+                frequency
+            )
+            templates[[key]] <- template
+            completed <- TRUE
+        }
+        if (
+            dir.exists(path) ||
+                !isTRUE(file.copy(template, path, overwrite = TRUE))
+        ) {
+            stop(
+                sprintf("Failed to copy NetCDF fixture to %s", path),
+                call. = FALSE
+            )
+        }
+        invisible(path)
+    }
+})
 # }}}
 
 # write_local_morph_tas_fixture {{{
