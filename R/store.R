@@ -8400,10 +8400,37 @@ EsgStore <- R6::R6Class(
 
             q_table <- ddb_ident(private$conn, table)
             q_key <- ddb_ident(private$conn, key)
-            current <- ddb_query(
-                private$conn,
-                sprintf("SELECT %s FROM %s", q_key, q_table)
-            )[[key]]
+            # Ask DuckDB only about the keys being inserted. Reading the whole
+            # key column back made every append cost O(table size), which grows
+            # with long event logs. NA keys cannot match and stay in `rows`, so
+            # the append still fails on them exactly as before. Chunk the lists
+            # so a large batch never builds one enormous statement.
+            ids <- rows[[key]]
+            if (is.factor(ids)) {
+                ids <- as.character(ids)
+            }
+            ids <- unique(ids[!is.na(ids)])
+            current <- unlist(
+                lapply(
+                    split(ids, ceiling(seq_along(ids) / 2000L)),
+                    function(chunk) {
+                        ddb_query(
+                            private$conn,
+                            sprintf(
+                                "SELECT %s FROM %s WHERE %s IN (%s)",
+                                q_key,
+                                q_table,
+                                q_key,
+                                paste(
+                                    ddb_literal(private$conn, chunk),
+                                    collapse = ", "
+                                )
+                            )
+                        )[[key]]
+                    }
+                ),
+                use.names = FALSE
+            )
             rows <- rows[!rows[[key]] %in% current, , drop = FALSE]
             if (nrow(rows)) {
                 ddb_append_table(private$conn, table, rows)
