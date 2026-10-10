@@ -15,6 +15,10 @@ jobs:
       id-token: write
 
     env:
+      TESTTHAT_CPUS: 3
+      EPWSHIFTR_DB_THREADS: 1
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: true
 
@@ -53,42 +57,18 @@ jobs:
           extra-packages: |
             any::covr
             any::xml2
-            any::processx
-            any::ps
           needs: coverage
-
-      - name: Check repository test tooling
-        shell: Rscript {0}
-        run: |
-          scripts <- sort(list.files(".github/testing/tests", "[.]R$", full.names = TRUE))
-          for (script in scripts) {
-              processx::run(
-                  file.path(R.home("bin"), "Rscript"),
-                  c("--vanilla", script),
-                  echo = TRUE, timeout = 180
-              )
-          }
 
       - name: Test coverage
         id: coverage
         run: |
           source(".github/coverage.R")
-          prepared <- coverage__prepare(
-            path = ".",
-            directory = file.path(Sys.getenv("RUNNER_TEMP"), "covr-prepared"),
-            quiet = FALSE
-          )
-          source(".github/testing/check-parallel.R")
-          run_path <- file.path(Sys.getenv("RUNNER_TEMP"), "coverage-run")
-          checks__run(
-              library = readRDS(prepared)$library,
-              output = run_path,
-              shards = checks__default_shards(),
-              coverage = prepared,
-              coverage_script = normalizePath(".github/coverage.R")
+          coverage <- coverage__run(
+            quiet = FALSE,
+            install_path = file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
           )
           report_path <- file.path(Sys.getenv("RUNNER_TEMP"), "coverage-report")
-          stopifnot(file.rename(file.path(run_path, "coverage-report"), report_path))
+          coverage__report(coverage, report_path)
           cat(
             readLines(file.path(report_path, "summary.md")),
             sep = "\n", file = Sys.getenv("GITHUB_STEP_SUMMARY"), append = TRUE
@@ -127,8 +107,5 @@ jobs:
         with:
           name: coverage-diagnostics
           path: |
-            ${{ runner.temp }}/covr-prepared/
-            ${{ runner.temp }}/coverage-run/**/traces/
-            ${{ runner.temp }}/coverage-run/**/stderr.log
-            ${{ runner.temp }}/coverage-run/**/results.rds
+            ${{ runner.temp }}/covr-library/
           retention-days: 7

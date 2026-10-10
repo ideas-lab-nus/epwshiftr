@@ -10,7 +10,7 @@
 
 * Reduce repeated store schema DDL and heartbeat database queries while retaining repair and live-status behavior (#294).
 * Consolidate repeated workflow execution and worker startup in tests while preserving distinct scientific, recovery and concurrency contracts (#294).
-* Isolate test fixtures by process and keep file-level scheduling, coverage tooling and their checks under `.github`, outside the built package. CI schedules all test files without committing machine-specific timing tables (#294).
+* Run test files through testthat's native parallel queue with process-isolated fixtures. Retain the existing mirai coverage trace checks without a separate test scheduler (#294).
 
 * Construct valid EPW timestamps directly from Gregorian date fields and avoid
   repeated small-table sorting when applying backend methods and monthly factors.
