@@ -1,4 +1,4 @@
-# Run from the package root with uvr run tools/test-coverage-report.R. Compare
+# Run from the package root with Rscript .github/testing/tests/test-coverage-report.R. Compare
 # the report serializer with covr on small fixtures without starting workers.
 args <- commandArgs(trailingOnly = TRUE)
 root <- if (length(args)) args[[1L]] else "."

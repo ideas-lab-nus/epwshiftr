@@ -441,8 +441,8 @@ test_that("background workers retry transient DuckDB launch locks", {
     # retryable launch error; process startup has its own bounded deadline.
     child <- callr::r_bg(
         function(database, ready, release) {
-            conn <- DBI::dbConnect(duckdb::duckdb(), dbdir = database)
-            on.exit(DBI::dbDisconnect(conn, shutdown = TRUE), add = TRUE)
+            conn <- duckdb::dbConnect(duckdb::duckdb(), dbdir = database)
+            on.exit(duckdb::dbDisconnect(conn, shutdown = TRUE), add = TRUE)
             stopifnot(file.create(ready))
             deadline <- Sys.time() + 30
             while (!file.exists(release)) {

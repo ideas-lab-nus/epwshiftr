@@ -1,6 +1,6 @@
-# Run from the package root with uvr run tools/test-check-resources.R. These
+# Run from the package root with Rscript .github/testing/tests/test-check-resources.R. These
 # tests exercise resource selection and entry-point routing without workers.
-source("tests/support/check-parallel.R")
+source(".github/testing/check-parallel.R")
 
 testthat::test_that("automatic shard counts respect memory and core limits", {
     gib <- 1024^3
@@ -77,12 +77,27 @@ testthat::test_that("missing host information selects serial execution", {
 
 # Evaluate only the test entry's routing, substituting worker/test entry points
 # so explicit shard settings can be checked without running the package suite.
-checks_test__entry <- function(setting = NA_character_, automatic = 2L) {
-    withr::local_envvar(c(EPWSHIFTR_TEST_SHARDS = setting))
+checks_test__entry <- function(
+    setting = NA_character_,
+    automatic = 2L,
+    external = FALSE
+) {
+    withr::local_envvar(c(
+        EPWSHIFTR_TEST_SHARDS = setting,
+        EPWSHIFTR_TEST_RUNNER = if (external) {
+            normalizePath(".github/testing/check-package.R", winslash = "/")
+        } else {
+            NA_character_
+        }
+    ))
     env <- new.env(parent = baseenv())
     env$library <- function(...) NULL
-    env$source <- function(...) {
-        env$checks__default_shards <- function(...) automatic
+    env$source <- function(file, ...) {
+        if (basename(file) == "check-package.R") {
+            sys.source(file, envir = env)
+        } else {
+            env$checks__default_shards <- function(...) automatic
+        }
     }
     env$test_check <- function(...) env$result <- "serial"
     env$checks__run <- function(..., shards) env$result <- shards
@@ -92,18 +107,39 @@ checks_test__entry <- function(setting = NA_character_, automatic = 2L) {
     env$result
 }
 
-testthat::test_that("test entry retains serial default and explicit local shard counts", {
+testthat::test_that("package checks stay serial unless an external runner is supplied", {
     testthat::expect_identical(checks_test__entry(), "serial")
-    testthat::expect_identical(checks_test__entry("1"), "serial")
-    testthat::expect_identical(checks_test__entry("4"), 4L)
-    testthat::expect_identical(checks_test__entry("6"), 6L)
-    testthat::expect_identical(checks_test__entry("7"), 7L)
-    testthat::expect_identical(checks_test__entry("8"), 8L)
-    testthat::expect_error(checks_test__entry("9"), "must be 'auto'")
-    testthat::expect_error(checks_test__entry("0"), "must be 'auto'")
-    testthat::expect_identical(checks_test__entry("auto", 2L), 2L)
-    testthat::expect_identical(checks_test__entry("auto", 1L), "serial")
-    testthat::expect_error(checks_test__entry("invalid"), "must be 'auto'")
+    testthat::expect_identical(checks_test__entry("auto"), "serial")
+    testthat::expect_identical(checks_test__entry("4"), "serial")
+    testthat::expect_identical(checks_test__entry(external = TRUE), 2L)
+    testthat::expect_identical(
+        checks_test__entry("1", external = TRUE),
+        "serial"
+    )
+    testthat::expect_identical(checks_test__entry("4", external = TRUE), 4L)
+    testthat::expect_identical(checks_test__entry("6", external = TRUE), 6L)
+    testthat::expect_identical(checks_test__entry("7", external = TRUE), 7L)
+    testthat::expect_identical(checks_test__entry("8", external = TRUE), 8L)
+    testthat::expect_error(
+        checks_test__entry("9", external = TRUE),
+        "must be 'auto'"
+    )
+    testthat::expect_error(
+        checks_test__entry("0", external = TRUE),
+        "must be 'auto'"
+    )
+    testthat::expect_identical(
+        checks_test__entry("auto", 2L, external = TRUE),
+        2L
+    )
+    testthat::expect_identical(
+        checks_test__entry("auto", 1L, external = TRUE),
+        "serial"
+    )
+    testthat::expect_error(
+        checks_test__entry("invalid", external = TRUE),
+        "must be 'auto'"
+    )
 })
 
 # Stop the real entry scripts at their first post-validation operation so their
@@ -115,7 +151,7 @@ checks_test__performance_entry <- function(shards) {
     }
     env$dir.exists <- function(...) FALSE
     env$normalizePath <- function(...) stop("validated before preparation")
-    sys.source("tools/check-performance.R", envir = env)
+    sys.source(".github/testing/check-performance.R", envir = env)
 }
 
 testthat::test_that("explicit runner and performance entry accept eight but reject nine", {

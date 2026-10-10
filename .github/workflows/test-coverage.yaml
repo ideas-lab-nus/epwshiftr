@@ -53,7 +53,21 @@ jobs:
           extra-packages: |
             any::covr
             any::xml2
+            any::processx
+            any::ps
           needs: coverage
+
+      - name: Check repository test tooling
+        shell: Rscript {0}
+        run: |
+          scripts <- sort(list.files(".github/testing/tests", "[.]R$", full.names = TRUE))
+          for (script in scripts) {
+              processx::run(
+                  file.path(R.home("bin"), "Rscript"),
+                  c("--vanilla", script),
+                  echo = TRUE, timeout = 180
+              )
+          }
 
       - name: Test coverage
         id: coverage
@@ -64,13 +78,13 @@ jobs:
             directory = file.path(Sys.getenv("RUNNER_TEMP"), "covr-prepared"),
             quiet = FALSE
           )
-          source("tests/support/check-parallel.R")
+          source(".github/testing/check-parallel.R")
           run_path <- file.path(Sys.getenv("RUNNER_TEMP"), "coverage-run")
           checks__run(
               library = readRDS(prepared)$library,
               output = run_path,
               shards = checks__default_shards(),
-              durations = read.csv("tests/support/coverage-durations.csv"),
+              durations = read.csv(".github/testing/coverage-durations.csv"),
               coverage = prepared,
               coverage_script = normalizePath(".github/coverage.R")
           )

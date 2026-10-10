@@ -66,6 +66,18 @@ jobs:
         with:
           extra-packages: |
             any::rcmdcheck
+            any::processx
+            any::ps
           needs: check
+
+      - name: Configure repository test runner
+        shell: Rscript {0}
+        run: |
+          cat(
+              "EPWSHIFTR_TEST_RUNNER=",
+              normalizePath(".github/testing/check-package.R", winslash = "/"),
+              "\n",
+              file = Sys.getenv("GITHUB_ENV"), append = TRUE, sep = ""
+          )
 
       - uses: r-lib/actions/check-r-package@v2

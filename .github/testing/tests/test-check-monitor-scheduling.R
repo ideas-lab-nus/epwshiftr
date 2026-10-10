@@ -1,6 +1,6 @@
-# Run with uvr run tools/test-check-monitor-scheduling.R. Synthetic callr results
+# Run with Rscript .github/testing/tests/test-check-monitor-scheduling.R. Synthetic callr results
 # and atomic receipt files exercise terminal scans without workers or sleeps.
-source("tests/support/check-parallel.R")
+source(".github/testing/check-parallel.R")
 
 testthat::test_that("terminal and post-merge scans audit newly registered lifetimes", {
     root <- withr::local_tempdir()
@@ -11,7 +11,7 @@ testthat::test_that("terminal and post-merge scans audit newly registered lifeti
     script <- file.path(root, "coverage.R")
     writeLines("", script)
     runtime <- new.env(parent = globalenv())
-    sys.source("tests/support/check-parallel.R", runtime)
+    sys.source(".github/testing/check-parallel.R", runtime)
     scans <- 0L
     registered <- integer()
     trace_directory <- NULL

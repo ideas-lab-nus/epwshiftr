@@ -1,6 +1,6 @@
-# Run with uvr run tools/test-check-runner-boundaries.R. Fake callr processes
+# Run with Rscript .github/testing/tests/test-check-runner-boundaries.R. Fake callr processes
 # exercise the runner's terminal phases without workers, sockets or timed sleeps.
-source("tests/support/check-parallel.R")
+source(".github/testing/check-parallel.R")
 
 # Run the real supervisor around one durable fake shard and a controllable clock.
 checks_test__run_fixture <- function(
@@ -24,7 +24,7 @@ checks_test__run_fixture <- function(
     create_time <- ps::ps_create_time(ps::ps_handle())
     pid <- Sys.getpid()
     runtime <- new.env(parent = globalenv())
-    sys.source("tests/support/check-parallel.R", runtime)
+    sys.source(".github/testing/check-parallel.R", runtime)
     runtime$proc.time <- function() {
         structure(
             c(0, 0, clock$elapsed, 0, 0),

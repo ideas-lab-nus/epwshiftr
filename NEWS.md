@@ -10,7 +10,7 @@
 
 * Reduce repeated store schema DDL and heartbeat database queries while retaining repair and live-status behavior (#294).
 * Consolidate repeated workflow execution and worker startup in tests while preserving distinct scientific, recovery and concurrency contracts (#294).
-* Isolate test fixtures by process and support complete file-level test scheduling with verified worker coverage traces (#294).
+* Isolate test fixtures by process and keep file-level scheduling, coverage tooling and their checks under `.github`, outside the built package (#294).
 
 * Construct valid EPW timestamps directly from Gregorian date fields and avoid
   repeated small-table sorting when applying backend methods and monthly factors.

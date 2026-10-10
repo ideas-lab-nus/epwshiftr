@@ -1,6 +1,6 @@
 # Exercise the CI-only coverage adapter against a tiny installed package. This
 # stays outside package tests because it deliberately invokes R CMD INSTALL.
-# Run with: uvr run tools/test-coverage-adapter.R -- /path/to/package
+# Run with: Rscript .github/testing/tests/test-coverage-adapter.R /path/to/package
 args <- commandArgs(trailingOnly = TRUE)
 root <- if (length(args)) args[[1L]] else "."
 source(file.path(root, ".github", "coverage.R"), local = TRUE)

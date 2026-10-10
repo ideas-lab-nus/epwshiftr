@@ -19,6 +19,8 @@ outputs/
 
 # Local R environment and check artifacts
 .uvr/
+uvr.toml
+uvr.lock
 .Rprofile
 .vscode/
 *.Rproj

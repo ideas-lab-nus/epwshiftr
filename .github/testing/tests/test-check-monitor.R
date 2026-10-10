@@ -1,6 +1,6 @@
-# Run from the package root with uvr run tools/test-check-monitor.R. No workers
+# Run from the package root with Rscript .github/testing/tests/test-check-monitor.R. No workers
 # are launched: OS failures are injected around a creation-time-bound handle.
-source("tests/support/check-parallel.R")
+source(".github/testing/check-parallel.R")
 
 # Construct the condition shape emitted by the installed ps native bindings.
 checks_test__ps_error <- function(class = "access_denied", errno = 0L) {
