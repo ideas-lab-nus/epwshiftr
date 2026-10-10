@@ -31,19 +31,26 @@ coverage__register <- function(directory) {
         assign("daemons", graceful_daemons, envir = mirai_ns)
         lockBinding("daemons", mirai_ns)
     }
-    writeLines(
-        as.character(Sys.getpid()),
-        file.path(directory, paste0("expected-trace-", Sys.getpid()))
+    # Windows can reuse a PID during one suite. Reserve a unique receipt for
+    # each namespace load so a later process cannot overwrite earlier counters.
+    receipt <- tempfile(
+        paste0("expected-trace-", Sys.getpid(), "-"),
+        tmpdir = directory
     )
+    if (!dir.create(receipt, showWarnings = FALSE)) {
+        stop("Could not reserve a unique coverage trace receipt.")
+    }
+    sub("^expected-trace-", "", basename(receipt))
 }
 # }}}
 
 # Publish every line counter atomically, including zero counts. Metadata is
 # already durable; short worker shutdown cannot leave a partly readable trace.
 # coverage__save_trace {{{
-coverage__save_trace <- function(directory) {
+coverage__save_trace <- function(directory, trace_id) {
+    stopifnot(is.character(trace_id), length(trace_id) == 1L, nzchar(trace_id))
     pending <- tempfile("pending-trace-", tmpdir = directory)
-    complete <- file.path(directory, paste0("covr_trace_", Sys.getpid()))
+    complete <- file.path(directory, paste0("covr_trace_", trace_id))
     values <- vapply(
         as.list(get(".counters", asNamespace("covr"))),
         function(counter) counter$value,
@@ -82,18 +89,26 @@ coverage__run <- function(path = ".", ...) {
             deparse(coverage__save_trace, width.cutoff = 500L),
             collapse = "\n"
         )
-        lines[hit] <- paste0(
-            "setHook(packageEvent(pkg, 'onLoad'), function(...) (",
-            register,
-            ")(Sys.getenv('COVERAGE_DIR', ",
+        directory <- paste0(
+            "Sys.getenv('COVERAGE_DIR', ",
             encodeString(lib, quote = '"'),
-            ")))\n",
-            sub(
-                "covr:::save_trace",
-                paste0("(", writer, ")"),
-                lines[hit],
-                fixed = TRUE
-            )
+            ")"
+        )
+        # Keep the receipt in the loader closure so the finalizer writes under
+        # exactly the identity returned by its own registration hook.
+        lines[hit] <- paste0(
+            "trace_id <- NULL\n",
+            "setHook(packageEvent(pkg, 'onLoad'), function(...) ",
+            "trace_id <<- (",
+            register,
+            ")(",
+            directory,
+            "))\n",
+            "reg.finalizer(ns, function(...) (",
+            writer,
+            ")(",
+            directory,
+            ", trace_id), onexit = TRUE)"
         )
         writeLines(lines, loader)
     }
