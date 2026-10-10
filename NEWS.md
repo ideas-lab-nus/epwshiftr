@@ -2,6 +2,8 @@
 
 * Compile each fixed package schema once per R process and reuse it for query, result, dictionary and shift workflow config validation, instead of recompiling the schema on every check. Validation rules and error messages are unchanged.
 
+* Create a new store's schema in one multi-statement DuckDB call instead of one call per table and column. The declarations and their order are unchanged, and a failing statement still leaves the earlier ones applied.
+
 * Check the store connection once per live run snapshot and once per identity-row read, instead of before every table query. A closed store is still rejected, and snapshot contents are unchanged.
 
 * Skip schema declarations that a store manifest already satisfies when it is re-opened. The store reads its table and column catalog once and runs only the missing `CREATE TABLE` and `ADD COLUMN` statements, so missing tables and additive columns are still repaired and schema-version checks are unchanged.

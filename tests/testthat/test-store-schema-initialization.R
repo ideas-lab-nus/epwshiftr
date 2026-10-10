@@ -153,4 +153,85 @@ test_that("fresh store initializes current empty workflow tables", {
     )
 })
 
+# Creating a store must send its schema in a few batches, not one call per
+# declaration, and the resulting catalog must equal the one built statement by
+# statement.
+test_that("fresh store schema is created in batches with the same catalog", {
+    skip_if_not_installed("duckdb")
+    catalog_sql <- paste(
+        "SELECT table_name, column_name, data_type, column_default, is_nullable",
+        "FROM information_schema.columns ORDER BY table_name, ordinal_position"
+    )
+    original <- ddb_exec
+    sent <- character()
+    local_mocked_bindings(
+        ddb_exec = function(conn, sql) {
+            sent <<- c(sent, sql)
+            original(conn, sql)
+        },
+        .package = "epwshiftr"
+    )
+    path <- tempfile("store-schema-batch-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    on.exit(store$close(), add = TRUE)
+    batched <- ddb_query(priv(store)$conn, catalog_sql)
+
+    declarations <- sum(lengths(regmatches(
+        sent,
+        gregexpr("CREATE TABLE IF NOT EXISTS|ALTER TABLE", sent)
+    )))
+    expect_gt(declarations, 40L)
+    expect_lt(sum(grepl("CREATE TABLE|ALTER TABLE", sent)), 6L)
+
+    # Execute the same declarations one at a time against an empty database and
+    # compare the resulting columns, types, defaults and nullability.
+    statements <- unlist(lapply(sent, function(sql) {
+        parts <- strsplit(sql, ";\n", fixed = TRUE)[[1L]]
+        parts[grepl("CREATE TABLE|ALTER TABLE", parts)]
+    }))
+    conn <- ddb_connect(":memory:")
+    on.exit(ddb_disconnect(conn), add = TRUE)
+    for (sql in statements) {
+        original(conn, sql)
+    }
+    sequential <- ddb_query(conn, catalog_sql)
+    expect_identical(
+        batched[order(batched$table_name, batched$column_name), ],
+        sequential[order(sequential$table_name, sequential$column_name), ]
+    )
+})
+
+# A failing statement stops the batch, but everything before it stays applied,
+# exactly the state one-by-one execution would have left behind.
+test_that("a failing schema statement keeps earlier declarations", {
+    skip_if_not_installed("duckdb")
+    path <- tempfile("store-schema-partial-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    original <- ddb_exec
+    local_mocked_bindings(
+        ddb_exec = function(conn, sql) {
+            if (grepl("CREATE TABLE IF NOT EXISTS extraction_plan", sql)) {
+                # Run only the declarations ahead of the failing one, then fail.
+                parts <- strsplit(sql, ";\n", fixed = TRUE)[[1L]]
+                stop_at <- grep("IF NOT EXISTS extraction_plan", parts)[[1L]]
+                original(
+                    conn,
+                    paste(parts[seq_len(stop_at - 1L)], collapse = ";\n")
+                )
+                stop("controlled schema failure")
+            }
+            original(conn, sql)
+        },
+        .package = "epwshiftr"
+    )
+    expect_error(EsgStore$new(path), "controlled schema failure")
+    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
+    on.exit(ddb_disconnect(conn), add = TRUE)
+    tables <- ddb_list_tables(conn)
+    expect_true("store_meta" %in% tables)
+    expect_true("artifact" %in% tables)
+    expect_false("extraction_plan" %in% tables)
+})
+
 # vim: fdm=marker :

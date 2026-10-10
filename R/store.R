@@ -15,19 +15,26 @@ STORE_DOWNLOAD_MISSING_CHOICES <- c("fallback", "error")
 # avoids DuckDB prepare/execute work without caching database state across opens.
 # store__schema_executor {{{
 store__schema_executor <- function(conn, tables) {
-    if (!length(tables)) {
-        return(function(sql) ddb_exec(conn, sql))
-    }
-    columns <- ddb_query(
-        conn,
-        paste(
-            "SELECT table_name, column_name FROM information_schema.columns",
-            "WHERE table_catalog = current_database()",
-            "AND table_schema = current_schema()"
+    columns <- if (length(tables)) {
+        ddb_query(
+            conn,
+            paste(
+                "SELECT table_name, column_name FROM information_schema.columns",
+                "WHERE table_catalog = current_database()",
+                "AND table_schema = current_schema()"
+            )
         )
-    )
+    } else {
+        data.frame(table_name = character(), column_name = character())
+    }
     column_keys <- paste(columns$table_name, columns$column_name, sep = ".")
-    function(sql) {
+    # Statements that still need to run are queued and sent to DuckDB as one
+    # multi-statement call by flush(). DuckDB stops at the first failing
+    # statement and keeps the earlier ones, which is the state sequential
+    # execution would leave. Callers flush before any read that depends on the
+    # queued DDL.
+    pending <- character()
+    exec <- function(sql) {
         # Only recognize the package's unquoted, idempotent schema declarations;
         # any other SQL still executes normally instead of being guessed at.
         create <- regmatches(
@@ -56,8 +63,21 @@ store__schema_executor <- function(conn, tables) {
         ) {
             return(invisible(NULL))
         }
-        ddb_exec(conn, sql)
+        # Drop the statement's own terminator so joining never doubles it.
+        pending <<- c(pending, sub("[[:space:];]+$", "", sql))
+        invisible(NULL)
     }
+    flush <- function() {
+        if (!length(pending)) {
+            return(invisible(NULL))
+        }
+        batch <- pending
+        # Clear first so a failed batch is not replayed by a later flush.
+        pending <<- character()
+        ddb_exec(conn, paste(batch, collapse = ";\n"))
+        invisible(NULL)
+    }
+    list(exec = exec, flush = flush)
 }
 # }}}
 
@@ -4923,7 +4943,8 @@ EsgStore <- R6::R6Class(
             # creating the metadata table. Existing manifests are never
             # upgraded implicitly because workflow state must remain coherent.
             existing_tables <- ddb_list_tables(private$conn)
-            exec <- store__schema_executor(private$conn, existing_tables)
+            schema <- store__schema_executor(private$conn, existing_tables)
+            exec <- schema$exec
             exec(
                 "
                 CREATE TABLE IF NOT EXISTS store_meta (
@@ -4933,6 +4954,8 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
+            # The version check below reads store_meta, so it must exist first.
+            schema$flush()
             private$assert_schema_version(existing_tables)
             exec(
                 "
@@ -5238,6 +5261,9 @@ EsgStore <- R6::R6Class(
             )
             private$init_epw_morph_schema(exec)
             private$init_shift_run_schema(exec)
+            # Create every queued table and column before the version row is
+            # written and before any caller can read them.
+            schema$flush()
 
             private$initialize_schema_version()
 
