@@ -10,6 +10,57 @@ STORE_DOWNLOAD_LAYOUT_CHOICES <- c("flat", "dataset", "drs", "template")
 STORE_DOWNLOAD_COLLISION_CHOICES <- c("error", "checksum", "suffix")
 STORE_DOWNLOAD_MISSING_CHOICES <- c("fallback", "error")
 
+# Build one initialization-local DDL executor from the current catalog. Keep the
+# CREATE/ALTER statements as the sole schema definition: skipping a known target
+# avoids DuckDB prepare/execute work without caching database state across opens.
+# store__schema_executor {{{
+store__schema_executor <- function(conn, tables) {
+    if (!length(tables)) {
+        return(function(sql) ddb_exec(conn, sql))
+    }
+    columns <- ddb_query(
+        conn,
+        paste(
+            "SELECT table_name, column_name FROM information_schema.columns",
+            "WHERE table_catalog = current_database()",
+            "AND table_schema = current_schema()"
+        )
+    )
+    column_keys <- paste(columns$table_name, columns$column_name, sep = ".")
+    function(sql) {
+        # Only recognize the package's unquoted, idempotent schema declarations;
+        # any other SQL still executes normally instead of being guessed at.
+        create <- regmatches(
+            sql,
+            regexec(
+                "^[[:space:]]*CREATE TABLE IF NOT EXISTS ([[:alnum:]_]+)[[:space:]]*[(]",
+                sql
+            )
+        )[[1L]]
+        if (length(create) && create[[2L]] %in% tables) {
+            return(invisible(NULL))
+        }
+        alter <- regmatches(
+            sql,
+            regexec(
+                paste0(
+                    "^[[:space:]]*ALTER TABLE ([[:alnum:]_]+)",
+                    " ADD COLUMN IF NOT EXISTS ([[:alnum:]_]+) "
+                ),
+                sql
+            )
+        )[[1L]]
+        if (
+            length(alter) &&
+                paste(alter[[2L]], alter[[3L]], sep = ".") %in% column_keys
+        ) {
+            return(invisible(NULL))
+        }
+        ddb_exec(conn, sql)
+    }
+}
+# }}}
+
 # Wrap one access failure with the exact service, phase, target, duration, and
 # original condition needed by workflow diagnostics and final plan errors.
 # store__access_error {{{
@@ -4863,6 +4914,8 @@ EsgStore <- R6::R6Class(
             invisible(NULL)
         },
         # }}}
+        # Inspect persisted declarations on every open so external repairs or
+        # damage are visible without repeating already satisfied DDL.
         # init_schema
         # init_schema {{{
         init_schema = function() {
@@ -4870,7 +4923,8 @@ EsgStore <- R6::R6Class(
             # creating the metadata table. Existing manifests are never
             # upgraded implicitly because workflow state must remain coherent.
             existing_tables <- ddb_list_tables(private$conn)
-            private$exec(
+            exec <- store__schema_executor(private$conn, existing_tables)
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS store_meta (
                     key VARCHAR PRIMARY KEY,
@@ -4880,7 +4934,7 @@ EsgStore <- R6::R6Class(
             "
             )
             private$assert_schema_version(existing_tables)
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS artifact (
                     artifact_id VARCHAR PRIMARY KEY,
@@ -4905,7 +4959,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS query_run (
                     query_id VARCHAR PRIMARY KEY,
@@ -4921,7 +4975,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS esg_query (
                     query_id VARCHAR PRIMARY KEY,
@@ -4937,7 +4991,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS esg_file (
                     file_key VARCHAR PRIMARY KEY,
@@ -4977,7 +5031,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS esg_query_file (
                     link_id VARCHAR PRIMARY KEY,
@@ -4989,7 +5043,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS esg_query_update (
                     update_id VARCHAR PRIMARY KEY,
@@ -5013,7 +5067,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS esg_query_update_file (
                     update_file_id VARCHAR PRIMARY KEY,
@@ -5040,7 +5094,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS esg_query_tag (
                     tag_id VARCHAR PRIMARY KEY,
@@ -5050,7 +5104,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS esg_query_dependency (
                     dependency_id VARCHAR PRIMARY KEY,
@@ -5060,10 +5114,10 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS deprecated BOOLEAN"
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS file_catalog (
                     file_key VARCHAR PRIMARY KEY,
@@ -5105,19 +5159,19 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS latest BOOLEAN"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS replica BOOLEAN"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS retracted BOOLEAN"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS deprecated BOOLEAN"
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS extraction_plan (
                     plan_id VARCHAR PRIMARY KEY,
@@ -5139,7 +5193,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS extraction_grid_source (
                     source_row_id VARCHAR PRIMARY KEY,
@@ -5159,10 +5213,10 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "ALTER TABLE extraction_grid_source ADD COLUMN IF NOT EXISTS grid_elevation_m DOUBLE"
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS extraction_result (
                     result_id VARCHAR PRIMARY KEY,
@@ -5182,8 +5236,8 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$init_epw_morph_schema()
-            private$init_shift_run_schema()
+            private$init_epw_morph_schema(exec)
+            private$init_shift_run_schema(exec)
 
             private$initialize_schema_version()
 
@@ -5260,8 +5314,8 @@ EsgStore <- R6::R6Class(
 
         # init_epw_morph_schema
         # init_epw_morph_schema {{{
-        init_epw_morph_schema = function() {
-            private$exec(
+        init_epw_morph_schema = function(exec = private$exec) {
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_source (
                     epw_id VARCHAR PRIMARY KEY,
@@ -5275,7 +5329,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_baseline_summary (
                     baseline_row_id VARCHAR PRIMARY KEY,
@@ -5290,7 +5344,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_climate_summary (
                     summary_row_id VARCHAR PRIMARY KEY,
@@ -5320,7 +5374,7 @@ EsgStore <- R6::R6Class(
             )
             # A summary can combine several extraction files. Keep their plan
             # lineage normalized so source fragments do not divide statistics.
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_climate_summary_plan (
                     summary_plan_id VARCHAR PRIMARY KEY,
@@ -5332,10 +5386,10 @@ EsgStore <- R6::R6Class(
             )
             # Existing stores recorded total rows only. The nullable valid-row
             # count enables exact pooling when old fragment summaries are read.
-            private$exec(
+            exec(
                 "ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS n_valid INTEGER"
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_morph_plan (
                     morph_id VARCHAR PRIMARY KEY,
@@ -5354,7 +5408,7 @@ EsgStore <- R6::R6Class(
                 )
                 "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_morph_observed_reference (
                     morph_id VARCHAR PRIMARY KEY,
@@ -5363,7 +5417,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_morph_factor (
                     factor_id VARCHAR PRIMARY KEY,
@@ -5387,7 +5441,7 @@ EsgStore <- R6::R6Class(
                 )
                 "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_morph_case (
                     morph_case_id VARCHAR PRIMARY KEY,
@@ -5404,7 +5458,7 @@ EsgStore <- R6::R6Class(
                 )
                 "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_morph_diagnostic (
                     diagnostic_id VARCHAR PRIMARY KEY,
@@ -5425,7 +5479,7 @@ EsgStore <- R6::R6Class(
                 )
                 "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_morph_result (
                     result_id VARCHAR PRIMARY KEY,
@@ -5447,28 +5501,28 @@ EsgStore <- R6::R6Class(
             )
             # Existing stores predate year-addressable result rows, so add each
             # nullable identity column without rewriting their artifacts.
-            private$exec(
+            exec(
                 "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS output_type VARCHAR"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS weather_year INTEGER"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS calendar VARCHAR"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS member_count INTEGER"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS epw_output (
                     output_id VARCHAR PRIMARY KEY,
@@ -5494,28 +5548,28 @@ EsgStore <- R6::R6Class(
             )
             # Output rows mirror result identity so resume and export can map
             # every generated year without relying on case-level uniqueness.
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS result_id VARCHAR"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS output_type VARCHAR"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS weather_year INTEGER"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS calendar VARCHAR"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS member_count INTEGER"
             )
-            private$exec(
+            exec(
                 "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
             )
             invisible(NULL)
@@ -5525,8 +5579,8 @@ EsgStore <- R6::R6Class(
         # Persist task intent, resolved inputs, case fulfilment, and stage
         # events so a failed workflow can be inspected and resumed later.
         # init_shift_run_schema {{{
-        init_shift_run_schema = function() {
-            private$exec(
+        init_shift_run_schema = function(exec = private$exec) {
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS shift_run (
                     run_id VARCHAR PRIMARY KEY,
@@ -5550,7 +5604,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS shift_run_case (
                     run_case_id VARCHAR PRIMARY KEY,
@@ -5571,7 +5625,7 @@ EsgStore <- R6::R6Class(
                 )
             "
             )
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS shift_run_event (
                     event_id VARCHAR PRIMARY KEY,
@@ -5587,7 +5641,7 @@ EsgStore <- R6::R6Class(
             )
             # A run can have multiple foreground/background attempts. Keeping
             # jobs separate preserves process and log history across resume.
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS shift_run_job (
                     job_id VARCHAR PRIMARY KEY,
@@ -5614,7 +5668,7 @@ EsgStore <- R6::R6Class(
             # A step records one independently inspectable stage invocation.
             # The returned stage carries run/step identity into the next call;
             # stale or terminal inputs fork a child run instead of mutating it.
-            private$exec(
+            exec(
                 "
                 CREATE TABLE IF NOT EXISTS shift_run_step (
                     step_id VARCHAR PRIMARY KEY,
