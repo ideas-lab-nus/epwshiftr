@@ -2,28 +2,28 @@
 
 * Reduce repeated monthly target selection and per-row factor table construction
   in original morphing while preserving first-finite ordering, factor identities
-  and scientific calculations.
+  and scientific calculations (#294).
 
 * Reduce repeated unit normalization and calendar-coordinate work in hourly
   weather pipelines, and share solar trigonometric terms within each geometry
-  calculation while preserving the existing formulas and integration resolution.
+  calculation while preserving the existing formulas and integration resolution (#294).
 
-* Reduce repeated store schema DDL and heartbeat database queries while retaining repair and live-status behavior.
-* Consolidate repeated workflow execution and worker startup in tests while preserving distinct scientific, recovery and concurrency contracts.
-* Isolate test fixtures by process and support complete file-level test scheduling with verified worker coverage traces.
+* Reduce repeated store schema DDL and heartbeat database queries while retaining repair and live-status behavior (#294).
+* Consolidate repeated workflow execution and worker startup in tests while preserving distinct scientific, recovery and concurrency contracts (#294).
+* Isolate test fixtures by process and support complete file-level test scheduling with verified worker coverage traces (#294).
 
 * Construct valid EPW timestamps directly from Gregorian date fields and avoid
   repeated small-table sorting when applying backend methods and monthly factors.
-  Reuse deterministic NetCDF test content through isolated file copies.
+  Reuse deterministic NetCDF test content through isolated file copies (#294).
 
 * Reuse compiled package schemas when validating saved queries, results,
   dictionaries and workflow configuration. Original schema documents and
-  standalone validation of edited schemas retain their existing behavior.
+  standalone validation of edited schemas retain their existing behavior (#294).
 
 * Signal owned mirai workers to exit before closing their transport, including
   cancelled and timed-out Dataset operations. Preserve process snapshots until
   an external background owner exits, preventing terminal batch refreshes from
-  competing with its final DuckDB access.
+  competing with its final DuckDB access (#294).
 
 * Group EPW entry points under `shift_epw_*()`: rename
   `shift_future_epw()` to `shift_epw_future()`, `shift_reference_epw()` to
