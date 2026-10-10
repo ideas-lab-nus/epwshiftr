@@ -2,6 +2,8 @@
 
 * Compile each fixed package schema once per R process and reuse it for query, result, dictionary and shift workflow config validation, instead of recompiling the schema on every check. Validation rules and error messages are unchanged.
 
+* Look up morphing backend rules by explicit row position and apply method overrides in one match, instead of building a data.table index for every step. Duplicate steps, first-name precedence for repeated overrides, validation errors and returned columns are unchanged.
+
 * Build EPW end-of-hour timestamps from numeric Gregorian fields instead of formatting and re-parsing every hourly row. Valid dates take the numeric path; invalid, mismatched-length or missing dates keep the previous parser, so results and attributes are unchanged.
 
 * Group EPW entry points under `shift_epw_*()`: rename
