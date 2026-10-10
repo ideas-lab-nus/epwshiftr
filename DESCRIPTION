@@ -32,6 +32,7 @@ Imports:
     RNetCDF,
     S7
 Suggests:
+    callr,
     testthat (>= 3.0.0),
     webfakes,
     withr
@@ -173,5 +174,6 @@ Collate:
     'weather-method.R'
     'zzz.R'
 Config/testthat/edition: 3
+Config/testthat/parallel: true
 Config/Needs/website: r-lib/asciicast, r-lib/pkgload
 Config/roxygen2/version: 8.1.0

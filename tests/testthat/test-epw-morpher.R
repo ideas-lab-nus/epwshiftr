@@ -257,6 +257,7 @@ test_that("factor planning reads legacy record-weighted mean fragments", {
     )
     by <- c("source_id", "experiment_id", "variant_label", "period")
 
+    before <- lapply(list(climate, baseline, reference), data.table::copy)
     factors <- morpher$.__enclos_env__$private$factor_rows(
         "morph-fragmented",
         climate,
@@ -272,6 +273,42 @@ test_that("factor planning reads legacy record-weighted mean fragments", {
     expect_equal(dry_bulb$future, 21.85, tolerance = 1e-10)
     expect_equal(dry_bulb$reference, -2.15, tolerance = 1e-10)
     expect_equal(dry_bulb$delta, 24, tolerance = 1e-10)
+    # Row assembly must preserve the persisted factor schema and input ownership.
+    expect_identical(
+        names(factors),
+        c(
+            "factor_id",
+            "morph_id",
+            "case_id",
+            "epw_field",
+            "variable_id",
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "period",
+            "month",
+            "method",
+            "baseline",
+            "reference",
+            "future",
+            "delta",
+            "alpha",
+            "units",
+            "status"
+        )
+    )
+    expect_identical(
+        unname(vapply(factors, typeof, character(1L))),
+        c(
+            rep("character", 9L),
+            "integer",
+            "character",
+            rep("double", 5L),
+            "character",
+            "character"
+        )
+    )
+    expect_identical(list(climate, baseline, reference), before)
 })
 
 

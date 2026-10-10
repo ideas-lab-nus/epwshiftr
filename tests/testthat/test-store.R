@@ -1140,9 +1140,10 @@ test_that("EsgStore$preview_update_queries()", {
 })
 # }}}
 # EsgStore$update_queries() {{{
-test_that("EsgStore$update_queries()", {
+test_that("tracked query updates preserve current, retracted and stale history", {
     skip_if_not_installed("duckdb")
 
+    # One real two-update history serves these captured read-only results.
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1200,6 +1201,17 @@ test_that("EsgStore$update_queries()", {
             "stale"
         )
         expect_false(is.na(store$queries()$last_checked_at[[1L]]))
+
+        # EsgStore$query_files() retains its original assertions on this same state.
+        expect_equal(nrow(first_current), 1L)
+        expect_equal(nrow(first_retracted), 1L)
+
+        # EsgStore$query_updates() retains its original assertions on this same state.
+        expect_equal(nrow(updates), 2L)
+        expect_equal(latest$stale_count, 1L)
+
+        # EsgStore$query_changes() retains its original assertions on this same state.
+        expect_equal(nrow(stale_changes), 1L)
     })
 })
 
@@ -1340,74 +1352,6 @@ test_that("EsgStore query update and download workflows release store lock aroun
         expect_equal(job$job_id, "job-lock-check")
         expect_true(all(c("record_probes", "enqueue", "start") %in% dl$calls))
         expect_false("run" %in% dl$calls)
-    })
-})
-# }}}
-# EsgStore$query_files() {{{
-test_that("EsgStore$query_files()", {
-    skip_if_not_installed("duckdb")
-
-    store_test__with_updated_query(function(
-        store,
-        query_id,
-        first_links,
-        second_links,
-        first_current,
-        first_retracted,
-        files,
-        links_db,
-        catalog,
-        updates,
-        latest,
-        stale_changes
-    ) {
-        expect_equal(nrow(first_current), 1L)
-        expect_equal(nrow(first_retracted), 1L)
-    })
-})
-# }}}
-# EsgStore$query_updates() {{{
-test_that("EsgStore$query_updates()", {
-    skip_if_not_installed("duckdb")
-
-    store_test__with_updated_query(function(
-        store,
-        query_id,
-        first_links,
-        second_links,
-        first_current,
-        first_retracted,
-        files,
-        links_db,
-        catalog,
-        updates,
-        latest,
-        stale_changes
-    ) {
-        expect_equal(nrow(updates), 2L)
-        expect_equal(latest$stale_count, 1L)
-    })
-})
-# }}}
-# EsgStore$query_changes() {{{
-test_that("EsgStore$query_changes()", {
-    skip_if_not_installed("duckdb")
-
-    store_test__with_updated_query(function(
-        store,
-        query_id,
-        first_links,
-        second_links,
-        first_current,
-        first_retracted,
-        files,
-        links_db,
-        catalog,
-        updates,
-        latest,
-        stale_changes
-    ) {
-        expect_equal(nrow(stale_changes), 1L)
     })
 })
 # }}}
@@ -1703,9 +1647,10 @@ test_that("EsgStore$download_preflight() reports layout issues", {
 })
 # }}}
 # EsgStore$download_query() {{{
-test_that("EsgStore$download_query()", {
+test_that("completed query download supports status, workflow reports and empty retries", {
     skip_if_not_installed("duckdb")
 
+    # Complete the real local download once, then read each public status view.
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1719,54 +1664,21 @@ test_that("EsgStore$download_query()", {
         expect_false(is.na(qfiles$local_path[[1L]]))
         expect_true(file.exists(file.path(store$path, qfiles$local_path[[1L]])))
         expect_false(is.na(qfiles$local_artifact_id[[1L]]))
-    })
-})
-# }}}
-# EsgStore$download_status() {{{
-test_that("EsgStore$download_status()", {
-    skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(
-        store,
-        dl,
-        query_id,
-        session_id
-    ) {
+        # EsgStore$download_status() retains its original assertions on this same state.
         status <- store$download_status(query_id, downloader = dl)
         expect_equal(status$status, "done")
         expect_equal(status$query_file_status, "current")
-    })
-})
-# }}}
-# EsgStore$query_status() {{{
-test_that("EsgStore$query_status()", {
-    skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(
-        store,
-        dl,
-        query_id,
-        session_id
-    ) {
+        # EsgStore$query_status() retains its original assertions on this same state.
         query_status <- store$query_status(query_id, downloader = dl)
         expect_equal(query_status$file_total, 1L)
         expect_equal(query_status$file_current, 1L)
         expect_equal(query_status$download_done, 1L)
         expect_equal(query_status$local_available, 1L)
         expect_true(query_status$complete)
-    })
-})
-# }}}
-# EsgStore$workflow_status() {{{
-test_that("EsgStore$workflow_status()", {
-    skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(
-        store,
-        dl,
-        query_id,
-        session_id
-    ) {
+        # EsgStore$workflow_status() retains its original assertions on this same state.
         workflow <- store$workflow_status(query_id, downloader = dl)
         expect_equal(workflow$query_id, query_id)
         expect_equal(workflow$download_done, 1L)
@@ -1777,19 +1689,8 @@ test_that("EsgStore$workflow_status()", {
         expect_false(workflow$download_incomplete)
         expect_equal(workflow$new_count, 1L)
         expect_true("bytes_missing" %in% names(workflow))
-    })
-})
-# }}}
-# EsgStore$workflow_report() {{{
-test_that("EsgStore$workflow_report()", {
-    skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(
-        store,
-        dl,
-        query_id,
-        session_id
-    ) {
+        # EsgStore$workflow_report() retains its original assertions on this same state.
         report <- store$workflow_report(query_id, downloader = dl)
         expect_named(
             report,
@@ -1801,19 +1702,8 @@ test_that("EsgStore$workflow_report()", {
         expect_equal(report$changes$change_type, "new")
         expect_equal(report$downloads$status, "done")
         expect_equal(report$downloads$query_file_status, "current")
-    })
-})
-# }}}
-# EsgStore$retry_downloads() {{{
-test_that("EsgStore$retry_downloads()", {
-    skip_if_not_installed("duckdb")
 
-    store_test__with_downloaded_query(function(
-        store,
-        dl,
-        query_id,
-        session_id
-    ) {
+        # EsgStore$retry_downloads() retains its original assertions on this same state.
         expect_equal(
             nrow(store$retry_downloads(query_id, downloader = dl, run = FALSE)),
             0L
@@ -3511,10 +3401,12 @@ test_that("EsgStore$extract() detects output conflicts without manifest rows", {
     expect_equal(processed$status, "done")
 })
 # }}}
-# EsgStore$summarise() {{{
-test_that("EsgStore$summarise()", {
+# Completed extraction read APIs {{{
+test_that("completed extraction supports summary, coverage, completeness and SQL queries", {
     skip_if_not_installed("duckdb")
 
+    # These APIs only read the same completed extraction. Keep one real
+    # fixture and all four contracts; damaged-output tests remain isolated.
     fixture <- store_test__completed_store()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3529,16 +3421,6 @@ test_that("EsgStore$summarise()", {
     expect_equal(summary$year, 2060L)
     expect_equal(summary$row_count, 2)
     expect_equal(summary$unique_time_count, 2)
-})
-# }}}
-# EsgStore$coverage() {{{
-test_that("EsgStore$coverage()", {
-    skip_if_not_installed("duckdb")
-
-    fixture <- store_test__completed_store()
-    store <- fixture$store
-    on.exit(store$close(), add = TRUE)
-    on.exit(unlink(fixture$nc), add = TRUE)
 
     cov <- store$coverage()
     expect_s3_class(cov, "data.table")
@@ -3547,7 +3429,14 @@ test_that("EsgStore$coverage()", {
     expect_equal(cov$output_rows, 2)
     expect_equal(nrow(store$coverage(plan_id = "missing-plan")), 0L)
     expect_equal(store$coverage(plan_id = cov$plan_id)$plan_id, cov$plan_id)
+
+    expect_silent(store$assert_complete())
+
+    sql <- store$query("SELECT COUNT(*) AS n FROM extraction_result")
+    expect_equal(sql$n, 1)
 })
+# }}}
+# EsgStore$coverage() {{{
 
 test_that("EsgStore$coverage() detects incomplete outputs", {
     skip_if_not_installed("duckdb")
@@ -3565,31 +3454,6 @@ test_that("EsgStore$coverage() detects incomplete outputs", {
     validation <- store$validate()
     expect_true(any(!validation$exists))
     expect_error(store$assert_complete(), "incomplete")
-})
-# }}}
-# EsgStore$assert_complete() {{{
-test_that("EsgStore$assert_complete()", {
-    skip_if_not_installed("duckdb")
-
-    fixture <- store_test__completed_store()
-    store <- fixture$store
-    on.exit(store$close(), add = TRUE)
-    on.exit(unlink(fixture$nc), add = TRUE)
-
-    expect_silent(store$assert_complete())
-})
-# }}}
-# EsgStore$query() {{{
-test_that("EsgStore$query()", {
-    skip_if_not_installed("duckdb")
-
-    fixture <- store_test__completed_store()
-    store <- fixture$store
-    on.exit(store$close(), add = TRUE)
-    on.exit(unlink(fixture$nc), add = TRUE)
-
-    sql <- store$query("SELECT COUNT(*) AS n FROM extraction_result")
-    expect_equal(sql$n, 1)
 })
 # }}}
 

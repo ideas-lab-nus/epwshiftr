@@ -3796,9 +3796,14 @@ EpwMorpher <- R6::R6Class(
                                 target_variable_id &
                                 case_reference[["month"]] == m
                         ]
-                        base <- baseline[
-                            epw_field == rule$epw_field[[1L]] & month == m
-                        ]
+                        # Select explicit positions so the small monthly table
+                        # does not rebuild automatic indexes within every case.
+                        # Retain all matches and their existing row order.
+                        base_rows <- which(
+                            baseline[["epw_field"]] == rule$epw_field[[1L]] &
+                                baseline[["month"]] == m
+                        )
+                        base <- baseline[base_rows]
                         status <- "ok"
                         if (!nrow(future)) {
                             status <- "missing_climate"
@@ -3949,7 +3954,9 @@ EpwMorpher <- R6::R6Class(
                             NA_real_
                         }
                         row_case <- as.list(case)
-                        rows[[length(rows) + 1L]] <- data.frame(
+                        # Bind scalar columns once after all rows are ready;
+                        # per-row data.frame construction adds no information.
+                        rows[[length(rows) + 1L]] <- list(
                             factor_id = morpher__hash(
                                 morph_id,
                                 case_id,
@@ -3973,8 +3980,7 @@ EpwMorpher <- R6::R6Class(
                             delta = delta,
                             alpha = alpha,
                             units = base_units,
-                            status = status,
-                            stringsAsFactors = FALSE
+                            status = status
                         )
                     }
                 }

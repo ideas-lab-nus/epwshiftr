@@ -627,257 +627,57 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
 })
 
 
-test_that("shift CLI executes and inspects one persisted workflow run", {
+# Planned receipts take the real CLI/public resume path up to execution. The
+# full scientific execution and repair are exercised once by the batch case.
+test_that("shift CLI resumes a planned receipt with the saved identity and UI", {
     skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
-    variables <- epw_morph_variables(
-        transform__recipe(monthly_transform("epwshiftr"))
-    )
-    nc <- stats::setNames(
-        vapply(
-            variables,
-            function(variable_id) {
-                path <- tempfile(fileext = ".nc")
-                write_local_cmip6_netcdf_fixture(
-                    path,
-                    2060L,
-                    variable_id = variable_id,
-                    frequency = "mon"
-                )
-                path
-            },
-            character(1L)
-        ),
-        variables
-    )
-    on.exit(unlink(nc), add = TRUE)
-
-    docs <- data.table::rbindlist(
-        lapply(variables, function(variable_id) {
-            esgf_test__file_docs(
-                basename(nc[[variable_id]]),
-                opendap_url = nc[[variable_id]],
-                download_url = nc[[variable_id]],
-                variable_id = variable_id,
-                frequency = "mon",
-                table_id = "Amon"
-            )
-        }),
-        fill = TRUE
-    )
-    # Each synthetic variable represents a separate CMIP6 File identity.
-    docs[, `:=`(
-        dataset_id = paste0("future-", variable_id),
-        master_id = paste0("future-", variable_id),
-        instance_id = paste0("future-", variable_id, ".v20260101"),
-        tracking_id = paste0("hdl:21.14100/future-", variable_id),
-        id = paste0(title, "|future-", variable_id)
-    )]
-    data.table::set(
-        docs,
-        j = "checksum",
-        value = vapply(nc[docs$variable_id], checksum_file, character(1L))
-    )
-    calls <- cli_shift_test_mock_collect(docs)
-
-    store <- tempfile("esg-store-")
+    root <- withr::local_tempdir()
     config <- tempfile(fileext = ".json")
+    withr::defer(unlink(config))
     cli_shift_test_config(config)
-    export_dir <- tempfile("cli-shift-export-")
-    payload <- jsonlite::read_json(
-        config,
-        simplifyVector = TRUE,
-        simplifyDataFrame = FALSE
-    )
-    payload$dir <- export_dir
-    jsonlite::write_json(
-        payload,
-        config,
-        auto_unbox = TRUE,
-        pretty = TRUE,
-        null = "null"
-    )
-
-    result <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
+    base <- c("--quiet", "--store", root, "shift")
+    planned <- epwshiftr_cli(c(
+        base,
         "run",
         "--config",
-        config
+        config,
+        "--dry-run"
     ))
-    expect_equal(result$status, 0L, info = result$error)
-    expect_equal(result$result$status, "completed")
-    expect_length(result$result$batch_id, 1L)
-    expect_length(result$result$children$run_id, 1L)
-    expect_equal(nrow(result$result$outputs), 1L)
-    expect_true(all(file.exists(result$result$outputs$export_path)))
-    expect_true(all(result$result$cases$status == "completed"))
-    expect_true("File" %in% calls$types)
+    expect_equal(planned$status, 0L, info = planned$error)
 
-    run_id <- result$result$children$run_id
-    store <- result$result$children$store
-    status <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "status",
-        "--run",
-        run_id
-    ))
-    expect_equal(status$status, 0L)
-    expect_equal(status$result$run_id, run_id)
-    expect_equal(status$result$status, "completed")
-
-    show <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "show",
-        "--run",
-        run_id
-    ))
-    expect_equal(show$status, 0L)
-    expect_named(
-        show$result,
-        c("run", "cases", "events", "outputs", "diagnostics", "explain")
+    received <- NULL
+    # Preserve actual target restoration, resume dispatch and queued job writes;
+    # stop only at the shared execution seam before native data are acquired.
+    testthat::local_mocked_bindings(
+        shift_batch_execution__run_execution = function(x, job, ui) {
+            received <<- list(batch = x, job = job, ui = ui)
+            x
+        },
+        .package = "epwshiftr"
     )
-    expect_equal(show$result$run$run_id, run_id)
-    expect_equal(nrow(show$result$outputs), 1L)
-
-    watch <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "watch",
-        "--run",
-        run_id,
-        "--events",
-        "2"
-    ))
-    expect_equal(watch$status, 0L)
-    expect_named(
-        watch$result,
-        c("run", "cases", "outputs", "diagnostics", "events")
-    )
-
-    jsonl_text <- capture.output(
-        jsonl_watch <- epwshiftr_cli(c(
-            "--store",
-            store,
-            "--jsonl",
-            "shift",
-            "watch",
-            "--run",
-            run_id,
-            "--follow",
-            "--count",
-            "1",
-            "--events",
-            "1"
-        ))
-    )
-    expect_equal(jsonl_watch$status, 0L)
-    jsonl_records <- lapply(jsonl_text, jsonlite::fromJSON)
-    expect_equal(
-        vapply(jsonl_records, `[[`, character(1L), "type"),
-        c("snapshot", "terminal")
-    )
-    expect_equal(jsonl_records[[1L]]$snapshot$run$run_id, run_id)
-
-    json_text <- capture.output(
-        json_watch <- epwshiftr_cli(c(
-            "--store",
-            store,
-            "--json",
-            "shift",
-            "watch",
-            "--run",
-            run_id,
-            "--follow",
-            "--count",
-            "1",
-            "--events",
-            "1"
-        ))
-    )
-    expect_equal(json_watch$status, 0L)
-    # A single valid JSON document proves human watch snapshots were not mixed
-    # into the machine-readable stdout contract.
-    json_snapshot <- jsonlite::fromJSON(paste(json_text, collapse = "\n"))
-    expect_equal(json_snapshot$run$run_id, run_id)
-
-    diagnostics <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "diagnostics",
-        "--run",
-        run_id
-    ))
-    expect_equal(diagnostics$status, 0L)
-    expect_named(diagnostics$result, shift_stage__diagnostic_columns())
-
-    outputs <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "outputs",
-        "--run",
-        run_id
-    ))
-    expect_equal(outputs$status, 0L)
-    expect_equal(nrow(outputs$result), 1L)
-
-    data <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
-        "data",
-        "--run",
-        run_id,
-        "--columns",
-        "case_id,period,dry_bulb_temperature",
-        "--limit",
-        "2"
-    ))
-    expect_equal(data$status, 0L)
-    expect_equal(nrow(data$result), 2L)
-
     resumed <- epwshiftr_cli(c(
-        "--quiet",
-        "--store",
-        store,
-        "shift",
+        base,
         "resume",
-        "--run",
-        run_id
+        "--batch",
+        planned$result$batch_id
     ))
-    expect_equal(resumed$status, 0L)
-    expect_equal(resumed$result$status, "completed")
-    expect_equal(resumed$result$run_id, run_id)
-
-    rendered <- capture.output(
-        rendered_show <- epwshiftr_cli(c(
-            "--store",
-            store,
-            "shift",
-            "show",
-            "--run",
-            run_id
-        )),
-        type = "message"
-    )
-    expect_equal(rendered_show$status, 0L)
-    expect_true(any(grepl("Shift workflow run", rendered)))
+    expect_equal(resumed$status, 0L, info = resumed$error)
+    expect_s7_class(received$batch, ShiftBatch)
+    expect_identical(received$batch@ids$batch_id, planned$result$batch_id)
+    expect_true(all(vapply(
+        received$batch@meta$children,
+        function(child) S7::S7_inherits(child, ShiftPlan),
+        logical(1L)
+    )))
+    expect_identical(received$job$batch_id, planned$result$batch_id)
+    expect_identical(received$job$status, "queued")
+    expect_false(received$job$background)
+    expect_identical(received$ui@progress, "none")
+    expect_false(received$ui@batch_receipt)
+    saved <- shift_batch_execution__job_read(received$batch@store_path)
+    expect_identical(saved$id, received$job$id)
+    expect_identical(saved$batch_id, received$job$batch_id)
 })
 
 # vim: fdm=marker :

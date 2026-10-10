@@ -126,45 +126,28 @@ test_that("only dependent children are blocked after shared reading", {
     expect_identical(result@meta$execution$action, c("blocked", "started"))
 })
 
-test_that("warm shared caches need no worker or payload deserialization", {
+# Reuse one real prefetch for two sequential cache states. The warm check only
+# reads receipts, and its mocks expire before completed-consumer recovery.
+test_that("warm shared caches avoid reads and preserve partial resume window identity", {
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     shift_batch_window__prefetch(batch)
     unlink(list.files(fixture$root, pattern = "[.]nc$", full.names = TRUE))
-    local_mocked_bindings(
-        store__extract_cache_read = function(...) {
-            stop("unexpected payload read")
-        },
-        source__apply = function(jobs, ...) expect_length(jobs, 0L)
-    )
-    expect_equal(as.integer(shift_batch_window__prefetch(batch)), 0L)
-})
+    # A function scope restores both warm-cache mocks before recovery begins.
+    check_warm <- function() {
+        local_mocked_bindings(
+            store__extract_cache_read = function(...) {
+                stop("unexpected payload read")
+            },
+            source__apply = function(jobs, ...) expect_length(jobs, 0L)
+        )
+        expect_equal(as.integer(shift_batch_window__prefetch(batch)), 0L)
+    }
+    check_warm()
 
-test_that("cache receipts detect changed bytes before shared reuse", {
-    path <- file.path(withr::local_tempdir(), "payload.rds")
-    payload <- list(
-        data = data.table::data.table(value = 1),
-        grid_sources = data.table::data.table(),
-        available_time_count = 1L,
-        actual_start = Sys.time(),
-        actual_end = Sys.time()
-    )
-    store__extract_cache_write(path, payload)
-    expect_true(store__extract_cache_available(path))
-    payload$data$value <- 2
-    saveRDS(payload, path)
-    expect_false(store__extract_cache_available(path))
-    expect_null(store__extract_cache_read(path))
-})
-
-# Filtering finished children must keep the original window identity. Their
-# missing caches are irrelevant, while unfinished consumers can reuse receipts.
-test_that("partial resume keeps window identity without completed cache reads", {
-    fixture <- shared_inputs_test__fixture()
-    cli_shift_test_mock_collect(fixture$docs)
-    batch <- shift_batch_plan__resolve_inputs(fixture$batch)
-    shift_batch_window__prefetch(batch)
+    # Restore the original partial-resume boundary: all child payloads absent,
+    # native sources absent, and only the first city marked completed.
     paths <- unlist(lapply(
         seq_len(nrow(batch@meta$shared_plan$acquisitions)),
         function(i) {
@@ -184,6 +167,23 @@ test_that("partial resume keeps window identity without completed cache reads", 
     result <- shift_batch_window__prefetch(batch)
     expect_length(attr(result, "failures"), 0L)
     expect_equal(sum(file.exists(paths)), 6L)
+})
+
+test_that("cache receipts detect changed bytes before shared reuse", {
+    path <- file.path(withr::local_tempdir(), "payload.rds")
+    payload <- list(
+        data = data.table::data.table(value = 1),
+        grid_sources = data.table::data.table(),
+        available_time_count = 1L,
+        actual_start = Sys.time(),
+        actual_end = Sys.time()
+    )
+    store__extract_cache_write(path, payload)
+    expect_true(store__extract_cache_available(path))
+    payload$data$value <- 2
+    saveRDS(payload, path)
+    expect_false(store__extract_cache_available(path))
+    expect_null(store__extract_cache_read(path))
 })
 
 # Parseable scalar JSON and incomplete field names are not cache receipts.

@@ -386,7 +386,9 @@ EpwMorphBackend <- R6::R6Class(
             }
             rules <- private$rule_table
             for (method_name in names(methods)) {
-                rule <- rules[step == method_name]
+                # Preserve the first matching rule for validation without building
+                # a data.table auto-index for each small-table lookup.
+                rule <- rules[which(rules[["step"]] == method_name)]
                 allowed <- morpher__rule_method_choices(
                     rule,
                     private$allowed_methods
@@ -409,9 +411,16 @@ EpwMorphBackend <- R6::R6Class(
         rules_with_methods = function(methods = NULL) {
             rules <- self$rules()
             methods <- self$validate_methods(methods)
-            for (method_name in names(methods)) {
-                rules[step == method_name, method := methods[[method_name]]]
-            }
+            # Match every rule row once. Duplicate steps all receive the first
+            # named override, matching the prior loop without repeated sorting.
+            position <- match(rules[["step"]], names(methods))
+            rows <- which(!is.na(position))
+            data.table::set(
+                rules,
+                i = rows,
+                j = "method",
+                value = unname(methods[position[rows]])
+            )
             rules[]
         },
         # }}}

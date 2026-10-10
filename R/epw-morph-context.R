@@ -129,7 +129,15 @@ morpher__default_epw_units <- function(field) {
 
 # morpher__humidity_input_si {{{
 morpher__humidity_input_si <- function(value, units, variable_id) {
-    units <- vapply(units, morpher__unit_alias, character(1L))
+    if (is.character(units) && is.null(attributes(units))) {
+        # Hourly rows repeat a few labels. Expand the distinct-label result back
+        # to the original positions, including vapply's character-input names.
+        labels <- unique(units)
+        aliases <- vapply(labels, morpher__unit_alias, character(1L))
+        units <- aliases[match(units, labels)]
+    } else {
+        units <- vapply(units, morpher__unit_alias, character(1L))
+    }
     allowed <- switch(
         variable_id,
         huss = c("1", "kg/kg"),

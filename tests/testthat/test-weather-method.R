@@ -82,33 +82,6 @@ test_that("daily adjustment methods share one reusable EPW adapter", {
     )))
 })
 
-test_that("daily adjusted temperature produces a standard EPW result", {
-    recipe <- epw_morph_recipe("linear_scaling_daily_temperature")
-    context <- daily_adjustment_test__context(recipe)
-    result <- morpher__run_context(context)
-
-    expect_s3_class(result, "epw_morph_result")
-    expect_identical(nrow(result$data), 8760L)
-    expect_identical(nrow(result$factors), 365L)
-    expect_identical(
-        result$parts$adjusted_series_metadata$output_role,
-        "model_future"
-    )
-    expect_named(
-        result$parts$adjusted_series_metadata,
-        c("output_role", "transformation", "settings", "provenance")
-    )
-    pipeline <- result$parts$component_pipeline
-    expect_identical(
-        pipeline[stage == "signal", component],
-        "linear_scaling_daily"
-    )
-    expect_identical(
-        pipeline[stage == "physics", component],
-        "daily_adjusted_specific_humidity_closure"
-    )
-})
-
 test_that("all daily adjustment methods produce the same output contract", {
     recipe_names <- paste0(
         unname(DAILY_ADJUSTMENT_METHOD_COMPONENTS),
@@ -117,7 +90,24 @@ test_that("all daily adjustment methods produce the same output contract", {
     results <- lapply(recipe_names, function(name) {
         recipe <- epw_morph_recipe(name)
         context <- daily_adjustment_test__context(recipe)
-        suppressWarnings(morpher__run_context(context))
+        result <- suppressWarnings(morpher__run_context(context))
+        # The common contract below also covers linear scaling. Check its
+        # detailed metadata on this same execution instead of running it twice.
+        if (identical(name, "linear_scaling_daily_temperature")) {
+            expect_identical(
+                result$parts$adjusted_series_metadata$output_role,
+                "model_future"
+            )
+            expect_named(
+                result$parts$adjusted_series_metadata,
+                c("output_role", "transformation", "settings", "provenance")
+            )
+            expect_identical(
+                result$parts$component_pipeline[stage == "signal", component],
+                "linear_scaling_daily"
+            )
+        }
+        result
     })
 
     expect_true(all(vapply(

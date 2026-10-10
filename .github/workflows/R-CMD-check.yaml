@@ -25,6 +25,10 @@ jobs:
           - {os: macos-latest,   r: 'release', not_cran: true}
 
     env:
+      TESTTHAT_CPUS: 3
+      EPWSHIFTR_DB_THREADS: 1
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: ${{ matrix.config.not_cran }}
 

@@ -384,7 +384,7 @@ test_that("workflow configuration requires a boolean common flag", {
         config$climate$common <- value
         expect_error(
             schema_validate(
-                SCHEMA_SHIFT_WORKFLOW_CONFIG,
+                schema__document("SHIFT_WORKFLOW_CONFIG"),
                 config,
                 name = "config"
             ),

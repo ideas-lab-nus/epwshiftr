@@ -272,8 +272,9 @@ solar__interval_projection <- function(
     # Mapping annual phase to a 365-day astronomical cycle lets 360-day,
     # no-leap, and all-leap model calendars share the same seasonal geometry.
     gamma <- 2 * pi * (position[["annual_phase"]] - 0.5 / 365)
-    declination <- solar__spencer_declination(gamma)
-    equation_of_time <- solar__spencer_equation_of_time(gamma)
+    geometry <- solar__spencer_geometry(gamma)
+    declination <- geometry$declination
+    equation_of_time <- geometry$equation_of_time
     longitude <- ((longitude + 180) %% 360) - 180
     utc_minutes <- position[["cf_second_of_day"]] / 60
     apparent_solar_minutes <- utc_minutes + 4 * longitude + equation_of_time

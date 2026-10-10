@@ -1,3 +1,124 @@
+# Preserve inspectable CLI failures before temporary stores disappear. Capture
+# raw returns first so a failing diagnostic reader cannot erase the root cause.
+# cli_batch__failure_evidence {{{
+cli_batch__failure_evidence <- function(
+    planned,
+    completed,
+    root,
+    config_path,
+    docs,
+    files,
+    calls
+) {
+    if (
+        identical(planned$status, 0L) &&
+            identical(completed$status, 0L) &&
+            identical(completed$result$status, "completed")
+    ) {
+        return(completed$error)
+    }
+    reason <- paste(
+        c(
+            completed$error,
+            completed$result$status,
+            completed$result$diagnostics$message
+        ),
+        collapse = "; "
+    )
+    tryCatch(
+        {
+            parent <- Sys.getenv(
+                "EPWSHIFTR_TEST_EVIDENCE_DIR",
+                file.path(getwd(), "failure-evidence")
+            )
+            dir.create(parent, recursive = TRUE, showWarnings = FALSE)
+            directory <- tempfile(
+                paste0("cli-batch-", Sys.getpid(), "-"),
+                parent
+            )
+            dir.create(directory)
+            saveRDS(
+                list(
+                    planned = planned,
+                    completed = completed,
+                    store = root,
+                    config_path = config_path,
+                    docs = docs,
+                    files = file.info(files),
+                    calls = as.list(calls),
+                    options = options()[startsWith(
+                        names(options()),
+                        "epwshiftr."
+                    )]
+                ),
+                file.path(directory, "cli-results.rds")
+            )
+            file.copy(config_path, file.path(directory, "config.json"))
+            # Preserve original receipt bytes before inspection can refresh a run.
+            receipts <- list.files(root, pattern = "[.]json$", recursive = TRUE)
+            for (relative in receipts) {
+                target <- file.path(directory, "receipts", relative)
+                dir.create(
+                    dirname(target),
+                    recursive = TRUE,
+                    showWarnings = FALSE
+                )
+                file.copy(file.path(root, relative), target)
+            }
+            # Each read is independent: one unreadable manifest must not hide peers.
+            capture <- function(expr) {
+                tryCatch(force(expr), error = function(error) {
+                    list(error = conditionMessage(error), class = class(error))
+                })
+            }
+            id <- completed$result$batch_id
+            if (is.null(id)) {
+                id <- planned$result$batch_id
+            }
+            batch <- capture(shift_batch_get(id, root))
+            state <- list(batch = batch)
+            if (S7::S7_inherits(batch, ShiftBatch)) {
+                state$diagnostics <- capture(shift_diagnostics(
+                    batch,
+                    refresh = FALSE
+                ))
+                state$children <- lapply(batch@meta$children, function(child) {
+                    list(
+                        ids = child@ids,
+                        meta = child@meta,
+                        diagnostics = capture(shift_diagnostics(
+                            child,
+                            refresh = FALSE
+                        )),
+                        logs = if (S7::S7_inherits(child, ShiftRun)) {
+                            capture(shift_logs(
+                                child,
+                                tail = .Machine$integer.max
+                            ))
+                        } else {
+                            NULL
+                        }
+                    )
+                })
+            }
+            saveRDS(state, file.path(directory, "workflow-diagnostics.rds"))
+            paste(
+                reason,
+                "Failure evidence:",
+                normalizePath(directory, winslash = "/")
+            )
+        },
+        error = function(error) {
+            paste(
+                reason,
+                "Failure evidence capture error:",
+                conditionMessage(error)
+            )
+        }
+    )
+}
+# }}}
+
 # Write through JSON so tests exercise the actual command-line configuration
 # boundary, including nulls and arrays of transform objects.
 # cli_batch__write_config {{{
@@ -478,7 +599,7 @@ test_that("failed batch execution returns a nonzero CLI status with its receipt"
     expect_null(result$error)
 })
 
-test_that("persisted batch plans execute, reuse artifacts, and repair missing exports", {
+test_that("persisted batch plans execute, support CLI inspection, reuse and repair exports", {
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
     test_local_dependencies(list(
@@ -558,9 +679,19 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
     ))
     expect_equal(planned$status, 0L, info = planned$error)
     id <- planned$result$batch_id
-    completed <- epwshiftr_cli(c(base, "resume", "--batch", id))
-    expect_equal(completed$status, 0L, info = completed$error)
+    completed <- epwshiftr_cli(c(base, "run", "--config", config_path))
+    failure_info <- cli_batch__failure_evidence(
+        planned,
+        completed,
+        root,
+        config_path,
+        docs,
+        files,
+        calls
+    )
+    expect_equal(completed$status, 0L, info = failure_info)
     expect_identical(completed$result$status, "completed")
+    expect_identical(completed$result$batch_id, id)
     output <- completed$result$outputs$export_path
     expect_length(output, 1L)
     expect_true(all(file.exists(output)))
@@ -629,6 +760,174 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
         follow = FALSE,
         ui = shift_ui("none")
     ))
+
+    # Reuse this real child for run-scoped command and output-format contracts.
+    expect_length(completed$result$batch_id, 1L)
+    expect_length(completed$result$children$run_id, 1L)
+    expect_true(all(completed$result$cases$status == "completed"))
+    expect_true("File" %in% calls$types)
+
+    run_id <- completed$result$children$run_id
+    store <- completed$result$children$store
+    status <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "status",
+        "--run",
+        run_id
+    ))
+    expect_equal(status$status, 0L)
+    expect_equal(status$result$run_id, run_id)
+    expect_equal(status$result$status, "completed")
+
+    show <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "show",
+        "--run",
+        run_id
+    ))
+    expect_equal(show$status, 0L)
+    expect_named(
+        show$result,
+        c("run", "cases", "events", "outputs", "diagnostics", "explain")
+    )
+    expect_equal(show$result$run$run_id, run_id)
+    expect_equal(nrow(show$result$outputs), 1L)
+
+    watch <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "watch",
+        "--run",
+        run_id,
+        "--events",
+        "2"
+    ))
+    expect_equal(watch$status, 0L)
+    expect_named(
+        watch$result,
+        c("run", "cases", "outputs", "diagnostics", "events")
+    )
+
+    jsonl_text <- capture.output(
+        jsonl_watch <- epwshiftr_cli(c(
+            "--store",
+            store,
+            "--jsonl",
+            "shift",
+            "watch",
+            "--run",
+            run_id,
+            "--follow",
+            "--count",
+            "1",
+            "--events",
+            "1"
+        ))
+    )
+    expect_equal(jsonl_watch$status, 0L)
+    jsonl_records <- lapply(jsonl_text, jsonlite::fromJSON)
+    expect_equal(
+        vapply(jsonl_records, `[[`, character(1L), "type"),
+        c("snapshot", "terminal")
+    )
+    expect_equal(jsonl_records[[1L]]$snapshot$run$run_id, run_id)
+
+    json_text <- capture.output(
+        json_watch <- epwshiftr_cli(c(
+            "--store",
+            store,
+            "--json",
+            "shift",
+            "watch",
+            "--run",
+            run_id,
+            "--follow",
+            "--count",
+            "1",
+            "--events",
+            "1"
+        ))
+    )
+    expect_equal(json_watch$status, 0L)
+    # A single valid JSON document proves human watch snapshots were not mixed
+    # into the machine-readable stdout contract.
+    json_snapshot <- jsonlite::fromJSON(paste(json_text, collapse = "\n"))
+    expect_equal(json_snapshot$run$run_id, run_id)
+
+    diagnostics <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "diagnostics",
+        "--run",
+        run_id
+    ))
+    expect_equal(diagnostics$status, 0L)
+    expect_named(diagnostics$result, shift_stage__diagnostic_columns())
+
+    outputs <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "outputs",
+        "--run",
+        run_id
+    ))
+    expect_equal(outputs$status, 0L)
+    expect_equal(nrow(outputs$result), 1L)
+
+    data <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "data",
+        "--run",
+        run_id,
+        "--columns",
+        "case_id,period,dry_bulb_temperature",
+        "--limit",
+        "2"
+    ))
+    expect_equal(data$status, 0L)
+    expect_equal(nrow(data$result), 2L)
+
+    resumed <- epwshiftr_cli(c(
+        "--quiet",
+        "--store",
+        store,
+        "shift",
+        "resume",
+        "--run",
+        run_id
+    ))
+    expect_equal(resumed$status, 0L)
+    expect_equal(resumed$result$status, "completed")
+    expect_equal(resumed$result$run_id, run_id)
+
+    rendered <- capture.output(
+        rendered_show <- epwshiftr_cli(c(
+            "--store",
+            store,
+            "shift",
+            "show",
+            "--run",
+            run_id
+        )),
+        type = "message"
+    )
+    expect_equal(rendered_show$status, 0L)
+    expect_true(any(grepl("Shift workflow run", rendered)))
 
     # Remove only this test's exported file. The persisted plan and cached
     # scientific artifacts must be sufficient to reconstruct the delivery.

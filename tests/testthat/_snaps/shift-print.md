@@ -225,7 +225,7 @@
       == EPW Outputs =================================================================
       * Status: partial
       * Outputs: 12 registered · 12 paths
-      * Export directory: /exports
+      * Export directory: <tempdir>/exports
       -- Outputs ---------------------------------------------------------------------
       +-------------+---------------+---------------+--------+-----------------------+
       | Source Id   | Experiment Id | Variant Label | Period | Path                  |
@@ -336,7 +336,7 @@
       == EPW Outputs =====================================================================================
       * Status: partial
       * Outputs: 12 registered · 12 paths
-      * Export directory: /exports
+      * Export directory: <tempdir>/exports
       -- Outputs -----------------------------------------------------------------------------------------
       +-------------+---------------+---------------+--------+-----------------------+
       | Source Id   | Experiment Id | Variant Label | Period | Path                  |
@@ -364,7 +364,7 @@
       │ EPWs     ━━━━━━━━ 2/2 · 100% · exported 2 files                     │
       ├─ Results ───────────────────────────────────────────────────────────┤
       │ Summary  2/2 EPWs exported · 0 missing                              │
-      │ Output   /exports                                                   │
+      │ Output   <tempdir>/exports                                          │
       │ Files    ssp126.epw                                                 │
       │          ssp585.epw                                                 │
       ╰─────────────────────────────────────────────────────────────────────╯
@@ -388,7 +388,7 @@
       │ EPWs     ━━━━━━━━━━━━━━ 2/2 · 100% · exported 2 files                                           │
       ├─ Results ───────────────────────────────────────────────────────────────────────────────────────┤
       │ Summary  2/2 EPWs exported · 0 missing                                                          │
-      │ Output   /exports                                                                               │
+      │ Output   <tempdir>/exports                                                                      │
       │ Files    ssp126.epw                                                                             │
       │          ssp585.epw                                                                             │
       ╰─────────────────────────────────────────────────────────────────────────────────────────────────╯

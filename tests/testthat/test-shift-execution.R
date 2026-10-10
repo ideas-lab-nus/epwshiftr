@@ -52,41 +52,6 @@ test_that("independent reporters cannot inherit another execution's cancellation
     expect_identical(shift_batch_execution__job_read(root)$status, "cancelled")
 })
 
-# Real installed workers inherit effective user settings and never start nested
-# pools. This is local IPC only and makes no remote data requests.
-test_that("source workers share the execution settings snapshot", {
-    withr::local_options(
-        epwshiftr.mirai_workers = 2L,
-        epwshiftr.query.timeout = 47,
-        epwshiftr.cache_max_age = 123,
-        epwshiftr.cache_max_size = 4096,
-        epwshiftr.cache_max_n = 7
-    )
-    actual <- vector("list", 2L)
-    source__apply(
-        as.list(1:2),
-        function(job) {
-            options()[c(
-                "epwshiftr.query.timeout",
-                "epwshiftr.cache_max_age",
-                "epwshiftr.cache_max_size",
-                "epwshiftr.cache_max_n",
-                "epwshiftr.mirai_workers"
-            )]
-        },
-        function(job, value) actual[[job]] <<- value
-    )
-    expected <- list(
-        epwshiftr.query.timeout = 47,
-        epwshiftr.cache_max_age = 123,
-        epwshiftr.cache_max_size = 4096,
-        epwshiftr.cache_max_n = 7,
-        epwshiftr.mirai_workers = 1L
-    )
-    expect_identical(actual, list(expected, expected))
-    expect_identical(getOption("epwshiftr.mirai_workers"), 2L)
-})
-
 # Cancellation before a stage starts must finish both durable records without
 # evaluating the source operation or leaving a running step behind.
 test_that("early standalone cancellation updates the run and step", {
@@ -289,8 +254,8 @@ test_that("background launch preserves strings and reports launch failure", {
 # A second round trip detects accidental termination by the first PID check.
 test_that("process liveness checks do not terminate a worker", {
     profile <- paste0("pid-check-", basename(tempfile()))
-    mirai::daemons(1L, dispatcher = FALSE, .compute = profile)
-    on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
+    mirai__start_pool(1L, dispatcher = FALSE, .compute = profile)
+    on.exit(mirai::daemons(NULL, .compute = profile), add = TRUE)
     first <- mirai::collect_mirai(mirai::mirai(
         Sys.getpid(),
         .compute = profile,

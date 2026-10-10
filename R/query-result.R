@@ -454,9 +454,9 @@ EsgResult <- R6::R6Class(
 
             schema <- switch(
                 type,
-                Dataset = SCHEMA_RESULT_DATASET,
-                File = SCHEMA_RESULT_FILE,
-                Aggregation = SCHEMA_RESULT_AGGREGATION,
+                Dataset = schema__compiled("RESULT_DATASET"),
+                File = schema__compiled("RESULT_FILE"),
+                Aggregation = schema__compiled("RESULT_AGGREGATION"),
                 NULL
             )
             if (is.null(schema)) {

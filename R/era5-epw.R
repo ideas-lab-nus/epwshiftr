@@ -334,6 +334,8 @@ era_epw__implementation <- function() {
         "solar__epw_interval_geometry",
         "epwphys__psychro_ln_pws",
         "epwphys__wind_from_components",
+        "solar__spencer_terms",
+        "solar__spencer_geometry",
         "solar__spencer_declination",
         "solar__spencer_equation_of_time",
         "solar__cos_zenith",

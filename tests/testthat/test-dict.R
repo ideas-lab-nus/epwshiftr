@@ -179,7 +179,7 @@ test_that("EsgDict$save() / EsgDict$load() round-trip CV-only ESG projects", {
     expect_identical(dict$save(path = path), path)
     payload <- jsonlite::read_json(path, simplifyVector = FALSE)
     expect_true(schema_validate(
-        SCHEMA_ESG_DICT,
+        schema__document("ESG_DICT"),
         payload,
         mode = "test",
         name = path

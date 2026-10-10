@@ -92,4 +92,58 @@ test_that("monthly smoothing follows the representative calendar across source y
     expect_identical(mixed, before)
 })
 
+# Duplicate months keep the first finite value in caller order. Non-finite rows
+# and invalid calendar months cannot fill a missing monthly target.
+test_that("monthly targets retain first finite values and plain numeric output", {
+    data <- data.table::data.table(
+        month = c(2, 1, 2, 1, 3, 3, NA, 0, 13, 1.5, 12),
+        target = c(4, NA, 6, 5, Inf, NaN, 8, 9, 10, 11, 12)
+    )
+    before <- data.table::copy(data)
+    expected <- c(5, 4, rep(NA_real_, 9L), 12)
+    expect_identical(morpher__monthly_target_vector(data, "target"), expected)
+    expect_identical(data, before)
+    expect_identical(
+        morpher__monthly_target_vector(data[0L], "target"),
+        rep(NA_real_, 12L)
+    )
+    expect_identical(
+        morpher__monthly_target_vector(
+            data.table::data.table(month = 1:12, target = NA_real_),
+            "target"
+        ),
+        rep(NA_real_, 12L)
+    )
+    expect_identical(
+        morpher__monthly_target_vector(
+            data.table::data.table(month = 1:12, target = 1:12),
+            "target"
+        ),
+        as.numeric(1:12)
+    )
+})
+
+# Character labels and attributed columns retain the historical subset/coercion
+# behavior, including distinguishing "01" from the calendar label "1".
+test_that("monthly targets retain coercion for attributed and character columns", {
+    data <- data.table::data.table(
+        month = c("01", "1", "2"),
+        target = c(3, 4, 5)
+    )
+    expect_identical(
+        morpher__monthly_target_vector(data, "target"),
+        c(4, 5, rep(NA_real_, 10L))
+    )
+    data <- data.table::data.table(
+        month = c(1L, 2L),
+        target = structure(c(7, 8), units = "degC")
+    )
+    before <- data.table::copy(data)
+    expect_identical(
+        morpher__monthly_target_vector(data, "target"),
+        c(7, 8, rep(NA_real_, 10L))
+    )
+    expect_identical(data, before)
+})
+
 # vim: fdm=marker :

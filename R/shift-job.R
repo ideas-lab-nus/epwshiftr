@@ -1110,12 +1110,52 @@ shift_job__job_update <- function(
 # boundaries; this is deliberately separate from transient Console animation.
 # shift_job__job_touch {{{
 shift_job__job_touch <- function(store, job_id, ui_state = NULL) {
-    shift_job__job_update(
-        store,
-        job_id,
-        heartbeat_at = store__now(),
-        .ui_state = ui_state
-    )
+    # The normal path owns one string job ID. Leave unusual inputs to the
+    # general updater so its existing validation and errors remain intact.
+    if (
+        !is.character(job_id) ||
+            length(job_id) != 1L ||
+            is.na(job_id) ||
+            !nzchar(job_id)
+    ) {
+        return(shift_job__job_update(
+            store,
+            job_id,
+            heartbeat_at = store__now(),
+            .ui_state = ui_state
+        ))
+    }
+    conn <- morpher__private_store(store)$conn
+    heartbeat_at <- store__now()
+    updated_at <- store__now()
+    times <- ddb_literal(conn, c(heartbeat_at, updated_at))
+    # RETURNING supplies the same complete row without a separate pre-update
+    # SELECT. Only liveness fields change; cancellation and attempt ownership
+    # remain authoritative in DuckDB and the existing sidecar write path.
+    row <- data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            paste(
+                "UPDATE shift_run_job SET heartbeat_at = %s, updated_at = %s",
+                "WHERE job_id = %s RETURNING 1 AS heartbeat_rows_affected, *"
+            ),
+            times[[1L]],
+            times[[2L]],
+            ddb_literal(conn, job_id)
+        )
+    ))
+    if (!nrow(row)) {
+        cli::cli_abort("Shift job {.val {job_id}} was not found.")
+    }
+    # The DuckDB R driver derives affected rows from the first returned column
+    # for UPDATE statements. Supply a numeric count and remove it immediately.
+    data.table::set(row, j = 1L, value = NULL)
+    shift_job__live_snapshot_write(store, row$run_id[[1L]], ui_state = ui_state)
+    # Preserve the former invisible return's R timestamp precision; the live
+    # snapshot continues to read the database's persisted timestamp values.
+    data.table::set(row, j = "heartbeat_at", value = heartbeat_at)
+    data.table::set(row, j = "updated_at", value = updated_at)
+    invisible(row)
 }
 # }}}
 
@@ -2223,15 +2263,19 @@ shift_job__live_run_get <- function(run_id, store_path) {
 # }}}
 
 # Decide whether an atomic live snapshot is safe to serve without opening
-# DuckDB. Dead PIDs and launch attempts older than the grace period fall back
-# to manifest reconciliation so stale runs still become failed.
+# DuckDB. Terminal receipts can precede a coordinator's final reads and process
+# exit, so an external live owner still protects the manifest at that point.
+# Dead PIDs and expired launches fall back to authoritative reconciliation.
 # shift_job__live_process_is_active {{{
 shift_job__live_process_is_active <- function(run, startup_grace = 60) {
     if (is.null(run) || !S7::S7_inherits(run, ShiftRun)) {
         return(FALSE)
     }
     status <- shift_status(run, refresh = FALSE)
-    if (!status %in% c("queued", "running", "stopping")) {
+    active <- status %in% c("queued", "running", "stopping")
+    if (
+        !active && !status %in% c("completed", "partial", "failed", "cancelled")
+    ) {
         return(FALSE)
     }
     jobs <- data.table::as.data.table(run@meta$jobs)
@@ -2244,7 +2288,15 @@ shift_job__live_process_is_active <- function(run, startup_grace = 60) {
     }
     pid <- suppressWarnings(as.integer(job$pid[[1L]]))
     if (!is.na(pid)) {
+        # The owner itself may reopen a finished child to verify durable state.
+        # Only other processes must avoid racing that final manifest access.
+        if (!active && identical(pid, as.integer(Sys.getpid()))) {
+            return(FALSE)
+        }
         return(downloader__pid_alive(pid))
+    }
+    if (!active) {
+        return(FALSE)
     }
     age <- as.numeric(difftime(
         Sys.time(),

@@ -1,15 +1,24 @@
 # Get test data directory path (for EPW/NetCDF files, not DiskCache objects)
 #
-# Uses EPWSHIFTR_CHECK_CACHE env var in CI, otherwise a fixed subdir of tempdir().
-# The directory is created if it doesn't exist.
+# EPWSHIFTR_CHECK_CACHE selects a parent directory, not a shared mutable fixture.
+# Each fresh R process owns one disposable child; cached CI inputs remain intact.
 # test_data_dir {{{
 test_data_dir <- function() {
     dir <- Sys.getenv("EPWSHIFTR_CHECK_CACHE", NA)
     if (is.na(dir)) {
-        dir <- file.path(tempdir(), "epwshiftr-test-data")
+        dir <- tempdir()
     }
+    dir <- file.path(
+        dir,
+        paste0("epwshiftr-test-data-", basename(tempdir()), "-", Sys.getpid())
+    )
     if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
+        # Only this process's child is disposable; never remove the parent.
+        withr::defer(
+            unlink(dir, recursive = TRUE, force = TRUE),
+            envir = testthat::teardown_env()
+        )
     }
     dir
 }
@@ -78,7 +87,9 @@ read_test_parquet <- function(path) {
 
 # get_cache_parquet {{{
 get_cache_parquet <- function(reset = FALSE) {
-    dir <- get_cache_nc(reset = reset)
+    # The Parquet writer constructs its own rows. Rebuilding NetCDF here would
+    # repeat setup.R's preparation and replace files another reader may hold.
+    dir <- test_data_dir()
     path <- file.path(dir, "EC-Earth3.ssp585.tas.parquet")
 
     if (reset && file.exists(path)) {
@@ -124,7 +135,7 @@ local_test_cache <- function(
         scope,
         "test" = tempfile("epwshiftr-test-cache-"),
         "session" = file.path(tempdir(), "epwshiftr-test-cache"),
-        "persist" = file.path(dirname(tempdir()), "epwshiftr-test-cache")
+        "persist" = file.path(tempdir(), "epwshiftr-persist-cache")
     )
 
     cache <- DiskCache$new(

@@ -1,7 +1,7 @@
 # ---
 # repo: ideas-lab-nus/epwshiftr
 # file: standalone-downloader.R
-# last-updated: 2026-10-05
+# last-updated: 2026-10-10
 # copyright: Copyright (c) 2019-2026 Hongyuan Jia and Adrian Chong
 # SPDX-License-Identifier: MIT
 # license: MIT
@@ -9,6 +9,9 @@
 # ---
 #
 # # Standalone Changelog
+#
+# ## 2026-10-10
+# - Signal owned workers to exit before resetting their transport.
 #
 # ## 2026-10-05
 # - Own local worker startup, including macOS loopback TCP transport.
@@ -56,11 +59,14 @@ downloader__start_pool <- function(n, dispatcher = TRUE, .compute) {
     on.exit(
         {
             if (!started) {
-                try(mirai::daemons(0L, .compute = .compute), silent = TRUE)
+                try(mirai::daemons(NULL, .compute = .compute), silent = TRUE)
             }
         },
         add = TRUE
     )
+    # Reconfiguration otherwise resets an existing same-name pool without an
+    # exit signal. Release owned workers explicitly before replacing a pool.
+    mirai::daemons(NULL, .compute = .compute)
     mirai::daemons(
         n,
         url = mirai::local_url(tcp = TRUE),
@@ -206,11 +212,40 @@ downloader__checksum_bytes <- function(bytes, algo = "sha256") {
 }
 # }}}
 
+# Apply an opt-in process budget when a test runner owns nested database work.
+# Explicit thread settings win; unrelated connection configuration keeps its
+# existing path. Keeping this helper here preserves standalone Downloader use.
+# downloader__ddb_thread_config {{{
+downloader__ddb_thread_config <- function(config = NULL) {
+    value <- Sys.getenv("EPWSHIFTR_DB_THREADS", "")
+    if (!nzchar(value)) {
+        return(NULL)
+    }
+    threads <- suppressWarnings(as.integer(value))
+    if (!grepl("^[0-9]+$", value) || is.na(threads) || threads < 1L) {
+        stop("EPWSHIFTR_DB_THREADS must be a positive integer.", call. = FALSE)
+    }
+    explicit <- names(config)[names(config) %in% c("threads", "worker_threads")]
+    if (length(explicit)) {
+        return(config[explicit])
+    }
+    list(threads = as.character(threads))
+}
+# }}}
+
 # Download-local ddb connect; kept here so the module can be copied alone.
 # downloader__ddb_connect {{{
 downloader__ddb_connect <- function(dbdir, read_only = FALSE, ...) {
+    config <- downloader__ddb_thread_config(list(...)[["config"]])
+    # Configure the instance before connecting: dbConnect cannot change the
+    # thread count of the in-memory driver it has already received.
+    driver <- if (is.null(config)) {
+        duckdb::duckdb()
+    } else {
+        duckdb::duckdb(config = config)
+    }
     duckdb::dbConnect(
-        duckdb::duckdb(),
+        driver,
         dbdir = dbdir,
         read_only = read_only,
         ...
@@ -4553,7 +4588,8 @@ Downloader <- R6::R6Class(
             # An instance owns only its named pool; collecting an older instance
             # must not stop another downloader or the host application's tasks.
             if (!is.null(private$compute_profile)) {
-                mirai::daemons(0, .compute = private$compute_profile)
+                # NULL signals daemon exit before the native sockets close.
+                mirai::daemons(NULL, .compute = private$compute_profile)
                 private$compute_profile <- NULL
             }
         },

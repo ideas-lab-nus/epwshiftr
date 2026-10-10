@@ -199,7 +199,7 @@ test_that("Downloader$enqueue() creates sessions and tasks", {
 
     expect_true(file.exists(dl$manifest))
     expect_true(schema_validate(
-        SCHEMA_DOWNLOADER_CONFIG,
+        schema__document("DOWNLOADER_CONFIG"),
         dl$config,
         mode = "test",
         name = "downloader-config"
@@ -1205,7 +1205,7 @@ test_that("Downloader$new() stores typed config in the manifest", {
 
     expect_true(file.exists(manifest))
     expect_true(schema_validate(
-        SCHEMA_DOWNLOADER_CONFIG,
+        schema__document("DOWNLOADER_CONFIG"),
         dl$config,
         mode = "test",
         name = "downloader-config"
@@ -1904,7 +1904,7 @@ test_that("Downloader$events()", {
 })
 # }}}
 # Downloader$run() {{{
-test_that("Downloader$run() uses worker concurrency", {
+test_that("Downloader$run() uses worker concurrency and serializes shared targets", {
     skip_if_not_installed("duckdb")
     skip_if_not_installed("mirai")
 
@@ -1956,6 +1956,31 @@ test_that("Downloader$run() uses worker concurrency", {
     expect_equal(
         sessions[sessions$session_id == session_id, , drop = FALSE]$status,
         "done"
+    )
+
+    # A new session starts with an absent shared target, while reusing the pool
+    # whose independent-target completion contracts have already passed.
+    src <- tempfile()
+    writeLines("shared target content", src)
+    checksum <- as.character(tools::md5sum(src))
+
+    plan <- downloader_test_df(
+        logical_file_id = c("tracking:shared-first", "tracking:shared-second"),
+        filename = c("shared.txt", "shared.txt"),
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = checksum,
+        checksum_type = "md5",
+        priority = 1L
+    )
+
+    session_id <- dl$enqueue(plan, session_label = "shared-target")
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
+
+    expect_setequal(tasks$status, c("done", "skipped"))
+    expect_true(file.exists(file.path(dest, "shared.txt")))
+    expect_equal(
+        readLines(file.path(dest, "shared.txt")),
+        "shared target content"
     )
 })
 
@@ -2013,46 +2038,6 @@ test_that("Downloader$run() defers tasks beyond per-host capacity", {
     )
 })
 
-test_that("Downloader$run() serializes tasks for the same target path", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("mirai")
-
-    root <- tempfile("downloader-")
-    on.exit(unlink(root, recursive = TRUE), add = TRUE)
-    dest <- file.path(root, "downloads")
-    temp <- file.path(root, "tmp")
-    manifest <- file.path(root, "_downloader", "manifest.duckdb")
-
-    src <- tempfile()
-    writeLines("shared target content", src)
-    checksum <- as.character(tools::md5sum(src))
-
-    dl <- Downloader$new(
-        dest = dest,
-        temp = temp,
-        manifest = manifest,
-        retries = 1L,
-        n_workers = 2L
-    )
-    plan <- downloader_test_df(
-        logical_file_id = c("tracking:shared-first", "tracking:shared-second"),
-        filename = c("shared.txt", "shared.txt"),
-        url = paste0("file://", normalizePath(src, winslash = "/")),
-        checksum = checksum,
-        checksum_type = "md5",
-        priority = 1L
-    )
-
-    session_id <- dl$enqueue(plan, session_label = "shared-target")
-    tasks <- dl$run(session_id = session_id, progress = FALSE)
-
-    expect_setequal(tasks$status, c("done", "skipped"))
-    expect_true(file.exists(file.path(dest, "shared.txt")))
-    expect_equal(
-        readLines(file.path(dest, "shared.txt")),
-        "shared target content"
-    )
-})
 # }}}
 # Downloader$download() {{{
 test_that("Downloader$download()", {
@@ -2432,8 +2417,10 @@ test_that("Downloader$print()", {
         transform = function(lines) {
             unlist(
                 lapply(lines, function(line) {
+                    # Normalize absolute Unix, drive-letter, and UNC paths
+                    # without hiding the printed labels or downloader settings.
                     inline_path <- regexec(
-                        "^(\\s*\\* (Data|Temporary) directory:)\\s+/.+",
+                        "^(\\s*\\* (Data|Temporary) directory:)\\s+([A-Za-z]:)?[/\\\\].+",
                         line
                     )
                     match <- regmatches(line, inline_path)[[1]]
@@ -2441,7 +2428,7 @@ test_that("Downloader$print()", {
                         return(c(match[[2]], "<path>"))
                     }
 
-                    gsub("^\\s*/.+", "<path>", line)
+                    gsub("^\\s*([A-Za-z]:)?[/\\\\].+", "<path>", line)
                 }),
                 use.names = FALSE
             )
@@ -2461,10 +2448,28 @@ test_that("Downloader owns its worker pool without interrupting other instances"
     checksum <- unname(tools::md5sum(source))
     prefix <- if (.Platform$OS.type == "windows") "file:///" else "file://"
     url <- paste0(prefix, normalizePath(source, winslash = "/"))
-    first <- Downloader$new(dest = file.path(root, "first"), n_workers = 1L)
+    first <- Downloader$new(
+        dest = file.path(root, "first"),
+        retries = 1L,
+        n_workers = 1L
+    )
     second <- Downloader$new(dest = file.path(root, "second"), n_workers = 1L)
     on.exit(first$.__enclos_env__$private$finalize(), add = TRUE)
     on.exit(second$.__enclos_env__$private$finalize(), add = TRUE)
+    # The first request on this pool fails inside a real worker. Collect its
+    # error before checking that the same pool can still complete a real request.
+    missing_url <- paste0(
+        prefix,
+        normalizePath(root, winslash = "/"),
+        "/absent.bin"
+    )
+    id <- first$download(missing_url, block = FALSE)
+    result <- first$wait_for_tasks(id, progress = FALSE)[[id]]
+    expect_identical(result$status, DownloadStatus$Failed)
+    expect_true(nzchar(result$error))
+    expect_false(file.exists(file.path(root, "first", "absent.bin")))
+
+    # Preserve the two independent instance lifetimes after the error recovery.
     one <- first$download(url, block = FALSE)
     first$wait_for_tasks(one, progress = FALSE)
     two <- second$download(
@@ -2487,23 +2492,6 @@ test_that("Downloader owns its worker pool without interrupting other instances"
         unname(tools::md5sum(file.path(root, "second", "source.bin"))),
         checksum
     )
-})
-
-# A missing local source fails inside a real worker and must not be reported as
-# a completed download merely because mirai returned an atomic error object.
-test_that("Downloader reports asynchronous worker failures", {
-    root <- tempfile("downloader-worker-error-")
-    dir.create(root)
-    on.exit(unlink(root, recursive = TRUE), add = TRUE)
-    dl <- Downloader$new(dest = root, retries = 1L, n_workers = 1L)
-    on.exit(dl$.__enclos_env__$private$finalize(), add = TRUE)
-    prefix <- if (.Platform$OS.type == "windows") "file:///" else "file://"
-    url <- paste0(prefix, normalizePath(root, winslash = "/"), "/absent.bin")
-    id <- dl$download(url, block = FALSE)
-    result <- dl$wait_for_tasks(id, progress = FALSE)[[id]]
-    expect_identical(result$status, DownloadStatus$Failed)
-    expect_true(nzchar(result$error))
-    expect_false(file.exists(file.path(root, "absent.bin")))
 })
 
 # vim: fdm=marker :

@@ -428,7 +428,7 @@ direct_epw__member <- function(member, epw, template, geometry) {
         data.table::set(
             weather,
             j = "datetime",
-            value = epw_file_datetime(
+            value = epw_file__datetime(
                 weather[["year"]],
                 weather[["month"]],
                 weather[["day"]],

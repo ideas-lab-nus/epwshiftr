@@ -329,38 +329,78 @@ test_that("point reads reuse selected actual bounds without loading the full axi
     }
 })
 
-# Independent Dataset objects must not reset each other's compute profiles.
-test_that("concurrent dataset tasks in one process retain separate backends", {
+# Two real native reads exercise same-process backend ownership and normal
+# completion without allowing worker-owned handles to open the caller dataset.
+test_that("concurrent dataset tasks keep separate backends and caller handle state", {
     skip_if_not_installed("mirai")
-    datasets <- lapply(seq_len(2L), function(index) EsgDataset$new("unused.nc"))
+    paths <- lapply(seq_len(2L), function(index) {
+        dataset_test__table_file(
+            time_vals = c(0, 1, 2),
+            time_units = "days since 2000-01-01 00:00:00",
+            tas_vals = c(101, 102, 103) + 10 * (index - 1L)
+        )
+    })
+    on.exit(unlink(unlist(paths)), add = TRUE)
+    datasets <- lapply(paths, EsgDataset$new)
     on.exit(lapply(datasets, function(dataset) dataset$close()), add = TRUE)
     tasks <- lapply(seq_along(datasets), function(index) {
         private <- datasets[[index]]$.__enclos_env__$private
-        # No remote I/O is needed to exercise the task ownership boundary.
-        private$urls <- character()
-        private$start_async_operation(
-            "return task identity",
+        task <- private$start_async_operation(
+            "read variable data and task identity",
             function(urls, nc_handles, value) {
-                Sys.sleep(0.1)
-                value
+                list(
+                    identity = value,
+                    values = RNetCDF::var.get.nc(
+                        nc_handles[[1L]],
+                        "tas",
+                        start = c(1L, 1L, 1L),
+                        count = c(2L, 1L, 1L),
+                        collapse = TRUE
+                    )
+                )
             },
             handler_args = list(value = index),
-            # The ownership contract has no startup-speed requirement. covr
-            # instruments the package again in each fresh worker process.
-            timeout = 60
+            # Coverage initializes the package separately in each real worker;
+            # startup speed is not part of the ownership contract.
+            timeout = DATASET_TEST_ASYNC_TIMEOUT
         )
+        expect_false(datasets[[index]]$is_open)
+        expect_identical(private$async_state, "running")
+        task
     })
     expect_false(identical(
         tasks[[1L]]$compute_profile,
         tasks[[2L]]$compute_profile
     ))
-    expect_identical(tasks[[2L]]$collect(), 2L)
-    expect_identical(tasks[[1L]]$collect(), 1L)
-    expect_true(all(vapply(
-        tasks,
-        function(task) task$backend_released,
-        logical(1L)
-    )))
+    # Collect in reverse order to retain the original ownership regression.
+    for (index in c(2L, 1L)) {
+        private <- datasets[[index]]$.__enclos_env__$private
+        result <- private$collect_async_task(tasks[[index]])
+        expect_identical(result$identity, index)
+        expect_equal(as.numeric(result$values), c(101, 102) + 10 * (index - 1L))
+        expect_identical(private$async_state, "completed")
+        expect_null(private$async_task)
+        expect_true(tasks[[index]]$backend_released)
+        expect_false(datasets[[index]]$is_open)
+
+        # Collection is the completion barrier: a late cancellation must retain
+        # its successful result, without guessing worker timing or starting a pool.
+        if (index == 1L) {
+            requested <- private$cancel_async_task(
+                task = tasks[[index]],
+                clear = TRUE
+            )
+            expect_false(requested)
+            expect_true(tasks[[index]]$cancellation_requested)
+            expect_identical(tasks[[index]]$status, "completed")
+            expect_identical(tasks[[index]]$result, result)
+            expect_null(tasks[[index]]$error)
+            expect_identical(private$async_state, "completed")
+            expect_true(tasks[[index]]$backend_released)
+            expect_null(private$async_task)
+            expect_identical(tasks[[index]]$collect(), result)
+        }
+    }
 })
 
 # vim: fdm=marker :

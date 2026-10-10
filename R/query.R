@@ -1561,7 +1561,7 @@ EsgQuery <- R6::R6Class(
                 response = NULL,
                 file = file,
                 pretty = pretty,
-                schema = SCHEMA_QUERY
+                schema = schema__compiled("QUERY")
             )
         },
         # }}}
@@ -1588,7 +1588,7 @@ EsgQuery <- R6::R6Class(
         #' }
         # load {{{
         load = function(file) {
-            q <- query__load(file, SCHEMA_QUERY)
+            q <- query__load(file, schema__compiled("QUERY"))
             private$validate_query_state(q$parameter)
 
             private$index_node_url <- q$index_node

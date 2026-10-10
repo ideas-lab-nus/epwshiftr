@@ -351,7 +351,25 @@ bias__calendar_data_error <- function(
         }
     }
     key <- data[key_columns]
-    if (anyDuplicated(key)) {
+    # Canonical atomic fields support an exact column-wise duplicate check.
+    # Keep base semantics for attributed inputs and user-enabled numeric rounding;
+    # rounded numeric grouping could otherwise merge distinct sub-second times.
+    plain_key <- vapply(
+        key,
+        function(column) {
+            is.null(attributes(column)) &&
+                typeof(column) %in% c("character", "integer", "double")
+        },
+        logical(1L)
+    )
+    duplicate <- if (
+        all(plain_key) && identical(data.table::getNumericRounding(), 0L)
+    ) {
+        anyDuplicated(data.table::as.data.table(key))
+    } else {
+        anyDuplicated(key)
+    }
+    if (duplicate) {
         return(key_message)
     }
     NULL

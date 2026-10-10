@@ -432,36 +432,93 @@ test_that("background workers retry transient DuckDB launch locks", {
     store_path <- tempfile("shift-worker-open-store-")
     store <- EsgStore$new(store_path)
     store$close()
-    ready <- tempfile("shift-worker-open-ready-")
-    child_code <- paste(
-        "library(duckdb)",
-        "args <- commandArgs(TRUE)",
-        "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
-        "file.create(args[[2L]])",
-        "Sys.sleep(0.5)",
-        "dbDisconnect(conn, shutdown = TRUE)",
-        sep = "; "
-    )
-    system2(
-        file.path(R.home("bin"), "Rscript"),
-        c(
-            "-e",
-            shQuote(child_code),
-            shQuote(file.path(store_path, "manifest.duckdb")),
-            shQuote(ready)
+    handshake <- withr::local_tempdir(pattern = "shift-worker-open-")
+    ready <- file.path(handshake, "ready")
+    release <- file.path(handshake, "release")
+    stdout <- file.path(handshake, "stdout.log")
+    stderr <- file.path(handshake, "stderr.log")
+    # Keep the real connection locked until the owning test has observed a
+    # retryable launch error; process startup has its own bounded deadline.
+    child <- callr::r_bg(
+        function(database, ready, release) {
+            conn <- duckdb::dbConnect(duckdb::duckdb(), dbdir = database)
+            on.exit(duckdb::dbDisconnect(conn, shutdown = TRUE), add = TRUE)
+            stopifnot(file.create(ready))
+            deadline <- Sys.time() + 30
+            while (!file.exists(release)) {
+                if (Sys.time() >= deadline) {
+                    stop("Timed out waiting for the parent to release the lock")
+                }
+                Sys.sleep(0.01)
+            }
+            Sys.sleep(0.5)
+            TRUE
+        },
+        args = list(
+            database = file.path(store_path, "manifest.duckdb"),
+            ready = ready,
+            release = release
         ),
-        wait = FALSE,
-        stdout = FALSE,
-        stderr = FALSE
+        stdout = stdout,
+        stderr = stderr,
+        supervise = TRUE
     )
-    for (i in seq_len(50L)) {
-        if (file.exists(ready)) {
-            break
+    # Only this test's supervised child is eligible for forced cleanup.
+    on.exit(
+        {
+            if (child$is_alive()) {
+                child$kill_tree()
+            }
+            child$wait(timeout = 1000)
+        },
+        add = TRUE
+    )
+    # Include both native stderr and the structured R error in failed setup.
+    child_diagnostics <- function() {
+        failure <- if (child$is_alive()) {
+            "Child is still running"
+        } else {
+            tryCatch(
+                paste("Child result:", child$get_result()),
+                error = function(error) conditionMessage(error)
+            )
         }
+        logs <- unlist(lapply(c(stdout, stderr), function(path) {
+            if (file.exists(path)) {
+                readLines(path, warn = FALSE)
+            } else {
+                character()
+            }
+        }))
+        paste(c(failure, logs), collapse = "\n")
+    }
+    deadline <- Sys.time() + 30
+    while (!file.exists(ready) && child$is_alive() && Sys.time() < deadline) {
         Sys.sleep(0.05)
     }
-    expect_true(file.exists(ready))
+    expect_true(file.exists(ready), info = child_diagnostics())
+    if (!file.exists(ready)) {
+        stop(child_diagnostics(), call. = FALSE)
+    }
 
+    locked_attempts <- 0L
+    manifest_locked <- shift_job__manifest_locked
+    # Observe genuine lock errors while preserving the production classification.
+    testthat::local_mocked_bindings(
+        shift_job__manifest_locked = function(error) {
+            locked <- manifest_locked(error)
+            if (locked) {
+                locked_attempts <<- locked_attempts + 1L
+                # Start the original half-second hold only after the production
+                # opener has encountered the child's actual DuckDB lock.
+                if (locked_attempts == 1L) {
+                    stopifnot(file.create(release))
+                }
+            }
+            locked
+        },
+        .package = "epwshiftr"
+    )
     # This call represents the detached worker starting while a short-lived
     # status reader still owns the manifest.
     worker_store <- shift_job__job_store_open(
@@ -471,6 +528,12 @@ test_that("background workers retry transient DuckDB launch locks", {
     )
     on.exit(worker_store$close(), add = TRUE)
     expect_true(inherits(worker_store, "EsgStore"))
+    expect_gt(locked_attempts, 0L)
+    child$wait(timeout = 5000)
+    expect_false(child$is_alive(), info = child_diagnostics())
+    if (!child$is_alive()) {
+        expect_true(child$get_result())
+    }
 })
 
 # Exercise persisted updates against DuckDB, including SQL quoting and NULLs,

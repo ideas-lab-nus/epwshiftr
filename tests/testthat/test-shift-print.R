@@ -201,19 +201,22 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
             results = morph_rows
         )
     )
+    # Use an absolute temporary fixture path so production normalization has
+    # the same identity on Windows and POSIX before console-width layout.
+    export_dir <- file.path(tempdir(), "exports")
     output_rows <- data.table::data.table(
         source_id = "BCC-CSM2-MR",
         experiment_id = rep(c("ssp126", "ssp585"), 6L),
         variant_label = "r1i1p1f1",
         period = "2060s",
         path = sprintf("outputs/future-%02d.epw", 1:12),
-        export_path = sprintf("/exports/future-%02d.epw", 1:12),
+        export_path = file.path(export_dir, sprintf("future-%02d.epw", 1:12)),
         created_at = as.POSIXct("2026-01-01", tz = "UTC")
     )
     outputs <- shift_stage__new(
         ShiftOutputs,
         "outputs",
-        meta = list(outputs = output_rows, export_dir = "/exports")
+        meta = list(outputs = output_rows, export_dir = export_dir)
     )
 
     output_text <- capture.output(
@@ -263,7 +266,12 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
 
 test_that("ShiftRun print refreshes state and reuses the static dashboard", {
     skip_if_not_installed("duckdb")
-    withr::local_options(cli.num_colors = 1L)
+    # Select disposable DuckDB storage explicitly so its repeated home-choice
+    # advice cannot become part of the dashboard's captured message output.
+    withr::local_options(
+        cli.num_colors = 1L,
+        duckdb.home = withr::local_tempdir()
+    )
     store_path <- tempfile("shift-print-run-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -337,13 +345,15 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
         ),
         control = list(download = "auto")
     )
+    # The cached preview must render the same real path across platforms.
+    export_dir <- file.path(tempdir(), "exports")
     run_row <- data.table::data.table(
         run_id = "run_print_12345678",
         task = "future_epw",
         spec_json = jsonlite::toJSON(spec, auto_unbox = TRUE, null = "null"),
         status = "completed",
         current_stage = "write_epw",
-        output_dir = "/exports",
+        output_dir = export_dir,
         started_at = as.POSIXct("2026-01-01 00:00:00", tz = "UTC"),
         updated_at = as.POSIXct("2026-01-01 00:00:05", tz = "UTC"),
         completed_at = as.POSIXct("2026-01-01 00:00:05", tz = "UTC"),
@@ -355,7 +365,7 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
         period = "2060s",
         status = "completed",
         required = TRUE,
-        export_path = c("/exports/ssp126.epw", "/exports/ssp585.epw")
+        export_path = file.path(export_dir, c("ssp126.epw", "ssp585.epw"))
     )
     events <- data.table::data.table(
         stage = character(),
@@ -381,8 +391,14 @@ test_that("ShiftRun print falls back to a cached static snapshot", {
     expect_false(any(grepl("MemberNA|StatusNA|completedNA", printed)))
     limited <- capture.output(print(run, width = 72L, n = 1L), type = "message")
     expect_true(any(grepl("1 more case", limited, fixed = TRUE)))
-    expect_snapshot(print(run, width = 72L))
-    expect_snapshot(print(run, width = 100L, verbose = TRUE))
+    expect_snapshot(
+        print(run, width = 72L),
+        transform = shift_test__normalize_print
+    )
+    expect_snapshot(
+        print(run, width = 100L, verbose = TRUE),
+        transform = shift_test__normalize_print
+    )
 })
 
 test_that("shift_ui() validates presentation options without changing scientific intent", {

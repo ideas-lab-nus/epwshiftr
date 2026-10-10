@@ -56,7 +56,7 @@ epwshiftr_cli_read_shift_config <- function(path) {
     tryCatch(
         {
             schema_validate(
-                SCHEMA_SHIFT_WORKFLOW_CONFIG,
+                schema__compiled("SHIFT_WORKFLOW_CONFIG"),
                 config,
                 name = "config"
             )
