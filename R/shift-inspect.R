@@ -2414,12 +2414,17 @@ shift_inspect__completion <- function(cases, outputs, diagnostics) {
 # successful results. Callers decide explicitly whether a read failure is optional.
 # shift_inspect__rows {{{
 shift_inspect__rows <- function(store, table, key, ids) {
+    # morpher__private_store() already rejects a closed store, so query the
+    # connection directly instead of re-checking it through store$query().
     conn <- morpher__private_store(store)$conn
-    store$query(sprintf(
-        "SELECT * FROM %s WHERE %s IN (%s)",
-        ddb_ident(conn, table),
-        ddb_ident(conn, key),
-        shift_stage__query_ids(ids)
+    data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            "SELECT * FROM %s WHERE %s IN (%s)",
+            ddb_ident(conn, table),
+            ddb_ident(conn, key),
+            shift_stage__query_ids(ids)
+        )
     ))
 }
 # }}}
