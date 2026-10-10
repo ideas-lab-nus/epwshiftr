@@ -2,6 +2,8 @@
 
 * Compile each fixed package schema once per R process and reuse it for query, result, dictionary and shift workflow config validation, instead of recompiling the schema on every check. Validation rules and error messages are unchanged.
 
+* Read a store's schema version at most once when it is opened, instead of twice. A new store reads nothing and a reopened one reads once for the version check; manifests with a missing or different version are still rejected and a matching version is not rewritten.
+
 * Append new rows to a store table by asking DuckDB only about the keys being inserted, instead of reading the table's whole key column into R. The cost of an append no longer grows with the table, and stored rows, duplicate-key and missing-key errors behave as before.
 
 * Create a new store's schema in one multi-statement DuckDB call instead of one call per table and column. The declarations and their order are unchanged, and a failing statement still leaves the earlier ones applied.

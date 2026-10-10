@@ -202,6 +202,72 @@ test_that("fresh store schema is created in batches with the same catalog", {
     )
 })
 
+# The schema version is read at most once per open: a new manifest has nothing
+# to read, a reopened one is read once for the check, and the version row is
+# only written when it is absent.
+test_that("opening a store reads the schema version at most once", {
+    skip_if_not_installed("duckdb")
+    original <- ddb_read_table
+    reads <- character()
+    local_mocked_bindings(
+        ddb_read_table = function(conn, table, ...) {
+            reads <<- c(reads, table)
+            original(conn, table, ...)
+        },
+        .package = "epwshiftr"
+    )
+    path <- tempfile("store-schema-reads-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+
+    store <- EsgStore$new(path)
+    expect_identical(sum(reads == "store_meta"), 0L)
+    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
+    stamp <- ddb_query(
+        priv(store)$conn,
+        "SELECT updated_at FROM store_meta WHERE key = 'schema_version'"
+    )$updated_at
+    store$close()
+
+    reads <- character()
+    store <- EsgStore$new(path, create = FALSE)
+    on.exit(store$close(), add = TRUE)
+    expect_identical(sum(reads == "store_meta"), 1L)
+    # A matching version is not rewritten on reopen.
+    expect_identical(
+        ddb_query(
+            priv(store)$conn,
+            "SELECT updated_at FROM store_meta WHERE key = 'schema_version'"
+        )$updated_at,
+        stamp
+    )
+})
+
+# A manifest that has tables but lost its version row is still rejected rather
+# than silently stamped with the current version.
+test_that("a manifest with tables but no version row is rejected", {
+    skip_if_not_installed("duckdb")
+    path <- tempfile("store-schema-noversion-")
+    on.exit(unlink(path, recursive = TRUE), add = TRUE)
+    store <- EsgStore$new(path)
+    store$close()
+    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
+    ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
+    ddb_disconnect(conn)
+    expect_error(
+        EsgStore$new(path, create = FALSE),
+        "Store schema version .*missing"
+    )
+    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
+    on.exit(ddb_disconnect(conn), add = TRUE)
+    expect_identical(
+        nrow(ddb_query(
+            conn,
+            "SELECT * FROM store_meta WHERE key = 'schema_version'"
+        )),
+        0L
+    )
+})
+
 # A failing statement stops the batch, but everything before it stays applied,
 # exactly the state one-by-one execution would have left behind.
 test_that("a failing schema statement keeps earlier declarations", {

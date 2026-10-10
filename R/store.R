@@ -4956,7 +4956,7 @@ EsgStore <- R6::R6Class(
             )
             # The version check below reads store_meta, so it must exist first.
             schema$flush()
-            private$assert_schema_version(existing_tables)
+            current_version <- private$assert_schema_version(existing_tables)
             exec(
                 "
                 CREATE TABLE IF NOT EXISTS artifact (
@@ -5265,7 +5265,7 @@ EsgStore <- R6::R6Class(
             # written and before any caller can read them.
             schema$flush()
 
-            private$initialize_schema_version()
+            private$initialize_schema_version(current_version)
 
             invisible(NULL)
         },
@@ -5275,10 +5275,12 @@ EsgStore <- R6::R6Class(
         # This deliberately replaces the former best-effort migration path.
         # assert_schema_version {{{
         assert_schema_version = function(existing_tables) {
-            current <- private$store_schema_version()
+            # A manifest with no tables was just created, so its store_meta is
+            # empty and holds no version; there is nothing to read or reject.
             if (!length(existing_tables)) {
-                return(invisible(NULL))
+                return(invisible(NA_character_))
             }
+            current <- private$store_schema_version()
             if (is.na(current) || !identical(current, STORE_SCHEMA_VERSION)) {
                 shown <- if (is.na(current)) "missing" else current
                 path <- private$store_path
@@ -5290,14 +5292,17 @@ EsgStore <- R6::R6Class(
                     "i" = "The reset helper preserves the previous store as a backup by default."
                 ))
             }
-            invisible(NULL)
+            # Return the version read here so init_schema() need not read it again.
+            invisible(current)
         },
         # }}}
 
         # Record the schema only after every current table has been created.
+        # `current` is the version assert_schema_version() observed at the start
+        # of this same initialization; nothing writes store_meta in between.
         # initialize_schema_version {{{
-        initialize_schema_version = function() {
-            if (is.na(private$store_schema_version())) {
+        initialize_schema_version = function(current) {
+            if (is.na(current)) {
                 private$set_store_schema_version(STORE_SCHEMA_VERSION)
             }
             invisible(NULL)
