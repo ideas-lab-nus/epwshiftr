@@ -64,6 +64,104 @@ coverage__save_trace <- function(directory, trace_id) {
 }
 # }}}
 
+# Reuse only source coordinates within this coverage run. Every process still
+# executes covr's original traversal and creates fresh zero-valued counters.
+coverage__trace_environment <- function(env, directory) {
+    namespace <- asNamespace("covr")
+    original <- get("impute_srcref", namespace)
+    if (!identical(as.character(utils::packageVersion("covr")), "3.6.5")) {
+        stop("Review the source-coordinate adapter for this covr version.")
+    }
+    path <- file.path(directory, "covr-source-coordinates.rds")
+    identity <- list(
+        package = getNamespaceName(env),
+        r_version = getRversion(),
+        imputer = paste(deparse(original), collapse = "\n")
+    )
+    record <- !file.exists(path)
+    if (record) {
+        mappings <- new.env(parent = emptyenv())
+    } else {
+        cache <- readRDS(path)
+        stopifnot(identical(cache$identity, identity), is.list(cache$data))
+        mappings <- list2env(cache$data, parent = emptyenv())
+    }
+    conditional <- get("is_conditional_or_loop", namespace)
+    # These are all inputs consulted by covr 3.6.5 for a conditional source
+    # reference. Preserve the current process's srcfile environment on replay.
+    impute <- function(x, parent_ref) {
+        filename <- attr(parent_ref, "srcfile")[["filename"]]
+        if (is.null(parent_ref) || !conditional(x) || length(filename) != 1L) {
+            return(original(x, parent_ref))
+        }
+        key <- paste(
+            encodeString(filename, quote = '"'),
+            as.character(x[[1L]]),
+            length(x),
+            paste(as.integer(parent_ref), collapse = ","),
+            sep = "\034"
+        )
+        entry <- mappings[[key]]
+        if (!record && !is.null(entry)) {
+            if (is.null(entry$value)) {
+                return(NULL)
+            }
+            return(lapply(entry$value, function(ref) {
+                if (is.null(ref)) {
+                    NULL
+                } else {
+                    srcref(attr(parent_ref, "srcfile"), ref)
+                }
+            }))
+        }
+        value <- original(x, parent_ref)
+        if (record) {
+            coordinates <- if (is.null(value)) {
+                NULL
+            } else {
+                lapply(value, function(ref) {
+                    if (is.null(ref)) NULL else as.integer(ref)
+                })
+            }
+            if (!is.null(entry) && !identical(entry$value, coordinates)) {
+                stop("A coverage source key has conflicting coordinates.")
+            }
+            mappings[[key]] <- list(value = coordinates)
+        }
+        value
+    }
+    # Scope the override to instrumentation, including its error path. Neither
+    # application execution nor other packages inherit this binding change.
+    locked <- bindingIsLocked("impute_srcref", namespace)
+    unlockBinding("impute_srcref", namespace)
+    assign("impute_srcref", impute, envir = namespace)
+    lockBinding("impute_srcref", namespace)
+    on.exit(
+        {
+            unlockBinding("impute_srcref", namespace)
+            assign("impute_srcref", original, envir = namespace)
+            if (locked) lockBinding("impute_srcref", namespace)
+        },
+        add = TRUE
+    )
+    get("trace_environment", namespace)(env)
+    if (record) {
+        pending <- tempfile("pending-coordinates-", tmpdir = directory)
+        saveRDS(
+            list(
+                identity = identity,
+                data = as.list(mappings, all.names = TRUE)
+            ),
+            pending,
+            compress = FALSE
+        )
+        if (!file.rename(pending, path)) {
+            stop("Could not publish coverage source coordinates.")
+        }
+    }
+    invisible(NULL)
+}
+
 # Install this adapter only in covr's temporary instrumented package. Production
 # code and the installed covr package remain unchanged. Merge counters by their
 # original source keys, retaining covr's full source metadata and denominator.
@@ -75,6 +173,8 @@ coverage__run <- function(path = ".", ...) {
     add_hooks <- function(pkg_name, lib, ...) {
         original(pkg_name, lib, ...)
         library_path <<- lib
+        # A new coverage invocation must build its own source map.
+        unlink(file.path(lib, "covr-source-coordinates.rds"))
         loader <- file.path(lib, pkg_name, "R", pkg_name)
         lines <- readLines(loader, warn = FALSE)
         hit <- grep("covr:::save_trace(", lines, fixed = TRUE)
@@ -93,6 +193,21 @@ coverage__run <- function(path = ".", ...) {
             "Sys.getenv('COVERAGE_DIR', ",
             encodeString(lib, quote = '"'),
             ")"
+        )
+        instrument <- grep("covr:::trace_environment(ns)", lines, fixed = TRUE)
+        if (length(instrument) != 1L) {
+            stop("The covr instrumentation hook changed; review the adapter.")
+        }
+        tracer <- paste(
+            deparse(coverage__trace_environment, width.cutoff = 500L),
+            collapse = "\n"
+        )
+        lines[instrument] <- paste0(
+            "setHook(packageEvent(pkg, 'onLoad'), function(...) (",
+            tracer,
+            ")(ns, ",
+            directory,
+            "))"
         )
         # Keep the receipt in the loader closure so the finalizer writes under
         # exactly the identity returned by its own registration hook.
