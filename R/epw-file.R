@@ -331,7 +331,7 @@ EpwFile <- R6::R6Class(
         # data {{{
         data = function() {
             weather <- data.table::copy(private$weather)
-            weather[, datetime := epw_file_datetime(year, month, day, hour)]
+            weather[, datetime := epw_file__datetime(year, month, day, hour)]
             data.table::setcolorder(weather, c("datetime", EPW_FILE_COLUMNS))
             weather[]
         },
@@ -720,19 +720,75 @@ epw_file__missing_summary <- function(weather, fields = NULL) {
 # }}}
 
 # Construct end-of-hour timestamps from EPW date columns.
-# epw_file_datetime {{{
-epw_file_datetime <- function(year, month, day, hour) {
+# epw_file__datetime {{{
+epw_file__datetime <- function(year, month, day, hour) {
     safe_year <- as.integer(year)
     safe_year[is.na(safe_year) | safe_year < 1600L | safe_year > 9999L] <- 2001L
-    start <- as.POSIXct(
-        sprintf(
-            "%04d-%02d-%02d 00:00:00",
-            safe_year,
-            as.integer(month),
-            as.integer(day)
-        ),
-        tz = "UTC"
-    )
+    month <- as.integer(month)
+    day <- as.integer(day)
+    size <- length(safe_year)
+    # EPW supplies numeric Gregorian fields. Avoid formatting and parsing every
+    # hourly row when these fields already describe a valid date. Keep unusual
+    # lengths and invalid dates on the original parser path below.
+    regular <- size > 0L &&
+        length(month) == size &&
+        length(day) == size &&
+        !anyNA(month) &&
+        !anyNA(day) &&
+        all(month >= 1L & month <= 12L)
+    if (regular) {
+        leap <- safe_year %% 4L == 0L &
+            (safe_year %% 100L != 0L | safe_year %% 400L == 0L)
+        month_days <- c(
+            31L,
+            28L,
+            31L,
+            30L,
+            31L,
+            30L,
+            31L,
+            31L,
+            30L,
+            31L,
+            30L,
+            31L
+        )
+        regular <- all(
+            day >= 1L & day <= month_days[month] + (month == 2L & leap)
+        )
+    }
+    if (regular) {
+        # Count complete Gregorian years and months from the Unix epoch. There
+        # are 477 leap days through 1969; century years need the 400-year rule.
+        prior_year <- safe_year - 1
+        days <- 365 *
+            (safe_year - 1970) +
+            prior_year %/% 4 -
+            prior_year %/% 100 +
+            prior_year %/% 400 -
+            477
+        month_start <- c(
+            0L,
+            31L,
+            59L,
+            90L,
+            120L,
+            151L,
+            181L,
+            212L,
+            243L,
+            273L,
+            304L,
+            334L
+        )
+        days <- days + month_start[month] + (month > 2L & leap) + day - 1L
+        start <- as.POSIXct(days * 86400, origin = "1970-01-01", tz = "UTC")
+    } else {
+        start <- as.POSIXct(
+            sprintf("%04d-%02d-%02d 00:00:00", safe_year, month, day),
+            tz = "UTC"
+        )
+    }
     start + as.numeric(hour) * 3600
 }
 # }}}
