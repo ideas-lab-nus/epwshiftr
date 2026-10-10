@@ -84,7 +84,6 @@ jobs:
               library = readRDS(prepared)$library,
               output = run_path,
               shards = checks__default_shards(),
-              durations = read.csv(".github/testing/coverage-durations.csv"),
               coverage = prepared,
               coverage_script = normalizePath(".github/coverage.R")
           )

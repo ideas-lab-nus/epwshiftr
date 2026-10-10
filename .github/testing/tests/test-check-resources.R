@@ -102,7 +102,7 @@ checks_test__entry <- function(
     env$test_check <- function(...) env$result <- "serial"
     env$checks__run <- function(..., shards) env$result <- shards
     env$find.package <- function(...) "/library/epwshiftr"
-    env$read.csv <- function(...) data.frame()
+    env$read.csv <- function(...) stop("CI must not read local timing tables")
     sys.source("tests/testthat.R", envir = env)
     env$result
 }
@@ -142,19 +142,7 @@ testthat::test_that("package checks stay serial unless an external runner is sup
     )
 })
 
-# Stop the real entry scripts at their first post-validation operation so their
-# limits are checked without creating an installation or starting any workers.
-checks_test__performance_entry <- function(shards) {
-    env <- new.env(parent = baseenv())
-    env$commandArgs <- function(...) {
-        c("ordinary", "unused-output", as.character(shards), "1")
-    }
-    env$dir.exists <- function(...) FALSE
-    env$normalizePath <- function(...) stop("validated before preparation")
-    sys.source(".github/testing/check-performance.R", envir = env)
-}
-
-testthat::test_that("explicit runner and performance entry accept eight but reject nine", {
+testthat::test_that("explicit runner accepts eight shards but rejects nine", {
     for (shards in c(1L, 6L, 7L, 8L)) {
         testthat::expect_error(
             checks__run(
@@ -163,10 +151,6 @@ testthat::test_that("explicit runner and performance entry accept eight but reje
                 shards = shards
             ),
             "validated before execution"
-        )
-        testthat::expect_error(
-            checks_test__performance_entry(shards),
-            "validated before preparation"
         )
     }
     for (shards in c(0L, 9L)) {
@@ -178,12 +162,26 @@ testthat::test_that("explicit runner and performance entry accept eight but reje
             ),
             "shards"
         )
-        testthat::expect_error(checks_test__performance_entry(shards), "shards")
     }
     testthat::expect_identical(
         checks__default_shards(memory_bytes = 64 * 1024^3, cores = 12),
         3L
     )
+})
+
+# CI must keep every file when no machine-specific cost table is available.
+testthat::test_that("unweighted scheduling assigns every file exactly once", {
+    files <- sprintf("test-file-%02d.R", seq_len(13L))
+    groups <- checks__partition(files, shards = 3L)
+    assigned <- unlist(groups, use.names = FALSE)
+    testthat::expect_identical(sort(assigned), files)
+    testthat::expect_identical(anyDuplicated(assigned), 0L)
+    testthat::expect_lte(diff(range(lengths(groups))), 1L)
+    testthat::expect_true(all(vapply(
+        groups,
+        function(group) identical(group, sort(group)),
+        logical(1L)
+    )))
 })
 
 # vim: fdm=marker :

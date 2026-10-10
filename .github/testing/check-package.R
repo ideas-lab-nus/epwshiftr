@@ -18,7 +18,6 @@ if (shards == 1L) {
         library = dirname(find.package("epwshiftr")),
         output = tempfile("parallel-tests-"),
         shards = shards,
-        durations = read.csv(file.path(runner_dir, "test-durations.csv")),
         test_root = normalizePath(".", winslash = "/")
     )
 }

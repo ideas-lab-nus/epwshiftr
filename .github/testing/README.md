@@ -1,73 +1,44 @@
-# Repository test execution
+# CI test execution
 
-These files support CI and explicit developer performance runs. `.Rbuildignore`
-excludes `.github`, so the scheduler, cost tables, regression scripts and
-performance command are not shipped in the R source package.
+These files implement the ordinary-test and coverage workflows. `.Rbuildignore`
+excludes `.github`; none is needed to load epwshiftr or run its weather APIs.
 
-## Entry points and dependencies
+Normal `R CMD check` uses the serial `tests/testthat.R` entry. CI explicitly sets
+`EPWSHIFTR_TEST_RUNNER` to the absolute path of `check-package.R`, which loads the
+scheduler even after the check changes working directories. Automatic selection
+allows up to three shards within CPU and memory budgets; an explicit count may
+be 1–8.
 
-- Normal `R CMD check` runs `tests/testthat.R` serially. CI sets
-  `EPWSHIFTR_TEST_RUNNER` to the absolute path of `check-package.R`, which loads
-  `check-parallel.R` from this directory even when the check changes directories.
-- `check-package.R` supports `EPWSHIFTR_TEST_SHARDS=auto` or an explicit 1–8.
-  Automatic selection allows up to three shards within CPU and memory budgets.
-- The workflows install `processx` and `ps` explicitly. `callr` remains a package
-  `Suggests` dependency because ordinary package tests use it for real process
-  isolation and the DuckDB lock handshake.
-- `../coverage.R` prepares per-process instrumentation and validates complete
-  registered traces before merging counters and writing reports. Coverage CI
-  executes the regression scripts in `tests/` before the full coverage run.
+`check-parallel.R` assigns every complete test file exactly once, isolates each
+process's temporary files and caches, gathers test failures, verifies owned
+process exits, and coordinates coverage collection. CI uses equal file costs;
+it does not read or require machine-specific timing tables. This balances file
+counts, not measured execution time. Earlier weighted timings cannot establish
+the performance of this unweighted configuration.
 
-The scheduler assigns every complete test file exactly once, preserves
-alphabetical order within a shard, isolates temporary files/caches and verifies
-owned process exits by PID and creation time. Missing traces and unresolved
-owned lifetimes fail the run; incomplete execution does not count as success.
+The workflows install `processx` and `ps` explicitly. `callr` remains a package
+`Suggests` dependency because ordinary tests use real independent R processes to
+check cache isolation and DuckDB lock handshakes. Production APIs do not use it.
 
-## Scheduling costs
+`../coverage.R` instruments each process and validates complete registered traces
+before merging counters and writing reports. Missing traces or unresolved owned
+lifetimes fail a run; test assertions alone do not establish complete execution.
 
-`test-durations.csv` and `coverage-durations.csv` are load-balancing inputs,
-not fixtures, timing assertions or acceptance results. They contain file names
-and cost estimates; new files use the median known cost. The ordinary table
-includes estimates for moved assertions and consolidated preparation. The
-coverage table contains measured costs from a Windows full-suite run. They may
-be refreshed from `files.csv` after a complete representative run; machine and
-concurrency differences mean these weights do not predict exact elapsed time.
+The coverage workflow runs the regression scripts in `tests/` first:
 
-## Explicit local performance runs
+- Monitor and resource checks cover ownership, PID reuse, query failures,
+  resource selection and deadline handling.
+- Adapter and report checks cover missing/corrupt receipts, fresh counters and
+  output equivalence, using a tiny installed test package when required.
 
-Use a provisioned R environment with package test dependencies plus `processx`,
-`ps`, `covr` and `xml2`. Local environment/lock files are not repository inputs.
-From the package root:
-
-```sh
-Rscript .github/testing/check-performance.R ordinary /path/to/new-output 4 3
-Rscript .github/testing/check-performance.R coverage /path/to/another-output 4 3
-```
-
-Preparation is timed separately. Each round includes startup, dynamic
-instrumentation, tests, teardown, exit verification and coverage merge/report.
-Each round has independent directories and no generated cross-round cache.
-The performance command retains an over-600-second result and stops; this local
-acceptance threshold is not imposed on ordinary package users. Synchronous native
-calls cannot be interrupted by a deadline check inside R.
-
-Explicit shard counts bypass automatic resource selection. More workers can
-increase total CPU and memory as well as contention. Metrics retain sampled RSS,
-process-exit CPU and observation gaps; short-lived children may be missed and
-shared memory may be counted more than once. Background time is not deducted.
-JIT defaults are unchanged; explicit `R_ENABLE_JIT` values are recorded and
-checked across coverage receipts. The Windows `R_ENABLE_JIT=0` experiments do not
-set a production or cross-platform default.
-
-Run individual tooling regressions from the package root, for example:
+These test the CI implementation, not scientific formulas. They prevent the
+runner from reporting success after dropping tests, worker failures or coverage.
+Run an individual check from the repository root with an environment containing
+the workflow dependencies, for example:
 
 ```sh
 Rscript .github/testing/tests/test-check-resources.R
-Rscript .github/testing/tests/test-coverage-adapter.R
 ```
 
-Monitor tests cover PID reuse, transient query failures and deadline boundaries;
-adapter/report tests cover missing/corrupt receipts, fresh counters and report
-equivalence. They are kept outside package tests because some deliberately build
-and install a tiny package. Host-specific long-path and executable-permission
-diagnostics belong to the local environment, not these workflows.
+Machine-specific benchmarks, multi-round acceptance drivers, long-path diagnosis
+and local environment locks are not CI inputs and are not tracked here.
