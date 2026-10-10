@@ -9,6 +9,7 @@ name: test-coverage
 jobs:
   test-coverage:
     runs-on: macOS-latest
+    timeout-minutes: 30
 
     permissions:
       contents: read
@@ -16,6 +17,7 @@ jobs:
 
     env:
       TESTTHAT_CPUS: 3
+      R_ENABLE_JIT: 0
       EPWSHIFTR_DB_THREADS: 1
       OMP_NUM_THREADS: 1
       OPENBLAS_NUM_THREADS: 1
