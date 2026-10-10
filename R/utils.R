@@ -730,8 +730,16 @@ checksum_bytes <- function(bytes, algo = "sha256") {
 # duckdb helpers
 # ddb_connect {{{
 ddb_connect <- function(dbdir, read_only = FALSE, ...) {
+    config <- downloader__ddb_thread_config(list(...)[["config"]])
+    # The driver owns the instance-level budget; the default remains untouched
+    # unless this process explicitly opts in through the runner environment.
+    driver <- if (is.null(config)) {
+        duckdb::duckdb()
+    } else {
+        duckdb::duckdb(config = config)
+    }
     duckdb::dbConnect(
-        duckdb::duckdb(),
+        driver,
         dbdir = dbdir,
         read_only = read_only,
         ...
@@ -1052,7 +1060,8 @@ mirai_lapply <- function(
         fast_hash(list(Sys.getpid(), Sys.time(), stats::runif(1L)))
     )
     mirai__start_pool(workers, dispatcher = TRUE, .compute = compute_profile)
-    on.exit(mirai::daemons(0, .compute = compute_profile), add = TRUE)
+    # Signal owned workers before resetting their transport, including errors.
+    on.exit(mirai::daemons(NULL, .compute = compute_profile), add = TRUE)
 
     worker_symbols <- mirai_worker_bindings(symbols)
     tasks <- lapply(X, function(x) {

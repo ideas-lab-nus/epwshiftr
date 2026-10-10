@@ -66,11 +66,14 @@ hourly_kqdm_input__canonical_units <- function(data, role, expected) {
     }
     for (variable in expected) {
         rows <- which(data[["variable_id"]] == variable)
-        aliases <- unique(vapply(
-            data[["units"]][rows],
-            morpher__unit_alias,
-            character(1L)
-        ))
+        units <- data[["units"]][rows]
+        # Plain unit labels repeat over whole hourly years. Normalize each
+        # distinct label once, retaining scalar semantics for attributed or
+        # list inputs whose extraction/coercion may depend on their class.
+        if (is.character(units) && is.null(attributes(units))) {
+            units <- unique(units)
+        }
+        aliases <- unique(vapply(units, morpher__unit_alias, character(1L)))
         if (length(aliases) != 1L || is.na(aliases)) {
             cli::cli_abort(
                 "Role {.val {role}} variable {.val {variable}} must use one supported unit."

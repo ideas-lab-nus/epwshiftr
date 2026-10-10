@@ -27,6 +27,7 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: ${{ matrix.config.not_cran }}
+      EPWSHIFTR_TEST_SHARDS: auto
 
     steps:
       - uses: actions/checkout@v4

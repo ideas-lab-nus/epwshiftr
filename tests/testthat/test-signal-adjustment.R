@@ -382,4 +382,41 @@ test_that("daily adjusted series enforces canonical calendar-native data", {
     )
 })
 
+# Duplicate detection must remain exact even if callers use rounded data.table
+# grouping elsewhere, and must not alter attributed key columns.
+test_that("calendar validation preserves exact key identity", {
+    data <- adjusted_series_test__subdaily()[c(1L, 1L), ]
+    data$cf_second_of_day <- c(3600, 3600 + 1e-10)
+    # Test this shared validator before the separate regular-timestep contract.
+    validate <- function(data) {
+        bias__calendar_data_error(
+            data,
+            BIAS_SUBDAILY_SERIES_COLUMNS,
+            "sub-daily",
+            c(
+                "variable_id",
+                "cf_calendar",
+                "cf_year",
+                "cf_month",
+                "cf_day",
+                "cf_second_of_day"
+            ),
+            "duplicate calendar key"
+        )
+    }
+    rounding <- data.table::getNumericRounding()
+    withr::defer(data.table::setNumericRounding(rounding))
+    for (digits in 0:2) {
+        data.table::setNumericRounding(digits)
+        before <- data
+        expect_null(validate(data))
+        expect_identical(data, before)
+        duplicate <- data[c(1L, 1L), ]
+        expect_identical(validate(duplicate), "duplicate calendar key")
+        attributed <- data
+        names(attributed$cf_second_of_day) <- c("first", "second")
+        expect_null(validate(attributed))
+    }
+})
+
 # vim: fdm=marker :

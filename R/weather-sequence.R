@@ -904,7 +904,7 @@ sequence__member <- function(
     if (all(c("year", "month", "day", "hour") %in% names(data))) {
         # The EPW datetime column is derived convenience data. Recompute it
         # after year assignment so Parquet timestamps match member identity.
-        data[, datetime := epw_file_datetime(year, month, day, hour)]
+        data[, datetime := epw_file__datetime(year, month, day, hour)]
         data.table::setcolorder(
             data,
             c("datetime", setdiff(names(data), "datetime"))

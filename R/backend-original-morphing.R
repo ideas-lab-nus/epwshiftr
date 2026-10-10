@@ -1726,6 +1726,32 @@ morpher__constrained_month_series <- function(month, target, transition_hours) {
 # Read one value per month from rows in a single model/member/period case.
 # morpher__monthly_target_vector {{{
 morpher__monthly_target_vector <- function(data, column) {
+    # Plain numeric columns can select each month's first finite value in one
+    # pass without changing row precedence. Keep coercion and dispatch for
+    # attributed or other input types on the original selection path below.
+    if (
+        data.table::is.data.table(data) &&
+            is.character(column) &&
+            length(column) == 1L &&
+            !is.na(column) &&
+            column %in% names(data)
+    ) {
+        month <- data[["month"]]
+        values <- data[[column]]
+        if (
+            !is.null(month) &&
+                !is.null(values) &&
+                (is.integer(month) || is.double(month)) &&
+                (is.integer(values) || is.double(values)) &&
+                is.null(attributes(month)) &&
+                is.null(attributes(values))
+        ) {
+            valid <- is.finite(values)
+            selected <- match(1:12, month[valid])
+            return(as.numeric(values[valid][selected]))
+        }
+    }
+
     target <- rep(NA_real_, 12L)
     for (target_month in 1:12) {
         values <- as.numeric(data[data[["month"]] == target_month, get(column)])

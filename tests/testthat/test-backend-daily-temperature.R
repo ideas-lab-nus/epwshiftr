@@ -179,8 +179,16 @@ test_that("daily temperature CLI options retain their numeric types", {
     )
 })
 
-test_that("daily temperature backend closes full-year mean and extrema targets", {
+test_that("daily temperature backend closes targets and preserves registered recipe output", {
     context <- daily_backend_test__context(include_extrema = TRUE)
+    # Both entry points use the same climate and EPW input. Prepare the recipe
+    # variant before execution, then reuse the ad hoc result for both contracts.
+    registered_context <- context
+    registered_context$recipe <- epw_morph_recipe(
+        name = "daily_temperature",
+        policy = "harmonized",
+        spec = "epwshiftr_daily_power"
+    )
     baseline <- context$epw$clone()
     suppressMessages(baseline$drop_unit())
     baseline_data <- data.table::as.data.table(baseline$data())
@@ -251,18 +259,7 @@ test_that("daily temperature backend closes full-year mean and extrema targets",
         ) %in%
             names(weather)
     ))
-})
 
-test_that("registered daily recipe preserves the established backend output", {
-    ad_hoc_context <- daily_backend_test__context(include_extrema = TRUE)
-    registered_context <- ad_hoc_context
-    registered_context$recipe <- epw_morph_recipe(
-        name = "daily_temperature",
-        policy = "harmonized",
-        spec = "epwshiftr_daily_power"
-    )
-
-    ad_hoc <- morpher__run_context(ad_hoc_context)
     registered <- morpher__run_context(registered_context)
 
     expect_identical(
@@ -270,11 +267,11 @@ test_that("registered daily recipe preserves the established backend output", {
         "epwshiftr_daily_power"
     )
     expect_identical(registered$recipe$policy, "harmonized")
-    expect_equal(registered$data, ad_hoc$data, tolerance = 0)
-    expect_equal(registered$factors, ad_hoc$factors, tolerance = 0)
+    expect_equal(registered$data, result$data, tolerance = 0)
+    expect_equal(registered$factors, result$factors, tolerance = 0)
     expect_equal(
         registered$diagnostics,
-        ad_hoc$diagnostics,
+        result$diagnostics,
         tolerance = 0
     )
 })

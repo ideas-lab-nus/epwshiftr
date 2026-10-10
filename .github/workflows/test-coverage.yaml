@@ -59,12 +59,23 @@ jobs:
         id: coverage
         run: |
           source(".github/coverage.R")
-          coverage <- coverage__run(
-            quiet = FALSE,
-            install_path = file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
+          prepared <- coverage__prepare(
+            path = ".",
+            directory = file.path(Sys.getenv("RUNNER_TEMP"), "covr-prepared"),
+            quiet = FALSE
+          )
+          source("tests/support/check-parallel.R")
+          run_path <- file.path(Sys.getenv("RUNNER_TEMP"), "coverage-run")
+          checks__run(
+              library = readRDS(prepared)$library,
+              output = run_path,
+              shards = checks__default_shards(),
+              durations = read.csv("tests/support/coverage-durations.csv"),
+              coverage = prepared,
+              coverage_script = normalizePath(".github/coverage.R")
           )
           report_path <- file.path(Sys.getenv("RUNNER_TEMP"), "coverage-report")
-          coverage__report(coverage, report_path)
+          stopifnot(file.rename(file.path(run_path, "coverage-report"), report_path))
           cat(
             readLines(file.path(report_path, "summary.md")),
             sep = "\n", file = Sys.getenv("GITHUB_STEP_SUMMARY"), append = TRUE
@@ -103,5 +114,8 @@ jobs:
         with:
           name: coverage-diagnostics
           path: |
-            ${{ runner.temp }}/covr-library/
+            ${{ runner.temp }}/covr-prepared/
+            ${{ runner.temp }}/coverage-run/**/traces/
+            ${{ runner.temp }}/coverage-run/**/stderr.log
+            ${{ runner.temp }}/coverage-run/**/results.rds
           retention-days: 7

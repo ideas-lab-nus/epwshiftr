@@ -32,6 +32,9 @@ Imports:
     RNetCDF,
     S7
 Suggests:
+    callr,
+    processx,
+    ps,
     testthat (>= 3.0.0),
     webfakes,
     withr

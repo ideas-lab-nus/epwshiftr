@@ -1,40 +1,31 @@
-# schema__load_lazy() {{{
-test_that("schema__load_lazy() exposes standalone SchemaDoc constants", {
-    expect_true(S7::S7_inherits(SCHEMA_QUERY, SchemaDoc))
-    expect_true(S7::S7_inherits(SCHEMA_RESPONSE, SchemaDoc))
-    expect_true(S7::S7_inherits(SCHEMA_RESULT_DATASET, SchemaDoc))
-    expect_true(S7::S7_inherits(SCHEMA_RESULT_FILE, SchemaDoc))
-    expect_true(S7::S7_inherits(SCHEMA_RESULT_AGGREGATION, SchemaDoc))
-    expect_true(S7::S7_inherits(SCHEMA_ESG_DICT, SchemaDoc))
-    expect_true(S7::S7_inherits(SCHEMA_DOWNLOADER_CONFIG, SchemaDoc))
-})
-# }}}
 # schema_paths() {{{
 test_that("schema_paths() exposes expected logical paths for package schemas", {
-    expect_true("$parameter" %in% schema_paths(SCHEMA_QUERY))
+    expect_true("$parameter" %in% schema_paths(schema__document("QUERY")))
 
-    response_paths <- schema_paths(SCHEMA_RESPONSE)
+    response_paths <- schema_paths(schema__document("RESPONSE"))
     expect_true("$responseHeader$params" %in% response_paths)
     expect_true("$response$docs" %in% response_paths)
     expect_true("$facet_counts$facet_fields" %in% response_paths)
 
-    result_paths <- schema_paths(SCHEMA_RESULT_DATASET)
+    result_paths <- schema_paths(schema__document("RESULT_DATASET"))
     expect_true("$parameter" %in% result_paths)
     expect_true("$response" %in% result_paths)
     expect_true("$defs$response_header$params" %in% result_paths)
     expect_true("$defs$response_body$docs" %in% result_paths)
     expect_true("$defs$facet_counts$facet_fields" %in% result_paths)
 
-    expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_FILE))
-    expect_true("$parameter" %in% schema_paths(SCHEMA_RESULT_AGGREGATION))
+    expect_true("$parameter" %in% schema_paths(schema__document("RESULT_FILE")))
+    expect_true(
+        "$parameter" %in% schema_paths(schema__document("RESULT_AGGREGATION"))
+    )
 
-    dict_paths <- schema_paths(SCHEMA_ESG_DICT)
+    dict_paths <- schema_paths(schema__document("ESG_DICT"))
     expect_true("$project" %in% dict_paths)
     expect_true("$profile" %in% dict_paths)
     expect_true("$payload$any[2]$vocab" %in% dict_paths)
     expect_true("$payload$any[2]$request" %in% dict_paths)
 
-    downloader_paths <- schema_paths(SCHEMA_DOWNLOADER_CONFIG)
+    downloader_paths <- schema_paths(schema__document("DOWNLOADER_CONFIG"))
     expect_true("$schema_version" %in% downloader_paths)
     expect_true("$manifest" %in% downloader_paths)
     expect_true("$n_workers" %in% downloader_paths)
@@ -67,7 +58,7 @@ test_that("SCHEMA_DOWNLOADER_CONFIG validates persistent downloader config", {
     )
 
     expect_true(schema_validate(
-        SCHEMA_DOWNLOADER_CONFIG,
+        schema__document("DOWNLOADER_CONFIG"),
         config,
         mode = "test",
         name = "downloader-config"
@@ -76,7 +67,7 @@ test_that("SCHEMA_DOWNLOADER_CONFIG validates persistent downloader config", {
     bad <- config
     bad$retries <- -1L
     expect_false(schema_validate(
-        SCHEMA_DOWNLOADER_CONFIG,
+        schema__document("DOWNLOADER_CONFIG"),
         bad,
         mode = "test",
         name = "bad-downloader-config"
@@ -85,7 +76,7 @@ test_that("SCHEMA_DOWNLOADER_CONFIG validates persistent downloader config", {
     bad <- config
     bad$connect_timeout <- 0L
     expect_false(schema_validate(
-        SCHEMA_DOWNLOADER_CONFIG,
+        schema__document("DOWNLOADER_CONFIG"),
         bad,
         mode = "test",
         name = "bad-downloader-config"
@@ -160,7 +151,7 @@ test_that("SCHEMA_QUERY validates saved query JSON fixtures", {
     )
 
     expect_true(schema_validate(
-        SCHEMA_QUERY,
+        schema__document("QUERY"),
         query_json,
         mode = "test",
         name = query_file
@@ -168,7 +159,7 @@ test_that("SCHEMA_QUERY validates saved query JSON fixtures", {
 
     query_json$parameter <- "not a parameter list"
     expect_false(schema_validate(
-        SCHEMA_QUERY,
+        schema__document("QUERY"),
         query_json,
         mode = "test",
         name = "bad-query"
@@ -253,6 +244,29 @@ schema_test_file_docs <- function() {
 # }}}
 # SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION {{{
 test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION validate saved query result JSON fixtures", {
+    # Payload validation uses the same four fixed graphs repeatedly. Compile
+    # each unchanged document once in this case, while retaining the real
+    # SchemaDoc dispatch and validator for every valid and invalid payload.
+    # Cache/uncached equivalence and compilation failures are tested separately.
+    documents <- lapply(
+        c("RESULT_DATASET", "RESULT_FILE", "RESULT_AGGREGATION", "RESPONSE"),
+        schema__document
+    )
+    compiled <- vector("list", length(documents))
+    compile <- schema_flat__compile
+    # Restrict reuse to exact fixed documents; edited or unrelated documents
+    # still run the original compiler and failed compilation publishes nothing.
+    local_mocked_bindings(schema_flat__compile = function(schema) {
+        matches <- which(vapply(documents, identical, logical(1), y = schema))
+        if (length(matches) != 1L) {
+            return(compile(schema))
+        }
+        index <- matches[[1L]]
+        if (is.null(compiled[[index]])) {
+            compiled[[index]] <<- compile(schema)
+        }
+        compiled[[index]]
+    })
     result_file <- test_path("_snaps", "query-result", "dataset.json")
     dataset_json <- jsonlite::fromJSON(
         result_file,
@@ -266,19 +280,19 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     )
 
     expect_true(schema_validate(
-        SCHEMA_RESULT_DATASET,
+        schema__document("RESULT_DATASET"),
         dataset_json,
         mode = "test",
         name = result_file
     ))
     expect_true(schema_validate(
-        SCHEMA_RESULT_FILE,
+        schema__document("RESULT_FILE"),
         file_json,
         mode = "test",
         name = "file-result"
     ))
     expect_true(schema_validate(
-        SCHEMA_RESULT_AGGREGATION,
+        schema__document("RESULT_AGGREGATION"),
         aggregation_json,
         mode = "test",
         name = "aggregation-result"
@@ -293,13 +307,13 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     provider_json$response$response$docs$mod_time <-
         "2026-07-24T00:00:00Z"
     expect_true(schema_validate(
-        SCHEMA_RESULT_DATASET,
+        schema__document("RESULT_DATASET"),
         provider_json,
         mode = "test",
         name = "current-provider-fields"
     ))
     expect_true(schema_validate(
-        SCHEMA_RESPONSE,
+        schema__document("RESPONSE"),
         provider_json$response,
         mode = "test",
         name = "current-provider-response-fields"
@@ -311,7 +325,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     provider_file_json$response$response$docs$mod_time <-
         "2026-07-24T00:00:00Z"
     expect_true(schema_validate(
-        SCHEMA_RESULT_FILE,
+        schema__document("RESULT_FILE"),
         provider_file_json,
         mode = "test",
         name = "current-provider-file-fields"
@@ -320,20 +334,20 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     provider_aggregation_json$response$response$docs <-
         provider_file_json$response$response$docs
     expect_true(schema_validate(
-        SCHEMA_RESULT_AGGREGATION,
+        schema__document("RESULT_AGGREGATION"),
         provider_aggregation_json,
         mode = "test",
         name = "current-provider-aggregation-fields"
     ))
 
     expect_false(schema_validate(
-        SCHEMA_RESULT_DATASET,
+        schema__document("RESULT_DATASET"),
         file_json,
         mode = "test",
         name = "file-as-dataset"
     ))
     expect_false(schema_validate(
-        SCHEMA_RESULT_FILE,
+        schema__document("RESULT_FILE"),
         aggregation_json,
         mode = "test",
         name = "aggregation-as-file"
@@ -343,7 +357,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         dataset_json$response$response$docs
     ))
     expect_false(schema_validate(
-        SCHEMA_RESULT_DATASET,
+        schema__document("RESULT_DATASET"),
         dataset_json,
         mode = "test",
         name = "bad-result"
@@ -352,7 +366,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     file_missing_required <- file_json
     file_missing_required$response$response$docs$dataset_id <- NULL
     expect_false(schema_validate(
-        SCHEMA_RESULT_FILE,
+        schema__document("RESULT_FILE"),
         file_missing_required,
         mode = "test",
         name = "bad-file-result"
@@ -361,7 +375,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     aggregation_missing_required <- aggregation_json
     aggregation_missing_required$response$response$docs$title <- NULL
     expect_false(schema_validate(
-        SCHEMA_RESULT_AGGREGATION,
+        schema__document("RESULT_AGGREGATION"),
         aggregation_missing_required,
         mode = "test",
         name = "bad-aggregation-result"
@@ -373,7 +387,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     )
     empty_file_json$response$response$docs <- data.frame()
     expect_true(schema_validate(
-        SCHEMA_RESULT_FILE,
+        schema__document("RESULT_FILE"),
         empty_file_json,
         mode = "test",
         name = "empty-file-result"
@@ -396,14 +410,14 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         context = time_context
     )
     expect_true(schema_validate(
-        SCHEMA_RESULT_FILE,
+        schema__document("RESULT_FILE"),
         file_with_context,
         mode = "test",
         name = "file-result-context"
     ))
     file_with_context$context$time_filter$method <- "metadata"
     expect_false(schema_validate(
-        SCHEMA_RESULT_FILE,
+        schema__document("RESULT_FILE"),
         file_with_context,
         mode = "test",
         name = "bad-result-context"
@@ -421,14 +435,14 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         context = query_url_context
     )
     expect_true(schema_validate(
-        SCHEMA_RESULT_DATASET,
+        schema__document("RESULT_DATASET"),
         dataset_with_context,
         mode = "test",
         name = "dataset-result-query-url-context"
     ))
     dataset_with_context$context$query_url[[1L]] <- NA_character_
     expect_false(schema_validate(
-        SCHEMA_RESULT_DATASET,
+        schema__document("RESULT_DATASET"),
         dataset_with_context,
         mode = "test",
         name = "bad-result-query-url-context"
@@ -447,7 +461,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         context = selection_context
     )
     expect_true(schema_validate(
-        SCHEMA_RESULT_AGGREGATION,
+        schema__document("RESULT_AGGREGATION"),
         aggregation_with_context,
         mode = "test",
         name = "aggregation-result-selection-context"
@@ -456,7 +470,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
         1L
     ]] <- NA_integer_
     expect_false(schema_validate(
-        SCHEMA_RESULT_AGGREGATION,
+        schema__document("RESULT_AGGREGATION"),
         aggregation_with_context,
         mode = "test",
         name = "bad-result-selection-context-missing"
@@ -468,7 +482,7 @@ test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATIO
     )
     aggregation_with_context$context$selection$source_count <- NULL
     expect_false(schema_validate(
-        SCHEMA_RESULT_AGGREGATION,
+        schema__document("RESULT_AGGREGATION"),
         aggregation_with_context,
         mode = "test",
         name = "bad-result-selection-context-fields"
@@ -501,7 +515,7 @@ test_that("SCHEMA_RESULT_DATASET validates local minimal results", {
     )
 
     expect_true(schema_validate(
-        SCHEMA_RESULT_DATASET,
+        schema__document("RESULT_DATASET"),
         result_json,
         mode = "test",
         name = "local-dataset-result"

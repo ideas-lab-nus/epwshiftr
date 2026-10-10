@@ -2342,7 +2342,7 @@ shift_resolve__import_shared_inputs <- function(inputs, store) {
         if (!identical(checksum_file(ref$snapshot), ref$sha256)) {
             cli::cli_abort("The shared File query snapshot has changed.")
         }
-        loaded <- query__load(ref$snapshot, SCHEMA_RESULT_FILE)
+        loaded <- query__load(ref$snapshot, schema__compiled("RESULT_FILE"))
         result <- query_result__new(
             EsgResultFile,
             index_node = loaded$index_node,

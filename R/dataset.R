@@ -119,7 +119,9 @@ DatasetAsyncTask <- R6::R6Class(
                 !isTRUE(self$backend_released) && !is.null(self$compute_profile)
             ) {
                 try(
-                    mirai::daemons(0, .compute = self$compute_profile),
+                    # Explicitly signal worker exit before closing its transport.
+                    # A returned cancellation does not mean execution has stopped.
+                    mirai::daemons(NULL, .compute = self$compute_profile),
                     silent = TRUE
                 )
                 self$backend_released <- TRUE
@@ -1792,7 +1794,7 @@ EsgDataset <- R6::R6Class(
                 },
                 error = function(e) {
                     try(
-                        mirai::daemons(0L, .compute = compute_profile),
+                        mirai::daemons(NULL, .compute = compute_profile),
                         silent = TRUE
                     )
                     stop(dataset__async_unavailable(operation, e))

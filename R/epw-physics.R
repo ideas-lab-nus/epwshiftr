@@ -1338,13 +1338,10 @@ solar__epw_interval_geometry <- function(
     # Spencer's Fourier series supplies Earth-Sun distance, declination, and
     # equation of time at every minute midpoint without external dependencies.
     gamma <- 2 * pi / 365 * (day_matrix - 1 + (clock_hour - 12) / 24)
-    eccentricity <- 1.000110 +
-        0.034221 * cos(gamma) +
-        0.001280 * sin(gamma) +
-        0.000719 * cos(2 * gamma) +
-        0.000077 * sin(2 * gamma)
-    declination <- solar__spencer_declination(gamma)
-    equation_of_time <- solar__spencer_equation_of_time(gamma)
+    geometry <- solar__spencer_geometry(gamma, include_eccentricity = TRUE)
+    eccentricity <- geometry$eccentricity
+    declination <- geometry$declination
+    equation_of_time <- geometry$equation_of_time
     apparent_solar_minutes <- clock_hour *
         60 +
         4 * (longitude - 15 * timezone) +
