@@ -2018,43 +2018,38 @@ shift_job__live_snapshot_write <- function(
     ui_state = NULL
 ) {
     wanted_run_id <- run_id
-    run <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
+    # Verify the store once. The six reads below run back to back in this
+    # single-threaded step, so re-checking the connection before each one only
+    # repeats the same answer; a connection failure still surfaces from DuckDB.
+    conn <- morpher__private_store(store)$conn
+    rows <- function(table, key, ids) {
+        shift_inspect__rows_conn(conn, table, key, ids)
+    }
+    run <- rows("shift_run", "run_id", wanted_run_id)
     if (!nrow(run)) {
         return(invisible(NULL))
     }
-    cases <- shift_inspect__rows(
-        store,
-        "shift_run_case",
-        "run_id",
-        wanted_run_id
-    )
+    cases <- rows("shift_run_case", "run_id", wanted_run_id)
     checkmate::assert_count(event_limit, positive = FALSE)
-    events <- store$query(sprintf(
-        paste(
-            "SELECT * FROM (SELECT * FROM shift_run_event WHERE run_id IN (%s)",
-            "ORDER BY created_at DESC LIMIT %d) ORDER BY created_at"
-        ),
-        shift_stage__query_ids(wanted_run_id),
-        as.integer(event_limit)
+    events <- data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            paste(
+                "SELECT * FROM (SELECT * FROM shift_run_event WHERE run_id IN (%s)",
+                "ORDER BY created_at DESC LIMIT %d) ORDER BY created_at"
+            ),
+            shift_stage__query_ids(wanted_run_id),
+            as.integer(event_limit)
+        )
     ))
-    jobs <- shift_inspect__rows(store, "shift_run_job", "run_id", wanted_run_id)
+    jobs <- rows("shift_run_job", "run_id", wanted_run_id)
     jobs <- jobs[order(jobs[["attempt"]])]
-    steps <- shift_inspect__rows(
-        store,
-        "shift_run_step",
-        "run_id",
-        wanted_run_id
-    )
+    steps <- rows("shift_run_step", "run_id", wanted_run_id)
     steps <- steps[order(steps[["ordinal"]])]
     outputs <- data.table::data.table()
     morph_id <- store__chr1(run$morph_id[[1L]])
     if (!is.na(morph_id) && nzchar(morph_id)) {
-        outputs <- shift_inspect__rows(
-            store,
-            "epw_output",
-            "morph_id",
-            morph_id
-        )
+        outputs <- rows("epw_output", "morph_id", morph_id)
     }
     payload <- list(
         version = 1L,

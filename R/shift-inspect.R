@@ -2416,7 +2416,19 @@ shift_inspect__completion <- function(cases, outputs, diagnostics) {
 shift_inspect__rows <- function(store, table, key, ids) {
     # morpher__private_store() already rejects a closed store, so query the
     # connection directly instead of re-checking it through store$query().
-    conn <- morpher__private_store(store)$conn
+    shift_inspect__rows_conn(
+        morpher__private_store(store)$conn,
+        table,
+        key,
+        ids
+    )
+}
+# }}}
+
+# Read identity rows from a connection the caller has already verified. Callers
+# that issue several reads in one step check the store once and reuse this.
+# shift_inspect__rows_conn {{{
+shift_inspect__rows_conn <- function(conn, table, key, ids) {
     data.table::as.data.table(ddb_query(
         conn,
         sprintf(

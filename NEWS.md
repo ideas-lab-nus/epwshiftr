@@ -2,6 +2,8 @@
 
 * Compile each fixed package schema once per R process and reuse it for query, result, dictionary and shift workflow config validation, instead of recompiling the schema on every check. Validation rules and error messages are unchanged.
 
+* Check the store connection once per live run snapshot and once per identity-row read, instead of before every table query. A closed store is still rejected, and snapshot contents are unchanged.
+
 * Skip schema declarations that a store manifest already satisfies when it is re-opened. The store reads its table and column catalog once and runs only the missing `CREATE TABLE` and `ADD COLUMN` statements, so missing tables and additive columns are still repaired and schema-version checks are unchanged.
 
 * Look up morphing backend rules by explicit row position and apply method overrides in one match, instead of building a data.table index for every step. Duplicate steps, first-name precedence for repeated overrides, validation errors and returned columns are unchanged.
