@@ -1155,8 +1155,8 @@ shift_inspect__stage_query_result <- function(
 
     schema <- switch(
         run$result_type[[1L]],
-        File = SCHEMA_RESULT_FILE,
-        Aggregation = SCHEMA_RESULT_AGGREGATION,
+        File = schema__compiled("RESULT_FILE"),
+        Aggregation = schema__compiled("RESULT_AGGREGATION"),
         cli::cli_abort(
             "Unsupported stored query result type: {.val {run$result_type[[1L]]}}."
         )
