@@ -78,7 +78,6 @@ shift_live_snapshot_test__oracle <- function(store, run_id, event_limit) {
 }
 
 test_that("live snapshot payload matches per-table reads and checks the store once", {
-    skip_if_not_installed("duckdb")
     fixture <- shift_live_snapshot_test__run()
     store <- fixture$store
     run_id <- fixture$run_id
@@ -126,7 +125,6 @@ test_that("live snapshot payload matches per-table reads and checks the store on
 })
 
 test_that("live snapshot of an unknown run writes nothing and a closed store errors", {
-    skip_if_not_installed("duckdb")
     fixture <- shift_live_snapshot_test__run()
     store <- fixture$store
     expect_null(shift_job__live_snapshot_write(store, "no-such-run"))
@@ -165,7 +163,6 @@ shift_live_snapshot_test__record <- function(env = parent.frame()) {
 }
 
 test_that("non-urgent snapshots coalesce inside the interval and urgent ones do not", {
-    skip_if_not_installed("duckdb")
     store <- list(path = tempfile("coalesce-"))
     writes <- shift_live_snapshot_test__record()
     local_mocked_bindings(
@@ -196,7 +193,6 @@ test_that("non-urgent snapshots coalesce inside the interval and urgent ones do 
 })
 
 test_that("deferred snapshots are delivered once the interval has passed", {
-    skip_if_not_installed("duckdb")
     store <- list(path = tempfile("flush-"))
     writes <- shift_live_snapshot_test__record()
     interval <- 3600
@@ -227,7 +223,6 @@ test_that("deferred snapshots are delivered once the interval has passed", {
 })
 
 test_that("a deferred snapshot keeps the last reporter state and a failed write stays pending", {
-    skip_if_not_installed("duckdb")
     store <- list(path = tempfile("uistate-"))
     writes <- shift_live_snapshot_test__record()
     local_mocked_bindings(
@@ -268,7 +263,6 @@ test_that("a deferred snapshot keeps the last reporter state and a failed write 
 })
 
 test_that("resetting a run forgets its interval and its reporter state", {
-    skip_if_not_installed("duckdb")
     store <- list(path = tempfile("reset-"))
     writes <- shift_live_snapshot_test__record()
     local_mocked_bindings(
@@ -292,7 +286,6 @@ test_that("resetting a run forgets its interval and its reporter state", {
 })
 
 test_that("terminal changes write a snapshot immediately and ordinary ones coalesce", {
-    skip_if_not_installed("duckdb")
     fixture <- shift_live_snapshot_test__run()
     store <- fixture$store
     run_id <- fixture$run_id

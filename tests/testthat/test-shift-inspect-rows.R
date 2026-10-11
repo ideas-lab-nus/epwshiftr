@@ -2,7 +2,6 @@
 # store lifecycle once, and still reject a closed store instead of returning an
 # empty table.
 test_that("identity row reads match store queries with one lifecycle check", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("inspect-rows-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -43,7 +42,6 @@ test_that("identity row reads match store queries with one lifecycle check", {
 })
 
 test_that("identity row reads reject a closed store", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("inspect-rows-closed-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)

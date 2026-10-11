@@ -481,8 +481,6 @@ test_that("failed batch execution returns a nonzero CLI status with its receipt"
 
 test_that("persisted batch plans execute, reuse artifacts, and repair missing exports", {
     skip_on_cran()
-    skip_if_not_installed("RNetCDF")
-    skip_if_not_installed("duckdb")
     test_local_dependencies(list(
         availability = function(...) {
             args <- list(...)

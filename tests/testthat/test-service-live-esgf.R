@@ -177,7 +177,6 @@ test_that("live ESGF File coverage, service resolution, and one-cell read", {
 
 test_that("live ESGF HTTP recovery downloads one bounded real file", {
     skip_live_esgf()
-    skip_if_not_installed("RNetCDF")
 
     live <- live_esgf_bounded_http_file()
     expect_lte(live$size, live$max_bytes)

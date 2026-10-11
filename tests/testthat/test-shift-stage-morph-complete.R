@@ -6,8 +6,6 @@ test_local_dependencies(list(
 
 test_that("shift_morph() uses complete extraction plans by default", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")

@@ -1,7 +1,6 @@
 # epwshiftr_cli_download() {{{
 test_that("epwshiftr_cli_download() dispatches download workflows", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
 
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)

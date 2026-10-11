@@ -333,7 +333,6 @@ test_that("point reads reuse selected actual bounds without loading the full axi
 # Independent Dataset objects must not reset each other's compute profiles.
 test_that("concurrent dataset tasks in one process retain separate backends", {
     skip_on_cran()
-    skip_if_not_installed("mirai")
     datasets <- lapply(seq_len(2L), function(index) EsgDataset$new("unused.nc"))
     on.exit(lapply(datasets, function(dataset) dataset$close()), add = TRUE)
     tasks <- lapply(seq_along(datasets), function(index) {

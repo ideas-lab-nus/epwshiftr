@@ -66,8 +66,6 @@ mirai_dataset_symbols <- c(
 
 # start_mirai_dataset_runtime {{{
 start_mirai_dataset_runtime <- function(workers) {
-    testthat::skip_if_not_installed("mirai")
-
     workers <- as.integer(workers[[1L]])
     if (is.na(workers) || workers < 1L) {
         workers <- 1L

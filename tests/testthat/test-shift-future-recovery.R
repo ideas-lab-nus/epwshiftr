@@ -8,8 +8,6 @@ test_that("shift_epw_future() resumes referenced scenarios after an export inter
     skip_on_cran()
     local_test_cache()
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
     calls <- stage_morph_test__scenario_inputs()
 

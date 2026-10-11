@@ -262,7 +262,6 @@ test_that("Shift plan and stage printers use bounded semantic previews", {
 })
 
 test_that("ShiftRun print refreshes state and reuses the static dashboard", {
-    skip_if_not_installed("duckdb")
     withr::local_options(cli.num_colors = 1L)
     store_path <- tempfile("shift-print-run-store-")
     plan <- shift_epw_future(
@@ -441,8 +440,6 @@ test_that("shift_ui() validates presentation options without changing scientific
 })
 
 test_that("ShiftReporter persists structured milestones while none mode stays silent", {
-    skip_if_not_installed("duckdb")
-
     store <- EsgStore$new(tempfile("shift-reporter-store-"))
     on.exit(store$close(), add = TRUE)
     reporter <- shift_reporter__reporter(

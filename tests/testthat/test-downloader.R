@@ -150,8 +150,6 @@ test_that("Downloader$new()", {
 # }}}
 # Downloader$enqueue() {{{
 test_that("Downloader$enqueue() creates sessions and tasks", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -242,8 +240,6 @@ test_that("Downloader$enqueue() creates sessions and tasks", {
 # }}}
 # Downloader$sessions() {{{
 test_that("Downloader$sessions()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -279,8 +275,6 @@ test_that("Downloader$sessions()", {
 # }}}
 # Downloader$tasks() {{{
 test_that("Downloader$tasks()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -314,8 +308,6 @@ test_that("Downloader$tasks()", {
 # }}}
 # Downloader$status() {{{
 test_that("Downloader$status()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -352,8 +344,6 @@ test_that("Downloader$status()", {
 # }}}
 # Downloader$run() {{{
 test_that("Downloader$run() downloads enqueued local files", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -447,8 +437,6 @@ test_that("Downloader$run() downloads enqueued local files", {
 # }}}
 # Downloader$verify() {{{
 test_that("Downloader$verify() reports checksum status for completed sessions", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -485,8 +473,6 @@ test_that("Downloader$verify() reports checksum status for completed sessions", 
 # }}}
 # Downloader$run() {{{
 test_that("Downloader$run() supports block = FALSE", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-bg-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -544,8 +530,6 @@ test_that("Downloader$run() supports block = FALSE", {
 # }}}
 # Downloader$jobs() {{{
 test_that("Downloader$jobs()", {
-    skip_if_not_installed("duckdb")
-
     fixture <- downloader_test_queued_job("jobs")
     dl <- fixture$dl
     job_id <- fixture$job$job_id[[1L]]
@@ -563,8 +547,6 @@ test_that("Downloader$jobs()", {
 # }}}
 # Downloader$job_logs() {{{
 test_that("Downloader$job_logs()", {
-    skip_if_not_installed("duckdb")
-
     fixture <- downloader_test_queued_job("job-logs")
     dl <- fixture$dl
     job_id <- fixture$job$job_id[[1L]]
@@ -582,8 +564,6 @@ test_that("Downloader$job_logs()", {
 # }}}
 # Downloader$stop_job() {{{
 test_that("Downloader$stop_job()", {
-    skip_if_not_installed("duckdb")
-
     fixture <- downloader_test_queued_job("stop-job")
     dl <- fixture$dl
     job_id <- fixture$job$job_id[[1L]]
@@ -607,8 +587,6 @@ test_that("Downloader$stop_job()", {
 # }}}
 # Downloader$start() / Downloader$job_status() {{{
 test_that("Downloader$start() / Downloader$job_status()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-job-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -652,8 +630,6 @@ test_that("Downloader$start() / Downloader$job_status()", {
 # }}}
 # Downloader$daemon_start() / Downloader$daemon_status() / Downloader$daemon_stop() {{{
 test_that("Downloader$daemon_start() / Downloader$daemon_status() / Downloader$daemon_stop()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-daemon-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
@@ -837,7 +813,6 @@ test_that("downloader__range_probe_url() probes HTTP range metadata", {
 # Downloader$run() {{{
 test_that("Downloader$run() downloads manifest-backed single-source pieces", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
@@ -892,9 +867,6 @@ test_that("Downloader$run() downloads manifest-backed single-source pieces", {
 })
 
 test_that("Downloader$run() downloads pieces inside a persistent worker", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("mirai")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -946,7 +918,6 @@ test_that("Downloader$run() downloads pieces inside a persistent worker", {
 
 test_that("Downloader$run() downloads multi-source range pieces", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
@@ -1001,8 +972,6 @@ test_that("Downloader$run() downloads multi-source range pieces", {
 # }}}
 # Downloader$preflight() {{{
 test_that("Downloader$preflight()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1064,8 +1033,6 @@ test_that("Downloader$preflight()", {
 # }}}
 # Downloader$new() {{{
 test_that("Downloader$new() migrates older manifests", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1186,8 +1153,6 @@ test_that("Downloader$new() migrates older manifests", {
 })
 
 test_that("Downloader$new() stores typed config in the manifest", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1264,8 +1229,6 @@ test_that("Downloader$new() stores typed config in the manifest", {
 # }}}
 # Downloader$clone() {{{
 test_that("Downloader$clone() reconnects manifest after finalization", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1305,8 +1268,6 @@ test_that("Downloader$clone() reconnects manifest after finalization", {
 # }}}
 # Downloader$run() / Downloader$resume() {{{
 test_that("Downloader$run() cancels stale downloading tasks", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1359,8 +1320,6 @@ test_that("Downloader$run() cancels stale downloading tasks", {
 # }}}
 # Downloader$cancel() / Downloader$retry() {{{
 test_that("Downloader$cancel() / Downloader$retry()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1409,8 +1368,6 @@ test_that("Downloader$cancel() / Downloader$retry()", {
 # }}}
 # Downloader$cancel() {{{
 test_that("Downloader$cancel() cancels by task_id", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1457,7 +1414,6 @@ test_that("Downloader$cancel() cancels by task_id", {
 # Downloader$run() {{{
 test_that("Downloader$run() falls back across candidate URLs", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
@@ -1530,7 +1486,6 @@ test_that("Downloader$run() falls back across candidate URLs", {
 
 test_that("Downloader$run() retries transient HTTP failures", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
@@ -1564,8 +1519,6 @@ test_that("Downloader$run() retries transient HTTP failures", {
 })
 
 test_that("Downloader$run() keeps candidate URLs task-scoped", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1609,8 +1562,6 @@ test_that("Downloader$run() keeps candidate URLs task-scoped", {
 # }}}
 # Downloader$record_probes() {{{
 test_that("Downloader$record_probes()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
@@ -1681,8 +1632,6 @@ test_that("Downloader$record_probes()", {
 # }}}
 # Downloader$data_nodes() {{{
 test_that("Downloader$data_nodes()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
@@ -1738,8 +1687,6 @@ test_that("Downloader$data_nodes()", {
 # }}}
 # Downloader$reset_data_nodes() {{{
 test_that("Downloader$reset_data_nodes()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     manifest <- file.path(root, "_downloader", "manifest.duckdb")
@@ -1778,8 +1725,6 @@ test_that("Downloader$reset_data_nodes()", {
 # }}}
 # Downloader$on() / Downloader$off() {{{
 test_that("Downloader$on() / Downloader$off()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1861,8 +1806,6 @@ test_that("Downloader$on() / Downloader$off()", {
 # }}}
 # Downloader$events() {{{
 test_that("Downloader$events()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1910,9 +1853,6 @@ test_that("Downloader$events()", {
 # }}}
 # Downloader$run() {{{
 test_that("Downloader$run() uses worker concurrency", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("mirai")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -1965,9 +1905,6 @@ test_that("Downloader$run() uses worker concurrency", {
 })
 
 test_that("Downloader$run() defers tasks beyond per-host capacity", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("mirai")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -2019,9 +1956,6 @@ test_that("Downloader$run() defers tasks beyond per-host capacity", {
 })
 
 test_that("Downloader$run() serializes tasks for the same target path", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("mirai")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")
@@ -2386,8 +2320,6 @@ test_that("Downloader$verify_checksum()", {
 # }}}
 # Downloader$verify() {{{
 test_that("Downloader$verify()", {
-    skip_if_not_installed("duckdb")
-
     root <- tempfile("downloader-")
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     dest <- file.path(root, "downloads")

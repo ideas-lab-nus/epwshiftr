@@ -41,8 +41,6 @@ test_that("morph case failures update only their matching public case", {
 
 test_that("shift_extract() fallback policy is available from collected files", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")

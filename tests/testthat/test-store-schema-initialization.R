@@ -1,6 +1,5 @@
 # Reopening a store must inspect persisted state without issuing redundant DDL.
 test_that("current store reopen preserves rows without redundant schema writes", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("store-schema-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -36,7 +35,6 @@ test_that("current store reopen preserves rows without redundant schema writes",
 # A same-version manifest can lose a table or an additive column between opens.
 # Verify recovery against a fresh complete catalog, including persisted rows.
 test_that("current store repairs missing tables and additive columns", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("store-schema-repair-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -67,7 +65,6 @@ test_that("current store repairs missing tables and additive columns", {
 # Checking a valid store once must not authorize later opens after its version
 # or metadata has changed; no connection/path-level success cache is allowed.
 test_that("reopening still rejects changed or missing schema versions", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("store-schema-version-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -96,7 +93,6 @@ test_that("reopening still rejects changed or missing schema versions", {
 # An interrupted additive repair must be retried from the database state. The
 # original live instance owns the connection so cleanup remains deterministic.
 test_that("schema repair retries after a failed DDL statement", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("store-schema-retry-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -124,7 +120,6 @@ test_that("schema repair retries after a failed DDL statement", {
 # Fresh manifests must initialize all workflow families and preserve empty-table
 # behavior before any artifact or run has been recorded.
 test_that("fresh store initializes current empty workflow tables", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("store-schema-fresh-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -157,7 +152,6 @@ test_that("fresh store initializes current empty workflow tables", {
 # declaration, and the resulting catalog must equal the one built statement by
 # statement.
 test_that("fresh store schema is created in batches with the same catalog", {
-    skip_if_not_installed("duckdb")
     catalog_sql <- paste(
         "SELECT table_name, column_name, data_type, column_default, is_nullable",
         "FROM information_schema.columns ORDER BY table_name, ordinal_position"
@@ -206,7 +200,6 @@ test_that("fresh store schema is created in batches with the same catalog", {
 # to read, a reopened one is read once for the check, and the version row is
 # only written when it is absent.
 test_that("opening a store reads the schema version at most once", {
-    skip_if_not_installed("duckdb")
     original <- ddb_read_table
     reads <- character()
     local_mocked_bindings(
@@ -245,7 +238,6 @@ test_that("opening a store reads the schema version at most once", {
 # A manifest that has tables but lost its version row is still rejected rather
 # than silently stamped with the current version.
 test_that("a manifest with tables but no version row is rejected", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("store-schema-noversion-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -271,7 +263,6 @@ test_that("a manifest with tables but no version row is rejected", {
 # A failing statement stops the batch, but everything before it stays applied,
 # exactly the state one-by-one execution would have left behind.
 test_that("a failing schema statement keeps earlier declarations", {
-    skip_if_not_installed("duckdb")
     path <- tempfile("store-schema-partial-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     original <- ddb_exec

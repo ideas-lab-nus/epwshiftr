@@ -123,9 +123,6 @@ test_that("climate records expand across overlapping morphing periods", {
 })
 
 test_that("EpwMorpher$preflight() accepts overlapping climate periods", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
-
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L, n_years = 2L)
     on.exit(unlink(nc), add = TRUE)
@@ -213,8 +210,6 @@ test_that("legacy fragmented mean summaries use valid record weights", {
 })
 
 test_that("factor planning reads legacy record-weighted mean fragments", {
-    skip_if_not_installed("duckdb")
-
     store <- EsgStore$new(tempfile("weighted-factor-store-"))
     on.exit(store$close(), add = TRUE)
     morpher <- morpher__from_recipe(
@@ -276,8 +271,6 @@ test_that("factor planning reads legacy record-weighted mean fragments", {
 
 
 test_that("baseline summaries and preflight preserve EPW missing-value evidence", {
-    skip_if_not_installed("duckdb")
-
     source <- epw_file_read(get_cache_epw())
     weather <- source$data()
     february <- weather$month == 2L
@@ -359,8 +352,6 @@ test_that("baseline summaries and preflight preserve EPW missing-value evidence"
 
 test_that("EpwMorpher isolates case failures and persists current case state", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
     nc <- c(
         ssp126 = tempfile(fileext = ".nc"),
@@ -488,9 +479,6 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
 
 
 test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
-
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(
         nc,
@@ -546,8 +534,6 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
 
 test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
@@ -702,8 +688,6 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
 
 test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() complete strict outputs with recommended variables", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
     variables <- epw_morph_variables("recommended")
     nc <- stats::setNames(
@@ -1126,8 +1110,6 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
 # fallback warnings. The public workflow must persist them and still write EPW.
 test_that("repeated runtime warnings do not block EPW output or resume", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
     local_test_cache()
     withr::local_options(epwshiftr.threshold_alpha = 0)
     root <- withr::local_tempdir()

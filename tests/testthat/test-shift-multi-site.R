@@ -360,8 +360,6 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
     # Fixture catalog identities must not reuse another test's disk cache.
     local_test_cache()
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
-    skip_if_not_installed("RNetCDF")
-    skip_if_not_installed("duckdb")
     test_local_dependencies(list(
         availability = function(...) {
             args <- list(...)

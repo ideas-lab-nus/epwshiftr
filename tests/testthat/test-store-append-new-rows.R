@@ -43,7 +43,6 @@ store_append_test__state <- function(store) {
 }
 
 test_that("append_new_rows skips stored keys and matches the earlier behavior", {
-    skip_if_not_installed("duckdb")
     new <- store_append_test__store()
     old <- store_append_test__store()
     seed <- store_append_test__rows(c("a", "b", "c"), v = "seed")
@@ -76,7 +75,6 @@ test_that("append_new_rows skips stored keys and matches the earlier behavior", 
 })
 
 test_that("append_new_rows keeps its failure behavior for bad keys", {
-    skip_if_not_installed("duckdb")
     new <- store_append_test__store()
     old <- store_append_test__store()
     # A repeated key inside one batch violates the primary key either way.
@@ -102,7 +100,6 @@ test_that("append_new_rows keeps its failure behavior for bad keys", {
 })
 
 test_that("append_new_rows handles factor keys and keys that need quoting", {
-    skip_if_not_installed("duckdb")
     store <- store_append_test__store()
     odd <- c(
         "it's",
@@ -129,7 +126,6 @@ test_that("append_new_rows handles factor keys and keys that need quoting", {
 })
 
 test_that("append_new_rows queries only the keys it inserts, in bounded chunks", {
-    skip_if_not_installed("duckdb")
     store <- store_append_test__store()
     stored <- sprintf("k%06d", seq(1L, 9000L, by = 2L))
     ddb_append_table(

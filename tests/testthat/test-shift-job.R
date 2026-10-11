@@ -5,8 +5,6 @@ test_local_dependencies(list(
 ))
 
 test_that("failed standalone steps expose recovery identity and resume in place", {
-    skip_if_not_installed("duckdb")
-
     attempts <- 0L
     file_docs <- esgf_test__file_docs("tas_day.nc")
     testthat::local_mocked_bindings(
@@ -79,8 +77,6 @@ test_that("failed standalone steps expose recovery identity and resume in place"
 })
 
 test_that("foreground interrupts persist one meaningful cancelled state", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-interrupt-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -129,8 +125,6 @@ test_that("foreground interrupts persist one meaningful cancelled state", {
 })
 
 test_that("background live sidecars carry transient reporter state without events", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-live-ui-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -196,8 +190,6 @@ test_that("background live sidecars carry transient reporter state without event
 })
 
 test_that("successful-run scientific diagnostics survive refresh", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-scientific-diagnostic-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -240,8 +232,6 @@ test_that("successful-run scientific diagnostics survive refresh", {
 })
 
 test_that("background runs register live jobs before launching workers", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-background-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -301,7 +291,6 @@ test_that("background runs register live jobs before launching workers", {
 
 test_that("live sidecars keep background handles readable while DuckDB is locked", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
     skip_on_os("windows")
 
     store_path <- tempfile("shift-live-lock-store-")
@@ -428,7 +417,6 @@ test_that("run readers distinguish Windows sharing violations from IO errors", {
 
 test_that("background workers retry transient DuckDB launch locks", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
     skip_on_os("windows")
 
     store_path <- tempfile("shift-worker-open-store-")

@@ -486,8 +486,6 @@ store_test__with_updated_query <- function(code) {
 # }}}
 # EsgStore$new() {{{
 test_that("EsgStore$new()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -618,8 +616,6 @@ test_that("site extraction cache is shared without store-local identities", {
 })
 
 test_that("EsgStore$new(create = FALSE)", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     EsgStore$new(dir)$close()
 
@@ -631,8 +627,6 @@ test_that("EsgStore$new(create = FALSE)", {
 })
 
 test_that("EsgStore$new() rejects older manifests", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     store$close()
@@ -659,8 +653,6 @@ test_that("EsgStore$new() rejects older manifests", {
 })
 
 test_that("store_reset() preserves an old store and creates the current schema", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-reset-")
     store <- EsgStore$new(dir)
     sentinel <- file.path(dir, "sentinel.txt")
@@ -700,8 +692,6 @@ test_that("store_reset() preserves an old store and creates the current schema",
 })
 
 test_that("store_reset() requires force for permanent removal", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-reset-force-")
     store <- EsgStore$new(dir)
     sentinel <- file.path(dir, "sentinel.txt")
@@ -725,8 +715,6 @@ test_that("store_reset() requires force for permanent removal", {
 })
 
 test_that("store_reset() refuses non-store and protected directories", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("not-an-esg-store-")
     dir.create(dir)
     writeLines("unrelated", file.path(dir, "keep.txt"))
@@ -744,8 +732,6 @@ test_that("store_reset() refuses non-store and protected directories", {
 })
 
 test_that("store_reset() initializes a missing store", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("missing-esg-store-")
     on.exit(unlink(dir, recursive = TRUE, force = TRUE), add = TRUE)
 
@@ -757,8 +743,6 @@ test_that("store_reset() initializes a missing store", {
 # }}}
 # EsgStore$close() {{{
 test_that("EsgStore$close()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     expect_true(store$is_open)
@@ -769,8 +753,6 @@ test_that("EsgStore$close()", {
 # }}}
 # EsgStore$downloader() {{{
 test_that("EsgStore$downloader()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -815,8 +797,6 @@ test_that("EsgStore$downloader()", {
 # }}}
 # EsgStore$get_meta() {{{
 test_that("EsgStore$get_meta()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -827,8 +807,6 @@ test_that("EsgStore$get_meta()", {
 # }}}
 # EsgStore$set_meta() {{{
 test_that("EsgStore$set_meta()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -845,8 +823,6 @@ test_that("EsgStore$set_meta()", {
 # }}}
 # EsgStore$add_query() {{{
 test_that("EsgStore$add_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -870,8 +846,6 @@ test_that("EsgStore$add_query()", {
 # }}}
 # EsgStore$queries() {{{
 test_that("EsgStore$queries()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -894,8 +868,6 @@ test_that("EsgStore$queries()", {
 # }}}
 # EsgStore$untrack_query() {{{
 test_that("EsgStore$untrack_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -912,8 +884,6 @@ test_that("EsgStore$untrack_query()", {
 # }}}
 # EsgStore$track_query() {{{
 test_that("EsgStore$track_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -930,8 +900,6 @@ test_that("EsgStore$track_query()", {
 # }}}
 # EsgStore$tag_query() {{{
 test_that("EsgStore$tag_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -947,8 +915,6 @@ test_that("EsgStore$tag_query()", {
 # }}}
 # EsgStore$query_tags() {{{
 test_that("EsgStore$query_tags()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -964,8 +930,6 @@ test_that("EsgStore$query_tags()", {
 # }}}
 # EsgStore$untag_query() {{{
 test_that("EsgStore$untag_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -981,8 +945,6 @@ test_that("EsgStore$untag_query()", {
 # }}}
 # EsgStore$require_query() {{{
 test_that("EsgStore$require_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1002,8 +964,6 @@ test_that("EsgStore$require_query()", {
 # }}}
 # EsgStore$query_graph() {{{
 test_that("EsgStore$query_graph()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1027,8 +987,6 @@ test_that("EsgStore$query_graph()", {
 # }}}
 # EsgStore$unrequire_query() {{{
 test_that("EsgStore$unrequire_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1049,8 +1007,6 @@ test_that("EsgStore$unrequire_query()", {
 # }}}
 # EsgStore$preview_update_queries() {{{
 test_that("EsgStore$preview_update_queries()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1141,8 +1097,6 @@ test_that("EsgStore$preview_update_queries()", {
 # }}}
 # EsgStore$update_queries() {{{
 test_that("EsgStore$update_queries()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1204,8 +1158,6 @@ test_that("EsgStore$update_queries()", {
 })
 
 test_that("EsgStore query update and download workflows release store lock around external work", {
-    skip_if_not_installed("duckdb")
-
     # Create a minimal tracked-query store and inject a collect mock that fails
     # if ESGF collection happens while EsgStore's manifest lock is held.
     with_lock_check_store <- function(code) {
@@ -1345,8 +1297,6 @@ test_that("EsgStore query update and download workflows release store lock aroun
 # }}}
 # EsgStore$query_files() {{{
 test_that("EsgStore$query_files()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1368,8 +1318,6 @@ test_that("EsgStore$query_files()", {
 # }}}
 # EsgStore$query_updates() {{{
 test_that("EsgStore$query_updates()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1391,8 +1339,6 @@ test_that("EsgStore$query_updates()", {
 # }}}
 # EsgStore$query_changes() {{{
 test_that("EsgStore$query_changes()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_updated_query(function(
         store,
         query_id,
@@ -1413,8 +1359,6 @@ test_that("EsgStore$query_changes()", {
 # }}}
 # EsgStore$download_preflight() {{{
 test_that("EsgStore$download_preflight()", {
-    skip_if_not_installed("duckdb")
-
     src <- tempfile(fileext = ".nc")
     writeLines("preflight netcdf placeholder", src)
 
@@ -1518,8 +1462,6 @@ test_that("EsgStore$download_preflight()", {
 # }}}
 # EsgStore$download_layout() {{{
 test_that("EsgStore$download_layout()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1531,8 +1473,6 @@ test_that("EsgStore$download_layout()", {
 # }}}
 # EsgStore$set_download_layout() {{{
 test_that("EsgStore$set_download_layout()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1618,8 +1558,6 @@ test_that("EsgStore$set_download_layout()", {
 # }}}
 # EsgStore$download_preflight() {{{
 test_that("EsgStore$download_preflight() reports layout issues", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1704,8 +1642,6 @@ test_that("EsgStore$download_preflight() reports layout issues", {
 # }}}
 # EsgStore$download_query() {{{
 test_that("EsgStore$download_query()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1724,8 +1660,6 @@ test_that("EsgStore$download_query()", {
 # }}}
 # EsgStore$download_status() {{{
 test_that("EsgStore$download_status()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1740,8 +1674,6 @@ test_that("EsgStore$download_status()", {
 # }}}
 # EsgStore$query_status() {{{
 test_that("EsgStore$query_status()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1759,8 +1691,6 @@ test_that("EsgStore$query_status()", {
 # }}}
 # EsgStore$workflow_status() {{{
 test_that("EsgStore$workflow_status()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1782,8 +1712,6 @@ test_that("EsgStore$workflow_status()", {
 # }}}
 # EsgStore$workflow_report() {{{
 test_that("EsgStore$workflow_report()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1806,8 +1734,6 @@ test_that("EsgStore$workflow_report()", {
 # }}}
 # EsgStore$retry_downloads() {{{
 test_that("EsgStore$retry_downloads()", {
-    skip_if_not_installed("duckdb")
-
     store_test__with_downloaded_query(function(
         store,
         dl,
@@ -1823,8 +1749,6 @@ test_that("EsgStore$retry_downloads()", {
 # }}}
 # EsgStore$remove_query() {{{
 test_that("EsgStore$remove_query()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1851,8 +1775,6 @@ test_that("EsgStore$remove_query()", {
 # }}}
 # EsgStore$prune_orphans() {{{
 test_that("EsgStore$prune_orphans()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1875,8 +1797,6 @@ test_that("EsgStore$prune_orphans()", {
 # }}}
 # EsgStore$remove_files() {{{
 test_that("EsgStore$remove_files()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1931,8 +1851,6 @@ test_that("EsgStore$remove_files()", {
 # }}}
 # EsgStore$storage_report() {{{
 test_that("EsgStore$storage_report()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -1971,8 +1889,6 @@ test_that("EsgStore$storage_report()", {
 # }}}
 # EsgStore$cleanup_downloads() {{{
 test_that("EsgStore$cleanup_downloads()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2009,8 +1925,6 @@ test_that("EsgStore$cleanup_downloads()", {
 # }}}
 # EsgStore$validate_files() {{{
 test_that("EsgStore$validate_files()", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2097,8 +2011,6 @@ test_that("EsgStore$validate_files()", {
 # }}}
 # EsgStore$validate_files() {{{
 test_that("EsgStore$validate_files(layout = TRUE)", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2161,8 +2073,6 @@ test_that("EsgStore$validate_files(layout = TRUE)", {
 # }}}
 # EsgStore$repair_files() {{{
 test_that("EsgStore$repair_files() clears missing records", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2227,8 +2137,6 @@ test_that("EsgStore$repair_files() clears missing records", {
 # }}}
 # EsgStore$repair_files() {{{
 test_that("EsgStore$repair_files() moves layout mismatches", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2302,8 +2210,6 @@ test_that("EsgStore$repair_files() moves layout mismatches", {
 # }}}
 # EsgStore$cleanup_downloads() {{{
 test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2375,8 +2281,6 @@ test_that("EsgStore$cleanup_downloads(scope = 'missing_records')", {
 # }}}
 # EsgStore$add_files() {{{
 test_that("EsgStore$add_files() catalogs File records", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2423,8 +2327,6 @@ test_that("EsgStore$add_files() catalogs File records", {
 })
 
 test_that("EsgStore$add_files() deduplicates File replicas", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2470,8 +2372,6 @@ test_that("EsgStore$add_files() deduplicates File replicas", {
 # }}}
 # EsgStore$plan_region() {{{
 test_that("EsgStore$plan_region() respects variable filters", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2500,8 +2400,6 @@ test_that("EsgStore$plan_region() respects variable filters", {
 # }}}
 # EsgStore$download_files() / EsgStore$sync_downloads() {{{
 test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
-    skip_if_not_installed("duckdb")
-
     src <- tempfile(fileext = ".nc")
     writeLines("local netcdf placeholder", src)
 
@@ -2543,8 +2441,6 @@ test_that("EsgStore$download_files() / EsgStore$sync_downloads()", {
 })
 
 test_that("EsgStore$download_files() releases store lock around downloader work", {
-    skip_if_not_installed("duckdb")
-
     # Build a small File result with an HTTPServer candidate so download_files()
     # can exercise both supplied-result and catalog-query branches.
     docs <- store_test__file_docs(path = "lock-download-files.nc")
@@ -2592,8 +2488,6 @@ test_that("EsgStore$download_files() releases store lock around downloader work"
 })
 
 test_that("EsgStore$download_files() selects catalog candidates before enqueueing", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2703,8 +2597,6 @@ test_that("store download plan helpers preserve catalog identity and schema", {
 })
 
 test_that("EsgStore download plan decoration recovers file keys from supplied rows", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2739,8 +2631,6 @@ test_that("EsgStore download plan decoration recovers file keys from supplied ro
 })
 
 test_that("EsgStore$download_files() aborts ambiguous catalog target collisions", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2783,8 +2673,6 @@ test_that("EsgStore$download_files() aborts ambiguous catalog target collisions"
 # }}}
 # EsgStore$add_files() {{{
 test_that("EsgStore$add_files() catalogs Aggregation records", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2808,8 +2696,6 @@ test_that("EsgStore$add_files() catalogs Aggregation records", {
 })
 
 test_that("EsgStore$add_files() records empty child query runs", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2851,8 +2737,6 @@ test_that("EsgStore$add_files() records empty child query runs", {
 })
 
 test_that("EsgStore$add_files() preserves File publish_path in stored query results", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2880,8 +2764,6 @@ test_that("EsgStore$add_files() preserves File publish_path in stored query resu
 # }}}
 # EsgStore$plan_region() {{{
 test_that("EsgStore$plan_region() creates extraction plans", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -2961,8 +2843,6 @@ test_that("EsgStore$plan_region() creates extraction plans", {
 })
 
 test_that("EsgStore$plan_region() rejects invalid plans", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
@@ -3004,8 +2884,6 @@ test_that("EsgStore$plan_region() rejects invalid plans", {
 # }}}
 # EsgStore$extract() {{{
 test_that("EsgStore$extract()", {
-    skip_if_not_installed("duckdb")
-
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
     on.exit(unlink(nc), add = TRUE)
@@ -3081,7 +2959,6 @@ test_that("EsgStore$extract()", {
 
 test_that("EsgStore open failures use HTTP fallback only in auto mode", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
 
     fixture <- store_test__planned_extract()
     store <- fixture$store
@@ -3123,7 +3000,6 @@ test_that("EsgStore open failures use HTTP fallback only in auto mode", {
 
 test_that("EsgStore metadata and read failures retry once through HTTP", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
 
     for (phase in c("metadata", "read")) {
         fixture <- store_test__planned_extract()
@@ -3204,8 +3080,6 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
 })
 
 test_that("EsgStore fallback errors retain both attempts in last_error", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__planned_extract()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3241,8 +3115,6 @@ test_that("EsgStore fallback errors retain both attempts in last_error", {
 })
 
 test_that("EsgStore fallback error mode does not download after read failure", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__planned_extract()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3293,8 +3165,6 @@ test_that("EsgStore fallback error mode does not download after read failure", {
 })
 
 test_that("EsgStore classifies persistence failures without another read", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__planned_extract()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3358,8 +3228,6 @@ test_that("EsgStore classifies persistence failures without another read", {
 })
 
 test_that("EsgStore$extract() persists and partitions calendar-native years", {
-    skip_if_not_installed("duckdb")
-
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(
         nc,
@@ -3429,8 +3297,6 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
 })
 
 test_that("EsgStore$extract() records failed plans", {
-    skip_if_not_installed("duckdb")
-
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
     on.exit(unlink(nc), add = TRUE)
@@ -3463,8 +3329,6 @@ test_that("EsgStore$extract() records failed plans", {
 })
 
 test_that("EsgStore$extract() detects output conflicts without manifest rows", {
-    skip_if_not_installed("duckdb")
-
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
     on.exit(unlink(nc), add = TRUE)
@@ -3515,8 +3379,6 @@ test_that("EsgStore$extract() detects output conflicts without manifest rows", {
 # }}}
 # EsgStore$summarise() {{{
 test_that("EsgStore$summarise()", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__completed_store()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3535,8 +3397,6 @@ test_that("EsgStore$summarise()", {
 # }}}
 # EsgStore$coverage() {{{
 test_that("EsgStore$coverage()", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__completed_store()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3552,8 +3412,6 @@ test_that("EsgStore$coverage()", {
 })
 
 test_that("EsgStore$coverage() detects incomplete outputs", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__completed_store()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3571,8 +3429,6 @@ test_that("EsgStore$coverage() detects incomplete outputs", {
 # }}}
 # EsgStore$assert_complete() {{{
 test_that("EsgStore$assert_complete()", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__completed_store()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3583,8 +3439,6 @@ test_that("EsgStore$assert_complete()", {
 # }}}
 # EsgStore$query() {{{
 test_that("EsgStore$query()", {
-    skip_if_not_installed("duckdb")
-
     fixture <- store_test__completed_store()
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
@@ -3740,8 +3594,6 @@ test_that("extraction persistence rolls back manifest changes on failure", {
 })
 
 test_that("EsgStore$plan_region() keeps identical files scoped to the current query", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)

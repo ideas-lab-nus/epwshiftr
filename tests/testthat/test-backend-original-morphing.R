@@ -1129,8 +1129,6 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
 
 test_that("exact Amon and LImon partitions gate File rows and extraction plans", {
     skip_on_cran()
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
 
     file_doc <- function(path, variable_id) {
         data.frame(
