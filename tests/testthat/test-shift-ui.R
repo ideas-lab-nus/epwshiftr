@@ -1878,7 +1878,12 @@ test_that("transient updates do not replace the last completed milestone", {
 test_that("heartbeat details update live state without unthrottled durable touches", {
     touches <- 0L
     testthat::local_mocked_bindings(
-        shift_job__job_touch = function(store, job_id, ui_state = NULL) {
+        shift_job__job_touch = function(
+            store,
+            job_id,
+            ui_state = NULL,
+            urgent = FALSE
+        ) {
             touches <<- touches + 1L
             invisible(NULL)
         },
@@ -1925,7 +1930,12 @@ test_that("dynamic frames advance faster than durable liveness", {
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
-        shift_job__job_touch = function(store, job_id, ui_state = NULL) {
+        shift_job__job_touch = function(
+            store,
+            job_id,
+            ui_state = NULL,
+            urgent = FALSE
+        ) {
             touches <<- touches + 1L
             invisible(NULL)
         },

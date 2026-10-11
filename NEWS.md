@@ -2,6 +2,8 @@
 
 * Compile each fixed package schema once per R process and reuse it for query, result, dictionary and shift workflow config validation, instead of recompiling the schema on every check. Validation rules and error messages are unchanged.
 
+* Coalesce live run snapshots. Within one process, ordinary changes to a run (events, case writes, heartbeats) rewrite the lock-free snapshot at most once per second, and a deferred write is delivered by the next heartbeat or change. Status changes, terminal run, step and job states, and new attempts are still written immediately, and the snapshot is always rebuilt from the manifest tables. The last reporter state is kept when a write carries none, instead of being erased.
+
 * Read a store's schema version at most once when it is opened, instead of twice. A new store reads nothing and a reopened one reads once for the version check; manifests with a missing or different version are still rejected and a matching version is not rewritten.
 
 * Append new rows to a store table by asking DuckDB only about the keys being inserted, instead of reading the table's whole key column into R. The cost of an append no longer grows with the table, and stored rows, duplicate-key and missing-key errors behave as before.

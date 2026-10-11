@@ -140,4 +140,189 @@ test_that("live snapshot of an unknown run writes nothing and a closed store err
     )
 })
 
+# Coalescing: bursts of changes inside one interval write once, while urgent
+# changes always write, and a deferred write is delivered later.
+shift_live_snapshot_test__record <- function(env = parent.frame()) {
+    writes <- new.env(parent = emptyenv())
+    writes$ui <- list()
+    original <- shift_job__live_snapshot_write
+    local_mocked_bindings(
+        shift_job__live_snapshot_write = function(
+            store,
+            run_id,
+            event_limit = 200L,
+            ui_state = NULL
+        ) {
+            # Wrap the value: assigning NULL into a list element is a no-op, so
+            # a bare NULL ui_state would leave the call unrecorded.
+            writes$ui[[length(writes$ui) + 1L]] <- list(ui_state)
+            invisible(NULL)
+        },
+        .package = "epwshiftr",
+        .env = env
+    )
+    writes
+}
+
+test_that("non-urgent snapshots coalesce inside the interval and urgent ones do not", {
+    skip_if_not_installed("duckdb")
+    store <- list(path = tempfile("coalesce-"))
+    writes <- shift_live_snapshot_test__record()
+    local_mocked_bindings(
+        shift_job__snapshot_interval = function() 3600,
+        .package = "epwshiftr"
+    )
+    key <- "run-coalesce"
+    withr::defer(rm(
+        list = ls(shift_job__snapshot_state, all.names = TRUE),
+        envir = shift_job__snapshot_state
+    ))
+
+    expect_true(shift_job__live_snapshot(store, key))
+    # Inside the interval a burst of ordinary changes is deferred.
+    for (i in 1:5) {
+        expect_false(shift_job__live_snapshot(store, key))
+    }
+    expect_length(writes$ui, 1L)
+    # An urgent change writes immediately, even inside the interval.
+    expect_true(shift_job__live_snapshot(store, key, urgent = TRUE))
+    expect_length(writes$ui, 2L)
+    expect_true(shift_job__live_snapshot(store, key, urgent = TRUE))
+    expect_length(writes$ui, 3L)
+    # Different runs and different stores never share an interval.
+    expect_true(shift_job__live_snapshot(store, "other-run"))
+    expect_true(shift_job__live_snapshot(list(path = "elsewhere"), key))
+    expect_length(writes$ui, 5L)
+})
+
+test_that("deferred snapshots are delivered once the interval has passed", {
+    skip_if_not_installed("duckdb")
+    store <- list(path = tempfile("flush-"))
+    writes <- shift_live_snapshot_test__record()
+    interval <- 3600
+    local_mocked_bindings(
+        shift_job__snapshot_interval = function() interval,
+        .package = "epwshiftr"
+    )
+    withr::defer(rm(
+        list = ls(shift_job__snapshot_state, all.names = TRUE),
+        envir = shift_job__snapshot_state
+    ))
+    key <- "run-flush"
+
+    # Nothing is pending before the first write, and an unknown run is a no-op.
+    expect_false(shift_job__live_snapshot_flush(store, key))
+    shift_job__live_snapshot(store, key)
+    expect_false(shift_job__live_snapshot_flush(store, key))
+    shift_job__live_snapshot(store, key)
+    # Pending, but the interval has not passed yet.
+    expect_false(shift_job__live_snapshot_flush(store, key))
+    expect_length(writes$ui, 1L)
+    # Once the interval passes, flush writes exactly once and clears the flag.
+    interval <- 0
+    expect_true(shift_job__live_snapshot_flush(store, key))
+    expect_length(writes$ui, 2L)
+    expect_false(shift_job__live_snapshot_flush(store, key))
+    expect_length(writes$ui, 2L)
+})
+
+test_that("a deferred snapshot keeps the last reporter state and a failed write stays pending", {
+    skip_if_not_installed("duckdb")
+    store <- list(path = tempfile("uistate-"))
+    writes <- shift_live_snapshot_test__record()
+    local_mocked_bindings(
+        shift_job__snapshot_interval = function() 3600,
+        .package = "epwshiftr"
+    )
+    withr::defer(rm(
+        list = ls(shift_job__snapshot_state, all.names = TRUE),
+        envir = shift_job__snapshot_state
+    ))
+    key <- "run-ui"
+
+    shift_job__live_snapshot(store, key, ui_state = list(unit = "first"))
+    # A later change that carries no reporter state keeps the last one.
+    shift_job__live_snapshot(store, key, ui_state = list(unit = "second"))
+    shift_job__live_snapshot(store, key, urgent = TRUE)
+    expect_identical(writes$ui[[1L]][[1L]], list(unit = "first"))
+    expect_identical(writes$ui[[2L]][[1L]], list(unit = "second"))
+
+    # A write that fails is not recorded, so the next call tries again.
+    attempts <- 0L
+    local_mocked_bindings(
+        shift_job__live_snapshot_write = function(store, run_id, ...) {
+            attempts <<- attempts + 1L
+            if (attempts == 1L) {
+                stop("disk full")
+            }
+            invisible(NULL)
+        },
+        .package = "epwshiftr"
+    )
+    expect_error(
+        shift_job__live_snapshot(store, "run-fails", urgent = TRUE),
+        "disk full"
+    )
+    expect_true(shift_job__live_snapshot(store, "run-fails"))
+    expect_identical(attempts, 2L)
+})
+
+test_that("resetting a run forgets its interval and its reporter state", {
+    skip_if_not_installed("duckdb")
+    store <- list(path = tempfile("reset-"))
+    writes <- shift_live_snapshot_test__record()
+    local_mocked_bindings(
+        shift_job__snapshot_interval = function() 3600,
+        .package = "epwshiftr"
+    )
+    withr::defer(rm(
+        list = ls(shift_job__snapshot_state, all.names = TRUE),
+        envir = shift_job__snapshot_state
+    ))
+    key <- "run-reset"
+
+    shift_job__live_snapshot(store, key, ui_state = list(unit = "old"))
+    expect_false(shift_job__live_snapshot(store, key))
+    shift_job__snapshot_reset(store, key)
+    # The next write is immediate again and carries no stale reporter state.
+    expect_true(shift_job__live_snapshot(store, key))
+    expect_null(writes$ui[[2L]][[1L]])
+    # Resetting an unknown run is harmless.
+    expect_silent(shift_job__snapshot_reset(store, "never-written"))
+})
+
+test_that("terminal changes write a snapshot immediately and ordinary ones coalesce", {
+    skip_if_not_installed("duckdb")
+    fixture <- shift_live_snapshot_test__run()
+    store <- fixture$store
+    run_id <- fixture$run_id
+    withr::defer(rm(
+        list = ls(shift_job__snapshot_state, all.names = TRUE),
+        envir = shift_job__snapshot_state
+    ))
+    local_mocked_bindings(
+        shift_job__snapshot_interval = function() 3600,
+        .package = "epwshiftr"
+    )
+    path <- shift_job__live_path(store$path, run_id)
+    live_status <- function() {
+        shift_job__live_run_get(run_id, store$path)@meta$run$status
+    }
+
+    shift_job__run_event(store, run_id, "extract", "running", "go")
+    first <- file.mtime(path)
+    expect_false(is.na(first))
+    # Ordinary events inside the interval leave the sidecar as it was.
+    for (i in 1:3) {
+        shift_job__run_event(store, run_id, "extract", "running", "again")
+    }
+    expect_identical(file.mtime(path), first)
+    # A terminal run update is written at once and shows the new status.
+    shift_job__run_finish(store, run_id, "failed", last_error = "boom")
+    expect_identical(live_status(), "failed")
+    # The terminal snapshot carries the events deferred before it.
+    events <- shift_job__live_run_get(run_id, store$path)@meta$events
+    expect_gte(sum(events$message == "again"), 3L)
+})
+
 # vim: fdm=marker :
