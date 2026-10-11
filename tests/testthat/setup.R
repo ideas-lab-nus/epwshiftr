@@ -17,6 +17,23 @@ withr::defer(
     envir = testthat::teardown_env()
 )
 
+# duckdb prints a storage-location notice from duckdb() until it has shown it
+# 60 times in a process. A serial run uses the allowance up early, but a fresh
+# test process, such as a parallel worker or one file run alone, prints it into
+# whatever output the first test captures. Giving duckdb an explicit home
+# removes the notice, and keeps tests from touching the user's ~/.duckdb.
+test_duckdb_home <- tempfile("epwshiftr-test-duckdb-")
+old_duckdb_option <- options("duckdb.home" = test_duckdb_home)
+withr::defer(
+    {
+        options(old_duckdb_option)
+        if (dir.exists(test_duckdb_home)) {
+            unlink(test_duckdb_home, recursive = TRUE, force = TRUE)
+        }
+    },
+    envir = testthat::teardown_env()
+)
+
 if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
     old_verbose <- options("epwshiftr.verbose" = TRUE)
 
