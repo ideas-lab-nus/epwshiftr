@@ -40,6 +40,7 @@ test_that("morph case failures update only their matching public case", {
 })
 
 test_that("shift_extract() fallback policy is available from collected files", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

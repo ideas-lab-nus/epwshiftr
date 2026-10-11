@@ -110,6 +110,7 @@ test_that("daily adjusted temperature produces a standard EPW result", {
 })
 
 test_that("all daily adjustment methods produce the same output contract", {
+    skip_on_cran()
     recipe_names <- paste0(
         unname(DAILY_ADJUSTMENT_METHOD_COMPONENTS),
         "_temperature"

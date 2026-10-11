@@ -816,6 +816,7 @@ test_that("downloader__range_probe_url() probes local files", {
 })
 
 test_that("downloader__range_probe_url() probes HTTP range metadata", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
 
     server <- local_downloader_http_server()
@@ -835,6 +836,7 @@ test_that("downloader__range_probe_url() probes HTTP range metadata", {
 # }}}
 # Downloader$run() {{{
 test_that("Downloader$run() downloads manifest-backed single-source pieces", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -943,6 +945,7 @@ test_that("Downloader$run() downloads pieces inside a persistent worker", {
 })
 
 test_that("Downloader$run() downloads multi-source range pieces", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -1453,6 +1456,7 @@ test_that("Downloader$cancel() cancels by task_id", {
 # }}}
 # Downloader$run() {{{
 test_that("Downloader$run() falls back across candidate URLs", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -1525,6 +1529,7 @@ test_that("Downloader$run() falls back across candidate URLs", {
 })
 
 test_that("Downloader$run() retries transient HTTP failures", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("webfakes")
 
@@ -2127,6 +2132,7 @@ test_that("Downloader$download() honors overwrite = FALSE", {
 })
 
 test_that("Downloader$download() restarts unsupported Range resume", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
 
     root <- tempfile("downloader-")
@@ -2154,6 +2160,7 @@ test_that("Downloader$download() restarts unsupported Range resume", {
 })
 
 test_that("Downloader$download() verifies checksum", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
 
     temp_dir <- tempfile()
@@ -2188,6 +2195,7 @@ test_that("Downloader$download() verifies checksum", {
 })
 
 test_that("Downloader$download() handles HTTP errors", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
 
     temp_dir <- tempfile()
@@ -2211,6 +2219,7 @@ test_that("Downloader$download() handles HTTP errors", {
 })
 
 test_that("Downloader$download() handles checksum mismatch", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
 
     temp_dir <- tempfile()

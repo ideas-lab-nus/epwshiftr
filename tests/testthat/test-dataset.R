@@ -1599,6 +1599,7 @@ test_that("EsgDataset$reachable() probes current remote data nodes without cache
 # }}}
 # EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return", {
+    skip_on_cran()
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1628,6 +1629,7 @@ test_that("EsgDataset$open(async = TRUE) keeps the dataset opened after return",
 })
 
 test_that("EsgDataset$open(async = TRUE) reports progress during caller-owned reopen", {
+    skip_on_cran()
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1655,6 +1657,7 @@ test_that("EsgDataset$open(async = TRUE) reports progress during caller-owned re
 # }}}
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-state checks", {
+    skip_on_cran()
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1704,6 +1707,7 @@ test_that("EsgDataset$var_get(async = TRUE) matches sync results and keeps open-
 # }}}
 # EsgDataset$read_array() {{{
 test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps open-state checks", {
+    skip_on_cran()
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1750,6 +1754,7 @@ test_that("EsgDataset$read_array(async = TRUE) matches sync results and keeps op
 # }}}
 # EsgDataset$read_data_table() {{{
 test_that("EsgDataset$read_data_table(async = TRUE) matches sync results and keeps open-state checks", {
+    skip_on_cran()
     path1 <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -1908,6 +1913,7 @@ test_that("EsgDataset$var_get(async = TRUE) supports concurrent local datasets",
 # }}}
 # EsgDataset$open() {{{
 test_that("EsgDataset$open(async = TRUE) failures leave the dataset closed and clean", {
+    skip_on_cran()
     path <- tempfile(fileext = ".nc")
     if (file.exists(path)) {
         unlink(path)
@@ -1996,6 +2002,7 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
 # }}}
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep sync handles usable", {
+    skip_on_cran()
     path <- local_dataset_table_file(
         time_vals = c(0, 1, 2),
         time_units = "days since 2000-01-01 00:00:00",
@@ -2124,6 +2131,7 @@ test_that("EsgDataset$close() best-effort cancels pending internal async work", 
 # }}}
 # private$cancel_async_task() {{{
 test_that("private$cancel_async_task() keeps cancelled terminal state", {
+    skip_on_cran()
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
         time_units = "days since 2000-01-01 00:00:00"

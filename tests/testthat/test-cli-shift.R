@@ -525,6 +525,7 @@ test_that("shift CLI registers, inspects, and cancels background batches", {
 
 
 test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_on_os("windows")
 
@@ -628,6 +629,7 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
 
 
 test_that("shift CLI executes and inspects one persisted workflow run", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

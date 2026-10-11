@@ -398,6 +398,7 @@ test_that("daily temperature transform validates frequency and reconstructs", {
 })
 
 test_that("daily temperature backend runs and resumes through EpwMorpher", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

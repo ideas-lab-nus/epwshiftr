@@ -26,6 +26,7 @@ test_that("empty collection is partial instead of waiting for another stage", {
 })
 
 test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

@@ -691,6 +691,7 @@ test_that("EsgResult$slice() / EsgResult$selection() context persists through sa
 # }}}
 # query_result__run_url_checks() {{{
 test_that("concurrent URL check wrappers preserve their HTTP semantics", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
 
     ok_server <- local_downloader_http_server()
@@ -738,6 +739,7 @@ test_that("concurrent URL check wrappers preserve their HTTP semantics", {
 })
 
 test_that("OPeNDAP URL checks require a valid DDS response", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
 
     # Use distinct local hosts because the callr-backed fixture server handles

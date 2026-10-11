@@ -358,6 +358,7 @@ test_that("baseline summaries and preflight preserve EPW missing-value evidence"
 })
 
 test_that("EpwMorpher isolates case failures and persists current case state", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
@@ -544,6 +545,7 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
 
 
 test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
@@ -699,6 +701,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
 })
 
 test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() complete strict outputs with recommended variables", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 
@@ -1122,6 +1125,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
 # A controlled threshold makes multiple backend components report identical
 # fallback warnings. The public workflow must persist them and still write EPW.
 test_that("repeated runtime warnings do not block EPW output or resume", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
     local_test_cache()

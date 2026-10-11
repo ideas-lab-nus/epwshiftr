@@ -367,6 +367,7 @@ test_that("empty child collection creates an empty local plan", {
 })
 
 test_that("batch windows seed child caches and resume verified native reads", {
+    skip_on_cran()
     cache_dir <- withr::local_tempdir()
     withr::local_options(list(epwshiftr.dir_cache = cache_dir))
     path <- tempfile(fileext = ".nc")
@@ -574,6 +575,7 @@ test_that("batch windows seed child caches and resume verified native reads", {
 # A partial recovery reads source values only for missing site cache keys and
 # retains an earlier completed receipt when that window must be extended.
 test_that("partial site recovery excludes cached consumers", {
+    skip_on_cran()
     withr::local_options(list(epwshiftr.dir_cache = withr::local_tempdir()))
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
@@ -680,6 +682,7 @@ test_that("partial site recovery excludes cached consumers", {
 })
 
 test_that("shared acquisition partitions large site collections", {
+    skip_on_cran()
     withr::local_options(list(epwshiftr.dir_cache = withr::local_tempdir()))
     path <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")

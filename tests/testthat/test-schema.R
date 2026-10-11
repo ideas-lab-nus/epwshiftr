@@ -253,6 +253,7 @@ schema_test_file_docs <- function() {
 # }}}
 # SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION {{{
 test_that("SCHEMA_RESULT_DATASET / SCHEMA_RESULT_FILE / SCHEMA_RESULT_AGGREGATION validate saved query result JSON fixtures", {
+    skip_on_cran()
     result_file <- test_path("_snaps", "query-result", "dataset.json")
     dataset_json <- jsonlite::fromJSON(
         result_file,

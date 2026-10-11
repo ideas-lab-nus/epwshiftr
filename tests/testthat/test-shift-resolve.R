@@ -425,6 +425,7 @@ test_that("resolver satisfies canonical hurs only from direct data or huss plus 
 })
 
 test_that("shift_collect() uses Dataset collection before File collection", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
 
     calls <- new.env(parent = emptyenv())

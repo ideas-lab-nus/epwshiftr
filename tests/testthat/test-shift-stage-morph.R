@@ -5,6 +5,7 @@ test_local_dependencies(list(
 ))
 
 test_that("humidity fallback persists a canonical hurs extraction artifact", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

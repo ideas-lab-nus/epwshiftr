@@ -1,5 +1,6 @@
 # epwshiftr_cli_query() {{{
 test_that("epwshiftr_cli_query() dispatches stored query commands", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
 
     fixture <- cli_test_store()

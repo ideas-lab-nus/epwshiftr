@@ -46,6 +46,7 @@ test_that("CMIP6 fixture copies share content but not mutable files", {
 # Each semantic input is exercised against the real writer, including the raw
 # year representation used by NetCDF metadata rather than only its integer year.
 test_that("CMIP6 fixture identity includes every generation argument", {
+    skip_on_cran()
     inputs <- list(
         list(year = 3050L),
         list(year = "03050"),

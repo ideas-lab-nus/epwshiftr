@@ -407,6 +407,7 @@ test_that("hourly frequency diagnostics validate only declared model variables",
 })
 
 test_that("hourly kernel QDM produces two physically closed EPW years", {
+    skip_on_cran()
     observed <- hourly_kqdm_test__role(2001L, "observed", "noleap")
     historical <- hourly_kqdm_test__model_role(
         1991L,
@@ -509,6 +510,7 @@ test_that("hourly kernel QDM produces two physically closed EPW years", {
 })
 
 test_that("longwave extension runs through reconstruction, QDM and EPW output", {
+    skip_on_cran()
     observed <- hourly_kqdm_test__role(2001L, "observed")
     longwave <- data.table::copy(observed[variable_id == "tas"])
     longwave[, `:=`(

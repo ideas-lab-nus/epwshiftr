@@ -1,6 +1,7 @@
 # Compare the public timestamp behavior with the established string parser,
 # including unusual inputs that remain on the compatibility path.
 test_that("EPW numeric timestamps preserve Gregorian dates and UTC attributes", {
+    skip_on_cran()
     # The former implementation is an independent oracle for date conversion.
     reference <- function(year, month, day, hour) {
         safe_year <- as.integer(year)

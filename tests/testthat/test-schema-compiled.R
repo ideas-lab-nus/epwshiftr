@@ -17,6 +17,7 @@ test_that("schema__compiled() rejects unknown schema names", {
 })
 
 test_that("compiled validation reports the same diagnostics as document validation", {
+    skip_on_cran()
     # An empty list violates every package schema's required structure; the
     # message must not depend on whether the compiled form was cached.
     for (name in names(schema__compiled_documents)) {

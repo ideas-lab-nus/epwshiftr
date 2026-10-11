@@ -1,4 +1,5 @@
 test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

@@ -279,6 +279,7 @@ test_that("network validation and doctor share reanalysis readiness checks", {
 })
 
 test_that("dry-run batch receipts reopen offline through CLI and R", {
+    skip_on_cran()
     test_local_dependencies(cli_batch__local_catalog())
     config <- epwshiftr_cli_shift_config_example(c(
         "--methods",
@@ -479,6 +480,7 @@ test_that("failed batch execution returns a nonzero CLI status with its receipt"
 })
 
 test_that("persisted batch plans execute, reuse artifacts, and repair missing exports", {
+    skip_on_cran()
     skip_if_not_installed("RNetCDF")
     skip_if_not_installed("duckdb")
     test_local_dependencies(list(

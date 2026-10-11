@@ -28,6 +28,7 @@ test_that("morph CLI expands variable settings and JSON vector values", {
 })
 
 test_that("morph CLI lists metadata, runs morphing, writes EPW, and reports outputs", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

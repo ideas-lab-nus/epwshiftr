@@ -5,6 +5,7 @@ test_local_dependencies(list(
 ))
 
 test_that("shift_morph() resolves automatic and manual historical references", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

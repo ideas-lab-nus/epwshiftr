@@ -3080,6 +3080,7 @@ test_that("EsgStore$extract()", {
 })
 
 test_that("EsgStore open failures use HTTP fallback only in auto mode", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
 
     fixture <- store_test__planned_extract()
@@ -3121,6 +3122,7 @@ test_that("EsgStore open failures use HTTP fallback only in auto mode", {
 })
 
 test_that("EsgStore metadata and read failures retry once through HTTP", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
 
     for (phase in c("metadata", "read")) {

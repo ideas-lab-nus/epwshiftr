@@ -5,6 +5,7 @@ test_local_dependencies(list(
 ))
 
 test_that("shift_epw_future() preserves strict and partial missing-scenario outcomes", {
+    skip_on_cran()
     local_test_cache()
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
     skip_if_not_installed("duckdb")

@@ -312,6 +312,7 @@ test_that("Quantile-mapping morphing public method persists both reference roles
 })
 
 test_that("EpwMorpher persists and executes the observed reference separately", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_if_not_installed("RNetCDF")
 

@@ -356,6 +356,7 @@ test_that("new site inputs validate EPW generation metadata before discovery", {
 })
 
 test_that("multi-site batches execute locally and reuse each site's outputs", {
+    skip_on_cran()
     # Fixture catalog identities must not reuse another test's disk cache.
     local_test_cache()
     withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())

@@ -2,6 +2,7 @@
 # child stores without any ESGF requests. Short fixtures may fail the weather
 # method's coverage check; their native source reading must still finish.
 test_that("background batches share reads through one coordinator", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)

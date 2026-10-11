@@ -300,6 +300,7 @@ test_that("background runs register live jobs before launching workers", {
 })
 
 test_that("live sidecars keep background handles readable while DuckDB is locked", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_on_os("windows")
 
@@ -426,6 +427,7 @@ test_that("run readers distinguish Windows sharing violations from IO errors", {
 })
 
 test_that("background workers retry transient DuckDB launch locks", {
+    skip_on_cran()
     skip_if_not_installed("duckdb")
     skip_on_os("windows")
 

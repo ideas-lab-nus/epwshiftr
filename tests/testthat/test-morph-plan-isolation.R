@@ -31,6 +31,7 @@ morph_isolation_test__plan <- function(store, root, name, year, offset = 0) {
 }
 
 test_that('observed references and output status remain isolated between morph plans', {
+    skip_on_cran()
     skip_if_not_installed('duckdb')
     skip_if_not_installed('RNetCDF')
     root <- tempfile('morph-isolation-')
