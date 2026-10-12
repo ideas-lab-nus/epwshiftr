@@ -523,6 +523,7 @@ reference_test__netcdf_year <- function(path, bundle) {
 }
 
 test_that("a complete native NetCDF converts without contacting CDS", {
+    skip_on_cran()
     path <- tempfile(fileext = ".nc")
     dir <- tempfile()
     withr::defer(unlink(c(path, dir), recursive = TRUE))

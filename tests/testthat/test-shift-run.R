@@ -5,8 +5,6 @@ test_local_dependencies(list(
 ))
 
 test_that("empty collection is partial instead of waiting for another stage", {
-    skip_if_not_installed("duckdb")
-
     calls <- new.env(parent = emptyenv())
     calls$values <- character()
     calls$file_fields <- list()
@@ -26,8 +24,7 @@ test_that("empty collection is partial instead of waiting for another stage", {
 })
 
 test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
+    skip_on_cran()
 
     nc <- file.path(tempdir(), local_cmip6_nc_file(2060L, variable_id = "tas"))
     write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")

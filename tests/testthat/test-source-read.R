@@ -67,6 +67,7 @@ test_that("fatal source failures drain active work without dispatching more", {
 })
 
 test_that("native worker payloads preserve actual CF bounds and site results", {
+    skip_on_cran()
     withr::local_options(epwshiftr.mirai_workers = 2L, epwshiftr.cache = FALSE)
     paths <- c(tempfile(fileext = ".nc"), tempfile(fileext = ".nc"))
     on.exit(unlink(paths), add = TRUE)

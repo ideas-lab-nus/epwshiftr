@@ -74,8 +74,6 @@ test_that("historical workflow queries preserve years without exact datetime bou
 })
 
 test_that("workflow File collection fills omitted ESGF times from DRS names", {
-    skip_if_not_installed("duckdb")
-
     calls <- new.env(parent = emptyenv())
     calls$values <- character()
     calls$file_fields <- list()
@@ -111,8 +109,6 @@ test_that("workflow File collection fills omitted ESGF times from DRS names", {
 })
 
 test_that("workflow resolver resolves both File service paths", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-service-store-")
     store <- EsgStore$new(store_path)
     docs <- esgf_test__file_docs(
@@ -425,7 +421,7 @@ test_that("resolver satisfies canonical hurs only from direct data or huss plus 
 })
 
 test_that("shift_collect() uses Dataset collection before File collection", {
-    skip_if_not_installed("duckdb")
+    skip_on_cran()
 
     calls <- new.env(parent = emptyenv())
     calls$values <- character()
@@ -586,8 +582,6 @@ test_that("shift_collect() uses Dataset collection before File collection", {
 })
 
 test_that("rejected resolver nodes remain results rather than diagnostics", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-rejected-node-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -857,8 +851,6 @@ test_that("CMIP6 resolver preserves explicit member/grid choices and rejects tie
 })
 
 test_that("workflow resolver removes HTTP-only files when downloads are forbidden", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-opendap-only-store-")
     store <- EsgStore$new(store_path)
     docs <- esgf_test__file_docs(

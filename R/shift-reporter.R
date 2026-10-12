@@ -870,7 +870,23 @@ ShiftReporter <- R6::R6Class(
                     private$stage,
                     "working"
                 ))
-                private$touch_job(force = TRUE)
+                # A caller that forces the heartbeat wants it visible at once.
+                private$touch_job(force = TRUE, urgent = isTRUE(force))
+            } else if (
+                !is.null(private$store) && !is.null(private$run_id_value)
+            ) {
+                # Publish a snapshot an earlier burst deferred. R has no timer,
+                # so a deferred write waits for the next heartbeat or change in
+                # this process; the lag is bounded by that cadence, not by the
+                # snapshot interval alone. Best effort: it must never replace
+                # the workflow's own error.
+                try(
+                    shift_job__live_snapshot_flush(
+                        private$store,
+                        private$run_id_value
+                    ),
+                    silent = TRUE
+                )
             }
             if (identical(private$mode_value, "none")) {
                 return(invisible(due_liveness))
@@ -1235,7 +1251,12 @@ ShiftReporter <- R6::R6Class(
                 snapshot = FALSE,
                 step_id = private$step_id_value
             )
-            private$touch_job(force = TRUE)
+            # Ordinary milestones may coalesce; a terminal milestone must not.
+            private$touch_job(
+                force = TRUE,
+                urgent = status %in%
+                    c("completed", "partial", "failed", "cancelled")
+            )
             invisible(NULL)
         },
         # }}}
@@ -1243,7 +1264,7 @@ ShiftReporter <- R6::R6Class(
         # Best-effort heartbeat updates must never replace the workflow error
         # that triggered reporter cleanup.
         # touch_job {{{
-        touch_job = function(force = FALSE) {
+        touch_job = function(force = FALSE, urgent = FALSE) {
             now <- Sys.time()
             due <- isTRUE(force) ||
                 is.na(private$last_liveness) ||
@@ -1266,7 +1287,8 @@ ShiftReporter <- R6::R6Class(
                     shift_job__job_touch(
                         private$store,
                         private$job_id_value,
-                        ui_state = private$view_state()
+                        ui_state = private$view_state(),
+                        urgent = urgent
                     ),
                     silent = TRUE
                 )

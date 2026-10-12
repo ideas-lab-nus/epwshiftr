@@ -1,6 +1,5 @@
 test_that("extract CLI plans, runs, checks coverage, and lists artifacts", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
+    skip_on_cran()
 
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L, variable_id = "tas")

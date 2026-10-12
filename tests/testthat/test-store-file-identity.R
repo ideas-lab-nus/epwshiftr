@@ -1,6 +1,5 @@
 # Dataset-scoped IDs returned by a bridge must not merge distinct time slices.
 test_that("dataset master IDs retain each native file and deduplicate replicas", {
-    skip_if_not_installed("duckdb")
     dataset <- "CMIP6.CMIP.CMCC.CMCC-ESM2.historical.r1i1p1f1.day.tas.gn"
     filenames <- paste0(
         "tas_day_CMCC-ESM2_historical_r1i1p1f1_gn_",

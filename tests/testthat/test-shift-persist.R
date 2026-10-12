@@ -5,8 +5,6 @@ test_local_dependencies(list(
 ))
 
 test_that("an identical complete workflow returns its original durable run", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-idempotent-run-store-")
     output_dir <- tempfile("shift-idempotent-run-output-")
     plan <- shift_epw_future(
@@ -135,8 +133,6 @@ test_that("an identical complete workflow returns its original durable run", {
 })
 
 test_that("an identical interrupted workflow resumes its original run ID", {
-    skip_if_not_installed("duckdb")
-
     store_path <- tempfile("shift-idempotent-resume-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),

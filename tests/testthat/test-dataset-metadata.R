@@ -255,6 +255,7 @@ test_that("batch prefetch shares selected bounds across value windows", {
 # Ordinary point reads must retain real, irregular intervals while avoiding
 # bounds outside the requested window. Repeated cities reuse the same subset.
 test_that("point reads reuse selected actual bounds without loading the full axis", {
+    skip_on_cran()
     for (calendar in c("365_day", "360_day", "proleptic_gregorian")) {
         path <- tempfile(fileext = ".nc")
         write_local_cmip6_netcdf_fixture(path, 2060L, calendar = calendar)
@@ -331,7 +332,7 @@ test_that("point reads reuse selected actual bounds without loading the full axi
 
 # Independent Dataset objects must not reset each other's compute profiles.
 test_that("concurrent dataset tasks in one process retain separate backends", {
-    skip_if_not_installed("mirai")
+    skip_on_cran()
     datasets <- lapply(seq_len(2L), function(index) EsgDataset$new("unused.nc"))
     on.exit(lapply(datasets, function(dataset) dataset$close()), add = TRUE)
     tasks <- lapply(seq_along(datasets), function(index) {

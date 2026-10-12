@@ -1155,8 +1155,8 @@ shift_inspect__stage_query_result <- function(
 
     schema <- switch(
         run$result_type[[1L]],
-        File = SCHEMA_RESULT_FILE,
-        Aggregation = SCHEMA_RESULT_AGGREGATION,
+        File = schema__compiled("RESULT_FILE"),
+        Aggregation = schema__compiled("RESULT_AGGREGATION"),
         cli::cli_abort(
             "Unsupported stored query result type: {.val {run$result_type[[1L]]}}."
         )
@@ -2414,12 +2414,29 @@ shift_inspect__completion <- function(cases, outputs, diagnostics) {
 # successful results. Callers decide explicitly whether a read failure is optional.
 # shift_inspect__rows {{{
 shift_inspect__rows <- function(store, table, key, ids) {
-    conn <- morpher__private_store(store)$conn
-    store$query(sprintf(
-        "SELECT * FROM %s WHERE %s IN (%s)",
-        ddb_ident(conn, table),
-        ddb_ident(conn, key),
-        shift_stage__query_ids(ids)
+    # morpher__private_store() already rejects a closed store, so query the
+    # connection directly instead of re-checking it through store$query().
+    shift_inspect__rows_conn(
+        morpher__private_store(store)$conn,
+        table,
+        key,
+        ids
+    )
+}
+# }}}
+
+# Read identity rows from a connection the caller has already verified. Callers
+# that issue several reads in one step check the store once and reuse this.
+# shift_inspect__rows_conn {{{
+shift_inspect__rows_conn <- function(conn, table, key, ids) {
+    data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            "SELECT * FROM %s WHERE %s IN (%s)",
+            ddb_ident(conn, table),
+            ddb_ident(conn, key),
+            shift_stage__query_ids(ids)
+        )
     ))
 }
 # }}}

@@ -141,7 +141,12 @@ dict__save <- function(
         sources,
         indices
     )
-    schema_validate(SCHEMA_ESG_DICT, payload, mode = "assert", name = path)
+    schema_validate(
+        schema__compiled("ESG_DICT"),
+        payload,
+        mode = "assert",
+        name = path
+    )
     dict__validate(payload, name = path)
     store_write_json_atomic(
         payload,
@@ -166,7 +171,12 @@ dict__load <- function(path, project = "CMIP6") {
     }
 
     payload <- jsonlite::read_json(path, simplifyVector = FALSE)
-    schema_validate(SCHEMA_ESG_DICT, payload, mode = "assert", name = path)
+    schema_validate(
+        schema__compiled("ESG_DICT"),
+        payload,
+        mode = "assert",
+        name = path
+    )
     dict__validate(payload, name = path)
 
     loaded_project <- dict__project(payload$project)

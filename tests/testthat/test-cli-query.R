@@ -1,6 +1,6 @@
 # epwshiftr_cli_query() {{{
 test_that("epwshiftr_cli_query() dispatches stored query commands", {
-    skip_if_not_installed("duckdb")
+    skip_on_cran()
 
     fixture <- cli_test_store()
     dir <- fixture$dir
@@ -367,8 +367,6 @@ test_that("epwshiftr_cli_query() dispatches stored query commands", {
 # }}}
 # epwshiftr_cli_query() {{{
 test_that("epwshiftr_cli_query() dispatches ESGF-backed query commands", {
-    skip_if_not_installed("duckdb")
-
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)

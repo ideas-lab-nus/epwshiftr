@@ -1,6 +1,7 @@
 # Pool lifecycle checks retain real concurrent execution and exercise shutdown
 # immediately after cancellation or timeout, where native IPC waits occurred.
 test_that("owned mirai pools preserve concurrency and survive interrupted tasks", {
+    skip_on_cran()
     profile <- paste0("epwshiftr-lifecycle-", Sys.getpid())
     on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)
     mirai__start_pool(2L, .compute = profile)
@@ -33,6 +34,7 @@ test_that("owned mirai pools preserve concurrency and survive interrupted tasks"
 
 # The copyable module's pool helper must run without the package namespace.
 test_that("standalone worker startup has no host-package dependencies", {
+    skip_on_cran()
     start <- downloader__start_pool
     environment(start) <- baseenv()
     profile <- paste0("standalone-lifecycle-", Sys.getpid())

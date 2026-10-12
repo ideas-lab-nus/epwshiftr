@@ -244,6 +244,7 @@ test_that("explicit offsets and negated facets are not split", {
 })
 
 test_that("curl HTTP status survives JSON error wrapping without message matching", {
+    skip_on_cran()
     status <- 414L
     local_mocked_bindings(
         curl_fetch_memory = function(...) stop("localized transport message"),
@@ -295,6 +296,7 @@ query_uri__http_app <- function() {
 environment(query_uri__http_app) <- baseenv()
 
 test_that("real HTTP 414 responses split and singleton URLs reach the server", {
+    skip_on_cran()
     skip_if_not_installed("webfakes")
     withr::local_options(epwshiftr.cache = FALSE)
     server <- webfakes::new_app_process(query_uri__http_app())

@@ -1,7 +1,5 @@
 # epwshiftr_cli() {{{
 test_that("epwshiftr_cli() emits JSON output and dispatch errors", {
-    skip_if_not_installed("duckdb")
-
     fixture <- cli_test_store()
     dir <- fixture$dir
     store <- fixture$store

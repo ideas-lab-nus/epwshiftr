@@ -46,7 +46,6 @@ cli_test_file_docs <- function(path = "cli-file.nc", download_url = NULL) {
 
 # cli_test_store {{{
 cli_test_store <- function(label = "cli query", track = TRUE) {
-    skip_if_not_installed("duckdb")
     dir <- tempfile("esg-store-")
     store <- EsgStore$new(dir)
     query_id <- store$add_query(

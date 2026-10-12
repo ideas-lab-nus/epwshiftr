@@ -428,6 +428,7 @@ test_that("disabled precipitation preserves baseline EPW fields", {
 
 
 test_that("Original morphing runner behavior is fixed across modes and profiles", {
+    skip_on_cran()
     epw <- epw_file_read(get_cache_epw())
     future <- enhanced_test__change_climate()
     reference <- enhanced_test__change_climate(reference = TRUE)
@@ -489,6 +490,7 @@ test_that("Original morphing runner behavior is fixed across modes and profiles"
 
 
 test_that("Original morphing production case contexts preserve identity and isolation", {
+    skip_on_cran()
     epw <- epw_file_read(get_cache_epw())
     future_a <- enhanced_test__change_climate()
     reference_a <- enhanced_test__change_climate(reference = TRUE)
@@ -1126,8 +1128,7 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
 
 
 test_that("exact Amon and LImon partitions gate File rows and extraction plans", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
+    skip_on_cran()
 
     file_doc <- function(path, variable_id) {
         data.frame(

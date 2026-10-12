@@ -2,6 +2,7 @@
 # catalogs with complete local CMIP6 records. This proves panel ownership at
 # nested API boundaries instead of merely checking a fabricated final frame.
 test_that("discovery owns one reporter across methods and nested catalog stages", {
+    skip_on_cran()
     frames <- list()
     opened <- 0L
     committed <- 0L

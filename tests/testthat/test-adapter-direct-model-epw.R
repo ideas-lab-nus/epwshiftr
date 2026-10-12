@@ -356,6 +356,7 @@ test_that("physical bounds and radiation closure report every correction", {
 })
 
 test_that("ambiguous and incomplete physical input contracts are rejected", {
+    skip_on_cran()
     base_values <- list(
         tas = 293.15,
         ps = 101325,

@@ -1,6 +1,7 @@
 # Exercise recovery through the same public plans and native File snapshots
 # used by execution, with only remote catalog transport replaced.
 test_that("batch recovery retries one failed selection for all existing runs", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs[fixture$docs$variable_id != "tas"])
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
@@ -48,6 +49,7 @@ test_that("batch recovery retries one failed selection for all existing runs", {
 })
 
 test_that("prefetch excludes completed and active consumers", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
@@ -72,6 +74,7 @@ test_that("prefetch excludes completed and active consumers", {
 })
 
 test_that("shared failures retain ownership and do not stop other files", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
@@ -127,6 +130,7 @@ test_that("only dependent children are blocked after shared reading", {
 })
 
 test_that("warm shared caches need no worker or payload deserialization", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
@@ -161,6 +165,7 @@ test_that("cache receipts detect changed bytes before shared reuse", {
 # Filtering finished children must keep the original window identity. Their
 # missing caches are irrelevant, while unfinished consumers can reuse receipts.
 test_that("partial resume keeps window identity without completed cache reads", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)

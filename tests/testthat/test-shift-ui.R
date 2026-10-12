@@ -1067,8 +1067,6 @@ test_that("normal resolver tables abbreviate repeated errors", {
 })
 
 test_that("startup plan summaries include output and selection without a full dump", {
-    skip_if_not_installed("duckdb")
-
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6(
@@ -1144,8 +1142,6 @@ test_that("persisted plan context reports the public transform tuple", {
 })
 
 test_that("dynamic startup is a replaceable first frame rather than a transcript", {
-    skip_if_not_installed("duckdb")
-
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("BCC-CSM2-MR", c("ssp126", "ssp585")),
@@ -1403,8 +1399,6 @@ test_that("flow rail chooses semantic compact variants instead of clipping", {
 })
 
 test_that("shift_watch() renders the shared status view instead of one long string", {
-    skip_if_not_installed("duckdb")
-
     store <- tempfile("shift-watch-view-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -1546,8 +1540,6 @@ test_that("generic operation reporters preserve receipts in log and dynamic mode
 })
 
 test_that("dynamic watch animates cached state between store polls", {
-    skip_if_not_installed("duckdb")
-
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
         climate = shift_cmip6("BCC-CSM2-MR", "ssp585"),
@@ -1878,7 +1870,12 @@ test_that("transient updates do not replace the last completed milestone", {
 test_that("heartbeat details update live state without unthrottled durable touches", {
     touches <- 0L
     testthat::local_mocked_bindings(
-        shift_job__job_touch = function(store, job_id, ui_state = NULL) {
+        shift_job__job_touch = function(
+            store,
+            job_id,
+            ui_state = NULL,
+            urgent = FALSE
+        ) {
             touches <<- touches + 1L
             invisible(NULL)
         },
@@ -1925,7 +1922,12 @@ test_that("dynamic frames advance faster than durable liveness", {
         .package = "epwshiftr"
     )
     testthat::local_mocked_bindings(
-        shift_job__job_touch = function(store, job_id, ui_state = NULL) {
+        shift_job__job_touch = function(
+            store,
+            job_id,
+            ui_state = NULL,
+            urgent = FALSE
+        ) {
             touches <<- touches + 1L
             invisible(NULL)
         },

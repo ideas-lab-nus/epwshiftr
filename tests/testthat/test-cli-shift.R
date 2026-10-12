@@ -5,8 +5,6 @@ test_local_dependencies(list(
 ))
 
 test_that("summary plan IDs prefer normalized lineage and support legacy rows", {
-    skip_if_not_installed("duckdb")
-
     store <- EsgStore$new(tempfile("summary-plan-store-"))
     on.exit(store$close(), add = TRUE)
     lineage <- data.frame(
@@ -43,8 +41,6 @@ test_that("summary plan IDs prefer normalized lineage and support legacy rows", 
 })
 
 test_that("shift run validates the task-oriented JSON config", {
-    skip_if_not_installed("duckdb")
-
     store <- tempfile("esg-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
@@ -427,7 +423,6 @@ test_that("shift CLI maps reduced motion independently from detail", {
 
 
 test_that("shift CLI registers, inspects, and cancels background batches", {
-    skip_if_not_installed("duckdb")
     store <- tempfile("esg-background-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
@@ -525,7 +520,7 @@ test_that("shift CLI registers, inspects, and cancels background batches", {
 
 
 test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
-    skip_if_not_installed("duckdb")
+    skip_on_cran()
     skip_on_os("windows")
 
     store <- tempfile("esg-background-lock-store-")
@@ -628,8 +623,7 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
 
 
 test_that("shift CLI executes and inspects one persisted workflow run", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
+    skip_on_cran()
 
     variables <- epw_morph_variables(
         transform__recipe(monthly_transform("epwshiftr"))

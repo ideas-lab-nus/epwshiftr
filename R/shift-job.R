@@ -937,7 +937,13 @@ shift_job__run_event <- function(
         "event_id"
     )
     if (isTRUE(snapshot)) {
-        shift_job__live_snapshot_write(store, run_id)
+        # A terminal event must reach observers at once; others may coalesce.
+        shift_job__live_snapshot(
+            store,
+            run_id,
+            urgent = status %in%
+                c("completed", "partial", "failed", "cancelled")
+        )
     }
     invisible(row)
 }
@@ -1059,7 +1065,10 @@ shift_job__job_create <- function(
         force = TRUE
     )
     private$append_new_rows("shift_run_job", row, "job_id")
-    shift_job__live_snapshot_write(store, run_id)
+    # A new attempt decides whether observers see an active run: write now, and
+    # drop any reporter state a previous attempt in this process left behind.
+    shift_job__snapshot_reset(store, run_id)
+    shift_job__live_snapshot(store, run_id, urgent = TRUE)
     row
 }
 # }}}
@@ -1072,7 +1081,8 @@ shift_job__job_update <- function(
     job_id,
     ...,
     .snapshot = TRUE,
-    .ui_state = NULL
+    .ui_state = NULL,
+    .urgent = FALSE
 ) {
     wanted_job_id <- job_id
     row <- shift_inspect__rows(store, "shift_run_job", "job_id", wanted_job_id)
@@ -1096,10 +1106,12 @@ shift_job__job_update <- function(
         unique(c(names(updates), "updated_at"))
     )
     if (isTRUE(.snapshot)) {
-        shift_job__live_snapshot_write(
+        # Heartbeat-only updates coalesce; any status change writes at once.
+        shift_job__live_snapshot(
             store,
             row$run_id[[1L]],
-            ui_state = .ui_state
+            ui_state = .ui_state,
+            urgent = isTRUE(.urgent) || "status" %in% names(updates)
         )
     }
     invisible(row)
@@ -1109,12 +1121,18 @@ shift_job__job_update <- function(
 # Update the worker heartbeat only at reporter callbacks and workflow
 # boundaries; this is deliberately separate from transient Console animation.
 # shift_job__job_touch {{{
-shift_job__job_touch <- function(store, job_id, ui_state = NULL) {
+shift_job__job_touch <- function(
+    store,
+    job_id,
+    ui_state = NULL,
+    urgent = FALSE
+) {
     shift_job__job_update(
         store,
         job_id,
         heartbeat_at = store__now(),
-        .ui_state = ui_state
+        .ui_state = ui_state,
+        .urgent = urgent
     )
 }
 # }}}
@@ -1462,7 +1480,13 @@ shift_job__run_update <- function(store, run_id, ...) {
         row,
         unique(c(names(updates), "updated_at"))
     )
-    shift_job__live_snapshot_write(store, run_id)
+    # Every terminal state goes through shift_job__run_finish(), which sets a
+    # status, so terminal run updates are always written immediately.
+    shift_job__live_snapshot(
+        store,
+        run_id,
+        urgent = "status" %in% names(updates)
+    )
     invisible(row)
 }
 # }}}
@@ -1527,7 +1551,9 @@ shift_job__run_cases_write <- function(store, run_id, cases) {
     )
     private$delete_by_key("shift_run_case", "run_id", run_id)
     private$append_new_rows("shift_run_case", rows, "run_case_id")
-    shift_job__live_snapshot_write(store, run_id)
+    # The case matrix is rewritten as a whole and the run's terminal update
+    # follows it, so this write may coalesce.
+    shift_job__live_snapshot(store, run_id)
     invisible(cases)
 }
 # }}}
@@ -1723,7 +1749,11 @@ shift_job__step_update <- function(store, step_id, ...) {
         row,
         unique(c(names(updates), "updated_at"))
     )
-    shift_job__live_snapshot_write(store, row$run_id[[1L]])
+    shift_job__live_snapshot(
+        store,
+        row$run_id[[1L]],
+        urgent = "status" %in% names(updates)
+    )
     invisible(row)
 }
 # }}}
@@ -2018,43 +2048,38 @@ shift_job__live_snapshot_write <- function(
     ui_state = NULL
 ) {
     wanted_run_id <- run_id
-    run <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
+    # Verify the store once. The six reads below run back to back in this
+    # single-threaded step, so re-checking the connection before each one only
+    # repeats the same answer; a connection failure still surfaces from DuckDB.
+    conn <- morpher__private_store(store)$conn
+    rows <- function(table, key, ids) {
+        shift_inspect__rows_conn(conn, table, key, ids)
+    }
+    run <- rows("shift_run", "run_id", wanted_run_id)
     if (!nrow(run)) {
         return(invisible(NULL))
     }
-    cases <- shift_inspect__rows(
-        store,
-        "shift_run_case",
-        "run_id",
-        wanted_run_id
-    )
+    cases <- rows("shift_run_case", "run_id", wanted_run_id)
     checkmate::assert_count(event_limit, positive = FALSE)
-    events <- store$query(sprintf(
-        paste(
-            "SELECT * FROM (SELECT * FROM shift_run_event WHERE run_id IN (%s)",
-            "ORDER BY created_at DESC LIMIT %d) ORDER BY created_at"
-        ),
-        shift_stage__query_ids(wanted_run_id),
-        as.integer(event_limit)
+    events <- data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            paste(
+                "SELECT * FROM (SELECT * FROM shift_run_event WHERE run_id IN (%s)",
+                "ORDER BY created_at DESC LIMIT %d) ORDER BY created_at"
+            ),
+            shift_stage__query_ids(wanted_run_id),
+            as.integer(event_limit)
+        )
     ))
-    jobs <- shift_inspect__rows(store, "shift_run_job", "run_id", wanted_run_id)
+    jobs <- rows("shift_run_job", "run_id", wanted_run_id)
     jobs <- jobs[order(jobs[["attempt"]])]
-    steps <- shift_inspect__rows(
-        store,
-        "shift_run_step",
-        "run_id",
-        wanted_run_id
-    )
+    steps <- rows("shift_run_step", "run_id", wanted_run_id)
     steps <- steps[order(steps[["ordinal"]])]
     outputs <- data.table::data.table()
     morph_id <- store__chr1(run$morph_id[[1L]])
     if (!is.na(morph_id) && nzchar(morph_id)) {
-        outputs <- shift_inspect__rows(
-            store,
-            "epw_output",
-            "morph_id",
-            morph_id
-        )
+        outputs <- rows("epw_output", "morph_id", morph_id)
     }
     payload <- list(
         version = 1L,
@@ -2080,6 +2105,88 @@ shift_job__live_snapshot_write <- function(
         digits = 15
     )
     invisible(payload)
+}
+# }}}
+
+# Minimum seconds between two non-urgent snapshot writes of one run in one
+# process. A function rather than a constant so tests can set it to zero.
+# shift_job__snapshot_interval {{{
+shift_job__snapshot_interval <- function() 1
+# }}}
+
+# Per-process coalescing state, keyed by store path and run id. Each entry holds
+# the monotonic time of the last write, whether a skipped write is pending, and
+# the last reporter ui_state. It is an environment so no namespace binding needs
+# unlocking, and each R process (including workers) starts with its own empty
+# state. Nothing here is a source of truth: every write regenerates the payload
+# from the DuckDB tables, so skipping one only delays the sidecar.
+shift_job__snapshot_state <- new.env(parent = emptyenv())
+
+# Forget the coalescing state of one run, so a new attempt neither inherits the
+# previous attempt's reporter state nor waits out its interval.
+# shift_job__snapshot_reset {{{
+shift_job__snapshot_reset <- function(store, run_id) {
+    key <- paste(store$path, run_id, sep = "|")
+    if (exists(key, envir = shift_job__snapshot_state, inherits = FALSE)) {
+        rm(list = key, envir = shift_job__snapshot_state)
+    }
+    invisible(NULL)
+}
+# }}}
+
+# Write the live snapshot now, or defer it when a write for the same run just
+# happened. Urgent calls (terminal states, status changes, new attempts) always
+# write. A deferred call marks the run pending, and shift_job__live_snapshot_flush()
+# or the next due call writes it. Passing ui_state = NULL keeps the last one
+# instead of erasing it, because only reporter calls carry transient UI state.
+# shift_job__live_snapshot {{{
+shift_job__live_snapshot <- function(
+    store,
+    run_id,
+    ui_state = NULL,
+    urgent = FALSE
+) {
+    key <- paste(store$path, run_id, sep = "|")
+    state <- shift_job__snapshot_state[[key]]
+    now <- proc.time()[["elapsed"]]
+    ui <- if (is.null(ui_state)) state$ui_state else ui_state
+    due <- isTRUE(urgent) ||
+        is.null(state) ||
+        (now - state$last) >= shift_job__snapshot_interval()
+    if (!due) {
+        shift_job__snapshot_state[[key]] <- list(
+            last = state$last,
+            pending = TRUE,
+            ui_state = ui
+        )
+        return(invisible(FALSE))
+    }
+    shift_job__live_snapshot_write(store, run_id, ui_state = ui)
+    # Record the write only after it succeeded, so a failed write stays pending.
+    shift_job__snapshot_state[[key]] <- list(
+        last = now,
+        pending = FALSE,
+        ui_state = ui
+    )
+    invisible(TRUE)
+}
+# }}}
+
+# Write a snapshot that an earlier call deferred, once the interval has passed.
+# Cheap when nothing is pending, so a reporter can call it on every poll.
+# shift_job__live_snapshot_flush {{{
+shift_job__live_snapshot_flush <- function(store, run_id) {
+    key <- paste(store$path, run_id, sep = "|")
+    state <- shift_job__snapshot_state[[key]]
+    if (is.null(state) || !isTRUE(state$pending)) {
+        return(invisible(FALSE))
+    }
+    if (
+        (proc.time()[["elapsed"]] - state$last) < shift_job__snapshot_interval()
+    ) {
+        return(invisible(FALSE))
+    }
+    shift_job__live_snapshot(store, run_id)
 }
 # }}}
 

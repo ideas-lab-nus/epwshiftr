@@ -417,8 +417,6 @@ test_that("store_write_json_atomic() writes valid JSON", {
 # Exercise the file-backed connection lifecycle without changing an open
 # database instance's access mode.
 test_that("ddb_connect() opens persisted databases read-only after closing writers", {
-    skip_if_not_installed("duckdb")
-
     path <- tempfile(fileext = ".duckdb")
     conn <- ddb_connect(path)
     on.exit(

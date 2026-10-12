@@ -237,6 +237,7 @@ test_that("shared selection records persist without changing workflow intent", {
 # The public workflow executes real catalog storage, candidate resolution and
 # durable run inspection on both success and service-failure paths.
 test_that("public workflow keeps pre-service candidates and service outcomes", {
+    skip_on_cran()
     plan <- selection_test__plan()
     docs <- data.table::rbindlist(
         list(

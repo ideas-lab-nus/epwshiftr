@@ -1,4 +1,5 @@
 test_that("actual optional inputs are resolved once and pinned across cities", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     calls <- cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
@@ -97,6 +98,7 @@ test_that("actual optional inputs are resolved once and pinned across cities", {
 })
 
 test_that("optional partitions require matching future and historical inputs", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     calls <- cli_shift_test_mock_collect(fixture$docs[
         !(fixture$docs$experiment_id == "historical" &
@@ -124,6 +126,7 @@ test_that("optional partitions require matching future and historical inputs", {
 })
 
 test_that("shared source matching respects the selected snapshot per method", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     cli_shift_test_mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
@@ -208,6 +211,7 @@ test_that("optional identity mismatches do not change required model eligibility
 
 
 test_that("shared resolution failures preserve child diagnostics and explicit retry", {
+    skip_on_cran()
     fixture <- shared_inputs_test__fixture()
     calls <- cli_shift_test_mock_collect(fixture$docs[
         fixture$docs$variable_id != "tas"

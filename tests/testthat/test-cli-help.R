@@ -1,7 +1,5 @@
 # epwshiftr_cli_help() {{{
 test_that("epwshiftr_cli_help() resolves root, group, and command topics", {
-    skip_if_not_installed("duckdb")
-
     missing_dir <- tempfile("missing-store-")
     root_help <- epwshiftr_cli(c("--quiet", "--store", missing_dir, "help"))
     expect_equal(root_help$status, 0L)

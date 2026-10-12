@@ -111,9 +111,6 @@ test_that("Shift case completion accepts only complete output sequences", {
 })
 
 test_that("EpwMorpher persists, resumes, and writes every sequence year", {
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
-
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2061L)
     on.exit(unlink(nc), add = TRUE)

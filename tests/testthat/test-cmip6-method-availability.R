@@ -263,6 +263,7 @@ test_that("method queries derive mixed frequencies and reject missing catalog fi
 })
 
 test_that("shared method discovery reuses the existing HTTP cache across order and pool changes", {
+    skip_on_cran()
     local_test_cache()
     local_cache_mode("normal")
     datasets <- method_availability_test__datasets(

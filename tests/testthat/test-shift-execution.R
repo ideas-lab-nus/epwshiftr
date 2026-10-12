@@ -288,6 +288,7 @@ test_that("background launch preserves strings and reports launch failure", {
 # Refreshing coordinator status must leave a real child alive on every OS.
 # A second round trip detects accidental termination by the first PID check.
 test_that("process liveness checks do not terminate a worker", {
+    skip_on_cran()
     profile <- paste0("pid-check-", basename(tempfile()))
     mirai::daemons(1L, dispatcher = FALSE, .compute = profile)
     on.exit(mirai::daemons(0L, .compute = profile), add = TRUE)

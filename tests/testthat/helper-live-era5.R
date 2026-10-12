@@ -10,9 +10,6 @@ era5_live__skip_unless_enabled <- function() {
     )
     skip_on_cran()
     skip_if_offline()
-    skip_if_not_installed("curl")
-    skip_if_not_installed("duckdb")
-    skip_if_not_installed("RNetCDF")
     cds__config()
     invisible(TRUE)
 }
