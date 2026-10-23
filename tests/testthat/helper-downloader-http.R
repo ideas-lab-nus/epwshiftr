@@ -281,7 +281,7 @@ subset_test__dap_app <- function() {
                     Sys.sleep(.25)
                 }
                 if (grepl('[.]dods$', name) && grepl('progress', name)) {
-                    Sys.sleep(.75)
+                    Sys.sleep(2)
                 }
                 if (grepl('[.]dods$', name) && grepl('hang', name)) {
                     Sys.sleep(10)

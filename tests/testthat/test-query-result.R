@@ -5378,6 +5378,9 @@ test_that("raw subset timeouts release workers while unrelated sources finish", 
 # Saved-block progress keeps a healthy native reader alive for longer than
 # the stall timeout, without extending an idle or failed reader indefinitely.
 test_that("raw subset block progress extends a healthy reader beyond the stall timeout", {
+    # Four two-second reads exceed the five-second stall budget. This keeps
+    # startup/instrumentation jitter out of the assertion while still failing
+    # if completed-block progress does not renew the reader deadline.
     skip_if_not_installed("webfakes")
     server <- webfakes::new_app_process(subset_test__dap_app())
     on.exit(server$stop(), add = TRUE)
@@ -5400,7 +5403,7 @@ test_that("raw subset block progress extends a healthy reader beyond the stall t
         requests,
         dest,
         workers = 1L,
-        timeout = 1.5,
+        timeout = 5,
         retries = 0L,
         discover = FALSE
     )
@@ -5411,7 +5414,7 @@ test_that("raw subset block progress extends a healthy reader beyond the stall t
     )
     attempts <- subset_status(dest, "attempts")
     expect_true(all(attempts$success))
-    expect_true(sum(attempts$elapsed_seconds[attempts$native_values > 0]) > 1.5)
+    expect_true(sum(attempts$elapsed_seconds[attempts$native_values > 0]) > 5)
 })
 
 # Interrupt the external filesystem publication boundary after its checked
