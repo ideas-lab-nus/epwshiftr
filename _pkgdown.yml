@@ -73,6 +73,8 @@ reference:
     desc: Open remote datasets, manage local stores, and run persistent downloads.
     contents:
       - EsgDataset
+      - read_subset
+      - subset_status
       - EsgStore
       - Downloader
       - store_reset

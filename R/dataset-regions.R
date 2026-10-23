@@ -662,6 +662,133 @@ dataset__neighborhood_time_indices <- function(time, coordinates, range) {
     which(!is.na(time) & key >= boundary[[1L]] & key <= boundary[[2L]])
 }
 
+# Read only requested or previously required native bounds, normalize their
+# dimension order, and reject interval contradictions before weather I/O.
+dataset__neighborhood_bounds <- function(
+    dataset,
+    index,
+    variable,
+    axis,
+    selected,
+    expected
+) {
+    prior <- if (is.null(expected)) {
+        NULL
+    } else {
+        expected[expected$file_index == index & expected$variable == variable]
+    }
+    indices <- sort(unique(c(selected, prior$time_index)))
+    bounds <- if (!is.null(axis$bounds)) {
+        axis$bounds
+    } else {
+        dataset__time_bounds(
+            dataset,
+            index,
+            axis$units,
+            axis$calendar,
+            axis$length,
+            indices
+        )
+    }
+    values <- data.table::data.table(
+        file_index = rep.int(index, length(indices)),
+        variable = rep.int(variable, length(indices)),
+        time_index = as.integer(indices),
+        present = rep.int(!is.null(bounds), length(indices)),
+        bound_start_value = rep.int(NA_real_, length(indices)),
+        bound_end_value = rep.int(NA_real_, length(indices))
+    )
+    if (!is.null(bounds)) {
+        private <- dataset__private(dataset)
+        meta <- private$get_var_dim_meta(bounds$name, index)
+        native <- if (match("time", meta$names) == 1L) {
+            bounds$raw_values
+        } else {
+            t(bounds$raw_values)
+        }
+        if (!is.null(axis$bounds)) {
+            native <- native[indices, , drop = FALSE]
+        }
+        for (attribute in c("units", "calendar")) {
+            declared <- tryCatch(
+                dataset$att_get(bounds$name, attribute, index),
+                error = function(e) NULL
+            )
+            if (is.null(declared)) {
+                next
+            }
+            actual <- if (attribute == "calendar") {
+                normalize_cf_calendar(declared)
+            } else {
+                as.character(declared)
+            }
+            required <- if (attribute == "calendar") {
+                axis$calendar
+            } else {
+                as.character(axis$units)
+            }
+            if (!identical(actual, required)) {
+                stop(
+                    "Replica CF time bounds units or calendar contradict the time coordinate.",
+                    call. = FALSE
+                )
+            }
+        }
+        data.table::set(
+            values,
+            j = "bound_start_value",
+            value = as.double(native[, 1L])
+        )
+        data.table::set(
+            values,
+            j = "bound_end_value",
+            value = as.double(native[, 2L])
+        )
+        # The normal clock writer can reuse these exact values without fetching
+        # each weather chunk's interval metadata for a second time.
+        private$metadata_cache[[sprintf("time_bounds_%d", index)]] <- list(
+            indices = indices,
+            bounds = bounds
+        )
+    }
+    if (!is.null(prior) && nrow(prior)) {
+        positions <- match(prior$time_index, values$time_index)
+        columns <- c("present", "bound_start_value", "bound_end_value")
+        same <- !anyNA(positions) &&
+            isTRUE(all.equal(
+                as.data.frame(values[positions, columns, with = FALSE]),
+                as.data.frame(prior[, columns, with = FALSE]),
+                tolerance = 0,
+                check.attributes = FALSE
+            ))
+        if (!same) {
+            stop(
+                "Replica CF time bounds identity does not match saved intervals.",
+                call. = FALSE
+            )
+        }
+    }
+    values
+}
+
+# Collect descriptors with geometric capacity, avoiding a full list copy for
+# every streamed block when the eventual number of sparse runs is unknown.
+dataset__block_buffer <- function(capacity = 16L) {
+    values <- vector("list", capacity)
+    size <- 0L
+    list(
+        add = function(value) {
+            size <<- size + 1L
+            if (size > length(values)) {
+                length(values) <<- max(size, 2L * length(values))
+            }
+            values[[size]] <<- value
+            invisible(NULL)
+        },
+        values = function() values[seq_len(size)]
+    )
+}
+
 # Preserve enclosing native corners independently of later spatial algorithms.
 # Each callback receives a bounded value block plus its CF and grid provenance.
 dataset__read_neighborhood <- function(
@@ -671,7 +798,8 @@ dataset__read_neighborhood <- function(
     time,
     on_chunk,
     completed = NULL,
-    expected_contract = NULL
+    expected_contract = NULL,
+    expected_bounds = NULL
 ) {
     checkmate::assert_character(
         variable,
@@ -698,10 +826,12 @@ dataset__read_neighborhood <- function(
             private$normalize_region_time(window)
         }
     })
-    parts <- list()
-    memberships <- list()
-    clocks <- list()
-    slices <- list()
+    parts <- dataset__block_buffer()
+    memberships <- vector("list", dataset$file_count * length(variable))
+    membership_count <- 0L
+    clocks <- dataset__block_buffer()
+    slices <- dataset__block_buffer()
+    bounds_records <- vector("list", dataset$file_count * length(variable))
     total <- 0L
     for (index in seq_len(dataset$file_count)) {
         grid <- dataset$get_spatial_grid(index)
@@ -803,7 +933,8 @@ dataset__read_neighborhood <- function(
                 }),
                 recursive = FALSE
             )
-            memberships[[length(memberships) + 1L]] <- source
+            membership_count <- membership_count + 1L
+            memberships[[membership_count]] <- source
             units <- dataset$att_get(name, "units", index)
             # Preserve temporal interpretation before any downstream weather
             # method chooses between point values and interval means.
@@ -830,6 +961,10 @@ dataset__read_neighborhood <- function(
                         time = as.double(axis$raw_values),
                         time_units = axis$units,
                         calendar = axis$calendar,
+                        time_bounds_present = !is.null(tryCatch(
+                            dataset$att_get("time", "bounds", index),
+                            error = function(e) NULL
+                        )),
                         dimensions = meta$names,
                         lengths = as.integer(meta$lengths)
                     ),
@@ -847,6 +982,16 @@ dataset__read_neighborhood <- function(
                     call. = FALSE
                 )
             }
+            native_bounds <- dataset__neighborhood_bounds(
+                dataset,
+                index,
+                name,
+                axis,
+                selected,
+                expected_bounds
+            )
+            bounds_records[[membership_count]] <- native_bounds
+            first_block <- TRUE
             if (!is.null(completed) && nrow(completed)) {
                 # Only overlapping recovery work needs individual corners;
                 # another city's completed blocks do not split a fresh 2x2.
@@ -1059,6 +1204,11 @@ dataset__read_neighborhood <- function(
                     )
                     chunk <- list(
                         contract = contract,
+                        bounds = if (first_block) {
+                            native_bounds
+                        } else {
+                            native_bounds[native_bounds$time_index %in% run]
+                        },
                         values = values,
                         neighborhoods = source,
                         time = clock,
@@ -1072,21 +1222,23 @@ dataset__read_neighborhood <- function(
                                 call. = FALSE
                             )
                         }
-                        parts[[length(parts) + 1L]] <- values
+                        parts$add(values)
                     } else {
                         on_chunk(chunk)
                     }
-                    clocks[[length(clocks) + 1L]] <- clock
-                    slices[[length(slices) + 1L]] <- slice
+                    first_block <- FALSE
+                    clocks$add(clock)
+                    slices$add(slice)
                 }
             }
         }
     }
     list(
-        values = data.table::rbindlist(parts, fill = TRUE),
+        values = data.table::rbindlist(parts$values(), fill = TRUE),
         neighborhoods = unique(data.table::rbindlist(memberships, fill = TRUE)),
-        time = unique(data.table::rbindlist(clocks, fill = TRUE)),
-        read_slices = data.table::rbindlist(slices, fill = TRUE)
+        time = unique(data.table::rbindlist(clocks$values(), fill = TRUE)),
+        read_slices = data.table::rbindlist(slices$values(), fill = TRUE),
+        bounds = unique(data.table::rbindlist(bounds_records, fill = TRUE))
     )
 }
 

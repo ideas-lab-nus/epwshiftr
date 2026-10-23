@@ -168,7 +168,9 @@ functions between acquisition calls. Preserve the directory for resume.
 
 `raw$values` contains unique native point/time values; `raw$neighborhoods` maps
 those values to each site's four corners and request window. `raw$gaps` reports
-unmatched requests, failed sources and invalid local blocks. `result$complete`
+unmatched requests, missing native coverage, empty native windows and invalid
+local artifacts. Gaps follow each request even after another case succeeds.
+`result$complete`
 means that the matched File reads completed; research-specific frequency,
 variable and whole-period completeness must be checked by the caller. A case
 label records associations only.

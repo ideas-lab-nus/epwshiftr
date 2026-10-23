@@ -151,14 +151,18 @@ source__pool <- function(
             complete()
             return(ticket)
         }
-        for (job in jobs) {
+        # Reserve known submission slots once rather than grow on every job.
+        offset <- length(queue)
+        length(queue) <<- offset + length(jobs)
+        for (j in seq_along(jobs)) {
+            job <- jobs[[j]]
             stopifnot(
                 is.character(job$source_key),
                 length(job$source_key) == 1L,
                 nzchar(job$source_key)
             )
             sequence <<- sequence + 1L
-            queue[[length(queue) + 1L]] <<- list(
+            queue[[offset + j]] <<- list(
                 id = sequence,
                 job = job,
                 read = read,
@@ -255,8 +259,14 @@ source__pool <- function(
             if (entry$ticket$remaining == 0L) entry$finish()
         }
         keys <- vapply(
-            Filter(function(s) !is.null(s$active), slots),
-            function(s) s$active$entry$job$source_key,
+            slots,
+            function(slot) {
+                if (is.null(slot$active)) {
+                    NA_character_
+                } else {
+                    slot$active$entry$job$source_key
+                }
+            },
             character(1L)
         )
         for (i in seq_along(slots)) {
@@ -291,7 +301,7 @@ source__pool <- function(
                 started = clock(),
                 last_progress = clock()
             )
-            keys <- c(keys, entry$job$source_key)
+            keys[[i]] <- entry$job$source_key
         }
         invisible(pool$status())
     }

@@ -1,3 +1,199 @@
+# Check both immutable artifacts without changing manifest or reader state.
+subset__block_valid <- function(block) {
+    file.exists(block$path) &&
+        file.exists(block$metadata_path) &&
+        identical(checksum_file(block$path), block$sha256) &&
+        identical(checksum_file(block$metadata_path), block$metadata_sha256)
+}
+
+# Preserve all available published evidence before cache reuse or inventory
+# inheritance. Different declared digest algorithms remain incomparable.
+subset__record_content <- function(conn, candidates) {
+    if (!nrow(candidates)) {
+        return(invisible(NULL))
+    }
+    columns <- c("source_key", "version", "checksum_type", "checksum", "size")
+    current <- unique(candidates[, columns, with = FALSE])
+    prior <- data.table::as.data.table(ddb_read_table(conn, "subset_content"))
+    for (key in unique(current$source_key)) {
+        known <- prior[prior$source_key == key]
+        incoming <- current[current$source_key == key]
+        for (i in seq_len(nrow(incoming))) {
+            if (
+                nrow(known) &&
+                    any(!query_result__compatible_content(incoming[i], known))
+            ) {
+                stop(
+                    "Conflicting published content metadata for saved source identity.",
+                    call. = FALSE
+                )
+            }
+        }
+    }
+    saved <- unique(data.table::rbindlist(list(prior, current), fill = TRUE))
+    ddb_write_table(
+        conn,
+        "subset_content",
+        as.data.frame(saved),
+        overwrite = TRUE
+    )
+    invisible(NULL)
+}
+
+# Demand identity records only physical location and requested native window;
+# request/case labels continue to live solely in the association table.
+subset__demand_ids <- function(links) {
+    vapply(
+        seq_len(nrow(links)),
+        function(i) {
+            store__hash(
+                "raw-demand-receipt-v1",
+                links$source_key[[i]],
+                links$lon[[i]],
+                links$lat[[i]],
+                links$time_start[[i]],
+                links$time_stop[[i]]
+            )
+        },
+        character(1L)
+    )
+}
+
+# Publish independently checked native selection receipts, including an empty
+# selection. Empty windows must never borrow another window's completed blocks.
+subset__save_demands <- function(conn, demands, dest) {
+    if (is.null(demands) || !nrow(demands)) {
+        return(invisible(NULL))
+    }
+    records <- data.table::copy(demands)
+    paths <- file.path(
+        dest,
+        "subsets",
+        paste0("demand-", demands$demand_id, ".rds")
+    )
+    checksums <- character(nrow(demands))
+    for (i in seq_len(nrow(demands))) {
+        store__extract_cache_write(paths[[i]], as.data.frame(demands[i]))
+        checksums[[i]] <- checksum_file(paths[[i]])
+        ddb_exec(
+            conn,
+            sprintf(
+                "DELETE FROM subset_demands WHERE demand_id = %s",
+                ddb_literal(conn, demands$demand_id[[i]])
+            )
+        )
+    }
+    data.table::set(records, j = "native_ranges", value = NULL)
+    data.table::set(records, j = "receipt_path", value = paths)
+    data.table::set(records, j = "receipt_sha256", value = checksums)
+    ddb_append_table(conn, "subset_demands", as.data.frame(records))
+    invisible(NULL)
+}
+
+# Test interval unions without expanding every native position or borrowing
+# spatially unrelated blocks. Intervals are inclusive and sorted only locally.
+subset__ranges_covered <- function(required, available) {
+    if (!length(required) || !nrow(available)) {
+        return(FALSE)
+    }
+    positions <- order(available$time_start_index)
+    starts <- available$time_start_index[positions]
+    stops <- starts + available$time_count[positions] - 1L
+    for (range in required) {
+        cursor <- as.integer(range[[1L]])
+        last <- cursor + as.integer(range[[2L]]) - 1L
+        for (i in seq_along(starts)) {
+            if (stops[[i]] < cursor) {
+                next
+            }
+            if (starts[[i]] > cursor) {
+                break
+            }
+            cursor <- max(cursor, stops[[i]] + 1L)
+            if (cursor > last) break
+        }
+        if (cursor <= last) return(FALSE)
+    }
+    TRUE
+}
+
+# Derive current and historical completion from exact native demand receipts
+# plus valid spatial/time coverage, independently of the latest source job.
+subset__coverage <- function(links, demands, membership, blocks) {
+    ids <- subset__demand_ids(links)
+    unique_ids <- unique(ids)
+    covered <- logical(length(unique_ids))
+    for (i in seq_along(unique_ids)) {
+        id <- unique_ids[[i]]
+        row <- links[match(id, ids)]
+        if (is.na(row$source_key)) {
+            next
+        }
+        receipt <- demands[demands$demand_id == id]
+        if (nrow(receipt) != 1L) {
+            next
+        }
+        if (
+            !file.exists(receipt$receipt_path) ||
+                !identical(
+                    checksum_file(receipt$receipt_path),
+                    receipt$receipt_sha256
+                )
+        ) {
+            next
+        }
+        descriptor <- readRDS(receipt$receipt_path)
+        if (!identical(subset__demand_ids(descriptor), id)) {
+            next
+        }
+        required <- jsonlite::fromJSON(
+            descriptor$native_ranges[[1L]],
+            simplifyVector = FALSE
+        )
+        if (!length(required)) {
+            next
+        }
+        corners <- unique(membership[
+            membership$source_key == row$source_key &
+                membership$target_lon == row$lon &
+                membership$target_lat == row$lat,
+            c("ind_lat", "ind_lon"),
+            with = FALSE
+        ])
+        if (nrow(corners) != 4L) {
+            next
+        }
+        source_blocks <- blocks[blocks$source_key == row$source_key]
+        points <- vapply(
+            seq_len(nrow(corners)),
+            function(j) {
+                available <- source_blocks[
+                    source_blocks$ind_lat <= corners$ind_lat[[j]] &
+                        source_blocks$ind_lat + source_blocks$lat_count >
+                            corners$ind_lat[[j]] &
+                        source_blocks$ind_lon <= corners$ind_lon[[j]] &
+                        source_blocks$ind_lon + source_blocks$lon_count >
+                            corners$ind_lon[[j]]
+                ]
+                subset__ranges_covered(required, available)
+            },
+            logical(1L)
+        )
+        covered[[i]] <- all(points)
+    }
+    covered[match(ids, unique_ids)]
+}
+
+# Read normalized previously required interval observations from checked local
+# metadata only. Weather Parquet payloads need not be read for this comparison.
+subset__saved_bounds <- function(blocks) {
+    if (!nrow(blocks)) {
+        return(NULL)
+    }
+    pieces <- lapply(blocks$metadata_path, function(path) readRDS(path)$bounds)
+    unique(data.table::rbindlist(pieces, fill = TRUE))
+}
+
 # Keep endpoint inventory separate from immutable climate content identity.
 subset__access_plan <- function(files, expand = TRUE) {
     checkmate::assert_flag(expand)
@@ -128,6 +324,8 @@ subset__open <- function(dest) {
     on.exit(if (!opened) store$close(), add = TRUE)
     conn <- priv(store)$conn
     definitions <- list(
+        subset_content = "source_key VARCHAR, version VARCHAR, checksum_type VARCHAR, checksum VARCHAR, size VARCHAR",
+        subset_demands = "demand_id VARCHAR PRIMARY KEY, source_key VARCHAR, lon DOUBLE, lat DOUBLE, time_start VARCHAR, time_stop VARCHAR, receipt_path VARCHAR, receipt_sha256 VARCHAR",
         subset_jobs = "source_key VARCHAR PRIMARY KEY, signature VARCHAR, status VARCHAR, error VARCHAR, contract VARCHAR, expected_blocks VARCHAR",
         subset_blocks = paste(
             "block_id VARCHAR PRIMARY KEY, source_key VARCHAR, contract VARCHAR,",
@@ -196,15 +394,7 @@ subset__open <- function(dest) {
             next
         }
         row <- readRDS(path)
-        if (
-            !file.exists(row$path) ||
-                !file.exists(row$metadata_path) ||
-                !identical(checksum_file(row$path), row$sha256) ||
-                !identical(
-                    checksum_file(row$metadata_path),
-                    row$metadata_sha256
-                )
-        ) {
+        if (!subset__block_valid(row)) {
             next
         }
         prior <- ddb_query(
@@ -232,6 +422,7 @@ subset__open <- function(dest) {
         }
         info <- readRDS(row$metadata_path)
         subset__save_membership(conn, row$source_key, info$neighborhoods)
+        subset__save_demands(conn, info$demands, dest)
         unlink(c(path, paste0(path, ".json")))
     }
     opened <- TRUE
@@ -357,16 +548,7 @@ subset__valid_blocks <- function(store, source_key = NULL) {
     valid <- vapply(
         seq_len(nrow(blocks)),
         function(i) {
-            file.exists(blocks$path[[i]]) &&
-                file.exists(blocks$metadata_path[[i]]) &&
-                identical(
-                    checksum_file(blocks$path[[i]]),
-                    blocks$sha256[[i]]
-                ) &&
-                identical(
-                    checksum_file(blocks$metadata_path[[i]]),
-                    blocks$metadata_sha256[[i]]
-                )
+            subset__block_valid(blocks[i, , drop = FALSE])
         },
         logical(1L)
     )
@@ -426,7 +608,13 @@ subset__commit <- function(store, job, path) {
     )
     data.table::set(values, j = "source_key", value = job$source_key)
     priv(store)$write_parquet(values, target, overwrite = TRUE)
-    info <- chunk[c("contract", "neighborhoods", "read_slices")]
+    info <- chunk[c(
+        "contract",
+        "neighborhoods",
+        "read_slices",
+        "bounds",
+        "demands"
+    )]
     store__extract_cache_write(metadata, info)
     row <- data.frame(
         block_id = block_id,
@@ -477,6 +665,7 @@ subset__commit <- function(store, job, path) {
     )
     ddb_append_table(conn, "subset_blocks", row)
     subset__save_membership(conn, job$source_key, chunk$neighborhoods)
+    subset__save_demands(conn, chunk$demands, job$dest)
     ddb_exec(conn, "COMMIT")
     done <- TRUE
     unlink(c(path, receipt, pending, paste0(pending, ".json")))
@@ -497,14 +686,53 @@ subset__read_source <- function(job) {
     opened <- proc.time()[["elapsed"]] - began
     counter <- 0L
     native_values <- 0
-    neighborhoods <- list()
+    neighborhoods <- NULL
     completed <- job$completed
     expected <- job$contract
+    known_bounds <- job$expected_bounds
     targets <- unique(job$links[,
         c("lon", "lat", "time_start", "time_stop"),
         with = FALSE
     ])
+    axis <- dataset__time_axis(ds, 1L)
+    demands <- data.table::copy(targets)
+    data.table::set(demands, j = "source_key", value = job$source_key)
+    data.table::set(
+        demands,
+        j = "demand_id",
+        value = subset__demand_ids(demands)
+    )
+    ranges <- vapply(
+        seq_len(nrow(demands)),
+        function(i) {
+            selected <- dataset__neighborhood_time_indices(
+                axis$values,
+                axis$coordinates,
+                c(demands$time_start[[i]], demands$time_stop[[i]])
+            )
+            runs <- dataset__region_runs(selected, .Machine$integer.max)
+            as.character(jsonlite::toJSON(
+                lapply(runs, function(run) c(run[[1L]], length(run))),
+                auto_unbox = FALSE
+            ))
+        },
+        character(1L)
+    )
+    data.table::set(demands, j = "native_ranges", value = ranges)
+    data.table::setcolorder(
+        demands,
+        c(
+            "demand_id",
+            "source_key",
+            "lon",
+            "lat",
+            "time_start",
+            "time_stop",
+            "native_ranges"
+        )
+    )
     locations <- unique(targets[, c("lon", "lat"), with = FALSE])
+    neighborhoods <- vector("list", nrow(locations))
     # Different site windows stay separate. Overlapping corners can reuse the
     # coverage just saved by a preceding site without fetching it a second time.
     for (i in seq_len(nrow(locations))) {
@@ -528,11 +756,10 @@ subset__read_source <- function(job) {
             native_values <<- native_values + nrow(chunk$values)
             chunk$open_seconds <- if (counter == 1L) opened else 0
             path <- file.path(job$inbox, sprintf("block-%08d.rds", counter))
+            if (counter == 1L) {
+                chunk$demands <- demands
+            }
             store__extract_cache_write(path, chunk)
-            completed <<- data.table::rbindlist(
-                list(completed, chunk$read_slices),
-                fill = TRUE
-            )
             expected <<- chunk$contract
             store_write_json_atomic(
                 list(blocks = counter),
@@ -547,15 +774,26 @@ subset__read_source <- function(job) {
             windows,
             receive,
             completed = completed,
-            expected_contract = expected
+            expected_contract = expected,
+            expected_bounds = known_bounds
         )
         neighborhoods[[i]] <- selection$neighborhoods
+        known_bounds <- unique(data.table::rbindlist(
+            list(known_bounds, selection$bounds),
+            fill = TRUE
+        ))
+        # Merge descriptors once per city, after its disjoint groups finished.
+        completed <- data.table::rbindlist(
+            list(completed, selection$read_slices),
+            fill = TRUE
+        )
     }
     list(
         open_seconds = opened,
         elapsed_seconds = proc.time()[["elapsed"]] - began,
         native_values = native_values,
         blocks = counter,
+        demands = demands,
         contract = expected,
         neighborhoods = unique(data.table::rbindlist(
             neighborhoods,
@@ -793,6 +1031,7 @@ subset__fetch <- function(
     store <- subset__open(dest)
     on.exit(store$close(), add = TRUE)
     conn <- priv(store)$conn
+    subset__record_content(conn, candidates)
     # Request bookkeeping is separate from the identity of persisted values.
     existing_links <- data.table::as.data.table(ddb_read_table(
         conn,
@@ -861,13 +1100,20 @@ subset__fetch <- function(
                 body(subset__fetch),
                 body(subset__read_source),
                 body(dataset__read_neighborhood),
-                body(dataset__neighborhood_time_indices)
+                body(dataset__neighborhood_time_indices),
+                body(dataset__neighborhood_bounds),
+                body(subset__coverage),
+                body(subset__save_demands),
+                body(subset__record_content)
             )
         )
     )
     client <- store__hash(Sys.info()[["nodename"]], network_id)
-    old_jobs <- data.table::as.data.table(ddb_read_table(conn, "subset_jobs"))
-    states <- list()
+    states <- vector(
+        "list",
+        length(unique(links$source_key[!is.na(links$source_key)]))
+    )
+    names(states) <- unique(links$source_key[!is.na(links$source_key)])
     keys <- unique(links$source_key[!is.na(links$source_key)])
     for (key in keys) {
         state <- new.env(parent = emptyenv())
@@ -916,21 +1162,39 @@ subset__fetch <- function(
         state$job <- NULL
         state$result <- NULL
         state$error <- NULL
-        state$tried <- character()
+        state$tried <- new.env(hash = TRUE, parent = emptyenv())
         state$round <- 0L
         state$discovered <- !discover
         state$finished <- FALSE
-        prior <- old_jobs[
-            old_jobs$source_key == key &
-                old_jobs$signature == state$signature &
-                old_jobs$status == "done"
-        ]
         complete <- subset__valid_blocks(store, key)
-        if (resume && nrow(prior) && !is.na(prior$expected_blocks[[1L]])) {
-            expected <- jsonlite::fromJSON(prior$expected_blocks[[1L]])
-            if (length(expected) && all(expected %in% complete$block_id)) {
-                state$finished <- TRUE
-            }
+        if (resume) {
+            state$finished <- all(subset__coverage(
+                state$links,
+                data.table::as.data.table(ddb_read_table(
+                    conn,
+                    "subset_demands"
+                )),
+                data.table::as.data.table(ddb_read_table(
+                    conn,
+                    "subset_neighborhoods"
+                )),
+                complete
+            ))
+        }
+        # A checked publication can finish after the prior owner exited while
+        # its job still said running. Receipt coverage is authoritative locally.
+        if (state$finished) {
+            subset__job_state(
+                store,
+                key,
+                state$signature,
+                "done",
+                contract = if (nrow(complete)) {
+                    complete$contract[[1L]]
+                } else {
+                    NA_character_
+                }
+            )
         }
         states[[key]] <- state
     }
@@ -968,6 +1232,7 @@ subset__fetch <- function(
                     additions <- state$result[
                         state$result$source_key == state$key
                     ]
+                    subset__record_content(conn, additions)
                     saved <- data.table::as.data.table(ddb_read_table(
                         conn,
                         "subset_candidates"
@@ -1017,7 +1282,20 @@ subset__fetch <- function(
                 }
                 if (is.null(state$error)) {
                     blocks <- subset__valid_blocks(store, state$key)
-                    if (!nrow(blocks)) {
+                    subset__save_demands(conn, state$result$demands, dest)
+                    covered <- subset__coverage(
+                        state$links,
+                        data.table::as.data.table(ddb_read_table(
+                            conn,
+                            "subset_demands"
+                        )),
+                        data.table::as.data.table(ddb_read_table(
+                            conn,
+                            "subset_neighborhoods"
+                        )),
+                        blocks
+                    )
+                    if (!all(covered)) {
                         subset__job_state(
                             store,
                             state$key,
@@ -1074,7 +1352,13 @@ subset__fetch <- function(
                 next
             }
             available <- state$candidates[
-                !state$candidates$candidate_id %in% state$tried
+                !vapply(
+                    state$candidates$candidate_id,
+                    exists,
+                    logical(1L),
+                    envir = state$tried,
+                    inherits = FALSE
+                )
             ]
             kind <- "read"
             if (!nrow(available)) {
@@ -1082,7 +1366,7 @@ subset__fetch <- function(
                     kind <- "discover"
                 } else if (state$round < retries && nrow(state$candidates)) {
                     state$round <- state$round + 1L
-                    state$tried <- character()
+                    state$tried <- new.env(hash = TRUE, parent = emptyenv())
                     next
                 } else {
                     subset__job_state(
@@ -1156,6 +1440,7 @@ subset__fetch <- function(
                 },
                 links = state$links,
                 completed = blocks,
+                expected_bounds = subset__saved_bounds(blocks),
                 contract = contract,
                 inbox = inbox,
                 subset_progress = file.path(inbox, "progress.json"),
@@ -1163,7 +1448,7 @@ subset__fetch <- function(
                 files = if (kind == "discover") state$record else NULL
             )
             if (kind == "read") {
-                state$tried <- c(state$tried, row$candidate_id[[1L]])
+                state$tried[[row$candidate_id[[1L]]]] <- TRUE
             }
             state$job <- job
             state$result <- NULL
@@ -1260,6 +1545,9 @@ subset_status <- function(
 #' @param variable Optional climate variable names to select.
 #' @param time Optional pair of native-calendar endpoints.
 #' @return A list with values, neighborhoods, links and gaps.
+#'   `gaps$incomplete_requests` identifies selected requests whose exact native
+#'   coverage or checked selection receipt is missing, including empty native
+#'   windows. A later successful window never clears an earlier request's gap.
 #' @export
 read_subset <- function(
     dest,
@@ -1307,19 +1595,15 @@ read_subset <- function(
         allow.cartesian = TRUE
     )
     pieces <- vector("list", nrow(blocks))
-    invalid <- character()
+    invalid <- character(nrow(blocks))
+    invalid_count <- 0L
+    valid <- rep.int(TRUE, nrow(blocks))
     for (i in seq_len(nrow(blocks))) {
         path <- blocks$path[[i]]
-        if (
-            !file.exists(path) ||
-                !identical(checksum_file(path), blocks$sha256[[i]]) ||
-                !file.exists(blocks$metadata_path[[i]]) ||
-                !identical(
-                    checksum_file(blocks$metadata_path[[i]]),
-                    blocks$metadata_sha256[[i]]
-                )
-        ) {
-            invalid <- c(invalid, blocks$block_id[[i]])
+        if (!subset__block_valid(blocks[i])) {
+            invalid_count <- invalid_count + 1L
+            invalid[[invalid_count]] <- blocks$block_id[[i]]
+            valid[[i]] <- FALSE
             next
         }
         values <- data.table::as.data.table(ddb_query(
@@ -1366,12 +1650,28 @@ read_subset <- function(
         pieces[[i]] <- values
     }
     jobs <- data.table::as.data.table(ddb_read_table(conn, "subset_jobs"))
+    coverage <- subset__coverage(
+        links,
+        data.table::as.data.table(ddb_read_table(conn, "subset_demands")),
+        membership,
+        blocks[valid]
+    )
+    incomplete <- links[!coverage]
+    affected <- unique(incomplete$source_key[!is.na(incomplete$source_key)])
+    affected_jobs <- data.table::copy(jobs[jobs$source_key %in% affected])
+    if (nrow(affected_jobs)) {
+        data.table::set(affected_jobs, j = "status", value = "incomplete")
+        data.table::set(
+            affected_jobs,
+            j = "error",
+            value = "Selected requests have missing or empty native coverage."
+        )
+    }
     gaps <- list(
         unmatched = links[is.na(links$source_key)],
-        incomplete_sources = jobs[
-            jobs$source_key %in% links$source_key & jobs$status != "done"
-        ],
-        invalid_blocks = invalid
+        incomplete_sources = affected_jobs,
+        incomplete_requests = incomplete,
+        invalid_blocks = invalid[seq_len(invalid_count)]
     )
     list(
         values = unique(data.table::rbindlist(pieces, fill = TRUE)),

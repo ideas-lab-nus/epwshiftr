@@ -177,7 +177,15 @@ subset_test__dap_app <- function() {
         name <- basename(req$path)
         if (grepl('[.]das$', name)) {
             attributes <- 'Attributes { time { String units "days since 2060-01-01"; String calendar "360_day"; } tas { String units "K"; } }'
-            if (grepl('wrong', name)) {
+            if (grepl('bounds', name)) {
+                attributes <- sub(
+                    'calendar "360_day";',
+                    'calendar "360_day"; String bounds "time_bnds";',
+                    attributes,
+                    fixed = TRUE
+                )
+            }
+            if (grepl('wrong[.]nc', name)) {
                 attributes <- sub(
                     'units "K"',
                     'units "C"',
@@ -197,15 +205,17 @@ subset_test__dap_app <- function() {
             time = 0:7,
             lat = 0:1,
             lon = 10:11,
-            tas = array(1:32, c(2, 2, 8))
+            tas = array(1:32, c(2, 2, 8)),
+            time_bnds = rbind(0:7, 1:8)
         )
         dims <- list(
             time = 'time',
             lat = 'lat',
             lon = 'lon',
-            tas = c('time', 'lat', 'lon')
+            tas = c('time', 'lat', 'lon'),
+            time_bnds = c('time', 'bnds')
         )
-        sizes <- c(time = 8L, lat = 2L, lon = 2L)
+        sizes <- c(time = 8L, lat = 2L, lon = 2L, bnds = 2L)
         select <- if (nzchar(query)) {
             strsplit(query, ',', fixed = TRUE)[[1L]]
         } else {
@@ -276,6 +286,15 @@ subset_test__dap_app <- function() {
                 if (grepl('[.]dods$', name) && grepl('hang', name)) {
                     Sys.sleep(10)
                 }
+            } else if (var == 'time_bnds') {
+                if (grepl('wrong-bounds', name)) {
+                    value <- value + .5
+                }
+                value <- as.vector(value[
+                    indices[[2L]],
+                    indices[[1L]],
+                    drop = FALSE
+                ])
             } else {
                 value <- value[indices[[1L]]]
             }

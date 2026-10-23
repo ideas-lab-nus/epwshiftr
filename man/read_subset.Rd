@@ -19,6 +19,9 @@ read_subset(dest, case_id = NULL, site_id = NULL, variable = NULL, time = NULL)
 }
 \value{
 A list with values, neighborhoods, links and gaps.
+\code{gaps$incomplete_requests} identifies selected requests whose exact native
+coverage or checked selection receipt is missing, including empty native
+windows. A later successful window never clears an earlier request's gap.
 }
 \description{
 Returns the unique native values together with city/corner membership and

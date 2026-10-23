@@ -5491,4 +5491,202 @@ test_that("raw subset restart adopts published blocks before manifest registrati
     expect_equal(sum(subset_status(dest, "attempts")$native_values), 0)
 })
 
+# Historical demand receipts keep gaps visible independently of the latest
+# successful request for another window in the same physical source.
+test_that("raw subset coverage follows each case and rejects empty native windows", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-demand-history-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "A",
+        case_id = "A",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    a <- request
+    unlink(subset_status(dest, "blocks")$path[[1L]])
+    request$request_id <- request$case_id <- "B"
+    request$time_start <- request$time_stop <- "2060-01-02"
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_equal(sort(read_subset(dest, case_id = "B")$values$value), 5:8)
+    historical <- read_subset(dest, case_id = "A")
+    expect_equal(nrow(historical$values), 0L)
+    expect_true(nrow(historical$gaps$incomplete_sources) > 0L)
+    request$request_id <- request$case_id <- "C"
+    request$time_start <- request$time_stop <- "2060-01-20"
+    expect_false(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_true(
+        nrow(read_subset(dest, case_id = "C")$gaps$incomplete_sources) > 0L
+    )
+    before <- sum(subset_status(dest, "attempts")$native_values)
+    expect_true(
+        files$fetch_subset(
+            a,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_equal(sum(subset_status(dest, "attempts")$native_values) - before, 4)
+    expect_equal(sort(read_subset(dest, case_id = "A")$values$value), 1:4)
+    expect_equal(
+        nrow(read_subset(dest, case_id = "B")$gaps$incomplete_sources),
+        0L
+    )
+    # A local selection receipt is required independently of weather payload
+    # hashes. Its loss must expose a gap, then recover without weather rereads.
+    for (path in list.files(
+        file.path(dest, "subsets"),
+        pattern = "^demand-.*[.]rds$",
+        full.names = TRUE
+    )) {
+        writeBin(as.raw(0), path)
+    }
+    expect_true(
+        nrow(read_subset(dest, case_id = "A")$gaps$incomplete_sources) > 0L
+    )
+    before <- sum(subset_status(dest, "attempts")$native_values)
+    expect_true(
+        files$fetch_subset(
+            a,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), before)
+})
+
+# Local block hashes cannot override contradictory published immutable
+# content evidence supplied by a later catalogue result for the same version.
+test_that("raw subset reuse rejects contradictory published content evidence", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-content-evidence-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    request <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        query_result_test_object("File", docs)$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    docs$checksum <- "contradictory-published-sha256"
+    expect_error(
+        query_result_test_object("File", docs)$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        ),
+        "Conflicting published content"
+    )
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+})
+
+# Identical timestamps can still describe different intervals. Read only
+# requested native bounds and reject a replacement before mixing its values.
+test_that("raw subset fallback rejects incompatible native time bounds", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-bounds-identity-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$variable_id <- "tas"
+    docs$data_node <- c("partial", "wrong-bounds")
+    docs$url <- I(lapply(c("bad-bounds.nc", "wrong-bounds.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    request <- data.frame(
+        request_id = c("one", "four"),
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = c("2060-01-01", "2060-01-04"),
+        time_stop = c("2060-01-01", "2060-01-04")
+    )
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_false(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_true(any(
+        attempts$data_node == "wrong-bounds" &
+            attempts$error_kind == "source_metadata"
+    ))
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), 1:4)
+    expect_equal(unique(raw$values$bound_start_value), 0)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(
+            paste0(server$url(), "requests")
+        )$content
+    ))
+    expect_false(any(grepl("wrong-bounds.nc.dods tas", traffic, fixed = TRUE)))
+    bounds_reads <- traffic[grepl("[.]dods time_bnds", traffic)]
+    expect_true(length(bounds_reads) > 0L)
+    expect_false(any(grepl("time_bnds%5b0:7%5d", bounds_reads, fixed = TRUE)))
+})
+
 # vim: fdm=marker :
