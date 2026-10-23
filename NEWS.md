@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Retire code-coverage collection and Codecov reporting. Linux package checks
+  run every test, including the ESGF and ERA5 live workflows, and reject skipped
+  tests; functional checks remain enabled on all three platforms (#296).
+
 * Add `EsgResultFile$access_plan()` and `fetch_subset()` for raw native 2x2
   neighborhoods over OPeNDAP. Acquisition retains Replica candidates, ranks
   actual reads using recent client timing and failures, switches endpoints,
@@ -101,15 +105,9 @@
   long IDs without a local length rejection, preserving query receipts and global
   row limits without duplicating partial pages when a batch restarts (#280).
 
-* Coverage CI prints the total line coverage and retains per-file reports and
-  merged counters independently of Codecov. Upload errors produce a warning without
-  failing the job (#279).
-
 * Publish `standalone-downloader.R` for `usethis::use_standalone()`, with local checksum,
   manifest, validation and process helpers. Host cache and Store integration
-  stay in package adapters. Downloader instances own separate worker pools.
-  Coverage includes complete parent and worker traces
-  and rejects unfinished trace writes before upload (#278).
+  stay in package adapters. Downloader instances own separate worker pools (#278).
 
 * Handwritten R sources, tests and tools include Vim marker folds for functions,
   classes and methods, without nested callback folds inside function bodies;
