@@ -9,6 +9,7 @@ name: test-coverage
 jobs:
   test-coverage:
     runs-on: macOS-latest
+    timeout-minutes: 90
 
     permissions:
       contents: read
@@ -56,39 +57,31 @@ jobs:
           needs: coverage
 
       - name: Verify coverage adapter
-        run: Rscript --vanilla .github/check-coverage.R
+        run: |
+          Rscript --vanilla .github/check-coverage.R
+          Rscript --vanilla .github/check-coverage-supervisor.R
         shell: bash
 
       - name: Test coverage
         id: coverage
-        run: |
-          source(".github/coverage.R")
-          coverage <- coverage__run(
-            quiet = FALSE,
-            install_path = file.path(Sys.getenv("RUNNER_TEMP"), "covr-library")
-          )
-          report_path <- file.path(Sys.getenv("RUNNER_TEMP"), "coverage-report")
-          coverage__report(coverage, report_path)
-          cat(
-            readLines(file.path(report_path, "summary.md")),
-            sep = "\n", file = Sys.getenv("GITHUB_STEP_SUMMARY"), append = TRUE
-          )
-        shell: Rscript {0}
+        run: Rscript --vanilla .github/run-coverage.R
+        shell: bash
 
       - name: Preserve coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: ${{ runner.temp }}/coverage-report/
+          path: ${{ runner.temp }}/coverage-run/coverage-report/
           retention-days: 14
 
       - name: Upload coverage to Codecov
+        if: steps.coverage.outcome == 'success'
         id: codecov
         continue-on-error: true
         uses: codecov/codecov-action@v5
         with:
-          files: ${{ runner.temp }}/coverage-report/coverage.xml
+          files: ${{ runner.temp }}/coverage-run/coverage-report/coverage.xml
           disable_search: true
           # Expose the upload outcome so the next step can issue a warning.
           fail_ci_if_error: true
@@ -102,10 +95,10 @@ jobs:
           echo "Codecov upload failed; download the coverage-report artifact for the computed results." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve coverage diagnostics
-        if: failure() && steps.coverage.outcome == 'failure'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-diagnostics
           path: |
-            ${{ runner.temp }}/covr-library/
+            ${{ runner.temp }}/coverage-run/diagnostics/
           retention-days: 7
