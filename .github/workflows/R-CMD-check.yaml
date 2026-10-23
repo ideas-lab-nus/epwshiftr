@@ -20,13 +20,17 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: windows-latest, r: 'release', not_cran: false}
-          - {os: ubuntu-latest,  r: 'release', not_cran: true}
-          - {os: macos-latest,   r: 'release', not_cran: true}
+          - {os: windows-latest, r: 'release', not_cran: false, full_tests: false}
+          - {os: ubuntu-latest,  r: 'release', not_cran: true, full_tests: true}
+          - {os: macos-latest,   r: 'release', not_cran: true, full_tests: false}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: ${{ matrix.config.not_cran }}
+      EPWSHIFTR_REQUIRE_ALL_TESTS: ${{ matrix.config.full_tests }}
+      EPWSHIFTR_RUN_LIVE_ESGF: ${{ matrix.config.full_tests }}
+      EPWSHIFTR_RUN_LIVE_ERA5: ${{ matrix.config.full_tests }}
+      ECMWF_DATASTORES_KEY: ${{ matrix.config.full_tests && secrets.ECMWF_DATASTORES_KEY || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -61,10 +65,22 @@ jobs:
           echo "PKG_CPPFLAGS=-I$(brew --prefix gettext)/include" >> $GITHUB_ENV
           echo "PKG_LIBS=-L$(brew --prefix gettext)/lib -lintl" >> $GITHUB_ENV
 
+      - name: Prepare Linux full testing
+        if: matrix.config.full_tests
+        shell: bash
+        run: |
+          if [ -z "$ECMWF_DATASTORES_KEY" ]; then
+            echo "::error::Repository secret ECMWF_DATASTORES_KEY is required for full testing."
+            exit 1
+          fi
+          sudo apt-get update
+          sudo apt-get install -y zip
+
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: |
             any::rcmdcheck
+            any::webfakes
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
