@@ -14,13 +14,13 @@ coverage__trace_environment <- function(ns, directory) {
     }
     # Collect only covr's literal counter calls from its transformed syntax.
     counter_keys <- function(x) {
-        keys <- character()
+        keys <- new.env(parent = emptyenv())
         visit <- function(value) {
             if (missing(value)) {
                 return(invisible(NULL))
             }
             if (is.call(value) && identical(value[[1L]], quote(covr:::count))) {
-                keys <<- c(keys, value[[2L]])
+                keys[[value[[2L]]]] <- TRUE
             } else if (is.recursive(value)) {
                 for (part in as.list(value)) {
                     visit(part)
@@ -29,7 +29,7 @@ coverage__trace_environment <- function(ns, directory) {
         }
         visit(formals(x))
         visit(body(x))
-        unique(keys)
+        ls(keys, all.names = TRUE)
     }
     # Cache top-level transforms; recursive calls retain covr's own semantics.
     cached_trace <- function(x, parent_functions = NULL, parent_ref = NULL) {
