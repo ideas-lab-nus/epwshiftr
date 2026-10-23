@@ -1007,6 +1007,17 @@ dataset__read_neighborhood <- function(
                 with = FALSE
             ])
             groups <- dataset__region_cell_groups(points)
+            # Both sparse overlaps and resumed coverage split into the same
+            # one-cell groups, preserving point order and integer dimensions.
+            point_group <- function(i) {
+                list(
+                    members = i,
+                    lat = points$ind_lat[[i]],
+                    lon = points$ind_lon[[i]],
+                    lat_count = 1L,
+                    lon_count = 1L
+                )
+            }
             # A sparse L-shaped overlap must not add the missing fourth cell.
             groups <- unlist(
                 lapply(groups, function(group) {
@@ -1016,15 +1027,7 @@ dataset__read_neighborhood <- function(
                     ) {
                         return(list(group))
                     }
-                    lapply(group$members, function(i) {
-                        list(
-                            members = i,
-                            lat = points$ind_lat[[i]],
-                            lon = points$ind_lon[[i]],
-                            lat_count = 1L,
-                            lon_count = 1L
-                        )
-                    })
+                    lapply(group$members, point_group)
                 }),
                 recursive = FALSE
             )
@@ -1093,15 +1096,7 @@ dataset__read_neighborhood <- function(
                     if (!coverage$overlaps(index, name, group)) {
                         return(list(group))
                     }
-                    lapply(group$members, function(i) {
-                        list(
-                            members = i,
-                            lat = points$ind_lat[[i]],
-                            lon = points$ind_lon[[i]],
-                            lat_count = 1L,
-                            lon_count = 1L
-                        )
-                    })
+                    lapply(group$members, point_group)
                 }),
                 recursive = FALSE
             )
