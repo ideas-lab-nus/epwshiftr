@@ -789,6 +789,96 @@ dataset__block_buffer <- function(capacity = 16L) {
     )
 }
 
+# Index completed native intervals by file, variable and grid point. Each point
+# owns a geometrically reserved buffer; a new city never copies other points'
+# accumulated descriptors. Spatial expansion is bounded to each small raw cell.
+dataset__coverage_index <- function(
+    completed = NULL,
+    variable = NULL,
+    index = 1L
+) {
+    points <- new.env(hash = TRUE, parent = emptyenv())
+    key <- function(index, variable, lat, lon) {
+        paste(index, variable, lat, lon, sep = "/")
+    }
+    add <- function(rows) {
+        if (is.null(rows) || !nrow(rows)) {
+            return(invisible(NULL))
+        }
+        for (i in seq_len(nrow(rows))) {
+            file <- if ("file_index" %in% names(rows)) {
+                rows$file_index[[i]]
+            } else {
+                index
+            }
+            field <- if ("variable" %in% names(rows)) {
+                rows$variable[[i]]
+            } else {
+                variable
+            }
+            interval <- c(
+                rows$time_start_index[[i]],
+                rows$time_start_index[[i]] + rows$time_count[[i]]
+            )
+            for (lat in seq.int(
+                rows$ind_lat[[i]],
+                length.out = rows$lat_count[[i]]
+            )) {
+                for (lon in seq.int(
+                    rows$ind_lon[[i]],
+                    length.out = rows$lon_count[[i]]
+                )) {
+                    id <- key(file, field, lat, lon)
+                    if (!exists(id, envir = points, inherits = FALSE)) {
+                        points[[id]] <- dataset__block_buffer(4L)
+                    }
+                    points[[id]]$add(interval)
+                }
+            }
+        }
+        invisible(NULL)
+    }
+    add(completed)
+    structure(
+        list(
+            add = add,
+            overlaps = function(index, variable, group) {
+                any(vapply(
+                    seq.int(group$lat, length.out = group$lat_count),
+                    function(lat) {
+                        any(vapply(
+                            seq.int(group$lon, length.out = group$lon_count),
+                            function(lon) {
+                                exists(
+                                    key(index, variable, lat, lon),
+                                    envir = points,
+                                    inherits = FALSE
+                                )
+                            },
+                            logical(1L)
+                        ))
+                    },
+                    logical(1L)
+                ))
+            },
+            missing = function(index, variable, lat, lon, selected) {
+                id <- key(index, variable, lat, lon)
+                if (!exists(id, envir = points, inherits = FALSE)) {
+                    return(selected)
+                }
+                intervals <- points[[id]]$values()
+                for (interval in intervals) {
+                    selected <- selected[
+                        selected < interval[[1L]] | selected >= interval[[2L]]
+                    ]
+                }
+                selected
+            }
+        ),
+        class = "esg_native_coverage"
+    )
+}
+
 # Preserve enclosing native corners independently of later spatial algorithms.
 # Each callback receives a bounded value block plus its CF and grid provenance.
 dataset__read_neighborhood <- function(
@@ -826,6 +916,11 @@ dataset__read_neighborhood <- function(
             private$normalize_region_time(window)
         }
     })
+    coverage <- if (inherits(completed, "esg_native_coverage")) {
+        completed
+    } else {
+        dataset__coverage_index(completed, variable[[1L]])
+    }
     parts <- dataset__block_buffer()
     memberships <- vector("list", dataset$file_count * length(variable))
     membership_count <- 0L
@@ -992,52 +1087,32 @@ dataset__read_neighborhood <- function(
             )
             bounds_records[[membership_count]] <- native_bounds
             first_block <- TRUE
-            if (!is.null(completed) && nrow(completed)) {
-                # Only overlapping recovery work needs individual corners;
-                # another city's completed blocks do not split a fresh 2x2.
-                groups <- unlist(
-                    lapply(groups, function(group) {
-                        overlap <- completed$ind_lat <
-                            group$lat + group$lat_count &
-                            completed$ind_lat + completed$lat_count >
-                                group$lat &
-                            completed$ind_lon < group$lon + group$lon_count &
-                            completed$ind_lon + completed$lon_count > group$lon
-                        if (!any(overlap)) {
-                            return(list(group))
-                        }
-                        lapply(group$members, function(i) {
-                            list(
-                                members = i,
-                                lat = points$ind_lat[[i]],
-                                lon = points$ind_lon[[i]],
-                                lat_count = 1L,
-                                lon_count = 1L
-                            )
-                        })
-                    }),
-                    recursive = FALSE
-                )
-            }
-            for (group in groups) {
-                needed <- selected
-                if (!is.null(completed) && nrow(completed)) {
-                    prior <- completed[
-                        completed$ind_lat <= group$lat &
-                            completed$ind_lat + completed$lat_count >
-                                group$lat &
-                            completed$ind_lon <= group$lon &
-                            completed$ind_lon + completed$lon_count > group$lon
-                    ]
-                    for (row in seq_len(nrow(prior))) {
-                        needed <- needed[
-                            needed < prior$time_start_index[[row]] |
-                                needed >=
-                                    prior$time_start_index[[row]] +
-                                        prior$time_count[[row]]
-                        ]
+            # Split only cells whose points already have native coverage.
+            groups <- unlist(
+                lapply(groups, function(group) {
+                    if (!coverage$overlaps(index, name, group)) {
+                        return(list(group))
                     }
-                }
+                    lapply(group$members, function(i) {
+                        list(
+                            members = i,
+                            lat = points$ind_lat[[i]],
+                            lon = points$ind_lon[[i]],
+                            lat_count = 1L,
+                            lon_count = 1L
+                        )
+                    })
+                }),
+                recursive = FALSE
+            )
+            for (group in groups) {
+                needed <- coverage$missing(
+                    index,
+                    name,
+                    group$lat,
+                    group$lon,
+                    selected
+                )
                 runs <- dataset__region_runs(
                     needed,
                     DATASET_REQUEST_MAX_VALUES %/%
@@ -1226,6 +1301,8 @@ dataset__read_neighborhood <- function(
                     } else {
                         on_chunk(chunk)
                     }
+                    # The callback has saved this block before coverage advances.
+                    coverage$add(slice)
                     first_block <- FALSE
                     clocks$add(clock)
                     slices$add(slice)

@@ -5689,4 +5689,45 @@ test_that("raw subset fallback rejects incompatible native time bounds", {
     expect_false(any(grepl("time_bnds%5b0:7%5d", bounds_reads, fixed = TRUE)))
 })
 
+# Many distinct target coordinates share the same enclosing cell. Reusing
+# native coverage must preserve every city mapping without repeated weather I/O.
+test_that("raw subset acquisition shares native coverage across many overlapping cities", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-many-cities-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    requests <- data.frame(
+        request_id = paste0("request-", 1:80),
+        site_id = rep(paste0("city-", 1:40), each = 2L),
+        lon = rep(seq(10.1, 10.9, length.out = 40L), each = 2L),
+        lat = .25,
+        time_start = rep(c("2060-01-01", "2060-01-04"), 40L),
+        time_stop = rep(c("2060-01-01", "2060-01-04"), 40L)
+    )
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), c(1:4, 13:16))
+    expect_equal(nrow(raw$neighborhoods), 320L)
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), 8)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(
+            paste0(server$url(), "requests")
+        )$content
+    ))
+    expect_equal(sum(grepl("[.]dods tas", traffic)), 2L)
+})
+
 # vim: fdm=marker :

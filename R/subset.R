@@ -687,9 +687,8 @@ subset__read_source <- function(job) {
     counter <- 0L
     native_values <- 0
     neighborhoods <- NULL
-    completed <- job$completed
+    completed <- dataset__coverage_index(job$completed, job$variable_id)
     expected <- job$contract
-    known_bounds <- job$expected_bounds
     targets <- unique(job$links[,
         c("lon", "lat", "time_start", "time_stop"),
         with = FALSE
@@ -775,18 +774,11 @@ subset__read_source <- function(job) {
             receive,
             completed = completed,
             expected_contract = expected,
-            expected_bounds = known_bounds
+            # Verify the endpoint against all prior required intervals once.
+            # Further cities share this same open, immutable source connection.
+            expected_bounds = if (i == 1L) job$expected_bounds else NULL
         )
         neighborhoods[[i]] <- selection$neighborhoods
-        known_bounds <- unique(data.table::rbindlist(
-            list(known_bounds, selection$bounds),
-            fill = TRUE
-        ))
-        # Merge descriptors once per city, after its disjoint groups finished.
-        completed <- data.table::rbindlist(
-            list(completed, selection$read_slices),
-            fill = TRUE
-        )
     }
     list(
         open_seconds = opened,
@@ -1283,6 +1275,11 @@ subset__fetch <- function(
                 if (is.null(state$error)) {
                     blocks <- subset__valid_blocks(store, state$key)
                     subset__save_demands(conn, state$result$demands, dest)
+                    subset__save_membership(
+                        conn,
+                        state$key,
+                        state$result$neighborhoods
+                    )
                     covered <- subset__coverage(
                         state$links,
                         data.table::as.data.table(ddb_read_table(
@@ -1321,11 +1318,6 @@ subset__fetch <- function(
                     store__extract_cache_write(
                         metadata,
                         list(neighborhoods = state$result$neighborhoods)
-                    )
-                    subset__save_membership(
-                        conn,
-                        state$key,
-                        state$result$neighborhoods
                     )
                     subset__job_state(
                         store,
