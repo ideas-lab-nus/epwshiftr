@@ -16,87 +16,88 @@ Hongyuan Jia
 }
 \keyword{internal}
 \section{Super class}{
-\code{\link[epwshiftr:EsgResult]{epwshiftr::EsgResult}} -> \code{EsgResultFile}
+\code{\link[epwshiftr:EsgResult]{EsgResult}} -> \code{EsgResultFile}
 }
 \section{Active bindings}{
-\if{html}{\out{<div class="r6-active-bindings">}}
-\describe{
-\item{\code{filename}}{A character vector indicating file names on the
+  \if{html}{\out{<div class="r6-active-bindings">}}
+  \describe{
+    \item{\code{filename}}{A character vector indicating file names on the
 sever.}
 
-\item{\code{url_opendap}}{A character vector of the OPeNDAP URLs of the
+    \item{\code{url_opendap}}{A character vector of the OPeNDAP URLs of the
 files.}
 
-\item{\code{url_download}}{A character vector of the download URLs of the
+    \item{\code{url_download}}{A character vector of the download URLs of the
 files.}
 
-\item{\code{fields}}{A character vector indicating all response fields,
+    \item{\code{fields}}{A character vector indicating all response fields,
 followed by derived fields such as \code{filename}, \code{url_opendap}
 and \code{url_download} when their source fields are available.}
-}
-\if{html}{\out{</div>}}
+  }
+  \if{html}{\out{</div>}}
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-EsgResultFile-to_data_table}{\code{EsgResultFile$to_data_table()}}
-\item \href{#method-EsgResultFile-filter_time}{\code{EsgResultFile$filter_time()}}
-\item \href{#method-EsgResultFile-download_plan}{\code{EsgResultFile$download_plan()}}
-\item \href{#method-EsgResultFile-expand_replicas}{\code{EsgResultFile$expand_replicas()}}
-\item \href{#method-EsgResultFile-repair_urls}{\code{EsgResultFile$repair_urls()}}
-\item \href{#method-EsgResultFile-select_replica}{\code{EsgResultFile$select_replica()}}
-\item \href{#method-EsgResultFile-download}{\code{EsgResultFile$download()}}
-\item \href{#method-EsgResultFile-print}{\code{EsgResultFile$print()}}
-\item \href{#method-EsgResultFile-open_dataset}{\code{EsgResultFile$open_dataset()}}
-\item \href{#method-EsgResultFile-clone}{\code{EsgResultFile$clone()}}
+  \itemize{
+    \item \href{#method-EsgResultFile-to_data_table}{\code{EsgResultFile$to_data_table()}}
+    \item \href{#method-EsgResultFile-filter_time}{\code{EsgResultFile$filter_time()}}
+    \item \href{#method-EsgResultFile-access_plan}{\code{EsgResultFile$access_plan()}}
+    \item \href{#method-EsgResultFile-fetch_subset}{\code{EsgResultFile$fetch_subset()}}
+    \item \href{#method-EsgResultFile-download_plan}{\code{EsgResultFile$download_plan()}}
+    \item \href{#method-EsgResultFile-expand_replicas}{\code{EsgResultFile$expand_replicas()}}
+    \item \href{#method-EsgResultFile-repair_urls}{\code{EsgResultFile$repair_urls()}}
+    \item \href{#method-EsgResultFile-select_replica}{\code{EsgResultFile$select_replica()}}
+    \item \href{#method-EsgResultFile-download}{\code{EsgResultFile$download()}}
+    \item \href{#method-EsgResultFile-print}{\code{EsgResultFile$print()}}
+    \item \href{#method-EsgResultFile-open_dataset}{\code{EsgResultFile$open_dataset()}}
+    \item \href{#method-EsgResultFile-clone}{\code{EsgResultFile$clone()}}
+  }
 }
-}
-\if{html}{\out{
-<details><summary>Inherited methods</summary>
+\if{html}{\out{<details><summary>Inherited methods</summary>
 <ul>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-count'><code>epwshiftr::EsgResult$count()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-filter'><code>epwshiftr::EsgResult$filter()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>epwshiftr::EsgResult$load()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-query_url'><code>epwshiftr::EsgResult$query_url()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-reachable'><code>epwshiftr::EsgResult$reachable()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>epwshiftr::EsgResult$save()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-selection'><code>epwshiftr::EsgResult$selection()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-slice'><code>epwshiftr::EsgResult$slice()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-count'><code>EsgResult$count()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-filter'><code>EsgResult$filter()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-initialize'><code>EsgResult$initialize()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-load'><code>EsgResult$load()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-query_url'><code>EsgResult$query_url()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-reachable'><code>EsgResult$reachable()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-save'><code>EsgResult$save()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-selection'><code>EsgResult$selection()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-slice'><code>EsgResult$slice()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href='../../epwshiftr/html/EsgResult.html#method-EsgResult-to_dt'><code>EsgResult$to_dt()</code></a></span></li>
 </ul>
-</details>
-}}
+</details>}}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-to_data_table"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-to_data_table}{}}}
-\subsection{Method \code{to_data_table()}}{
-Convert the results into a \link[data.table:data.table]{data.table}
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$to_data_table(fields = NULL, formatted = FALSE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{fields}}{A non-empty character vector indicating the fields to
+\subsection{\code{EsgResultFile$to_data_table()}}{
+  Convert the results into a \link[data.table:data.table]{data.table}
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$to_data_table(fields = NULL, formatted = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{fields}}{A non-empty character vector indicating the fields to
 put into the \code{data.table}. If \code{NULL}, all fields in the query
 result will be used. Default: \code{NULL}.}
-
-\item{\code{formatted}}{Whether to use formatted values for special fields,
+      \item{\code{formatted}}{Whether to use formatted values for special fields,
 including \code{url} and \code{size}. Default: \code{FALSE}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A \link[data.table:data.table]{data.table}.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A \link[data.table:data.table]{data.table}.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-filter_time"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-filter_time}{}}}
-\subsection{Method \code{filter_time()}}{
-Filter file records by the time range covered by each file
+\subsection{\code{EsgResultFile$filter_time()}}{
+  Filter file records by the time range covered by each file
 
 \code{method = "drs"} parses the time range from CMIP/DRS-style NetCDF
 filenames in \code{title}, URL basenames, or \code{id}. This is fast and does
@@ -111,34 +112,99 @@ slower and requires OPeNDAP access.
 The requested time filter is recorded on the returned result and is
 carried into \code{EsgDataset$read_region()} when a dataset is opened from
 the filtered result.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$filter_time(start, stop, method = c("drs", "opendap", "auto"))}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$filter_time(start, stop, method = c("drs", "opendap", "auto"))}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{start, stop}}{Time range boundaries. Character, \code{Date}, and
 \code{POSIXt} inputs are accepted and parsed in UTC.}
-
-\item{\code{method}}{How to determine file time ranges. \code{"auto"} prefers
+      \item{\code{method}}{How to determine file time ranges. \code{"auto"} prefers
 ESGF metadata and fills absent ranges from DRS filenames;
 \code{"drs"} always parses filenames, and \code{"opendap"} reads the
 remote time axis. Default: \code{"drs"}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A new \code{EsgResultFile} object.
+  }
 }
-\if{html}{\out{</div>}}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-access_plan"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-access_plan}{}}}
+\subsection{\code{EsgResultFile$access_plan()}}{
+  List every compatible OPeNDAP candidate without a mandatory speed check.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$access_plan(expand = TRUE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{expand}}{Whether to query same-version master and Replica records.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    For access_plan(), a candidate table with immutable source keys.
+  }
 }
-\subsection{Returns}{
-A new \code{EsgResultFile} object.
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgResultFile-fetch_subset"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgResultFile-fetch_subset}{}}}
+\subsection{\code{EsgResultFile$fetch_subset()}}{
+  Acquire raw 2x2 climate neighborhoods with Replica switching and resume.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$fetch_subset(
+  requests,
+  dest,
+  workers = 4L,
+  resume = TRUE,
+  timeout = 180,
+  retries = 2L,
+  discover = TRUE,
+  network_id = "default",
+  node_workers = 2L
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{requests}}{Table with request_id, site_id, lon, lat, time_start,
+time_stop and optional source filters and case_id labels.}
+      \item{\code{dest}}{Local acquisition directory.}
+      \item{\code{workers}}{Number of persistent source readers.}
+      \item{\code{resume}}{Reuse locally verified native blocks.}
+      \item{\code{timeout}}{Maximum seconds without saved-block progress.}
+      \item{\code{retries}}{Number of later rounds after the first candidate round.}
+      \item{\code{discover}}{Query additional compatible replicas after known ones fail.}
+      \item{\code{network_id}}{User-defined network identity for local timing history.}
+      \item{\code{node_workers}}{Maximum simultaneous readers for one data node.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    For fetch_subset(), a lightweight acquisition summary.
+  }
 }
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-download_plan"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-download_plan}{}}}
-\subsection{Method \code{download_plan()}}{
-Build a persistent downloader plan for file records.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$download_plan(
+\subsection{\code{EsgResultFile$download_plan()}}{
+  Build a persistent downloader plan for file records.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$download_plan(
   replica = c("auto", "current"),
   service = "HTTPServer",
   probe = TRUE,
@@ -149,73 +215,66 @@ Build a persistent downloader plan for file records.
   node_policy = NULL,
   probe_concurrency = 1L,
   probe_cache_seconds = 3600L
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{replica}}{Whether to use current records or expand known replicas.}
-
-\item{\code{service}}{ESGF URL service to download from. Default: \code{"HTTPServer"}.}
-
-\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
-
-\item{\code{strategy}}{Candidate ranking strategy.}
-
-\item{\code{all}}{Whether replica expansion should retrieve all matching records.}
-
-\item{\code{node_stats}}{Optional data node history from
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{replica}}{Whether to use current records or expand known replicas.}
+      \item{\code{service}}{ESGF URL service to download from. Default: \code{"HTTPServer"}.}
+      \item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+      \item{\code{strategy}}{Candidate ranking strategy.}
+      \item{\code{all}}{Whether replica expansion should retrieve all matching records.}
+      \item{\code{node_stats}}{Optional data node history from
 \code{Downloader$data_nodes()}.}
-
-\item{\code{network_policy}}{Optional network options from
+      \item{\code{network_policy}}{Optional network options from
 \code{Downloader$network_policy}.}
-
-\item{\code{node_policy}}{Optional data-node cooldown policy from
+      \item{\code{node_policy}}{Optional data-node cooldown policy from
 \code{Downloader$node_policy}.}
-
-\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
-
-\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+      \item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
+      \item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
 history before probing a URL again. Default: \code{3600}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table download plan.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data.table download plan.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-expand_replicas"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-expand_replicas}{}}}
-\subsection{Method \code{expand_replicas()}}{
-Query ESGF for same-version master and replica records.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$expand_replicas(service = "HTTPServer", all = TRUE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{service}}{ESGF URL service to keep in the method contract.
+\subsection{\code{EsgResultFile$expand_replicas()}}{
+  Query ESGF for same-version master and replica records.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$expand_replicas(service = "HTTPServer", all = TRUE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{service}}{ESGF URL service to keep in the method contract.
 Default: \code{"HTTPServer"}.}
-
-\item{\code{all}}{Whether to retrieve all matching records. Default:
+      \item{\code{all}}{Whether to retrieve all matching records. Default:
 \code{TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A new \code{EsgResultFile} object with expanded replica records
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A new \code{EsgResultFile} object with expanded replica records
 when \code{instance_id}, or \code{master_id} plus \code{version}, is available;
 otherwise \code{self}.
+  }
 }
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-repair_urls"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-repair_urls}{}}}
-\subsection{Method \code{repair_urls()}}{
-Replace unreachable service URLs from compatible replicas.
+\subsection{\code{EsgResultFile$repair_urls()}}{
+  Replace unreachable service URLs from compatible replicas.
 
 \verb{$repair_urls()} checks the current records for the selected service,
 queries compatible ESGF replicas for records whose URL is missing or
@@ -224,41 +283,42 @@ only that service URL repaired in the original row order. The logical
 record and its other service URLs are retained. The original result is
 not modified. The returned result records the original query URL plus
 the replica lookup query URL in \verb{$query_url("all")}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$repair_urls(
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$repair_urls(
   service = c("OPENDAP", "HTTPServer"),
   index_node = NULL,
   probe = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{service}}{Service URL to repair. One of \code{"OPENDAP"} or
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{service}}{Service URL to repair. One of \code{"OPENDAP"} or
 \code{"HTTPServer"}. Default: \code{"OPENDAP"}.}
-
-\item{\code{index_node}}{Optional ESGF search index node used to look up
+      \item{\code{index_node}}{Optional ESGF search index node used to look up
 replicas. If \code{NULL}, the current result index node is used.}
-
-\item{\code{probe}}{Optional named list of probe settings. Supported fields
+      \item{\code{probe}}{Optional named list of probe settings. Supported fields
 are \code{level}, \code{timeout}, \code{concurrency}, \code{network_policy},
 \code{cache_seconds}, and \code{cache_failures_seconds}. Default
 \code{level} is \code{"data_node"}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A new \code{EsgResultFile} object.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A new \code{EsgResultFile} object.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-select_replica"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-select_replica}{}}}
-\subsection{Method \code{select_replica()}}{
-Select the preferred candidate URL per logical file.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$select_replica(
+\subsection{\code{EsgResultFile$select_replica()}}{
+  Select the preferred candidate URL per logical file.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$select_replica(
   strategy = c("fastest", "first", "stable"),
   probe = TRUE,
   service = "HTTPServer",
@@ -267,46 +327,41 @@ Select the preferred candidate URL per logical file.
   node_policy = NULL,
   probe_concurrency = 1L,
   probe_cache_seconds = 3600L
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{strategy}}{Candidate ranking strategy.}
-
-\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
-
-\item{\code{service}}{ESGF URL service to download from. Default:
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{strategy}}{Candidate ranking strategy.}
+      \item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+      \item{\code{service}}{ESGF URL service to download from. Default:
 \code{"HTTPServer"}.}
-
-\item{\code{node_stats}}{Optional data node history from
+      \item{\code{node_stats}}{Optional data node history from
 \code{Downloader$data_nodes()}.}
-
-\item{\code{network_policy}}{Optional network options from
+      \item{\code{network_policy}}{Optional network options from
 \code{Downloader$network_policy}.}
-
-\item{\code{node_policy}}{Optional data-node cooldown policy from
+      \item{\code{node_policy}}{Optional data-node cooldown policy from
 \code{Downloader$node_policy}.}
-
-\item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
-
-\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+      \item{\code{probe_concurrency}}{Maximum concurrent URL probes. Default: \code{1}.}
+      \item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
 history before probing a URL again. Default: \code{3600}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table with one selected candidate per logical file.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data.table with one selected candidate per logical file.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-download"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-download}{}}}
-\subsection{Method \code{download()}}{
-Enqueue and run file downloads using a Downloader.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$download(
+\subsection{\code{EsgResultFile$download()}}{
+  Enqueue and run file downloads using a Downloader.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$download(
   downloader = NULL,
   store = NULL,
   replica = c("auto", "current"),
@@ -318,127 +373,120 @@ Enqueue and run file downloads using a Downloader.
   session_label = NULL,
   run = TRUE,
   ...
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{downloader}}{Optional persistent \link{Downloader}. If \code{NULL},
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{downloader}}{Optional persistent \link{Downloader}. If \code{NULL},
 \code{store$downloader()} is used when \code{store} is supplied.}
-
-\item{\code{store}}{Optional \link{EsgStore} providing a bound downloader.}
-
-\item{\code{replica}}{Whether to use current records or expand known
+      \item{\code{store}}{Optional \link{EsgStore} providing a bound downloader.}
+      \item{\code{replica}}{Whether to use current records or expand known
 replicas before downloading.}
-
-\item{\code{service}}{ESGF URL service to download from. Default:
+      \item{\code{service}}{ESGF URL service to download from. Default:
 \code{"HTTPServer"}.}
-
-\item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
-
-\item{\code{strategy}}{Candidate ranking strategy.}
-
-\item{\code{probe_concurrency}}{Maximum concurrent URL probes when
+      \item{\code{probe}}{Whether to lightly probe URLs before ranking them.}
+      \item{\code{strategy}}{Candidate ranking strategy.}
+      \item{\code{probe_concurrency}}{Maximum concurrent URL probes when
 \code{probe = TRUE}. Default comes from the downloader worker count.}
-
-\item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
+      \item{\code{probe_cache_seconds}}{Seconds to reuse fresh data-node probe
 history before probing a URL again. Default: \code{3600}.}
-
-\item{\code{session_label}}{Optional download session label.}
-
-\item{\code{run}}{Whether to run the queued session immediately. Default:
+      \item{\code{session_label}}{Optional download session label.}
+      \item{\code{run}}{Whether to run the queued session immediately. Default:
 \code{TRUE}.}
+      \item{\code{...}}{Additional arguments passed to \code{Downloader$run()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The created downloader session ID.
+  }
+}
 
-\item{\code{...}}{Additional arguments passed to \code{Downloader$run()}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The created downloader session ID.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-print"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-print}{}}}
-\subsection{Method \code{print()}}{
-Print a summary of the current dataset
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$print(n = 10L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgResultFile$print()}}{
+  Print a summary of the current dataset
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$print(n = 10L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{n}}{An integer indicating how many items to print. If \code{NULL},
+all items will be printed. Default: \code{10L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The \code{EsgResultFile} object itself, invisibly.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{n}}{An integer indicating how many items to print. If \code{NULL},
-all items will be printed. Default: \code{10L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The \code{EsgResultFile} object itself, invisibly.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-open_dataset"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-open_dataset}{}}}
-\subsection{Method \code{open_dataset()}}{
-Open a file as an EsgDataset for remote data access via OPeNDAP
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$open_dataset(
+\subsection{\code{EsgResultFile$open_dataset()}}{
+  Open a file as an EsgDataset for remote data access via OPeNDAP
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$open_dataset(
   which = NULL,
   fallback = c("ask", "auto", "error"),
   store = NULL,
   downloader = NULL,
   progress = getOption("epwshiftr.progress", interactive())
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{which}}{File records to open. Use integer indices or file IDs.
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{which}}{File records to open. Use integer indices or file IDs.
 If \code{NULL}, all file records are opened. Default: \code{NULL}.}
-
-\item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
+      \item{\code{fallback}}{What to do if OPeNDAP is unavailable. One of:
 \itemize{
 \item \code{"ask"}: Interactively ask the user (default). In a
 non-interactive session this raises an error.
 \item \code{"auto"}: Automatically download the file via HTTPServer.
 \item \code{"error"}: Raise an error.
 }}
-
-\item{\code{store}}{Optional \link{EsgStore} used for recoverable HTTP fallback.}
-
-\item{\code{downloader}}{Optional persistent \link{Downloader} used for
+      \item{\code{store}}{Optional \link{EsgStore} used for recoverable HTTP fallback.}
+      \item{\code{downloader}}{Optional persistent \link{Downloader} used for
 recoverable HTTP fallback.}
-
-\item{\code{progress}}{Whether to show progress bars while opening
+      \item{\code{progress}}{Whether to show progress bars while opening
 OPeNDAP records and any HTTP fallback downloads. By default
 the package option \code{epwshiftr.progress} is used, falling back
 to \code{\link[=interactive]{interactive()}}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    An \code{EsgDataset} object with the connection already opened.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-An \code{EsgDataset} object with the connection already opened.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgResultFile-clone"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgResultFile-clone}{}}}
-\subsection{Method \code{clone()}}{
-The objects of this class are cloneable with this method.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgResultFile$clone(deep = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{EsgResultFile$clone()}}{
+  The objects of this class are cloneable with this method.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgResultFile$clone(deep = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{deep}}{Whether to make a deep clone.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{deep}}{Whether to make a deep clone.}
-}
-\if{html}{\out{</div>}}
-}
-}
 }

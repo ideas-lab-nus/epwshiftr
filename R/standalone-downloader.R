@@ -49,8 +49,14 @@ DOWNLOADER_RUNTIME$sync_store <- NULL
 # Use mirai's public loopback TCP transport on each platform. This choice
 # avoids the default transport implicated in a local macOS shutdown wait; it
 # does not establish the cause of that wait or prevent all native shutdown hangs.
-downloader__start_pool <- function(n, dispatcher = TRUE, .compute) {
+downloader__start_pool <- function(
+    n,
+    dispatcher = TRUE,
+    .compute,
+    output = FALSE
+) {
     checkmate::assert_count(n, positive = TRUE)
+    checkmate::assert_flag(output)
     checkmate::assert_string(.compute, min.chars = 1L)
     started <- FALSE
     on.exit(
@@ -65,6 +71,7 @@ downloader__start_pool <- function(n, dispatcher = TRUE, .compute) {
         n,
         url = mirai::local_url(tcp = TRUE),
         dispatcher = dispatcher,
+        output = output,
         .compute = .compute
     )
     # Explicit URLs configure a listener; launch_local() connects workers to

@@ -1,5 +1,13 @@
 # epwshiftr (development version)
 
+* Add `EsgResultFile$access_plan()` and `fetch_subset()` for raw native 2x2
+  neighborhoods over OPeNDAP. Acquisition retains Replica candidates, ranks
+  actual reads using recent client timing and failures, switches endpoints,
+  and resumes checksum-verified blocks. `subset_status()` and `read_subset()`
+  expose local progress, gaps, case associations and unaggregated corners.
+  `EsgDataset$read_neighborhood()` provides the same bounded raw selection.
+  Existing API defaults remain unchanged (#296).
+
 * Compile each fixed package schema once per R process and reuse it for query, result, dictionary and shift workflow config validation, instead of recompiling the schema on every check. Validation rules and error messages are unchanged.
 
 * Coalesce live run snapshots. Within one process, ordinary changes to a run (events, case writes, heartbeats) rewrite the lock-free snapshot at most once per second, and a deferred write is delivered by the next heartbeat or change. Status changes, terminal run, step and job states, and new attempts are still written immediately, and the snapshot is always rebuilt from the manifest tables. The last reporter state is kept when a write carries none, instead of being erased.

@@ -160,4 +160,151 @@ local_downloader_http_server <- function(env = parent.frame()) {
 }
 # }}}
 
+# Serve DAP2 arrays with real constraints and XDR payloads, for real libnetcdf I/O.
+subset_test__dap_app <- function() {
+    app <- webfakes::new_app()
+    app$locals$weather <- 0L
+    app$locals$requests <- character()
+    app$get('/requests', function(req, res, locals) {
+        res$send_json(locals$requests)
+    })
+    app$get('/reset', function(req, res, locals) {
+        locals$requests <- character()
+        res$send('ok')
+    })
+    app$use(function(req, res, locals) {
+        locals$requests <- c(locals$requests, paste(req$path, req$query_string))
+        name <- basename(req$path)
+        if (grepl('[.]das$', name)) {
+            attributes <- 'Attributes { time { String units "days since 2060-01-01"; String calendar "360_day"; } tas { String units "K"; } }'
+            if (grepl('wrong', name)) {
+                attributes <- sub(
+                    'units "K"',
+                    'units "C"',
+                    attributes,
+                    fixed = TRUE
+                )
+            }
+            return(res$send(attributes))
+        }
+        query <- utils::URLdecode(
+            if (is.null(req$query_string)) '' else req$query_string
+        )
+        if (startsWith(query, '?')) {
+            query <- substring(query, 2L)
+        }
+        variables <- list(
+            time = 0:7,
+            lat = 0:1,
+            lon = 10:11,
+            tas = array(1:32, c(2, 2, 8))
+        )
+        dims <- list(
+            time = 'time',
+            lat = 'lat',
+            lon = 'lon',
+            tas = c('time', 'lat', 'lon')
+        )
+        sizes <- c(time = 8L, lat = 2L, lon = 2L)
+        select <- if (nzchar(query)) {
+            strsplit(query, ',', fixed = TRUE)[[1L]]
+        } else {
+            names(variables)
+        }
+        declarations <- character()
+        payload <- raw()
+        for (part in select) {
+            var <- sub('[[].*$', '', part)
+            ranges <- regmatches(part, gregexpr('[[][0-9:]+[]]', part))[[1L]]
+            indices <- lapply(sizes[dims[[var]]], seq_len)
+            if (length(ranges) && ranges[[1L]] != '') {
+                indices <- lapply(ranges, function(z) {
+                    x <- as.integer(strsplit(
+                        substring(z, 2, nchar(z) - 1),
+                        ':',
+                        fixed = TRUE
+                    )[[1L]])
+                    if (length(x) == 1L) {
+                        x + 1L
+                    } else if (length(x) == 2L) {
+                        seq(x[1L], x[2L]) + 1L
+                    } else {
+                        seq(x[1L], x[3L], by = x[2L]) + 1L
+                    }
+                })
+            }
+            declarations <- c(
+                declarations,
+                paste0(
+                    'Float64 ',
+                    var,
+                    paste0(
+                        '[',
+                        dims[[var]],
+                        ' = ',
+                        lengths(indices),
+                        ']',
+                        collapse = ''
+                    ),
+                    ';'
+                )
+            )
+            value <- variables[[var]]
+            if (var == 'tas') {
+                if (grepl('[.]dods$', name)) {
+                    locals$weather <- locals$weather + 1L
+                }
+                if (
+                    grepl('[.]dods$', name) &&
+                        grepl('bad', name) &&
+                        locals$weather > 1L
+                ) {
+                    return(res$set_status(503L)$send('temporary read failure'))
+                }
+                value <- as.vector(value[
+                    indices[[3L]],
+                    indices[[2L]],
+                    indices[[1L]],
+                    drop = FALSE
+                ])
+                if (grepl('[.]dods$', name) && grepl('slow', name)) {
+                    Sys.sleep(.25)
+                }
+                if (grepl('[.]dods$', name) && grepl('progress', name)) {
+                    Sys.sleep(.75)
+                }
+                if (grepl('[.]dods$', name) && grepl('hang', name)) {
+                    Sys.sleep(10)
+                }
+            } else {
+                value <- value[indices[[1L]]]
+            }
+            payload <- c(
+                payload,
+                writeBin(
+                    rep(as.integer(length(value)), 2),
+                    raw(),
+                    size = 4,
+                    endian = 'big'
+                ),
+                writeBin(as.double(value), raw(), size = 8, endian = 'big')
+            )
+        }
+        dds <- paste(
+            'Dataset {',
+            paste(declarations, collapse = ' '),
+            '} data;'
+        )
+        if (grepl('[.]dds$', name)) {
+            return(res$send(dds))
+        }
+        res$set_header('Content-Type', 'application/octet-stream')$send(c(
+            charToRaw(paste0(dds, '\nData:\n')),
+            payload
+        ))
+    })
+    app
+}
+environment(subset_test__dap_app) <- baseenv()
+
 # vim: fdm=marker :

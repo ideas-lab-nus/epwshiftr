@@ -2664,6 +2664,55 @@ EsgResultFile <- R6::R6Class(
             )
         },
         # }}}
+        # access_plan
+        #' @description
+        #' List every compatible OPeNDAP candidate without a mandatory speed check.
+        #' @param expand Whether to query same-version master and Replica records.
+        #' @return For access_plan(), a candidate table with immutable source keys.
+        # Candidates stay separate so a runtime read failure can select another.
+        access_plan = function(expand = TRUE) {
+            subset__access_plan(self, expand)
+        },
+        # fetch_subset
+        #' @description
+        #' Acquire raw 2x2 climate neighborhoods with Replica switching and resume.
+        #' @param requests Table with request_id, site_id, lon, lat, time_start,
+        #'   time_stop and optional source filters and case_id labels.
+        #' @param dest Local acquisition directory.
+        #' @param workers Number of persistent source readers.
+        #' @param resume Reuse locally verified native blocks.
+        #' @param timeout Maximum seconds without saved-block progress.
+        #' @param retries Number of later rounds after the first candidate round.
+        #' @param discover Query additional compatible replicas after known ones fail.
+        #' @param network_id User-defined network identity for local timing history.
+        #' @param node_workers Maximum simultaneous readers for one data node.
+        #' @return For fetch_subset(), a lightweight acquisition summary.
+        # The package owns all writes; callers provide only their demand contract.
+        fetch_subset = function(
+            requests,
+            dest,
+            workers = 4L,
+            resume = TRUE,
+            timeout = 180,
+            retries = 2L,
+            discover = TRUE,
+            network_id = "default",
+            node_workers = 2L
+        ) {
+            subset__fetch(
+                self,
+                requests,
+                dest,
+                workers,
+                resume,
+                timeout,
+                retries,
+                discover,
+                network_id,
+                node_workers
+            )
+        },
+
         # download_plan
         #' @description
         #' Build a persistent downloader plan for file records.

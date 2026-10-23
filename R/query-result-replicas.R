@@ -113,6 +113,22 @@ query_result__compatible_content <- function(target, candidates) {
         nzchar(target_checksum) &
         !is.na(candidate_checksum) &
         nzchar(candidate_checksum)
+    # Digests from different declared algorithms are not comparable. Retain
+    # legacy conservative comparison when either provider omits its algorithm.
+    target_algorithm <- tolower(as.character(query_result__col(
+        target,
+        "checksum_type"
+    ))[[1L]])
+    candidate_algorithm <- tolower(as.character(query_result__col(
+        candidates,
+        "checksum_type"
+    )))
+    different_algorithm <- !is.na(target_algorithm) &
+        nzchar(target_algorithm) &
+        !is.na(candidate_algorithm) &
+        nzchar(candidate_algorithm) &
+        candidate_algorithm != target_algorithm
+    compare_checksum <- compare_checksum & !different_algorithm
     compatible[compare_checksum] <- compatible[compare_checksum] &
         candidate_checksum[compare_checksum] == target_checksum
 

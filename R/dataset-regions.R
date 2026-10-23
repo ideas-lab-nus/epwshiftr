@@ -606,4 +606,488 @@ dataset__read_regions <- function(
 }
 # }}}
 
+# Match raw ISO boundaries as native date tuples. A 360-day February 30 must
+# never be normalized into Gregorian March; existing POSIX inputs retain the
+# shared range selector's behavior. Nonexistent endpoint dates can still bound
+# a window (for example December 31 around a 360-day model year).
+dataset__neighborhood_time_indices <- function(time, coordinates, range) {
+    if (!is.character(range)) {
+        return(cf_time__range_indices(time, coordinates, range))
+    }
+    checkmate::assert_character(range, len = 2L, any.missing = FALSE)
+    fields <- utils::strcapture(
+        "^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[T ]([0-9]{2}):([0-9]{2})(?::([0-9]{2}(?:[.][0-9]+)?))?)?Z?$",
+        range,
+        proto = list(
+            year = integer(),
+            month = integer(),
+            day = integer(),
+            hour = integer(),
+            minute = integer(),
+            second = numeric()
+        ),
+        perl = TRUE
+    )
+    if (
+        anyNA(fields[, c("year", "month", "day")]) ||
+            any(
+                fields$month < 1L |
+                    fields$month > 12L |
+                    fields$day < 1L |
+                    fields$day > 31L
+            )
+    ) {
+        stop(
+            "Raw neighborhood windows require ISO date or UTC datetime endpoints.",
+            call. = FALSE
+        )
+    }
+    for (column in c("hour", "minute", "second")) {
+        fields[[column]][is.na(fields[[column]])] <- 0
+    }
+    if (any(fields$hour > 23L | fields$minute > 59L | fields$second >= 60)) {
+        stop("Invalid raw neighborhood clock endpoint.", call. = FALSE)
+    }
+    boundary <- ((as.double(fields$year) * 13 + fields$month) *
+        32 +
+        fields$day) +
+        (fields$hour * 3600 + fields$minute * 60 + fields$second) / 86400
+    if (boundary[[2L]] < boundary[[1L]]) {
+        stop("Raw time end precedes start.", call. = FALSE)
+    }
+    key <- ((as.double(coordinates$cf_year) * 13 + coordinates$cf_month) *
+        32 +
+        coordinates$cf_day) +
+        coordinates$cf_second_of_day / 86400
+    which(!is.na(time) & key >= boundary[[1L]] & key <= boundary[[2L]])
+}
+
+# Preserve enclosing native corners independently of later spatial algorithms.
+# Each callback receives a bounded value block plus its CF and grid provenance.
+dataset__read_neighborhood <- function(
+    dataset,
+    variable,
+    sites,
+    time,
+    on_chunk,
+    completed = NULL,
+    expected_contract = NULL
+) {
+    checkmate::assert_character(
+        variable,
+        min.len = 1L,
+        any.missing = FALSE,
+        unique = TRUE
+    )
+    checkmate::assert_data_frame(sites)
+    checkmate::assert_function(on_chunk, null.ok = TRUE)
+    sites <- data.table::as.data.table(data.table::copy(sites))
+    data.table::set(sites, j = "method", value = "mean")
+    sites <- dataset__region_sites(sites)
+    private <- dataset__private(dataset)
+    private$check_open()
+    windows <- if (is.list(time) && !inherits(time, "POSIXt")) {
+        time
+    } else {
+        list(time)
+    }
+    windows <- lapply(windows, function(window) {
+        if (is.character(window) && length(window) == 2L) {
+            window
+        } else {
+            private$normalize_region_time(window)
+        }
+    })
+    parts <- list()
+    memberships <- list()
+    clocks <- list()
+    slices <- list()
+    total <- 0L
+    for (index in seq_len(dataset$file_count)) {
+        grid <- dataset$get_spatial_grid(index)
+        if (
+            length(dim(grid$lat)) > 1L ||
+                length(dim(grid$lon)) > 1L ||
+                is.null(grid$lat) ||
+                is.null(grid$lon)
+        ) {
+            stop(
+                "Raw neighborhoods require rectilinear lat/lon coordinates.",
+                call. = FALSE
+            )
+        }
+        axis <- dataset__time_axis(dataset, index)
+        selected <- sort(unique(unlist(
+            lapply(windows, function(window) {
+                dataset__neighborhood_time_indices(
+                    axis$values,
+                    axis$coordinates,
+                    window
+                )
+            }),
+            use.names = FALSE
+        )))
+        for (name in variable) {
+            if (!name %in% dataset$get_variables(index)) {
+                stop(
+                    sprintf(
+                        "Variable '%s' is absent from file %d.",
+                        name,
+                        index
+                    ),
+                    call. = FALSE
+                )
+            }
+            meta <- private$get_var_dim_meta(name, index)
+            positions <- match(c("time", "lat", "lon"), meta$names)
+            if (anyNA(positions) || any(meta$lengths[-positions] != 1L)) {
+                stop(
+                    "Raw neighborhoods require time/lat/lon and only singleton extra dimensions.",
+                    call. = FALSE
+                )
+            }
+            source <- data.table::rbindlist(lapply(
+                seq_len(nrow(sites)),
+                function(i) {
+                    corners <- private$region_grid_sources(
+                        "mean",
+                        grid$lat,
+                        grid$lon,
+                        sites$lat[[i]],
+                        private$normalize_lon_for_grid(sites$lon[[i]], grid$lon)
+                    )
+                    data.table::set(
+                        corners,
+                        j = "site_id",
+                        value = sites$site_id[[i]]
+                    )
+                    data.table::set(
+                        corners,
+                        j = "target_lon",
+                        value = sites$lon[[i]]
+                    )
+                    data.table::set(
+                        corners,
+                        j = "target_lat",
+                        value = sites$lat[[i]]
+                    )
+                    corners
+                }
+            ))
+            data.table::set(source, j = "weight", value = NULL)
+            data.table::set(source, j = "file_index", value = index)
+            data.table::set(source, j = "variable", value = name)
+            points <- unique(source[,
+                c("ind_lat", "ind_lon", "grid_lat", "grid_lon"),
+                with = FALSE
+            ])
+            groups <- dataset__region_cell_groups(points)
+            # A sparse L-shaped overlap must not add the missing fourth cell.
+            groups <- unlist(
+                lapply(groups, function(group) {
+                    if (
+                        length(group$members) ==
+                            group$lat_count * group$lon_count
+                    ) {
+                        return(list(group))
+                    }
+                    lapply(group$members, function(i) {
+                        list(
+                            members = i,
+                            lat = points$ind_lat[[i]],
+                            lon = points$ind_lon[[i]],
+                            lat_count = 1L,
+                            lon_count = 1L
+                        )
+                    })
+                }),
+                recursive = FALSE
+            )
+            memberships[[length(memberships) + 1L]] <- source
+            units <- dataset$att_get(name, "units", index)
+            # Preserve temporal interpretation before any downstream weather
+            # method chooses between point values and interval means.
+            cell_methods <- tryCatch(
+                as.character(dataset$att_get(name, "cell_methods", index)),
+                error = function(e) NA_character_
+            )
+            standard_name <- tryCatch(
+                as.character(dataset$att_get(name, "standard_name", index)),
+                error = function(e) NA_character_
+            )
+
+            # Resume coverage is native-index based only after its complete
+            # grid and CF-axis identity has been checked on this endpoint.
+            contract <- checksum_bytes(
+                serialize(
+                    list(
+                        variable = name,
+                        units = as.character(units),
+                        cell_methods = cell_methods,
+                        standard_name = standard_name,
+                        lat = as.double(grid$lat),
+                        lon = as.double(grid$lon),
+                        time = as.double(axis$raw_values),
+                        time_units = axis$units,
+                        calendar = axis$calendar,
+                        dimensions = meta$names,
+                        lengths = as.integer(meta$lengths)
+                    ),
+                    NULL,
+                    version = 3L
+                ),
+                "sha256"
+            )
+            if (
+                !is.null(expected_contract) &&
+                    !identical(contract, expected_contract)
+            ) {
+                stop(
+                    "Replica grid, variable or CF time identity does not match saved blocks.",
+                    call. = FALSE
+                )
+            }
+            if (!is.null(completed) && nrow(completed)) {
+                # Only overlapping recovery work needs individual corners;
+                # another city's completed blocks do not split a fresh 2x2.
+                groups <- unlist(
+                    lapply(groups, function(group) {
+                        overlap <- completed$ind_lat <
+                            group$lat + group$lat_count &
+                            completed$ind_lat + completed$lat_count >
+                                group$lat &
+                            completed$ind_lon < group$lon + group$lon_count &
+                            completed$ind_lon + completed$lon_count > group$lon
+                        if (!any(overlap)) {
+                            return(list(group))
+                        }
+                        lapply(group$members, function(i) {
+                            list(
+                                members = i,
+                                lat = points$ind_lat[[i]],
+                                lon = points$ind_lon[[i]],
+                                lat_count = 1L,
+                                lon_count = 1L
+                            )
+                        })
+                    }),
+                    recursive = FALSE
+                )
+            }
+            for (group in groups) {
+                needed <- selected
+                if (!is.null(completed) && nrow(completed)) {
+                    prior <- completed[
+                        completed$ind_lat <= group$lat &
+                            completed$ind_lat + completed$lat_count >
+                                group$lat &
+                            completed$ind_lon <= group$lon &
+                            completed$ind_lon + completed$lon_count > group$lon
+                    ]
+                    for (row in seq_len(nrow(prior))) {
+                        needed <- needed[
+                            needed < prior$time_start_index[[row]] |
+                                needed >=
+                                    prior$time_start_index[[row]] +
+                                        prior$time_count[[row]]
+                        ]
+                    }
+                }
+                runs <- dataset__region_runs(
+                    needed,
+                    DATASET_REQUEST_MAX_VALUES %/%
+                        (group$lat_count * group$lon_count)
+                )
+                for (run in runs) {
+                    start <- rep.int(1L, length(meta$names))
+                    count <- rep.int(1L, length(meta$names))
+                    start[positions] <- c(run[[1L]], group$lat, group$lon)
+                    count[positions] <- c(
+                        length(run),
+                        group$lat_count,
+                        group$lon_count
+                    )
+                    began <- proc.time()[["elapsed"]]
+                    raw <- dataset$var_get(
+                        name,
+                        start = start,
+                        count = count,
+                        index = index,
+                        collapse = FALSE
+                    )
+                    elapsed <- proc.time()[["elapsed"]] - began
+                    if (length(raw) != prod(count)) {
+                        stop(
+                            "Incomplete native neighborhood block.",
+                            call. = FALSE
+                        )
+                    }
+                    raw <- aperm(
+                        raw,
+                        c(positions, setdiff(seq_along(count), positions))
+                    )
+                    values <- data.table::CJ(
+                        time_index = as.integer(run),
+                        ind_lat = seq.int(
+                            group$lat,
+                            length.out = group$lat_count
+                        ),
+                        ind_lon = seq.int(
+                            group$lon,
+                            length.out = group$lon_count
+                        ),
+                        sorted = FALSE
+                    )
+                    # NetCDF's first dimension varies fastest; construct the
+                    # same ordering explicitly before attaching the payload.
+                    data.table::setorderv(
+                        values,
+                        c("ind_lon", "ind_lat", "time_index")
+                    )
+                    data.table::set(values, j = "value", value = as.double(raw))
+                    data.table::set(
+                        values,
+                        j = "grid_lat",
+                        value = grid$lat[values$ind_lat]
+                    )
+                    data.table::set(
+                        values,
+                        j = "grid_lon",
+                        value = grid$lon[values$ind_lon]
+                    )
+                    data.table::set(values, j = "variable", value = name)
+                    data.table::set(values, j = "file_index", value = index)
+                    data.table::set(
+                        values,
+                        j = "units",
+                        value = as.character(units)
+                    )
+                    data.table::set(
+                        values,
+                        j = "cell_methods",
+                        value = cell_methods
+                    )
+                    data.table::set(
+                        values,
+                        j = "standard_name",
+                        value = standard_name
+                    )
+                    clock <- data.table::as.data.table(axis$coordinates[
+                        run,
+                        ,
+                        drop = FALSE
+                    ])
+                    data.table::set(
+                        clock,
+                        j = "time_index",
+                        value = as.integer(run)
+                    )
+                    data.table::set(clock, j = "file_index", value = index)
+                    data.table::set(clock, j = "time", value = axis$values[run])
+                    data.table::set(
+                        clock,
+                        j = "time_value",
+                        value = axis$raw_values[run]
+                    )
+                    data.table::set(clock, j = "time_units", value = axis$units)
+                    bounds <- dataset__selected_bounds(
+                        dataset,
+                        index,
+                        axis,
+                        run
+                    )
+                    if (!is.null(bounds)) {
+                        data.table::set(
+                            clock,
+                            j = "time_bound_start",
+                            value = bounds$start
+                        )
+                        data.table::set(
+                            clock,
+                            j = "time_bound_end",
+                            value = bounds$end
+                        )
+                        # The shared selected-bounds accessor intentionally
+                        # returns only parsed endpoints. Recover native values
+                        # from its verified cache, without a second DAP read.
+                        cached_bounds <- private$metadata_cache[[sprintf(
+                            "time_bounds_%d",
+                            index
+                        )]]
+                        raw_bounds <- if (!is.null(axis$bounds)) {
+                            axis$bounds
+                        } else {
+                            cached_bounds$bounds
+                        }
+                        bound_meta <- private$get_var_dim_meta(
+                            raw_bounds$name,
+                            index
+                        )
+                        native <- if (match("time", bound_meta$names) == 1L) {
+                            raw_bounds$raw_values
+                        } else {
+                            t(raw_bounds$raw_values)
+                        }
+                        bound_positions <- if (!is.null(axis$bounds)) {
+                            run
+                        } else {
+                            match(run, cached_bounds$indices)
+                        }
+                        native <- native[bound_positions, , drop = FALSE]
+                        data.table::set(
+                            clock,
+                            j = "bound_start_value",
+                            value = native[, 1L]
+                        )
+                        data.table::set(
+                            clock,
+                            j = "bound_end_value",
+                            value = native[, 2L]
+                        )
+                    }
+                    slice <- data.table::data.table(
+                        file_index = index,
+                        variable = name,
+                        ind_lat = group$lat,
+                        ind_lon = group$lon,
+                        lat_count = group$lat_count,
+                        lon_count = group$lon_count,
+                        time_start_index = as.integer(run[[1L]]),
+                        time_count = length(run),
+                        elapsed_seconds = elapsed,
+                        native_values = length(raw)
+                    )
+                    chunk <- list(
+                        contract = contract,
+                        values = values,
+                        neighborhoods = source,
+                        time = clock,
+                        read_slices = slice
+                    )
+                    if (is.null(on_chunk)) {
+                        total <- total + nrow(values)
+                        if (total > 250000L) {
+                            stop(
+                                "Use on_chunk for neighborhoods exceeding 250000 values.",
+                                call. = FALSE
+                            )
+                        }
+                        parts[[length(parts) + 1L]] <- values
+                    } else {
+                        on_chunk(chunk)
+                    }
+                    clocks[[length(clocks) + 1L]] <- clock
+                    slices[[length(slices) + 1L]] <- slice
+                }
+            }
+        }
+    }
+    list(
+        values = data.table::rbindlist(parts, fill = TRUE),
+        neighborhoods = unique(data.table::rbindlist(memberships, fill = TRUE)),
+        time = unique(data.table::rbindlist(clocks, fill = TRUE)),
+        read_slices = data.table::rbindlist(slices, fill = TRUE)
+    )
+}
+
 # vim: fdm=marker :

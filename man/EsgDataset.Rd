@@ -22,7 +22,7 @@ automatically handling time dimension concatenation.
 \examples{
 
 ## ------------------------------------------------
-## Method `EsgDataset$new`
+## Method `EsgDataset$new()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -34,7 +34,7 @@ ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$open`
+## Method `EsgDataset$open()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -44,7 +44,7 @@ ds$open(async = TRUE, timeout = 10)
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$close`
+## Method `EsgDataset$close()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -52,7 +52,7 @@ ds$close()
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$file_inq`
+## Method `EsgDataset$file_inq()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -60,7 +60,7 @@ info <- ds$file_inq()
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$var_inq`
+## Method `EsgDataset$var_inq()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -68,7 +68,7 @@ var_info <- ds$var_inq("tas")
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$dim_inq`
+## Method `EsgDataset$dim_inq()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -76,7 +76,7 @@ dim_info <- ds$dim_inq("time")
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$att_get`
+## Method `EsgDataset$att_get()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -84,7 +84,7 @@ units <- ds$att_get("tas", "units")
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$var_get`
+## Method `EsgDataset$var_get()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -95,7 +95,7 @@ data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$get_variables`
+## Method `EsgDataset$get_variables()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -103,7 +103,7 @@ vars <- ds$get_variables()
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$get_dimensions`
+## Method `EsgDataset$get_dimensions()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -111,7 +111,7 @@ dims <- ds$get_dimensions()
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$get_time_axis`
+## Method `EsgDataset$get_time_axis()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -119,7 +119,7 @@ time_info <- ds$get_time_axis()
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$get_spatial_grid`
+## Method `EsgDataset$get_spatial_grid()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -127,7 +127,7 @@ grid <- ds$get_spatial_grid()
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$read_array`
+## Method `EsgDataset$read_array()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -138,7 +138,7 @@ data_list_async <- ds$read_array("tas", async = TRUE, timeout = 10)
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$read_data_table`
+## Method `EsgDataset$read_data_table()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -150,7 +150,7 @@ dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
 }
 
 ## ------------------------------------------------
-## Method `EsgDataset$read_region`
+## Method `EsgDataset$read_region()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -166,355 +166,339 @@ dt <- ds$read_region(
 Hongyuan Jia
 }
 \section{Active bindings}{
-\if{html}{\out{<div class="r6-active-bindings">}}
-\describe{
-\item{\code{url}}{The OPeNDAP URL(s)}
+  \if{html}{\out{<div class="r6-active-bindings">}}
+  \describe{
+    \item{\code{url}}{The OPeNDAP URL(s)}
 
-\item{\code{is_open}}{Whether the connection is open}
+    \item{\code{is_open}}{Whether the connection is open}
 
-\item{\code{is_aggregated}}{Whether the dataset contains multiple files}
+    \item{\code{is_aggregated}}{Whether the dataset contains multiple files}
 
-\item{\code{file_count}}{Number of files in the dataset}
+    \item{\code{file_count}}{Number of files in the dataset}
 
-\item{\code{time_filter}}{A result-level time filter recorded by
+    \item{\code{time_filter}}{A result-level time filter recorded by
 \code{EsgResultFile$filter_time()} or
 \code{EsgResultAggregation$filter_time()}, or \code{NULL}.}
-}
-\if{html}{\out{</div>}}
+  }
+  \if{html}{\out{</div>}}
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-EsgDataset-new}{\code{EsgDataset$new()}}
-\item \href{#method-EsgDataset-open}{\code{EsgDataset$open()}}
-\item \href{#method-EsgDataset-close}{\code{EsgDataset$close()}}
-\item \href{#method-EsgDataset-slice}{\code{EsgDataset$slice()}}
-\item \href{#method-EsgDataset-reachable}{\code{EsgDataset$reachable()}}
-\item \href{#method-EsgDataset-file_inq}{\code{EsgDataset$file_inq()}}
-\item \href{#method-EsgDataset-var_inq}{\code{EsgDataset$var_inq()}}
-\item \href{#method-EsgDataset-dim_inq}{\code{EsgDataset$dim_inq()}}
-\item \href{#method-EsgDataset-att_get}{\code{EsgDataset$att_get()}}
-\item \href{#method-EsgDataset-var_get}{\code{EsgDataset$var_get()}}
-\item \href{#method-EsgDataset-get_variables}{\code{EsgDataset$get_variables()}}
-\item \href{#method-EsgDataset-get_dimensions}{\code{EsgDataset$get_dimensions()}}
-\item \href{#method-EsgDataset-get_time_axis}{\code{EsgDataset$get_time_axis()}}
-\item \href{#method-EsgDataset-get_spatial_grid}{\code{EsgDataset$get_spatial_grid()}}
-\item \href{#method-EsgDataset-read_array}{\code{EsgDataset$read_array()}}
-\item \href{#method-EsgDataset-read_data_table}{\code{EsgDataset$read_data_table()}}
-\item \href{#method-EsgDataset-read_region}{\code{EsgDataset$read_region()}}
-\item \href{#method-EsgDataset-selection}{\code{EsgDataset$selection()}}
-\item \href{#method-EsgDataset-print}{\code{EsgDataset$print()}}
-\item \href{#method-EsgDataset-clone}{\code{EsgDataset$clone()}}
-}
+  \itemize{
+    \item \href{#method-EsgDataset-initialize}{\code{EsgDataset$new()}}
+    \item \href{#method-EsgDataset-open}{\code{EsgDataset$open()}}
+    \item \href{#method-EsgDataset-close}{\code{EsgDataset$close()}}
+    \item \href{#method-EsgDataset-slice}{\code{EsgDataset$slice()}}
+    \item \href{#method-EsgDataset-reachable}{\code{EsgDataset$reachable()}}
+    \item \href{#method-EsgDataset-file_inq}{\code{EsgDataset$file_inq()}}
+    \item \href{#method-EsgDataset-var_inq}{\code{EsgDataset$var_inq()}}
+    \item \href{#method-EsgDataset-dim_inq}{\code{EsgDataset$dim_inq()}}
+    \item \href{#method-EsgDataset-att_get}{\code{EsgDataset$att_get()}}
+    \item \href{#method-EsgDataset-var_get}{\code{EsgDataset$var_get()}}
+    \item \href{#method-EsgDataset-get_variables}{\code{EsgDataset$get_variables()}}
+    \item \href{#method-EsgDataset-get_dimensions}{\code{EsgDataset$get_dimensions()}}
+    \item \href{#method-EsgDataset-get_time_axis}{\code{EsgDataset$get_time_axis()}}
+    \item \href{#method-EsgDataset-get_spatial_grid}{\code{EsgDataset$get_spatial_grid()}}
+    \item \href{#method-EsgDataset-read_array}{\code{EsgDataset$read_array()}}
+    \item \href{#method-EsgDataset-read_data_table}{\code{EsgDataset$read_data_table()}}
+    \item \href{#method-EsgDataset-read_region}{\code{EsgDataset$read_region()}}
+    \item \href{#method-EsgDataset-read_neighborhood}{\code{EsgDataset$read_neighborhood()}}
+    \item \href{#method-EsgDataset-selection}{\code{EsgDataset$selection()}}
+    \item \href{#method-EsgDataset-print}{\code{EsgDataset$print()}}
+    \item \href{#method-EsgDataset-clone}{\code{EsgDataset$clone()}}
+  }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-EsgDataset-new"></a>}}
-\if{latex}{\out{\hypertarget{method-EsgDataset-new}{}}}
-\subsection{Method \code{new()}}{
-Create a new EsgDataset object
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$new(urls)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{urls}}{A character vector of OPeNDAP URLs. Can be a single URL
+\if{html}{\out{<a id="method-EsgDataset-initialize"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgDataset-initialize}{}}}
+\subsection{\code{EsgDataset$new()}}{
+  Create a new EsgDataset object
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$new(urls)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{urls}}{A character vector of OPeNDAP URLs. Can be a single URL
 or multiple URLs for a multi-file dataset.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-An \code{EsgDataset} object.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# Single file
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    An \code{EsgDataset} object.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{# Single file
 ds <- EsgDataset$new("https://example.com/data.nc")
 
 # Multiple files
 ds <- EsgDataset$new(c("url1.nc", "url2.nc"))
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-open"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-open}{}}}
-\subsection{Method \code{open()}}{
-Open OPeNDAP connection(s)
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$open(
+\subsection{\code{EsgDataset$open()}}{
+  Open OPeNDAP connection(s)
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$open(
   async = FALSE,
   timeout = NULL,
   progress = getOption("epwshiftr.progress", interactive())
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{async}}{If \code{TRUE}, first validates opening in a one-shot worker,
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{async}}{If \code{TRUE}, first validates opening in a one-shot worker,
 then re-opens caller-owned handles before returning so the
 dataset remains opened after \code{open()} returns. The caller still
 receives the final \code{EsgDataset} object itself rather than a
 \code{Mirai}/\code{Future}-like handle. Default: \code{FALSE}.}
-
-\item{\code{timeout}}{Optional positive number of seconds for the async
+      \item{\code{timeout}}{Optional positive number of seconds for the async
 worker pre-open phase. Only supported when \code{async = TRUE}.
 It does not limit the final caller-owned reopen that makes the
 returned dataset stay opened.}
-
-\item{\code{progress}}{Whether to show a progress bar while opening
+      \item{\code{progress}}{Whether to show a progress bar while opening
 NetCDF/OPeNDAP handles. By default the package option
 \code{epwshiftr.progress} is used, falling back to \code{\link[=interactive]{interactive()}}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The \code{EsgDataset} object itself, invisibly.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-ds$open()
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The \code{EsgDataset} object itself, invisibly.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{ds$open()
 # Returns the opened dataset directly; no Mirai/Future to collect.
 ds$open(async = TRUE, timeout = 10)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-close"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-close}{}}}
-\subsection{Method \code{close()}}{
-Close OPeNDAP connection(s)
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$close()}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$close()}}{
+  Close OPeNDAP connection(s)
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$close()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The \code{EsgDataset} object itself, invisibly.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{ds$close()
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Returns}{
-The \code{EsgDataset} object itself, invisibly.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-ds$close()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-slice"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-slice}{}}}
-\subsection{Method \code{slice()}}{
-Select files from this dataset by file position.
+\subsection{\code{EsgDataset$slice()}}{
+  Select files from this dataset by file position.
 
 \verb{$slice()} creates a new \code{EsgDataset} with a subset of the current
 dataset URLs. This is a file/URL-level operation; NetCDF variable,
 dimension, time, and spatial slicing is still performed by
 \verb{$var_get()}, \verb{$read_array()}, \verb{$read_data_table()}, and
 \verb{$read_region()}.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$slice(i, reopen = FALSE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{i}}{A positive or negative integer vector, or a logical vector
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$slice(i, reopen = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{i}}{A positive or negative integer vector, or a logical vector
 with one value per file.}
-
-\item{\code{reopen}}{Whether to open the returned dataset when the current
+      \item{\code{reopen}}{Whether to open the returned dataset when the current
 dataset is already open. If \code{FALSE} (default), slicing an
 open dataset raises an error because RNetCDF handles cannot
 be safely shared between dataset objects.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A new \code{EsgDataset} object.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A new \code{EsgDataset} object.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-reachable"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-reachable}{}}}
-\subsection{Method \code{reachable()}}{
-Probe whether this dataset's current files or URLs are reachable.
+\subsection{\code{EsgDataset$reachable()}}{
+  Probe whether this dataset's current files or URLs are reachable.
 
 \verb{$reachable()} checks the actual URLs or local paths stored in the
 dataset. It does not reuse reachability checks from an \code{EsgResult};
 opened datasets, fallback downloads, and manually created datasets
 are always evaluated from their current \code{url} values.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$reachable(level = c("data_node", "url"), probe = NULL)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{level}}{Probe level. \code{"data_node"} probes the root URL of each
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$reachable(level = c("data_node", "url"), probe = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{level}}{Probe level. \code{"data_node"} probes the root URL of each
 remote data node; \code{"url"} probes the actual dataset URL.
 Default: \code{"data_node"}.}
-
-\item{\code{probe}}{Optional named list of probe settings. Supported fields
+      \item{\code{probe}}{Optional named list of probe settings. Supported fields
 are \code{timeout}, \code{concurrency}, \code{network_policy},
 \code{cache_seconds}, and \code{cache_failures_seconds}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A \link[data.table:data.table]{data.table} with columns
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A \link[data.table:data.table]{data.table} with columns
 \code{file_index}, \code{source_index}, \code{data_node}, \code{service}, \code{url},
 \code{reachable}, \code{latency_ms}, \code{error}, \code{probe_level},
 \code{probe_url}, and \code{probe_cached}.
+  }
 }
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-file_inq"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-file_inq}{}}}
-\subsection{Method \code{file_inq()}}{
-Get file information
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$file_inq(index = 1L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$file_inq()}}{
+  Get file information
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$file_inq(index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list with file information.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{info <- ds$file_inq()
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list with file information.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-info <- ds$file_inq()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-var_inq"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-var_inq}{}}}
-\subsection{Method \code{var_inq()}}{
-Get variable information
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$var_inq(var, index = 1L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$var_inq()}}{
+  Get variable information
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$var_inq(var, index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{var}}{Variable name or ID.}
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list with variable information.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{var_info <- ds$var_inq("tas")
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{var}}{Variable name or ID.}
-
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list with variable information.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-var_info <- ds$var_inq("tas")
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-dim_inq"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-dim_inq}{}}}
-\subsection{Method \code{dim_inq()}}{
-Get dimension information
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$dim_inq(dim, index = 1L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$dim_inq()}}{
+  Get dimension information
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$dim_inq(dim, index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{dim}}{Dimension name or ID.}
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list with dimension information.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{dim_info <- ds$dim_inq("time")
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{dim}}{Dimension name or ID.}
-
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list with dimension information.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-dim_info <- ds$dim_inq("time")
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-att_get"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-att_get}{}}}
-\subsection{Method \code{att_get()}}{
-Get attribute value
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$att_get(var, att, index = 1L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$att_get()}}{
+  Get attribute value
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$att_get(var, att, index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{var}}{Variable name or ID, or "NC_GLOBAL" for global attributes.}
+      \item{\code{att}}{Attribute name.}
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The attribute value.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{units <- ds$att_get("tas", "units")
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{var}}{Variable name or ID, or "NC_GLOBAL" for global attributes.}
-
-\item{\code{att}}{Attribute name.}
-
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The attribute value.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-units <- ds$att_get("tas", "units")
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-var_get"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-var_get}{}}}
-\subsection{Method \code{var_get()}}{
-Read variable data
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$var_get(
+\subsection{\code{EsgDataset$var_get()}}{
+  Read variable data
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$var_get(
   var,
   start = NULL,
   count = NULL,
@@ -522,287 +506,259 @@ Read variable data
   collapse = FALSE,
   async = FALSE,
   timeout = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{var}}{Variable name or ID.}
-
-\item{\code{start}}{Starting indices (1-based). If \code{NULL}, starts from beginning.}
-
-\item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
-
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-
-\item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
-
-\item{\code{async}}{If \code{TRUE}, perform the variable read in a one-shot
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{var}}{Variable name or ID.}
+      \item{\code{start}}{Starting indices (1-based). If \code{NULL}, starts from beginning.}
+      \item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+      \item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
+      \item{\code{async}}{If \code{TRUE}, perform the variable read in a one-shot
 worker and return the final array directly once complete.
 No \code{Mirai}/\code{Future} object is exposed. Default: \code{FALSE}.}
-
-\item{\code{timeout}}{Optional positive number of seconds for the async
+      \item{\code{timeout}}{Optional positive number of seconds for the async
 worker phase. Only supported when \code{async = TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-An array with variable data.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-data <- ds$var_get("tas")
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    An array with variable data.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{data <- ds$var_get("tas")
 data_subset <- ds$var_get("tas", start = c(1, 1, 1), count = c(10, 10, 1))
 # Returns the final array directly; no Mirai/Future handling required.
 data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-get_variables"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-get_variables}{}}}
-\subsection{Method \code{get_variables()}}{
-List all variables in the dataset
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$get_variables(index = 1L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$get_variables()}}{
+  List all variables in the dataset
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$get_variables(index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A character vector of variable names.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{vars <- ds$get_variables()
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A character vector of variable names.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-vars <- ds$get_variables()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-get_dimensions"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-get_dimensions}{}}}
-\subsection{Method \code{get_dimensions()}}{
-List all dimensions in the dataset
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$get_dimensions(index = 1L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$get_dimensions()}}{
+  List all dimensions in the dataset
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$get_dimensions(index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A character vector of dimension names.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{dims <- ds$get_dimensions()
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A character vector of dimension names.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-dims <- ds$get_dimensions()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-get_time_axis"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-get_time_axis}{}}}
-\subsection{Method \code{get_time_axis()}}{
-Get time axis information
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$get_time_axis(index = 1L)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list containing time values, units, calendar, canonical CF
+\subsection{\code{EsgDataset$get_time_axis()}}{
+  Get time axis information
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$get_time_axis(index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list containing time values, units, calendar, canonical CF
 coordinates, optional CF interval bounds, and axis length.
+\code{raw_values} retains the original numeric time coordinates;
+\code{bounds$raw_values} retains bounds in their declared dimension order.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{time_info <- ds$get_time_axis()
 }
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-time_info <- ds$get_time_axis()
+    \if{html}{\out{</div>}}
+  }
 }
-}
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-get_spatial_grid"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-get_spatial_grid}{}}}
-\subsection{Method \code{get_spatial_grid()}}{
-Get spatial grid information (latitude and longitude)
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$get_spatial_grid(index = 1L)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$get_spatial_grid()}}{
+  Get spatial grid information (latitude and longitude)
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$get_spatial_grid(index = 1L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list containing latitude and longitude values.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{grid <- ds$get_spatial_grid()
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list containing latitude and longitude values.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-grid <- ds$get_spatial_grid()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-read_array"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_array}{}}}
-\subsection{Method \code{read_array()}}{
-Read variable data as a list of arrays (one per file)
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_array(
+\subsection{\code{EsgDataset$read_array()}}{
+  Read variable data as a list of arrays (one per file)
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$read_array(
   variable,
   start = NULL,
   count = NULL,
   collapse = FALSE,
   async = FALSE,
   timeout = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{variable}}{Variable name.}
-
-\item{\code{start}}{Starting indices. If \code{NULL}, starts from beginning.}
-
-\item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
-
-\item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
-
-\item{\code{async}}{If \code{TRUE}, read array values in a one-shot worker and
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{variable}}{Variable name.}
+      \item{\code{start}}{Starting indices. If \code{NULL}, starts from beginning.}
+      \item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
+      \item{\code{collapse}}{Whether to collapse result. Default: \code{FALSE}.}
+      \item{\code{async}}{If \code{TRUE}, read array values in a one-shot worker and
 return the final list directly once complete. No
 \code{Mirai}/\code{Future} object is exposed. Default: \code{FALSE}.}
-
-\item{\code{timeout}}{Optional positive number of seconds for the async
+      \item{\code{timeout}}{Optional positive number of seconds for the async
 worker phase. Only supported when \code{async = TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list of arrays with variable data. Each element
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list of arrays with variable data. Each element
 corresponds to a file in the dataset.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-data_list <- ds$read_array("tas")
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{data_list <- ds$read_array("tas")
 data <- data_list[[1]]
 # Returns the final list directly; no Mirai/Future handling required.
 data_list_async <- ds$read_array("tas", async = TRUE, timeout = 10)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-read_data_table"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_data_table}{}}}
-\subsection{Method \code{read_data_table()}}{
-Read variable data as a list of data.table (one per file)
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_data_table(
+\subsection{\code{EsgDataset$read_data_table()}}{
+  Read variable data as a list of data.table (one per file)
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$read_data_table(
   variable,
   start = NULL,
   count = NULL,
   rbind = FALSE,
   async = FALSE,
   timeout = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{variable}}{Variable name.}
-
-\item{\code{start}}{Starting indices. If \code{NULL}, starts from beginning.}
-
-\item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
-
-\item{\code{rbind}}{If \code{TRUE}, return a single data.table by row-binding
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{variable}}{Variable name.}
+      \item{\code{start}}{Starting indices. If \code{NULL}, starts from beginning.}
+      \item{\code{count}}{Number of values to read. If \code{NULL}, reads all.}
+      \item{\code{rbind}}{If \code{TRUE}, return a single data.table by row-binding
 the per-file results with \code{data.table::rbindlist(..., idcol = "file_index")}.
 Default: \code{FALSE}.}
-
-\item{\code{async}}{If \code{TRUE}, offload the array read phase to a one-shot
+      \item{\code{async}}{If \code{TRUE}, offload the array read phase to a one-shot
 worker and still return the final data.table result directly.
 No \code{Mirai}/\code{Future} object is exposed. Default: \code{FALSE}.}
-
-\item{\code{timeout}}{Optional positive number of seconds for the async
+      \item{\code{timeout}}{Optional positive number of seconds for the async
 worker phase. Only supported when \code{async = TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-If \code{rbind = FALSE}, a list of data.table (one per file).
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    If \code{rbind = FALSE}, a list of data.table (one per file).
 If \code{rbind = TRUE}, a single data.table with an extra \code{file_index} column.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-dt_list <- ds$read_data_table("tas")
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{dt_list <- ds$read_data_table("tas")
 dt <- dt_list[[1]]
 dt_all <- ds$read_data_table("tas", rbind = TRUE)
 # Returns the final data.table directly; no Mirai/Future handling required.
 dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-read_region"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_region}{}}}
-\subsection{Method \code{read_region()}}{
-Read variable values near a target coordinate and optional time range
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$read_region(
+\subsection{\code{EsgDataset$read_region()}}{
+  Read variable values near a target coordinate and optional time range
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$read_region(
   variable,
   lon,
   lat,
@@ -811,111 +767,139 @@ Read variable values near a target coordinate and optional time range
   rbind = TRUE,
   async = FALSE,
   timeout = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{variable}}{Character vector of variable names.}
-
-\item{\code{lon}}{Target longitude.}
-
-\item{\code{lat}}{Target latitude.}
-
-\item{\code{time}}{Time range to read. Use \code{"auto"} to reuse the time
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{variable}}{Character vector of variable names.}
+      \item{\code{lon}}{Target longitude.}
+      \item{\code{lat}}{Target latitude.}
+      \item{\code{time}}{Time range to read. Use \code{"auto"} to reuse the time
 range recorded by \code{EsgResultFile$filter_time()} or
 \code{EsgResultAggregation$filter_time()} when available; if no
 recorded range exists, all times are read. Use \code{NULL} to
 always read the full time axis. A length-2 character,
 \code{Date}, or \code{POSIXt} range is parsed in UTC and used
 explicitly. Default: \code{"auto"}.}
-
-\item{\code{method}}{Grid extraction method. One of \code{"nearest"}, \code{"idw"},
+      \item{\code{method}}{Grid extraction method. One of \code{"nearest"}, \code{"idw"},
 \code{"bilinear"}, or \code{"mean"}. Default: \code{"nearest"}.}
-
-\item{\code{rbind}}{If \code{TRUE}, return one data.table. If \code{FALSE}, return a
+      \item{\code{rbind}}{If \code{TRUE}, return one data.table. If \code{FALSE}, return a
 list of per-file, per-variable data.tables. Default: \code{TRUE}.}
-
-\item{\code{async}}{If \code{TRUE}, offload each NetCDF variable read to a
+      \item{\code{async}}{If \code{TRUE}, offload each NetCDF variable read to a
 one-shot worker. Default: \code{FALSE}.}
-
-\item{\code{timeout}}{Optional positive number of seconds for each async
+      \item{\code{timeout}}{Optional positive number of seconds for each async
 read. Only supported when \code{async = TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data.table or list of data.tables with columns including
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table or list of data.tables with columns including
 \code{file_index}, \code{variable}, \code{time}, optional \code{time_bound_start} and
 \code{time_bound_end}, canonical \verb{cf_*} calendar coordinates including
 \code{cf_second_of_day} (seconds since native-calendar midnight),
 \code{annual_phase}, \code{lon}, \code{lat}, \code{method}, and \code{value}.
 The \code{"grid_sources"} attribute records contributing grid coordinates
 and weights.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-dt <- ds$read_region(
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{dt <- ds$read_region(
     variable = c("tas", "hurs"),
     lon = 103.98,
     lat = 1.37,
     time = c("2050-01-01", "2050-12-31")
 )
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgDataset-read_neighborhood"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgDataset-read_neighborhood}{}}}
+\subsection{\code{EsgDataset$read_neighborhood()}}{
+  Read the four enclosing native grid corners for multiple sites,
+without applying spatial weights or aggregating their climate values.
+For remote use, open a URL ending in \verb{#noprefetch&nocache} to disable
+netCDF-C automatic small-variable prefetch before selecting data.
+The high-level File acquisition method applies these options itself.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$read_neighborhood(variable, sites, time = "auto", on_chunk = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{variable}}{Character vector of climate variables to read.}
+      \item{\code{sites}}{A data.frame with unique site_id, lon and lat columns.}
+      \item{\code{time}}{A native-calendar range, or a list of disjoint ranges.}
+      \item{\code{on_chunk}}{Optional function receiving each bounded raw block.
+With a callback, values are delivered rather than accumulated.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    For read_neighborhood(), a list of values, neighborhoods,
+native CF time coordinates and actual read_slices. A list of time
+ranges selects their union without fetching intervening dates.
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-selection"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-selection}{}}}
-\subsection{Method \code{selection()}}{
-Return file selection provenance for this dataset.
+\subsection{\code{EsgDataset$selection()}}{
+  Return file selection provenance for this dataset.
 
 \verb{$selection()} maps the current dataset file positions back to the
 result rows that produced the dataset when that information is
 available. It does not record intermediate filter steps.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$selection()}\if{html}{\out{</div>}}
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$selection()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list with \code{source_count}, \code{source_num_found}, and
+\code{source_indices}.
+  }
 }
 
-\subsection{Returns}{
-A list with \code{source_count}, \code{source_num_found}, and
-\code{source_indices}.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-print"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-print}{}}}
-\subsection{Method \code{print()}}{
-Print dataset summary
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$print()}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$print()}}{
+  Print dataset summary
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$print()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The \code{EsgDataset} object itself, invisibly.
+  }
 }
 
-\subsection{Returns}{
-The \code{EsgDataset} object itself, invisibly.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgDataset-clone"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-clone}{}}}
-\subsection{Method \code{clone()}}{
-The objects of this class are cloneable with this method.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgDataset$clone(deep = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{EsgDataset$clone()}}{
+  The objects of this class are cloneable with this method.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgDataset$clone(deep = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{deep}}{Whether to make a deep clone.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{deep}}{Whether to make a deep clone.}
-}
-\if{html}{\out{</div>}}
-}
-}
 }

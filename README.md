@@ -121,6 +121,45 @@ shift_diagnostics(batch)[, .N, by = severity]
 #> 2:     info     2
 ```
 
+## Raw OPeNDAP neighborhoods
+
+A collected File result can acquire native four-corner values directly. The
+package reads only the requested variable, native time windows and enclosing
+2x2 cells on rectilinear latitude/longitude grids; it preserves coordinates, units, CF calendar and time bounds. It does
+not interpolate the corners or download the complete NetCDF file (#296).
+
+```r
+requests <- data.frame(
+    request_id = "city-tas-2041", case_id = "example",
+    site_id = "Singapore", lon = 103.98, lat = 1.37,
+    variable_id = "tas", time_start = "2041-01-01", time_stop = "2041-12-31T23:59:59"
+)
+# files is an EsgResultFile collected from an explicit ESGF query.
+files$access_plan()  # optional: inspect all published OPeNDAP Replica candidates
+result <- files$fetch_subset(requests, "raw-subsets", workers = 4L)
+subset_status("raw-subsets", "nodes")
+raw <- read_subset("raw-subsets", case_id = "example")
+```
+
+Date-only time endpoints denote midnight; specify an end time to include the
+whole final day. ISO dates are matched to the source native calendar.
+
+Repeating `fetch_subset()` reuses verified blocks and fills missing blocks.
+Known candidates are attempted before supplementary Replica discovery; ranking
+uses recent actual demand reads for this machine and `network_id`. Failed files
+release workers while other files continue. `timeout` limits stalled readers,
+`retries` bounds later rounds, and `node_workers` limits pressure on one node.
+The acquisition directory has one writer; inspect it with the local reader
+functions between acquisition calls. Preserve the directory for resume.
+
+`raw$values` contains unique native point/time values; `raw$neighborhoods` maps
+those values to each site's four corners and request window. `raw$gaps` reports
+unmatched requests, failed sources and invalid local blocks. `result$complete`
+means that the matched File reads completed; research-specific frequency,
+variable and whole-period completeness must be checked by the caller. A case
+label records associations only.
+
+
 ## Documentation
 
 | Task | Guide |

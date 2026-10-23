@@ -2196,4 +2196,99 @@ test_that("EsgDataset$print()", {
 })
 # }}}
 
+# Distinct native values detect lost corners, transposition and extra times.
+test_that("raw neighborhoods retain four corners and share disjoint demand", {
+    path <- tempfile(fileext = ".nc")
+    nc <- RNetCDF::create.nc(path)
+    RNetCDF::dim.def.nc(nc, "time", 6L)
+    RNetCDF::dim.def.nc(nc, "lat", 3L)
+    RNetCDF::dim.def.nc(nc, "lon", 3L)
+    RNetCDF::dim.def.nc(nc, "bnds", 2L)
+    for (name in c("time", "lat", "lon")) {
+        RNetCDF::var.def.nc(nc, name, "NC_DOUBLE", name)
+    }
+    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
+    RNetCDF::var.def.nc(nc, "time_bnds", "NC_DOUBLE", c("bnds", "time"))
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", "days since 2060-01-01")
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", "360_day")
+    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
+    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
+    RNetCDF::var.put.nc(nc, "time", 0:5)
+    RNetCDF::var.put.nc(nc, "time_bnds", rbind(0:5, 1:6))
+    RNetCDF::var.put.nc(nc, "lat", 0:2)
+    RNetCDF::var.put.nc(nc, "lon", 10:12)
+    native <- expand.grid(time = 1:6, lat = 1:3, lon = 1:3)
+    values <- array(
+        native$time + 100 * native$lat + 10000 * native$lon,
+        c(6, 3, 3)
+    )
+    values[1, 1, 1] <- NA_real_
+    RNetCDF::var.put.nc(nc, "tas", values)
+    RNetCDF::close.nc(nc)
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    sites <- data.frame(
+        site_id = c("a", "copy", "b"),
+        lon = c(10.25, 10.25, 11.25),
+        lat = c(.25, .25, 1.25)
+    )
+    windows <- list(
+        c("2060-01-01", "2060-01-01"),
+        c("2060-01-04", "2060-01-04")
+    )
+    actual <- ds$read_neighborhood("tas", sites, time = windows)
+    expect_equal(nrow(actual$neighborhoods), 12L)
+    expect_equal(nrow(actual$values), 14L)
+    expect_equal(sort(unique(actual$values$time_index)), c(1L, 4L))
+    expect_identical(unique(actual$time$cf_calendar), "360_day")
+    expect_equal(actual$time$bound_start_value, actual$time$time_index - 1)
+    expect_equal(actual$time$bound_end_value, actual$time$time_index)
+    expected <- values[cbind(
+        actual$values$time_index,
+        actual$values$ind_lat,
+        actual$values$ind_lon
+    )]
+    expect_equal(actual$values$value, expected)
+    expect_equal(sum(actual$read_slices$native_values), 14)
+    expect_true(anyNA(actual$values$value))
+    expect_false("weight" %in% names(actual$neighborhoods))
+    expect_identical(sites$site_id, c("a", "copy", "b"))
+    chunks <- list()
+    streamed <- ds$read_neighborhood(
+        "tas",
+        sites,
+        time = windows,
+        on_chunk = function(chunk) chunks[[length(chunks) + 1L]] <<- chunk
+    )
+    expect_equal(nrow(streamed$values), 0L)
+    streamed_values <- data.table::rbindlist(lapply(chunks, `[[`, "values"))
+    expect_equal(streamed_values, actual$values)
+    native_path <- tempfile(fileext = ".nc")
+    file.copy(path, native_path)
+    on.exit(unlink(native_path), add = TRUE)
+    nc <- RNetCDF::open.nc(native_path, write = TRUE)
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", "days since 2060-02-28")
+    RNetCDF::close.nc(nc)
+    native_ds <- EsgDataset$new(native_path)
+    native_ds$open()
+    on.exit(native_ds$close(), add = TRUE)
+    february <- native_ds$read_neighborhood(
+        "tas",
+        sites[1L, ],
+        time = c("2060-02-30", "2060-02-30")
+    )
+    expect_equal(nrow(february$values), 4L)
+    expect_identical(unique(february$values$time_index), 3L)
+    expect_identical(unique(february$time$cf_day), 30L)
+    expect_error(
+        ds$read_neighborhood(
+            "tas",
+            sites[1:2, ] |> transform(site_id = "same")
+        ),
+        "duplicated"
+    )
+})
+
 # vim: fdm=marker :

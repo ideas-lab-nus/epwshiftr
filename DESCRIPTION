@@ -28,6 +28,7 @@ Imports:
     duckdb,
     jsonlite,
     mirai (>= 2.7.3),
+    ps (>= 1.9.0),
     R6,
     RNetCDF,
     S7
@@ -167,11 +168,13 @@ Collate:
     'shift-tui.R'
     'shift-ui-state.R'
     'shift-ui-view.R'
+    'source-pool.R'
     'source-read.R'
     'standalone-cache.R'
     'standalone-downloader.R'
+    'subset.R'
     'weather-method.R'
     'zzz.R'
 Config/testthat/edition: 3
 Config/Needs/website: r-lib/asciicast, r-lib/pkgload
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1

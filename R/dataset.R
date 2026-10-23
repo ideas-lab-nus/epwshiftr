@@ -369,15 +369,12 @@ dataset__time_bounds <- function(
 
     # Read only contiguous requested native positions. Each bounded I/O run
     # retains the original dimension order, including bounds-first files.
-    runs <- if (full_axis) {
-        list(indices)
-    } else {
-        # Each time position consumes two native values in the request budget.
-        dataset__region_runs(
-            indices,
-            max_time = DATASET_REQUEST_MAX_VALUES %/% 2L
-        )
-    }
+    # Full metadata inspection needs the same bounded requests as a selected
+    # weather window. A full axis must not bypass the transport-size budget.
+    runs <- dataset__region_runs(
+        indices,
+        max_time = DATASET_REQUEST_MAX_VALUES %/% 2L
+    )
     ordered <- matrix(NA_real_, nrow = length(indices), ncol = 2L)
     offset <- 0L
     for (run in runs) {
@@ -422,11 +419,54 @@ dataset__time_bounds <- function(
 
     list(
         name = bounds_name,
+        # Keep the actual native values in their declared dimension order so
+        # metadata consumers do not request the same remote bounds again.
+        raw_values = if (time_dimension == 1L) ordered else t(ordered),
         start = start,
         end = end,
         start_coordinates = attr(start, "cf_coordinates", exact = TRUE),
         end_coordinates = attr(end, "cf_coordinates", exact = TRUE)
     )
+}
+# }}}
+
+# Read a one-dimensional native coordinate in bounded contiguous requests.
+# The caller still receives its complete original axis; only transport chunks
+# change, without reconstructing raw values from parsed dates or spacing.
+# dataset__coordinate_values {{{
+dataset__coordinate_values <- function(dataset, variable, index = 1L) {
+    info <- dataset$var_inq(variable, index)
+    if (length(info$dimids) != 1L) {
+        stop(
+            "A native coordinate must have exactly one dimension.",
+            call. = FALSE
+        )
+    }
+    size <- as.integer(dataset$dim_inq(info$dimids[[1L]], index)$length)
+    if (!size) {
+        return(numeric())
+    }
+    values <- numeric(size)
+    # External I/O requires separate requests; preallocation avoids growing
+    # the axis while keeping each request below the existing native budget.
+    for (start in seq.int(1L, size, by = DATASET_REQUEST_MAX_VALUES)) {
+        count <- min(DATASET_REQUEST_MAX_VALUES, size - start + 1L)
+        chunk <- dataset$var_get(
+            variable,
+            start = start,
+            count = count,
+            index = index,
+            collapse = FALSE
+        )
+        if (length(chunk) != count) {
+            stop(
+                "A native coordinate read returned an incomplete chunk.",
+                call. = FALSE
+            )
+        }
+        values[seq.int(start, length.out = count)] <- as.double(chunk)
+    }
+    values
 }
 # }}}
 
@@ -452,13 +492,11 @@ dataset__time_axis <- function(dataset, index = 1L) {
         dataset$att_get("time", "calendar", index),
         error = function(error) "standard"
     )
-    values <- parse_cf_time(
-        dataset$var_get("time", index = index),
-        units,
-        calendar
-    )
+    raw_values <- dataset__coordinate_values(dataset, "time", index)
+    values <- parse_cf_time(raw_values, units, calendar)
     result <- list(
         values = values,
+        raw_values = raw_values,
         units = units,
         calendar = normalize_cf_calendar(calendar),
         coordinates = attr(values, "cf_coordinates", exact = TRUE),
@@ -950,6 +988,8 @@ EsgDataset <- R6::R6Class(
         #'
         #' @return A list containing time values, units, calendar, canonical CF
         #' coordinates, optional CF interval bounds, and axis length.
+        #' `raw_values` retains the original numeric time coordinates;
+        #' `bounds$raw_values` retains bounds in their declared dimension order.
         #'
         #' @examples
         #' \dontrun{
@@ -1300,6 +1340,32 @@ EsgDataset <- R6::R6Class(
             out
         },
         # }}}
+        # read_neighborhood
+        #' @description
+        #' Read the four enclosing native grid corners for multiple sites,
+        #' without applying spatial weights or aggregating their climate values.
+        #' For remote use, open a URL ending in `#noprefetch&nocache` to disable
+        #' netCDF-C automatic small-variable prefetch before selecting data.
+        #' The high-level File acquisition method applies these options itself.
+        #' @param variable Character vector of climate variables to read.
+        #' @param time A native-calendar range, or a list of disjoint ranges.
+        #' @param sites A data.frame with unique site_id, lon and lat columns.
+        #' @param on_chunk Optional function receiving each bounded raw block.
+        #'   With a callback, values are delivered rather than accumulated.
+        #' @return For read_neighborhood(), a list of values, neighborhoods,
+        #'   native CF time coordinates and actual read_slices. A list of time
+        #'   ranges selects their union without fetching intervening dates.
+        # The shared reader keeps this additive interface independent of the
+        # existing aggregated read_region() return contract.
+        read_neighborhood = function(
+            variable,
+            sites,
+            time = "auto",
+            on_chunk = NULL
+        ) {
+            dataset__read_neighborhood(self, variable, sites, time, on_chunk)
+        },
+
         # selection
         #' @description
         #' Return file selection provenance for this dataset.
