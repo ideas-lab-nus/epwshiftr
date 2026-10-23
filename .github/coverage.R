@@ -1,6 +1,94 @@
+# Reuse covr's exact transformed bodies and source counters across fresh workers.
+# Environments remain those of the current namespace, including R6 methods.
+coverage__trace_environment <- function(ns, directory) {
+    cache <- file.path(directory, "instrumented-functions")
+    dir.create(cache, showWarnings = FALSE)
+    covr_ns <- asNamespace("covr")
+    original <- get("trace_calls", covr_ns)
+    busy <- FALSE
+    metadata_path <- file.path(directory, "covr-source-metadata.rds")
+    source_metadata <- if (file.exists(metadata_path)) {
+        readRDS(metadata_path)
+    } else {
+        NULL
+    }
+    # Collect only covr's literal counter calls from its transformed syntax.
+    counter_keys <- function(x) {
+        keys <- character()
+        visit <- function(value) {
+            if (missing(value)) {
+                return(invisible(NULL))
+            }
+            if (is.call(value) && identical(value[[1L]], quote(covr:::count))) {
+                keys <<- c(keys, value[[2L]])
+            } else if (is.recursive(value)) {
+                for (part in as.list(value)) {
+                    visit(part)
+                }
+            }
+        }
+        visit(formals(x))
+        visit(body(x))
+        unique(keys)
+    }
+    # Cache top-level transforms; recursive calls retain covr's own semantics.
+    cached_trace <- function(x, parent_functions = NULL, parent_ref = NULL) {
+        if (busy || !is.function(x) || is.primitive(x)) {
+            return(original(x, parent_functions, parent_ref))
+        }
+        busy <<- TRUE
+        on.exit(busy <<- FALSE)
+        srcref <- attr(x, "srcref")
+        source <- attr(srcref, "srcfile")
+        filename <- if (is.null(source)) NULL else source$filename
+        key <- rlang::hash(list(
+            deparse(x, width.cutoff = 500L),
+            parent_functions,
+            as.integer(srcref),
+            filename
+        ))
+        path <- file.path(cache, paste0(key, ".rds"))
+        counters <- get(".counters", covr_ns)
+        if (file.exists(path)) {
+            saved <- readRDS(path)
+            body(x) <- saved$body
+            formals(x) <- saved$formals
+            if (!is.null(source_metadata)) {
+                list2env(source_metadata[saved$keys], counters)
+            }
+            return(x)
+        }
+        value <- original(x, parent_functions, parent_ref)
+        clean <- rlang::zap_srcref(value)
+        saved <- list(
+            body = body(clean),
+            formals = formals(clean),
+            keys = counter_keys(value)
+        )
+        pending <- tempfile("pending-function-", tmpdir = cache)
+        saveRDS(saved, pending, compress = FALSE)
+        if (!file.rename(pending, path)) {
+            stop("Could not publish instrumented coverage function.")
+        }
+        value
+    }
+    unlockBinding("trace_calls", covr_ns)
+    assign("trace_calls", cached_trace, covr_ns)
+    lockBinding("trace_calls", covr_ns)
+    on.exit(
+        {
+            unlockBinding("trace_calls", covr_ns)
+            assign("trace_calls", original, covr_ns)
+            lockBinding("trace_calls", covr_ns)
+        },
+        add = TRUE
+    )
+    covr:::trace_environment(ns)
+}
+
 # Save covr's complete source metadata before workers start their actual tasks.
-# Exit-time traces contain all counters, without repeatedly serializing source
-# environments. A process registration makes missing exit traces detectable.
+# Exit traces and flushed hit journals retain counters without serializing source
+# environments on every hit. Registered process identities bound trace collection.
 # coverage__register {{{
 coverage__register <- function(directory) {
     metadata <- file.path(directory, "covr-source-metadata.rds")
@@ -15,24 +103,34 @@ coverage__register <- function(directory) {
             stop("Could not publish coverage source metadata.")
         }
     }
-    # mirai otherwise force-kills disconnected workers after 200 ms, before R
-    # can reliably run namespace finalizers. Only this instrumented process uses
-    # graceful exit; the normal package check still exercises default shutdown.
-    mirai_ns <- asNamespace("mirai")
-    original <- get("daemons", envir = mirai_ns)
-    if (!isTRUE(attr(original, "coverage_graceful"))) {
-        graceful_daemons <- function(...) {
-            args <- list(...)
-            args$autoexit <- NA
-            do.call(original, args)
-        }
-        attr(graceful_daemons, "coverage_graceful") <- TRUE
-        unlockBinding("daemons", mirai_ns)
-        assign("daemons", graceful_daemons, envir = mirai_ns)
-        lockBinding("daemons", mirai_ns)
+    # A force-stopped native reader cannot run an R exit finalizer. Journal
+    # every recorded counter before its expression executes, so intentional
+    # process termination retains the same complete source denominator.
+    keys <- file.path(directory, "covr-source-keys.rds")
+    if (!file.exists(keys)) {
+        saveRDS(names(readRDS(metadata)), keys)
     }
-    writeLines(
-        as.character(Sys.getpid()),
+    positions <- setNames(seq_along(readRDS(keys)), readRDS(keys))
+    journal <- file(
+        file.path(directory, paste0("counter-journal-", Sys.getpid())),
+        "ab"
+    )
+    covr_ns <- asNamespace("covr")
+    original <- get("count", covr_ns)
+    durable_count <- function(key) {
+        position <- positions[[key]]
+        if (is.null(position)) {
+            stop("Coverage counter key changed during execution.")
+        }
+        writeBin(as.integer(position), journal, size = 4L)
+        flush(journal)
+        original(key)
+    }
+    unlockBinding("count", covr_ns)
+    assign("count", durable_count, covr_ns)
+    lockBinding("count", covr_ns)
+    saveRDS(
+        list(pid = Sys.getpid(), created = ps::ps_create_time(ps::ps_handle())),
         file.path(directory, paste0("expected-trace-", Sys.getpid()))
     )
 }
@@ -70,6 +168,21 @@ coverage__run <- function(path = ".", ...) {
         library_path <<- lib
         loader <- file.path(lib, pkg_name, "R", pkg_name)
         lines <- readLines(loader, warn = FALSE)
+        trace_hook <- grep("covr:::trace_environment(ns)", lines, fixed = TRUE)
+        if (length(trace_hook) != 1L) {
+            stop("The covr instrumentation hook changed.")
+        }
+        cached_trace <- paste(
+            deparse(coverage__trace_environment, width.cutoff = 500L),
+            collapse = "\n"
+        )
+        lines[trace_hook] <- paste0(
+            "setHook(packageEvent(pkg, 'onLoad'), function(...) (",
+            cached_trace,
+            ")(ns, Sys.getenv('COVERAGE_DIR', ",
+            encodeString(lib, quote = '"'),
+            ")))"
+        )
         hit <- grep("covr:::save_trace(", lines, fixed = TRUE)
         if (length(hit) != 1L) {
             stop("The covr exit hook changed; review the coverage adapter.")
@@ -97,71 +210,101 @@ coverage__run <- function(path = ".", ...) {
         )
         writeLines(lines, loader)
     }
-    # Refuse interrupted workers or source-key changes before reporting coverage.
+    # Recover intentional worker termination, but refuse live workers or invalid records.
     merge_traces <- function(files) {
-        # Detached workers may publish their final counters just after the test
-        # process exits. Wait only for registered receipts, with a fixed bound.
+        # Every registered process must have exited before its journal is read.
+        # Hard-killed readers have all recorded hits in a flushed binary journal.
+        counters <- readRDS(file.path(library_path, "covr-source-metadata.rds"))
+        source_keys <- names(counters)
+        expected_paths <- list.files(
+            library_path,
+            pattern = "^expected-trace-",
+            full.names = TRUE
+        )
         deadline <- Sys.time() + 30
         repeat {
-            expected <- sub(
-                "^expected-trace-",
-                "covr_trace_",
-                list.files(library_path, pattern = "^expected-trace-")
+            alive <- vapply(
+                expected_paths,
+                function(path) {
+                    process <- readRDS(path)
+                    handle <- tryCatch(
+                        ps::ps_handle(process$pid, process$created),
+                        error = function(e) NULL
+                    )
+                    !is.null(handle) && ps::ps_is_running(handle)
+                },
+                logical(1L)
             )
-            files <- list.files(
-                library_path,
-                pattern = "^covr_trace_",
-                full.names = TRUE
-            )
-            pending <- list.files(
-                library_path,
-                pattern = "^pending-(trace|metadata)-"
-            )
-            if (
-                (!length(pending) && all(expected %in% basename(files))) ||
-                    Sys.time() >= deadline
-            ) {
+            if (!any(alive) || Sys.time() >= deadline) {
                 break
             }
-            Sys.sleep(0.1)
+            Sys.sleep(.1)
         }
-        if (
-            !length(expected) ||
-                length(pending) ||
-                !all(expected %in% basename(files))
-        ) {
+        if (!length(expected_paths) || any(alive)) {
             stop(
-                "Unfinished worker coverage traces remain in ",
-                library_path,
-                "; coverage has not been uploaded."
+                "Unfinished worker coverage processes remain in ",
+                library_path
             )
         }
-        counters <- readRDS(file.path(library_path, "covr-source-metadata.rds"))
         values <- numeric(length(counters))
-        for (file in files) {
-            counts <- readRDS(file)
-            positions <- match(names(counts), names(counters))
-            if (
-                !is.numeric(counts) ||
-                    is.null(names(counts)) ||
-                    anyNA(counts) ||
-                    anyNA(positions) ||
-                    anyDuplicated(names(counts))
-            ) {
-                stop(
-                    "Coverage trace does not match the saved source metadata: ",
-                    file
-                )
+        for (path in expected_paths) {
+            pid <- readRDS(path)$pid
+            trace <- file.path(library_path, paste0("covr_trace_", pid))
+            journal <- file.path(library_path, paste0("counter-journal-", pid))
+            if (file.exists(trace)) {
+                counts <- readRDS(trace)
+                positions <- match(names(counts), source_keys)
+                if (
+                    !is.numeric(counts) ||
+                        is.null(names(counts)) ||
+                        anyNA(counts) ||
+                        anyNA(positions) ||
+                        anyDuplicated(names(counts))
+                ) {
+                    stop(
+                        "Coverage trace does not match saved source metadata: ",
+                        trace
+                    )
+                }
+                values[positions] <- values[positions] + counts
+            } else {
+                bytes <- file.info(journal)$size
+                if (is.na(bytes) || bytes %% 4L != 0L) {
+                    stop("Incomplete coverage journal: ", journal)
+                }
+                connection <- file(journal, "rb")
+                # Bound memory even when an instrumented worker executes many hits.
+                repeat {
+                    hits <- readBin(
+                        connection,
+                        integer(),
+                        n = 65536L,
+                        size = 4L
+                    )
+                    if (!length(hits)) {
+                        break
+                    }
+                    if (
+                        anyNA(hits) || any(hits < 1L | hits > length(counters))
+                    ) {
+                        close(connection)
+                        stop(
+                            "Invalid source position in coverage journal: ",
+                            journal
+                        )
+                    }
+                    values <- values + tabulate(hits, nbins = length(counters))
+                }
+                close(connection)
             }
-            values[positions] <- values[positions] + counts
         }
         for (index in seq_along(counters)) {
             counters[[index]]$value <- values[[index]]
         }
         message(
             "Merged ",
-            length(files),
-            " complete process coverage traces from ",
+            length(expected_paths),
+            " process coverage records from ",
             library_path
         )
         counters

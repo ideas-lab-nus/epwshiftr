@@ -55,6 +55,10 @@ jobs:
             any::xml2
           needs: coverage
 
+      - name: Verify coverage adapter
+        run: Rscript --vanilla .github/check-coverage.R
+        shell: bash
+
       - name: Test coverage
         id: coverage
         run: |
