@@ -221,9 +221,12 @@ subset_test__dap_app <- function() {
         } else {
             names(variables)
         }
-        declarations <- character()
-        payload <- raw()
-        for (part in select) {
+        # Constraints produce differently shaped XDR fragments. Allocate each
+        # slot once, then concatenate the complete variable payloads in order.
+        declarations <- character(length(select))
+        payload <- vector("list", length(select))
+        for (i in seq_along(select)) {
+            part <- select[[i]]
             var <- sub('[[].*$', '', part)
             ranges <- regmatches(part, gregexpr('[[][0-9:]+[]]', part))[[1L]]
             indices <- lapply(sizes[dims[[var]]], seq_len)
@@ -243,21 +246,18 @@ subset_test__dap_app <- function() {
                     }
                 })
             }
-            declarations <- c(
-                declarations,
+            declarations[[i]] <- paste0(
+                'Float64 ',
+                var,
                 paste0(
-                    'Float64 ',
-                    var,
-                    paste0(
-                        '[',
-                        dims[[var]],
-                        ' = ',
-                        lengths(indices),
-                        ']',
-                        collapse = ''
-                    ),
-                    ';'
-                )
+                    '[',
+                    dims[[var]],
+                    ' = ',
+                    lengths(indices),
+                    ']',
+                    collapse = ''
+                ),
+                ';'
             )
             value <- variables[[var]]
             if (var == 'tas') {
@@ -298,8 +298,7 @@ subset_test__dap_app <- function() {
             } else {
                 value <- value[indices[[1L]]]
             }
-            payload <- c(
-                payload,
+            payload[[i]] <- c(
                 writeBin(
                     rep(as.integer(length(value)), 2),
                     raw(),
@@ -319,7 +318,7 @@ subset_test__dap_app <- function() {
         }
         res$set_header('Content-Type', 'application/octet-stream')$send(c(
             charToRaw(paste0(dds, '\nData:\n')),
-            payload
+            do.call(c, payload)
         ))
     })
     app

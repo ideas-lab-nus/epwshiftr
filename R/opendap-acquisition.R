@@ -686,7 +686,7 @@ opendap__valid_blocks <- function(store, source_key = NULL) {
 
 # Publish a single received block through the Store's atomic Parquet writer.
 # The calling process alone registers it in the manifest transaction.
-opendap__commit <- function(store, job, path) {
+opendap__commit <- function(store, job, path, progress) {
     receipt <- paste0(path, ".json")
     if (!file.exists(receipt) || !store__extract_cache_available(path)) {
         return(FALSE)
@@ -775,6 +775,8 @@ opendap__commit <- function(store, job, path) {
     opendap__save_demands(conn, chunk$demands, job$dest, transaction = FALSE)
     ddb_exec(conn, "COMMIT")
     done <- TRUE
+    # Only a durable owned commit can authorize reuse when resume is disabled.
+    progress[[block_id]] <- TRUE
     unlink(c(path, receipt, pending, paste0(pending, ".json")))
     TRUE
 }
@@ -1040,7 +1042,7 @@ opendap__drain <- function(store, state, client) {
             )
         }
         chunk <- readRDS(path)
-        if (opendap__commit(store, state$job, path)) {
+        if (opendap__commit(store, state$job, path, state$progress)) {
             row <- data.frame(
                 source_key = state$job$source_key,
                 url = state$job$url,
@@ -1174,7 +1176,7 @@ opendap__fetch <- function(
     discover = TRUE,
     network_id = "default",
     node_workers = 2L,
-    already_read_sources = character()
+    progress = NULL
 ) {
     checkmate::assert_count(workers, positive = TRUE)
     checkmate::assert_count(node_workers, positive = TRUE)
@@ -1182,6 +1184,25 @@ opendap__fetch <- function(
     checkmate::assert_count(retries)
     checkmate::assert_flag(discover)
     checkmate::assert_string(network_id)
+    # With resume=FALSE, a new public invocation ignores earlier coverage.
+    # Its own committed block identities survive endpoint retries and
+    # directory-completion phases.
+    if (is.null(progress)) {
+        progress <- new.env(hash = TRUE, parent = emptyenv())
+    }
+    # Apply the same eligibility rule to local completion and every retry.
+    reusable <- function(blocks) {
+        if (resume || !nrow(blocks)) {
+            return(blocks)
+        }
+        blocks[vapply(
+            blocks$block_id,
+            exists,
+            logical(1L),
+            envir = progress,
+            inherits = FALSE
+        )]
+    }
     dest <- store_abs_path(path.expand(dest), getwd())
     directory_needed <- discover &&
         isTRUE(priv(files)$context$directory_collection) &&
@@ -1193,11 +1214,13 @@ opendap__fetch <- function(
     if (directory_needed) {
         # This cache belongs to the original query and exact initial records.
         # A repeat of that original partial input reuses its frozen completion.
+        # Live S7 class environments can change after unrelated dispatch; only
+        # the existing plain persistence payload identifies query constraints.
         identity <- checksum_bytes(
             serialize(
                 list(
                     priv(files)$index_node,
-                    priv(files)$parameter$state(),
+                    priv(files)$parameter$serialize(type = "list"),
                     as.data.frame(files$to_data_table()),
                     files$selection()
                 ),
@@ -1375,7 +1398,7 @@ opendap__fetch <- function(
     # This startup snapshot precedes source work and is immutable during state
     # initialization. Read the selected sources once, then use indexed slices;
     # later read completions query their own newly committed source rows afresh.
-    saved_blocks <- opendap__valid_blocks(store, keys)
+    saved_blocks <- reusable(opendap__valid_blocks(store, keys))
     saved_demands <- opendap__source_rows(conn, "subset_demands", keys)
     saved_membership <- opendap__source_rows(conn, "subset_neighborhoods", keys)
     for (table in list(saved_blocks, saved_demands, saved_membership)) {
@@ -1384,6 +1407,7 @@ opendap__fetch <- function(
     for (key in keys) {
         state <- new.env(parent = emptyenv())
         state$key <- key
+        state$progress <- progress
         state$links <- links[links$source_key == key]
         demand <- unique(state$links[,
             c("lon", "lat", "time_start", "time_stop"),
@@ -1433,7 +1457,7 @@ opendap__fetch <- function(
         state$discovered <- !discover
         state$finished <- FALSE
         complete <- saved_blocks[list(key), on = "source_key", nomatch = 0L]
-        if (resume || key %in% already_read_sources) {
+        if (resume || nrow(complete)) {
             state$finished <- all(opendap__coverage(
                 state$links,
                 saved_demands[list(key), on = "source_key", nomatch = 0L],
@@ -1552,7 +1576,7 @@ opendap__fetch <- function(
                     stop(state$error)
                 }
                 if (is.null(state$error)) {
-                    blocks <- opendap__valid_blocks(store, state$key)
+                    blocks <- reusable(opendap__valid_blocks(store, state$key))
                     opendap__save_demands(conn, state$result$demands, dest)
                     opendap__save_membership(
                         conn,
@@ -1681,11 +1705,7 @@ opendap__fetch <- function(
                 tmpdir = file.path(dest, "tmp")
             )
             dir.create(inbox)
-            blocks <- if (resume || state$key %in% already_read_sources) {
-                opendap__valid_blocks(store, state$key)
-            } else {
-                data.table::data.table()
-            }
+            blocks <- reusable(opendap__valid_blocks(store, state$key))
             contract <- if (nrow(blocks)) {
                 unique(blocks$contract)[[1L]]
             } else {
@@ -1768,8 +1788,8 @@ opendap__fetch <- function(
             store__extract_cache_write(directory_path, directory_result)
             store$close()
             # Reuse the same acquisition implementation for newly found sources.
-            # Only this call's first phase may reuse blocks under resume=FALSE;
-            # newly discovered sources keep the caller's original resume policy.
+            # Carry only this invocation's durable block identities across phases;
+            # an attempted source never authorizes reuse of its earlier cache.
             return(opendap__fetch(
                 completed,
                 requests,
@@ -1781,7 +1801,7 @@ opendap__fetch <- function(
                 discover,
                 network_id,
                 node_workers,
-                already_read_sources = unique(c(already_read_sources, keys))
+                progress = progress
             ))
         }
     }
