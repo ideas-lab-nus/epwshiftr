@@ -3495,7 +3495,7 @@
       },
       "keys": {
         "type": "named",
-        "subset.of": ["time_filter", "query_url", "selection"]
+        "subset.of": ["time_filter", "query_url", "selection", "directory_collection"]
       },
       "fields": {
         "time_filter": {
@@ -3506,6 +3506,9 @@
         },
         "selection": {
           "$ref": "#/$defs/context_selection"
+        },
+        "directory_collection": {
+          "check": {"kind": "flag"}
         }
       }
     },

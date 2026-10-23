@@ -53,6 +53,14 @@ source__pool <- function(
             .compute = profile,
             output = output
         )
+        # Until its process identity reaches a slot, this frame owns the profile.
+        # Constructor cleanup can only retire registered slots, so inspection
+        # and bootstrap failures must release this exact profile here.
+        registered <- FALSE
+        on.exit(
+            if (!registered) mirai::daemons(0L, .compute = profile),
+            add = TRUE
+        )
         pid <- await(mirai::mirai(Sys.getpid(), .compute = profile))
         handle <- ps::ps_handle(pid)
         slots[[i]] <<- list(
@@ -62,6 +70,7 @@ source__pool <- function(
             parent = ps::ps_ppid(handle),
             active = NULL
         )
+        registered <- TRUE
         libraries <- shift_execution__library_paths()
         settings <- shift_execution__options()
         # Immediate transfer warnings use the existing serialized option list,

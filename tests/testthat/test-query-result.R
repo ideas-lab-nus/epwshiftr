@@ -670,7 +670,8 @@ test_that("EsgResult$slice() / EsgResult$selection() context persists through sa
         simplifyVector = TRUE,
         simplifyMatrix = FALSE
     )
-    expect_named(json$context, "selection")
+    expect_named(json$context, c("directory_collection", "selection"))
+    expect_false(json$context$directory_collection)
     expect_identical(json$context$selection$source_count, 3L)
     expect_identical(json$context$selection$source_num_found, 10L)
     expect_identical(json$context$selection$source_indices, c(3L, 1L))
@@ -5549,6 +5550,189 @@ test_that("raw subset restart adopts published blocks before manifest registrati
     expect_equal(sum(subset_status(dest, "attempts")$native_values), 0)
 })
 
+# Repeated publication must not remove a receipt already needed by committed
+# blocks, even when the final source result repeats its first block's demand.
+test_that("raw subset receipt publication preserves committed demand coverage", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-receipt-publication-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = "one",
+        case_id = "original",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    receipt <- NULL
+    interrupted <- FALSE
+    local({
+        rename <- base::file.rename
+        local_mocked_bindings(
+            file.rename = function(from, to) {
+                if (grepl("/demand-[^/]+[.]rds$", to)) {
+                    if (identical(to, receipt)) {
+                        interrupted <<- TRUE
+                        stop(
+                            "controlled repeated receipt publication",
+                            call. = FALSE
+                        )
+                    }
+                    receipt <<- to
+                }
+                rename(from, to)
+            },
+            .package = "base"
+        )
+        tryCatch(
+            files$fetch_subset(requests, dest, workers = 1L, discover = FALSE),
+            error = function(e) {
+                if (
+                    !grepl("controlled repeated receipt", conditionMessage(e))
+                ) {
+                    stop(e)
+                }
+            }
+        )
+    })
+    expect_true(file.exists(receipt))
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    expect_equal(nrow(read_subset(dest)$gaps$incomplete_requests), 0L)
+    expect_false(interrupted)
+    before <- subset_status(dest, "attempts")
+    requests$request_id <- "linked"
+    requests$case_id <- "linked"
+    expect_true(
+        files$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), before)
+    saved <- read_subset(dest, case_id = "linked")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_equal(unique(saved$links$request_id), "linked")
+    # Manifest coverage verifies the immutable payload directly. Losing an
+    # auxiliary cache sidecar cannot authorize replacing that committed file.
+    unlink(paste0(receipt, ".json"))
+    local({
+        rename <- base::file.rename
+        local_mocked_bindings(
+            file.rename = function(from, to) {
+                if (identical(to, receipt)) {
+                    stop("committed receipt replacement")
+                }
+                rename(from, to)
+            },
+            .package = "base"
+        )
+        expect_true(
+            files$fetch_subset(
+                requests,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            )$complete
+        )
+    })
+    expect_equal(sort(read_subset(dest, case_id = "linked")$values$value), 1:4)
+})
+
+# A process identity inspection fault happens after a real worker is running;
+# failure of the public acquisition must still retire its exact owned profile.
+test_that("raw subset worker bootstrap failure retires its owned profile", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-bootstrap-failure-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    handle <- NULL
+    profile <- NULL
+    on.exit(
+        {
+            if (!is.null(handle) && ps::ps_is_running(handle)) {
+                ps::ps_kill(handle)
+            }
+            if (!is.null(profile)) mirai::daemons(0L, .compute = profile)
+        },
+        add = TRUE
+    )
+    local({
+        daemons <- mirai::daemons
+        # Record only the profile created by the public call, forwarding every
+        # real launch and shutdown unchanged to the installed mirai runtime.
+        local_mocked_bindings(
+            daemons = function(n, ..., .compute = NULL) {
+                if (n > 0L && !is.null(.compute)) {
+                    profile <<- .compute
+                }
+                daemons(n, ..., .compute = .compute)
+            },
+            .package = "mirai"
+        )
+        command <- ps::ps_cmdline
+        local_mocked_bindings(
+            ps_cmdline = function(p = ps::ps_handle()) {
+                value <- command(p)
+                if (is.null(handle) && ps::ps_pid(p) != Sys.getpid()) {
+                    handle <<- p
+                    stop("controlled bootstrap identity failure", call. = FALSE)
+                }
+                value
+            },
+            .package = "ps"
+        )
+        expect_error(
+            files$fetch_subset(
+                requests,
+                dest,
+                workers = 1L,
+                discover = FALSE
+            ),
+            "controlled bootstrap identity failure"
+        )
+    })
+    expect_false(is.null(handle))
+    deadline <- proc.time()[["elapsed"]] + 5
+    while (ps::ps_is_running(handle) && proc.time()[["elapsed"]] < deadline) {
+        Sys.sleep(.01)
+    }
+    expect_false(ps::ps_is_running(handle))
+    expect_identical(mirai::status(.compute = profile)$connections, 0L)
+    expect_identical(mirai::status(.compute = profile)$daemons, 0L)
+    expect_equal(nrow(subset_status(dest, "attempts")), 0L)
+    # Clean the actual failing fixture on the old implementation as well, so
+    # observing RED does not leave a worker owned by this test behind.
+    if (ps::ps_is_running(handle)) ps::ps_kill(handle)
+})
+
 # Historical demand receipts keep gaps visible independently of the latest
 # successful request for another window in the same physical source.
 test_that("raw subset coverage follows each case and rejects empty native windows", {
@@ -5786,6 +5970,226 @@ test_that("raw subset acquisition shares native coverage across many overlapping
         )$content
     ))
     expect_equal(sum(grepl("[.]dods tas", traffic)), 2L)
+})
+
+# An original unsliced File query can finish its pages after known weather
+# reads start. The frozen completion is reused by the same original input.
+test_that("raw subset directory completion preserves explicit selection and local resume", {
+    skip_if_not_installed("webfakes")
+    local_cache_mode("off")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    docs <- docs[c(1L, 1L), ]
+    docs$id[[2L]] <- "file-2"
+    docs$instance_id[[2L]] <- "file-instance-2"
+    docs$master_id[[2L]] <- "master-file-2"
+    index_app <- webfakes::new_app()
+    index_app$locals$pages <- lapply(seq_len(2L), function(i) {
+        jsonlite::toJSON(
+            esgf_test__response(docs[i, ], num_found = 2L),
+            auto_unbox = TRUE
+        )
+    })
+    changed <- docs
+    changed$id <- c("different-1", "different-2")
+    changed$instance_id <- c("different-instance-1", "different-instance-2")
+    changed$master_id <- c("different-master-1", "different-master-2")
+    index_app$locals$changed_pages <- lapply(seq_len(2L), function(i) {
+        jsonlite::toJSON(
+            esgf_test__response(changed[i, ], num_found = 2L),
+            auto_unbox = TRUE
+        )
+    })
+    index_app$locals$changed <- FALSE
+    index_app$locals$queries <- list()
+    index_app$locals$weather <- paste0(server$url(), "requests")
+    index_app$get("/esg-search/search", function(req, res, locals) {
+        weather <- rawToChar(curl::curl_fetch_memory(locals$weather)$content)
+        locals$queries[[length(locals$queries) + 1L]] <- list(
+            query = req$query,
+            known_read_started = grepl("dods tas", weather)
+        )
+        offset <- if (is.null(req$query$offset)) {
+            0L
+        } else {
+            as.integer(req$query$offset)
+        }
+        pages <- if (locals$changed) locals$changed_pages else locals$pages
+        res$set_header("Content-Type", "application/json")$send(pages[[
+            offset + 1L
+        ]])
+    })
+    index_app$get("/change", function(req, res, locals) {
+        locals$changed <- TRUE
+        res$send("ok")
+    })
+    index_app$get("/queries", function(req, res, locals) {
+        res$send_json(locals$queries)
+    })
+    index <- webfakes::new_app_process(index_app)
+    on.exit(index$stop(), add = TRUE)
+    partial <- query_result__new(
+        EsgResultFile,
+        index_node = sub("/$", "", index$url()),
+        params = query_result_test_params("File"),
+        result = esgf_test__response(docs[1L, ], num_found = 2L)
+    )
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    dest <- tempfile("raw-directory-completion-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    first <- partial$fetch_subset(requests, dest, workers = 1L, retries = 0L)
+    expect_true(first$complete)
+    expect_true(first$directory_complete)
+    expect_equal(length(unique(read_subset(dest)$links$source_key)), 2L)
+    expect_equal(nrow(read_subset(dest)$values), 8L)
+    queries <- rawToChar(
+        curl::curl_fetch_memory(paste0(index$url(), "queries"))$content
+    )
+    evidence <- jsonlite::fromJSON(queries)
+    expect_equal(nrow(evidence), 2L)
+    expect_true(all(unlist(evidence$known_read_started)))
+    expect_true(all(evidence$query$type == "File"))
+    expect_true(all(evidence$query$project == "CMIP6"))
+    before <- subset_status(dest, "attempts")
+    expect_true(
+        partial$fetch_subset(requests, dest, workers = 1L)$directory_complete
+    )
+    expect_identical(subset_status(dest, "attempts"), before)
+    expect_identical(
+        rawToChar(
+            curl::curl_fetch_memory(
+                paste0(index$url(), "queries")
+            )$content
+        ),
+        queries
+    )
+    expect_equal(length(unique(read_subset(dest)$links$source_key)), 2L)
+    # Even selecting every currently held row explicitly must freeze science
+    # inputs; a complete catalog and an old contextless saved partial also freeze.
+    for (selected in list(
+        partial$slice(1L),
+        query_result_test_object("File", docs)$slice(1L)
+    )) {
+        selected_dest <- tempfile("raw-directory-selected-")
+        on.exit(unlink(selected_dest, recursive = TRUE), add = TRUE)
+        selected$fetch_subset(requests, selected_dest, workers = 1L)
+        expect_equal(
+            length(unique(read_subset(selected_dest)$links$source_key)),
+            1L
+        )
+        expect_identical(
+            rawToChar(
+                curl::curl_fetch_memory(
+                    paste0(index$url(), "queries")
+                )$content
+            ),
+            queries
+        )
+    }
+    saved_path <- tempfile(fileext = ".json")
+    on.exit(unlink(saved_path), add = TRUE)
+    partial$save(saved_path)
+    old <- jsonlite::read_json(saved_path, simplifyVector = FALSE)
+    old$context$directory_collection <- NULL
+    jsonlite::write_json(old, saved_path, auto_unbox = TRUE, null = "null")
+    old_partial <- esg_result("file")$load(saved_path)
+    old_dest <- tempfile("raw-directory-old-context-")
+    on.exit(unlink(old_dest, recursive = TRUE), add = TRUE)
+    expect_false(
+        old_partial$fetch_subset(
+            requests,
+            old_dest,
+            workers = 1L
+        )$directory_complete
+    )
+    expect_equal(length(unique(read_subset(old_dest)$links$source_key)), 1L)
+    expect_identical(
+        rawToChar(
+            curl::curl_fetch_memory(
+                paste0(index$url(), "queries")
+            )$content
+        ),
+        queries
+    )
+    # resume=FALSE refreshes each source once across the two phases, including
+    # newly discovered Files that already have durable blocks from another call.
+    refresh_dest <- tempfile("raw-directory-refresh-")
+    on.exit(unlink(refresh_dest, recursive = TRUE), add = TRUE)
+    full <- partial$clone(deep = TRUE)
+    priv(full)$response$response$docs <- docs
+    full$fetch_subset(requests, refresh_dest, workers = 1L)
+    expect_identical(
+        rawToChar(
+            curl::curl_fetch_memory(
+                paste0(index$url(), "queries")
+            )$content
+        ),
+        queries
+    )
+    prior_values <- sum(subset_status(refresh_dest, "attempts")$native_values)
+    expect_true(
+        partial$fetch_subset(
+            requests,
+            refresh_dest,
+            workers = 1L,
+            resume = FALSE
+        )$directory_complete
+    )
+    expect_equal(
+        sum(subset_status(refresh_dest, "attempts")$native_values) -
+            prior_values,
+        8
+    )
+    # A damaged completion plus an index that drops known source identity must
+    # retain the original data and report the unresolved directory explicitly.
+    frozen <- list.files(
+        file.path(dest, "subsets"),
+        "^directory-.*[.]rds$",
+        full.names = TRUE
+    )
+    expect_length(frozen, 1L)
+    writeBin(as.raw(0), frozen)
+    curl::curl_fetch_memory(paste0(index$url(), "change"))
+    attempts <- subset_status(dest, "attempts")
+    changed_result <- partial$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        timeout = 1
+    )
+    expect_false(changed_result$directory_complete)
+    expect_true(changed_result$complete)
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    expect_equal(nrow(read_subset(dest)$gaps$directory), 1L)
+
+    # Index unavailability cannot prevent a known healthy File from finishing.
+    unavailable <- partial$clone(deep = TRUE)
+    priv(unavailable)$index_node <- "http://127.0.0.1:1"
+    failed_dest <- tempfile("raw-directory-unavailable-")
+    on.exit(unlink(failed_dest, recursive = TRUE), add = TRUE)
+    failed <- unavailable$fetch_subset(
+        requests,
+        failed_dest,
+        workers = 1L,
+        timeout = 1
+    )
+    expect_true(failed$complete)
+    expect_false(failed$directory_complete)
+    expect_equal(nrow(read_subset(failed_dest)$gaps$directory), 1L)
+    expect_equal(sort(read_subset(failed_dest)$values$value), 1:4)
 })
 
 # A complete selected File can be reusable while its originating catalogue is

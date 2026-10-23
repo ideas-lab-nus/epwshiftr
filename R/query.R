@@ -2357,7 +2357,8 @@ query__collect <- function(
         docs = docs,
         parameter = effective_store,
         context = list(
-            query_url = query_result__query_urls(query_urls, named = FALSE)
+            query_url = query_result__query_urls(query_urls, named = FALSE),
+            directory_collection = TRUE
         )
     )
 }

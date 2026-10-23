@@ -189,7 +189,9 @@ time_stop and optional source filters and case_id labels.}
       \item{\code{resume}}{Reuse locally verified native blocks.}
       \item{\code{timeout}}{Maximum seconds without saved-block progress.}
       \item{\code{retries}}{Number of later rounds after the first candidate round.}
-      \item{\code{discover}}{Query additional compatible replicas after known ones fail.}
+      \item{\code{discover}}{Complete an original unsliced partial File query while
+known Files begin reading, and query compatible replicas after known
+candidates fail. Explicit selections and complete directories stay fixed.}
       \item{\code{network_id}}{User-defined network identity for local timing history.}
       \item{\code{node_workers}}{Maximum simultaneous readers for one data node.}
     }
@@ -201,7 +203,10 @@ describes native coverage of the selected Files; the independent
 \code{directory_complete} flag is false for a partially collected File
 directory. An intentional slice of a fully collected directory
 retains true directory completeness. No missing pages are implied
-to have been collected by successful reads or cache reuse.
+to have been collected by successful reads or cache reuse. A verified
+completed original query is saved locally and reused on repeat calls.
+Older saved partial results without query-selection intent remain
+explicit directory gaps.
   }
 }
 

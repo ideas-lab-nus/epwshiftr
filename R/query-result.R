@@ -42,6 +42,11 @@ EsgResult <- R6::R6Class(
             private$parameter <- query_param__clone(params)
             private$response <- query_result__response(response)
             private$context <- query_result__context(context)
+            # Fresh query results are eligible for directory completion. Saved
+            # results lacking this evidence retain unknown selection intent.
+            if (is.null(context)) {
+                private$context$directory_collection <- TRUE
+            }
             private$register_dynamic_fields()
             self
         },
@@ -1413,6 +1418,7 @@ query_result__selection <- function(selection) {
 context__update_selection <- function(context, selection, index) {
     # Source totals describe the original result; only its retained positions
     # change when a dataset or query result is sliced again.
+    context$directory_collection <- FALSE
     context$selection <- list(
         source_count = selection$source_count,
         source_num_found = selection$source_num_found,
@@ -2071,7 +2077,8 @@ query_result__merge_child_collects <- function(
         docs = docs,
         parameter = parameter,
         context = list(
-            query_url = query_result__query_urls(query_urls, named = FALSE)
+            query_url = query_result__query_urls(query_urls, named = FALSE),
+            directory_collection = TRUE
         )
     )
 }
@@ -2686,7 +2693,9 @@ EsgResultFile <- R6::R6Class(
         #' @param resume Reuse locally verified native blocks.
         #' @param timeout Maximum seconds without saved-block progress.
         #' @param retries Number of later rounds after the first candidate round.
-        #' @param discover Query additional compatible replicas after known ones fail.
+        #' @param discover Complete an original unsliced partial File query while
+        #'   known Files begin reading, and query compatible replicas after known
+        #'   candidates fail. Explicit selections and complete directories stay fixed.
         #' @param network_id User-defined network identity for local timing history.
         #' @param node_workers Maximum simultaneous readers for one data node.
         #' @return For fetch_subset(), a lightweight acquisition summary. `complete`
@@ -2694,7 +2703,10 @@ EsgResultFile <- R6::R6Class(
         #'   `directory_complete` flag is false for a partially collected File
         #'   directory. An intentional slice of a fully collected directory
         #'   retains true directory completeness. No missing pages are implied
-        #'   to have been collected by successful reads or cache reuse.
+        #'   to have been collected by successful reads or cache reuse. A verified
+        #'   completed original query is saved locally and reused on repeat calls.
+        #'   Older saved partial results without query-selection intent remain
+        #'   explicit directory gaps.
         # The package owns all writes; callers provide only their demand contract.
         fetch_subset = function(
             requests,

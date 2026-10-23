@@ -11,6 +11,10 @@
   expose local progress, gaps, case associations and unaggregated corners.
   Directory completeness is recorded separately from selected native data
   coverage, including deliberate slices and older manifests without evidence.
+  Original unsliced partial File queries complete through the bounded reader
+  pool after known reads start, and their verified catalogs are reused locally.
+  Committed demand receipts remain immutable across repeated publication, and
+  failed worker identity registration releases its owned compute profile.
   Resuming reads only source-local manifest history, and local rereads share
   native corner/window selections across consuming cases. Failed native SQL
   results are released before offline reopen, preventing retained Windows locks

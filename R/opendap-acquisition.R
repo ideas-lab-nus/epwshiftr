@@ -61,25 +61,54 @@ opendap__demand_ids <- function(links) {
 
 # Publish independently checked native selection receipts, including an empty
 # selection. Empty windows must never borrow another window's completed blocks.
-opendap__save_demands <- function(conn, demands, dest) {
+opendap__save_demands <- function(conn, demands, dest, transaction = TRUE) {
     if (is.null(demands) || !nrow(demands)) {
         return(invisible(NULL))
     }
     records <- data.table::copy(demands)
-    paths <- file.path(
-        dest,
-        "subsets",
-        paste0("demand-", demands$demand_id, ".rds")
-    )
+    paths <- character(nrow(demands))
     checksums <- character(nrow(demands))
     for (i in seq_len(nrow(demands))) {
-        store__extract_cache_write(paths[[i]], as.data.frame(demands[i]))
+        payload <- as.data.frame(demands[i])
+        # The demand identity stays stable while its receipt is immutable. A
+        # repeated first-block/final-result publication reuses checked bytes;
+        # a changed descriptor gets a new path before any manifest reference
+        # changes, preserving every previously committed receipt on interruption.
+        version <- checksum_bytes(
+            serialize(payload, NULL, version = 3L),
+            "sha256"
+        )
+        paths[[i]] <- file.path(
+            dest,
+            "subsets",
+            paste0("demand-", demands$demand_id[[i]], "-", version, ".rds")
+        )
+        reusable <- file.exists(paths[[i]]) &&
+            identical(
+                tryCatch(readRDS(paths[[i]]), error = function(e) NULL),
+                payload
+            )
+        if (!reusable) {
+            store__extract_cache_write(paths[[i]], payload)
+        }
         checksums[[i]] <- checksum_file(paths[[i]])
+    }
+    # Register all immutable publications together. A failed replacement leaves
+    # prior demand references intact; unregistered files can be reused later.
+    if (transaction) {
+        ddb_exec(conn, "BEGIN TRANSACTION")
+    }
+    committed <- FALSE
+    on.exit(
+        if (transaction && !committed) ddb_exec(conn, "ROLLBACK"),
+        add = TRUE
+    )
+    for (id in demands$demand_id) {
         ddb_exec(
             conn,
             sprintf(
                 "DELETE FROM subset_demands WHERE demand_id = %s",
-                ddb_literal(conn, demands$demand_id[[i]])
+                ddb_literal(conn, id)
             )
         )
     }
@@ -87,6 +116,10 @@ opendap__save_demands <- function(conn, demands, dest) {
     data.table::set(records, j = "receipt_path", value = paths)
     data.table::set(records, j = "receipt_sha256", value = checksums)
     ddb_append_table(conn, "subset_demands", as.data.frame(records))
+    if (transaction) {
+        ddb_exec(conn, "COMMIT")
+    }
+    committed <- TRUE
     invisible(NULL)
 }
 
@@ -739,7 +772,7 @@ opendap__commit <- function(store, job, path) {
     )
     ddb_append_table(conn, "subset_blocks", row)
     opendap__save_membership(conn, job$source_key, chunk$neighborhoods)
-    opendap__save_demands(conn, chunk$demands, job$dest)
+    opendap__save_demands(conn, chunk$demands, job$dest, transaction = FALSE)
     ddb_exec(conn, "COMMIT")
     done <- TRUE
     unlink(c(path, receipt, pending, paste0(pending, ".json")))
@@ -1072,6 +1105,61 @@ opendap__discover <- function(job) {
     opendap__access_plan(job$files, expand = TRUE)
 }
 
+# Complete only the original unsliced File query, reusing normal pagination
+# and its unchanged constraints. The owned pool bounds unavailable indexes.
+opendap__complete_directory <- function(job) {
+    files <- job$files
+    result <- query__collect(
+        priv(files)$index_node,
+        priv(files)$parameter,
+        required_fields = EsgResultFile$private_fields$required_fields,
+        all = TRUE,
+        limit = query_param__value(priv(files)$parameter$limit()),
+        progress = FALSE
+    )
+    result$response$response$docs <- result$docs
+    list(
+        index_node = priv(files)$index_node,
+        parameter = result$parameter$state(),
+        response = result$response,
+        context = result$context
+    )
+}
+
+# A completed directory must retain every known pinned source and its content
+# evidence. An index that drops or replaces known inputs cannot certify scope.
+opendap__completed_files <- function(record, known) {
+    files <- query_result__new(
+        EsgResultFile,
+        record$index_node,
+        query_param__as_store(record$parameter),
+        record$response,
+        context = record$context
+    )
+    if (
+        !isTRUE(opendap__directory(files$selection())$directory_complete) ||
+            anyDuplicated(files$id) ||
+            files$count() < known$selection()$source_num_found
+    ) {
+        stop("The original File directory is still incomplete.", call. = FALSE)
+    }
+    prior <- opendap__access_plan(known, expand = FALSE)
+    current <- opendap__access_plan(files, expand = FALSE)
+    for (key in unique(prior$source_key)) {
+        rows <- current[current$source_key == key]
+        old <- prior[prior$source_key == key]
+        if (
+            !nrow(rows) || any(!query_result__compatible_content(old[1L], rows))
+        ) {
+            stop(
+                "Completed File directory does not preserve known source identity.",
+                call. = FALSE
+            )
+        }
+    }
+    files
+}
+
 # Keep the public orchestration small by reusing Store writes and source__pool.
 opendap__fetch <- function(
     files,
@@ -1083,7 +1171,8 @@ opendap__fetch <- function(
     retries = 2L,
     discover = TRUE,
     network_id = "default",
-    node_workers = 2L
+    node_workers = 2L,
+    already_read_sources = character()
 ) {
     checkmate::assert_count(workers, positive = TRUE)
     checkmate::assert_count(node_workers, positive = TRUE)
@@ -1092,6 +1181,45 @@ opendap__fetch <- function(
     checkmate::assert_flag(discover)
     checkmate::assert_string(network_id)
     dest <- store_abs_path(path.expand(dest), getwd())
+    directory_needed <- discover &&
+        isTRUE(priv(files)$context$directory_collection) &&
+        identical(
+            opendap__directory(files$selection())$directory_complete,
+            FALSE
+        )
+    directory_path <- NULL
+    if (directory_needed) {
+        # This cache belongs to the original query and exact initial records.
+        # A repeat of that original partial input reuses its frozen completion.
+        identity <- checksum_bytes(
+            serialize(
+                list(
+                    priv(files)$index_node,
+                    priv(files)$parameter$state(),
+                    as.data.frame(files$to_data_table()),
+                    files$selection()
+                ),
+                NULL,
+                version = 3L
+            ),
+            "sha256"
+        )
+        directory_path <- file.path(
+            dest,
+            "subsets",
+            paste0("directory-", identity, ".rds")
+        )
+        if (store__extract_cache_available(directory_path)) {
+            completed <- tryCatch(
+                opendap__completed_files(readRDS(directory_path), files),
+                error = function(e) NULL
+            )
+            if (!is.null(completed)) {
+                files <- completed
+                directory_needed <- FALSE
+            }
+        }
+    }
     candidates <- opendap__access_plan(files, expand = FALSE)
     links <- opendap__requests(requests, candidates)
     store <- opendap__open(dest)
@@ -1295,7 +1423,7 @@ opendap__fetch <- function(
         state$discovered <- !discover
         state$finished <- FALSE
         complete <- saved_blocks[list(key), on = "source_key", nomatch = 0L]
-        if (resume) {
+        if (resume || key %in% already_read_sources) {
             state$finished <- all(opendap__coverage(
                 state$links,
                 saved_demands[list(key), on = "source_key", nomatch = 0L],
@@ -1321,13 +1449,24 @@ opendap__fetch <- function(
         states[[key]] <- state
     }
     pool <- NULL
+    directory_ticket <- NULL
+    directory_result <- NULL
+    directory_error <- NULL
     on.exit(if (!is.null(pool)) pool$close(force = TRUE), add = TRUE)
-    if (any(!vapply(states, function(s) s$finished, logical(1L)))) {
+    if (
+        directory_needed ||
+            any(!vapply(states, function(s) s$finished, logical(1L)))
+    ) {
         pool <- source__pool(workers, timeout = timeout)
     }
     # Each state has at most one active attempt. Queue only available worker
     # slots rather than serializing every File record into an unbounded queue.
-    while (any(!vapply(states, function(s) s$finished, logical(1L)))) {
+    while (
+        any(!vapply(states, function(s) s$finished, logical(1L))) ||
+            (directory_needed &&
+                (is.null(directory_ticket) ||
+                    directory_ticket$status == "pending"))
+    ) {
         active <- 0L
         for (state in states) {
             if (is.null(state$ticket)) {
@@ -1532,7 +1671,7 @@ opendap__fetch <- function(
                 tmpdir = file.path(dest, "tmp")
             )
             dir.create(inbox)
-            blocks <- if (resume) {
+            blocks <- if (resume || state$key %in% already_read_sources) {
                 opendap__valid_blocks(store, state$key)
             } else {
                 data.table::data.table()
@@ -1589,11 +1728,47 @@ opendap__fetch <- function(
             opendap__job_state(store, state$key, state$signature, "running")
             active <- active + 1L
         }
+        # Known reads enter the existing queue first. With one worker the
+        # index waits behind them; spare workers can complete pages concurrently.
+        if (directory_needed && is.null(directory_ticket)) {
+            directory_ticket <- pool$submit(
+                list(list(source_key = "directory", files = files)),
+                opendap__complete_directory,
+                collect = function(job, value) directory_result <<- value,
+                on_error = function(job, error) directory_error <<- error
+            )
+        }
         Sys.sleep(.02)
     }
     if (!is.null(pool)) {
         pool$close()
         pool <- NULL
+    }
+    if (!is.null(directory_result) && is.null(directory_error)) {
+        completed <- tryCatch(
+            opendap__completed_files(directory_result, files),
+            error = function(e) NULL
+        )
+        if (!is.null(completed)) {
+            store__extract_cache_write(directory_path, directory_result)
+            store$close()
+            # Reuse the same acquisition implementation for newly found sources.
+            # Only this call's first phase may reuse blocks under resume=FALSE;
+            # newly discovered sources keep the caller's original resume policy.
+            return(opendap__fetch(
+                completed,
+                requests,
+                dest,
+                workers,
+                resume,
+                timeout,
+                retries,
+                discover,
+                network_id,
+                node_workers,
+                already_read_sources = unique(c(already_read_sources, keys))
+            ))
+        }
     }
     jobs <- ddb_read_table(conn, "subset_jobs")
     list(
