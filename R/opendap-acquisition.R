@@ -270,6 +270,76 @@ opendap__saved_directory <- function(conn, request_ids = NULL) {
     out
 }
 
+# Compare calendar fields lexically, rather than treating catalogue dates as
+# Gregorian instants. Padding a published coarse upper bound with nines covers
+# the whole final month/day/hour/minute/second in every supported CF calendar.
+# Requests use zero clock padding, matching the raw neighborhood selector.
+opendap__time_keys <- function(value, upper = FALSE) {
+    compact <- gsub("[-T :Z]", "", value)
+    valid <- !is.na(compact) &
+        grepl(
+            "^(?:[0-9]{4}|[0-9]{6}|[0-9]{8}|[0-9]{10}|[0-9]{12}|[0-9]{14}(?:[.][0-9]+)?)$",
+            compact
+        )
+    whole <- sub("[.].*$", "", compact)
+    widths <- nchar(whole)
+    # Field limits are calendar-neutral: day 31 is a valid bounding tuple even
+    # when the source calendar's last day is 30. Truly malformed metadata must
+    # not exclude a File before a native read can establish its actual extent.
+    for (field in list(
+        c(5L, 6L, 1L, 12L),
+        c(7L, 8L, 1L, 31L),
+        c(9L, 10L, 0L, 23L),
+        c(11L, 12L, 0L, 59L),
+        c(13L, 14L, 0L, 59L)
+    )) {
+        present <- !is.na(widths) & widths >= field[[2L]]
+        number <- suppressWarnings(as.integer(substr(
+            whole,
+            field[[1L]],
+            field[[2L]]
+        )))
+        valid <- valid &
+            (!present |
+                (!is.na(number) &
+                    number >= field[[3L]] &
+                    number <= field[[4L]]))
+    }
+    padding <- if (upper) "99999999999999" else "00000000000000"
+    # Published DRS endpoints have at most whole-second precision. Comparing
+    # only those fields is conservative for fractional request endpoints;
+    # the native CF selector subsequently applies the full fractional value.
+    keys <- paste0(whole, substring(padding, widths + 1L))
+    keys[!valid] <- NA_character_
+    keys
+}
+
+# Preserve published File precision independently of the legacy POSIX-based
+# catalogue summary. Unparseable or reversed periods remain unknown, so they
+# cannot silently remove a source that may contain the requested native data.
+opendap__file_periods <- function(labels) {
+    labels <- basename(sub("[.]html$", "", sub("[?#].*$", "", labels)))
+    fields <- utils::strcapture(
+        "_([0-9]{4}|[0-9]{6}|[0-9]{8}|[0-9]{10}|[0-9]{12}|[0-9]{14})-([0-9]{4}|[0-9]{6}|[0-9]{8}|[0-9]{10}|[0-9]{12}|[0-9]{14})(?:[.]nc)?$",
+        labels,
+        proto = list(start = character(), stop = character()),
+        perl = TRUE
+    )
+    start <- opendap__time_keys(fields$start)
+    stop <- opendap__time_keys(fields$stop, upper = TRUE)
+    invalid <- is.na(start) |
+        is.na(stop) |
+        nchar(fields$start) != nchar(fields$stop) |
+        start > stop
+    start[invalid] <- stop[invalid] <- NA_character_
+    data.frame(
+        file_start_year = as.integer(substr(start, 1L, 4L)),
+        file_stop_year = as.integer(substr(stop, 1L, 4L)),
+        file_start_key = start,
+        file_stop_key = stop
+    )
+}
+
 # Keep endpoint inventory separate from immutable climate content identity.
 opendap__access_plan <- function(files, expand = TRUE) {
     checkmate::assert_flag(expand)
@@ -313,20 +383,10 @@ opendap__access_plan <- function(files, expand = TRUE) {
         value = sub("^https?://([^/]+).*$", "\\1", out$url[missing_node])
     )
     data.table::set(out, j = "logical_id", value = logical)
-    ranges <- query_result__drs_ranges(query_result__drs_labels(docs)$value)
-    data.table::set(
-        out,
-        j = "file_start_year",
-        value = suppressWarnings(as.integer(format(
-            ranges$datetime_start,
-            "%Y"
-        )))
-    )
-    data.table::set(
-        out,
-        j = "file_stop_year",
-        value = suppressWarnings(as.integer(format(ranges$datetime_end, "%Y")))
-    )
+    periods <- opendap__file_periods(query_result__drs_labels(docs)$value)
+    for (name in names(periods)) {
+        data.table::set(out, j = name, value = periods[[name]])
+    }
     data.table::set(out, j = "content_group", value = groups)
     # Use the strongest available version within an already compatible group.
     # Known contradictory groups are not silently merged into a source.
@@ -600,27 +660,20 @@ opendap__requests <- function(requests, candidates) {
                 !is.na(matches[[field]]) & matches[[field]] == value
             ]
         }
-        start_year <- suppressWarnings(as.integer(substr(
-            requests$time_start[[i]],
-            1L,
-            4L
-        )))
-        stop_year <- suppressWarnings(as.integer(substr(
-            requests$time_stop[[i]],
-            1L,
-            4L
-        )))
-        if (is.na(start_year) || is.na(stop_year) || start_year > stop_year) {
+        start <- opendap__time_keys(requests$time_start[[i]])
+        stop <- opendap__time_keys(requests$time_stop[[i]])
+        if (is.na(start) || is.na(stop) || start > stop) {
             stop(
                 "Request windows must have ordered native ISO date endpoints.",
                 call. = FALSE
             )
         }
+        # DRS precision can be monthly, daily or subdaily. Native tuple keys
+        # retain that precision without normalizing February 30 through POSIX.
+        # Unknown periods stay eligible until the actual CF axis is inspected.
         matches <- matches[
-            (is.na(matches$file_start_year) |
-                matches$file_start_year <= stop_year) &
-                (is.na(matches$file_stop_year) |
-                    matches$file_stop_year >= start_year)
+            (is.na(matches$file_start_key) | matches$file_start_key <= stop) &
+                (is.na(matches$file_stop_key) | matches$file_stop_key >= start)
         ]
         keys <- unique(matches$source_key)
         if (!length(keys)) {

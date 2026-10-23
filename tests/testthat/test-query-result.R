@@ -6950,4 +6950,236 @@ test_that("raw subset refresh validates saved native bounds without reusing cove
     )
 })
 
+# Published subannual periods exclude unrelated Files before native OPeNDAP
+# reads, without rounding 360-day dates into the Gregorian calendar.
+test_that("raw subset windows match native File periods at their published precision", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-native-file-window-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$id <- docs$instance_id <- docs$master_id <- c("january", "june")
+    docs$title <- c("tas_206001-206001.nc", "tas_206006-206006.nc")
+    docs$variable_id <- "tas"
+    docs$url <- I(lapply(c("fast.nc", "june.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "june",
+        case_id = "summer",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-06-01",
+        time_stop = "2060-06-01"
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    saved <- read_subset(dest, case_id = "summer")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_equal(unique(saved$values$cf_month), 6L)
+    expect_equal(nrow(saved$neighborhoods), 4L)
+    expect_equal(nrow(saved$gaps$incomplete_requests), 0L)
+    attempts <- subset_status(dest, "attempts")
+    expect_identical(unique(attempts$url), paste0(server$url(), "june.nc"))
+    traffic <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    expect_false(any(grepl(
+        "fast.nc",
+        jsonlite::fromJSON(rawToChar(traffic)),
+        fixed = TRUE
+    )))
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    request$request_id <- "missing"
+    request$case_id <- "missing"
+    request$time_start <- request$time_stop <- "2060-05-01"
+    expect_false(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_gt(
+        nrow(read_subset(dest, case_id = "missing")$gaps$incomplete_requests),
+        0L
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    # A window spanning Files legitimately keeps each File's available native
+    # portion; the paper workflow separately judges whole-case time coverage.
+    request$request_id <- request$case_id <- "spanning"
+    request$time_start <- "2060-01-01"
+    request$time_stop <- "2060-06-01"
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    spanning <- read_subset(dest, case_id = "spanning")
+    expect_equal(sort(spanning$values$value), sort(c(1:32, 1:4)))
+    expect_equal(sort(unique(spanning$values$cf_month)), c(1L, 6L))
+})
+
+# A DRS boundary is an inclusive calendar field tuple at the stated precision,
+# including February 30 and subdaily File endpoints. Native CF remains the
+# final authority when a label is absent or cannot be parsed safely.
+test_that("raw subset File windows retain nonGregorian and subdaily endpoints", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    destinations <- tempfile("raw-native-periods-")
+    dir.create(destinations)
+    on.exit(unlink(destinations, recursive = TRUE), add = TRUE)
+    examples <- data.frame(
+        first = c(
+            "20600229",
+            "2060010100",
+            "206001010000",
+            "20600101000000",
+            "20600101"
+        ),
+        last = c(
+            "20600230",
+            "2060010103",
+            "206001010003",
+            "20600101000003",
+            "20600104"
+        ),
+        origin = c(
+            "february.nc",
+            "hour.nc",
+            "minute.nc",
+            "second.nc",
+            "fast.nc"
+        ),
+        endpoint = c(
+            "2060-02-30",
+            "2060-01-01T03:00:00Z",
+            "2060-01-01T00:03:00Z",
+            "2060-01-01T00:00:03Z",
+            "2060-01-04"
+        ),
+        value = c(29L, 13L, 13L, 13L, 13L)
+    )
+    for (i in seq_len(nrow(examples))) {
+        dest <- file.path(destinations, as.character(i))
+        docs <- query_result_test_file_docs()
+        docs <- docs[c(1L, 1L), ]
+        docs$id <- docs$instance_id <- docs$master_id <- c("outside", "inside")
+        docs$title <- paste0(
+            "tas_",
+            c(examples$first[[i]], examples$last[[i]]),
+            "-",
+            c(examples$first[[i]], examples$last[[i]]),
+            ".nc"
+        )
+        docs$variable_id <- "tas"
+        docs$url <- I(lapply(
+            c(paste0("outside-", examples$origin[[i]]), examples$origin[[i]]),
+            function(name) {
+                paste0(server$url(), name, "|application/netcdf|OPENDAP")
+            }
+        ))
+        files <- query_result_test_object("File", docs)
+        request <- data.frame(
+            request_id = "native",
+            case_id = "native",
+            site_id = "city",
+            lon = 10.25,
+            lat = .25,
+            time_start = examples$endpoint[[i]],
+            time_stop = examples$endpoint[[i]]
+        )
+        expect_true(
+            files$fetch_subset(
+                request,
+                dest,
+                workers = 1L,
+                retries = 0L,
+                discover = FALSE
+            )$complete
+        )
+        expect_equal(
+            sort(read_subset(dest, case_id = "native")$values$value),
+            examples$value[[i]] + 0:3
+        )
+        expect_identical(
+            unique(subset_status(dest, "attempts")$url),
+            paste0(server$url(), examples$origin[[i]])
+        )
+        expect_equal(
+            files$access_plan(expand = FALSE)$file_start_year,
+            c(2060L, 2060L)
+        )
+    }
+    for (label in c(
+        "unknown.nc",
+        "tas_206013-206013.nc",
+        "tas_206006-206001.nc"
+    )) {
+        dest <- file.path(destinations, label)
+        docs <- query_result_test_file_docs(paste0(
+            server$url(),
+            "june.nc|application/netcdf|OPENDAP"
+        ))
+        docs$title <- label
+        docs$variable_id <- "tas"
+        request <- data.frame(
+            request_id = "unknown",
+            site_id = "city",
+            lon = 10.25,
+            lat = .25,
+            time_start = "2060-06-01",
+            time_stop = "2060-06-01"
+        )
+        expect_true(
+            query_result_test_object("File", docs)$fetch_subset(
+                request,
+                dest,
+                workers = 1L,
+                retries = 0L,
+                discover = FALSE
+            )$complete
+        )
+        expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    }
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("outside-", traffic, fixed = TRUE)))
+})
+
 # vim: fdm=marker :

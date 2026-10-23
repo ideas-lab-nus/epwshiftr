@@ -177,6 +177,33 @@ subset_test__dap_app <- function() {
         name <- basename(req$path)
         if (grepl('[.]das$', name)) {
             attributes <- 'Attributes { time { String units "days since 2060-01-01"; String calendar "360_day"; } tas { String units "K"; } }'
+            # Distinct calendar origins model separate published File chunks.
+            if (grepl('june[.]nc', name)) {
+                attributes <- sub(
+                    '2060-01-01',
+                    '2060-06-01',
+                    attributes,
+                    fixed = TRUE
+                )
+            }
+            if (grepl('february[.]nc', name)) {
+                attributes <- sub(
+                    '2060-01-01',
+                    '2060-02-23',
+                    attributes,
+                    fixed = TRUE
+                )
+            }
+            for (unit in c('hour', 'minute', 'second')) {
+                if (grepl(paste0(unit, '[.]nc'), name)) {
+                    attributes <- sub(
+                        'days since',
+                        paste0(unit, 's since'),
+                        attributes,
+                        fixed = TRUE
+                    )
+                }
+            }
             if (grepl('bounds', name)) {
                 attributes <- sub(
                     'calendar "360_day";',
