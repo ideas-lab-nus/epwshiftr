@@ -157,44 +157,57 @@ query_result__compatible_file_groups <- function(docs) {
         query_result__file_key(data.table::as.data.table(docs)),
         error = function(error) paste0("row:", seq_len(nrow(docs)))
     )
+    # Independent files can never share content groups. Partition once before
+    # the order-dependent pairwise checks, avoiding a scan of every earlier
+    # file for each new catalog row. Only replicas of one logical file need
+    # the conservative all-members comparison that prevents sparse bridges.
+    partitions <- split(
+        seq_len(nrow(docs)),
+        match(logical_id, unique(logical_id))
+    )
     groups <- integer(nrow(docs))
     group_count <- 0L
-    for (i in seq_len(nrow(docs))) {
-        assigned <- FALSE
-        for (group in seq_len(group_count)) {
-            members <- which(groups == group)
-            if (
-                !length(members) ||
-                    !all(logical_id[members] == logical_id[[i]])
-            ) {
-                next
+    for (rows in partitions) {
+        first_group <- group_count
+        for (i in rows) {
+            assigned <- FALSE
+            for (group in first_group + seq_len(group_count - first_group)) {
+                members <- rows[groups[rows] == group]
+                if (
+                    !length(members) ||
+                        !all(logical_id[members] == logical_id[[i]])
+                ) {
+                    next
+                }
+                forward <- query_result__compatible_content(
+                    docs[i, , drop = FALSE],
+                    docs[members, , drop = FALSE]
+                )
+                reverse <- vapply(
+                    members,
+                    function(member) {
+                        query_result__compatible_content(
+                            docs[member, , drop = FALSE],
+                            docs[i, , drop = FALSE]
+                        )[[1L]]
+                    },
+                    logical(1L)
+                )
+                if (all(forward) && all(reverse)) {
+                    groups[[i]] <- group
+                    assigned <- TRUE
+                    break
+                }
             }
-            forward <- query_result__compatible_content(
-                docs[i, , drop = FALSE],
-                docs[members, , drop = FALSE]
-            )
-            reverse <- vapply(
-                members,
-                function(member) {
-                    query_result__compatible_content(
-                        docs[member, , drop = FALSE],
-                        docs[i, , drop = FALSE]
-                    )[[1L]]
-                },
-                logical(1L)
-            )
-            if (all(forward) && all(reverse)) {
-                groups[[i]] <- group
-                assigned <- TRUE
-                break
+            if (!assigned) {
+                group_count <- group_count + 1L
+                groups[[i]] <- group_count
             }
-        }
-        if (!assigned) {
-            group_count <- group_count + 1L
-            groups[[i]] <- group_count
         }
     }
-    groups
+    # Partition traversal can visit a later replica before another file's first
+    # row. Restore the exact global first-appearance numbering for callers.
+    match(groups, unique(groups))
 }
 # }}}
 

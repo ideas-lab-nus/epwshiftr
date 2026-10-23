@@ -5125,6 +5125,61 @@ test_that("raw candidate plans retain different digest algorithms without mergin
     )
 })
 
+# Interleaved catalog rows retain the first appearance of compatible file groups,
+# including sparse records and replicas with independently declared digest types.
+test_that("raw candidate plans preserve interleaved file and version ordering", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 7L), ]
+    docs$id <- paste0("row-", seq_len(nrow(docs)))
+    docs$instance_id <- c("a", "b", "a", "c", "a", "b", "a")
+    docs$master_id <- docs$instance_id
+    docs$version <- c(1L, 1L, 2L, 1L, 1L, NA_integer_, NA_integer_)
+    docs$checksum_type <- c(
+        "SHA256",
+        "SHA256",
+        "SHA256",
+        "SHA256",
+        "MD5",
+        NA,
+        NA
+    )
+    docs$checksum <- c("a-sha", "b-sha", "a2-sha", "c-sha", "a-md5", NA, NA)
+    docs$size <- c(1, 1, 2, 1, 1, NA_real_, NA_real_)
+    docs$url <- I(lapply(seq_len(nrow(docs)), function(i) {
+        paste0("https://node", i, ".example/file.nc|application/netcdf|OPENDAP")
+    }))
+    files <- query_result_test_object("File", docs)
+    plan <- files$access_plan(expand = FALSE)
+    expect_identical(plan$record_index, seq_len(7L))
+    expect_identical(plan$content_group, c(1L, 2L, 3L, 4L, 1L, 2L, 1L))
+    expect_identical(
+        plan$source_key[c(1L, 2L, 3L, 4L, 1L, 2L, 1L)],
+        plan$source_key
+    )
+    expect_equal(
+        nrow(query_result_test_object("File", docs[FALSE, ])$access_plan(
+            expand = FALSE
+        )),
+        0L
+    )
+})
+
+# Sparse metadata must not make contradictory content look like one file.
+test_that("raw candidate plans reject a contradiction after an interleaved sparse replica", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 4L), ]
+    docs$instance_id <- c("a", "b", "a", "a")
+    docs$master_id <- docs$instance_id
+    docs$checksum <- c("first", "other", NA_character_, "conflicting")
+    docs$url <- I(lapply(seq_len(nrow(docs)), function(i) {
+        paste0("https://node", i, ".example/file.nc|application/netcdf|OPENDAP")
+    }))
+    expect_error(
+        query_result_test_object("File", docs)$access_plan(expand = FALSE),
+        "Conflicting replica content"
+    )
+})
+
 # A real DAP2 server and real source workers exercise transport faults without
 # substituting package scheduling, native selection or durable storage.
 test_that("raw subsets switch failed replicas and repair only missing native corners", {
