@@ -6619,4 +6619,335 @@ test_that("raw subset reports partial directories independently of native comple
     expect_equal(nrow(empty$gaps$directory), 0L)
 })
 
+# A fresh native read can change target membership without changing block ID.
+# An interruption before the pending receipt must preserve earlier case inputs.
+test_that("raw subset refresh preserves committed artifacts before pending publication", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-immutable-block-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    original <- data.frame(
+        request_id = "original",
+        case_id = "original",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        files$fetch_subset(
+            original,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    committed <- subset_status(dest, "blocks")
+    expect_equal(nrow(committed), 1L)
+    previous <- read_subset(dest, case_id = "original")
+    changed <- original
+    changed$request_id <- changed$case_id <- "changed"
+    changed$lon <- 10.75
+    metadata_written <- NULL
+    local({
+        write <- store__extract_cache_write
+        local_mocked_bindings(
+            store__extract_cache_write = function(path, payload) {
+                result <- write(path, payload)
+                # Match the canonical block ID, allowing immutable content
+                # suffixes. The fault follows the real metadata publication.
+                if (
+                    startsWith(basename(path), committed$block_id[[1L]]) &&
+                        endsWith(path, ".rds")
+                ) {
+                    metadata_written <<- path
+                    stop("controlled pre-pending interruption", call. = FALSE)
+                }
+                result
+            }
+        )
+        expect_error(
+            files$fetch_subset(
+                changed,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            ),
+            "controlled pre-pending interruption"
+        )
+    })
+    expect_true(file.exists(metadata_written))
+    expect_equal(
+        readRDS(metadata_written)$neighborhoods$target_lon,
+        rep(10.75, 4L)
+    )
+    expect_length(list.files(file.path(dest, "subsets"), "^pending-"), 0L)
+    expect_identical(checksum_file(committed$path), committed$sha256[[1L]])
+    expect_identical(
+        checksum_file(committed$metadata_path),
+        committed$metadata_sha256[[1L]]
+    )
+    retained <- subset_status(dest, "blocks")
+    expect_identical(retained$path, committed$path)
+    expect_identical(retained$metadata_path, committed$metadata_path)
+    saved <- read_subset(dest, case_id = "original")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_equal(unique(saved$values$cf_day), 1L)
+    expect_equal(saved$neighborhoods, previous$neighborhoods)
+    expect_equal(nrow(saved$gaps$incomplete_sources), 0L)
+    expect_equal(nrow(saved$gaps$incomplete_requests), 0L)
+    expect_gt(
+        nrow(read_subset(dest, case_id = "changed")$gaps$incomplete_requests),
+        0L
+    )
+    attempts <- subset_status(dest, "attempts")
+    traffic <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    # The failed new case may remain a gap; the original request needs no read.
+    files$fetch_subset(original, dest, workers = 1L, discover = FALSE)
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    # The later interruption window must still adopt refreshed descriptors
+    # when an older reference with the same canonical block ID already exists.
+    local({
+        rename <- base::file.rename
+        local_mocked_bindings(
+            file.rename = function(from, to) {
+                result <- rename(from, to)
+                if (
+                    isTRUE(result) && grepl("/pending-[^/]+[.]rds[.]json$", to)
+                ) {
+                    stop(
+                        "controlled pending refresh interruption",
+                        call. = FALSE
+                    )
+                }
+                result
+            },
+            .package = "base"
+        )
+        expect_error(
+            files$fetch_subset(
+                changed,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            ),
+            "controlled pending refresh interruption"
+        )
+    })
+    expect_identical(
+        checksum_file(committed$metadata_path),
+        committed$metadata_sha256[[1L]]
+    )
+    attempts <- subset_status(dest, "attempts")
+    traffic <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    expect_true(
+        files$fetch_subset(
+            changed,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    adopted <- subset_status(dest, "blocks")
+    expect_identical(adopted$block_id, committed$block_id)
+    expect_false(identical(adopted$metadata_path, committed$metadata_path))
+    expect_equal(
+        readRDS(adopted$metadata_path)$neighborhoods$target_lon,
+        rep(10.75, 4L)
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    expect_equal(sort(read_subset(dest, case_id = "changed")$values$value), 1:4)
+    expect_equal(
+        sort(read_subset(dest, case_id = "original")$values$value),
+        1:4
+    )
+    rollback <- changed
+    rollback$request_id <- rollback$case_id <- "rollback"
+    rollback$lon <- 10.5
+    local({
+        append <- ddb_append_table
+        local_mocked_bindings(
+            ddb_append_table = function(conn, table, rows, ...) {
+                result <- append(conn, table, rows, ...)
+                if (identical(table, "subset_blocks")) {
+                    stop("controlled block transaction rollback", call. = FALSE)
+                }
+                result
+            }
+        )
+        expect_error(
+            files$fetch_subset(
+                rollback,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            ),
+            "controlled block transaction rollback"
+        )
+    })
+    expect_identical(subset_status(dest, "blocks"), adopted)
+    expect_identical(checksum_file(adopted$path), adopted$sha256[[1L]])
+    expect_identical(
+        checksum_file(adopted$metadata_path),
+        adopted$metadata_sha256[[1L]]
+    )
+    expect_equal(
+        sort(read_subset(dest, case_id = "original")$values$value),
+        1:4
+    )
+    expect_equal(sort(read_subset(dest, case_id = "changed")$values$value), 1:4)
+})
+
+# Disabling old coverage reuse must retain its scientific interval identity.
+# A new client observation prevents earlier good-node timing from masking the
+# incompatible endpoint that the caller explicitly places first on refresh.
+test_that("raw subset refresh validates saved native bounds without reusing coverage", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-refresh-bounds-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        query_result_test_object("File", docs)$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            network_id = "original"
+        )$complete
+    )
+    original <- read_subset(dest)
+    before <- nrow(subset_status(dest, "attempts"))
+    docs <- docs[c(1L, 1L), ]
+    docs$data_node <- c("wrong-bounds", "consistent")
+    docs$url <- I(lapply(
+        c("wrong-bounds.nc", "fast-bounds.nc"),
+        function(name) {
+            paste0(server$url(), name, "|application/netcdf|OPENDAP")
+        }
+    ))
+    refreshed <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE,
+        resume = FALSE,
+        network_id = "refresh"
+    )
+    expect_true(refreshed$complete)
+    attempts <- subset_status(dest, "attempts")[-seq_len(before)]
+    expect_identical(
+        unique(attempts$data_node),
+        c("wrong-bounds", "consistent")
+    )
+    expect_identical(attempts$error_kind[[1L]], "source_metadata")
+    expect_equal(
+        attempts$native_values[attempts$data_node == "wrong-bounds"],
+        0
+    )
+    expect_equal(sum(attempts$native_values), 4)
+    saved <- read_subset(dest)
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_equal(unique(saved$values$bound_start_value), 0)
+    expect_equal(unique(saved$values$bound_end_value), 1)
+    expect_equal(
+        saved$values[, c("bound_start_value", "bound_end_value")],
+        original$values[, c("bound_start_value", "bound_end_value")]
+    )
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("wrong-bounds.nc.dods tas", traffic, fixed = TRUE)))
+    expect_equal(
+        sum(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)),
+        2L
+    )
+    # Loss of weather bytes does not erase verified interval metadata. Repair
+    # must check the same identity even after invalidation moves the old row
+    # into audit history, without counting that history as completed coverage.
+    for (damage in c("missing", "corrupt")) {
+        block <- subset_status(dest, "blocks")
+        if (damage == "missing") {
+            unlink(block$path)
+        } else {
+            writeBin(as.raw(0), block$path)
+        }
+        before <- nrow(subset_status(dest, "attempts"))
+        expect_true(
+            query_result_test_object("File", docs)$fetch_subset(
+                requests,
+                dest,
+                workers = 1L,
+                retries = 0L,
+                discover = FALSE,
+                network_id = paste0("repair-", damage)
+            )$complete
+        )
+        attempts <- subset_status(dest, "attempts")[-seq_len(before)]
+        expect_identical(
+            unique(attempts$data_node),
+            c("wrong-bounds", "consistent")
+        )
+        expect_identical(attempts$error_kind[[1L]], "source_metadata")
+        expect_equal(
+            attempts$native_values[attempts$data_node == "wrong-bounds"],
+            0
+        )
+        expect_equal(sum(attempts$native_values), 4)
+        saved <- read_subset(dest)
+        expect_equal(sort(saved$values$value), 1:4)
+        expect_equal(unique(saved$values$bound_start_value), 0)
+        expect_equal(unique(saved$values$bound_end_value), 1)
+        if (damage == "corrupt") {
+            expect_false(identical(
+                subset_status(dest, "blocks")$path,
+                block$path
+            ))
+            expect_identical(readBin(block$path, "raw", n = 1L), as.raw(0))
+        }
+    }
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("wrong-bounds.nc.dods tas", traffic, fixed = TRUE)))
+    expect_equal(
+        sum(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)),
+        4L
+    )
+})
+
 # vim: fdm=marker :

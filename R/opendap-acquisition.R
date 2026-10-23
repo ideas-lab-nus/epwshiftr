@@ -492,19 +492,38 @@ opendap__open <- function(dest) {
                 call. = FALSE
             )
         }
-        present <- ddb_query(
-            conn,
-            sprintf(
-                "SELECT block_id FROM subset_blocks WHERE block_id = %s",
-                ddb_literal(conn, row$block_id)
-            )
+        # A refreshed block can retain its native ID while publishing a new
+        # target descriptor. Adopt its complete receipt in one transaction,
+        # including replacement of an older reference to that same block ID.
+        ddb_exec(conn, "BEGIN TRANSACTION")
+        adopted <- FALSE
+        tryCatch(
+            {
+                ddb_exec(
+                    conn,
+                    sprintf(
+                        "DELETE FROM subset_blocks WHERE block_id = %s",
+                        ddb_literal(conn, row$block_id)
+                    )
+                )
+                ddb_append_table(conn, "subset_blocks", row)
+                info <- readRDS(row$metadata_path)
+                opendap__save_membership(
+                    conn,
+                    row$source_key,
+                    info$neighborhoods
+                )
+                opendap__save_demands(
+                    conn,
+                    info$demands,
+                    dest,
+                    transaction = FALSE
+                )
+                ddb_exec(conn, "COMMIT")
+                adopted <- TRUE
+            },
+            finally = if (!adopted) ddb_exec(conn, "ROLLBACK")
         )
-        if (!nrow(present)) {
-            ddb_append_table(conn, "subset_blocks", row)
-        }
-        info <- readRDS(row$metadata_path)
-        opendap__save_membership(conn, row$source_key, info$neighborhoods)
-        opendap__save_demands(conn, info$demands, dest)
         unlink(c(path, paste0(path, ".json")))
     }
     opened <- TRUE
@@ -638,6 +657,39 @@ opendap__source_rows <- function(conn, table, source_key) {
     ))
 }
 
+# Keep scientific identity independent of reusable weather coverage. A damaged
+# Parquet file invalidates its values, but its committed contract and any still
+# verified metadata remain evidence for checking a replacement endpoint.
+opendap__saved_identity <- function(conn, source_key) {
+    evidence <- data.table::rbindlist(
+        list(
+            opendap__source_rows(conn, "subset_blocks", source_key),
+            opendap__source_rows(conn, "subset_invalid_blocks", source_key)
+        ),
+        fill = TRUE
+    )
+    contracts <- unique(evidence$contract)
+    if (length(contracts) > 1L) {
+        stop("Saved blocks have conflicting native identities.", call. = FALSE)
+    }
+    metadata <- unique(evidence, by = c("metadata_path", "metadata_sha256"))
+    checked <- vapply(
+        seq_len(nrow(metadata)),
+        function(i) {
+            file.exists(metadata$metadata_path[[i]]) &&
+                identical(
+                    checksum_file(metadata$metadata_path[[i]]),
+                    metadata$metadata_sha256[[i]]
+                )
+        },
+        logical(1L)
+    )
+    list(
+        contract = if (length(contracts)) contracts[[1L]] else NULL,
+        bounds = opendap__saved_bounds(metadata[checked])
+    )
+}
+
 # Reuse committed blocks only after both artifacts pass local integrity checks.
 opendap__valid_blocks <- function(store, source_key = NULL) {
     blocks <- if (is.null(source_key)) {
@@ -684,6 +736,22 @@ opendap__valid_blocks <- function(store, source_key = NULL) {
     data.table::as.data.table(blocks[valid, , drop = FALSE])
 }
 
+# Choose a content-version path without replacing any previously published
+# bytes. A damaged file keeps its name for audit; repaired bytes get a new one.
+opendap__block_artifact_path <- function(dest, block_id, sha256, extension) {
+    directory <- file.path(dest, "subsets")
+    name <- paste0(block_id, "-", sha256)
+    path <- file.path(directory, paste0(name, extension))
+    if (file.exists(path) && !identical(checksum_file(path), sha256)) {
+        path <- tempfile(
+            pattern = paste0(name, "-"),
+            tmpdir = directory,
+            fileext = extension
+        )
+    }
+    path
+}
+
 # Publish a single received block through the Store's atomic Parquet writer.
 # The calling process alone registers it in the manifest transaction.
 opendap__commit <- function(store, job, path, progress) {
@@ -704,8 +772,13 @@ opendap__commit <- function(store, job, path, progress) {
         slice$time_start_index,
         slice$time_count
     )
-    target <- file.path(job$dest, "subsets", paste0(block_id, ".parquet"))
-    metadata <- file.path(job$dest, "subsets", paste0(block_id, ".rds"))
+    # Materialize Parquet through the existing Store writer into a unique
+    # staging path. Its final name depends on actual bytes, not only native ID.
+    staged <- tempfile(
+        tmpdir = file.path(job$dest, "subsets"),
+        fileext = ".parquet"
+    )
+    on.exit(if (file.exists(staged)) unlink(staged), add = TRUE)
     values <- merge(
         chunk$values,
         chunk$time,
@@ -714,7 +787,17 @@ opendap__commit <- function(store, job, path, progress) {
         sort = FALSE
     )
     data.table::set(values, j = "source_key", value = job$source_key)
-    priv(store)$write_parquet(values, target, overwrite = TRUE)
+    priv(store)$write_parquet(values, staged)
+    sha256 <- checksum_file(staged)
+    target <- opendap__block_artifact_path(
+        job$dest,
+        block_id,
+        sha256,
+        ".parquet"
+    )
+    if (!file.exists(target) && !file.rename(staged, target)) {
+        stop("Could not publish immutable raw subset values.", call. = FALSE)
+    }
     info <- chunk[c(
         "contract",
         "neighborhoods",
@@ -722,7 +805,22 @@ opendap__commit <- function(store, job, path, progress) {
         "bounds",
         "demands"
     )]
-    store__extract_cache_write(metadata, info)
+    # saveRDS(compress = FALSE) and this serialization share exact bytes.
+    # Reuse only verified content; a changed descriptor publishes a new file
+    # before the pending receipt or any manifest reference can be switched.
+    metadata_sha256 <- checksum_bytes(
+        serialize(info, NULL, version = 3L),
+        "sha256"
+    )
+    metadata <- opendap__block_artifact_path(
+        job$dest,
+        block_id,
+        metadata_sha256,
+        ".rds"
+    )
+    if (!file.exists(metadata)) {
+        store__extract_cache_write(metadata, info)
+    }
     row <- data.frame(
         block_id = block_id,
         source_key = job$source_key,
@@ -734,9 +832,9 @@ opendap__commit <- function(store, job, path, progress) {
         time_start_index = slice$time_start_index,
         time_count = slice$time_count,
         path = target,
-        sha256 = checksum_file(target),
+        sha256 = sha256,
         metadata_path = metadata,
-        metadata_sha256 = checksum_file(metadata),
+        metadata_sha256 = metadata_sha256,
         url = job$url,
         data_node = job$data_node,
         observed_at = as.double(Sys.time())
@@ -1706,11 +1804,7 @@ opendap__fetch <- function(
             )
             dir.create(inbox)
             blocks <- reusable(opendap__valid_blocks(store, state$key))
-            contract <- if (nrow(blocks)) {
-                unique(blocks$contract)[[1L]]
-            } else {
-                NULL
-            }
+            identity <- opendap__saved_identity(conn, state$key)
             row <- if (nrow(available)) available[1L] else state$candidates[0L]
             job <- list(
                 source_key = state$key,
@@ -1729,8 +1823,8 @@ opendap__fetch <- function(
                 },
                 links = state$links,
                 completed = blocks,
-                expected_bounds = opendap__saved_bounds(blocks),
-                contract = contract,
+                expected_bounds = identity$bounds,
+                contract = identity$contract,
                 inbox = inbox,
                 subset_progress = file.path(inbox, "progress.json"),
                 began = as.double(Sys.time()),
