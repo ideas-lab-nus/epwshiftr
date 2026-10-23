@@ -35,20 +35,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The hosted Azure archive repeatedly stalled before setup-r could finish.
-      # Change only that mirror host; retain Ubuntu pockets, signing and security.
+      # The hosted image selects Azure first through an APT mirror list. Remove
+      # that slow entry while retaining the official archive/security priorities.
       - name: Use the Ubuntu archive for Linux dependencies
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources
-          if [ ! -f "$ubuntu_sources" ]; then
-            echo "::error::Expected Ubuntu deb822 sources at $ubuntu_sources."
+          ubuntu_mirrors=/etc/apt/apt-mirrors.txt
+          if [ ! -f "$ubuntu_mirrors" ]; then
+            echo "::error::Expected Ubuntu APT mirror list at $ubuntu_mirrors."
             exit 1
           fi
-          sudo perl -pi -e 's{://azure[.]archive[.]ubuntu[.]com/}{://archive.ubuntu.com/}g if /^URIs:/' "$ubuntu_sources"
-          if ! grep -q '^URIs:.*://archive[.]ubuntu[.]com/' "$ubuntu_sources"; then
-            echo "::error::Ubuntu archive mirror was not configured in $ubuntu_sources."
+          sudo perl -ni -e 'print unless m{^https?://azure[.]archive[.]ubuntu[.]com/ubuntu/(?:[[:space:]]|$)}' "$ubuntu_mirrors"
+          if ! grep -q '^https://archive[.]ubuntu[.]com/ubuntu/[[:space:]]' "$ubuntu_mirrors" || grep -q '://azure[.]archive[.]ubuntu[.]com/' "$ubuntu_mirrors"; then
+            echo "::error::Ubuntu archive mirror list was not configured in $ubuntu_mirrors."
             exit 1
           fi
 
