@@ -4534,6 +4534,7 @@ Downloader <- R6::R6Class(
         temp = NULL,
         manifest_path = NULL,
         manifest_conn = NULL,
+        manifest_owner = NULL,
         dl_timeout = NULL,
         ssl_verifypeer = NULL,
         proxy = NULL,
@@ -4546,6 +4547,7 @@ Downloader <- R6::R6Class(
         cleanup = NULL,
         worker_count = NULL,
         compute_profile = NULL,
+        compute_owner = NULL,
         async_tasks = NULL, # List of DownloadTask objects for async downloads
         persistent_tasks = NULL,
         callbacks = NULL,
@@ -4559,7 +4561,10 @@ Downloader <- R6::R6Class(
             private$disconnect_manifest()
             # An instance owns only its named pool; collecting an older instance
             # must not stop another downloader or the host application's tasks.
-            if (!is.null(private$compute_profile)) {
+            if (
+                !is.null(private$compute_profile) &&
+                    identical(private$compute_owner, private)
+            ) {
                 mirai::daemons(0, .compute = private$compute_profile)
                 private$compute_profile <- NULL
             }
@@ -4604,8 +4609,14 @@ Downloader <- R6::R6Class(
                 )
             }
 
-            if (is.null(private$compute_profile)) {
+            # R6 clones borrow existing resources. A new pool belongs to this
+            # instance and needs a distinct profile so its finalizer is isolated.
+            if (
+                is.null(private$compute_profile) ||
+                    !identical(private$compute_owner, private)
+            ) {
                 private$compute_profile <- basename(tempfile("downloader-"))
+                private$compute_owner <- private
             }
             is_set <- tryCatch(
                 isTRUE(mirai::daemons_set(.compute = private$compute_profile)),
@@ -4701,12 +4712,22 @@ Downloader <- R6::R6Class(
                 private$manifest_path,
                 read_only = FALSE
             )
+            # Keep the creator's environment alive while clones borrow its
+            # connection; cloning an ordinary environment preserves its identity.
+            private$manifest_owner <- private
             invisible(private$manifest_conn)
         },
         # }}}
 
         # disconnect_manifest {{{
         disconnect_manifest = function() {
+            # A collected clone must not invalidate a connection used by another
+            # instance between its validity check and the next SQL statement.
+            if (!identical(private$manifest_owner, private)) {
+                private$manifest_conn <- NULL
+                private$manifest_owner <- NULL
+                return(invisible(NULL))
+            }
             if (!is.null(private$manifest_conn)) {
                 valid <- tryCatch(
                     downloader__ddb_is_valid(private$manifest_conn),
@@ -4725,6 +4746,7 @@ Downloader <- R6::R6Class(
                 }
                 private$manifest_conn <- NULL
             }
+            private$manifest_owner <- NULL
             invisible(NULL)
         },
         # }}}
