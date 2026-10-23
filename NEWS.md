@@ -12,7 +12,8 @@
   Directory completeness is recorded separately from selected native data
   coverage, including deliberate slices and older manifests without evidence.
   Resuming reads only source-local manifest history, and local rereads share
-  native corner/window selections across consuming cases.
+  native corner/window selections across consuming cases. On Windows, failed
+  native SQL results release the acquisition's file lock before offline reopen.
   `EsgDataset$read_neighborhood()` provides the same bounded raw selection.
   Existing API defaults remain unchanged (#296).
 

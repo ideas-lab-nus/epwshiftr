@@ -1107,43 +1107,69 @@ opendap__fetch <- function(
     # pair a new directory claim with an earlier request's association rows.
     ddb_exec(conn, "BEGIN TRANSACTION")
     requests_committed <- FALSE
+    native_request_error <- FALSE
     on.exit(
-        if (!requests_committed) ddb_exec(conn, "ROLLBACK"),
+        if (!requests_committed) {
+            ddb_exec(conn, "ROLLBACK")
+            if (.Platform$OS.type == "windows" && native_request_error) {
+                # DuckDB 1.5.6 executes a result before dbSendQuery() returns it.
+                # On SQL failure DBI cannot clear that unreturned native result;
+                # its finalizer can retain the Windows file lock after disconnect.
+                # Close only this acquisition's Store, then finalize unreachable
+                # results before a caller reopens it. Successful runs never GC.
+                store$close()
+                gc(FALSE)
+            }
+        },
         add = TRUE,
         after = FALSE
     )
-    # Each request retains its originating directory, so a later complete but
-    # unrelated selection cannot erase an earlier request's directory gap.
-    ddb_exec(
-        conn,
-        sprintf(
-            "DELETE FROM subset_directory WHERE request_id IN (%s)",
-            paste(ddb_literal(conn, directory_rows$request_id), collapse = ",")
-        )
+    withCallingHandlers(
+        {
+            # Each request retains its originating directory, so a later complete but
+            # unrelated selection cannot erase an earlier request's directory gap.
+            ddb_exec(
+                conn,
+                sprintf(
+                    "DELETE FROM subset_directory WHERE request_id IN (%s)",
+                    paste(
+                        ddb_literal(conn, directory_rows$request_id),
+                        collapse = ","
+                    )
+                )
+            )
+            ddb_append_table(
+                conn,
+                "subset_directory",
+                as.data.frame(directory_rows)
+            )
+            # Request bookkeeping is separate from the identity of persisted values.
+            existing_links <- data.table::as.data.table(ddb_read_table(
+                conn,
+                "subset_links"
+            ))
+            if (nrow(existing_links)) {
+                existing_links <- existing_links[
+                    !existing_links$request_id %in% requests$request_id
+                ]
+            }
+            all_links <- unique(data.table::rbindlist(
+                list(existing_links, links),
+                fill = TRUE
+            ))
+            ddb_write_table(
+                conn,
+                "subset_links",
+                as.data.frame(all_links),
+                overwrite = TRUE
+            )
+            ddb_exec(conn, "COMMIT")
+            requests_committed <- TRUE
+        },
+        duckdb_error = function(error) {
+            native_request_error <<- TRUE
+        }
     )
-    ddb_append_table(conn, "subset_directory", as.data.frame(directory_rows))
-    # Request bookkeeping is separate from the identity of persisted values.
-    existing_links <- data.table::as.data.table(ddb_read_table(
-        conn,
-        "subset_links"
-    ))
-    if (nrow(existing_links)) {
-        existing_links <- existing_links[
-            !existing_links$request_id %in% requests$request_id
-        ]
-    }
-    all_links <- unique(data.table::rbindlist(
-        list(existing_links, links),
-        fill = TRUE
-    ))
-    ddb_write_table(
-        conn,
-        "subset_links",
-        as.data.frame(all_links),
-        overwrite = TRUE
-    )
-    ddb_exec(conn, "COMMIT")
-    requests_committed <- TRUE
     prior_candidates <- data.table::as.data.table(ddb_read_table(
         conn,
         "subset_candidates"
