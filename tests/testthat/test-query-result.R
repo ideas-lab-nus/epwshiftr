@@ -5878,6 +5878,40 @@ test_that("raw subset reports partial directories independently of native comple
         selected$slice(integer())$access_plan(expand = FALSE),
         "directory_complete"
     ))
+    # A read-only view is a controlled local persistence fault: the manifest can
+    # read the old links, but cannot replace them after writing new provenance.
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec(
+        paste(
+            "ALTER TABLE subset_links RENAME TO saved_links;",
+            "CREATE VIEW subset_links AS SELECT * FROM saved_links"
+        ),
+        conn = conn
+    )
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
+    changed <- requests
+    changed$lon <- 10.75
+    expect_error(
+        partial$fetch_subset(changed, dest, discover = TRUE),
+        "View|view"
+    )
+    expect_true(subset_status(dest)$directory_complete)
+    expect_equal(read_subset(dest)$links$lon, 10.25)
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec(
+        paste(
+            "DROP VIEW subset_links;",
+            "ALTER TABLE saved_links RENAME TO subset_links"
+        ),
+        conn = conn
+    )
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
     # A newly supplied partial directory cannot be hidden by unrelated complete
     # requests, and selecting an earlier request retains its own provenance.
     partial_request <- requests

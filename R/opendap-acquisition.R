@@ -1103,6 +1103,15 @@ opendap__fetch <- function(
     for (column in names(directory)) {
         data.table::set(directory_rows, j = column, value = directory[[column]])
     }
+    # Publish provenance and links together: an interrupted replacement must not
+    # pair a new directory claim with an earlier request's association rows.
+    ddb_exec(conn, "BEGIN TRANSACTION")
+    requests_committed <- FALSE
+    on.exit(
+        if (!requests_committed) ddb_exec(conn, "ROLLBACK"),
+        add = TRUE,
+        after = FALSE
+    )
     # Each request retains its originating directory, so a later complete but
     # unrelated selection cannot erase an earlier request's directory gap.
     ddb_exec(
@@ -1133,6 +1142,8 @@ opendap__fetch <- function(
         as.data.frame(all_links),
         overwrite = TRUE
     )
+    ddb_exec(conn, "COMMIT")
+    requests_committed <- TRUE
     prior_candidates <- data.table::as.data.table(ddb_read_table(
         conn,
         "subset_candidates"
