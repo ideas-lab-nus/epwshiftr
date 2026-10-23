@@ -6182,8 +6182,8 @@ test_that("raw subset directory completion preserves explicit selection and loca
     writeBin(as.raw(0), frozen)
     curl::curl_fetch_memory(paste0(index$url(), "change"))
     attempts <- subset_status(dest, "attempts")
-    changed_result <- expect_warning(
-        partial$fetch_subset(
+    expect_warning(
+        changed_result <- partial$fetch_subset(
             requests,
             dest,
             workers = 1L,

@@ -1109,9 +1109,10 @@ opendap__discover <- function(job) {
 # and its unchanged constraints. The owned pool bounds unavailable indexes.
 opendap__complete_directory <- function(job) {
     files <- job$files
-    result <- query__collect(
+    result <- query_result__collect_batched(
         priv(files)$index_node,
         priv(files)$parameter,
+        facet = "dataset_id",
         required_fields = EsgResultFile$private_fields$required_fields,
         all = TRUE,
         limit = query_param__value(priv(files)$parameter$limit()),
