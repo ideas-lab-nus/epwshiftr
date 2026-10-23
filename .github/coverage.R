@@ -110,7 +110,12 @@ coverage__register <- function(directory) {
     if (!file.exists(keys)) {
         saveRDS(names(readRDS(metadata)), keys)
     }
-    positions <- setNames(seq_along(readRDS(keys)), readRDS(keys))
+    source_keys <- readRDS(keys)
+    # Hit recording is a hot path: hashed lookup avoids scanning every source key.
+    positions <- list2env(
+        setNames(as.list(seq_along(source_keys)), source_keys),
+        parent = emptyenv()
+    )
     journal <- file(
         file.path(directory, paste0("counter-journal-", Sys.getpid())),
         "ab"
