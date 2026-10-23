@@ -979,7 +979,7 @@ opendap__failure_kind <- function(error) {
     }
     if (
         grepl(
-            "NetCDF:|curl|OPeNDAP connection|execution deadline|timed out|connection reset",
+            "NetCDF:|curl|OPeNDAP connection|execution deadline|timed out|connection reset|Could not connect|Failed to connect|Could not resolve",
             message,
             ignore.case = TRUE
         )
@@ -1141,18 +1141,19 @@ opendap__completed_files <- function(record, known) {
             anyDuplicated(files$id) ||
             files$count() < known$selection()$source_num_found
     ) {
-        stop("The original File directory is still incomplete.", call. = FALSE)
+        return(NULL)
     }
     prior <- opendap__access_plan(known, expand = FALSE)
     current <- opendap__access_plan(files, expand = FALSE)
     for (key in unique(prior$source_key)) {
         rows <- current[current$source_key == key]
         old <- prior[prior$source_key == key]
-        if (
-            !nrow(rows) || any(!query_result__compatible_content(old[1L], rows))
-        ) {
+        if (!nrow(rows)) {
+            return(NULL)
+        }
+        if (any(!query_result__compatible_content(old[1L], rows))) {
             stop(
-                "Completed File directory does not preserve known source identity.",
+                "Conflicting published content metadata for saved source identity.",
                 call. = FALSE
             )
         }
@@ -1210,14 +1211,22 @@ opendap__fetch <- function(
             paste0("directory-", identity, ".rds")
         )
         if (store__extract_cache_available(directory_path)) {
-            completed <- tryCatch(
-                opendap__completed_files(readRDS(directory_path), files),
-                error = function(e) NULL
+            completed <- opendap__completed_files(
+                readRDS(directory_path),
+                files
             )
             if (!is.null(completed)) {
                 files <- completed
                 directory_needed <- FALSE
+            } else {
+                cli::cli_warn(
+                    "Ignoring a saved File directory that does not preserve the original query scope."
+                )
             }
+        } else if (file.exists(directory_path)) {
+            cli::cli_warn(
+                "Ignoring invalid saved File directory: checksum verification failed."
+            )
         }
     }
     candidates <- opendap__access_plan(files, expand = FALSE)
@@ -1744,11 +1753,16 @@ opendap__fetch <- function(
         pool$close()
         pool <- NULL
     }
+    # Only index transport failures remain directory gaps. Invalid metadata,
+    # implementation errors and caller-owned publication errors stay explicit.
+    if (
+        !is.null(directory_error) &&
+            opendap__failure_kind(directory_error) != "transport"
+    ) {
+        stop(directory_error)
+    }
     if (!is.null(directory_result) && is.null(directory_error)) {
-        completed <- tryCatch(
-            opendap__completed_files(directory_result, files),
-            error = function(e) NULL
-        )
+        completed <- opendap__completed_files(directory_result, files)
         if (!is.null(completed)) {
             store__extract_cache_write(directory_path, directory_result)
             store$close()

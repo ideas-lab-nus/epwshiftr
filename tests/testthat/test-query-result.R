@@ -6005,6 +6005,15 @@ test_that("raw subset directory completion preserves explicit selection and loca
             auto_unbox = TRUE
         )
     })
+    conflict <- docs
+    conflict$checksum <- "conflicting-published-content"
+    index_app$locals$conflict_pages <- lapply(seq_len(2L), function(i) {
+        jsonlite::toJSON(
+            esgf_test__response(conflict[i, ], num_found = 2L),
+            auto_unbox = TRUE
+        )
+    })
+    index_app$locals$conflict <- FALSE
     index_app$locals$changed <- FALSE
     index_app$locals$queries <- list()
     index_app$locals$weather <- paste0(server$url(), "requests")
@@ -6019,10 +6028,20 @@ test_that("raw subset directory completion preserves explicit selection and loca
         } else {
             as.integer(req$query$offset)
         }
-        pages <- if (locals$changed) locals$changed_pages else locals$pages
+        pages <- if (locals$conflict) {
+            locals$conflict_pages
+        } else if (locals$changed) {
+            locals$changed_pages
+        } else {
+            locals$pages
+        }
         res$set_header("Content-Type", "application/json")$send(pages[[
             offset + 1L
         ]])
+    })
+    index_app$get("/conflict", function(req, res, locals) {
+        locals$conflict <- TRUE
+        res$send("ok")
     })
     index_app$get("/change", function(req, res, locals) {
         locals$changed <- TRUE
@@ -6163,17 +6182,35 @@ test_that("raw subset directory completion preserves explicit selection and loca
     writeBin(as.raw(0), frozen)
     curl::curl_fetch_memory(paste0(index$url(), "change"))
     attempts <- subset_status(dest, "attempts")
-    changed_result <- partial$fetch_subset(
-        requests,
-        dest,
-        workers = 1L,
-        timeout = 1
+    changed_result <- expect_warning(
+        partial$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            timeout = 1
+        ),
+        "Ignoring invalid saved File directory"
     )
     expect_false(changed_result$directory_complete)
     expect_true(changed_result$complete)
     expect_identical(subset_status(dest, "attempts"), attempts)
     expect_equal(sort(read_subset(dest)$values$value), 1:4)
     expect_equal(nrow(read_subset(dest)$gaps$directory), 1L)
+
+    # Published content contradictions are source errors, not directory transport
+    # gaps. The first phase's already committed native data remains readable.
+    curl::curl_fetch_memory(paste0(index$url(), "conflict"))
+    conflict_dest <- tempfile("raw-directory-content-conflict-")
+    on.exit(unlink(conflict_dest, recursive = TRUE), add = TRUE)
+    expect_error(
+        partial$fetch_subset(
+            requests,
+            conflict_dest,
+            workers = 1L
+        ),
+        "Conflicting published content metadata"
+    )
+    expect_equal(sort(read_subset(conflict_dest)$values$value), 1:4)
 
     # Index unavailability cannot prevent a known healthy File from finishing.
     unavailable <- partial$clone(deep = TRUE)

@@ -44,7 +44,14 @@ EsgResult <- R6::R6Class(
             private$context <- query_result__context(context)
             # Fresh query results are eligible for directory completion. Saved
             # results lacking this evidence retain unknown selection intent.
-            if (is.null(context)) {
+            if (
+                is.null(context) &&
+                    !is.null(private$parameter) &&
+                    identical(
+                        query_param__value(private$parameter$type()),
+                        "File"
+                    )
+            ) {
                 private$context$directory_collection <- TRUE
             }
             private$register_dynamic_fields()
@@ -1418,7 +1425,9 @@ query_result__selection <- function(selection) {
 context__update_selection <- function(context, selection, index) {
     # Source totals describe the original result; only its retained positions
     # change when a dataset or query result is sliced again.
-    context$directory_collection <- FALSE
+    if (!is.null(context$directory_collection)) {
+        context$directory_collection <- FALSE
+    }
     context$selection <- list(
         source_count = selection$source_count,
         source_num_found = selection$source_num_found,
@@ -2076,9 +2085,13 @@ query_result__merge_child_collects <- function(
         response = response,
         docs = docs,
         parameter = parameter,
-        context = list(
-            query_url = query_result__query_urls(query_urls, named = FALSE),
-            directory_collection = TRUE
+        context = c(
+            list(
+                query_url = query_result__query_urls(query_urls, named = FALSE)
+            ),
+            if (identical(query_param__value(parameter$type()), "File")) {
+                list(directory_collection = TRUE)
+            }
         )
     )
 }
