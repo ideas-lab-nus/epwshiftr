@@ -24,6 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The hosted image selects Azure first through an APT mirror list. Remove
+      # that slow entry while retaining the official archive/security priorities.
+      - name: Use the Ubuntu archive for Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          ubuntu_mirrors=/etc/apt/apt-mirrors.txt
+          if [ ! -f "$ubuntu_mirrors" ]; then
+            echo "::error::Expected Ubuntu APT mirror list at $ubuntu_mirrors."
+            exit 1
+          fi
+          sudo perl -ni -e 'print unless m{^https?://azure[.]archive[.]ubuntu[.]com/ubuntu/(?:[[:space:]]|$)}' "$ubuntu_mirrors"
+          if ! grep -q '^https://archive[.]ubuntu[.]com/ubuntu/[[:space:]]' "$ubuntu_mirrors" || grep -q '://azure[.]archive[.]ubuntu[.]com/' "$ubuntu_mirrors"; then
+            echo "::error::Ubuntu archive mirror list was not configured in $ubuntu_mirrors."
+            exit 1
+          fi
+
       - uses: r-lib/actions/setup-pandoc@v2
 
       - uses: r-lib/actions/setup-r@v2
