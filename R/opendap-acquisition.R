@@ -1111,10 +1111,11 @@ opendap__fetch <- function(
     on.exit(
         if (!requests_committed) {
             ddb_exec(conn, "ROLLBACK")
-            if (.Platform$OS.type == "windows" && native_request_error) {
+            if (native_request_error) {
                 # DuckDB 1.5.6 executes a result before dbSendQuery() returns it.
-                # On SQL failure DBI cannot clear that unreturned native result;
-                # its finalizer can retain the Windows file lock after disconnect.
+                # On SQL failure DBI cannot clear that unreturned native result.
+                # After disconnect it can retain a Windows lock, or checkpoint an
+                # old dirty instance over later connections' writes on Unix.
                 # Close only this acquisition's Store, then finalize unreachable
                 # results before a caller reopens it. Successful runs never GC.
                 store$close()

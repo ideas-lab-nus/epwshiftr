@@ -5924,14 +5924,44 @@ test_that("raw subset reports partial directories independently of native comple
         read_subset(dest, site_id = "other-city")$gaps$directory$request_id,
         "other"
     )
-    # Model an older persisted schema without directory records. Public offline
-    # readers must expose unknown status rather than infer it from valid blocks.
+    # Model an older persisted schema after another native persistence error.
+    # Start with ample GC headroom so the failed result survives until the
+    # deliberately delayed finalization below, rather than being collected while
+    # later manifest operations allocate their temporary R objects.
+    gc(FALSE)
     conn <- duckdb::dbConnect(
         duckdb::duckdb(),
         dbdir = file.path(dest, "manifest.duckdb")
     )
-    duckdb::sql_exec("DROP TABLE subset_directory", conn = conn)
+    duckdb::sql_exec(
+        paste(
+            "ALTER TABLE subset_links RENAME TO saved_links;",
+            "CREATE VIEW subset_links AS SELECT * FROM saved_links"
+        ),
+        conn = conn
+    )
     duckdb::dbDisconnect(conn, shutdown = TRUE)
+    expect_error(
+        partial$fetch_subset(changed, dest, discover = TRUE),
+        "View|view"
+    )
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec(
+        paste(
+            "DROP VIEW subset_links;",
+            "ALTER TABLE saved_links RENAME TO subset_links;",
+            "DROP TABLE subset_directory"
+        ),
+        conn = conn
+    )
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
+    # This collection is the adversarial trigger: a stale failed native result
+    # must never checkpoint its old directory over a successor connection's DDL.
+    # Public offline readers must still expose the missing evidence as unknown.
+    gc(FALSE)
     expect_true(is.na(subset_status(dest)$directory_complete))
     expect_true(all(is.na(read_subset(dest)$gaps$directory$directory_complete)))
     selected$fetch_subset(requests, dest, discover = TRUE)
