@@ -1,5 +1,5 @@
 # Check both immutable artifacts without changing manifest or reader state.
-subset__block_valid <- function(block) {
+opendap__block_valid <- function(block) {
     file.exists(block$path) &&
         file.exists(block$metadata_path) &&
         identical(checksum_file(block$path), block$sha256) &&
@@ -8,7 +8,7 @@ subset__block_valid <- function(block) {
 
 # Preserve all available published evidence before cache reuse or inventory
 # inheritance. Different declared digest algorithms remain incomparable.
-subset__record_content <- function(conn, candidates) {
+opendap__record_content <- function(conn, candidates) {
     if (!nrow(candidates)) {
         return(invisible(NULL))
     }
@@ -42,7 +42,7 @@ subset__record_content <- function(conn, candidates) {
 
 # Demand identity records only physical location and requested native window;
 # request/case labels continue to live solely in the association table.
-subset__demand_ids <- function(links) {
+opendap__demand_ids <- function(links) {
     vapply(
         seq_len(nrow(links)),
         function(i) {
@@ -61,7 +61,7 @@ subset__demand_ids <- function(links) {
 
 # Publish independently checked native selection receipts, including an empty
 # selection. Empty windows must never borrow another window's completed blocks.
-subset__save_demands <- function(conn, demands, dest) {
+opendap__save_demands <- function(conn, demands, dest) {
     if (is.null(demands) || !nrow(demands)) {
         return(invisible(NULL))
     }
@@ -92,7 +92,7 @@ subset__save_demands <- function(conn, demands, dest) {
 
 # Test interval unions without expanding every native position or borrowing
 # spatially unrelated blocks. Intervals are inclusive and sorted only locally.
-subset__ranges_covered <- function(required, available) {
+opendap__ranges_covered <- function(required, available) {
     if (!length(required) || !nrow(available)) {
         return(FALSE)
     }
@@ -119,8 +119,8 @@ subset__ranges_covered <- function(required, available) {
 
 # Derive current and historical completion from exact native demand receipts
 # plus valid spatial/time coverage, independently of the latest source job.
-subset__coverage <- function(links, demands, membership, blocks) {
-    ids <- subset__demand_ids(links)
+opendap__coverage <- function(links, demands, membership, blocks) {
+    ids <- opendap__demand_ids(links)
     unique_ids <- unique(ids)
     covered <- logical(length(unique_ids))
     for (i in seq_along(unique_ids)) {
@@ -143,7 +143,7 @@ subset__coverage <- function(links, demands, membership, blocks) {
             next
         }
         descriptor <- readRDS(receipt$receipt_path)
-        if (!identical(subset__demand_ids(descriptor), id)) {
+        if (!identical(opendap__demand_ids(descriptor), id)) {
             next
         }
         required <- jsonlite::fromJSON(
@@ -175,7 +175,7 @@ subset__coverage <- function(links, demands, membership, blocks) {
                         source_blocks$ind_lon + source_blocks$lon_count >
                             corners$ind_lon[[j]]
                 ]
-                subset__ranges_covered(required, available)
+                opendap__ranges_covered(required, available)
             },
             logical(1L)
         )
@@ -186,7 +186,7 @@ subset__coverage <- function(links, demands, membership, blocks) {
 
 # Read normalized previously required interval observations from checked local
 # metadata only. Weather Parquet payloads need not be read for this comparison.
-subset__saved_bounds <- function(blocks) {
+opendap__saved_bounds <- function(blocks) {
     if (!nrow(blocks)) {
         return(NULL)
     }
@@ -195,7 +195,7 @@ subset__saved_bounds <- function(blocks) {
 }
 
 # Keep endpoint inventory separate from immutable climate content identity.
-subset__access_plan <- function(files, expand = TRUE) {
+opendap__access_plan <- function(files, expand = TRUE) {
     checkmate::assert_flag(expand)
     if (expand) {
         files <- files$expand_replicas(service = "OPENDAP", all = TRUE)
@@ -287,7 +287,7 @@ subset__access_plan <- function(files, expand = TRUE) {
 
 # Save corner membership with each durable block, so partial failed sources
 # remain readable and a later replica cannot hide already acquired data.
-subset__save_membership <- function(conn, source_key, neighborhoods) {
+opendap__save_membership <- function(conn, source_key, neighborhoods) {
     membership <- unique(neighborhoods[,
         c(
             "target_lon",
@@ -318,7 +318,7 @@ subset__save_membership <- function(conn, source_key, neighborhoods) {
 }
 
 # Create only additive raw-subset tables in the existing single-owner Store.
-subset__open <- function(dest) {
+opendap__open <- function(dest) {
     store <- EsgStore$new(dest)
     opened <- FALSE
     on.exit(if (!opened) store$close(), add = TRUE)
@@ -394,7 +394,7 @@ subset__open <- function(dest) {
             next
         }
         row <- readRDS(path)
-        if (!subset__block_valid(row)) {
+        if (!opendap__block_valid(row)) {
             next
         }
         prior <- ddb_query(
@@ -421,8 +421,8 @@ subset__open <- function(dest) {
             ddb_append_table(conn, "subset_blocks", row)
         }
         info <- readRDS(row$metadata_path)
-        subset__save_membership(conn, row$source_key, info$neighborhoods)
-        subset__save_demands(conn, info$demands, dest)
+        opendap__save_membership(conn, row$source_key, info$neighborhoods)
+        opendap__save_demands(conn, info$demands, dest)
         unlink(c(path, paste0(path, ".json")))
     }
     opened <- TRUE
@@ -430,7 +430,7 @@ subset__open <- function(dest) {
 }
 
 # Match each explicit demand without broadening a zero-result selector.
-subset__requests <- function(requests, candidates) {
+opendap__requests <- function(requests, candidates) {
     checkmate::assert_data_frame(requests, min.rows = 1L)
     requests <- data.table::as.data.table(data.table::copy(requests))
     required <- c(
@@ -537,7 +537,7 @@ subset__requests <- function(requests, candidates) {
 }
 
 # Reuse committed blocks only after both artifacts pass local integrity checks.
-subset__valid_blocks <- function(store, source_key = NULL) {
+opendap__valid_blocks <- function(store, source_key = NULL) {
     blocks <- ddb_read_table(priv(store)$conn, "subset_blocks")
     if (!is.null(source_key)) {
         blocks <- blocks[blocks$source_key == source_key, , drop = FALSE]
@@ -548,7 +548,7 @@ subset__valid_blocks <- function(store, source_key = NULL) {
     valid <- vapply(
         seq_len(nrow(blocks)),
         function(i) {
-            subset__block_valid(blocks[i, , drop = FALSE])
+            opendap__block_valid(blocks[i, , drop = FALSE])
         },
         logical(1L)
     )
@@ -579,7 +579,7 @@ subset__valid_blocks <- function(store, source_key = NULL) {
 
 # Publish a single received block through the Store's atomic Parquet writer.
 # The calling process alone registers it in the manifest transaction.
-subset__commit <- function(store, job, path) {
+opendap__commit <- function(store, job, path) {
     receipt <- paste0(path, ".json")
     if (!file.exists(receipt) || !store__extract_cache_available(path)) {
         return(FALSE)
@@ -664,8 +664,8 @@ subset__commit <- function(store, job, path) {
         )
     )
     ddb_append_table(conn, "subset_blocks", row)
-    subset__save_membership(conn, job$source_key, chunk$neighborhoods)
-    subset__save_demands(conn, chunk$demands, job$dest)
+    opendap__save_membership(conn, job$source_key, chunk$neighborhoods)
+    opendap__save_demands(conn, chunk$demands, job$dest)
     ddb_exec(conn, "COMMIT")
     done <- TRUE
     unlink(c(path, receipt, pending, paste0(pending, ".json")))
@@ -674,7 +674,7 @@ subset__commit <- function(store, job, path) {
 
 # One source reader keeps its connection while writing bounded transfer files.
 # These are transport artifacts; only the parent commits durable public results.
-subset__read_source <- function(job) {
+opendap__read_source <- function(job) {
     began <- proc.time()[["elapsed"]]
     # netCDF-C otherwise prefetches small variables during nc_open(), before
     # any requested hyperslab. These client options affect only this new path:
@@ -699,7 +699,7 @@ subset__read_source <- function(job) {
     data.table::set(
         demands,
         j = "demand_id",
-        value = subset__demand_ids(demands)
+        value = opendap__demand_ids(demands)
     )
     ranges <- vapply(
         seq_len(nrow(demands)),
@@ -795,7 +795,7 @@ subset__read_source <- function(job) {
 }
 
 # Select candidates from recent actual demand reads on this client only.
-subset__rank <- function(
+opendap__rank <- function(
     candidates,
     attempts,
     client,
@@ -852,7 +852,7 @@ subset__rank <- function(
 
 # Separate transport failures from metadata conflicts and implementation errors.
 # Only actual transport failures contribute to data-node reliability ranking.
-subset__failure_kind <- function(error) {
+opendap__failure_kind <- function(error) {
     message <- if (inherits(error, "condition")) {
         conditionMessage(error)
     } else {
@@ -883,7 +883,7 @@ subset__failure_kind <- function(error) {
 }
 
 # A source job result or failure becomes a small observation, never a new case.
-subset__attempt <- function(
+opendap__attempt <- function(
     store,
     job,
     client,
@@ -907,13 +907,13 @@ subset__attempt <- function(
         native_values = 0,
         success = success,
         error = error,
-        error_kind = subset__failure_kind(error)
+        error_kind = opendap__failure_kind(error)
     )
     ddb_append_table(priv(store)$conn, "subset_attempts", row)
 }
 
 # Publish caller-owned completed blocks and their real data-read observations.
-subset__drain <- function(store, state, client) {
+opendap__drain <- function(store, state, client) {
     if (is.null(state$job)) {
         return(invisible(NULL))
     }
@@ -933,7 +933,7 @@ subset__drain <- function(store, state, client) {
             )
         }
         chunk <- readRDS(path)
-        if (subset__commit(store, state$job, path)) {
+        if (opendap__commit(store, state$job, path)) {
             row <- data.frame(
                 source_key = state$job$source_key,
                 url = state$job$url,
@@ -954,7 +954,7 @@ subset__drain <- function(store, state, client) {
 }
 
 # Record a source state with a conditional identity instead of mutating readers.
-subset__job_state <- function(
+opendap__job_state <- function(
     store,
     key,
     signature,
@@ -972,7 +972,7 @@ subset__job_state <- function(
     )
     expected <- if (status == "done") {
         as.character(jsonlite::toJSON(
-            sort(subset__valid_blocks(store, key)$block_id),
+            sort(opendap__valid_blocks(store, key)$block_id),
             auto_unbox = FALSE
         ))
     } else {
@@ -994,12 +994,12 @@ subset__job_state <- function(
 
 # Use a dedicated source-pool job for supplementary directory lookup, so a slow
 # index never blocks the owner's result collection or worker deadline checks.
-subset__discover <- function(job) {
-    subset__access_plan(job$files, expand = TRUE)
+opendap__discover <- function(job) {
+    opendap__access_plan(job$files, expand = TRUE)
 }
 
 # Keep the public orchestration small by reusing Store writes and source__pool.
-subset__fetch <- function(
+opendap__fetch <- function(
     files,
     requests,
     dest,
@@ -1018,12 +1018,12 @@ subset__fetch <- function(
     checkmate::assert_flag(discover)
     checkmate::assert_string(network_id)
     dest <- store_abs_path(path.expand(dest), getwd())
-    candidates <- subset__access_plan(files, expand = FALSE)
-    links <- subset__requests(requests, candidates)
-    store <- subset__open(dest)
+    candidates <- opendap__access_plan(files, expand = FALSE)
+    links <- opendap__requests(requests, candidates)
+    store <- opendap__open(dest)
     on.exit(store$close(), add = TRUE)
     conn <- priv(store)$conn
-    subset__record_content(conn, candidates)
+    opendap__record_content(conn, candidates)
     # Request bookkeeping is separate from the identity of persisted values.
     existing_links <- data.table::as.data.table(ddb_read_table(
         conn,
@@ -1089,14 +1089,14 @@ subset__fetch <- function(
             runtime = R.version.string,
             package = as.character(utils::packageVersion("epwshiftr")),
             implementation = store__hash(
-                body(subset__fetch),
-                body(subset__read_source),
+                body(opendap__fetch),
+                body(opendap__read_source),
                 body(dataset__read_neighborhood),
                 body(dataset__neighborhood_time_indices),
                 body(dataset__neighborhood_bounds),
-                body(subset__coverage),
-                body(subset__save_demands),
-                body(subset__record_content)
+                body(opendap__coverage),
+                body(opendap__save_demands),
+                body(opendap__record_content)
             )
         )
     )
@@ -1158,9 +1158,9 @@ subset__fetch <- function(
         state$round <- 0L
         state$discovered <- !discover
         state$finished <- FALSE
-        complete <- subset__valid_blocks(store, key)
+        complete <- opendap__valid_blocks(store, key)
         if (resume) {
-            state$finished <- all(subset__coverage(
+            state$finished <- all(opendap__coverage(
                 state$links,
                 data.table::as.data.table(ddb_read_table(
                     conn,
@@ -1176,7 +1176,7 @@ subset__fetch <- function(
         # A checked publication can finish after the prior owner exited while
         # its job still said running. Receipt coverage is authoritative locally.
         if (state$finished) {
-            subset__job_state(
+            opendap__job_state(
                 store,
                 key,
                 state$signature,
@@ -1203,14 +1203,14 @@ subset__fetch <- function(
             if (is.null(state$ticket)) {
                 next
             }
-            subset__drain(store, state, client)
+            opendap__drain(store, state, client)
         }
         pool$poll()
         for (state in states) {
             if (is.null(state$ticket)) {
                 next
             }
-            subset__drain(store, state, client)
+            opendap__drain(store, state, client)
             if (state$ticket$status == "pending") {
                 active <- active + 1L
                 next
@@ -1224,7 +1224,7 @@ subset__fetch <- function(
                     additions <- state$result[
                         state$result$source_key == state$key
                     ]
-                    subset__record_content(conn, additions)
+                    opendap__record_content(conn, additions)
                     saved <- data.table::as.data.table(ddb_read_table(
                         conn,
                         "subset_candidates"
@@ -1254,7 +1254,7 @@ subset__fetch <- function(
                     )
                 }
             } else {
-                subset__attempt(
+                opendap__attempt(
                     store,
                     state$job,
                     client,
@@ -1268,19 +1268,19 @@ subset__fetch <- function(
                 )
                 if (
                     !is.null(state$error) &&
-                        subset__failure_kind(state$error) == "internal"
+                        opendap__failure_kind(state$error) == "internal"
                 ) {
                     stop(state$error)
                 }
                 if (is.null(state$error)) {
-                    blocks <- subset__valid_blocks(store, state$key)
-                    subset__save_demands(conn, state$result$demands, dest)
-                    subset__save_membership(
+                    blocks <- opendap__valid_blocks(store, state$key)
+                    opendap__save_demands(conn, state$result$demands, dest)
+                    opendap__save_membership(
                         conn,
                         state$key,
                         state$result$neighborhoods
                     )
-                    covered <- subset__coverage(
+                    covered <- opendap__coverage(
                         state$links,
                         data.table::as.data.table(ddb_read_table(
                             conn,
@@ -1293,7 +1293,7 @@ subset__fetch <- function(
                         blocks
                     )
                     if (!all(covered)) {
-                        subset__job_state(
+                        opendap__job_state(
                             store,
                             state$key,
                             state$signature,
@@ -1319,7 +1319,7 @@ subset__fetch <- function(
                         metadata,
                         list(neighborhoods = state$result$neighborhoods)
                     )
-                    subset__job_state(
+                    opendap__job_state(
                         store,
                         state$key,
                         state$signature,
@@ -1361,7 +1361,7 @@ subset__fetch <- function(
                     state$tried <- new.env(hash = TRUE, parent = emptyenv())
                     next
                 } else {
-                    subset__job_state(
+                    opendap__job_state(
                         store,
                         state$key,
                         state$signature,
@@ -1377,7 +1377,7 @@ subset__fetch <- function(
                 }
             }
             attempts <- ddb_read_table(conn, "subset_attempts")
-            available <- subset__rank(available, attempts, client)
+            available <- opendap__rank(available, attempts, client)
             if (kind == "read") {
                 occupied <- vapply(
                     Filter(
@@ -1405,7 +1405,7 @@ subset__fetch <- function(
             )
             dir.create(inbox)
             blocks <- if (resume) {
-                subset__valid_blocks(store, state$key)
+                opendap__valid_blocks(store, state$key)
             } else {
                 data.table::data.table()
             }
@@ -1432,7 +1432,7 @@ subset__fetch <- function(
                 },
                 links = state$links,
                 completed = blocks,
-                expected_bounds = subset__saved_bounds(blocks),
+                expected_bounds = opendap__saved_bounds(blocks),
                 contract = contract,
                 inbox = inbox,
                 subset_progress = file.path(inbox, "progress.json"),
@@ -1450,15 +1450,15 @@ subset__fetch <- function(
                 pool$submit(
                     list(job),
                     if (kind == "read") {
-                        subset__read_source
+                        opendap__read_source
                     } else {
-                        subset__discover
+                        opendap__discover
                     },
                     collect = function(job, value) target$result <- value,
                     on_error = function(job, error) target$error <- error
                 )
             })
-            subset__job_state(store, state$key, state$signature, "running")
+            opendap__job_state(store, state$key, state$signature, "running")
             active <- active + 1L
         }
         Sys.sleep(.02)
@@ -1592,7 +1592,7 @@ read_subset <- function(
     valid <- rep.int(TRUE, nrow(blocks))
     for (i in seq_len(nrow(blocks))) {
         path <- blocks$path[[i]]
-        if (!subset__block_valid(blocks[i])) {
+        if (!opendap__block_valid(blocks[i])) {
             invalid_count <- invalid_count + 1L
             invalid[[invalid_count]] <- blocks$block_id[[i]]
             valid[[i]] <- FALSE
@@ -1642,7 +1642,7 @@ read_subset <- function(
         pieces[[i]] <- values
     }
     jobs <- data.table::as.data.table(ddb_read_table(conn, "subset_jobs"))
-    coverage <- subset__coverage(
+    coverage <- opendap__coverage(
         links,
         data.table::as.data.table(ddb_read_table(conn, "subset_demands")),
         membership,

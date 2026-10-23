@@ -2671,7 +2671,7 @@ EsgResultFile <- R6::R6Class(
         #' @return For access_plan(), a candidate table with immutable source keys.
         # Candidates stay separate so a runtime read failure can select another.
         access_plan = function(expand = TRUE) {
-            subset__access_plan(self, expand)
+            opendap__access_plan(self, expand)
         },
         # fetch_subset
         #' @description
@@ -2699,7 +2699,7 @@ EsgResultFile <- R6::R6Class(
             network_id = "default",
             node_workers = 2L
         ) {
-            subset__fetch(
+            opendap__fetch(
                 self,
                 requests,
                 dest,

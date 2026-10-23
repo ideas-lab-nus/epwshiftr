@@ -172,7 +172,7 @@ Collate:
     'source-read.R'
     'standalone-cache.R'
     'standalone-downloader.R'
-    'subset.R'
+    'opendap-acquisition.R'
     'weather-method.R'
     'zzz.R'
 Config/testthat/edition: 3
