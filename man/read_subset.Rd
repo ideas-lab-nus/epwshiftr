@@ -22,6 +22,8 @@ A list with values, neighborhoods, links and gaps.
 \code{gaps$incomplete_requests} identifies selected requests whose exact native
 coverage or checked selection receipt is missing, including empty native
 windows. A later successful window never clears an earlier request's gap.
+\code{gaps$directory} lists selected requests from incomplete or unknown File
+directories, separately from native data coverage.
 }
 \description{
 Returns the unique native values together with city/corner membership and

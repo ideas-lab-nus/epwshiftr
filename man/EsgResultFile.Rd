@@ -152,7 +152,10 @@ remote time axis. Default: \code{"drs"}.}
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    For access_plan(), a candidate table with immutable source keys.
+    For access_plan(), a candidate table with immutable source keys and
+a \code{directory_complete} attribute for the originating File query.
+Replica expansion does not certify that the original query's File
+pages were fully collected.
   }
 }
 
@@ -193,7 +196,12 @@ time_stop and optional source filters and case_id labels.}
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    For fetch_subset(), a lightweight acquisition summary.
+    For fetch_subset(), a lightweight acquisition summary. \code{complete}
+describes native coverage of the selected Files; the independent
+\code{directory_complete} flag is false for a partially collected File
+directory. An intentional slice of a fully collected directory
+retains true directory completeness. No missing pages are implied
+to have been collected by successful reads or cache reuse.
   }
 }
 

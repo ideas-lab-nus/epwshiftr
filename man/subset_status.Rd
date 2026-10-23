@@ -15,7 +15,10 @@ subset_status(
 \item{view}{One of summary, blocks, attempts, nodes, links or candidates.}
 }
 \value{
-A summary list or a data.table of local manifest records.
+A summary list or a data.table of local manifest records. Summary
+\code{directory_complete} reports whether every saved request originated from a
+fully collected File directory. \code{NA} denotes missing directory evidence,
+including acquisition manifests created before this field was recorded.
 }
 \description{
 These views read only the local acquisition manifest. They never contact an

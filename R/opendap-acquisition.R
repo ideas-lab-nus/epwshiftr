@@ -194,15 +194,62 @@ opendap__saved_bounds <- function(blocks) {
     unique(data.table::rbindlist(pieces, fill = TRUE))
 }
 
+# Preserve the original File directory's collection status independently of
+# later deliberate row selections or same-File Replica discovery.
+opendap__directory <- function(selection) {
+    count <- selection$source_count
+    found <- selection$source_num_found
+    known <- length(count) == 1L &&
+        length(found) == 1L &&
+        !anyNA(c(count, found)) &&
+        count >= 0L &&
+        found >= 0L
+    list(
+        source_count = if (known) as.integer(count) else NA_integer_,
+        source_num_found = if (known) as.integer(found) else NA_integer_,
+        directory_complete = if (known) count == found else NA
+    )
+}
+
+# Older manifests have no directory evidence. Keep that uncertainty explicit
+# rather than certifying completeness from the presence of weather blocks.
+opendap__saved_directory <- function(conn, request_ids = NULL) {
+    if (is.null(request_ids)) {
+        request_ids <- ddb_query(
+            conn,
+            "SELECT DISTINCT request_id FROM subset_links"
+        )$request_id
+    }
+    request_ids <- unique(request_ids)
+    out <- data.table::data.table(
+        request_id = request_ids,
+        source_count = rep.int(NA_integer_, length(request_ids)),
+        source_num_found = rep.int(NA_integer_, length(request_ids)),
+        directory_complete = rep.int(NA, length(request_ids))
+    )
+    if ("subset_directory" %in% ddb_list_tables(conn) && nrow(out)) {
+        saved <- ddb_read_table(conn, "subset_directory")
+        rows <- match(out$request_id, saved$request_id)
+        for (column in names(out)[-1L]) {
+            data.table::set(out, j = column, value = saved[[column]][rows])
+        }
+    }
+    out
+}
+
 # Keep endpoint inventory separate from immutable climate content identity.
 opendap__access_plan <- function(files, expand = TRUE) {
     checkmate::assert_flag(expand)
+    directory <- opendap__directory(files$selection())
     if (expand) {
         files <- files$expand_replicas(service = "OPENDAP", all = TRUE)
     }
     docs <- priv(files)$get_docs()
     if (!nrow(docs)) {
-        return(data.table::data.table())
+        out <- data.table::data.table()
+        attr(out, "selection") <- files$selection()
+        attr(out, "directory_complete") <- directory$directory_complete
+        return(out)
     }
     urls <- priv(files)$get_url("OPENDAP", "OPENDAP")
     groups <- query_result__compatible_file_groups(docs)
@@ -282,6 +329,7 @@ opendap__access_plan <- function(files, expand = TRUE) {
     data.table::set(out, j = "record_index", value = seq_len(nrow(docs)))
     out <- unique(out, by = "candidate_id")
     attr(out, "selection") <- files$selection()
+    attr(out, "directory_complete") <- directory$directory_complete
     out[]
 }
 
@@ -325,6 +373,7 @@ opendap__open <- function(dest) {
     conn <- priv(store)$conn
     definitions <- list(
         subset_content = "source_key VARCHAR, version VARCHAR, checksum_type VARCHAR, checksum VARCHAR, size VARCHAR",
+        subset_directory = "request_id VARCHAR PRIMARY KEY, source_count INTEGER, source_num_found INTEGER, directory_complete BOOLEAN",
         subset_demands = "demand_id VARCHAR PRIMARY KEY, source_key VARCHAR, lon DOUBLE, lat DOUBLE, time_start VARCHAR, time_stop VARCHAR, receipt_path VARCHAR, receipt_sha256 VARCHAR",
         subset_jobs = "source_key VARCHAR PRIMARY KEY, signature VARCHAR, status VARCHAR, error VARCHAR, contract VARCHAR, expected_blocks VARCHAR",
         subset_blocks = paste(
@@ -536,11 +585,36 @@ opendap__requests <- function(requests, candidates) {
     data.table::rbindlist(rows, fill = TRUE)
 }
 
+# Restrict source-local history in DuckDB before materializing it in R. A resumed
+# File must not copy every unrelated File's accumulated blocks or receipts.
+opendap__source_rows <- function(conn, table, source_key) {
+    data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            "SELECT * FROM %s WHERE %s",
+            ddb_ident(conn, table),
+            if (length(source_key)) {
+                sprintf(
+                    "source_key IN (%s)",
+                    paste(ddb_literal(conn, source_key), collapse = ",")
+                )
+            } else {
+                "FALSE"
+            }
+        )
+    ))
+}
+
 # Reuse committed blocks only after both artifacts pass local integrity checks.
 opendap__valid_blocks <- function(store, source_key = NULL) {
-    blocks <- ddb_read_table(priv(store)$conn, "subset_blocks")
-    if (!is.null(source_key)) {
-        blocks <- blocks[blocks$source_key == source_key, , drop = FALSE]
+    blocks <- if (is.null(source_key)) {
+        ddb_read_table(priv(store)$conn, "subset_blocks")
+    } else {
+        as.data.frame(opendap__source_rows(
+            priv(store)$conn,
+            "subset_blocks",
+            source_key
+        ))
     }
     if (!nrow(blocks)) {
         return(data.table::as.data.table(blocks))
@@ -1024,6 +1098,21 @@ opendap__fetch <- function(
     on.exit(store$close(), add = TRUE)
     conn <- priv(store)$conn
     opendap__record_content(conn, candidates)
+    directory <- opendap__directory(files$selection())
+    directory_rows <- data.table::data.table(request_id = requests$request_id)
+    for (column in names(directory)) {
+        data.table::set(directory_rows, j = column, value = directory[[column]])
+    }
+    # Each request retains its originating directory, so a later complete but
+    # unrelated selection cannot erase an earlier request's directory gap.
+    ddb_exec(
+        conn,
+        sprintf(
+            "DELETE FROM subset_directory WHERE request_id IN (%s)",
+            paste(ddb_literal(conn, directory_rows$request_id), collapse = ",")
+        )
+    )
+    ddb_append_table(conn, "subset_directory", as.data.frame(directory_rows))
     # Request bookkeeping is separate from the identity of persisted values.
     existing_links <- data.table::as.data.table(ddb_read_table(
         conn,
@@ -1107,6 +1196,15 @@ opendap__fetch <- function(
     )
     names(states) <- unique(links$source_key[!is.na(links$source_key)])
     keys <- unique(links$source_key[!is.na(links$source_key)])
+    # This startup snapshot precedes source work and is immutable during state
+    # initialization. Read the selected sources once, then use indexed slices;
+    # later read completions query their own newly committed source rows afresh.
+    saved_blocks <- opendap__valid_blocks(store, keys)
+    saved_demands <- opendap__source_rows(conn, "subset_demands", keys)
+    saved_membership <- opendap__source_rows(conn, "subset_neighborhoods", keys)
+    for (table in list(saved_blocks, saved_demands, saved_membership)) {
+        data.table::setindexv(table, "source_key")
+    }
     for (key in keys) {
         state <- new.env(parent = emptyenv())
         state$key <- key
@@ -1158,18 +1256,12 @@ opendap__fetch <- function(
         state$round <- 0L
         state$discovered <- !discover
         state$finished <- FALSE
-        complete <- opendap__valid_blocks(store, key)
+        complete <- saved_blocks[list(key), on = "source_key", nomatch = 0L]
         if (resume) {
             state$finished <- all(opendap__coverage(
                 state$links,
-                data.table::as.data.table(ddb_read_table(
-                    conn,
-                    "subset_demands"
-                )),
-                data.table::as.data.table(ddb_read_table(
-                    conn,
-                    "subset_neighborhoods"
-                )),
+                saved_demands[list(key), on = "source_key", nomatch = 0L],
+                saved_membership[list(key), on = "source_key", nomatch = 0L],
                 complete
             ))
         }
@@ -1282,14 +1374,12 @@ opendap__fetch <- function(
                     )
                     covered <- opendap__coverage(
                         state$links,
-                        data.table::as.data.table(ddb_read_table(
+                        opendap__source_rows(conn, "subset_demands", state$key),
+                        opendap__source_rows(
                             conn,
-                            "subset_demands"
-                        )),
-                        data.table::as.data.table(ddb_read_table(
-                            conn,
-                            "subset_neighborhoods"
-                        )),
+                            "subset_neighborhoods",
+                            state$key
+                        ),
                         blocks
                     )
                     if (!all(covered)) {
@@ -1472,6 +1562,7 @@ opendap__fetch <- function(
         dest = dest,
         jobs = jobs,
         unmatched_requests = links[is.na(links$source_key)],
+        directory_complete = directory$directory_complete,
         complete = all(jobs$status[jobs$source_key %in% keys] == "done") &&
             !anyNA(links$source_key)
     )
@@ -1483,7 +1574,10 @@ opendap__fetch <- function(
 #' ESGF index or data node, and data-node observations retain their client and age.
 #' @param dest Acquisition directory returned by `fetch_subset()`.
 #' @param view One of summary, blocks, attempts, nodes, links or candidates.
-#' @return A summary list or a data.table of local manifest records.
+#' @return A summary list or a data.table of local manifest records. Summary
+#'   `directory_complete` reports whether every saved request originated from a
+#'   fully collected File directory. `NA` denotes missing directory evidence,
+#'   including acquisition manifests created before this field was recorded.
 #' @export
 subset_status <- function(
     dest,
@@ -1504,8 +1598,15 @@ subset_status <- function(
                 "coalesce(sum(lat_count * lon_count * time_count), 0) AS native_values FROM subset_blocks"
             )
         )
+        directory <- opendap__saved_directory(conn)
         return(list(
             jobs = jobs,
+            directory = directory,
+            directory_complete = if (nrow(directory)) {
+                all(directory$directory_complete)
+            } else {
+                NA
+            },
             blocks = count$blocks[[1L]],
             native_values = count$native_values[[1L]],
             observed_at = as.double(Sys.time())
@@ -1540,6 +1641,8 @@ subset_status <- function(
 #'   `gaps$incomplete_requests` identifies selected requests whose exact native
 #'   coverage or checked selection receipt is missing, including empty native
 #'   windows. A later successful window never clears an earlier request's gap.
+#'   `gaps$directory` lists selected requests from incomplete or unknown File
+#'   directories, separately from native data coverage.
 #' @export
 read_subset <- function(
     dest,
@@ -1586,6 +1689,19 @@ read_subset <- function(
         sort = FALSE,
         allow.cartesian = TRUE
     )
+    # City/case labels retain their full association rows above, but physical
+    # selection depends only on source, native corner and requested window.
+    selections <- unique(neighborhoods[,
+        c(
+            "source_key",
+            "ind_lat",
+            "ind_lon",
+            "time_start",
+            "time_stop"
+        ),
+        with = FALSE
+    ])
+    data.table::setindexv(selections, "source_key")
     pieces <- vector("list", nrow(blocks))
     invalid <- character(nrow(blocks))
     invalid_count <- 0L
@@ -1605,28 +1721,43 @@ read_subset <- function(
         if (!is.null(wanted_variables)) {
             values <- values[values$variable %in% wanted_variables]
         }
-        needed <- neighborhoods[
-            neighborhoods$source_key == blocks$source_key[[i]]
+        needed <- selections[
+            list(blocks$source_key[[i]]),
+            on = "source_key",
+            nomatch = 0L
         ]
+        windows <- unique(needed[, c("time_start", "time_stop"), with = FALSE])
+        # Native time is shared by every point in a validated block. Parse each
+        # distinct requested window once against that axis, then select corners
+        # through a keyed join instead of rescanning values for every consumer.
+        axis <- unique(
+            values[,
+                c("time_index", "time", CF_TIME_COORDINATE_COLUMNS),
+                with = FALSE
+            ],
+            by = "time_index"
+        )
         keep <- rep.int(FALSE, nrow(values))
-        for (j in seq_len(nrow(needed))) {
-            positions <- which(
-                values$ind_lat == needed$ind_lat[[j]] &
-                    values$ind_lon == needed$ind_lon[[j]]
-            )
-            if (!length(positions)) {
-                next
-            }
-            native <- values[positions]
+        for (j in seq_len(nrow(windows))) {
+            points <- needed[
+                needed$time_start == windows$time_start[[j]] &
+                    needed$time_stop == windows$time_stop[[j]],
+                c("ind_lat", "ind_lon"),
+                with = FALSE
+            ]
             selected <- dataset__neighborhood_time_indices(
-                native$time,
-                as.data.frame(native[,
-                    CF_TIME_COORDINATE_COLUMNS,
-                    with = FALSE
-                ]),
-                c(needed$time_start[[j]], needed$time_stop[[j]])
+                axis$time,
+                as.data.frame(axis[, CF_TIME_COORDINATE_COLUMNS, with = FALSE]),
+                c(windows$time_start[[j]], windows$time_stop[[j]])
             )
-            keep[positions[selected]] <- TRUE
+            positions <- values[
+                points,
+                on = c("ind_lat", "ind_lon"),
+                which = TRUE,
+                nomatch = 0L
+            ]
+            keep[positions] <- keep[positions] |
+                values$time_index[positions] %in% axis$time_index[selected]
         }
         values <- values[keep]
         if (!is.null(time) && nrow(values)) {
@@ -1659,7 +1790,9 @@ read_subset <- function(
             value = "Selected requests have missing or empty native coverage."
         )
     }
+    directory <- opendap__saved_directory(conn, links$request_id)
     gaps <- list(
+        directory = directory[!directory$directory_complete %in% TRUE],
         unmatched = links[is.na(links$source_key)],
         incomplete_sources = affected_jobs,
         incomplete_requests = incomplete,

@@ -5788,4 +5788,126 @@ test_that("raw subset acquisition shares native coverage across many overlapping
     expect_equal(sum(grepl("[.]dods tas", traffic)), 2L)
 })
 
+# A complete selected File can be reusable while its originating catalogue is
+# still partial. Directory gaps stay visible offline and after cache-only resume.
+test_that("raw subset reports partial directories independently of native completion", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-partial-directory-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    index_app <- webfakes::new_app()
+    index_app$locals$response <- jsonlite::toJSON(
+        esgf_test__response(docs),
+        auto_unbox = TRUE
+    )
+    index_app$get("/esg-search/search", function(req, res, locals) {
+        res$set_header("Content-Type", "application/json")$send(locals$response)
+    })
+    index <- webfakes::new_app_process(index_app)
+    on.exit(index$stop(), add = TRUE)
+    partial <- query_result__new(
+        EsgResultFile,
+        index_node = sub("/$", "", index$url()),
+        params = query_result_test_params("File"),
+        result = esgf_test__response(docs, num_found = 2L),
+        context = NULL
+    )
+    plan <- partial$access_plan(expand = FALSE)
+    expect_false(attr(plan, "directory_complete"))
+    expect_false(attr(partial$access_plan(), "directory_complete"))
+    first <- partial$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(first$complete)
+    expect_false(first$directory_complete)
+    expect_false(subset_status(dest)$directory_complete)
+    expect_equal(read_subset(dest)$gaps$directory$request_id, "one")
+    before <- subset_status(dest, "attempts")
+    expect_false(
+        partial$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$directory_complete
+    )
+    expect_identical(subset_status(dest, "attempts"), before)
+    # Deliberately selecting a File from a fully collected catalogue is complete
+    # for that selection, even though another File is intentionally omitted.
+    all_docs <- docs[c(1L, 1L), ]
+    all_docs$id[[2L]] <- "other-file"
+    all_docs$instance_id[[2L]] <- "other-file-instance"
+    selected <- query_result_test_object("File", all_docs)$slice(1L)
+    expect_true(attr(
+        selected$access_plan(expand = FALSE),
+        "directory_complete"
+    ))
+    result <- selected$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    expect_true(result$directory_complete)
+    expect_true(subset_status(dest)$directory_complete)
+    expect_equal(nrow(read_subset(dest)$gaps$directory), 0L)
+    expect_identical(subset_status(dest, "attempts"), before)
+    # An empty explicit selection retains the fully collected directory's origin.
+    expect_true(attr(
+        selected$slice(integer())$access_plan(expand = FALSE),
+        "directory_complete"
+    ))
+    # A newly supplied partial directory cannot be hidden by unrelated complete
+    # requests, and selecting an earlier request retains its own provenance.
+    partial_request <- requests
+    partial_request$request_id <- "other"
+    partial_request$site_id <- "other-city"
+    partial$fetch_subset(partial_request, dest, discover = TRUE)
+    expect_false(subset_status(dest)$directory_complete)
+    expect_equal(nrow(read_subset(dest, site_id = "city")$gaps$directory), 0L)
+    expect_equal(
+        read_subset(dest, site_id = "other-city")$gaps$directory$request_id,
+        "other"
+    )
+    # Model an older persisted schema without directory records. Public offline
+    # readers must expose unknown status rather than infer it from valid blocks.
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec("DROP TABLE subset_directory", conn = conn)
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
+    expect_true(is.na(subset_status(dest)$directory_complete))
+    expect_true(all(is.na(read_subset(dest)$gaps$directory$directory_complete)))
+    selected$fetch_subset(requests, dest, discover = TRUE)
+    expect_true(is.na(subset_status(dest)$directory_complete))
+    expect_equal(nrow(read_subset(dest, site_id = "city")$gaps$directory), 0L)
+    expect_identical(subset_status(dest, "attempts"), before)
+    empty <- read_subset(dest, site_id = "absent")
+    expect_equal(nrow(empty$values), 0L)
+    expect_equal(nrow(empty$links), 0L)
+    expect_equal(nrow(empty$gaps$directory), 0L)
+})
+
 # vim: fdm=marker :

@@ -2668,7 +2668,10 @@ EsgResultFile <- R6::R6Class(
         #' @description
         #' List every compatible OPeNDAP candidate without a mandatory speed check.
         #' @param expand Whether to query same-version master and Replica records.
-        #' @return For access_plan(), a candidate table with immutable source keys.
+        #' @return For access_plan(), a candidate table with immutable source keys and
+        #'   a `directory_complete` attribute for the originating File query.
+        #'   Replica expansion does not certify that the original query's File
+        #'   pages were fully collected.
         # Candidates stay separate so a runtime read failure can select another.
         access_plan = function(expand = TRUE) {
             opendap__access_plan(self, expand)
@@ -2686,7 +2689,12 @@ EsgResultFile <- R6::R6Class(
         #' @param discover Query additional compatible replicas after known ones fail.
         #' @param network_id User-defined network identity for local timing history.
         #' @param node_workers Maximum simultaneous readers for one data node.
-        #' @return For fetch_subset(), a lightweight acquisition summary.
+        #' @return For fetch_subset(), a lightweight acquisition summary. `complete`
+        #'   describes native coverage of the selected Files; the independent
+        #'   `directory_complete` flag is false for a partially collected File
+        #'   directory. An intentional slice of a fully collected directory
+        #'   retains true directory completeness. No missing pages are implied
+        #'   to have been collected by successful reads or cache reuse.
         # The package owns all writes; callers provide only their demand contract.
         fetch_subset = function(
             requests,
