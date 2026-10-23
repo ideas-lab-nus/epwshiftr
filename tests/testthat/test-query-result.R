@@ -7182,4 +7182,150 @@ test_that("raw subset File windows retain nonGregorian and subdaily endpoints", 
     expect_false(any(grepl("outside-", traffic, fixed = TRUE)))
 })
 
+# Every OPeNDAP service advertised by one File remains a real execution option.
+# The first address is unreachable; the second serves the original native cells.
+test_that("raw subsets retain all advertised OPeNDAP endpoints", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("all-opendap-services-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    bad <- "http://127.0.0.1:1/unavailable.nc"
+    good <- paste0(server$url(), "fast.nc")
+    docs <- query_result_test_file_docs()
+    docs$variable_id <- "tas"
+    docs$url <- I(list(paste0(
+        c(bad, good, paste0(good, ".html")),
+        "|application/netcdf|OPENDAP"
+    )))
+    files <- query_result_test_object("File", docs)
+    plan <- files$access_plan(expand = FALSE)
+    expect_identical(plan$url, c(bad, good))
+    expect_identical(plan$record_index, c(1L, 1L))
+    expect_length(unique(plan$source_key), 1L)
+    requests <- data.frame(
+        request_id = "one-day",
+        case_id = "original",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    result <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        timeout = 5,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_true(any(!attempts$success))
+    expect_equal(sum(attempts$native_values), 4)
+    saved <- read_subset(dest, case_id = "original")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_equal(nrow(saved$neighborhoods), 4L)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_identical(unique(saved$values$cf_day), 1L)
+    before <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    requests$request_id <- "linked-day"
+    requests$case_id <- "linked"
+    expect_true(
+        files$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            timeout = 5,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        before
+    )
+    expect_equal(sort(read_subset(dest, case_id = "linked")$values$value), 1:4)
+})
+
+# Expanding per-record services cannot change the File metadata they belong to,
+# or hide a File with no OPeNDAP service behind HTTP-only acquisition.
+test_that("raw subset endpoint inventories preserve File rows and missing services", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 3L), ]
+    docs$id <- paste0("record-", 1:3)
+    docs$instance_id <- docs$master_id <- paste0("logical-", 1:3)
+    docs$variable_id <- "tas"
+    docs$title <- paste0(
+        "tas_Amon_model_historical_member_grid_",
+        c(
+            "206001-206001.nc",
+            "206006-206006.nc",
+            "206012-206012.nc"
+        )
+    )
+    docs$data_node <- NA_character_
+    docs$url <- I(list(
+        c(
+            "https://one.example/a.nc.html|application/netcdf|OPENDAP",
+            "https://one.example/a.nc|application/netcdf|OPENDAP",
+            "https://two.example/a.nc|application/netcdf|OPENDAP"
+        ),
+        "https://three.example/b.nc|application/netcdf|OPENDAP",
+        "https://http.example/c.nc|application/netcdf|HTTPServer"
+    ))
+    files <- query_result_test_object("File", docs)
+    plan <- files$access_plan(expand = FALSE)
+    expect_identical(plan$record_index, c(1L, 1L, 2L, 3L))
+    expect_identical(
+        plan$url,
+        c(
+            "https://one.example/a.nc",
+            "https://two.example/a.nc",
+            "https://three.example/b.nc",
+            NA_character_
+        )
+    )
+    expect_identical(
+        plan$data_node,
+        c("one.example", "two.example", "three.example", NA_character_)
+    )
+    expect_identical(
+        plan$file_start_key,
+        c(
+            "20600100000000",
+            "20600100000000",
+            "20600600000000",
+            "20601200000000"
+        )
+    )
+    expect_length(unique(plan$source_key), 3L)
+    expect_identical(plan$source_key[[1L]], plan$source_key[[2L]])
+    expect_identical(attr(plan, "selection"), files$selection())
+    missing <- files$slice(3L)
+    dest <- tempfile("missing-opendap-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    requests <- data.frame(
+        request_id = "missing",
+        case_id = "case",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-12-01",
+        time_stop = "2060-12-01"
+    )
+    result <- missing$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_false(result$complete)
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), 0)
+    expect_equal(nrow(subset_status(dest, "blocks")), 0L)
+})
+
 # vim: fdm=marker :

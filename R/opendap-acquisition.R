@@ -354,7 +354,14 @@ opendap__access_plan <- function(files, expand = TRUE) {
         attr(out, "directory_complete") <- directory$directory_complete
         return(out)
     }
-    urls <- priv(files)$get_url("OPENDAP", "OPENDAP")
+    # Public parsed services retain every address; the legacy single-URL getter
+    # deliberately selects only one and must keep that behavior for old callers.
+    services <- files$url
+    urls <- lapply(seq_len(nrow(docs)), function(i) {
+        service <- services[[i]]
+        matches <- service$url[service$service == "OPENDAP"]
+        if (!length(matches)) NA_character_ else sub("[.]html$", "", matches)
+    })
     groups <- query_result__compatible_file_groups(docs)
     logical <- query_result__file_key(data.table::as.data.table(docs))
     fields <- c(
@@ -374,14 +381,6 @@ opendap__access_plan <- function(files, expand = TRUE) {
         as.character(query_result__col(docs, field))
     }))
     data.table::setnames(out, fields)
-    data.table::set(out, j = "url", value = sub("[.]html$", "", urls))
-    missing_node <- is.na(out$data_node) | !nzchar(out$data_node)
-    data.table::set(
-        out,
-        i = which(missing_node),
-        j = "data_node",
-        value = sub("^https?://([^/]+).*$", "\\1", out$url[missing_node])
-    )
     data.table::set(out, j = "logical_id", value = logical)
     periods <- opendap__file_periods(query_result__drs_labels(docs)$value)
     for (name in names(periods)) {
@@ -399,7 +398,7 @@ opendap__access_plan <- function(files, expand = TRUE) {
         keys[rows] <- key
     }
     data.table::set(out, j = "source_key", value = keys)
-    data.table::set(out, j = "priority", value = seq_len(nrow(out)))
+
     pairs <- unique(out[, c("source_key", "content_group"), with = FALSE])
     duplicate_keys <- pairs$source_key[duplicated(pairs$source_key)]
     if (length(duplicate_keys)) {
@@ -408,6 +407,20 @@ opendap__access_plan <- function(files, expand = TRUE) {
             call. = FALSE
         )
     }
+    # Flatten once after content checks, preserving each originating File row.
+    # A missing service keeps one NA candidate so its demand remains an explicit
+    # gap. Repeated normalized addresses are deduplicated by candidate identity.
+    data.table::set(out, j = "record_index", value = seq_len(nrow(docs)))
+    out <- out[rep(seq_len(nrow(out)), lengths(urls))]
+    data.table::set(out, j = "url", value = unlist(urls, use.names = FALSE))
+    missing_node <- is.na(out$data_node) | !nzchar(out$data_node)
+    data.table::set(
+        out,
+        i = which(missing_node),
+        j = "data_node",
+        value = sub("^https?://([^/]+).*$", "\\1", out$url[missing_node])
+    )
+    data.table::set(out, j = "priority", value = seq_len(nrow(out)))
     data.table::set(
         out,
         j = "candidate_id",
@@ -419,8 +432,16 @@ opendap__access_plan <- function(files, expand = TRUE) {
             character(1L)
         )
     )
-    data.table::set(out, j = "record_index", value = seq_len(nrow(docs)))
     out <- unique(out, by = "candidate_id")
+    data.table::setcolorder(
+        out,
+        c(
+            fields,
+            "url",
+            setdiff(names(out), c(fields, "url", "record_index")),
+            "record_index"
+        )
+    )
     attr(out, "selection") <- files$selection()
     attr(out, "directory_complete") <- directory$directory_complete
     out[]
