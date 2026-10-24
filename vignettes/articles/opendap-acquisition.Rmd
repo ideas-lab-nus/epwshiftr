@@ -168,6 +168,10 @@ A successful native data read resets that node's failure streak; a successful
 read of the same File URL also resets its endpoint backoff. Content and CF
 identity checks continue to apply to every Replica.
 
+After a corroborated node cooldown, the first recovery uses one reader until
+actual native values succeed. Metadata-only success does not reopen every
+node slot. The configured node allowance returns after a native success.
+
 Cooling never occupies a sleeping worker. Other Files and compatible candidates
 continue; Replica discovery remains available when known URLs are cooling.
 If all compatible candidates are cooling, the source stays incomplete with a
@@ -176,6 +180,39 @@ The existing attempt ledger supplies these deadlines across calls; no extra
 speed checks or separate health database are required.
 
 # Inspect Saved Values and Gaps
+
+Native selection evidence is saved before the first weather block, so a later
+read failure can retain the exact native denominator and four-corner membership.
+After the acquisition writer closes, inspect checked physical coverage:
+
+
+``` r
+coverage <- subset_status(dest, "coverage")
+timing <- subset_status(dest, "timing", source_key = unique(coverage$source_key))
+```
+
+`complete` requires every requested native time at all four original corners.
+The coverage view preserves request and case associations; deduplicate physical
+File/location/window keys for totals. Unknown axes retain `NA` expected counts,
+and an empty native selection stays incomplete. `status`, `gap_kind`, `retryable`
+and `retry_after` distinguish partial data, nonterminal work, transport failures,
+cooling and nonretryable identity/selection problems. Job labels alone do not
+certify raw coverage. `source_key` can restrict these two views before reading
+or hashing unrelated artifacts. These views read local data only and require
+the unique acquisition writer to be closed.
+
+Timing reports recorded open/metadata phases and successful native-read phases
+separately from whole failed tasks. A failed task may already have committed
+useful blocks, so its full duration is not pure waste or an additional disjoint
+phase. Historical phases without evidence remain `NA`. Acquisition coverage
+also does not certify scientific quality of native missing values.
+
+A caller can use the structured gaps for a finite recovery campaign after its
+first pass: retain the original identities, retry only eligible incomplete
+windows, respect cooldown deadlines, and stop on a fixed budget, no progress
+or a nonretryable blocker. Expiration alone does not launch a later acquisition.
+Persist the spent budget across restarts and report unresolved gaps explicitly.
+
 
 After an acquisition call returns, inspect its local results:
 

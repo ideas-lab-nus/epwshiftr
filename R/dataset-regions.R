@@ -890,7 +890,8 @@ dataset__read_neighborhood <- function(
     completed = NULL,
     expected_contract = NULL,
     expected_bounds = NULL,
-    max_values = DATASET_REQUEST_MAX_VALUES
+    max_values = DATASET_REQUEST_MAX_VALUES,
+    on_metadata = NULL
 ) {
     checkmate::assert_int(max_values, lower = 4L)
     checkmate::assert_character(
@@ -901,6 +902,7 @@ dataset__read_neighborhood <- function(
     )
     checkmate::assert_data_frame(sites)
     checkmate::assert_function(on_chunk, null.ok = TRUE)
+    checkmate::assert_function(on_metadata, null.ok = TRUE)
     sites <- data.table::as.data.table(data.table::copy(sites))
     data.table::set(sites, j = "method", value = "mean")
     sites <- dataset__region_sites(sites)
@@ -1091,6 +1093,15 @@ dataset__read_neighborhood <- function(
                 expected_bounds
             )
             bounds_records[[membership_count]] <- native_bounds
+            # Publish checked identity and exact selection before weather I/O.
+            # A later transport failure must not erase the native denominator.
+            if (!is.null(on_metadata)) {
+                on_metadata(list(
+                    contract = contract,
+                    neighborhoods = source,
+                    bounds = native_bounds
+                ))
+            }
             first_block <- TRUE
             # Split only cells whose points already have native coverage.
             groups <- unlist(
