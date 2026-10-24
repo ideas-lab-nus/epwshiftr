@@ -2711,6 +2711,15 @@ EsgResultFile <- R6::R6Class(
         #'   candidates fail. Explicit selections and complete directories stay fixed.
         #' @param network_id User-defined network identity for local timing history.
         #' @param node_workers Maximum simultaneous readers for one data node.
+        #' @param max_values Maximum native weather values per OPeNDAP request.
+        #'   Larger budgets combine only contiguous required times and corners,
+        #'   without changing saved native identity or existing API defaults.
+        #' @param replica_cooldown Seconds to defer a failed endpoint, from 0 to
+        #'   3600; 0 preserves immediate bounded retries. Explicit HTTP 404/410
+        #'   failures cool for eight times this interval. A node cools only after
+        #'   three distinct Files report recent network/service failures, and a
+        #'   successful data read clears its node failure streak. If every
+        #'   candidate is cooling, the source remains incomplete for a later call.
         #' @return For fetch_subset(), a lightweight acquisition summary. `complete`
         #'   describes native coverage of the selected Files; the independent
         #'   `directory_complete` flag is false for a partially collected File
@@ -2730,7 +2739,9 @@ EsgResultFile <- R6::R6Class(
             retries = 2L,
             discover = TRUE,
             network_id = "default",
-            node_workers = 2L
+            node_workers = 2L,
+            max_values = 8192L,
+            replica_cooldown = 0
         ) {
             opendap__fetch(
                 self,
@@ -2742,7 +2753,9 @@ EsgResultFile <- R6::R6Class(
                 retries,
                 discover,
                 network_id,
-                node_workers
+                node_workers,
+                max_values = max_values,
+                replica_cooldown = replica_cooldown
             )
         },
 
