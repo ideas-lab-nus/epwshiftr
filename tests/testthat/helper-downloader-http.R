@@ -161,10 +161,15 @@ local_downloader_http_server <- function(env = parent.frame()) {
 # }}}
 
 # Serve DAP2 arrays with real constraints and XDR payloads, for real libnetcdf I/O.
-subset_test__dap_app <- function() {
+subset_test__dap_app <- function(fail_first = FALSE) {
     app <- webfakes::new_app()
+    app$locals$unavailable <- isTRUE(fail_first)
     app$locals$weather <- 0L
     app$locals$requests <- character()
+    app$get('/recover', function(req, res, locals) {
+        locals$unavailable <- FALSE
+        res$send('ok')
+    })
     app$get('/requests', function(req, res, locals) {
         res$send_json(locals$requests)
     })
@@ -293,8 +298,8 @@ subset_test__dap_app <- function() {
                 }
                 if (
                     grepl('[.]dods$', name) &&
-                        grepl('bad', name) &&
-                        locals$weather > 1L
+                        ((grepl('bad', name) && locals$weather > 1L) ||
+                            locals$unavailable)
                 ) {
                     return(res$set_status(503L)$send('temporary read failure'))
                 }

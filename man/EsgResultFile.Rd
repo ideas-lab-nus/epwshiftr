@@ -208,7 +208,9 @@ I/O failures. Evidence spans the greater of five minutes, eight
 cooldown intervals and three times the longest observed failed-job
 duration, capped at one day and computed independently per node.
 Known File absences stay endpoint-local; successful native data reads
-reset the corresponding failure streak. If every candidate is cooling,
+reset the corresponding failure streak. After corroborated cooling,
+only one recovery read is admitted until real native values succeed;
+metadata-only success does not reopen all node slots. If every candidate is cooling,
 the source remains incomplete for a later call.}
     }
     \if{html}{\out{</div>}}

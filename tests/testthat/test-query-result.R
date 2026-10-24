@@ -6710,6 +6710,13 @@ test_that("raw subset refresh preserves committed artifacts before pending publi
         nrow(read_subset(dest, case_id = "changed")$gaps$incomplete_requests),
         0L
     )
+    refresh <- subset_status(dest, "coverage")
+    refresh <- refresh[refresh$request_id == "changed"]
+    expect_true(refresh$axis_known)
+    expect_equal(refresh$expected_native_values, 4)
+    expect_equal(refresh$corner_count, 4L)
+    expect_false(refresh$complete)
+    expect_equal(refresh$available_native_values, 0)
     attempts <- subset_status(dest, "attempts")
     traffic <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
     # The failed new case may remain a gap; the original request needs no read.
@@ -7963,6 +7970,381 @@ test_that("acquisition failure tail keeps slow DAP and IO corroboration", {
         invalid$elapsed_seconds <- duration
         expect_equal(cool(invalid), 0)
     }
+})
+
+
+# A source can expose its complete native contract before a single weather
+# value arrives. Preserve that denominator across failure and exact recovery.
+test_that("acquisition recovery retains first-block metadata and checked coverage", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app(fail_first = TRUE))
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()[1L, ]
+    docs$master_id <- docs$instance_id <- "metadata-first-source"
+    docs$variable_id <- "tas"
+    docs$url <- I(list(paste0(
+        server$url(),
+        "source.nc|application/netcdf|OPENDAP"
+    )))
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "raw",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    dest <- tempfile("metadata-first-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    first <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        retries = 0L
+    )
+    expect_false(first$complete)
+    coverage <- subset_status(dest, "coverage")
+    expect_true(coverage$axis_known)
+    expect_equal(coverage$corner_count, 4L)
+    expect_equal(coverage$expected_native_values, 32)
+    expect_equal(coverage$available_native_values, 0)
+    expect_false(coverage$complete)
+    expect_identical(coverage$status, "failed")
+    expect_identical(coverage$gap_kind, "transport")
+    expect_true(coverage$retryable)
+    timing <- subset_status(dest, "timing")
+    expect_true(is.finite(timing$recorded_metadata_seconds))
+    expect_equal(timing$successful_native_values, 0)
+    expect_equal(timing$successful_read_seconds, 0)
+    expect_true(timing$failed_task_seconds > 0)
+    demands <- list.files(
+        file.path(dest, "subsets"),
+        "^demand-.*[.]rds$",
+        full.names = TRUE
+    )
+    hashes <- tools::sha256sum(demands)
+    curl::curl_fetch_memory(paste0(server$url(), "recover"))
+    recovered <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        max_values = 4L
+    )
+    expect_true(recovered$complete)
+    coverage <- subset_status(dest, "coverage")
+    expect_true(coverage$complete)
+    expect_equal(coverage$available_native_values, 32)
+    expect_false(coverage$retryable)
+    raw <- read_subset(dest)
+    expect_identical(unique(raw$values$cf_calendar), "360_day")
+    expect_equal(sort(raw$values$value), as.double(1:32))
+    expect_equal(tools::sha256sum(names(hashes)), hashes)
+    saved <- subset_status(dest, "attempts")
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    expect_equal(subset_status(dest, "attempts"), saved)
+})
+
+# Read-only coverage must inspect exact receipt/block identity, preserve all
+# case links, and refuse to certify a stale job or a corrupt immutable block.
+test_that("acquisition recovery coverage ignores stale labels and invalid artifacts", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()[1L, ]
+    docs$variable_id <- "tas"
+    docs$url <- I(list(paste0(
+        server$url(),
+        "source.nc|application/netcdf|OPENDAP"
+    )))
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = c("a", "b"),
+        case_id = c("case-a", "case-b"),
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    dest <- tempfile("checked-coverage-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            max_values = 4L
+        )$complete
+    )
+    c <- subset_status(dest, "coverage")
+    expect_equal(nrow(c), 2L)
+    expect_equal(length(unique(c$demand_id)), 1L)
+    expect_true(all(c$complete))
+    expect_equal(
+        subset_status(dest, "coverage", source_key = unique(c$source_key)),
+        c
+    )
+    expect_equal(
+        nrow(subset_status(dest, "coverage", source_key = "absent")),
+        0L
+    )
+    expect_equal(nrow(subset_status(dest, "timing", source_key = "absent")), 0L)
+    expect_error(
+        subset_status(dest, "blocks", source_key = unique(c$source_key)),
+        "only coverage"
+    )
+    db <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(db, "UPDATE subset_jobs SET status='running'")
+    ddb_disconnect(db)
+    expect_true(all(subset_status(dest, "coverage")$complete))
+    blocks <- subset_status(dest, "blocks")
+    path <- blocks$path[[1L]]
+    con <- file(path, "ab")
+    writeBin(as.raw(0L), con)
+    close(con)
+    partial <- subset_status(dest, "coverage")
+    expect_false(any(partial$complete))
+    expect_true(all(partial$status == "partial"))
+    expect_true(all(partial$available_native_values == 28))
+    expect_true(all(partial$retryable))
+    expect_equal(nrow(subset_status(dest, "blocks")), nrow(blocks))
+    unknown <- request
+    unknown$request_id <- c("c", "d")
+    unknown$time_start <- "2060-01-09"
+    unknown$time_stop <- "2060-01-10"
+    expect_false(
+        files$fetch_subset(
+            unknown,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    all <- subset_status(dest, "coverage")
+    empty <- all[all$request_id %in% unknown$request_id]
+    expect_true(all(empty$axis_known))
+    expect_equal(empty$expected_native_values, c(0, 0))
+    expect_false(any(empty$complete))
+    expect_true(all(empty$gap_kind == "empty_selection"))
+    expect_false(any(empty$retryable))
+    db <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    selection <- ddb_read_table(db, "subset_metadata")
+    ddb_disconnect(db)
+    for (path in selection$metadata_path) {
+        con <- file(path, "ab")
+        writeBin(as.raw(1L), con)
+        close(con)
+    }
+    expect_true(all(is.na(subset_status(dest, "timing")$recorded_open_seconds)))
+})
+
+# Restoration is gated by corroborated failures until a real native value
+# succeeds; metadata-only success, other clients, and File absences cannot reset it.
+test_that("acquisition recovery node admission requires real native success", {
+    rows <- data.table::data.table(
+        source_key = letters[1:3],
+        url = letters[1:3],
+        data_node = "recovering",
+        client = "local",
+        observed_at = 10:12,
+        elapsed_seconds = 1,
+        success = FALSE,
+        native_values = 0,
+        error_kind = "transport",
+        error = "NetCDF: I/O failure"
+    )
+    candidates <- data.table::data.table(data_node = c("recovering", "healthy"))
+    expect_equal(
+        opendap__recovery_limits(candidates, rows, "local", 60, 4L, now = 800),
+        c(1L, 4L)
+    )
+    expect_equal(
+        opendap__recovery_limits(candidates, rows, "local", 0, 4L, now = 800),
+        c(4L, 4L)
+    )
+    expect_equal(
+        opendap__recovery_limits(candidates, rows, "other", 60, 4L, now = 800),
+        c(4L, 4L)
+    )
+    expect_equal(
+        opendap__recovery_limits(
+            candidates,
+            rows,
+            "local",
+            60,
+            4L,
+            now = 90000
+        ),
+        c(4L, 4L)
+    )
+    metadata <- data.table::copy(rows[1L])
+    data.table::set(metadata, j = "success", value = TRUE)
+    data.table::set(metadata, j = "observed_at", value = 799)
+    expect_equal(
+        opendap__recovery_limits(
+            candidates,
+            rbind(rows, metadata),
+            "local",
+            60,
+            4L,
+            now = 800
+        ),
+        c(1L, 4L)
+    )
+    data.table::set(metadata, j = "native_values", value = 1)
+    expect_equal(
+        opendap__recovery_limits(
+            candidates,
+            rbind(rows, metadata),
+            "local",
+            60,
+            4L,
+            now = 800
+        ),
+        c(4L, 4L)
+    )
+    data.table::set(
+        rows,
+        j = "error",
+        value = "NetCDF: I/O failure; HTTP/2 404"
+    )
+    expect_equal(
+        opendap__recovery_limits(candidates, rows, "local", 60, 4L, now = 800),
+        c(4L, 4L)
+    )
+    reason <- opendap__gap_reason(
+        "Compatible OPeNDAP replicas are cooling until 2026-10-25 00:00:00 UTC."
+    )
+    expect_identical(reason$kind, "deferred")
+    expect_true(reason$retryable)
+    expect_equal(
+        reason$retry_after,
+        as.double(as.POSIXct("2026-10-25", tz = "UTC"))
+    )
+    expect_false(
+        opendap__gap_reason("Replica grid identity conflicts")$retryable
+    )
+    expect_true(opendap__gap_reason("NetCDF: file not found")$retryable)
+    expect_false(
+        opendap__gap_reason("Replica identity 404 conflicts")$retryable
+    )
+    expect_true(
+        opendap__gap_reason("No compatible OPeNDAP candidate.")$retryable
+    )
+    # Native time unions count each point once across overlapping transport
+    # pieces; a two-point longitude fragment cannot invent the other corners.
+    pieces <- data.table::data.table(
+        time_start_index = c(1L, 3L, 7L),
+        time_count = c(4L, 4L, 2L)
+    )
+    expect_equal(opendap__range_values(list(c(1L, 8L)), pieces), 8)
+    expect_equal(opendap__range_values(list(c(1L, 2L), c(7L, 2L)), pieces), 4)
+})
+
+# Eligibility is shared node evidence. Inspecting several Files must aggregate
+# it once per policy, and a disabled cooldown must not load any attempt history.
+test_that("acquisition recovery coverage shares eligibility history", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app(fail_first = TRUE))
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()[rep(1L, 4L), ]
+    docs$instance_id <- docs$master_id <- paste0("eligibility-", seq_len(4L))
+    docs$variable_id <- "tas"
+    docs$url <- I(rep(
+        list(paste0(server$url(), "source.nc|application/netcdf|OPENDAP")),
+        4L
+    ))
+    request <- data.frame(
+        request_id = "shared",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    dest <- tempfile("shared-eligibility-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    expect_false(
+        query_result_test_object("File", docs)$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    conn <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(conn, "UPDATE subset_controls SET replica_cooldown=60")
+    ddb_disconnect(conn)
+    calls <- 0L
+    cooling <- opendap__cooling_until
+    local_mocked_bindings(opendap__cooling_until = function(...) {
+        calls <<- calls + 1L
+        cooling(...)
+    })
+    coverage <- subset_status(dest, "coverage")
+    expect_equal(nrow(coverage), 4L)
+    expect_true(all(is.finite(coverage$retry_after)))
+    expect_equal(calls, 1L)
+    keys <- coverage$source_key
+    conn <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(
+        conn,
+        paste0(
+            "UPDATE subset_controls SET replica_cooldown=120 WHERE source_key=",
+            ddb_literal(conn, keys[[1L]])
+        )
+    )
+    ddb_exec(
+        conn,
+        paste0(
+            "UPDATE subset_controls SET client='isolated' WHERE source_key=",
+            ddb_literal(conn, keys[[2L]])
+        )
+    )
+    ddb_exec(
+        conn,
+        paste0(
+            "UPDATE subset_controls SET replica_cooldown=0 WHERE source_key=",
+            ddb_literal(conn, keys[[3L]])
+        )
+    )
+    ddb_disconnect(conn)
+    calls <- 0L
+    mixed <- subset_status(dest, "coverage")
+    expect_equal(calls, 3L)
+    expect_true(is.na(mixed$retry_after[[2L]]))
+    expect_true(is.na(mixed$retry_after[[3L]]))
+    expect_gt(mixed$retry_after[[1L]] - mixed$retry_after[[4L]], 50)
+    expect_equal(
+        subset_status(dest, "coverage", source_key = keys[[1L]]),
+        mixed[1L]
+    )
+    conn <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(conn, "UPDATE subset_controls SET replica_cooldown=0")
+    ddb_disconnect(conn)
+    queries <- 0L
+    query <- ddb_query
+    local_mocked_bindings(ddb_query = function(conn, sql, ...) {
+        if (grepl("SELECT * FROM subset_attempts WHERE", sql, fixed = TRUE)) {
+            queries <<- queries + 1L
+        }
+        query(conn, sql, ...)
+    })
+    disabled <- subset_status(dest, "coverage")
+    expect_true(all(is.na(disabled$retry_after)))
+    expect_equal(queries, 0L)
 })
 
 # vim: fdm=marker :

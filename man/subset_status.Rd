@@ -6,19 +6,29 @@
 \usage{
 subset_status(
   dest,
-  view = c("summary", "blocks", "attempts", "nodes", "links", "candidates")
+  view = c("summary", "blocks", "attempts", "nodes", "links", "candidates", "coverage",
+    "timing"),
+  source_key = NULL
 )
 }
 \arguments{
 \item{dest}{Acquisition directory returned by \code{fetch_subset()}.}
 
-\item{view}{One of summary, blocks, attempts, nodes, links or candidates.}
+\item{view}{One of summary, blocks, attempts, nodes, links, candidates, coverage or timing.}
+
+\item{source_key}{Optional source identities limiting coverage/timing inspection.}
 }
 \value{
 A summary list or a data.table of local manifest records. Summary
 \code{directory_complete} reports whether every saved request originated from a
 fully collected File directory. \code{NA} denotes missing directory evidence,
 including acquisition manifests created before this field was recorded.
+Coverage reports each saved request's checked native expected/available
+value counts, four-corner completion and retry eligibility. Unknown axes
+retain NA counts; native missing values are not scientific qualification.
+Timing separates recorded open/metadata/data phases from whole failed tasks,
+whose duration may include useful partial reads and must not be added again.
+Call these views only while the acquisition writer is closed.
 }
 \description{
 These views read only the local acquisition manifest. They never contact an

@@ -489,6 +489,11 @@ opendap__open <- function(dest) {
         subset_content = "source_key VARCHAR, version VARCHAR, checksum_type VARCHAR, checksum VARCHAR, size VARCHAR",
         subset_directory = "request_id VARCHAR PRIMARY KEY, source_count INTEGER, source_num_found INTEGER, directory_complete BOOLEAN",
         subset_demands = "demand_id VARCHAR PRIMARY KEY, source_key VARCHAR, lon DOUBLE, lat DOUBLE, time_start VARCHAR, time_stop VARCHAR, receipt_path VARCHAR, receipt_sha256 VARCHAR",
+        subset_controls = "source_key VARCHAR PRIMARY KEY, client VARCHAR, replica_cooldown DOUBLE, observed_at DOUBLE",
+        subset_metadata = paste(
+            "source_key VARCHAR, contract VARCHAR, metadata_path VARCHAR,",
+            "metadata_sha256 VARCHAR, observed_at DOUBLE, open_seconds DOUBLE, metadata_seconds DOUBLE"
+        ),
         subset_jobs = "source_key VARCHAR PRIMARY KEY, signature VARCHAR, status VARCHAR, error VARCHAR, contract VARCHAR, expected_blocks VARCHAR",
         subset_blocks = paste(
             "block_id VARCHAR PRIMARY KEY, source_key VARCHAR, contract VARCHAR,",
@@ -742,6 +747,15 @@ opendap__saved_identity <- function(conn, source_key) {
         ),
         fill = TRUE
     )
+    if ("subset_metadata" %in% ddb_list_tables(conn)) {
+        evidence <- data.table::rbindlist(
+            list(
+                evidence,
+                opendap__source_rows(conn, "subset_metadata", source_key)
+            ),
+            fill = TRUE
+        )
+    }
     contracts <- unique(evidence$contract)
     if (length(contracts) > 1L) {
         stop("Saved blocks have conflicting native identities.", call. = FALSE)
@@ -1011,6 +1025,8 @@ opendap__read_source <- function(job) {
             "native_ranges"
         )
     )
+    planning_seconds <- proc.time()[["elapsed"]] - began - opened
+    metadata_count <- 0L
     locations <- unique(targets[, c("lon", "lat"), with = FALSE])
     neighborhoods <- vector("list", nrow(locations))
     # Different site windows stay separate. Overlapping corners can reuse the
@@ -1047,6 +1063,24 @@ opendap__read_source <- function(job) {
                 auto_unbox = TRUE
             )
         }
+        # Only metadata work since this site's start belongs to this phase;
+        # previous weather reads must never be charged again as metadata.
+        metadata_began <- proc.time()[["elapsed"]]
+        receive_metadata <- function(info) {
+            metadata_count <<- metadata_count + 1L
+            info$demands <- demands
+            info$open_seconds <- if (metadata_count == 1L) opened else 0
+            info$metadata_seconds <- proc.time()[["elapsed"]] -
+                metadata_began +
+                if (metadata_count == 1L) planning_seconds else 0
+            store__extract_cache_write(
+                file.path(
+                    job$inbox,
+                    sprintf("selection-%08d.rds", metadata_count)
+                ),
+                info
+            )
+        }
         selection <- dataset__read_neighborhood(
             ds,
             job$variable_id,
@@ -1058,7 +1092,8 @@ opendap__read_source <- function(job) {
             # Verify the endpoint against all prior required intervals once.
             # Further cities share this same open, immutable source connection.
             expected_bounds = if (i == 1L) job$expected_bounds else NULL,
-            max_values = job$max_values
+            max_values = job$max_values,
+            on_metadata = receive_metadata
         )
         neighborhoods[[i]] <- selection$neighborhoods
     }
@@ -1083,8 +1118,9 @@ opendap__rank <- function(
     client,
     now = as.double(Sys.time())
 ) {
+    wanted_client <- client
     recent <- attempts[
-        attempts$client == client & attempts$observed_at >= now - 86400,
+        attempts$client == wanted_client & attempts$observed_at >= now - 86400,
         ,
         drop = FALSE
     ]
@@ -1206,8 +1242,9 @@ opendap__cooling_until <- function(
     if (!seconds || !nrow(candidates) || !nrow(attempts)) {
         return(until)
     }
+    wanted_client <- client
     recent <- data.table::as.data.table(attempts[
-        attempts$client == client &
+        attempts$client == wanted_client &
             attempts$observed_at >= now - 86400 &
             attempts$observed_at <= now,
         ,
@@ -1239,6 +1276,57 @@ opendap__cooling_until <- function(
     node_until[is.na(node_until)] <- 0
     until <- pmax(until, node_until)
     until
+}
+
+# Allow one recovery read on a corroborated failed node until actual native
+# values succeed. Reconstruct the last failure cycle at its own observation
+# time so expiration does not erase the evidence needed for recovery admission.
+opendap__recovery_limits <- function(
+    candidates,
+    attempts,
+    client,
+    seconds,
+    workers,
+    now = as.double(Sys.time())
+) {
+    limits <- rep.int(as.integer(workers), nrow(candidates))
+    if (!seconds || !nrow(attempts) || !nrow(candidates)) {
+        return(limits)
+    }
+    wanted_client <- client
+    recent <- attempts[
+        attempts$client == wanted_client &
+            attempts$observed_at >= now - 86400 &
+            attempts$observed_at <= now,
+        ,
+        drop = FALSE
+    ]
+    for (node in unique(candidates$data_node)) {
+        rows <- data.table::as.data.table(recent[
+            recent$data_node == node,
+            ,
+            drop = FALSE
+        ])
+        failed <- rows[
+            !rows$success &
+                !is.na(rows$error_kind) &
+                rows$error_kind == "transport"
+        ]
+        if (!nrow(failed)) {
+            next
+        }
+        latest <- max(failed$observed_at)
+        deadline <- opendap__cooldown_deadline(
+            rows,
+            seconds,
+            node = TRUE,
+            now = latest
+        )
+        if (deadline > 0) {
+            limits[candidates$data_node == node] <- 1L
+        }
+    }
+    limits
 }
 
 # Separate transport failures from metadata conflicts and implementation errors.
@@ -1303,12 +1391,79 @@ opendap__attempt <- function(
     ddb_append_table(priv(store)$conn, "subset_attempts", row)
 }
 
+# Commit immutable native selection evidence independently of weather blocks.
+# The caller remains the single writer; a failed transaction preserves all
+# earlier demand receipts, raw blocks and pinned native identities.
+opendap__save_metadata <- function(store, job, info) {
+    conn <- priv(store)$conn
+    known <- opendap__saved_identity(conn, job$source_key)
+    if (!is.null(known$contract) && !identical(known$contract, info$contract)) {
+        stop(
+            "Native selection conflicts with the saved source identity.",
+            call. = FALSE
+        )
+    }
+    sha256 <- checksum_bytes(serialize(info, NULL, version = 3L), "sha256")
+    path <- opendap__block_artifact_path(
+        job$dest,
+        paste0("selection-", job$source_key),
+        sha256,
+        ".rds"
+    )
+    if (!file.exists(path)) {
+        store__extract_cache_write(path, info)
+    }
+    row <- data.frame(
+        source_key = job$source_key,
+        contract = info$contract,
+        metadata_path = path,
+        metadata_sha256 = sha256,
+        observed_at = as.double(Sys.time()),
+        open_seconds = info$open_seconds,
+        metadata_seconds = info$metadata_seconds
+    )
+    existing <- opendap__source_rows(conn, "subset_metadata", job$source_key)
+    ddb_exec(conn, "BEGIN TRANSACTION")
+    committed <- FALSE
+    on.exit(if (!committed) ddb_exec(conn, "ROLLBACK"), add = TRUE)
+    if (!sha256 %in% existing$metadata_sha256) {
+        ddb_append_table(conn, "subset_metadata", row)
+    }
+    # Forced refreshes retain their checked descriptor but cannot attach a new
+    # target to pre-call blocks before the first refreshed block commits.
+    if (isTRUE(job$publish_metadata)) {
+        opendap__save_demands(conn, info$demands, job$dest, transaction = FALSE)
+        opendap__save_membership(conn, job$source_key, info$neighborhoods)
+    }
+    ddb_exec(conn, "COMMIT")
+    committed <- TRUE
+    invisible(NULL)
+}
+
 # Publish caller-owned completed blocks and their real data-read observations.
 opendap__drain <- function(store, state, client) {
     if (is.null(state$job)) {
         return(invisible(FALSE))
     }
     changed <- FALSE
+    selections <- list.files(
+        state$job$inbox,
+        "^selection-[0-9]+[.]rds$",
+        full.names = TRUE
+    )
+    for (path in selections) {
+        if (!file.exists(paste0(path, ".json"))) {
+            next
+        }
+        if (!store__extract_cache_available(path)) {
+            stop(
+                "A received native selection failed its local checksum.",
+                call. = FALSE
+            )
+        }
+        opendap__save_metadata(store, state$job, readRDS(path))
+        unlink(c(path, paste0(path, ".json")))
+    }
     paths <- list.files(
         state$job$inbox,
         pattern = "^block-[0-9]+[.]rds$",
@@ -1687,6 +1842,8 @@ opendap__fetch <- function(
     history <- NULL
     history_dirty <- TRUE
     history_revision <- 0L
+    recovery_revision <- -1L
+    recovery_nodes <- NULL
     # Reload persisted observations only after this owner appends new evidence.
     # Waiting on a node's occupied slots must not rematerialize the full ledger.
     attempt_history <- function() {
@@ -1703,6 +1860,35 @@ opendap__fetch <- function(
     )
     names(states) <- unique(links$source_key[!is.na(links$source_key)])
     keys <- unique(links$source_key[!is.na(links$source_key)])
+    # Save the source-local caller policy so closed-writer inspection can
+    # compute eligibility from durable observations instead of parsing errors.
+    ddb_exec(conn, "BEGIN TRANSACTION")
+    controls_saved <- FALSE
+    on.exit(
+        if (!controls_saved) try(ddb_exec(conn, "ROLLBACK"), silent = TRUE),
+        add = TRUE
+    )
+    for (key in keys) {
+        ddb_exec(
+            conn,
+            sprintf(
+                "DELETE FROM subset_controls WHERE source_key = %s",
+                ddb_literal(conn, key)
+            )
+        )
+    }
+    ddb_append_table(
+        conn,
+        "subset_controls",
+        data.frame(
+            source_key = keys,
+            client = rep(client, length(keys)),
+            replica_cooldown = rep(replica_cooldown, length(keys)),
+            observed_at = rep(as.double(Sys.time()), length(keys))
+        )
+    )
+    ddb_exec(conn, "COMMIT")
+    controls_saved <- TRUE
     # This startup snapshot precedes source work and is immutable during state
     # initialization. Read the selected sources once, then use indexed slices;
     # later read completions query their own newly committed source rows afresh.
@@ -2009,7 +2195,31 @@ opendap__fetch <- function(
                     function(node) sum(occupied == node),
                     integer(1L)
                 )
-                available <- available[slots < node_workers]
+                attempts <- attempt_history()
+                # Recovery limits change only when evidence changes. Node-slot
+                # waits must not rescan every failed task for every queued File.
+                if (recovery_revision != history_revision) {
+                    nodes <- data.table::data.table(
+                        data_node = unique(c(
+                            candidates$data_node,
+                            attempts$data_node
+                        ))
+                    )
+                    recovery_nodes <- stats::setNames(
+                        opendap__recovery_limits(
+                            nodes,
+                            attempts,
+                            client,
+                            replica_cooldown,
+                            node_workers
+                        ),
+                        nodes$data_node
+                    )
+                    recovery_revision <- history_revision
+                }
+                limits <- unname(recovery_nodes[available$data_node])
+                limits[is.na(limits)] <- as.integer(node_workers)
+                available <- available[slots < limits]
                 if (!nrow(available)) {
                     next
                 }
@@ -2089,6 +2299,12 @@ opendap__fetch <- function(
             row <- if (nrow(available)) available[1L] else state$candidates[0L]
             job <- list(
                 source_key = state$key,
+                publish_metadata = resume ||
+                    !nrow(opendap__source_rows(
+                        conn,
+                        "subset_blocks",
+                        state$key
+                    )),
                 kind = kind,
                 dest = dest,
                 url = if (nrow(row)) row$url[[1L]] else NA_character_,
@@ -2194,27 +2410,516 @@ opendap__fetch <- function(
     )
 }
 
+# Translate package-owned deferred receipts and native errors into retry policy.
+# A nonterminal job never becomes a terminal failure through this classifier.
+opendap__gap_reason <- function(error) {
+    out <- list(kind = NA_character_, retryable = TRUE, retry_after = NA_real_)
+    if (length(error) != 1L || is.na(error) || !nzchar(error)) {
+        return(out)
+    }
+    if (startsWith(error, "Compatible OPeNDAP replicas are cooling until ")) {
+        time <- sub(
+            "Compatible OPeNDAP replicas are cooling until ",
+            "",
+            error,
+            fixed = TRUE
+        )
+        out$kind <- "deferred"
+        out$retry_after <- as.double(as.POSIXct(
+            time,
+            format = "%Y-%m-%d %H:%M:%S",
+            tz = "UTC"
+        ))
+    } else if (
+        grepl("No native values|empty native", error, ignore.case = TRUE)
+    ) {
+        out$kind <- "empty_selection"
+        out$retryable <- FALSE
+    } else if (identical(opendap__failure_kind(error), "source_metadata")) {
+        out$kind <- "source_metadata"
+        out$retryable <- FALSE
+    } else if (
+        grepl(
+            "file not found|no such file|HTTP(/[0-9]+([.][0-9]+)?)?[^0-9]*(404|410)([^0-9]|$)",
+            error,
+            ignore.case = TRUE
+        )
+    ) {
+        out$kind <- "file_absent"
+    } else if (grepl("No compatible OPeNDAP candidate", error, fixed = TRUE)) {
+        out$kind <- "no_candidate"
+    } else {
+        out$kind <- opendap__failure_kind(error)
+        out$retryable <- identical(out$kind, "transport")
+    }
+    out
+}
+
+# Count each covered native index once even when old/new transport partitions
+# overlap. Required selections are the checked, disjoint native receipt runs.
+opendap__range_values <- function(required, available) {
+    if (!length(required) || !nrow(available)) {
+        return(0)
+    }
+    available <- available[order(available$time_start_index)]
+    total <- 0
+    for (range in required) {
+        cursor <- as.double(range[[1L]])
+        last <- cursor + as.double(range[[2L]]) - 1
+        for (i in seq_len(nrow(available))) {
+            start <- max(cursor, available$time_start_index[[i]])
+            stop <- min(
+                last,
+                available$time_start_index[[i]] + available$time_count[[i]] - 1
+            )
+            if (stop >= start) {
+                total <- total + stop - start + 1
+                cursor <- stop + 1
+            }
+            if (cursor > last) break
+        }
+    }
+    total
+}
+
+# Derive per-File retry times from its last caller policy and client-specific
+# node/endpoint observations. Legacy current-format stores without that policy
+# keep unknown eligibility rather than inventing an interval.
+opendap__retry_times <- function(conn, keys, now = as.double(Sys.time())) {
+    out <- stats::setNames(rep(NA_real_, length(keys)), keys)
+    if (!"subset_controls" %in% ddb_list_tables(conn) || !length(keys)) {
+        return(out)
+    }
+    controls <- opendap__source_rows(conn, "subset_controls", keys)
+    candidates <- opendap__source_rows(conn, "subset_candidates", keys)
+    if (!nrow(controls) || !nrow(candidates)) {
+        return(out)
+    }
+    # Disabled cooling requires no timing evidence. Read only histories that
+    # can affect these endpoints or their shared nodes, once for all Files.
+    controls <- controls[
+        is.finite(controls$replica_cooldown) & controls$replica_cooldown > 0
+    ]
+    if (!nrow(controls)) {
+        return(out)
+    }
+    candidates <- candidates[candidates$source_key %in% controls$source_key]
+    nodes <- unique(stats::na.omit(candidates$data_node))
+    node_filter <- if (length(nodes)) {
+        sprintf(
+            "data_node IN (%s)",
+            paste(ddb_literal(conn, nodes), collapse = ",")
+        )
+    } else {
+        "FALSE"
+    }
+    history <- data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            "SELECT * FROM subset_attempts WHERE observed_at >= %s AND observed_at <= %s AND client IN (%s) AND (source_key IN (%s) OR %s)",
+            ddb_literal(conn, now - 86400),
+            ddb_literal(conn, now),
+            paste(ddb_literal(conn, unique(controls$client)), collapse = ","),
+            paste(ddb_literal(conn, controls$source_key), collapse = ","),
+            node_filter
+        )
+    ))
+    policies <- unique(controls[,
+        c("client", "replica_cooldown"),
+        with = FALSE
+    ])
+    # Shared node evidence is regrouped once per caller policy, never once per
+    # File. Candidate deadlines then collapse to each File's earliest ready URL.
+    for (i in seq_len(nrow(policies))) {
+        policy <- policies[i]
+        rows <- controls[
+            controls$client == policy$client &
+                controls$replica_cooldown == policy$replica_cooldown
+        ]
+        selected <- candidates[candidates$source_key %in% rows$source_key]
+        if (!nrow(selected)) {
+            next
+        }
+        times <- opendap__cooling_until(
+            selected,
+            history,
+            policy$client,
+            policy$replica_cooldown,
+            now
+        )
+        deadlines <- data.table::data.table(
+            source_key = selected$source_key,
+            deadline = times
+        )
+        eligibility <- deadlines[,
+            list(
+                retry_after = if (all(.SD[["deadline"]] > now)) {
+                    min(.SD[["deadline"]])
+                } else {
+                    NA_real_
+                }
+            ),
+            by = "source_key",
+            .SDcols = "deadline"
+        ]
+        out[eligibility$source_key] <- eligibility$retry_after
+    }
+    out
+}
+
+# Inspect checked physical demand coverage without writing to the manifest.
+# Unknown/empty native axes, corrupt receipts and stale job labels are explicit;
+# acquisition coverage does not certify scientific quality of native missing data.
+opendap__coverage_status <- function(conn, source_key = NULL) {
+    # Restrict before materialization and hashing for a closed batch update.
+    read <- function(table) {
+        if (is.null(source_key)) {
+            ddb_read_table(conn, table)
+        } else {
+            opendap__source_rows(conn, table, source_key)
+        }
+    }
+    links <- data.table::as.data.table(read("subset_links"))
+    jobs <- data.table::as.data.table(read("subset_jobs"))
+    demands <- data.table::as.data.table(read("subset_demands"))
+    membership <- data.table::as.data.table(read("subset_neighborhoods"))
+    selections <- if ("subset_metadata" %in% ddb_list_tables(conn)) {
+        data.table::as.data.table(read("subset_metadata"))
+    } else {
+        data.table::data.table()
+    }
+    blocks <- data.table::as.data.table(read("subset_blocks"))
+    valid <- vapply(
+        seq_len(nrow(blocks)),
+        function(i) opendap__block_valid(blocks[i]),
+        logical(1L)
+    )
+    blocks <- blocks[valid]
+    data.table::setindexv(blocks, "source_key")
+    data.table::setindexv(membership, "source_key")
+    ids <- opendap__demand_ids(links)
+    retry_times <- opendap__retry_times(
+        conn,
+        unique(stats::na.omit(links$source_key))
+    )
+    out <- data.table::copy(links)
+    columns <- list(
+        demand_id = ids,
+        complete = rep(FALSE, nrow(links)),
+        axis_known = rep(FALSE, nrow(links)),
+        expected_native_values = rep(NA_real_, nrow(links)),
+        available_native_values = rep(NA_real_, nrow(links)),
+        corner_count = integer(nrow(links)),
+        status = rep("pending", nrow(links)),
+        gap_kind = rep(NA_character_, nrow(links)),
+        retryable = rep(TRUE, nrow(links)),
+        retry_after = rep(NA_real_, nrow(links)),
+        job_status = jobs$status[match(links$source_key, jobs$source_key)],
+        error = jobs$error[match(links$source_key, jobs$source_key)]
+    )
+    for (name in names(columns)) {
+        data.table::set(out, j = name, value = columns[[name]])
+    }
+    for (id in unique(ids)) {
+        positions <- which(ids == id)
+        row <- out[positions[[1L]]]
+        reason <- opendap__gap_reason(row$error)
+        if (
+            !is.na(row$source_key) &&
+                reason$retryable &&
+                is.finite(retry_times[[row$source_key]])
+        ) {
+            reason$kind <- "deferred"
+            reason$retry_after <- retry_times[[row$source_key]]
+        }
+        expected <- available <- NA_real_
+        known <- complete <- FALSE
+        count <- 0L
+        if (is.na(row$source_key)) {
+            status <- "unmatched"
+            reason <- list(
+                kind = "unmatched",
+                retryable = FALSE,
+                retry_after = NA_real_
+            )
+        } else {
+            receipt <- demands[demands$demand_id == id]
+            descriptor <- NULL
+            selection_corners <- NULL
+            if (
+                nrow(receipt) == 1L &&
+                    file.exists(receipt$receipt_path) &&
+                    identical(
+                        checksum_file(receipt$receipt_path),
+                        receipt$receipt_sha256
+                    )
+            ) {
+                descriptor <- readRDS(receipt$receipt_path)
+            }
+            # A forced pre-commit refresh supplies a denominator, not permission
+            # to reuse old values for a newly selected target. Keep that evidence
+            # separate from committed target membership used by read_subset().
+            if (is.null(descriptor) && nrow(selections)) {
+                pending <- selections[selections$source_key == row$source_key]
+                pending <- pending[order(
+                    pending$observed_at,
+                    decreasing = TRUE
+                )]
+                for (k in seq_len(nrow(pending))) {
+                    path <- pending$metadata_path[[k]]
+                    if (
+                        !file.exists(path) ||
+                            !identical(
+                                checksum_file(path),
+                                pending$metadata_sha256[[k]]
+                            )
+                    ) {
+                        next
+                    }
+                    info <- readRDS(path)
+                    selected <- info$demands[
+                        info$demands$demand_id == id,
+                        ,
+                        drop = FALSE
+                    ]
+                    if (nrow(selected) == 1L) {
+                        descriptor <- selected
+                        selection_corners <- data.table::as.data.table(
+                            info$neighborhoods
+                        )
+                        break
+                    }
+                }
+            }
+            if (!is.null(descriptor)) {
+                if (identical(opendap__demand_ids(descriptor), id)) {
+                    required <- jsonlite::fromJSON(
+                        descriptor$native_ranges[[1L]],
+                        simplifyVector = FALSE
+                    )
+                    known <- TRUE
+                    expected <- 4 *
+                        sum(vapply(
+                            required,
+                            function(x) as.double(x[[2L]]),
+                            numeric(1L)
+                        ))
+                    available <- 0
+                    corners <- if (!is.null(selection_corners)) {
+                        selection_corners
+                    } else {
+                        membership[
+                            list(row$source_key),
+                            on = "source_key",
+                            nomatch = 0L
+                        ]
+                    }
+                    corners <- unique(corners[
+                        corners$target_lon == row$lon &
+                            corners$target_lat == row$lat,
+                        c("ind_lat", "ind_lon"),
+                        with = FALSE
+                    ])
+                    count <- nrow(corners)
+                    source <- blocks[
+                        list(row$source_key),
+                        on = "source_key",
+                        nomatch = 0L
+                    ]
+                    if (!is.null(selection_corners)) {
+                        source <- source[0L]
+                    }
+                    values <- numeric(count)
+                    for (j in seq_len(count)) {
+                        piece <- source[
+                            source$ind_lat <= corners$ind_lat[[j]] &
+                                source$ind_lat + source$lat_count >
+                                    corners$ind_lat[[j]] &
+                                source$ind_lon <= corners$ind_lon[[j]] &
+                                source$ind_lon + source$lon_count >
+                                    corners$ind_lon[[j]]
+                        ]
+                        values[[j]] <- opendap__range_values(required, piece)
+                    }
+                    available <- sum(values)
+                    complete <- expected > 0 &&
+                        count == 4L &&
+                        all(values == expected / 4)
+                    if (!expected) {
+                        reason <- list(
+                            kind = "empty_selection",
+                            retryable = FALSE,
+                            retry_after = NA_real_
+                        )
+                    }
+                }
+            }
+            status <- if (complete) {
+                "complete"
+            } else if (!is.na(available) && available > 0) {
+                "partial"
+            } else if (identical(reason$kind, "deferred")) {
+                "deferred"
+            } else if (isTRUE(row$job_status == "failed")) {
+                "failed"
+            } else {
+                "pending"
+            }
+            if (!known && is.na(reason$kind)) reason$kind <- "unknown_selection"
+        }
+        if (complete) {
+            reason <- list(
+                kind = NA_character_,
+                retryable = FALSE,
+                retry_after = NA_real_
+            )
+        }
+        result <- list(
+            complete = complete,
+            axis_known = known,
+            expected_native_values = expected,
+            available_native_values = available,
+            corner_count = count,
+            status = status,
+            gap_kind = reason$kind,
+            retryable = reason$retryable,
+            retry_after = reason$retry_after
+        )
+        for (name in names(result)) {
+            data.table::set(
+                out,
+                i = positions,
+                j = name,
+                value = result[[name]]
+            )
+        }
+    }
+    out[]
+}
+
+# Report disjoint recorded read phases alongside whole failed-task durations.
+# Failed tasks may contain useful blocks; their elapsed times are not added to
+# read/metadata time or labelled pure waste. Missing historical phases stay NA.
+opendap__timing_status <- function(conn, source_key = NULL) {
+    # Phase rows are source-local; unrelated Files are never scanned for a batch.
+    read <- function(table) {
+        if (is.null(source_key)) {
+            ddb_read_table(conn, table)
+        } else {
+            as.data.frame(opendap__source_rows(conn, table, source_key))
+        }
+    }
+    jobs <- read("subset_jobs")
+    attempts <- data.table::as.data.table(read("subset_attempts"))
+    metadata <- if ("subset_metadata" %in% ddb_list_tables(conn)) {
+        read("subset_metadata")
+    } else {
+        NULL
+    }
+    # Phase evidence is trusted only while its immutable descriptor validates.
+    if (!is.null(metadata) && nrow(metadata)) {
+        checked <- vapply(
+            seq_len(nrow(metadata)),
+            function(i) {
+                file.exists(metadata$metadata_path[[i]]) &&
+                    identical(
+                        checksum_file(metadata$metadata_path[[i]]),
+                        metadata$metadata_sha256[[i]]
+                    )
+            },
+            logical(1L)
+        )
+        metadata <- metadata[checked, , drop = FALSE]
+    }
+    rows <- vector("list", nrow(jobs))
+    for (i in seq_len(nrow(jobs))) {
+        key <- jobs$source_key[[i]]
+        observed <- attempts[attempts$source_key == key]
+        reads <- observed[observed$success & observed$native_values > 0]
+        failures <- observed[
+            !observed$success & observed$error_kind == "transport"
+        ]
+        selected <- if (!is.null(metadata)) {
+            metadata[metadata$source_key == key, , drop = FALSE]
+        } else {
+            NULL
+        }
+        rows[[i]] <- data.frame(
+            source_key = key,
+            recorded_open_seconds = if (!is.null(selected) && nrow(selected)) {
+                sum(selected$open_seconds)
+            } else {
+                NA_real_
+            },
+            recorded_metadata_seconds = if (
+                !is.null(selected) && nrow(selected)
+            ) {
+                sum(selected$metadata_seconds)
+            } else {
+                NA_real_
+            },
+            successful_read_seconds = sum(reads$elapsed_seconds),
+            successful_native_values = sum(reads$native_values),
+            failed_task_seconds = sum(failures$elapsed_seconds),
+            failed_tasks = nrow(failures)
+        )
+    }
+    data.table::rbindlist(rows)
+}
+
 #' Inspect saved OPeNDAP subset acquisition
 #'
 #' These views read only the local acquisition manifest. They never contact an
 #' ESGF index or data node, and data-node observations retain their client and age.
 #' @param dest Acquisition directory returned by `fetch_subset()`.
-#' @param view One of summary, blocks, attempts, nodes, links or candidates.
+#' @param source_key Optional source identities limiting coverage/timing inspection.
+#' @param view One of summary, blocks, attempts, nodes, links, candidates, coverage or timing.
 #' @return A summary list or a data.table of local manifest records. Summary
 #'   `directory_complete` reports whether every saved request originated from a
 #'   fully collected File directory. `NA` denotes missing directory evidence,
 #'   including acquisition manifests created before this field was recorded.
+#'   Coverage reports each saved request's checked native expected/available
+#'   value counts, four-corner completion and retry eligibility. Unknown axes
+#'   retain NA counts; native missing values are not scientific qualification.
+#'   Timing separates recorded open/metadata/data phases from whole failed tasks,
+#'   whose duration may include useful partial reads and must not be added again.
+#'   Call these views only while the acquisition writer is closed.
 #' @export
 subset_status <- function(
     dest,
-    view = c("summary", "blocks", "attempts", "nodes", "links", "candidates")
+    view = c(
+        "summary",
+        "blocks",
+        "attempts",
+        "nodes",
+        "links",
+        "candidates",
+        "coverage",
+        "timing"
+    ),
+    source_key = NULL
 ) {
     view <- match.arg(view)
+    checkmate::assert_character(
+        source_key,
+        any.missing = FALSE,
+        unique = TRUE,
+        null.ok = TRUE
+    )
+    if (!is.null(source_key) && !view %in% c("coverage", "timing")) {
+        stop("source_key limits only coverage and timing views.", call. = FALSE)
+    }
     conn <- ddb_connect(
         file.path(path.expand(dest), "manifest.duckdb"),
         read_only = TRUE
     )
     on.exit(ddb_disconnect(conn), add = TRUE)
+    if (view == "coverage") {
+        return(opendap__coverage_status(conn, source_key))
+    }
+    if (view == "timing") {
+        return(opendap__timing_status(conn, source_key))
+    }
     if (view == "summary") {
         jobs <- data.table::as.data.table(ddb_read_table(conn, "subset_jobs"))
         count <- ddb_query(
