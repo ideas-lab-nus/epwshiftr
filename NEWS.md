@@ -1,5 +1,10 @@
 # epwshiftr (development version)
 
+* Bound slow native DAP and I/O failure cycles when `replica_cooldown` is
+  enabled. Node-specific evidence follows observed failure durations within a
+  finite history horizon, preserving three-File corroboration, native success
+  resets, File-local absences, raw corners and exact resume identities (#302).
+
 * Bound repeated OPeNDAP failures when `replica_cooldown` is enabled. Corroborated
   generic DAP failures can cool a data node across slow File reads, with finite
   backoff capped at eight times the configured interval. Successful native reads

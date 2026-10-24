@@ -7691,7 +7691,6 @@ test_that("acquisition node cooldown corroborates slow DAP failures and resets",
     duplicate$source_key <- "one"
     expect_equal(cool(duplicate), c(0, 0))
     for (error in c(
-        "NetCDF: I/O failure",
         "NetCDF: DAP failure HTTP 404",
         "NetCDF: file not found",
         "NetCDF: DAP failure 410 Gone",
@@ -7895,6 +7894,75 @@ test_that("acquisition node cooldown preserves raw corners and later exact recov
         )$complete
     )
     expect_equal(subset_status(dest, "attempts"), saved)
+})
+
+# Full failed-job cycles can outlast a fixed cooldown evidence window. Keep
+# distinct-File corroboration for native transport failures without cooling a
+# known missing File or allowing unbounded/stale history to close a node.
+test_that("acquisition failure tail keeps slow DAP and IO corroboration", {
+    history <- data.frame(
+        source_key = c("a", "b", "c"),
+        url = c("u", "v", "w"),
+        data_node = "node",
+        client = "client",
+        observed_at = c(1000, 1275, 1550),
+        elapsed_seconds = 275,
+        native_values = 0,
+        success = FALSE,
+        error = "NetCDF: DAP failure",
+        error_kind = "transport"
+    )
+    candidates <- data.table::data.table(
+        source_key = "next",
+        url = "next",
+        data_node = "node"
+    )
+    # Pin the node, client and interval while exposing the clock for repeatable evidence gates.
+    cool <- function(rows, now = 1551) {
+        opendap__cooling_until(candidates, rows, "client", 60, now)
+    }
+    expect_equal(cool(history), 1610)
+    history$error <- "Failed to open OPeNDAP connection: NetCDF: I/O failure"
+    expect_equal(cool(history), 1610)
+    expect_equal(cool(history[1:2, ]), 0)
+    one <- history
+    one$source_key <- "same"
+    expect_equal(cool(one), 0)
+    for (error in c(
+        "NetCDF: I/O failure; HTTP/1.1 404",
+        "NetCDF: I/O failure; HTTP/2 410",
+        "NetCDF: I/O failure; file not found"
+    )) {
+        missing <- history
+        missing$error <- error
+        expect_equal(cool(missing), 0)
+    }
+    # One node's slow operation must not make stale evidence actionable elsewhere.
+    short <- history
+    short$elapsed_seconds <- 10
+    other <- history[1L, ]
+    other$data_node <- "other"
+    other$observed_at <- 1550
+    other$elapsed_seconds <- 1e9
+    expect_equal(cool(rbind(short, other)), 0)
+    stale <- history
+    stale$observed_at <- c(1000, 100000, 200000)
+    stale$elapsed_seconds <- 1e9
+    expect_equal(cool(stale, now = 200001), 0)
+    # Successful native progress restores eligibility even after slow errors.
+    success <- history[1L, ]
+    success$observed_at <- 1550.5
+    success$success <- TRUE
+    success$native_values <- 4
+    success$error <- NA_character_
+    expect_equal(cool(rbind(history, success)), 0)
+    expect_true(cool(history, now = 3000) <= 3000)
+    # Invalid durations cannot extend the evidence window or produce NA gates.
+    for (duration in c(NA_real_, Inf, -1)) {
+        invalid <- history
+        invalid$elapsed_seconds <- duration
+        expect_equal(cool(invalid), 0)
+    }
 })
 
 # vim: fdm=marker :

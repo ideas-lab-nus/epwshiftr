@@ -147,8 +147,12 @@ File URL for 60 seconds on the current client/network identity. Repeated failure
 increase that interval up to eightfold; known File absences, including explicit
 HTTP 404 or 410, use the eightfold interval immediately and remain File-local.
 Generic `NetCDF: DAP failure` errors alone do not establish a node fault. Node
-cooling requires at least three distinct Files with network/service or generic
-DAP failures within the greater of five minutes and eight cooldown intervals.
+cooling requires at least three distinct Files with network/service, generic
+DAP or native I/O failures. Each node retains evidence across the greater of
+five minutes, eight cooldown intervals and three times its longest recorded
+failed-job duration, capped at the existing one-day history horizon. Invalid
+or missing durations do not extend this window. A slow failure on one node
+does not extend another node's evidence.
 Its recovery spacing also increases up to eightfold with further failures.
 A successful native data read resets that node's failure streak; a successful
 read of the same File URL also resets its endpoint backoff. Content and CF
