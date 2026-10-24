@@ -1146,8 +1146,10 @@ opendap__cooldown_deadline <- function(rows, seconds, node = FALSE) {
     if (!nrow(rows)) {
         return(0)
     }
+    # Protocol-version digits precede the status and must not hide a known
+    # File absence behind the generic DAP condition.
     absent <- grepl(
-        "(HTTP[^0-9]*|status[=: ]+)(404|410)\\b|404 Not Found|410 Gone|file not found|no such file",
+        "(HTTP(/[0-9]+([.][0-9]+)?)?[^0-9]*|status[=: ]+)(404|410)\\b|404 Not Found|410 Gone|file not found|no such file",
         rows$error,
         ignore.case = TRUE,
         perl = TRUE
@@ -1156,7 +1158,7 @@ opendap__cooldown_deadline <- function(rows, seconds, node = FALSE) {
         rows <- rows[
             !absent &
                 grepl(
-                    "timed out|timeout|execution deadline|connection reset|could not connect|failed to connect|could not resolve|HTTP[^0-9]*5[0-9]{2}|NetCDF:[[:space:]]*DAP failure",
+                    "timed out|timeout|execution deadline|connection reset|could not connect|failed to connect|could not resolve|HTTP(/[0-9]+([.][0-9]+)?)?[^0-9]*5[0-9]{2}|NetCDF:[[:space:]]*DAP failure",
                     rows$error,
                     ignore.case = TRUE
                 )

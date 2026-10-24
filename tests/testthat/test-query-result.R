@@ -7694,7 +7694,9 @@ test_that("acquisition node cooldown corroborates slow DAP failures and resets",
         "NetCDF: I/O failure",
         "NetCDF: DAP failure HTTP 404",
         "NetCDF: file not found",
-        "NetCDF: DAP failure 410 Gone"
+        "NetCDF: DAP failure 410 Gone",
+        "NetCDF: DAP failure; HTTP/1.1 404",
+        "NetCDF: DAP failure; HTTP/2 410"
     )) {
         missing <- history
         missing$error <- error
@@ -7702,6 +7704,8 @@ test_that("acquisition node cooldown corroborates slow DAP failures and resets",
     }
     explicit <- history
     explicit$error <- "execution deadline"
+    expect_equal(cool(explicit), c(1240, 0))
+    explicit$error <- "NetCDF: HTTP/1.1 503"
     expect_equal(cool(explicit), c(1240, 0))
     expect_equal(cool(history, seconds = 0), c(0, 0))
     expect_true(all(cool(history, now = 2000) <= 2000))
@@ -7770,6 +7774,15 @@ test_that("acquisition node cooldown backs off repeated failures with a finite c
     absent <- endpoint
     absent$error <- "HTTP 404 Not Found"
     expect_equal(opendap__cooldown_deadline(absent, 60), 1489)
+    # Protocol versions contain digits before the status. Their File absences
+    # still use the immediate endpoint interval and never become node evidence.
+    for (error in c(
+        "NetCDF: DAP failure; HTTP/1.1 404",
+        "NetCDF: DAP failure; HTTP/2 410"
+    )) {
+        absent$error <- error
+        expect_equal(opendap__cooldown_deadline(absent[1L], 60), 1481)
+    }
 })
 
 # The real coordinator must release a sick node, keep another node's raw
