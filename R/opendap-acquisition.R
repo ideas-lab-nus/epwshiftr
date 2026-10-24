@@ -1133,9 +1133,14 @@ opendap__rank <- function(
 }
 
 # Compute a finite deadline from actual failed reads after the last success.
-# A generic DAP failure is ambiguous for one File. Corroborate it across three
-# distinct Files before cooling a node, and never promote known File absences.
-opendap__cooldown_deadline <- function(rows, seconds, node = FALSE) {
+# Native DAP and I/O errors are ambiguous for one File. Corroborate them across
+# three distinct Files before cooling a node, excluding known File absences.
+opendap__cooldown_deadline <- function(
+    rows,
+    seconds,
+    node = FALSE,
+    now = as.double(Sys.time())
+) {
     success <- rows$success & rows$native_values > 0
     last_success <- max(c(-Inf, rows$observed_at[success]), na.rm = TRUE)
     failed <- !rows$success &
@@ -1158,11 +1163,21 @@ opendap__cooldown_deadline <- function(rows, seconds, node = FALSE) {
         rows <- rows[
             !absent &
                 grepl(
-                    "timed out|timeout|execution deadline|connection reset|could not connect|failed to connect|could not resolve|HTTP(/[0-9]+([.][0-9]+)?)?[^0-9]*5[0-9]{2}|NetCDF:[[:space:]]*DAP failure",
+                    "timed out|timeout|execution deadline|connection reset|could not connect|failed to connect|could not resolve|HTTP(/[0-9]+([.][0-9]+)?)?[^0-9]*5[0-9]{2}|NetCDF:[[:space:]]*(DAP|I/O) failure",
                     rows$error,
                     ignore.case = TRUE
                 )
         ]
+        # Three slow failed jobs can span more than the fixed cooldown
+        # interval. Keep one corroboration cycle, bounded by the same one-day
+        # ledger horizon; missing/invalid timings retain the existing window.
+        durations <- rows$elapsed_seconds
+        durations <- durations[is.finite(durations) & durations >= 0]
+        evidence_seconds <- min(
+            86400,
+            max(300, seconds * 8, 3 * max(c(0, durations)))
+        )
+        rows <- rows[rows$observed_at >= now - evidence_seconds]
         if (data.table::uniqueN(rows$source_key) < 3L) return(0)
     }
     latest <- which.max(rows$observed_at)
@@ -1207,20 +1222,22 @@ opendap__cooling_until <- function(
     ]
     until <- endpoints[candidates, on = c("source_key", "url")]$deadline
     until[is.na(until)] <- 0
-    # A stalled read can exceed one cooldown period. Keep independent evidence
-    # across several such failures, including the longest bounded backoff.
-    service <- recent[recent$observed_at >= now - max(300, seconds * 8)]
-    if (nrow(service)) {
-        nodes <- service[,
-            list(
-                deadline = opendap__cooldown_deadline(.SD, seconds, node = TRUE)
-            ),
-            by = "data_node"
-        ]
-        node_until <- nodes[candidates, on = "data_node"]$deadline
-        node_until[is.na(node_until)] <- 0
-        until <- pmax(until, node_until)
-    }
+    # Each node retains its own bounded failure-cycle evidence. A slow job
+    # on one node must not widen another node's corroboration window.
+    nodes <- recent[,
+        list(
+            deadline = opendap__cooldown_deadline(
+                .SD,
+                seconds,
+                node = TRUE,
+                now = now
+            )
+        ),
+        by = "data_node"
+    ]
+    node_until <- nodes[candidates, on = "data_node"]$deadline
+    node_until[is.na(node_until)] <- 0
+    until <- pmax(until, node_until)
     until
 }
 
