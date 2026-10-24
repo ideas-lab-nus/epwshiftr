@@ -1,5 +1,11 @@
 # epwshiftr (development version)
 
+* Bound repeated OPeNDAP failures when `replica_cooldown` is enabled. Corroborated
+  generic DAP failures can cool a data node across slow File reads, with finite
+  backoff capped at eight times the configured interval. Successful native reads
+  reset the corresponding failure streak; known File absences remain local.
+  Existing raw data, resume identities and API defaults are unchanged (#300).
+
 * Add optional `max_values` and `replica_cooldown` controls to
   `EsgResultFile$fetch_subset()`. Larger contiguous native requests retain raw
   corners and exact recovery across budgets. Cooling uses saved client-specific
