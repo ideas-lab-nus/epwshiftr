@@ -103,7 +103,9 @@ ESGF index or data node, and data-node observations retain their client and age.
     <div id="ref-usage">
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">subset_status</span><span class="op">(</span></span>
 <span>  <span class="va">dest</span>,</span>
-<span>  view <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"summary"</span>, <span class="st">"blocks"</span>, <span class="st">"attempts"</span>, <span class="st">"nodes"</span>, <span class="st">"links"</span>, <span class="st">"candidates"</span><span class="op">)</span></span>
+<span>  view <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"summary"</span>, <span class="st">"blocks"</span>, <span class="st">"attempts"</span>, <span class="st">"nodes"</span>, <span class="st">"links"</span>, <span class="st">"candidates"</span>, <span class="st">"coverage"</span>,</span>
+<span>    <span class="st">"timing"</span><span class="op">)</span>,</span>
+<span>  source_key <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -116,7 +118,11 @@ ESGF index or data node, and data-node observations retain their client and age.
 
 
 <dt id="arg-view">view<a class="anchor" aria-label="anchor" href="#arg-view"></a></dt>
-<dd><p>One of summary, blocks, attempts, nodes, links or candidates.</p></dd>
+<dd><p>One of summary, blocks, attempts, nodes, links, candidates, coverage or timing.</p></dd>
+
+
+<dt id="arg-source-key">source_key<a class="anchor" aria-label="anchor" href="#arg-source-key"></a></dt>
+<dd><p>Optional source identities limiting coverage/timing inspection.</p></dd>
 
 </dl></div>
     <div id="value">
@@ -124,7 +130,13 @@ ESGF index or data node, and data-node observations retain their client and age.
     <p>A summary list or a data.table of local manifest records. Summary
 <code>directory_complete</code> reports whether every saved request originated from a
 fully collected File directory. <code>NA</code> denotes missing directory evidence,
-including acquisition manifests created before this field was recorded.</p>
+including acquisition manifests created before this field was recorded.
+Coverage reports each saved request's checked native expected/available
+value counts, four-corner completion and retry eligibility. Unknown axes
+retain NA counts; native missing values are not scientific qualification.
+Timing separates recorded open/metadata/data phases from whole failed tasks,
+whose duration may include useful partial reads and must not be added again.
+Call these views only while the acquisition writer is closed.</p>
     </div>
 
   </div>

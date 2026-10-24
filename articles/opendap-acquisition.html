@@ -275,6 +275,10 @@ to eightfold with further failures. A successful native data read resets
 that node’s failure streak; a successful read of the same File URL also
 resets its endpoint backoff. Content and CF identity checks continue to
 apply to every Replica.</p>
+<p>After a corroborated node cooldown, the first recovery uses one
+reader until actual native values succeed. Metadata-only success does
+not reopen every node slot. The configured node allowance returns after
+a native success.</p>
 <p>Cooling never occupies a sleeping worker. Other Files and compatible
 candidates continue; Replica discovery remains available when known URLs
 are cooling. If all compatible candidates are cooling, the source stays
@@ -286,8 +290,38 @@ database are required.</p>
 <div class="section level2">
 <h2 id="inspect-saved-values-and-gaps">Inspect Saved Values and Gaps<a class="anchor" aria-label="anchor" href="#inspect-saved-values-and-gaps"></a>
 </h2>
-<p>After an acquisition call returns, inspect its local results:</p>
+<p>Native selection evidence is saved before the first weather block, so
+a later read failure can retain the exact native denominator and
+four-corner membership. After the acquisition writer closes, inspect
+checked physical coverage:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">coverage</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/subset_status.html">subset_status</a></span><span class="op">(</span><span class="va">dest</span>, <span class="st">"coverage"</span><span class="op">)</span></span>
+<span><span class="va">timing</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/subset_status.html">subset_status</a></span><span class="op">(</span><span class="va">dest</span>, <span class="st">"timing"</span>, source_key <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unique.html" class="external-link">unique</a></span><span class="op">(</span><span class="va">coverage</span><span class="op">$</span><span class="va">source_key</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p><code>complete</code> requires every requested native time at all
+four original corners. The coverage view preserves request and case
+associations; deduplicate physical File/location/window keys for totals.
+Unknown axes retain <code>NA</code> expected counts, and an empty native
+selection stays incomplete. <code>status</code>, <code>gap_kind</code>,
+<code>retryable</code> and <code>retry_after</code> distinguish partial
+data, nonterminal work, transport failures, cooling and nonretryable
+identity/selection problems. Job labels alone do not certify raw
+coverage. <code>source_key</code> can restrict these two views before
+reading or hashing unrelated artifacts. These views read local data only
+and require the unique acquisition writer to be closed.</p>
+<p>Timing reports recorded open/metadata phases and successful
+native-read phases separately from whole failed tasks. A failed task may
+already have committed useful blocks, so its full duration is not pure
+waste or an additional disjoint phase. Historical phases without
+evidence remain <code>NA</code>. Acquisition coverage also does not
+certify scientific quality of native missing values.</p>
+<p>A caller can use the structured gaps for a finite recovery campaign
+after its first pass: retain the original identities, retry only
+eligible incomplete windows, respect cooldown deadlines, and stop on a
+fixed budget, no progress or a nonretryable blocker. Expiration alone
+does not launch a later acquisition. Persist the spent budget across
+restarts and report unresolved gaps explicitly.</p>
+<p>After an acquisition call returns, inspect its local results:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/subset_status.html">subset_status</a></span><span class="op">(</span><span class="va">dest</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/subset_status.html">subset_status</a></span><span class="op">(</span><span class="va">dest</span>, <span class="st">"attempts"</span><span class="op">)</span></span>
 <span><span class="va">raw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/read_subset.html">read_subset</a></span><span class="op">(</span><span class="va">dest</span>, case_id <span class="op">=</span> <span class="st">"example-case"</span><span class="op">)</span></span>
@@ -312,7 +346,7 @@ through hidden network access.</p>
 <h2 id="resume-in-the-same-directory">Resume in the Same Directory<a class="anchor" aria-label="anchor" href="#resume-in-the-same-directory"></a>
 </h2>
 <p>Repeat the acquisition with the same requests and destination:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">resumed</span> <span class="op">&lt;-</span> <span class="va">files</span><span class="op">$</span><span class="fu">fetch_subset</span><span class="op">(</span></span>
 <span>    <span class="va">requests</span>,</span>
 <span>    <span class="va">dest</span>,</span>
