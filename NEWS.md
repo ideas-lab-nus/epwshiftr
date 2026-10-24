@@ -4,7 +4,9 @@
   read-only `subset_status()` coverage and timing views, optionally limited by
   source identity. Coverage separates checked four-corner completion, unknown
   native axes and structured recovery eligibility from job labels. Corroborated
-  failed nodes recover through one read until real native values succeed (#304).
+  failed nodes recover through one read until real native values succeed. Retry
+  eligibility shares relevant history across Files with the same caller policy
+  and does not load timing history when cooling is disabled (#304).
 
 * Bound slow native DAP and I/O failure cycles when `replica_cooldown` is
   enabled. Node-specific evidence follows observed failure durations within a

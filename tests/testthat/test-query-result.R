@@ -8252,4 +8252,99 @@ test_that("acquisition recovery node admission requires real native success", {
     expect_equal(opendap__range_values(list(c(1L, 2L), c(7L, 2L)), pieces), 4)
 })
 
+# Eligibility is shared node evidence. Inspecting several Files must aggregate
+# it once per policy, and a disabled cooldown must not load any attempt history.
+test_that("acquisition recovery coverage shares eligibility history", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app(fail_first = TRUE))
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()[rep(1L, 4L), ]
+    docs$instance_id <- docs$master_id <- paste0("eligibility-", seq_len(4L))
+    docs$variable_id <- "tas"
+    docs$url <- I(rep(
+        list(paste0(server$url(), "source.nc|application/netcdf|OPENDAP")),
+        4L
+    ))
+    request <- data.frame(
+        request_id = "shared",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    dest <- tempfile("shared-eligibility-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    expect_false(
+        query_result_test_object("File", docs)$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    conn <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(conn, "UPDATE subset_controls SET replica_cooldown=60")
+    ddb_disconnect(conn)
+    calls <- 0L
+    cooling <- opendap__cooling_until
+    local_mocked_bindings(opendap__cooling_until = function(...) {
+        calls <<- calls + 1L
+        cooling(...)
+    })
+    coverage <- subset_status(dest, "coverage")
+    expect_equal(nrow(coverage), 4L)
+    expect_true(all(is.finite(coverage$retry_after)))
+    expect_equal(calls, 1L)
+    keys <- coverage$source_key
+    conn <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(
+        conn,
+        paste0(
+            "UPDATE subset_controls SET replica_cooldown=120 WHERE source_key=",
+            ddb_literal(conn, keys[[1L]])
+        )
+    )
+    ddb_exec(
+        conn,
+        paste0(
+            "UPDATE subset_controls SET client='isolated' WHERE source_key=",
+            ddb_literal(conn, keys[[2L]])
+        )
+    )
+    ddb_exec(
+        conn,
+        paste0(
+            "UPDATE subset_controls SET replica_cooldown=0 WHERE source_key=",
+            ddb_literal(conn, keys[[3L]])
+        )
+    )
+    ddb_disconnect(conn)
+    calls <- 0L
+    mixed <- subset_status(dest, "coverage")
+    expect_equal(calls, 3L)
+    expect_true(is.na(mixed$retry_after[[2L]]))
+    expect_true(is.na(mixed$retry_after[[3L]]))
+    expect_gt(mixed$retry_after[[1L]] - mixed$retry_after[[4L]], 50)
+    expect_equal(
+        subset_status(dest, "coverage", source_key = keys[[1L]]),
+        mixed[1L]
+    )
+    conn <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(conn, "UPDATE subset_controls SET replica_cooldown=0")
+    ddb_disconnect(conn)
+    queries <- 0L
+    query <- ddb_query
+    local_mocked_bindings(ddb_query = function(conn, sql, ...) {
+        if (grepl("SELECT * FROM subset_attempts WHERE", sql, fixed = TRUE)) {
+            queries <<- queries + 1L
+        }
+        query(conn, sql, ...)
+    })
+    disabled <- subset_status(dest, "coverage")
+    expect_true(all(is.na(disabled$retry_after)))
+    expect_equal(queries, 0L)
+})
+
 # vim: fdm=marker :

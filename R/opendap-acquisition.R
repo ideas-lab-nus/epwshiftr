@@ -2495,31 +2495,74 @@ opendap__retry_times <- function(conn, keys, now = as.double(Sys.time())) {
     if (!nrow(controls) || !nrow(candidates)) {
         return(out)
     }
+    # Disabled cooling requires no timing evidence. Read only histories that
+    # can affect these endpoints or their shared nodes, once for all Files.
+    controls <- controls[
+        is.finite(controls$replica_cooldown) & controls$replica_cooldown > 0
+    ]
+    if (!nrow(controls)) {
+        return(out)
+    }
+    candidates <- candidates[candidates$source_key %in% controls$source_key]
+    nodes <- unique(stats::na.omit(candidates$data_node))
+    node_filter <- if (length(nodes)) {
+        sprintf(
+            "data_node IN (%s)",
+            paste(ddb_literal(conn, nodes), collapse = ",")
+        )
+    } else {
+        "FALSE"
+    }
     history <- data.table::as.data.table(ddb_query(
         conn,
         sprintf(
-            "SELECT * FROM subset_attempts WHERE observed_at >= %s AND observed_at <= %s AND client IN (%s)",
+            "SELECT * FROM subset_attempts WHERE observed_at >= %s AND observed_at <= %s AND client IN (%s) AND (source_key IN (%s) OR %s)",
             ddb_literal(conn, now - 86400),
             ddb_literal(conn, now),
-            paste(ddb_literal(conn, unique(controls$client)), collapse = ",")
+            paste(ddb_literal(conn, unique(controls$client)), collapse = ","),
+            paste(ddb_literal(conn, controls$source_key), collapse = ","),
+            node_filter
         )
     ))
-    for (i in seq_len(nrow(controls))) {
-        row <- controls[i]
-        selected <- candidates[candidates$source_key == row$source_key]
+    policies <- unique(controls[,
+        c("client", "replica_cooldown"),
+        with = FALSE
+    ])
+    # Shared node evidence is regrouped once per caller policy, never once per
+    # File. Candidate deadlines then collapse to each File's earliest ready URL.
+    for (i in seq_len(nrow(policies))) {
+        policy <- policies[i]
+        rows <- controls[
+            controls$client == policy$client &
+                controls$replica_cooldown == policy$replica_cooldown
+        ]
+        selected <- candidates[candidates$source_key %in% rows$source_key]
         if (!nrow(selected)) {
             next
         }
         times <- opendap__cooling_until(
             selected,
             history,
-            row$client,
-            row$replica_cooldown,
+            policy$client,
+            policy$replica_cooldown,
             now
         )
-        if (length(times) && all(times > now)) {
-            out[[row$source_key]] <- min(times)
-        }
+        deadlines <- data.table::data.table(
+            source_key = selected$source_key,
+            deadline = times
+        )
+        eligibility <- deadlines[,
+            list(
+                retry_after = if (all(.SD[["deadline"]] > now)) {
+                    min(.SD[["deadline"]])
+                } else {
+                    NA_real_
+                }
+            ),
+            by = "source_key",
+            .SDcols = "deadline"
+        ]
+        out[eligibility$source_key] <- eligibility$retry_after
     }
     out
 }
