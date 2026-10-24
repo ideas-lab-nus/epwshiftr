@@ -13,6 +13,7 @@
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/index.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/legacy-migration.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/opendap-acquisition.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/authors.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/index.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/news/index.html</loc></url>
@@ -44,6 +45,7 @@
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/install_cli.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/is.solr_date.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/monthly_transform.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/read_subset.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_api.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_batch_get.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_cmip6_avail.html</loc></url>
@@ -57,6 +59,7 @@
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/store_dir.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/store_reset.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/sub-.EsgResult.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/subset_status.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/uninstall_cli.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/weather_transforms.html</loc></url>
 </urlset>

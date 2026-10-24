@@ -48,6 +48,9 @@ EsgResultDataset$collect()."><meta property="og:image" content="https://ideas-la
       <a href="../articles/esgf-query-results.html">Work with ESGF Query Results</a>
     </li>
     <li>
+      <a href="../articles/opendap-acquisition.html">Acquire Raw OPeNDAP Neighborhoods</a>
+    </li>
+    <li>
       <a href="../articles/esg-dictionaries.html">Manage ESG Dictionaries</a>
     </li>
     <li>
@@ -110,7 +113,7 @@ Usually, it is created by calling
     </div>
     <div id="super-class">
     <h2>Super class</h2>
-    <p><code><a href="EsgResult.html">epwshiftr::EsgResult</a></code> -&gt; <code>EsgResultFile</code></p>
+    <p><code><a href="EsgResult.html">EsgResult</a></code> -&gt; <code>EsgResultFile</code></p>
     </div>
     <div id="active-bindings">
     <h2>Active bindings</h2>
@@ -119,17 +122,17 @@ Usually, it is created by calling
 sever.</p></dd>
 
 
-<dt><code>url_opendap</code></dt>
+    <dt><code>url_opendap</code></dt>
 <dd><p>A character vector of the OPeNDAP URLs of the
 files.</p></dd>
 
 
-<dt><code>url_download</code></dt>
+    <dt><code>url_download</code></dt>
 <dd><p>A character vector of the download URLs of the
 files.</p></dd>
 
 
-<dt><code>fields</code></dt>
+    <dt><code>fields</code></dt>
 <dd><p>A character vector indicating all response fields,
 followed by derived fields such as <code>filename</code>, <code>url_opendap</code>
 and <code>url_download</code> when their source fields are available.</p></dd>
@@ -142,9 +145,10 @@ and <code>url_download</code> when their source fields are available.</p></dd>
 
 <div class="section">
 <h3 id="public-methods">Public methods<a class="anchor" aria-label="anchor" href="#public-methods"></a></h3>
-
-<ul><li><p><a href="#method-EsgResultFile-to_data_table"><code>EsgResultFile$to_data_table()</code></a></p></li>
+<p></p><ul><li><p><a href="#method-EsgResultFile-to_data_table"><code>EsgResultFile$to_data_table()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-filter_time"><code>EsgResultFile$filter_time()</code></a></p></li>
+<li><p><a href="#method-EsgResultFile-access_plan"><code>EsgResultFile$access_plan()</code></a></p></li>
+<li><p><a href="#method-EsgResultFile-fetch_subset"><code>EsgResultFile$fetch_subset()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-download_plan"><code>EsgResultFile$download_plan()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-expand_replicas"><code>EsgResultFile$expand_replicas()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-repair_urls"><code>EsgResultFile$repair_urls()</code></a></p></li>
@@ -153,45 +157,43 @@ and <code>url_download</code> when their source fields are available.</p></dd>
 <li><p><a href="#method-EsgResultFile-print"><code>EsgResultFile$print()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-open_dataset"><code>EsgResultFile$open_dataset()</code></a></p></li>
 <li><p><a href="#method-EsgResultFile-clone"><code>EsgResultFile$clone()</code></a></p></li>
-</ul></div><p><details><summary>Inherited methods</summary><ul><li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href="EsgResult.html#method-count"><code>epwshiftr::EsgResult$count()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href="EsgResult.html#method-filter"><code>epwshiftr::EsgResult$filter()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href="EsgResult.html#method-initialize"><code>epwshiftr::EsgResult$initialize()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href="EsgResult.html#method-load"><code>epwshiftr::EsgResult$load()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href="EsgResult.html#method-query_url"><code>epwshiftr::EsgResult$query_url()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href="EsgResult.html#method-reachable"><code>epwshiftr::EsgResult$reachable()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href="EsgResult.html#method-save"><code>epwshiftr::EsgResult$save()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href="EsgResult.html#method-selection"><code>epwshiftr::EsgResult$selection()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href="EsgResult.html#method-slice"><code>epwshiftr::EsgResult$slice()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href="EsgResult.html#method-to_dt"><code>epwshiftr::EsgResult$to_dt()</code></a></span></li>
+</ul></div><p><details><summary>Inherited methods</summary><ul><li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="count"><a href="EsgResult.html#method-count"><code>EsgResult$count()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="filter"><a href="EsgResult.html#method-filter"><code>EsgResult$filter()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="initialize"><a href="EsgResult.html#method-initialize"><code>EsgResult$initialize()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="load"><a href="EsgResult.html#method-load"><code>EsgResult$load()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="query_url"><a href="EsgResult.html#method-query_url"><code>EsgResult$query_url()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="reachable"><a href="EsgResult.html#method-reachable"><code>EsgResult$reachable()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="save"><a href="EsgResult.html#method-save"><code>EsgResult$save()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="selection"><a href="EsgResult.html#method-selection"><code>EsgResult$selection()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="slice"><a href="EsgResult.html#method-slice"><code>EsgResult$slice()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="epwshiftr" data-topic="EsgResult" data-id="to_dt"><a href="EsgResult.html#method-to_dt"><code>EsgResult$to_dt()</code></a></span></li>
 </ul></details></p><hr><a id="method-EsgResultFile-to_data_table"></a><div class="section">
-<h3 id="method-to-data-table-">Method <code>to_data_table()</code><a class="anchor" aria-label="anchor" href="#method-to-data-table-"></a></h3>
+<h3 id="esgresultfile-to-data-table-"><code>EsgResultFile$to_data_table()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-to-data-table-"></a></h3>
 <p>Convert the results into a <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a></p><div class="section">
 <h4 id="usage">Usage<a class="anchor" aria-label="anchor" href="#usage"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">to_data_table</span><span class="op">(</span>fields <span class="op">=</span> <span class="cn">NULL</span>, formatted <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
+</div><p></p><div class="section">
 <h4 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>fields</code></dt>
 <dd><p>A non-empty character vector indicating the fields to
 put into the <code>data.table</code>. If <code>NULL</code>, all fields in the query
 result will be used. Default: <code>NULL</code>.</p></dd>
 
-
-<dt><code>formatted</code></dt>
+      <dt><code>formatted</code></dt>
 <dd><p>Whether to use formatted values for special fields,
 including <code>url</code> and <code>size</code>. Default: <code>FALSE</code>.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
+</div><p></p><div class="section">
 <h4 id="returns">Returns<a class="anchor" aria-label="anchor" href="#returns"></a></h4>
 <p>A <a href="https://rdrr.io/pkg/data.table/man/data.table.html" class="external-link">data.table</a>.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-filter_time"></a><div class="section">
-<h3 id="method-filter-time-">Method <code>filter_time()</code><a class="anchor" aria-label="anchor" href="#method-filter-time-"></a></h3>
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-filter_time"></a><div class="section">
+<h3 id="esgresultfile-filter-time-"><code>EsgResultFile$filter_time()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-filter-time-"></a></h3>
 <p>Filter file records by the time range covered by each file</p>
 <p><code>method = "drs"</code> parses the time range from CMIP/DRS-style NetCDF
 filenames in <code>title</code>, URL basenames, or <code>id</code>. This is fast and does
@@ -206,16 +208,13 @@ carried into <code>EsgDataset$read_region()</code> when a dataset is opened from
 the filtered result.</p><div class="section">
 <h4 id="usage-1">Usage<a class="anchor" aria-label="anchor" href="#usage-1"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">filter_time</span><span class="op">(</span><span class="va">start</span>, <span class="va">stop</span>, method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"drs"</span>, <span class="st">"opendap"</span>, <span class="st">"auto"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
+</div><p></p><div class="section">
 <h4 id="arguments-1">Arguments<a class="anchor" aria-label="anchor" href="#arguments-1"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>start, stop</code></dt>
 <dd><p>Time range boundaries. Character, <code>Date</code>, and
 <code>POSIXt</code> inputs are accepted and parsed in UTC.</p></dd>
 
-
-<dt><code>method</code></dt>
+      <dt><code>method</code></dt>
 <dd><p>How to determine file time ranges. <code>"auto"</code> prefers
 ESGF metadata and fills absent ranges from DRS filenames;
 <code>"drs"</code> always parses filenames, and <code>"opendap"</code> reads the
@@ -223,16 +222,103 @@ remote time axis. Default: <code>"drs"</code>.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
+</div><p></p><div class="section">
 <h4 id="returns-1">Returns<a class="anchor" aria-label="anchor" href="#returns-1"></a></h4>
 <p>A new <code>EsgResultFile</code> object.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-download_plan"></a><div class="section">
-<h3 id="method-download-plan-">Method <code>download_plan()</code><a class="anchor" aria-label="anchor" href="#method-download-plan-"></a></h3>
-<p>Build a persistent downloader plan for file records.</p><div class="section">
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-access_plan"></a><div class="section">
+<h3 id="esgresultfile-access-plan-"><code>EsgResultFile$access_plan()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-access-plan-"></a></h3>
+<p>List every compatible OPeNDAP candidate without a mandatory speed check.</p><div class="section">
 <h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">access_plan</span><span class="op">(</span>expand <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div><p></p><div class="section">
+<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>expand</code></dt>
+<dd><p>Whether to query same-version master and Replica records.</p></dd>
+
+
+</dl><p></p></div>
+</div><p></p><div class="section">
+<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+<p>For access_plan(), a candidate table with immutable source keys and
+a <code>directory_complete</code> attribute for the originating File query.
+Replica expansion does not certify that the original query's File
+pages were fully collected.</p>
+</div>
+
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-fetch_subset"></a><div class="section">
+<h3 id="esgresultfile-fetch-subset-"><code>EsgResultFile$fetch_subset()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-fetch-subset-"></a></h3>
+<p>Acquire raw 2x2 climate neighborhoods with Replica switching and resume.</p><div class="section">
+<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">fetch_subset</span><span class="op">(</span></span>
+<span>  <span class="va">requests</span>,</span>
+<span>  <span class="va">dest</span>,</span>
+<span>  workers <span class="op">=</span> <span class="fl">4L</span>,</span>
+<span>  resume <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  timeout <span class="op">=</span> <span class="fl">180</span>,</span>
+<span>  retries <span class="op">=</span> <span class="fl">2L</span>,</span>
+<span>  discover <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  network_id <span class="op">=</span> <span class="st">"default"</span>,</span>
+<span>  node_workers <span class="op">=</span> <span class="fl">2L</span></span>
+<span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div><p></p><div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>requests</code></dt>
+<dd><p>Table with request_id, site_id, lon, lat, time_start,
+time_stop and optional source filters and case_id labels.</p></dd>
+
+      <dt><code>dest</code></dt>
+<dd><p>Local acquisition directory.</p></dd>
+
+      <dt><code>workers</code></dt>
+<dd><p>Number of persistent source readers.</p></dd>
+
+      <dt><code>resume</code></dt>
+<dd><p>Reuse locally verified native blocks.</p></dd>
+
+      <dt><code>timeout</code></dt>
+<dd><p>Maximum seconds without saved-block progress.</p></dd>
+
+      <dt><code>retries</code></dt>
+<dd><p>Number of later rounds after the first candidate round.</p></dd>
+
+      <dt><code>discover</code></dt>
+<dd><p>Complete an original unsliced partial File query while
+known Files begin reading, and query compatible replicas after known
+candidates fail. Explicit selections and complete directories stay fixed.</p></dd>
+
+      <dt><code>network_id</code></dt>
+<dd><p>User-defined network identity for local timing history.</p></dd>
+
+      <dt><code>node_workers</code></dt>
+<dd><p>Maximum simultaneous readers for one data node.</p></dd>
+
+
+</dl><p></p></div>
+</div><p></p><div class="section">
+<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+<p>For fetch_subset(), a lightweight acquisition summary. <code>complete</code>
+describes native coverage of the selected Files; the independent
+<code>directory_complete</code> flag is false for a partially collected File
+directory. An intentional slice of a fully collected directory
+retains true directory completeness. No missing pages are implied
+to have been collected by successful reads or cache reuse. A verified
+completed original query is saved locally and reused on repeat calls.
+Older saved partial results without query-selection intent remain
+explicit directory gaps.</p>
+</div>
+
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-download_plan"></a><div class="section">
+<h3 id="esgresultfile-download-plan-"><code>EsgResultFile$download_plan()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-download-plan-"></a></h3>
+<p>Build a persistent downloader plan for file records.</p><div class="section">
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">download_plan</span><span class="op">(</span></span>
 <span>  replica <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"current"</span><span class="op">)</span>,</span>
 <span>  service <span class="op">=</span> <span class="st">"HTTPServer"</span>,</span>
@@ -245,91 +331,79 @@ remote time axis. Default: <code>"drs"</code>.</p></dd>
 <span>  probe_concurrency <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
-<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+</div><p></p><div class="section">
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>replica</code></dt>
 <dd><p>Whether to use current records or expand known replicas.</p></dd>
 
-
-<dt><code>service</code></dt>
+      <dt><code>service</code></dt>
 <dd><p>ESGF URL service to download from. Default: <code>"HTTPServer"</code>.</p></dd>
 
-
-<dt><code>probe</code></dt>
+      <dt><code>probe</code></dt>
 <dd><p>Whether to lightly probe URLs before ranking them.</p></dd>
 
-
-<dt><code>strategy</code></dt>
+      <dt><code>strategy</code></dt>
 <dd><p>Candidate ranking strategy.</p></dd>
 
-
-<dt><code>all</code></dt>
+      <dt><code>all</code></dt>
 <dd><p>Whether replica expansion should retrieve all matching records.</p></dd>
 
-
-<dt><code>node_stats</code></dt>
+      <dt><code>node_stats</code></dt>
 <dd><p>Optional data node history from
 <code>Downloader$data_nodes()</code>.</p></dd>
 
-
-<dt><code>network_policy</code></dt>
+      <dt><code>network_policy</code></dt>
 <dd><p>Optional network options from
 <code>Downloader$network_policy</code>.</p></dd>
 
-
-<dt><code>node_policy</code></dt>
+      <dt><code>node_policy</code></dt>
 <dd><p>Optional data-node cooldown policy from
 <code>Downloader$node_policy</code>.</p></dd>
 
-
-<dt><code>probe_concurrency</code></dt>
+      <dt><code>probe_concurrency</code></dt>
 <dd><p>Maximum concurrent URL probes. Default: <code>1</code>.</p></dd>
 
-
-<dt><code>probe_cache_seconds</code></dt>
+      <dt><code>probe_cache_seconds</code></dt>
 <dd><p>Seconds to reuse fresh data-node probe
 history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-2">Returns<a class="anchor" aria-label="anchor" href="#returns-2"></a></h4>
+</div><p></p><div class="section">
+<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
 <p>A data.table download plan.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-expand_replicas"></a><div class="section">
-<h3 id="method-expand-replicas-">Method <code>expand_replicas()</code><a class="anchor" aria-label="anchor" href="#method-expand-replicas-"></a></h3>
-<p>Query ESGF for same-version master and replica records.</p><div class="section">
-<h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">expand_replicas</span><span class="op">(</span>service <span class="op">=</span> <span class="st">"HTTPServer"</span>, all <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
-<div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><hr><a id="method-EsgResultFile-expand_replicas"></a><div class="section">
+<h3 id="esgresultfile-expand-replicas-"><code>EsgResultFile$expand_replicas()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-expand-replicas-"></a></h3>
+<p>Query ESGF for same-version master and replica records.</p><div class="section">
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">expand_replicas</span><span class="op">(</span>service <span class="op">=</span> <span class="st">"HTTPServer"</span>, all <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div><p></p><div class="section">
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>service</code></dt>
 <dd><p>ESGF URL service to keep in the method contract.
 Default: <code>"HTTPServer"</code>.</p></dd>
 
-
-<dt><code>all</code></dt>
+      <dt><code>all</code></dt>
 <dd><p>Whether to retrieve all matching records. Default:
 <code>TRUE</code>.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-3">Returns<a class="anchor" aria-label="anchor" href="#returns-3"></a></h4>
+</div><p></p><div class="section">
+<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
 <p>A new <code>EsgResultFile</code> object with expanded replica records
 when <code>instance_id</code>, or <code>master_id</code> plus <code>version</code>, is available;
 otherwise <code>self</code>.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-repair_urls"></a><div class="section">
-<h3 id="method-repair-urls-">Method <code>repair_urls()</code><a class="anchor" aria-label="anchor" href="#method-repair-urls-"></a></h3>
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-repair_urls"></a><div class="section">
+<h3 id="esgresultfile-repair-urls-"><code>EsgResultFile$repair_urls()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-repair-urls-"></a></h3>
 <p>Replace unreachable service URLs from compatible replicas.</p>
 <p><code>$repair_urls()</code> checks the current records for the selected service,
 queries compatible ESGF replicas for records whose URL is missing or
@@ -338,27 +412,23 @@ only that service URL repaired in the original row order. The logical
 record and its other service URLs are retained. The original result is
 not modified. The returned result records the original query URL plus
 the replica lookup query URL in <code>$query_url("all")</code>.</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">repair_urls</span><span class="op">(</span></span>
 <span>  service <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"OPENDAP"</span>, <span class="st">"HTTPServer"</span><span class="op">)</span>,</span>
 <span>  index_node <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  probe <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+</div><p></p><div class="section">
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>service</code></dt>
 <dd><p>Service URL to repair. One of <code>"OPENDAP"</code> or
 <code>"HTTPServer"</code>. Default: <code>"OPENDAP"</code>.</p></dd>
 
-
-<dt><code>index_node</code></dt>
+      <dt><code>index_node</code></dt>
 <dd><p>Optional ESGF search index node used to look up
 replicas. If <code>NULL</code>, the current result index node is used.</p></dd>
 
-
-<dt><code>probe</code></dt>
+      <dt><code>probe</code></dt>
 <dd><p>Optional named list of probe settings. Supported fields
 are <code>level</code>, <code>timeout</code>, <code>concurrency</code>, <code>network_policy</code>,
 <code>cache_seconds</code>, and <code>cache_failures_seconds</code>. Default
@@ -366,16 +436,17 @@ are <code>level</code>, <code>timeout</code>, <code>concurrency</code>, <code>ne
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-4">Returns<a class="anchor" aria-label="anchor" href="#returns-4"></a></h4>
+</div><p></p><div class="section">
+<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
 <p>A new <code>EsgResultFile</code> object.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-select_replica"></a><div class="section">
-<h3 id="method-select-replica-">Method <code>select_replica()</code><a class="anchor" aria-label="anchor" href="#method-select-replica-"></a></h3>
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-select_replica"></a><div class="section">
+<h3 id="esgresultfile-select-replica-"><code>EsgResultFile$select_replica()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-select-replica-"></a></h3>
 <p>Select the preferred candidate URL per logical file.</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">select_replica</span><span class="op">(</span></span>
 <span>  strategy <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fastest"</span>, <span class="st">"first"</span>, <span class="st">"stable"</span><span class="op">)</span>,</span>
 <span>  probe <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -386,58 +457,50 @@ are <code>level</code>, <code>timeout</code>, <code>concurrency</code>, <code>ne
 <span>  probe_concurrency <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  probe_cache_seconds <span class="op">=</span> <span class="fl">3600L</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
-<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
+</div><p></p><div class="section">
+<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>strategy</code></dt>
 <dd><p>Candidate ranking strategy.</p></dd>
 
-
-<dt><code>probe</code></dt>
+      <dt><code>probe</code></dt>
 <dd><p>Whether to lightly probe URLs before ranking them.</p></dd>
 
-
-<dt><code>service</code></dt>
+      <dt><code>service</code></dt>
 <dd><p>ESGF URL service to download from. Default:
 <code>"HTTPServer"</code>.</p></dd>
 
-
-<dt><code>node_stats</code></dt>
+      <dt><code>node_stats</code></dt>
 <dd><p>Optional data node history from
 <code>Downloader$data_nodes()</code>.</p></dd>
 
-
-<dt><code>network_policy</code></dt>
+      <dt><code>network_policy</code></dt>
 <dd><p>Optional network options from
 <code>Downloader$network_policy</code>.</p></dd>
 
-
-<dt><code>node_policy</code></dt>
+      <dt><code>node_policy</code></dt>
 <dd><p>Optional data-node cooldown policy from
 <code>Downloader$node_policy</code>.</p></dd>
 
-
-<dt><code>probe_concurrency</code></dt>
+      <dt><code>probe_concurrency</code></dt>
 <dd><p>Maximum concurrent URL probes. Default: <code>1</code>.</p></dd>
 
-
-<dt><code>probe_cache_seconds</code></dt>
+      <dt><code>probe_cache_seconds</code></dt>
 <dd><p>Seconds to reuse fresh data-node probe
 history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-5">Returns<a class="anchor" aria-label="anchor" href="#returns-5"></a></h4>
+</div><p></p><div class="section">
+<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
 <p>A data.table with one selected candidate per logical file.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-download"></a><div class="section">
-<h3 id="method-download-">Method <code>download()</code><a class="anchor" aria-label="anchor" href="#method-download-"></a></h3>
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-download"></a><div class="section">
+<h3 id="esgresultfile-download-"><code>EsgResultFile$download()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-download-"></a></h3>
 <p>Enqueue and run file downloads using a Downloader.</p><div class="section">
-<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">download</span><span class="op">(</span></span>
 <span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  store <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -451,92 +514,80 @@ history before probing a URL again. Default: <code>3600</code>.</p></dd>
 <span>  run <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
-<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
+</div><p></p><div class="section">
+<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>downloader</code></dt>
 <dd><p>Optional persistent <a href="Downloader.html">Downloader</a>. If <code>NULL</code>,
 <code>store$downloader()</code> is used when <code>store</code> is supplied.</p></dd>
 
-
-<dt><code>store</code></dt>
+      <dt><code>store</code></dt>
 <dd><p>Optional <a href="EsgStore.html">EsgStore</a> providing a bound downloader.</p></dd>
 
-
-<dt><code>replica</code></dt>
+      <dt><code>replica</code></dt>
 <dd><p>Whether to use current records or expand known
 replicas before downloading.</p></dd>
 
-
-<dt><code>service</code></dt>
+      <dt><code>service</code></dt>
 <dd><p>ESGF URL service to download from. Default:
 <code>"HTTPServer"</code>.</p></dd>
 
-
-<dt><code>probe</code></dt>
+      <dt><code>probe</code></dt>
 <dd><p>Whether to lightly probe URLs before ranking them.</p></dd>
 
-
-<dt><code>strategy</code></dt>
+      <dt><code>strategy</code></dt>
 <dd><p>Candidate ranking strategy.</p></dd>
 
-
-<dt><code>probe_concurrency</code></dt>
+      <dt><code>probe_concurrency</code></dt>
 <dd><p>Maximum concurrent URL probes when
 <code>probe = TRUE</code>. Default comes from the downloader worker count.</p></dd>
 
-
-<dt><code>probe_cache_seconds</code></dt>
+      <dt><code>probe_cache_seconds</code></dt>
 <dd><p>Seconds to reuse fresh data-node probe
 history before probing a URL again. Default: <code>3600</code>.</p></dd>
 
-
-<dt><code>session_label</code></dt>
+      <dt><code>session_label</code></dt>
 <dd><p>Optional download session label.</p></dd>
 
-
-<dt><code>run</code></dt>
+      <dt><code>run</code></dt>
 <dd><p>Whether to run the queued session immediately. Default:
 <code>TRUE</code>.</p></dd>
 
-
-<dt><code>...</code></dt>
+      <dt><code>...</code></dt>
 <dd><p>Additional arguments passed to <code>Downloader$run()</code>.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-6">Returns<a class="anchor" aria-label="anchor" href="#returns-6"></a></h4>
+</div><p></p><div class="section">
+<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
 <p>The created downloader session ID.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-print"></a><div class="section">
-<h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
-<p>Print a summary of the current dataset</p><div class="section">
-<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
-<div class="section">
-<h4 id="arguments-7">Arguments<a class="anchor" aria-label="anchor" href="#arguments-7"></a></h4>
+<p></p><hr><a id="method-EsgResultFile-print"></a><div class="section">
+<h3 id="esgresultfile-print-"><code>EsgResultFile$print()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-print-"></a></h3>
+<p>Print a summary of the current dataset</p><div class="section">
+<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div><p></p><div class="section">
+<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>n</code></dt>
 <dd><p>An integer indicating how many items to print. If <code>NULL</code>,
 all items will be printed. Default: <code>10L</code>.</p></dd>
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-7">Returns<a class="anchor" aria-label="anchor" href="#returns-7"></a></h4>
+</div><p></p><div class="section">
+<h4 id="returns-9">Returns<a class="anchor" aria-label="anchor" href="#returns-9"></a></h4>
 <p>The <code>EsgResultFile</code> object itself, invisibly.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-open_dataset"></a><div class="section">
-<h3 id="method-open-dataset-">Method <code>open_dataset()</code><a class="anchor" aria-label="anchor" href="#method-open-dataset-"></a></h3>
+</div>
+
+<p></p><hr><a id="method-EsgResultFile-open_dataset"></a><div class="section">
+<h3 id="esgresultfile-open-dataset-"><code>EsgResultFile$open_dataset()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-open-dataset-"></a></h3>
 <p>Open a file as an EsgDataset for remote data access via OPeNDAP</p><div class="section">
-<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
+<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">open_dataset</span><span class="op">(</span></span>
 <span>  which <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  fallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"ask"</span>, <span class="st">"auto"</span>, <span class="st">"error"</span><span class="op">)</span>,</span>
@@ -544,33 +595,27 @@ all items will be printed. Default: <code>10L</code>.</p></dd>
 <span>  downloader <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  progress <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"epwshiftr.progress"</span>, <span class="fu"><a href="https://rdrr.io/r/base/interactive.html" class="external-link">interactive</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
-</div>
-
-<div class="section">
-<h4 id="arguments-8">Arguments<a class="anchor" aria-label="anchor" href="#arguments-8"></a></h4>
+</div><p></p><div class="section">
+<h4 id="arguments-10">Arguments<a class="anchor" aria-label="anchor" href="#arguments-10"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>which</code></dt>
 <dd><p>File records to open. Use integer indices or file IDs.
 If <code>NULL</code>, all file records are opened. Default: <code>NULL</code>.</p></dd>
 
-
-<dt><code>fallback</code></dt>
+      <dt><code>fallback</code></dt>
 <dd><p>What to do if OPeNDAP is unavailable. One of:</p><ul><li><p><code>"ask"</code>: Interactively ask the user (default). In a
 non-interactive session this raises an error.</p></li>
 <li><p><code>"auto"</code>: Automatically download the file via HTTPServer.</p></li>
 <li><p><code>"error"</code>: Raise an error.</p></li>
 </ul></dd>
 
-
-<dt><code>store</code></dt>
+      <dt><code>store</code></dt>
 <dd><p>Optional <a href="EsgStore.html">EsgStore</a> used for recoverable HTTP fallback.</p></dd>
 
-
-<dt><code>downloader</code></dt>
+      <dt><code>downloader</code></dt>
 <dd><p>Optional persistent <a href="Downloader.html">Downloader</a> used for
 recoverable HTTP fallback.</p></dd>
 
-
-<dt><code>progress</code></dt>
+      <dt><code>progress</code></dt>
 <dd><p>Whether to show progress bars while opening
 OPeNDAP records and any HTTP fallback downloads. By default
 the package option <code>epwshiftr.progress</code> is used, falling back
@@ -578,21 +623,20 @@ to <code><a href="https://rdrr.io/r/base/interactive.html" class="external-link"
 
 
 </dl><p></p></div>
-</div>
-<div class="section">
-<h4 id="returns-8">Returns<a class="anchor" aria-label="anchor" href="#returns-8"></a></h4>
+</div><p></p><div class="section">
+<h4 id="returns-10">Returns<a class="anchor" aria-label="anchor" href="#returns-10"></a></h4>
 <p>An <code>EsgDataset</code> object with the connection already opened.</p>
 </div>
 
-</div><p></p><hr><a id="method-EsgResultFile-clone"></a><div class="section">
-<h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
-<p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
-<div class="section">
-<h4 id="arguments-9">Arguments<a class="anchor" aria-label="anchor" href="#arguments-9"></a></h4>
+<p></p><hr><a id="method-EsgResultFile-clone"></a><div class="section">
+<h3 id="esgresultfile-clone-"><code>EsgResultFile$clone()</code><a class="anchor" aria-label="anchor" href="#esgresultfile-clone-"></a></h3>
+<p>The objects of this class are cloneable with this method.</p><div class="section">
+<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgResultFile</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div><p></p><div class="section">
+<h4 id="arguments-11">Arguments<a class="anchor" aria-label="anchor" href="#arguments-11"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 
@@ -601,6 +645,7 @@ to <code><a href="https://rdrr.io/r/base/interactive.html" class="external-link"
 </div>
 
 </div>
+
 
     </div>
 
