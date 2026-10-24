@@ -264,7 +264,9 @@ pages were fully collected.</p>
 <span>  retries <span class="op">=</span> <span class="fl">2L</span>,</span>
 <span>  discover <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  network_id <span class="op">=</span> <span class="st">"default"</span>,</span>
-<span>  node_workers <span class="op">=</span> <span class="fl">2L</span></span>
+<span>  node_workers <span class="op">=</span> <span class="fl">2L</span>,</span>
+<span>  max_values <span class="op">=</span> <span class="fl">8192L</span>,</span>
+<span>  replica_cooldown <span class="op">=</span> <span class="fl">0</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div><p></p><div class="section">
 <h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
@@ -297,6 +299,19 @@ candidates fail. Explicit selections and complete directories stay fixed.</p></d
 
       <dt><code>node_workers</code></dt>
 <dd><p>Maximum simultaneous readers for one data node.</p></dd>
+
+      <dt><code>max_values</code></dt>
+<dd><p>Maximum native weather values per OPeNDAP request.
+Larger budgets combine only contiguous required times and corners,
+without changing saved native identity or existing API defaults.</p></dd>
+
+      <dt><code>replica_cooldown</code></dt>
+<dd><p>Seconds to defer a failed endpoint, from 0 to
+3600; 0 preserves immediate bounded retries. Explicit HTTP 404/410
+failures cool for eight times this interval. A node cools only after
+three distinct Files report recent network/service failures, and a
+successful data read clears its node failure streak. If every
+candidate is cooling, the source remains incomplete for a later call.</p></dd>
 
 
 </dl><p></p></div>

@@ -232,10 +232,53 @@ separately. A case label is an association, not a scientific acceptance
 rule.</p>
 </div>
 <div class="section level2">
+<h2 id="tune-transport-without-changing-the-requested-data">Tune Transport Without Changing the Requested Data<a class="anchor" aria-label="anchor" href="#tune-transport-without-changing-the-requested-data"></a>
+</h2>
+<p><code>max_values</code> limits native weather values in each request.
+Its default remains 8192, including all four corners. For a service that
+benefits from fewer, larger requests, try 65536 in a separate
+acquisition directory before changing an existing run. Only consecutive
+required native time indices are combined; gaps, physical File
+boundaries and the four unaggregated corners remain intact. A different
+budget can resume previously saved blocks without reading them
+again.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">files</span><span class="op">$</span><span class="fu">fetch_subset</span><span class="op">(</span></span>
+<span>    <span class="va">requests</span>,</span>
+<span>    <span class="st">"climate-neighborhoods-timing"</span>,</span>
+<span>    workers <span class="op">=</span> <span class="fl">4L</span>,</span>
+<span>    node_workers <span class="op">=</span> <span class="fl">4L</span>,</span>
+<span>    max_values <span class="op">=</span> <span class="fl">65536L</span>,</span>
+<span>    replica_cooldown <span class="op">=</span> <span class="fl">60</span>,</span>
+<span>    network_id <span class="op">=</span> <span class="st">"single-machine"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p><code>node_workers</code> already controls simultaneous File readers
+on each data node. Compare useful native values per second and failures
+before increasing it; a larger worker count does not create more node
+slots. When several machines use one service, consider their combined
+allowance.</p>
+<p>Replica cooling is optional and defaults to zero, retaining immediate
+finite retries. With <code>replica_cooldown = 60</code>, recent
+transport failures defer that exact File URL for 60 seconds on the
+current client/network identity. An explicit HTTP 404 or 410 in the
+reported error extends that interval eightfold. Ambiguous native-library
+errors remain local to their File URL. Node cooling requires three
+distinct Files with recent explicit network/service failures; a
+successful data read clears that node’s failure streak. Content and CF
+identity checks continue to apply to every Replica.</p>
+<p>Cooling never occupies a sleeping worker. Other Files and compatible
+candidates continue; Replica discovery remains available when known URLs
+are cooling. If all compatible candidates are cooling, the source stays
+incomplete with a saved gap. A later call retries after the deadline and
+reuses verified blocks. The existing attempt ledger supplies these
+deadlines across calls; no extra speed checks or separate health
+database are required.</p>
+</div>
+<div class="section level2">
 <h2 id="inspect-saved-values-and-gaps">Inspect Saved Values and Gaps<a class="anchor" aria-label="anchor" href="#inspect-saved-values-and-gaps"></a>
 </h2>
 <p>After an acquisition call returns, inspect its local results:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/subset_status.html">subset_status</a></span><span class="op">(</span><span class="va">dest</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/subset_status.html">subset_status</a></span><span class="op">(</span><span class="va">dest</span>, <span class="st">"attempts"</span><span class="op">)</span></span>
 <span><span class="va">raw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/read_subset.html">read_subset</a></span><span class="op">(</span><span class="va">dest</span>, case_id <span class="op">=</span> <span class="st">"example-case"</span><span class="op">)</span></span>
@@ -260,7 +303,7 @@ through hidden network access.</p>
 <h2 id="resume-in-the-same-directory">Resume in the Same Directory<a class="anchor" aria-label="anchor" href="#resume-in-the-same-directory"></a>
 </h2>
 <p>Repeat the acquisition with the same requests and destination:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">resumed</span> <span class="op">&lt;-</span> <span class="va">files</span><span class="op">$</span><span class="fu">fetch_subset</span><span class="op">(</span></span>
 <span>    <span class="va">requests</span>,</span>
 <span>    <span class="va">dest</span>,</span>
