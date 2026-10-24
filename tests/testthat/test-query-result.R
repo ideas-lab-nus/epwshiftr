@@ -7917,6 +7917,7 @@ test_that("acquisition failure tail keeps slow DAP and IO corroboration", {
         url = "next",
         data_node = "node"
     )
+    # Pin the node, client and interval while exposing the clock for repeatable evidence gates.
     cool <- function(rows, now = 1551) {
         opendap__cooling_until(candidates, rows, "client", 60, now)
     }
