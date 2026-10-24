@@ -175,7 +175,9 @@ pages were fully collected.
   retries = 2L,
   discover = TRUE,
   network_id = "default",
-  node_workers = 2L
+  node_workers = 2L,
+  max_values = 8192L,
+  replica_cooldown = 0
 )}
     \if{html}{\out{</div>}}
   }
@@ -194,6 +196,15 @@ known Files begin reading, and query compatible replicas after known
 candidates fail. Explicit selections and complete directories stay fixed.}
       \item{\code{network_id}}{User-defined network identity for local timing history.}
       \item{\code{node_workers}}{Maximum simultaneous readers for one data node.}
+      \item{\code{max_values}}{Maximum native weather values per OPeNDAP request.
+Larger budgets combine only contiguous required times and corners,
+without changing saved native identity or existing API defaults.}
+      \item{\code{replica_cooldown}}{Seconds to defer a failed endpoint, from 0 to
+3600; 0 preserves immediate bounded retries. Explicit HTTP 404/410
+failures cool for eight times this interval. A node cools only after
+three distinct Files report recent network/service failures, and a
+successful data read clears its node failure streak. If every
+candidate is cooling, the source remains incomplete for a later call.}
     }
     \if{html}{\out{</div>}}
   }

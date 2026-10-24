@@ -115,6 +115,48 @@ that every variable, frequency, model or year required by your study is present.
 Check those study requirements separately. A case label is an association, not a
 scientific acceptance rule.
 
+# Tune Transport Without Changing the Requested Data
+
+`max_values` limits native weather values in each request. Its default remains
+8192, including all four corners. For a service that benefits from fewer,
+larger requests, try 65536 in a separate acquisition directory before changing
+an existing run. Only consecutive required native time indices are combined;
+gaps, physical File boundaries and the four unaggregated corners remain intact.
+A different budget can resume previously saved blocks without reading them again.
+
+```{r transport-controls}
+result <- files$fetch_subset(
+    requests,
+    "climate-neighborhoods-timing",
+    workers = 4L,
+    node_workers = 4L,
+    max_values = 65536L,
+    replica_cooldown = 60,
+    network_id = "single-machine"
+)
+```
+
+`node_workers` already controls simultaneous File readers on each data node.
+Compare useful native values per second and failures before increasing it;
+a larger worker count does not create more node slots. When several machines
+use one service, consider their combined allowance.
+
+Replica cooling is optional and defaults to zero, retaining immediate finite
+retries. With `replica_cooldown = 60`, recent transport failures defer that exact
+File URL for 60 seconds on the current client/network identity. An explicit
+HTTP 404 or 410 in the reported error extends that interval eightfold. Ambiguous
+native-library errors remain local to their File URL. Node cooling requires
+three distinct Files with recent explicit network/service failures; a successful
+data read clears that node's failure streak. Content and CF identity checks
+continue to apply to every Replica.
+
+Cooling never occupies a sleeping worker. Other Files and compatible candidates
+continue; Replica discovery remains available when known URLs are cooling.
+If all compatible candidates are cooling, the source stays incomplete with a
+saved gap. A later call retries after the deadline and reuses verified blocks.
+The existing attempt ledger supplies these deadlines across calls; no extra
+speed checks or separate health database are required.
+
 # Inspect Saved Values and Gaps
 
 After an acquisition call returns, inspect its local results:

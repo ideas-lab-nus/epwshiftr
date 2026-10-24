@@ -1057,7 +1057,8 @@ opendap__read_source <- function(job) {
             expected_contract = expected,
             # Verify the endpoint against all prior required intervals once.
             # Further cities share this same open, immutable source connection.
-            expected_bounds = if (i == 1L) job$expected_bounds else NULL
+            expected_bounds = if (i == 1L) job$expected_bounds else NULL,
+            max_values = job$max_values
         )
         neighborhoods[[i]] <- selection$neighborhoods
     }
@@ -1131,6 +1132,84 @@ opendap__rank <- function(
     candidates[do.call(order, as.data.frame(score))]
 }
 
+# Compute a finite deadline from actual failed reads after the last success.
+# Ambiguous native-library errors are endpoint-local; node cooling needs at
+# least three distinct Files with explicit service/network failures.
+opendap__cooldown_deadline <- function(rows, seconds, node = FALSE) {
+    success <- rows$success & rows$native_values > 0
+    last_success <- max(c(-Inf, rows$observed_at[success]), na.rm = TRUE)
+    failed <- !rows$success &
+        !is.na(rows$error_kind) &
+        rows$error_kind == "transport" &
+        rows$observed_at > last_success
+    rows <- rows[failed]
+    if (!nrow(rows)) {
+        return(0)
+    }
+    if (node) {
+        rows <- rows[grepl(
+            "timed out|timeout|execution deadline|connection reset|could not connect|failed to connect|could not resolve|HTTP[^0-9]*5[0-9]{2}",
+            rows$error,
+            ignore.case = TRUE
+        )]
+        if (data.table::uniqueN(rows$source_key) < 3L) return(0)
+    }
+    latest <- which.max(rows$observed_at)
+    missing <- !node &&
+        grepl(
+            "(HTTP[^0-9]*|status[=: ]+)(404|410)\\b|404 Not Found|410 Gone",
+            rows$error[[latest]],
+            ignore.case = TRUE,
+            perl = TRUE
+        )
+    rows$observed_at[[latest]] + seconds * if (missing) 8 else 1
+}
+
+# Return one eligibility deadline per candidate in its original order. The
+# existing attempt ledger is the durable, client-specific source of truth;
+# transport partition sizes never become part of raw data or cooldown identity.
+opendap__cooling_until <- function(
+    candidates,
+    attempts,
+    client,
+    seconds,
+    now = as.double(Sys.time())
+) {
+    until <- numeric(nrow(candidates))
+    if (!seconds || !nrow(candidates) || !nrow(attempts)) {
+        return(until)
+    }
+    recent <- data.table::as.data.table(attempts[
+        attempts$client == client &
+            attempts$observed_at >= now - 86400 &
+            attempts$observed_at <= now,
+        ,
+        drop = FALSE
+    ])
+    if (!nrow(recent)) {
+        return(until)
+    }
+    endpoints <- recent[,
+        list(deadline = opendap__cooldown_deadline(.SD, seconds)),
+        by = c("source_key", "url")
+    ]
+    until <- endpoints[candidates, on = c("source_key", "url")]$deadline
+    until[is.na(until)] <- 0
+    service <- recent[recent$observed_at >= now - seconds]
+    if (nrow(service)) {
+        nodes <- service[,
+            list(
+                deadline = opendap__cooldown_deadline(.SD, seconds, node = TRUE)
+            ),
+            by = "data_node"
+        ]
+        node_until <- nodes[candidates, on = "data_node"]$deadline
+        node_until[is.na(node_until)] <- 0
+        until <- pmax(until, node_until)
+    }
+    until
+}
+
 # Separate transport failures from metadata conflicts and implementation errors.
 # Only actual transport failures contribute to data-node reliability ranking.
 opendap__failure_kind <- function(error) {
@@ -1196,8 +1275,9 @@ opendap__attempt <- function(
 # Publish caller-owned completed blocks and their real data-read observations.
 opendap__drain <- function(store, state, client) {
     if (is.null(state$job)) {
-        return(invisible(NULL))
+        return(invisible(FALSE))
     }
+    changed <- FALSE
     paths <- list.files(
         state$job$inbox,
         pattern = "^block-[0-9]+[.]rds$",
@@ -1215,6 +1295,7 @@ opendap__drain <- function(store, state, client) {
         }
         chunk <- readRDS(path)
         if (opendap__commit(store, state$job, path, state$progress)) {
+            changed <- TRUE
             row <- data.frame(
                 source_key = state$job$source_key,
                 url = state$job$url,
@@ -1231,7 +1312,7 @@ opendap__drain <- function(store, state, client) {
             ddb_append_table(priv(store)$conn, "subset_attempts", row)
         }
     }
-    invisible(NULL)
+    invisible(changed)
 }
 
 # Record a source state with a conditional identity instead of mutating readers.
@@ -1348,8 +1429,17 @@ opendap__fetch <- function(
     discover = TRUE,
     network_id = "default",
     node_workers = 2L,
-    progress = NULL
+    progress = NULL,
+    max_values = DATASET_REQUEST_MAX_VALUES,
+    replica_cooldown = 0
 ) {
+    checkmate::assert_int(max_values, lower = 4L)
+    checkmate::assert_number(
+        replica_cooldown,
+        lower = 0,
+        upper = 3600,
+        finite = TRUE
+    )
     checkmate::assert_count(workers, positive = TRUE)
     checkmate::assert_count(node_workers, positive = TRUE)
     checkmate::assert_flag(resume)
@@ -1540,6 +1630,8 @@ opendap__fetch <- function(
             configuration = list(
                 workers = workers,
                 node_workers = node_workers,
+                max_values = max_values,
+                replica_cooldown = replica_cooldown,
                 resume = resume,
                 timeout = timeout,
                 retries = retries,
@@ -1561,6 +1653,19 @@ opendap__fetch <- function(
         )
     )
     client <- store__hash(Sys.info()[["nodename"]], network_id)
+    history <- NULL
+    history_dirty <- TRUE
+    history_revision <- 0L
+    # Reload persisted observations only after this owner appends new evidence.
+    # Waiting on a node's occupied slots must not rematerialize the full ledger.
+    attempt_history <- function() {
+        if (history_dirty) {
+            history <<- ddb_read_table(conn, "subset_attempts")
+            history_revision <<- history_revision + 1L
+            history_dirty <<- FALSE
+        }
+        history
+    }
     states <- vector(
         "list",
         length(unique(links$source_key[!is.na(links$source_key)]))
@@ -1625,6 +1730,8 @@ opendap__fetch <- function(
         state$result <- NULL
         state$error <- NULL
         state$tried <- new.env(hash = TRUE, parent = emptyenv())
+        state$ranked <- NULL
+        state$history_revision <- -1L
         state$round <- 0L
         state$discovered <- !discover
         state$finished <- FALSE
@@ -1678,14 +1785,16 @@ opendap__fetch <- function(
             if (is.null(state$ticket)) {
                 next
             }
-            opendap__drain(store, state, client)
+            history_dirty <- isTRUE(opendap__drain(store, state, client)) ||
+                history_dirty
         }
         pool$poll()
         for (state in states) {
             if (is.null(state$ticket)) {
                 next
             }
-            opendap__drain(store, state, client)
+            history_dirty <- isTRUE(opendap__drain(store, state, client)) ||
+                history_dirty
             if (state$ticket$status == "pending") {
                 active <- active + 1L
                 next
@@ -1727,6 +1836,7 @@ opendap__fetch <- function(
                         ),
                         by = "candidate_id"
                     )
+                    state$ranked <- NULL
                 }
             } else {
                 opendap__attempt(
@@ -1741,6 +1851,7 @@ opendap__fetch <- function(
                     },
                     state$result
                 )
+                history_dirty <- TRUE
                 if (
                     !is.null(state$error) &&
                         opendap__failure_kind(state$error) == "internal"
@@ -1849,8 +1960,6 @@ opendap__fetch <- function(
                     next
                 }
             }
-            attempts <- ddb_read_table(conn, "subset_attempts")
-            available <- opendap__rank(available, attempts, client)
             if (kind == "read") {
                 occupied <- vapply(
                     Filter(
@@ -1870,7 +1979,74 @@ opendap__fetch <- function(
                     integer(1L)
                 )
                 available <- available[slots < node_workers]
-                if (!nrow(available)) next
+                if (!nrow(available)) {
+                    next
+                }
+                attempts <- attempt_history()
+                if (
+                    is.null(state$ranked) ||
+                        state$history_revision != history_revision
+                ) {
+                    state$ranked <- opendap__rank(
+                        state$candidates,
+                        attempts,
+                        client
+                    )
+                    state$cooling_until <- opendap__cooling_until(
+                        state$ranked,
+                        attempts,
+                        client,
+                        replica_cooldown
+                    )
+                    state$history_revision <- history_revision
+                }
+                untried <- !vapply(
+                    state$ranked$candidate_id,
+                    exists,
+                    logical(1L),
+                    envir = state$tried,
+                    inherits = FALSE
+                )
+                ready <- state$cooling_until <= as.double(Sys.time())
+                if (!any(untried & ready)) {
+                    if (!state$discovered) {
+                        # Cooling known URLs is not evidence that no other
+                        # compatible Replica exists in the published catalogue.
+                        kind <- "discover"
+                        available <- state$candidates[0L]
+                    } else {
+                        # No worker sleeps through cooling. Keep the missing
+                        # source explicit for a later call after the deadline.
+                        opendap__job_state(
+                            store,
+                            state$key,
+                            state$signature,
+                            "failed",
+                            paste0(
+                                "Compatible OPeNDAP replicas are cooling until ",
+                                format(
+                                    as.POSIXct(
+                                        min(state$cooling_until[untried]),
+                                        origin = "1970-01-01",
+                                        tz = "UTC"
+                                    ),
+                                    usetz = TRUE
+                                ),
+                                "."
+                            )
+                        )
+                        state$finished <- TRUE
+                        next
+                    }
+                } else {
+                    available <- state$ranked[
+                        untried &
+                            ready &
+                            state$ranked$candidate_id %in%
+                                available$candidate_id
+                    ]
+                    if (!nrow(available)) next
+                }
             }
             inbox <- tempfile(
                 pattern = "attempt-",
@@ -1897,6 +2073,7 @@ opendap__fetch <- function(
                 },
                 links = state$links,
                 completed = blocks,
+                max_values = max_values,
                 expected_bounds = identity$bounds,
                 contract = identity$contract,
                 inbox = inbox,
@@ -1969,7 +2146,9 @@ opendap__fetch <- function(
                 discover,
                 network_id,
                 node_workers,
-                progress = progress
+                progress = progress,
+                max_values = max_values,
+                replica_cooldown = replica_cooldown
             ))
         }
     }

@@ -7328,4 +7328,338 @@ test_that("raw subset endpoint inventories preserve File rows and missing servic
     expect_equal(nrow(subset_status(dest, "blocks")), 0L)
 })
 
+# Transport partitioning must not enter native identity: a larger later budget
+# reuses intact blocks and repairs only the exact lost time/corner ranges.
+test_that("acquisition transport budgets preserve raw corners and exact resume", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[1L, ]
+    docs$variable_id <- "tas"
+    docs$url <- I(list(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    )))
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = "native",
+        case_id = "case",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    small <- tempfile("transport-small-")
+    large <- tempfile("transport-large-")
+    on.exit(unlink(c(small, large), recursive = TRUE), add = TRUE)
+    first <- files$fetch_subset(
+        requests,
+        small,
+        workers = 1L,
+        discover = FALSE,
+        max_values = 8L
+    )
+    expect_true(first$complete)
+    blocks <- subset_status(small, "blocks")
+    expect_equal(nrow(blocks), 4L)
+    # Public values retain native keys; transport block order is not identity.
+    canonical <- function(values) {
+        values <- data.table::copy(values)
+        data.table::setorderv(values, c("ind_lon", "ind_lat", "time_index"))
+        values
+    }
+    expected <- read_subset(small)
+    expected$values <- canonical(expected$values)
+    expect_equal(nrow(expected$values), 32L)
+    expect_equal(
+        data.table::uniqueN(expected$values[, c("grid_lat", "grid_lon")]),
+        4L
+    )
+    second <- files$fetch_subset(
+        requests,
+        large,
+        workers = 1L,
+        discover = FALSE,
+        max_values = 32L
+    )
+    expect_true(second$complete)
+    expect_equal(nrow(subset_status(large, "blocks")), 1L)
+    actual <- read_subset(large)
+    expect_equal(canonical(actual$values), expected$values)
+    expect_equal(actual$neighborhoods, expected$neighborhoods)
+    attempts <- subset_status(small, "attempts")
+    again <- files$fetch_subset(
+        requests,
+        small,
+        workers = 1L,
+        discover = FALSE,
+        max_values = 32L
+    )
+    expect_true(again$complete)
+    expect_equal(subset_status(small, "attempts"), attempts)
+    writeBin(as.raw(0), blocks$path[[2L]])
+    repaired <- files$fetch_subset(
+        requests,
+        small,
+        workers = 1L,
+        discover = FALSE,
+        max_values = 32L
+    )
+    expect_true(repaired$complete)
+    expect_equal(canonical(read_subset(small)$values), expected$values)
+    expect_equal(
+        sum(subset_status(small, "attempts")$native_values) -
+            sum(attempts$native_values),
+        8
+    )
+    expect_error(files$fetch_subset(requests, small, max_values = 3L))
+})
+
+# A File-specific absence must never quarantine every other File on its node;
+# node-wide cooling requires independent recent service failures and expires.
+test_that("acquisition replica cooldown is scoped and expires from saved observations", {
+    candidates <- data.table::data.table(
+        source_key = c("a", "b", "c"),
+        url = c("u", "v", "w"),
+        data_node = c("node", "node", "other")
+    )
+    history <- data.frame(
+        source_key = "a",
+        url = "u",
+        data_node = "node",
+        client = "client",
+        observed_at = 1000,
+        native_values = 0,
+        success = FALSE,
+        error = "NetCDF: HTTP 404 Not Found",
+        error_kind = "transport"
+    )
+    until <- opendap__cooling_until(
+        candidates,
+        history,
+        "client",
+        60,
+        now = 1020
+    )
+    expect_equal(until, c(1480, 0, 0))
+    expect_equal(
+        opendap__cooling_until(candidates, history, "other", 60, now = 1020),
+        c(0, 0, 0)
+    )
+    expect_equal(
+        opendap__cooling_until(candidates, history, "client", 0, now = 1020),
+        c(0, 0, 0)
+    )
+    expect_true(all(
+        opendap__cooling_until(candidates, history, "client", 60, now = 1500) <=
+            1500
+    ))
+    # Unknown native-library I/O errors may be File-specific: cool that URL only.
+    history$error <- "NetCDF: I/O failure"
+    expect_equal(
+        opendap__cooling_until(candidates, history, "client", 60, now = 1020),
+        c(1060, 0, 0)
+    )
+    service <- history[rep(1L, 3L), ]
+    service$source_key <- c("a", "d", "e")
+    service$url <- c("u", "x", "y")
+    service$error <- "connection reset"
+    expect_equal(
+        opendap__cooling_until(candidates, service, "client", 60, now = 1020),
+        c(1060, 1060, 0)
+    )
+    success <- service[1L, ]
+    success$source_key <- "f"
+    success$url <- "z"
+    success$observed_at <- 1001
+    success$native_values <- 4
+    success$success <- TRUE
+    success$error <- NA_character_
+    success$error_kind <- "data"
+    expect_equal(
+        opendap__cooling_until(
+            candidates,
+            rbind(service, success),
+            "client",
+            60,
+            now = 1020
+        ),
+        c(1060, 0, 0)
+    )
+    success$source_key <- "a"
+    success$url <- "u"
+    expect_equal(
+        opendap__cooling_until(
+            candidates,
+            rbind(history, success),
+            "client",
+            60,
+            now = 1020
+        ),
+        c(0, 0, 0)
+    )
+    history$error_kind <- "source_metadata"
+    expect_equal(
+        opendap__cooling_until(candidates, history, "client", 60, now = 1020),
+        c(0, 0, 0)
+    )
+    expect_length(
+        opendap__cooling_until(
+            candidates[0L],
+            history,
+            "client",
+            60,
+            now = 1020
+        ),
+        0L
+    )
+})
+
+# A service that is down must release its worker and leave an explicit gap.
+# Finite later invocations reuse the same client-specific failure evidence.
+test_that("acquisition replica cooldown avoids hot retries and keeps later recovery possible", {
+    skip_if_not_installed("webfakes")
+    app <- webfakes::new_app()
+    app$use(function(req, res) {
+        Sys.sleep(.05)
+        res$set_status(503L)$send("temporarily unavailable")
+    })
+    server <- webfakes::new_app_process(app)
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[1L, ]
+    docs$variable_id <- "tas"
+    docs$url <- I(list(paste0(
+        server$url(),
+        "offline.nc|application/netcdf|OPENDAP"
+    )))
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "gap",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    dest <- tempfile("replica-cooldown-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    first <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        retries = 2L,
+        replica_cooldown = 60
+    )
+    expect_false(first$complete)
+    before <- subset_status(dest, "attempts")
+    expect_equal(sum(!before$success), 1L)
+    expect_false(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            retries = 2L,
+            replica_cooldown = 60
+        )$complete
+    )
+    expect_equal(subset_status(dest, "attempts"), before)
+    # The previous owner has closed the test manifest; move the failure clock
+    # back instead of sleeping for a minute or changing the running clock.
+    db <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(db, "UPDATE subset_attempts SET observed_at = observed_at - 61")
+    ddb_disconnect(db)
+    expect_false(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            retries = 0L,
+            replica_cooldown = 60
+        )$complete
+    )
+    expect_equal(sum(!subset_status(dest, "attempts")$success), 2L)
+    expect_error(files$fetch_subset(request, dest, replica_cooldown = -1))
+    # Known endpoints cooling must not suppress discovery of a healthy Replica.
+    healthy <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(healthy$stop(), add = TRUE)
+    replacement <- docs
+    replacement$url <- I(list(paste0(
+        healthy$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    )))
+    additions <- query_result_test_object("File", replacement)$access_plan(
+        expand = FALSE
+    )
+    discover <- function(job) additions
+    environment(discover) <- list2env(
+        list(additions = additions),
+        parent = baseenv()
+    )
+    local_mocked_bindings(opendap__discover = discover)
+    recovered <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = TRUE,
+        retries = 0L,
+        replica_cooldown = 60
+    )
+    expect_true(recovered$complete)
+    expect_equal(sort(read_subset(dest)$values$value), 1:32)
+    expect_equal(sum(!subset_status(dest, "attempts")$success), 2L)
+})
+
+# Pending Files on an occupied node must not repeatedly materialize an unchanged
+# attempt ledger. Count the real coordinator reads while real DAP workers run.
+test_that("acquisition scheduling refreshes history only for new observations", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$instance_id <- c("first", "second")
+    docs$master_id <- docs$instance_id
+    docs$variable_id <- "tas"
+    docs$data_node <- "same-node"
+    docs$url <- I(rep(
+        list(paste0(server$url(), "slow.nc|application/netcdf|OPENDAP")),
+        2L
+    ))
+    request <- data.frame(
+        request_id = "bounded",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    dest <- tempfile("history-refresh-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    original <- ddb_read_table
+    reads <- 0L
+    local_mocked_bindings(ddb_read_table = function(conn, name, ...) {
+        if (identical(name, "subset_attempts")) {
+            reads <<- reads + 1L
+        }
+        original(conn, name, ...)
+    })
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        request,
+        dest,
+        workers = 2L,
+        node_workers = 1L,
+        discover = FALSE,
+        retries = 0L
+    )
+    expect_true(result$complete)
+    expect_lte(reads, 5L)
+    expect_equal(nrow(read_subset(dest)$values), 64L)
+})
+
 # vim: fdm=marker :

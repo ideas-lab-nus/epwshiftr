@@ -889,8 +889,10 @@ dataset__read_neighborhood <- function(
     on_chunk,
     completed = NULL,
     expected_contract = NULL,
-    expected_bounds = NULL
+    expected_bounds = NULL,
+    max_values = DATASET_REQUEST_MAX_VALUES
 ) {
+    checkmate::assert_int(max_values, lower = 4L)
     checkmate::assert_character(
         variable,
         min.len = 1L,
@@ -1110,8 +1112,7 @@ dataset__read_neighborhood <- function(
                 )
                 runs <- dataset__region_runs(
                     needed,
-                    DATASET_REQUEST_MAX_VALUES %/%
-                        (group$lat_count * group$lon_count)
+                    max_values %/% (group$lat_count * group$lon_count)
                 )
                 for (run in runs) {
                     start <- rep.int(1L, length(meta$names))

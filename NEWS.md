@@ -1,5 +1,12 @@
 # epwshiftr (development version)
 
+* Add optional `max_values` and `replica_cooldown` controls to
+  `EsgResultFile$fetch_subset()`. Larger contiguous native requests retain raw
+  corners and exact recovery across budgets. Cooling uses saved client-specific
+  attempts, permits Replica discovery and leaves deferred sources incomplete.
+  Node-slot waits reuse timing history until new observations arrive. Existing
+  API defaults and manifest schemas remain unchanged (#298).
+
 * Retire code-coverage collection and Codecov reporting. Linux package checks
   run every test, including the ESGF and ERA5 live workflows, and reject skipped
   tests; functional checks remain enabled on all three platforms (#296).
