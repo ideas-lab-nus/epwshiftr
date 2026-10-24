@@ -111,6 +111,44 @@ result_schema__allow_provider_fields <- function(path) {
 }
 # }}}
 
+# Permit additive query-origin evidence while preserving all existing schema
+# formatting. Old results remain valid without an intent marker.
+# result_schema__allow_directory_context {{{
+result_schema__allow_directory_context <- function(path) {
+    lines <- readLines(path, warn = FALSE)
+    key <- grep(
+        '"subset.of": ["time_filter", "query_url", "selection"]',
+        lines,
+        fixed = TRUE
+    )
+    if (!length(key)) {
+        return(invisible(path))
+    }
+    lines[[key]] <- sub(
+        '"selection"',
+        '"selection", "directory_collection"',
+        lines[[key]],
+        fixed = TRUE
+    )
+    context <- grep('    "context": {', lines, fixed = TRUE)
+    selection <- grep('        "selection": {', lines, fixed = TRUE)
+    selection <- selection[selection > context[[length(context)]]][[1L]]
+    after <- selection + 2L
+    lines[[after]] <- paste0(lines[[after]], ",")
+    lines <- append(
+        lines,
+        c(
+            '        "directory_collection": {',
+            '          "check": {"kind": "flag"}',
+            '        }'
+        ),
+        after = after
+    )
+    writeLines(lines, path, useBytes = TRUE)
+    invisible(path)
+}
+# }}}
+
 # promote_parameter_defs {{{
 promote_parameter_defs <- function(parameter, defs) {
     buckets <- c("facet", "query", "control", "others")
@@ -266,6 +304,7 @@ for (path in schema_files) {
         write_schema_json(schema, path)
     }
     result_schema__allow_provider_fields(path)
+    result_schema__allow_directory_context(path)
 }
 
 # Standalone query-response persistence shares the same Solr document contract

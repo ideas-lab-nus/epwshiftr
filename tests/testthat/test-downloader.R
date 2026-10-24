@@ -1266,6 +1266,63 @@ test_that("Downloader$clone() reconnects manifest after finalization", {
     expect_true(file.exists(file.path(dest, "clone.txt")))
 })
 # }}}
+# Downloader$clone() {{{
+# Force collection after enqueue's connection check, when a real allocation
+# could otherwise finalize a clone while the shared connection is in use.
+test_that("Downloader clones preserve manifest ownership during collection", {
+    root <- tempfile("downloader-clone-ownership-")
+    on.exit(unlink(root, recursive = TRUE), add = TRUE)
+    plan <- downloader_test_df(
+        logical_file_id = "tracking:clone-ownership",
+        filename = "clone.txt",
+        url = "http://127.0.0.1:1/clone.txt"
+    )
+
+    for (deep in c(FALSE, TRUE)) {
+        manifest <- file.path(root, as.character(deep), "manifest.duckdb")
+        dl <- Downloader$new(
+            dest = file.path(root, as.character(deep), "downloads"),
+            manifest = manifest,
+            n_workers = 0L
+        )
+        cloned <- dl$clone(deep = deep)
+        first <- dl$enqueue({
+            rm(cloned)
+            gc()
+            plan
+        })
+        expect_identical(
+            dl$tasks(session_id = first)$logical_file_id,
+            plan$logical_file_id
+        )
+
+        cloned <- dl$clone(deep = deep)
+        second <- cloned$enqueue({
+            rm(dl)
+            gc()
+            plan
+        })
+        expect_identical(
+            cloned$tasks(session_id = second)$logical_file_id,
+            plan$logical_file_id
+        )
+        rm(cloned)
+        gc()
+
+        reopened <- Downloader$new(manifest = manifest, n_workers = 0L)
+        expect_identical(
+            reopened$tasks(session_id = first)$logical_file_id,
+            plan$logical_file_id
+        )
+        expect_identical(
+            reopened$tasks(session_id = second)$logical_file_id,
+            plan$logical_file_id
+        )
+        rm(reopened)
+        gc()
+    }
+})
+# }}}
 # Downloader$run() / Downloader$resume() {{{
 test_that("Downloader$run() cancels stale downloading tasks", {
     root <- tempfile("downloader-")

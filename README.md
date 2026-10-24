@@ -9,8 +9,6 @@
 status](https://github.com/ideas-lab-nus/epwshiftr/workflows/R-CMD-check/badge.svg)](https://github.com/ideas-lab-nus/epwshiftr/actions)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/epwshiftr)](https://CRAN.R-project.org/package=epwshiftr)
-[![Codecov test
-coverage](https://codecov.io/gh/ideas-lab-nus/epwshiftr/branch/master/graph/badge.svg)](https://app.codecov.io/gh/ideas-lab-nus/epwshiftr?branch=master)
 [![CRAN Download
 Badge](https://cranlogs.r-pkg.org/badges/epwshiftr)](https://cran.r-project.org/package=epwshiftr)
 <!-- badges: end -->
@@ -126,6 +124,7 @@ shift_diagnostics(batch)[, .N, by = severity]
 | Task | Guide |
 |----|----|
 | Plan, run, inspect, or resume a workflow | [Future EPW workflow](https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html) |
+| Acquire native four-corner climate values and resume | [Raw OPeNDAP neighborhoods](https://ideas-lab-nus.github.io/epwshiftr/articles/opendap-acquisition.html) |
 | Choose methods, settings, and required inputs | [Weather transformations](https://ideas-lab-nus.github.io/epwshiftr/articles/epw-morpher.html) |
 | Configure terminal output and background jobs | [Live feedback](https://ideas-lab-nus.github.io/epwshiftr/articles/future-epw-workflow.html#live-feedback-and-background-runs) |
 | Automate workflows from the shell | [CLI guide](https://ideas-lab-nus.github.io/epwshiftr/articles/cli-esgf-store.html) |

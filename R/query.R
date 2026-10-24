@@ -2356,8 +2356,13 @@ query__collect <- function(
         response = response,
         docs = docs,
         parameter = effective_store,
-        context = list(
-            query_url = query_result__query_urls(query_urls, named = FALSE)
+        context = c(
+            list(
+                query_url = query_result__query_urls(query_urls, named = FALSE)
+            ),
+            if (identical(query_param__value(effective_store$type()), "File")) {
+                list(directory_collection = TRUE)
+            }
         )
     )
 }

@@ -42,6 +42,18 @@ EsgResult <- R6::R6Class(
             private$parameter <- query_param__clone(params)
             private$response <- query_result__response(response)
             private$context <- query_result__context(context)
+            # Fresh query results are eligible for directory completion. Saved
+            # results lacking this evidence retain unknown selection intent.
+            if (
+                is.null(context) &&
+                    !is.null(private$parameter) &&
+                    identical(
+                        query_param__value(private$parameter$type()),
+                        "File"
+                    )
+            ) {
+                private$context$directory_collection <- TRUE
+            }
             private$register_dynamic_fields()
             self
         },
@@ -1413,6 +1425,9 @@ query_result__selection <- function(selection) {
 context__update_selection <- function(context, selection, index) {
     # Source totals describe the original result; only its retained positions
     # change when a dataset or query result is sliced again.
+    if (!is.null(context$directory_collection)) {
+        context$directory_collection <- FALSE
+    }
     context$selection <- list(
         source_count = selection$source_count,
         source_num_found = selection$source_num_found,
@@ -2070,8 +2085,13 @@ query_result__merge_child_collects <- function(
         response = response,
         docs = docs,
         parameter = parameter,
-        context = list(
-            query_url = query_result__query_urls(query_urls, named = FALSE)
+        context = c(
+            list(
+                query_url = query_result__query_urls(query_urls, named = FALSE)
+            ),
+            if (identical(query_param__value(parameter$type()), "File")) {
+                list(directory_collection = TRUE)
+            }
         )
     )
 }
@@ -2664,6 +2684,68 @@ EsgResultFile <- R6::R6Class(
             )
         },
         # }}}
+        # access_plan
+        #' @description
+        #' List every compatible OPeNDAP candidate without a mandatory speed check.
+        #' @param expand Whether to query same-version master and Replica records.
+        #' @return For access_plan(), a candidate table with immutable source keys and
+        #'   a `directory_complete` attribute for the originating File query.
+        #'   Replica expansion does not certify that the original query's File
+        #'   pages were fully collected.
+        # Candidates stay separate so a runtime read failure can select another.
+        access_plan = function(expand = TRUE) {
+            opendap__access_plan(self, expand)
+        },
+        # fetch_subset
+        #' @description
+        #' Acquire raw 2x2 climate neighborhoods with Replica switching and resume.
+        #' @param requests Table with request_id, site_id, lon, lat, time_start,
+        #'   time_stop and optional source filters and case_id labels.
+        #' @param dest Local acquisition directory.
+        #' @param workers Number of persistent source readers.
+        #' @param resume Reuse locally verified native blocks.
+        #' @param timeout Maximum seconds without saved-block progress.
+        #' @param retries Number of later rounds after the first candidate round.
+        #' @param discover Complete an original unsliced partial File query while
+        #'   known Files begin reading, and query compatible replicas after known
+        #'   candidates fail. Explicit selections and complete directories stay fixed.
+        #' @param network_id User-defined network identity for local timing history.
+        #' @param node_workers Maximum simultaneous readers for one data node.
+        #' @return For fetch_subset(), a lightweight acquisition summary. `complete`
+        #'   describes native coverage of the selected Files; the independent
+        #'   `directory_complete` flag is false for a partially collected File
+        #'   directory. An intentional slice of a fully collected directory
+        #'   retains true directory completeness. No missing pages are implied
+        #'   to have been collected by successful reads or cache reuse. A verified
+        #'   completed original query is saved locally and reused on repeat calls.
+        #'   Older saved partial results without query-selection intent remain
+        #'   explicit directory gaps.
+        # The package owns all writes; callers provide only their demand contract.
+        fetch_subset = function(
+            requests,
+            dest,
+            workers = 4L,
+            resume = TRUE,
+            timeout = 180,
+            retries = 2L,
+            discover = TRUE,
+            network_id = "default",
+            node_workers = 2L
+        ) {
+            opendap__fetch(
+                self,
+                requests,
+                dest,
+                workers,
+                resume,
+                timeout,
+                retries,
+                discover,
+                network_id,
+                node_workers
+            )
+        },
+
         # download_plan
         #' @description
         #' Build a persistent downloader plan for file records.

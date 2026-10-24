@@ -339,7 +339,7 @@ shift_job__as_run <- function(x, store = NULL) {
 # }}}
 
 # Isolate watch-loop wall-clock reads so cadence tests can advance a deterministic
-# clock without depending on runner speed or covr instrumentation overhead.
+# clock without depending on runner speed or instrumentation overhead.
 # shift_job__watch_now {{{
 shift_job__watch_now <- function() {
     Sys.time()

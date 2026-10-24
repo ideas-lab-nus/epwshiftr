@@ -27,6 +27,8 @@ navbar:
         href: articles/era5-reference-epw.html
       - text: "Work with ESGF Query Results"
         href: articles/esgf-query-results.html
+      - text: "Acquire Raw OPeNDAP Neighborhoods"
+        href: articles/opendap-acquisition.html
       - text: "Manage ESG Dictionaries"
         href: articles/esg-dictionaries.html
       - text: "Manage ESG Stores"
@@ -73,6 +75,8 @@ reference:
     desc: Open remote datasets, manage local stores, and run persistent downloads.
     contents:
       - EsgDataset
+      - read_subset
+      - subset_status
       - EsgStore
       - Downloader
       - store_reset

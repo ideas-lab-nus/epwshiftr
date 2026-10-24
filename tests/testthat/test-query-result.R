@@ -670,7 +670,8 @@ test_that("EsgResult$slice() / EsgResult$selection() context persists through sa
         simplifyVector = TRUE,
         simplifyMatrix = FALSE
     )
-    expect_named(json$context, "selection")
+    expect_named(json$context, c("directory_collection", "selection"))
+    expect_false(json$context$directory_collection)
     expect_identical(json$context$selection$source_count, 3L)
     expect_identical(json$context$selection$source_num_found, 10L)
     expect_identical(json$context$selection$source_indices, c(3L, 1L))
@@ -5101,6 +5102,2230 @@ test_that("replica collection batches long instance and master identities", {
                 QUERY_RESULT_COLLECT_MAX_URL_BYTES
         ))
     }
+})
+
+# Candidate identity compares checksums only when their algorithms agree.
+test_that("raw candidate plans retain different digest algorithms without merging contradictions", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$variable_id <- "tas"
+    docs$checksum_type <- c("SHA256", "MD5")
+    docs$checksum <- c("sha-value", "md5-value")
+    docs$url <- I(list(
+        "https://one.example/a.nc|application/netcdf|OPENDAP",
+        "https://two.example/a.nc|application/netcdf|OPENDAP"
+    ))
+    files <- query_result_test_object("File", docs)
+    plan <- files$access_plan(expand = FALSE)
+    expect_equal(nrow(plan), 2L)
+    expect_length(unique(plan$source_key), 1L)
+    docs$checksum_type <- c("SHA256", "SHA256")
+    expect_error(
+        query_result_test_object("File", docs)$access_plan(expand = FALSE),
+        "Conflicting"
+    )
+})
+
+# Interleaved catalog rows retain the first appearance of compatible file groups,
+# including sparse records and replicas with independently declared digest types.
+test_that("raw candidate plans preserve interleaved file and version ordering", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 7L), ]
+    docs$id <- paste0("row-", seq_len(nrow(docs)))
+    docs$instance_id <- c("a", "b", "a", "c", "a", "b", "a")
+    docs$master_id <- docs$instance_id
+    docs$version <- c(1L, 1L, 2L, 1L, 1L, NA_integer_, NA_integer_)
+    docs$checksum_type <- c(
+        "SHA256",
+        "SHA256",
+        "SHA256",
+        "SHA256",
+        "MD5",
+        NA,
+        NA
+    )
+    docs$checksum <- c("a-sha", "b-sha", "a2-sha", "c-sha", "a-md5", NA, NA)
+    docs$size <- c(1, 1, 2, 1, 1, NA_real_, NA_real_)
+    docs$url <- I(lapply(seq_len(nrow(docs)), function(i) {
+        paste0("https://node", i, ".example/file.nc|application/netcdf|OPENDAP")
+    }))
+    files <- query_result_test_object("File", docs)
+    plan <- files$access_plan(expand = FALSE)
+    expect_identical(plan$record_index, seq_len(7L))
+    expect_identical(plan$content_group, c(1L, 2L, 3L, 4L, 1L, 2L, 1L))
+    expect_identical(
+        plan$source_key[c(1L, 2L, 3L, 4L, 1L, 2L, 1L)],
+        plan$source_key
+    )
+    expect_equal(
+        nrow(query_result_test_object("File", docs[FALSE, ])$access_plan(
+            expand = FALSE
+        )),
+        0L
+    )
+})
+
+# Sparse metadata must not make contradictory content look like one file.
+test_that("raw candidate plans reject a contradiction after an interleaved sparse replica", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 4L), ]
+    docs$instance_id <- c("a", "b", "a", "a")
+    docs$master_id <- docs$instance_id
+    docs$checksum <- c("first", "other", NA_character_, "conflicting")
+    docs$url <- I(lapply(seq_len(nrow(docs)), function(i) {
+        paste0("https://node", i, ".example/file.nc|application/netcdf|OPENDAP")
+    }))
+    expect_error(
+        query_result_test_object("File", docs)$access_plan(expand = FALSE),
+        "Conflicting replica content"
+    )
+})
+
+# A real DAP2 server and real source workers exercise transport faults without
+# substituting package scheduling, native selection or durable storage.
+test_that("raw subsets switch failed replicas and repair only missing native corners", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-subsets-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$variable_id <- "tas"
+    docs$data_node <- c("first", "second")
+    docs$url <- I(lapply(c("bad.nc", "fast.nc"), function(name) {
+        paste0(server$url(), name, "#show=url|application/netcdf|OPENDAP")
+    }))
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = c("first-day", "fourth-day"),
+        case_id = "original",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = c("2060-01-01", "2060-01-04"),
+        time_stop = c("2060-01-01", "2060-01-04")
+    )
+    result <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 2L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_identical(
+        attempts$data_node[attempts$native_values > 0],
+        c("first", rep("second", 4L))
+    )
+    expect_equal(sum(!attempts$success), 1L)
+    expect_equal(
+        attempts$native_values[attempts$native_values > 0],
+        c(4, rep(1, 4L))
+    )
+    saved <- read_subset(dest, case_id = "original")
+    expect_equal(sort(saved$values$value), c(1:4, 13:16))
+    expect_equal(nrow(saved$neighborhoods), 8L)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_equal(sort(unique(saved$values$cf_day)), c(1L, 4L))
+    before <- rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    )
+    # DAP request evidence excludes hidden libnetcdf whole-variable prefetch.
+    traffic <- jsonlite::fromJSON(before)
+    weather <- traffic[grepl("[.]dods tas", traffic)]
+    expect_true(all(grepl(
+        "tas%5b[03](:[03])?%5d%5b[01](:[01])?%5d%5b[01](:[01])?%5d$",
+        weather
+    )))
+    expect_length(weather, 6L)
+    requests$request_id <- paste0(requests$request_id, "-linked")
+    requests$case_id <- "linked"
+    cached <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 2L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(cached$complete)
+    expect_equal(nrow(read_subset(dest, case_id = "linked")$values), 8L)
+    after <- rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    )
+    expect_identical(after, before)
+    blocks <- subset_status(dest, "blocks")
+    writeBin(as.raw(0), blocks$path[[1L]])
+    repaired <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 2L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(repaired$complete)
+    expect_equal(
+        sort(read_subset(dest, case_id = "linked")$values$value),
+        c(1:4, 13:16)
+    )
+    repaired_attempts <- subset_status(dest, "attempts")
+    expect_equal(
+        sum(repaired_attempts$native_values) - sum(attempts$native_values),
+        4
+    )
+    expect_error(files$fetch_subset(requests[0L, ], dest), "rows")
+    unmatched <- requests[1L, ]
+    unmatched$variable_id <- "rsds"
+    missing <- files$fetch_subset(unmatched, dest, discover = FALSE)
+    expect_false(missing$complete)
+    expect_equal(nrow(missing$unmatched_requests), 1L)
+})
+
+# A fresh invocation ignores older cache while retaining every block committed
+# by its own failed endpoint. Native values and endpoint reads are independent
+# observations of the public acquisition and offline reader contracts.
+test_that("raw subset fresh invocation retains committed replica progress", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-fresh-invocation-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$variable_id <- "tas"
+    docs$data_node <- c("first", "second")
+    docs$url <- I(lapply(c("bad-bounds.nc", "fast-bounds.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = c("one", "four"),
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = c("2060-01-01", "2060-01-04"),
+        time_stop = c("2060-01-01", "2060-01-04")
+    )
+    result <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE,
+        resume = FALSE
+    )
+    expect_true(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_equal(sum(attempts$native_values), 8)
+    expect_identical(
+        attempts$data_node[attempts$native_values > 0],
+        c("first", rep("second", 4L))
+    )
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), c(1:4, 13:16))
+    expect_identical(unique(raw$values$cf_calendar), "360_day")
+    expect_equal(sort(unique(raw$values$bound_start_value)), c(0, 3))
+    # A separate fresh invocation must refresh those now pre-existing blocks.
+    refreshed <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE,
+        resume = FALSE
+    )
+    expect_true(refreshed$complete)
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), 16)
+    expect_equal(sort(read_subset(dest)$values$value), c(1:4, 13:16))
+})
+
+# Native interval identity from this invocation must survive a failed Replica
+# even when the caller explicitly ignores coverage from previous invocations.
+test_that("raw subset fresh invocation preserves native bounds across replicas", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-fresh-bounds-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 3L), ]
+    docs$variable_id <- "tas"
+    docs$data_node <- c("partial", "wrong-bounds", "consistent")
+    docs$url <- I(lapply(
+        c("bad-bounds.nc", "wrong-bounds.nc", "fast-bounds.nc"),
+        function(name) {
+            paste0(server$url(), name, "|application/netcdf|OPENDAP")
+        }
+    ))
+    requests <- data.frame(
+        request_id = c("one", "four"),
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = c("2060-01-01", "2060-01-04"),
+        time_stop = c("2060-01-01", "2060-01-04")
+    )
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE,
+        resume = FALSE
+    )
+    expect_true(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_true(any(
+        attempts$data_node == "wrong-bounds" &
+            attempts$error_kind == "source_metadata"
+    ))
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), c(1:4, 13:16))
+    expect_equal(sort(unique(raw$values$bound_start_value)), c(0, 3))
+    expect_equal(sum(attempts$native_values), 8)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(
+            paste0(server$url(), "requests")
+        )$content
+    ))
+    expect_false(any(grepl("wrong-bounds.nc.dods tas", traffic, fixed = TRUE)))
+})
+
+# An earlier contiguous block covers both requested days, but refreshing just
+# one day cannot authorize that older block during directory completion.
+test_that("raw subset fresh invocation excludes old blocks across directory phases", {
+    skip_if_not_installed("webfakes")
+    local_cache_mode("off")
+    app <- subset_test__dap_app()
+    # One initial contiguous read succeeds; the fresh call commits one day,
+    # then all subsequent weather reads fail, including the recursive phase.
+    app$locals$weather <- -1L
+    server <- webfakes::new_app_process(app)
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "bad.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    docs <- docs[c(1L, 1L), ]
+    docs$id[[2L]] <- "file-2"
+    docs$instance_id[[2L]] <- "file-instance-2"
+    docs$master_id[[2L]] <- "master-file-2"
+    docs$url[[2L]] <- paste0(server$url(), "fast.nc|application/netcdf|OPENDAP")
+    index_app <- webfakes::new_app()
+    index_app$locals$docs <- docs
+    index_app$get("/esg-search/search", function(req, res, locals) {
+        offset <- if (is.null(req$query$offset)) {
+            0L
+        } else {
+            as.integer(req$query$offset)
+        }
+        response <- list(
+            responseHeader = list(status = 0L),
+            response = list(
+                numFound = 2L,
+                start = offset,
+                docs = list(as.list(locals$docs[offset + 1L, ]))
+            )
+        )
+        res$set_header("Content-Type", "application/json")$send(
+            jsonlite::toJSON(response, auto_unbox = TRUE)
+        )
+    })
+    index <- webfakes::new_app_process(index_app)
+    on.exit(index$stop(), add = TRUE)
+    partial <- query_result__new(
+        EsgResultFile,
+        index_node = sub("/$", "", index$url()),
+        params = query_result_test_params("File"),
+        result = esgf_test__response(docs[1L, ], num_found = 2L)
+    )
+    dest <- tempfile("raw-fresh-directory-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    requests <- data.frame(
+        request_id = "initial",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-04"
+    )
+    expect_true(
+        partial$slice(1L)$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            retries = 0L
+        )$complete
+    )
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), 16)
+    requests <- requests[c(1L, 1L), ]
+    requests$request_id <- c("one", "four")
+    requests$time_start <- requests$time_stop <- c("2060-01-01", "2060-01-04")
+    result <- partial$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        resume = FALSE
+    )
+    expect_true(result$directory_complete)
+    expect_false(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_equal(sum(attempts$native_values), 28)
+    # Both phases must try the unresolved source instead of accepting its old
+    # sixteen-value block as freshly acquired coverage.
+    expect_gte(
+        sum(!attempts$success & grepl("bad.nc", attempts$url, fixed = TRUE)),
+        2L
+    )
+})
+
+# Measured reads affect the next public acquisition; clients on another
+# network start from catalogue order instead of inheriting local latency.
+test_that("raw subset acquisition ranks actual node reads within the current client", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-ranking-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    acquire <- function(identity, endpoints, nodes, network = "local") {
+        docs <- query_result_test_file_docs()
+        docs <- docs[rep(1L, length(endpoints)), ]
+        docs$master_id <- identity
+        docs$instance_id <- identity
+        docs$variable_id <- "tas"
+        docs$data_node <- nodes
+        docs$url <- I(lapply(endpoints, function(endpoint) {
+            paste0(server$url(), endpoint, "|application/netcdf|OPENDAP")
+        }))
+        query_result_test_object("File", docs)$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE,
+            network_id = network
+        )
+    }
+    expect_true(acquire("learn-slow", "slow.nc", "slow")$complete)
+    expect_true(acquire("learn-fast", "fast.nc", "fast")$complete)
+    expect_true(
+        acquire("ranked", c("slow.nc", "fast.nc"), c("slow", "fast"))$complete
+    )
+    attempts <- subset_status(dest, "attempts")
+    expect_identical(
+        attempts$data_node[attempts$native_values > 0],
+        c("slow", "fast", "fast")
+    )
+    expect_true(
+        acquire(
+            "new-network",
+            c("slow.nc", "fast.nc"),
+            c("slow", "fast"),
+            "other"
+        )$complete
+    )
+    expect_identical(
+        tail(subset_status(dest, "attempts")$data_node, 1L),
+        "slow"
+    )
+})
+
+# Native source identity is validated before saved points are reused on a
+# replacement endpoint; an incompatible candidate must remain an explicit gap.
+test_that("raw subset recovery rejects incompatible replica metadata", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-identity-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$variable_id <- "tas"
+    docs$data_node <- c("partial", "wrong-units")
+    docs$url <- I(lapply(c("bad.nc", "wrong.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    requests <- data.frame(
+        request_id = c("one", "four"),
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = c("2060-01-01", "2060-01-04"),
+        time_stop = c("2060-01-01", "2060-01-04")
+    )
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_false(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    incompatible <- attempts[attempts$data_node == "wrong-units", ]
+    expect_true(all(!incompatible$success))
+    expect_identical(incompatible$error_kind, "source_metadata")
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), 1:4)
+    expect_true(nrow(raw$gaps$incomplete_sources) > 0L)
+})
+
+# A blocked remote weather read retires its own reader; an unrelated source
+# uses another slot and remains available through the same public result.
+test_that("raw subset timeouts release workers while unrelated sources finish", {
+    skip_if_not_installed("webfakes")
+    slow <- webfakes::new_app_process(subset_test__dap_app())
+    healthy <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(slow$stop(), add = TRUE)
+    on.exit(healthy$stop(), add = TRUE)
+    dest <- tempfile("raw-timeout-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$master_id <- docs$instance_id <- c("blocked-source", "healthy-source")
+    docs$variable_id <- "tas"
+    docs$data_node <- c("blocked", "healthy")
+    docs$url <- I(list(
+        paste0(slow$url(), "hang.nc|application/netcdf|OPENDAP"),
+        paste0(healthy$url(), "fast.nc|application/netcdf|OPENDAP")
+    ))
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    before <- ps::ps_children(ps::ps_handle())
+    owned_before <- vapply(before, ps::ps_pid, integer(1L))
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 2L,
+        timeout = 2,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_false(result$complete)
+    expect_equal(sort(result$jobs$status), c("done", "failed"))
+    attempts <- subset_status(dest, "attempts")
+    expect_true(any(
+        attempts$data_node == "blocked" & attempts$error_kind == "transport"
+    ))
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    # The captured parent owns the readers; closing acquisition must leave no
+    # newly launched child behind, including a reader stuck in native code.
+    after <- ps::ps_children(ps::ps_handle())
+    expect_true(all(vapply(after, ps::ps_pid, integer(1L)) %in% owned_before))
+})
+
+# Saved-block progress keeps a healthy native reader alive for longer than
+# the stall timeout, without extending an idle or failed reader indefinitely.
+test_that("raw subset block progress extends a healthy reader beyond the stall timeout", {
+    # Four two-second reads exceed the five-second stall budget. This keeps
+    # startup/instrumentation jitter out of the assertion while still failing
+    # if completed-block progress does not renew the reader deadline.
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-progress-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "progress.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    requests <- data.frame(
+        request_id = paste0("day-", 1:4),
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = sprintf("2060-01-%02d", c(1, 3, 5, 7)),
+        time_stop = sprintf("2060-01-%02d", c(1, 3, 5, 7))
+    )
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        timeout = 5,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    expect_equal(
+        sort(read_subset(dest)$values$value),
+        c(1:4, 9:12, 17:20, 25:28)
+    )
+    attempts <- subset_status(dest, "attempts")
+    expect_true(all(attempts$success))
+    expect_true(sum(attempts$elapsed_seconds[attempts$native_values > 0]) > 5)
+})
+
+# Interrupt the external filesystem publication boundary after its checked
+# receipt is durable; the next public call must adopt the existing data.
+test_that("raw subset restart adopts published blocks before manifest registration", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-publication-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    local({
+        rename <- base::file.rename
+        interrupted <- FALSE
+        local_mocked_bindings(
+            file.rename = function(from, to) {
+                result <- rename(from, to)
+                if (
+                    !interrupted &&
+                        isTRUE(result) &&
+                        grepl("/pending-[^/]+[.]rds[.]json$", to)
+                ) {
+                    interrupted <<- TRUE
+                    stop("controlled filesystem interruption", call. = FALSE)
+                }
+                result
+            },
+            .package = "base"
+        )
+        expect_error(
+            files$fetch_subset(
+                requests,
+                dest,
+                workers = 1L,
+                retries = 0L,
+                discover = FALSE
+            ),
+            "controlled filesystem interruption"
+        )
+    })
+    before <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(
+            paste0(server$url(), "requests")
+        )$content
+    ))
+    result <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    after <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(
+            paste0(server$url(), "requests")
+        )$content
+    ))
+    expect_equal(
+        sum(grepl("[.]dods tas", after)),
+        sum(grepl("[.]dods tas", before))
+    )
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), 0)
+})
+
+# Repeated publication must not remove a receipt already needed by committed
+# blocks, even when the final source result repeats its first block's demand.
+test_that("raw subset receipt publication preserves committed demand coverage", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-receipt-publication-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = "one",
+        case_id = "original",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    receipt <- NULL
+    interrupted <- FALSE
+    local({
+        rename <- base::file.rename
+        local_mocked_bindings(
+            file.rename = function(from, to) {
+                if (grepl("/demand-[^/]+[.]rds$", to)) {
+                    if (identical(to, receipt)) {
+                        interrupted <<- TRUE
+                        stop(
+                            "controlled repeated receipt publication",
+                            call. = FALSE
+                        )
+                    }
+                    receipt <<- to
+                }
+                rename(from, to)
+            },
+            .package = "base"
+        )
+        tryCatch(
+            files$fetch_subset(requests, dest, workers = 1L, discover = FALSE),
+            error = function(e) {
+                if (
+                    !grepl("controlled repeated receipt", conditionMessage(e))
+                ) {
+                    stop(e)
+                }
+            }
+        )
+    })
+    expect_true(file.exists(receipt))
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    expect_equal(nrow(read_subset(dest)$gaps$incomplete_requests), 0L)
+    expect_false(interrupted)
+    before <- subset_status(dest, "attempts")
+    requests$request_id <- "linked"
+    requests$case_id <- "linked"
+    expect_true(
+        files$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), before)
+    saved <- read_subset(dest, case_id = "linked")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_equal(unique(saved$links$request_id), "linked")
+    # Manifest coverage verifies the immutable payload directly. Losing an
+    # auxiliary cache sidecar cannot authorize replacing that committed file.
+    unlink(paste0(receipt, ".json"))
+    local({
+        rename <- base::file.rename
+        local_mocked_bindings(
+            file.rename = function(from, to) {
+                if (identical(to, receipt)) {
+                    stop("committed receipt replacement")
+                }
+                rename(from, to)
+            },
+            .package = "base"
+        )
+        expect_true(
+            files$fetch_subset(
+                requests,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            )$complete
+        )
+    })
+    expect_equal(sort(read_subset(dest, case_id = "linked")$values$value), 1:4)
+})
+
+# A process identity inspection fault happens after a real worker is running;
+# failure of the public acquisition must still retire its exact owned profile.
+test_that("raw subset worker bootstrap failure retires its owned profile", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-bootstrap-failure-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    handle <- NULL
+    profile <- NULL
+    on.exit(
+        {
+            if (!is.null(handle) && ps::ps_is_running(handle)) {
+                ps::ps_kill(handle)
+            }
+            if (!is.null(profile)) mirai::daemons(0L, .compute = profile)
+        },
+        add = TRUE
+    )
+    local({
+        daemons <- mirai::daemons
+        # Record only the profile created by the public call, forwarding every
+        # real launch and shutdown unchanged to the installed mirai runtime.
+        local_mocked_bindings(
+            daemons = function(n, ..., .compute = NULL) {
+                if (n > 0L && !is.null(.compute)) {
+                    profile <<- .compute
+                }
+                daemons(n, ..., .compute = .compute)
+            },
+            .package = "mirai"
+        )
+        command <- ps::ps_cmdline
+        local_mocked_bindings(
+            ps_cmdline = function(p = ps::ps_handle()) {
+                value <- command(p)
+                if (is.null(handle) && ps::ps_pid(p) != Sys.getpid()) {
+                    handle <<- p
+                    stop("controlled bootstrap identity failure", call. = FALSE)
+                }
+                value
+            },
+            .package = "ps"
+        )
+        expect_error(
+            files$fetch_subset(
+                requests,
+                dest,
+                workers = 1L,
+                discover = FALSE
+            ),
+            "controlled bootstrap identity failure"
+        )
+    })
+    expect_false(is.null(handle))
+    deadline <- proc.time()[["elapsed"]] + 5
+    while (ps::ps_is_running(handle) && proc.time()[["elapsed"]] < deadline) {
+        Sys.sleep(.01)
+    }
+    expect_false(ps::ps_is_running(handle))
+    expect_identical(mirai::status(.compute = profile)$connections, 0L)
+    expect_identical(mirai::status(.compute = profile)$daemons, 0L)
+    expect_equal(nrow(subset_status(dest, "attempts")), 0L)
+    # Clean the actual failing fixture on the old implementation as well, so
+    # observing RED does not leave a worker owned by this test behind.
+    if (ps::ps_is_running(handle)) ps::ps_kill(handle)
+})
+
+# Historical demand receipts keep gaps visible independently of the latest
+# successful request for another window in the same physical source.
+test_that("raw subset coverage follows each case and rejects empty native windows", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-demand-history-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "A",
+        case_id = "A",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    a <- request
+    unlink(subset_status(dest, "blocks")$path[[1L]])
+    request$request_id <- request$case_id <- "B"
+    request$time_start <- request$time_stop <- "2060-01-02"
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_equal(sort(read_subset(dest, case_id = "B")$values$value), 5:8)
+    historical <- read_subset(dest, case_id = "A")
+    expect_equal(nrow(historical$values), 0L)
+    expect_true(nrow(historical$gaps$incomplete_sources) > 0L)
+    request$request_id <- request$case_id <- "C"
+    request$time_start <- request$time_stop <- "2060-01-20"
+    expect_false(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_true(
+        nrow(read_subset(dest, case_id = "C")$gaps$incomplete_sources) > 0L
+    )
+    before <- sum(subset_status(dest, "attempts")$native_values)
+    expect_true(
+        files$fetch_subset(
+            a,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_equal(sum(subset_status(dest, "attempts")$native_values) - before, 4)
+    expect_equal(sort(read_subset(dest, case_id = "A")$values$value), 1:4)
+    expect_equal(
+        nrow(read_subset(dest, case_id = "B")$gaps$incomplete_sources),
+        0L
+    )
+    # A local selection receipt is required independently of weather payload
+    # hashes. Its loss must expose a gap, then recover without weather rereads.
+    for (path in list.files(
+        file.path(dest, "subsets"),
+        pattern = "^demand-.*[.]rds$",
+        full.names = TRUE
+    )) {
+        writeBin(as.raw(0), path)
+    }
+    expect_true(
+        nrow(read_subset(dest, case_id = "A")$gaps$incomplete_sources) > 0L
+    )
+    before <- sum(subset_status(dest, "attempts")$native_values)
+    expect_true(
+        files$fetch_subset(
+            a,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), before)
+})
+
+# Local block hashes cannot override contradictory published immutable
+# content evidence supplied by a later catalogue result for the same version.
+test_that("raw subset reuse rejects contradictory published content evidence", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-content-evidence-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    request <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        query_result_test_object("File", docs)$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    docs$checksum <- "contradictory-published-sha256"
+    expect_error(
+        query_result_test_object("File", docs)$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        ),
+        "Conflicting published content"
+    )
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+})
+
+# Identical timestamps can still describe different intervals. Read only
+# requested native bounds and reject a replacement before mixing its values.
+test_that("raw subset fallback rejects incompatible native time bounds", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-bounds-identity-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$variable_id <- "tas"
+    docs$data_node <- c("partial", "wrong-bounds")
+    docs$url <- I(lapply(c("bad-bounds.nc", "wrong-bounds.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    request <- data.frame(
+        request_id = c("one", "four"),
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = c("2060-01-01", "2060-01-04"),
+        time_stop = c("2060-01-01", "2060-01-04")
+    )
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_false(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_true(any(
+        attempts$data_node == "wrong-bounds" &
+            attempts$error_kind == "source_metadata"
+    ))
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), 1:4)
+    expect_equal(unique(raw$values$bound_start_value), 0)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(
+            paste0(server$url(), "requests")
+        )$content
+    ))
+    expect_false(any(grepl("wrong-bounds.nc.dods tas", traffic, fixed = TRUE)))
+    bounds_reads <- traffic[grepl("[.]dods time_bnds", traffic)]
+    expect_true(length(bounds_reads) > 0L)
+    expect_false(any(grepl("time_bnds%5b0:7%5d", bounds_reads, fixed = TRUE)))
+})
+
+# Many distinct target coordinates share the same enclosing cell. Reusing
+# native coverage must preserve every city mapping without repeated weather I/O.
+test_that("raw subset acquisition shares native coverage across many overlapping cities", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-many-cities-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    requests <- data.frame(
+        request_id = paste0("request-", 1:80),
+        site_id = rep(paste0("city-", 1:40), each = 2L),
+        lon = rep(seq(10.1, 10.9, length.out = 40L), each = 2L),
+        lat = .25,
+        time_start = rep(c("2060-01-01", "2060-01-04"), 40L),
+        time_stop = rep(c("2060-01-01", "2060-01-04"), 40L)
+    )
+    result <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), c(1:4, 13:16))
+    expect_equal(nrow(raw$neighborhoods), 320L)
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), 8)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(
+            paste0(server$url(), "requests")
+        )$content
+    ))
+    expect_equal(sum(grepl("[.]dods tas", traffic)), 2L)
+})
+
+# An original unsliced File query can finish its pages after known weather
+# reads start. The frozen completion is reused by the same original input.
+test_that("raw subset directory completion preserves explicit selection and local resume", {
+    skip_if_not_installed("webfakes")
+    local_cache_mode("off")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    docs <- docs[c(1L, 1L), ]
+    docs$id[[2L]] <- "file-2"
+    docs$instance_id[[2L]] <- "file-instance-2"
+    docs$master_id[[2L]] <- "master-file-2"
+    index_app <- webfakes::new_app()
+    index_app$locals$pages <- lapply(seq_len(2L), function(i) {
+        jsonlite::toJSON(
+            esgf_test__response(docs[i, ], num_found = 2L),
+            auto_unbox = TRUE
+        )
+    })
+    changed <- docs
+    changed$id <- c("different-1", "different-2")
+    changed$instance_id <- c("different-instance-1", "different-instance-2")
+    changed$master_id <- c("different-master-1", "different-master-2")
+    index_app$locals$changed_pages <- lapply(seq_len(2L), function(i) {
+        jsonlite::toJSON(
+            esgf_test__response(changed[i, ], num_found = 2L),
+            auto_unbox = TRUE
+        )
+    })
+    conflict <- docs
+    conflict$checksum <- "conflicting-published-content"
+    index_app$locals$conflict_pages <- lapply(seq_len(2L), function(i) {
+        jsonlite::toJSON(
+            esgf_test__response(conflict[i, ], num_found = 2L),
+            auto_unbox = TRUE
+        )
+    })
+    index_app$locals$conflict <- FALSE
+    index_app$locals$changed <- FALSE
+    index_app$locals$queries <- list()
+    index_app$locals$weather <- paste0(server$url(), "requests")
+    index_app$get("/esg-search/search", function(req, res, locals) {
+        weather <- rawToChar(curl::curl_fetch_memory(locals$weather)$content)
+        locals$queries[[length(locals$queries) + 1L]] <- list(
+            query = req$query,
+            known_read_started = grepl("dods tas", weather)
+        )
+        offset <- if (is.null(req$query$offset)) {
+            0L
+        } else {
+            as.integer(req$query$offset)
+        }
+        pages <- if (locals$conflict) {
+            locals$conflict_pages
+        } else if (locals$changed) {
+            locals$changed_pages
+        } else {
+            locals$pages
+        }
+        res$set_header("Content-Type", "application/json")$send(pages[[
+            offset + 1L
+        ]])
+    })
+    index_app$get("/conflict", function(req, res, locals) {
+        locals$conflict <- TRUE
+        res$send("ok")
+    })
+    index_app$get("/change", function(req, res, locals) {
+        locals$changed <- TRUE
+        res$send("ok")
+    })
+    index_app$get("/queries", function(req, res, locals) {
+        res$send_json(locals$queries)
+    })
+    index <- webfakes::new_app_process(index_app)
+    on.exit(index$stop(), add = TRUE)
+    partial <- query_result__new(
+        EsgResultFile,
+        index_node = sub("/$", "", index$url()),
+        params = query_result_test_params("File"),
+        result = esgf_test__response(docs[1L, ], num_found = 2L)
+    )
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    dest <- tempfile("raw-directory-completion-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    first <- partial$fetch_subset(requests, dest, workers = 1L, retries = 0L)
+    expect_true(first$complete)
+    expect_true(first$directory_complete)
+    expect_equal(length(unique(read_subset(dest)$links$source_key)), 2L)
+    expect_equal(nrow(read_subset(dest)$values), 8L)
+    queries <- rawToChar(
+        curl::curl_fetch_memory(paste0(index$url(), "queries"))$content
+    )
+    evidence <- jsonlite::fromJSON(queries)
+    expect_equal(nrow(evidence), 2L)
+    expect_true(all(unlist(evidence$known_read_started)))
+    expect_true(all(evidence$query$type == "File"))
+    expect_true(all(evidence$query$project == "CMIP6"))
+    before <- subset_status(dest, "attempts")
+    expect_true(
+        partial$fetch_subset(requests, dest, workers = 1L)$directory_complete
+    )
+    expect_identical(subset_status(dest, "attempts"), before)
+    expect_identical(
+        rawToChar(
+            curl::curl_fetch_memory(
+                paste0(index$url(), "queries")
+            )$content
+        ),
+        queries
+    )
+    expect_equal(length(unique(read_subset(dest)$links$source_key)), 2L)
+    # Even selecting every currently held row explicitly must freeze science
+    # inputs; a complete catalog and an old contextless saved partial also freeze.
+    for (selected in list(
+        partial$slice(1L),
+        query_result_test_object("File", docs)$slice(1L)
+    )) {
+        selected_dest <- tempfile("raw-directory-selected-")
+        on.exit(unlink(selected_dest, recursive = TRUE), add = TRUE)
+        selected$fetch_subset(requests, selected_dest, workers = 1L)
+        expect_equal(
+            length(unique(read_subset(selected_dest)$links$source_key)),
+            1L
+        )
+        expect_identical(
+            rawToChar(
+                curl::curl_fetch_memory(
+                    paste0(index$url(), "queries")
+                )$content
+            ),
+            queries
+        )
+    }
+    saved_path <- tempfile(fileext = ".json")
+    on.exit(unlink(saved_path), add = TRUE)
+    partial$save(saved_path)
+    old <- jsonlite::read_json(saved_path, simplifyVector = FALSE)
+    old$context$directory_collection <- NULL
+    jsonlite::write_json(old, saved_path, auto_unbox = TRUE, null = "null")
+    old_partial <- esg_result("file")$load(saved_path)
+    old_dest <- tempfile("raw-directory-old-context-")
+    on.exit(unlink(old_dest, recursive = TRUE), add = TRUE)
+    expect_false(
+        old_partial$fetch_subset(
+            requests,
+            old_dest,
+            workers = 1L
+        )$directory_complete
+    )
+    expect_equal(length(unique(read_subset(old_dest)$links$source_key)), 1L)
+    expect_identical(
+        rawToChar(
+            curl::curl_fetch_memory(
+                paste0(index$url(), "queries")
+            )$content
+        ),
+        queries
+    )
+    # resume=FALSE refreshes each source once across the two phases, including
+    # newly discovered Files that already have durable blocks from another call.
+    refresh_dest <- tempfile("raw-directory-refresh-")
+    on.exit(unlink(refresh_dest, recursive = TRUE), add = TRUE)
+    full <- partial$clone(deep = TRUE)
+    priv(full)$response$response$docs <- docs
+    full$fetch_subset(requests, refresh_dest, workers = 1L)
+    expect_identical(
+        rawToChar(
+            curl::curl_fetch_memory(
+                paste0(index$url(), "queries")
+            )$content
+        ),
+        queries
+    )
+    prior_values <- sum(subset_status(refresh_dest, "attempts")$native_values)
+    expect_true(
+        partial$fetch_subset(
+            requests,
+            refresh_dest,
+            workers = 1L,
+            resume = FALSE
+        )$directory_complete
+    )
+    expect_equal(
+        sum(subset_status(refresh_dest, "attempts")$native_values) -
+            prior_values,
+        8
+    )
+    # A damaged completion plus an index that drops known source identity must
+    # retain the original data and report the unresolved directory explicitly.
+    frozen <- list.files(
+        file.path(dest, "subsets"),
+        "^directory-.*[.]rds$",
+        full.names = TRUE
+    )
+    expect_length(frozen, 1L)
+    writeBin(as.raw(0), frozen)
+    curl::curl_fetch_memory(paste0(index$url(), "change"))
+    attempts <- subset_status(dest, "attempts")
+    expect_warning(
+        changed_result <- partial$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            timeout = 1
+        ),
+        "Ignoring invalid saved File directory"
+    )
+    expect_false(changed_result$directory_complete)
+    expect_true(changed_result$complete)
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    expect_equal(nrow(read_subset(dest)$gaps$directory), 1L)
+
+    # Published content contradictions are source errors, not directory transport
+    # gaps. The first phase's already committed native data remains readable.
+    curl::curl_fetch_memory(paste0(index$url(), "conflict"))
+    conflict_dest <- tempfile("raw-directory-content-conflict-")
+    on.exit(unlink(conflict_dest, recursive = TRUE), add = TRUE)
+    expect_error(
+        partial$fetch_subset(
+            requests,
+            conflict_dest,
+            workers = 1L
+        ),
+        "Conflicting published content metadata"
+    )
+    expect_equal(sort(read_subset(conflict_dest)$values$value), 1:4)
+
+    # Index unavailability cannot prevent a known healthy File from finishing.
+    # This case checks directory isolation, not a one-second deadline. Allow
+    # local dispatch/initialization before the first healthy HTTP request;
+    # dedicated stall tests separately check worker retirement.
+    unavailable <- partial$clone(deep = TRUE)
+    priv(unavailable)$index_node <- "http://127.0.0.1:1"
+    failed_dest <- tempfile("raw-directory-unavailable-")
+    on.exit(unlink(failed_dest, recursive = TRUE), add = TRUE)
+    failed <- unavailable$fetch_subset(
+        requests,
+        failed_dest,
+        workers = 1L,
+        timeout = 2
+    )
+    expect_true(failed$complete)
+    expect_false(failed$directory_complete)
+    expect_equal(nrow(read_subset(failed_dest)$gaps$directory), 1L)
+    expect_equal(sort(read_subset(failed_dest)$values$value), 1:4)
+})
+
+# A complete selected File can be reusable while its originating catalogue is
+# still partial. Directory gaps stay visible offline and after cache-only resume.
+test_that("raw subset reports partial directories independently of native completion", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-partial-directory-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    index_app <- webfakes::new_app()
+    index_app$locals$response <- jsonlite::toJSON(
+        esgf_test__response(docs),
+        auto_unbox = TRUE
+    )
+    index_app$get("/esg-search/search", function(req, res, locals) {
+        res$set_header("Content-Type", "application/json")$send(locals$response)
+    })
+    index <- webfakes::new_app_process(index_app)
+    on.exit(index$stop(), add = TRUE)
+    partial <- query_result__new(
+        EsgResultFile,
+        index_node = sub("/$", "", index$url()),
+        params = query_result_test_params("File"),
+        result = esgf_test__response(docs, num_found = 2L),
+        context = NULL
+    )
+    plan <- partial$access_plan(expand = FALSE)
+    expect_false(attr(plan, "directory_complete"))
+    expect_false(attr(partial$access_plan(), "directory_complete"))
+    first <- partial$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(first$complete)
+    expect_false(first$directory_complete)
+    expect_false(subset_status(dest)$directory_complete)
+    expect_equal(read_subset(dest)$gaps$directory$request_id, "one")
+    before <- subset_status(dest, "attempts")
+    expect_false(
+        partial$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$directory_complete
+    )
+    expect_identical(subset_status(dest, "attempts"), before)
+    # Deliberately selecting a File from a fully collected catalogue is complete
+    # for that selection, even though another File is intentionally omitted.
+    all_docs <- docs[c(1L, 1L), ]
+    all_docs$id[[2L]] <- "other-file"
+    all_docs$instance_id[[2L]] <- "other-file-instance"
+    selected <- query_result_test_object("File", all_docs)$slice(1L)
+    expect_true(attr(
+        selected$access_plan(expand = FALSE),
+        "directory_complete"
+    ))
+    result <- selected$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    expect_true(result$directory_complete)
+    expect_true(subset_status(dest)$directory_complete)
+    expect_equal(nrow(read_subset(dest)$gaps$directory), 0L)
+    expect_identical(subset_status(dest, "attempts"), before)
+    # An empty explicit selection retains the fully collected directory's origin.
+    expect_true(attr(
+        selected$slice(integer())$access_plan(expand = FALSE),
+        "directory_complete"
+    ))
+    # A read-only view is a controlled local persistence fault: the manifest can
+    # read the old links, but cannot replace them after writing new provenance.
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec(
+        paste(
+            "ALTER TABLE subset_links RENAME TO saved_links;",
+            "CREATE VIEW subset_links AS SELECT * FROM saved_links"
+        ),
+        conn = conn
+    )
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
+    changed <- requests
+    changed$lon <- 10.75
+    expect_error(
+        partial$fetch_subset(changed, dest, discover = TRUE),
+        "View|view"
+    )
+    expect_true(subset_status(dest)$directory_complete)
+    expect_equal(read_subset(dest)$links$lon, 10.25)
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec(
+        paste(
+            "DROP VIEW subset_links;",
+            "ALTER TABLE saved_links RENAME TO subset_links"
+        ),
+        conn = conn
+    )
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
+    # A newly supplied partial directory cannot be hidden by unrelated complete
+    # requests, and selecting an earlier request retains its own provenance.
+    partial_request <- requests
+    partial_request$request_id <- "other"
+    partial_request$site_id <- "other-city"
+    partial$fetch_subset(partial_request, dest, discover = TRUE)
+    expect_false(subset_status(dest)$directory_complete)
+    expect_equal(nrow(read_subset(dest, site_id = "city")$gaps$directory), 0L)
+    expect_equal(
+        read_subset(dest, site_id = "other-city")$gaps$directory$request_id,
+        "other"
+    )
+    # Model an older persisted schema after another native persistence error.
+    # Start with ample GC headroom so the failed result survives until the
+    # deliberately delayed finalization below, rather than being collected while
+    # later manifest operations allocate their temporary R objects.
+    gc(FALSE)
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec(
+        paste(
+            "ALTER TABLE subset_links RENAME TO saved_links;",
+            "CREATE VIEW subset_links AS SELECT * FROM saved_links"
+        ),
+        conn = conn
+    )
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
+    expect_error(
+        partial$fetch_subset(changed, dest, discover = TRUE),
+        "View|view"
+    )
+    conn <- duckdb::dbConnect(
+        duckdb::duckdb(),
+        dbdir = file.path(dest, "manifest.duckdb")
+    )
+    duckdb::sql_exec(
+        paste(
+            "DROP VIEW subset_links;",
+            "ALTER TABLE saved_links RENAME TO subset_links;",
+            "DROP TABLE subset_directory"
+        ),
+        conn = conn
+    )
+    duckdb::dbDisconnect(conn, shutdown = TRUE)
+    # This collection is the adversarial trigger: a stale failed native result
+    # must never checkpoint its old directory over a successor connection's DDL.
+    # Public offline readers must still expose the missing evidence as unknown.
+    gc(FALSE)
+    expect_true(is.na(subset_status(dest)$directory_complete))
+    expect_true(all(is.na(read_subset(dest)$gaps$directory$directory_complete)))
+    selected$fetch_subset(requests, dest, discover = TRUE)
+    expect_true(is.na(subset_status(dest)$directory_complete))
+    expect_equal(nrow(read_subset(dest, site_id = "city")$gaps$directory), 0L)
+    expect_identical(subset_status(dest, "attempts"), before)
+    empty <- read_subset(dest, site_id = "absent")
+    expect_equal(nrow(empty$values), 0L)
+    expect_equal(nrow(empty$links), 0L)
+    expect_equal(nrow(empty$gaps$directory), 0L)
+})
+
+# A fresh native read can change target membership without changing block ID.
+# An interruption before the pending receipt must preserve earlier case inputs.
+test_that("raw subset refresh preserves committed artifacts before pending publication", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-immutable-block-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    original <- data.frame(
+        request_id = "original",
+        case_id = "original",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        files$fetch_subset(
+            original,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    committed <- subset_status(dest, "blocks")
+    expect_equal(nrow(committed), 1L)
+    previous <- read_subset(dest, case_id = "original")
+    changed <- original
+    changed$request_id <- changed$case_id <- "changed"
+    changed$lon <- 10.75
+    metadata_written <- NULL
+    local({
+        write <- store__extract_cache_write
+        local_mocked_bindings(
+            store__extract_cache_write = function(path, payload) {
+                result <- write(path, payload)
+                # Match the canonical block ID, allowing immutable content
+                # suffixes. The fault follows the real metadata publication.
+                if (
+                    startsWith(basename(path), committed$block_id[[1L]]) &&
+                        endsWith(path, ".rds")
+                ) {
+                    metadata_written <<- path
+                    stop("controlled pre-pending interruption", call. = FALSE)
+                }
+                result
+            }
+        )
+        expect_error(
+            files$fetch_subset(
+                changed,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            ),
+            "controlled pre-pending interruption"
+        )
+    })
+    expect_true(file.exists(metadata_written))
+    expect_equal(
+        readRDS(metadata_written)$neighborhoods$target_lon,
+        rep(10.75, 4L)
+    )
+    expect_length(list.files(file.path(dest, "subsets"), "^pending-"), 0L)
+    expect_identical(checksum_file(committed$path), committed$sha256[[1L]])
+    expect_identical(
+        checksum_file(committed$metadata_path),
+        committed$metadata_sha256[[1L]]
+    )
+    retained <- subset_status(dest, "blocks")
+    expect_identical(retained$path, committed$path)
+    expect_identical(retained$metadata_path, committed$metadata_path)
+    saved <- read_subset(dest, case_id = "original")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_equal(unique(saved$values$cf_day), 1L)
+    expect_equal(saved$neighborhoods, previous$neighborhoods)
+    expect_equal(nrow(saved$gaps$incomplete_sources), 0L)
+    expect_equal(nrow(saved$gaps$incomplete_requests), 0L)
+    expect_gt(
+        nrow(read_subset(dest, case_id = "changed")$gaps$incomplete_requests),
+        0L
+    )
+    attempts <- subset_status(dest, "attempts")
+    traffic <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    # The failed new case may remain a gap; the original request needs no read.
+    files$fetch_subset(original, dest, workers = 1L, discover = FALSE)
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    # The later interruption window must still adopt refreshed descriptors
+    # when an older reference with the same canonical block ID already exists.
+    local({
+        rename <- base::file.rename
+        local_mocked_bindings(
+            file.rename = function(from, to) {
+                result <- rename(from, to)
+                if (
+                    isTRUE(result) && grepl("/pending-[^/]+[.]rds[.]json$", to)
+                ) {
+                    stop(
+                        "controlled pending refresh interruption",
+                        call. = FALSE
+                    )
+                }
+                result
+            },
+            .package = "base"
+        )
+        expect_error(
+            files$fetch_subset(
+                changed,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            ),
+            "controlled pending refresh interruption"
+        )
+    })
+    expect_identical(
+        checksum_file(committed$metadata_path),
+        committed$metadata_sha256[[1L]]
+    )
+    attempts <- subset_status(dest, "attempts")
+    traffic <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    expect_true(
+        files$fetch_subset(
+            changed,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    adopted <- subset_status(dest, "blocks")
+    expect_identical(adopted$block_id, committed$block_id)
+    expect_false(identical(adopted$metadata_path, committed$metadata_path))
+    expect_equal(
+        readRDS(adopted$metadata_path)$neighborhoods$target_lon,
+        rep(10.75, 4L)
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    expect_equal(sort(read_subset(dest, case_id = "changed")$values$value), 1:4)
+    expect_equal(
+        sort(read_subset(dest, case_id = "original")$values$value),
+        1:4
+    )
+    rollback <- changed
+    rollback$request_id <- rollback$case_id <- "rollback"
+    rollback$lon <- 10.5
+    local({
+        append <- ddb_append_table
+        local_mocked_bindings(
+            ddb_append_table = function(conn, table, rows, ...) {
+                result <- append(conn, table, rows, ...)
+                if (identical(table, "subset_blocks")) {
+                    stop("controlled block transaction rollback", call. = FALSE)
+                }
+                result
+            }
+        )
+        expect_error(
+            files$fetch_subset(
+                rollback,
+                dest,
+                workers = 1L,
+                discover = FALSE,
+                resume = FALSE
+            ),
+            "controlled block transaction rollback"
+        )
+    })
+    expect_identical(subset_status(dest, "blocks"), adopted)
+    expect_identical(checksum_file(adopted$path), adopted$sha256[[1L]])
+    expect_identical(
+        checksum_file(adopted$metadata_path),
+        adopted$metadata_sha256[[1L]]
+    )
+    expect_equal(
+        sort(read_subset(dest, case_id = "original")$values$value),
+        1:4
+    )
+    expect_equal(sort(read_subset(dest, case_id = "changed")$values$value), 1:4)
+})
+
+# Disabling old coverage reuse must retain its scientific interval identity.
+# A new client observation prevents earlier good-node timing from masking the
+# incompatible endpoint that the caller explicitly places first on refresh.
+test_that("raw subset refresh validates saved native bounds without reusing coverage", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-refresh-bounds-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    expect_true(
+        query_result_test_object("File", docs)$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            network_id = "original"
+        )$complete
+    )
+    original <- read_subset(dest)
+    before <- nrow(subset_status(dest, "attempts"))
+    docs <- docs[c(1L, 1L), ]
+    docs$data_node <- c("wrong-bounds", "consistent")
+    docs$url <- I(lapply(
+        c("wrong-bounds.nc", "fast-bounds.nc"),
+        function(name) {
+            paste0(server$url(), name, "|application/netcdf|OPENDAP")
+        }
+    ))
+    refreshed <- query_result_test_object("File", docs)$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE,
+        resume = FALSE,
+        network_id = "refresh"
+    )
+    expect_true(refreshed$complete)
+    attempts <- subset_status(dest, "attempts")[-seq_len(before)]
+    expect_identical(
+        unique(attempts$data_node),
+        c("wrong-bounds", "consistent")
+    )
+    expect_identical(attempts$error_kind[[1L]], "source_metadata")
+    expect_equal(
+        attempts$native_values[attempts$data_node == "wrong-bounds"],
+        0
+    )
+    expect_equal(sum(attempts$native_values), 4)
+    saved <- read_subset(dest)
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_equal(unique(saved$values$bound_start_value), 0)
+    expect_equal(unique(saved$values$bound_end_value), 1)
+    expect_equal(
+        saved$values[, c("bound_start_value", "bound_end_value")],
+        original$values[, c("bound_start_value", "bound_end_value")]
+    )
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("wrong-bounds.nc.dods tas", traffic, fixed = TRUE)))
+    expect_equal(
+        sum(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)),
+        2L
+    )
+    # Loss of weather bytes does not erase verified interval metadata. Repair
+    # must check the same identity even after invalidation moves the old row
+    # into audit history, without counting that history as completed coverage.
+    for (damage in c("missing", "corrupt")) {
+        block <- subset_status(dest, "blocks")
+        if (damage == "missing") {
+            unlink(block$path)
+        } else {
+            writeBin(as.raw(0), block$path)
+        }
+        before <- nrow(subset_status(dest, "attempts"))
+        expect_true(
+            query_result_test_object("File", docs)$fetch_subset(
+                requests,
+                dest,
+                workers = 1L,
+                retries = 0L,
+                discover = FALSE,
+                network_id = paste0("repair-", damage)
+            )$complete
+        )
+        attempts <- subset_status(dest, "attempts")[-seq_len(before)]
+        expect_identical(
+            unique(attempts$data_node),
+            c("wrong-bounds", "consistent")
+        )
+        expect_identical(attempts$error_kind[[1L]], "source_metadata")
+        expect_equal(
+            attempts$native_values[attempts$data_node == "wrong-bounds"],
+            0
+        )
+        expect_equal(sum(attempts$native_values), 4)
+        saved <- read_subset(dest)
+        expect_equal(sort(saved$values$value), 1:4)
+        expect_equal(unique(saved$values$bound_start_value), 0)
+        expect_equal(unique(saved$values$bound_end_value), 1)
+        if (damage == "corrupt") {
+            expect_false(identical(
+                subset_status(dest, "blocks")$path,
+                block$path
+            ))
+            expect_identical(readBin(block$path, "raw", n = 1L), as.raw(0))
+        }
+    }
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("wrong-bounds.nc.dods tas", traffic, fixed = TRUE)))
+    expect_equal(
+        sum(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)),
+        4L
+    )
+})
+
+# Published subannual periods exclude unrelated Files before native OPeNDAP
+# reads, without rounding 360-day dates into the Gregorian calendar.
+test_that("raw subset windows match native File periods at their published precision", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-native-file-window-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs()
+    docs <- docs[c(1L, 1L), ]
+    docs$id <- docs$instance_id <- docs$master_id <- c("january", "june")
+    docs$title <- c("tas_206001-206001.nc", "tas_206006-206006.nc")
+    docs$variable_id <- "tas"
+    docs$url <- I(lapply(c("fast.nc", "june.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "june",
+        case_id = "summer",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-06-01",
+        time_stop = "2060-06-01"
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    saved <- read_subset(dest, case_id = "summer")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_equal(unique(saved$values$cf_month), 6L)
+    expect_equal(nrow(saved$neighborhoods), 4L)
+    expect_equal(nrow(saved$gaps$incomplete_requests), 0L)
+    attempts <- subset_status(dest, "attempts")
+    expect_identical(unique(attempts$url), paste0(server$url(), "june.nc"))
+    traffic <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    expect_false(any(grepl(
+        "fast.nc",
+        jsonlite::fromJSON(rawToChar(traffic)),
+        fixed = TRUE
+    )))
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    request$request_id <- "missing"
+    request$case_id <- "missing"
+    request$time_start <- request$time_stop <- "2060-05-01"
+    expect_false(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_gt(
+        nrow(read_subset(dest, case_id = "missing")$gaps$incomplete_requests),
+        0L
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        traffic
+    )
+    # A window spanning Files legitimately keeps each File's available native
+    # portion; the paper workflow separately judges whole-case time coverage.
+    request$request_id <- request$case_id <- "spanning"
+    request$time_start <- "2060-01-01"
+    request$time_stop <- "2060-06-01"
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    spanning <- read_subset(dest, case_id = "spanning")
+    expect_equal(sort(spanning$values$value), sort(c(1:32, 1:4)))
+    expect_equal(sort(unique(spanning$values$cf_month)), c(1L, 6L))
+})
+
+# A DRS boundary is an inclusive calendar field tuple at the stated precision,
+# including February 30 and subdaily File endpoints. Native CF remains the
+# final authority when a label is absent or cannot be parsed safely.
+test_that("raw subset File windows retain nonGregorian and subdaily endpoints", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    destinations <- tempfile("raw-native-periods-")
+    dir.create(destinations)
+    on.exit(unlink(destinations, recursive = TRUE), add = TRUE)
+    examples <- data.frame(
+        first = c(
+            "20600229",
+            "2060010100",
+            "206001010000",
+            "20600101000000",
+            "20600101"
+        ),
+        last = c(
+            "20600230",
+            "2060010103",
+            "206001010003",
+            "20600101000003",
+            "20600104"
+        ),
+        origin = c(
+            "february.nc",
+            "hour.nc",
+            "minute.nc",
+            "second.nc",
+            "fast.nc"
+        ),
+        endpoint = c(
+            "2060-02-30",
+            "2060-01-01T03:00:00Z",
+            "2060-01-01T00:03:00Z",
+            "2060-01-01T00:00:03Z",
+            "2060-01-04"
+        ),
+        value = c(29L, 13L, 13L, 13L, 13L)
+    )
+    for (i in seq_len(nrow(examples))) {
+        dest <- file.path(destinations, as.character(i))
+        docs <- query_result_test_file_docs()
+        docs <- docs[c(1L, 1L), ]
+        docs$id <- docs$instance_id <- docs$master_id <- c("outside", "inside")
+        docs$title <- paste0(
+            "tas_",
+            c(examples$first[[i]], examples$last[[i]]),
+            "-",
+            c(examples$first[[i]], examples$last[[i]]),
+            ".nc"
+        )
+        docs$variable_id <- "tas"
+        docs$url <- I(lapply(
+            c(paste0("outside-", examples$origin[[i]]), examples$origin[[i]]),
+            function(name) {
+                paste0(server$url(), name, "|application/netcdf|OPENDAP")
+            }
+        ))
+        files <- query_result_test_object("File", docs)
+        request <- data.frame(
+            request_id = "native",
+            case_id = "native",
+            site_id = "city",
+            lon = 10.25,
+            lat = .25,
+            time_start = examples$endpoint[[i]],
+            time_stop = examples$endpoint[[i]]
+        )
+        expect_true(
+            files$fetch_subset(
+                request,
+                dest,
+                workers = 1L,
+                retries = 0L,
+                discover = FALSE
+            )$complete
+        )
+        expect_equal(
+            sort(read_subset(dest, case_id = "native")$values$value),
+            examples$value[[i]] + 0:3
+        )
+        expect_identical(
+            unique(subset_status(dest, "attempts")$url),
+            paste0(server$url(), examples$origin[[i]])
+        )
+        expect_equal(
+            files$access_plan(expand = FALSE)$file_start_year,
+            c(2060L, 2060L)
+        )
+    }
+    for (label in c(
+        "unknown.nc",
+        "tas_206013-206013.nc",
+        "tas_206006-206001.nc"
+    )) {
+        dest <- file.path(destinations, label)
+        docs <- query_result_test_file_docs(paste0(
+            server$url(),
+            "june.nc|application/netcdf|OPENDAP"
+        ))
+        docs$title <- label
+        docs$variable_id <- "tas"
+        request <- data.frame(
+            request_id = "unknown",
+            site_id = "city",
+            lon = 10.25,
+            lat = .25,
+            time_start = "2060-06-01",
+            time_stop = "2060-06-01"
+        )
+        expect_true(
+            query_result_test_object("File", docs)$fetch_subset(
+                request,
+                dest,
+                workers = 1L,
+                retries = 0L,
+                discover = FALSE
+            )$complete
+        )
+        expect_equal(sort(read_subset(dest)$values$value), 1:4)
+    }
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("outside-", traffic, fixed = TRUE)))
+})
+
+# Every OPeNDAP service advertised by one File remains a real execution option.
+# The first address is unreachable; the second serves the original native cells.
+test_that("raw subsets retain all advertised OPeNDAP endpoints", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("all-opendap-services-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    bad <- "http://127.0.0.1:1/unavailable.nc"
+    good <- paste0(server$url(), "fast.nc")
+    docs <- query_result_test_file_docs()
+    docs$variable_id <- "tas"
+    docs$url <- I(list(paste0(
+        c(bad, good, paste0(good, ".html")),
+        "|application/netcdf|OPENDAP"
+    )))
+    files <- query_result_test_object("File", docs)
+    plan <- files$access_plan(expand = FALSE)
+    expect_identical(plan$url, c(bad, good))
+    expect_identical(plan$record_index, c(1L, 1L))
+    expect_length(unique(plan$source_key), 1L)
+    requests <- data.frame(
+        request_id = "one-day",
+        case_id = "original",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01"
+    )
+    result <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        timeout = 5,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_true(any(!attempts$success))
+    expect_equal(sum(attempts$native_values), 4)
+    saved <- read_subset(dest, case_id = "original")
+    expect_equal(sort(saved$values$value), 1:4)
+    expect_equal(nrow(saved$neighborhoods), 4L)
+    expect_identical(unique(saved$values$cf_calendar), "360_day")
+    expect_identical(unique(saved$values$cf_day), 1L)
+    before <- curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    requests$request_id <- "linked-day"
+    requests$case_id <- "linked"
+    expect_true(
+        files$fetch_subset(
+            requests,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            timeout = 5,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content,
+        before
+    )
+    expect_equal(sort(read_subset(dest, case_id = "linked")$values$value), 1:4)
+})
+
+# Expanding per-record services cannot change the File metadata they belong to,
+# or hide a File with no OPeNDAP service behind HTTP-only acquisition.
+test_that("raw subset endpoint inventories preserve File rows and missing services", {
+    docs <- query_result_test_file_docs()
+    docs <- docs[rep(1L, 3L), ]
+    docs$id <- paste0("record-", 1:3)
+    docs$instance_id <- docs$master_id <- paste0("logical-", 1:3)
+    docs$variable_id <- "tas"
+    docs$title <- paste0(
+        "tas_Amon_model_historical_member_grid_",
+        c(
+            "206001-206001.nc",
+            "206006-206006.nc",
+            "206012-206012.nc"
+        )
+    )
+    docs$data_node <- NA_character_
+    docs$url <- I(list(
+        c(
+            "https://one.example/a.nc.html|application/netcdf|OPENDAP",
+            "https://one.example/a.nc|application/netcdf|OPENDAP",
+            "https://two.example/a.nc|application/netcdf|OPENDAP"
+        ),
+        "https://three.example/b.nc|application/netcdf|OPENDAP",
+        "https://http.example/c.nc|application/netcdf|HTTPServer"
+    ))
+    files <- query_result_test_object("File", docs)
+    plan <- files$access_plan(expand = FALSE)
+    expect_identical(plan$record_index, c(1L, 1L, 2L, 3L))
+    expect_identical(
+        plan$url,
+        c(
+            "https://one.example/a.nc",
+            "https://two.example/a.nc",
+            "https://three.example/b.nc",
+            NA_character_
+        )
+    )
+    expect_identical(
+        plan$data_node,
+        c("one.example", "two.example", "three.example", NA_character_)
+    )
+    expect_identical(
+        plan$file_start_key,
+        c(
+            "20600100000000",
+            "20600100000000",
+            "20600600000000",
+            "20601200000000"
+        )
+    )
+    expect_length(unique(plan$source_key), 3L)
+    expect_identical(plan$source_key[[1L]], plan$source_key[[2L]])
+    expect_identical(attr(plan, "selection"), files$selection())
+    missing <- files$slice(3L)
+    dest <- tempfile("missing-opendap-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    requests <- data.frame(
+        request_id = "missing",
+        case_id = "case",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-12-01",
+        time_stop = "2060-12-01"
+    )
+    result <- missing$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_false(result$complete)
+    expect_equal(sum(subset_status(dest, "attempts")$native_values), 0)
+    expect_equal(nrow(subset_status(dest, "blocks")), 0L)
 })
 
 # vim: fdm=marker :

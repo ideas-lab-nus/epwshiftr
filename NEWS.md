@@ -1,5 +1,27 @@
 # epwshiftr (development version)
 
+* Retire code-coverage collection and Codecov reporting. Linux package checks
+  run every test, including the ESGF and ERA5 live workflows, and reject skipped
+  tests; functional checks remain enabled on all three platforms (#296).
+
+* Add `EsgResultFile$access_plan()` and `fetch_subset()` for raw native 2x2
+  neighborhoods over OPeNDAP. Acquisition retains Replica candidates, ranks
+  actual reads using recent client timing and failures, switches endpoints,
+  and resumes checksum-verified blocks. `subset_status()` and `read_subset()`
+  expose local progress, gaps, case associations and unaggregated corners.
+  Directory completeness is recorded separately from selected native data
+  coverage, including deliberate slices and older manifests without evidence.
+  Original unsliced partial File queries complete through the bounded reader
+  pool after known reads start, and their verified catalogs are reused locally.
+  Committed demand receipts remain immutable across repeated publication, and
+  failed worker identity registration releases its owned compute profile.
+  Resuming reads only source-local manifest history, and local rereads share
+  native corner/window selections across consuming cases. Failed native SQL
+  results are released before offline reopen, preventing retained Windows locks
+  and delayed stale manifest checkpoints on Unix.
+  `EsgDataset$read_neighborhood()` provides the same bounded raw selection.
+  Existing API defaults remain unchanged (#296).
+
 * Compile each fixed package schema once per R process and reuse it for query, result, dictionary and shift workflow config validation, instead of recompiling the schema on every check. Validation rules and error messages are unchanged.
 
 * Coalesce live run snapshots. Within one process, ordinary changes to a run (events, case writes, heartbeats) rewrite the lock-free snapshot at most once per second, and a deferred write is delivered by the next heartbeat or change. Status changes, terminal run, step and job states, and new attempts are still written immediately, and the snapshot is always rebuilt from the manifest tables. The last reporter state is kept when a write carries none, instead of being erased.
@@ -93,15 +115,9 @@
   long IDs without a local length rejection, preserving query receipts and global
   row limits without duplicating partial pages when a batch restarts (#280).
 
-* Coverage CI prints the total line coverage and retains per-file reports and
-  merged counters independently of Codecov. Upload errors produce a warning without
-  failing the job (#279).
-
 * Publish `standalone-downloader.R` for `usethis::use_standalone()`, with local checksum,
   manifest, validation and process helpers. Host cache and Store integration
-  stay in package adapters. Downloader instances own separate worker pools.
-  Coverage includes complete parent and worker traces
-  and rejects unfinished trace writes before upload (#278).
+  stay in package adapters. Downloader instances own separate worker pools (#278).
 
 * Handwritten R sources, tests and tools include Vim marker folds for functions,
   classes and methods, without nested callback folds inside function bodies;
