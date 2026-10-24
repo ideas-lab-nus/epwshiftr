@@ -201,10 +201,13 @@ Larger budgets combine only contiguous required times and corners,
 without changing saved native identity or existing API defaults.}
       \item{\code{replica_cooldown}}{Seconds to defer a failed endpoint, from 0 to
 3600; 0 preserves immediate bounded retries. Explicit HTTP 404/410
-failures cool for eight times this interval. A node cools only after
-three distinct Files report recent network/service failures, and a
-successful data read clears its node failure streak. If every
-candidate is cooling, the source remains incomplete for a later call.}
+failures cool for eight times this interval. Repeated failures use
+finite backoff up to eight times the interval. A node cools only after
+three distinct Files report network/service or generic DAP failures
+within the greater of five minutes and eight cooldown intervals.
+Known File absences stay endpoint-local; successful native data reads
+reset the corresponding failure streak. If every candidate is cooling,
+the source remains incomplete for a later call.}
     }
     \if{html}{\out{</div>}}
   }

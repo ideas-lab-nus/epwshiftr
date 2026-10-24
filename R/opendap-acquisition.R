@@ -1133,8 +1133,8 @@ opendap__rank <- function(
 }
 
 # Compute a finite deadline from actual failed reads after the last success.
-# Ambiguous native-library errors are endpoint-local; node cooling needs at
-# least three distinct Files with explicit service/network failures.
+# A generic DAP failure is ambiguous for one File. Corroborate it across three
+# distinct Files before cooling a node, and never promote known File absences.
 opendap__cooldown_deadline <- function(rows, seconds, node = FALSE) {
     success <- rows$success & rows$native_values > 0
     last_success <- max(c(-Inf, rows$observed_at[success]), na.rm = TRUE)
@@ -1146,23 +1146,33 @@ opendap__cooldown_deadline <- function(rows, seconds, node = FALSE) {
     if (!nrow(rows)) {
         return(0)
     }
+    absent <- grepl(
+        "(HTTP[^0-9]*|status[=: ]+)(404|410)\\b|404 Not Found|410 Gone|file not found|no such file",
+        rows$error,
+        ignore.case = TRUE,
+        perl = TRUE
+    )
     if (node) {
-        rows <- rows[grepl(
-            "timed out|timeout|execution deadline|connection reset|could not connect|failed to connect|could not resolve|HTTP[^0-9]*5[0-9]{2}",
-            rows$error,
-            ignore.case = TRUE
-        )]
+        rows <- rows[
+            !absent &
+                grepl(
+                    "timed out|timeout|execution deadline|connection reset|could not connect|failed to connect|could not resolve|HTTP[^0-9]*5[0-9]{2}|NetCDF:[[:space:]]*DAP failure",
+                    rows$error,
+                    ignore.case = TRUE
+                )
+        ]
         if (data.table::uniqueN(rows$source_key) < 3L) return(0)
     }
     latest <- which.max(rows$observed_at)
-    missing <- !node &&
-        grepl(
-            "(HTTP[^0-9]*|status[=: ]+)(404|410)\\b|404 Not Found|410 Gone",
-            rows$error[[latest]],
-            ignore.case = TRUE,
-            perl = TRUE
-        )
-    rows$observed_at[[latest]] + seconds * if (missing) 8 else 1
+    # Persisted failures increase recovery spacing without an unbounded sleep
+    # or permanent exclusion. Native success above resets both backoff scopes.
+    failures <- nrow(rows) - if (node) 3L else 1L
+    factor <- if (!node && absent[[latest]]) {
+        8
+    } else {
+        2^min(3L, failures)
+    }
+    rows$observed_at[[latest]] + seconds * factor
 }
 
 # Return one eligibility deadline per candidate in its original order. The
@@ -1195,7 +1205,9 @@ opendap__cooling_until <- function(
     ]
     until <- endpoints[candidates, on = c("source_key", "url")]$deadline
     until[is.na(until)] <- 0
-    service <- recent[recent$observed_at >= now - seconds]
+    # A stalled read can exceed one cooldown period. Keep independent evidence
+    # across several such failures, including the longest bounded backoff.
+    service <- recent[recent$observed_at >= now - max(300, seconds * 8)]
     if (nrow(service)) {
         nodes <- service[,
             list(

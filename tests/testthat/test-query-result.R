@@ -7662,4 +7662,226 @@ test_that("acquisition scheduling refreshes history only for new observations", 
     expect_equal(nrow(read_subset(dest)$values), 64L)
 })
 
+# Slow native DAP errors need independent File evidence across a full failure
+# cycle; a single missing File or a successful native read cannot close a node.
+test_that("acquisition node cooldown corroborates slow DAP failures and resets", {
+    candidates <- data.table::data.table(
+        source_key = c("next", "other"),
+        url = c("next", "other"),
+        data_node = c("node", "other")
+    )
+    history <- data.frame(
+        source_key = c("a", "b", "c"),
+        url = c("u", "v", "w"),
+        data_node = "node",
+        client = "client",
+        observed_at = c(1000, 1090, 1180),
+        native_values = 0,
+        success = FALSE,
+        error = "NetCDF: DAP failure",
+        error_kind = "transport"
+    )
+    # Keep the caller clock explicit so slow-failure evidence is deterministic.
+    cool <- function(rows, now = 1181, seconds = 60) {
+        opendap__cooling_until(candidates, rows, "client", seconds, now)
+    }
+    expect_equal(cool(history), c(1240, 0))
+    expect_equal(cool(history[1:2, ]), c(0, 0))
+    duplicate <- history
+    duplicate$source_key <- "one"
+    expect_equal(cool(duplicate), c(0, 0))
+    for (error in c(
+        "NetCDF: I/O failure",
+        "NetCDF: DAP failure HTTP 404",
+        "NetCDF: file not found",
+        "NetCDF: DAP failure 410 Gone"
+    )) {
+        missing <- history
+        missing$error <- error
+        expect_equal(cool(missing), c(0, 0))
+    }
+    explicit <- history
+    explicit$error <- "execution deadline"
+    expect_equal(cool(explicit), c(1240, 0))
+    expect_equal(cool(history, seconds = 0), c(0, 0))
+    expect_true(all(cool(history, now = 2000) <= 2000))
+    future <- history
+    future$observed_at <- future$observed_at + 1000
+    expect_equal(cool(future), c(0, 0))
+    foreign <- history
+    foreign$client <- "other"
+    expect_equal(cool(foreign), c(0, 0))
+    metadata <- history
+    metadata$error_kind <- "source_metadata"
+    expect_equal(cool(metadata), c(0, 0))
+    success <- history[1L, ]
+    success$observed_at <- 1180.5
+    success$success <- TRUE
+    success$native_values <- 4
+    success$error <- NA_character_
+    expect_equal(cool(rbind(history, success)), c(0, 0))
+    # Metadata-only success does not demonstrate that native weather reads work.
+    success$native_values <- 0
+    expect_equal(cool(rbind(history, success)), c(1240, 0))
+})
+
+# Backoff is finite and derived from persisted observations, independent of the
+# calling process; later success restores the original recovery opportunity.
+test_that("acquisition node cooldown backs off repeated failures with a finite cap", {
+    history <- data.frame(
+        source_key = paste0("file", 1:9),
+        url = paste0("url", 1:9),
+        data_node = "node",
+        client = "client",
+        observed_at = 1001:1009,
+        native_values = 0,
+        success = FALSE,
+        error = "NetCDF: DAP failure",
+        error_kind = "transport"
+    )
+    candidates <- data.table::data.table(
+        source_key = "next",
+        url = "next",
+        data_node = "node"
+    )
+    deadlines <- vapply(
+        3:9,
+        function(n) {
+            opendap__cooling_until(
+                candidates,
+                history[seq_len(n), ],
+                "client",
+                60,
+                1010
+            )
+        },
+        numeric(1L)
+    )
+    expect_equal(deadlines, 1003:1009 + c(60, 120, 240, 480, 480, 480, 480))
+    endpoint <- data.table::as.data.table(history)
+    endpoint$source_key <- "one"
+    endpoint$url <- "one"
+    expect_equal(opendap__cooldown_deadline(endpoint, 60), 1489)
+    success <- endpoint[1L, ]
+    success$observed_at <- 1010
+    success$native_values <- 4
+    success$success <- TRUE
+    expect_equal(opendap__cooldown_deadline(rbind(endpoint, success), 60), 0)
+    absent <- endpoint
+    absent$error <- "HTTP 404 Not Found"
+    expect_equal(opendap__cooldown_deadline(absent, 60), 1489)
+})
+
+# The real coordinator must release a sick node, keep another node's raw
+# corners, and recover every deferred File without replacing committed data.
+test_that("acquisition node cooldown preserves raw corners and later exact recovery", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()[rep(1L, 6L), ]
+    docs$master_id <- docs$instance_id <- paste0("node-file-", 1:6)
+    docs$variable_id <- "tas"
+    docs$data_node <- c(rep("unavailable", 5L), "healthy")
+    docs$url <- I(lapply(1:6, function(i) {
+        paste0(
+            server$url(),
+            "source",
+            i,
+            ".nc|application/netcdf|OPENDAP"
+        )
+    }))
+    request <- data.frame(
+        request_id = "raw",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    dest <- tempfile("node-recovery-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    original <- opendap__read_source
+    # Inject the observed native condition at the transport seam; healthy DAP
+    # reads, publication, saved observations and scheduling remain real.
+    reader <- function(job) {
+        if (job$data_node == "unavailable") {
+            stop("NetCDF: DAP failure")
+        }
+        original(job)
+    }
+    environment(reader) <- list2env(
+        list(original = original),
+        parent = baseenv()
+    )
+    local_mocked_bindings(opendap__read_source = reader)
+    files <- query_result_test_object("File", docs)
+    first <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        retries = 0L,
+        replica_cooldown = 60,
+        max_values = 4L
+    )
+    expect_false(first$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_equal(sum(!attempts$success), 3L)
+    expect_equal(sort(read_subset(dest)$values$value), 1:32)
+    blocks <- subset_status(dest, "blocks")
+    hashes <- tools::md5sum(blocks$path)
+    again <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        retries = 0L,
+        replica_cooldown = 60,
+        max_values = 64L
+    )
+    expect_false(again$complete)
+    expect_equal(subset_status(dest, "attempts"), attempts)
+    # Both previous writers are closed: age this private manifest's observations
+    # rather than sleeping or altering the system clock.
+    db <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    ddb_exec(db, "UPDATE subset_attempts SET observed_at = observed_at - 1000")
+    ddb_disconnect(db)
+    local_mocked_bindings(opendap__read_source = original)
+    recovered <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        retries = 0L,
+        replica_cooldown = 60,
+        max_values = 64L
+    )
+    expect_true(recovered$complete)
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), sort(rep(1:32, 6L)))
+    expect_identical(unique(raw$values$cf_calendar), "360_day")
+    expect_equal(sort(unique(raw$values$cf_day)), 1:8)
+    expect_equal(tools::md5sum(names(hashes)), hashes)
+    points <- data.table::as.data.table(raw$values)[,
+        list(
+            points = data.table::uniqueN(paste(ind_lon, ind_lat)),
+            times = data.table::uniqueN(time_index)
+        ),
+        by = "source_key"
+    ]
+    expect_true(all(points$points == 4L))
+    expect_true(all(points$times == 8L))
+    saved <- subset_status(dest, "attempts")
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            replica_cooldown = 60
+        )$complete
+    )
+    expect_equal(subset_status(dest, "attempts"), saved)
+})
+
 # vim: fdm=marker :
