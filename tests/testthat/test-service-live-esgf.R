@@ -110,6 +110,114 @@ live_esgf_bounded_http_file <- function(max_bytes = 64 * 1024^2) {
 }
 # }}}
 
+# Keep retries on the same pinned File selection: an index response alone does
+# not establish that one of its OPeNDAP services is currently readable.
+live_esgf__resolve_tas <- function(
+    files,
+    index_node,
+    attempts = 3L,
+    retry_delay = 1
+) {
+    checkmate::assert_count(attempts, positive = TRUE)
+    checkmate::assert_number(retry_delay, lower = 0, finite = TRUE)
+    observations <- vector("list", attempts)
+    for (attempt in seq_len(attempts)) {
+        resolved <- query_result__resolve_file_services(
+            files,
+            index_node = index_node,
+            check = list(
+                level = "url",
+                timeout = 30,
+                concurrency = 2L,
+                cache_seconds = 0L,
+                cache_failures_seconds = 0L
+            )
+        )
+        observations[[attempt]] <- as.data.frame(resolved$diagnostics)
+        if (
+            any(
+                resolved$diagnostics$service == "OPENDAP" &
+                    resolved$diagnostics$selected
+            )
+        ) {
+            return(resolved)
+        }
+        # Retry only this published selection; do not change the model, dates,
+        # scientific coverage assertion, endpoint checks or real value read.
+        if (attempt < attempts) Sys.sleep(retry_delay * attempt)
+    }
+    stop(
+        "No reachable OPeNDAP service after ",
+        attempts,
+        " attempts on the same File selection. Diagnostics: ",
+        as.character(jsonlite::toJSON(
+            observations,
+            auto_unbox = TRUE,
+            na = "null"
+        )),
+        call. = FALSE
+    )
+}
+
+# A temporary failure must be retried without changing File identity, while
+# permanent failure remains a hard error with every failed endpoint retained.
+test_that("live ESGF service retry retains the pinned selection and finite failure", {
+    pinned <- new.env(parent = emptyenv())
+    seen <- list()
+    calls <- 0L
+    local_mocked_bindings(query_result__resolve_file_services = function(
+        result,
+        index_node,
+        check
+    ) {
+        calls <<- calls + 1L
+        seen[[calls]] <<- result
+        list(
+            diagnostics = data.table::data.table(
+                service = "OPENDAP",
+                selected = calls > 1L,
+                url = "https://fixture.example/file.nc",
+                reachable = calls > 1L,
+                error = if (calls > 1L) NA_character_ else "HTTP 503"
+            )
+        )
+    })
+    result <- live_esgf__resolve_tas(
+        pinned,
+        "https://index.example",
+        retry_delay = 0
+    )
+    expect_true(any(result$diagnostics$selected))
+    expect_equal(calls, 2L)
+    expect_true(all(vapply(seen, identical, logical(1L), pinned)))
+    calls <- 0L
+    local_mocked_bindings(query_result__resolve_file_services = function(
+        result,
+        index_node,
+        check
+    ) {
+        calls <<- calls + 1L
+        list(
+            diagnostics = data.table::data.table(
+                service = "OPENDAP",
+                selected = FALSE,
+                url = "https://fixture.example/unavailable.nc",
+                reachable = FALSE,
+                error = "HTTP 503"
+            )
+        )
+    })
+    expect_error(
+        live_esgf__resolve_tas(
+            pinned,
+            "https://index.example",
+            retry_delay = 0
+        ),
+        "3.*OPeNDAP|OPeNDAP.*3"
+    )
+    expect_equal(calls, 3L)
+})
+
 test_that("live ESGF File coverage, service resolution, and one-cell read", {
     skip_live_esgf()
 
@@ -136,17 +244,7 @@ test_that("live ESGF File coverage, service resolution, and one-cell read", {
     )
     expect_true(any(candidates$complete))
 
-    resolved <- query_result__resolve_file_services(
-        files,
-        index_node = live$node,
-        check = list(
-            level = "url",
-            timeout = 30,
-            concurrency = 2L,
-            cache_seconds = 0L,
-            cache_failures_seconds = 0L
-        )
-    )
+    resolved <- live_esgf__resolve_tas(files, live$node)
     expect_equal(resolved$result$count(), 1L)
     expect_true(any(
         resolved$diagnostics$service == "OPENDAP" &
