@@ -1,7 +1,7 @@
 # Offline differential checks against an explicitly supplied, pinned CFtime
 # source checkout. No downloads, installation or package dependency changes.
 # Run from the package root:
-# uvr run tools/check-cf-time-differential.R -- /path/to/CFtime /path/to/report.json
+# Rscript --vanilla tools/check-cf-time-differential.R /path/to/CFtime /path/to/report.json
 
 # Compare native fields rather than surrogate POSIX labels. The external parser
 # is a second implementation, not an oracle for the documented divergent cases.

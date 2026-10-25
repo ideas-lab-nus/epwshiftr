@@ -629,6 +629,8 @@ increments. Fractional seconds retain available numeric precision.
 \code{kind} distinguishes ordinary axes from \code{"climatology"}. The latter
 has a separate \code{climatology} descriptor with original boundary values,
 dimension order and native endpoints, while \code{bounds} remains \code{NULL}.
+\code{climatology$dimensions} records the RNetCDF array dimension names;
+\code{climatology$time_dimension} gives the native time position.
 Supplying \code{variable} returns its original \code{statistics$raw} cell methods
 and ordered \code{statistics$operations}; the climatology interpretation
 identifies annual or midnight wrapping and full-day daily intervals.

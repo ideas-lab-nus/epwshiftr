@@ -784,13 +784,33 @@ dataset__neighborhood_bounds <- function(
     if (identical(axis$kind, "climatology")) {
         data.table::set(values, j = "time_kind", value = "climatology")
         data.table::set(values, j = "bounds_name", value = bounds$name)
+        data.table::set(
+            values,
+            j = "bounds_time_dimension",
+            value = bounds$time_dimension
+        )
+        data.table::set(
+            values,
+            j = "bounds_dimensions",
+            value = as.character(jsonlite::toJSON(
+                bounds$dimensions,
+                auto_unbox = FALSE
+            ))
+        )
         data.table::set(values, j = "cell_methods", value = statistics$raw)
     }
     if (!is.null(prior) && nrow(prior)) {
         positions <- match(prior$time_index, values$time_index)
         columns <- c("present", "bound_start_value", "bound_end_value")
         if (identical(axis$kind, "climatology")) {
-            columns <- c(columns, "time_kind", "bounds_name", "cell_methods")
+            columns <- c(
+                columns,
+                "time_kind",
+                "bounds_name",
+                "cell_methods",
+                "bounds_time_dimension",
+                "bounds_dimensions"
+            )
         }
         if (!all(columns %in% names(prior))) {
             stop(
@@ -1120,6 +1140,10 @@ dataset__read_neighborhood <- function(
                     "climatology",
                     index
                 ))
+                contract_definition$climatology_dimensions <- private$get_var_dim_meta(
+                    contract_definition$climatology,
+                    index
+                )$names
             }
             contract <- checksum_bytes(
                 serialize(contract_definition, NULL, version = 3L),

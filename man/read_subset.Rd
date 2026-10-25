@@ -33,6 +33,9 @@ immutable raw artifacts are never rewritten. Selection receipts created with
 an earlier CF decoder require a metadata recheck before reporting completion.
 Climatological values retain \code{time_kind = "climatology"}, original
 \verb{climatology_bound_*} values, native endpoints and ordered \code{cell_methods}.
+\code{climatology_bounds_dimensions} contains JSON dimension names in the original
+RNetCDF array order; \code{climatology_bounds_time_dimension} identifies the time
+position, allowing exact reconstruction of the selected boundary array.
 Time selection uses representative labels; their boundary span must not be
 interpreted as continuous weather coverage. Missing or contradictory cached
 statistical metadata raises an error.

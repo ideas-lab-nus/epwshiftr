@@ -167,7 +167,8 @@ subset_test__dap_app <- function(
     point_bounds = FALSE,
     time_units = NULL,
     time_values = 0:7,
-    climatology_method = NULL
+    climatology_method = NULL,
+    bounds_reversed = FALSE
 ) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
@@ -176,6 +177,7 @@ subset_test__dap_app <- function(
     app$locals$time_units <- time_units
     app$locals$time_values <- time_values
     app$locals$climatology_method <- climatology_method
+    app$locals$bounds_reversed <- isTRUE(bounds_reversed)
     app$locals$weather <- 0L
     app$locals$requests <- character()
     app$get('/recover', function(req, res, locals) {
@@ -307,6 +309,12 @@ subset_test__dap_app <- function(
             tas = c('time', 'lat', 'lon'),
             time_bnds = c('time', 'bnds')
         )
+        # DAP declarations and XDR payloads reverse together; the R array keeps
+        # its original source order for a lossless provenance check.
+        if (locals$bounds_reversed) {
+            variables$time_bnds <- t(variables$time_bnds)
+            dims$time_bnds <- rev(dims$time_bnds)
+        }
         sizes <- c(time = 8L, lat = 2L, lon = 2L, bnds = 2L)
         select <- if (nzchar(query)) {
             strsplit(query, ',', fixed = TRUE)[[1L]]

@@ -360,6 +360,53 @@ dataset__time_kind <- function(dataset, index) {
     kind
 }
 
+# Read grouped axis headers without changing NetCDF identifier case. Method
+# keywords are normalized only after extraction, and bare leading tokens cannot
+# disappear behind the first recognizable header.
+dataset__time_method_clauses <- function(method) {
+    if (
+        is.null(method) ||
+            length(method) != 1L ||
+            is.na(method) ||
+            !nzchar(trimws(method))
+    ) {
+        return(character())
+    }
+    text <- gsub("\\([^()]*\\)", " ", as.character(method))
+    if (grepl("[()]", text)) {
+        stop("Invalid parentheses in time cell_methods.", call. = FALSE)
+    }
+    headers <- gregexpr(
+        "\\b(?:[A-Za-z_][A-Za-z_0-9]*\\s*:\\s*)+",
+        text,
+        perl = TRUE
+    )[[1L]]
+    if (headers[[1L]] == -1L) {
+        return(character())
+    }
+    if (nzchar(trimws(substr(text, 1L, headers[[1L]] - 1L)))) {
+        stop("Invalid leading tokens in time cell_methods.", call. = FALSE)
+    }
+    lengths <- attr(headers, "match.length")
+    clauses <- character(length(headers))
+    count <- 0L
+    for (i in seq_along(headers)) {
+        header <- substr(text, headers[[i]], headers[[i]] + lengths[[i]] - 1L)
+        axes <- strsplit(gsub("\\s", "", header), ":", fixed = TRUE)[[1L]]
+        if (!"time" %in% axes) {
+            next
+        }
+        end <- if (i < length(headers)) headers[[i + 1L]] - 1L else nchar(text)
+        count <- count + 1L
+        clauses[[count]] <- trimws(substr(
+            text,
+            headers[[i]] + lengths[[i]],
+            end
+        ))
+    }
+    clauses[seq_len(count)]
+}
+
 # Parse only the ordered time clauses, retaining the exact source string and
 # ignoring parenthesized comments and other dimensions' statistical operations.
 dataset__parse_time_statistics <- function(method, kind = "ordinary") {
@@ -385,59 +432,27 @@ dataset__parse_time_statistics <- function(method, kind = "ordinary") {
     ) {
         return(NULL)
     }
-    if (grepl("[()]", text)) {
-        stop(
-            "Invalid parentheses in climatological cell_methods.",
-            call. = FALSE
-        )
-    }
-    headers <- gregexpr(
-        "\\b(?:[a-z_][a-z_0-9]*\\s*:\\s*)+",
-        text,
-        perl = TRUE
-    )[[1L]]
-    length_header <- attr(headers, "match.length")
-    operations <- list()
-    if (headers[[1L]] != -1L) {
-        for (i in seq_along(headers)) {
-            header <- substr(
-                text,
-                headers[[i]],
-                headers[[i]] + length_header[[i]] - 1L
+    clauses <- dataset__time_method_clauses(raw)
+    operations <- vector("list", length(clauses))
+    for (i in seq_along(clauses)) {
+        parts <- regmatches(
+            tolower(clauses[[i]]),
+            regexec(
+                "^([a-z_]+)\\s+(within|over)\\s+(years|days)$",
+                tolower(clauses[[i]]),
+                perl = TRUE
             )
-            axes <- strsplit(gsub("\\s", "", header), ":", fixed = TRUE)[[1L]]
-            if (!"time" %in% axes) {
-                next
-            }
-            end_position <- if (i < length(headers)) {
-                headers[[i + 1L]] - 1L
-            } else {
-                nchar(text)
-            }
-            clause <- trimws(substr(
-                text,
-                headers[[i]] + length_header[[i]],
-                end_position
-            ))
-            parts <- regmatches(
-                clause,
-                regexec(
-                    "^([a-z_]+)\\s+(within|over)\\s+(years|days)$",
-                    clause,
-                    perl = TRUE
-                )
-            )[[1L]]
-            if (length(parts) != 4L) {
-                stop(
-                    "Invalid climatological time cell_methods clause.",
-                    call. = FALSE
-                )
-            }
-            operations[[length(operations) + 1L]] <- data.frame(
-                method = parts[[2L]],
-                scope = paste(parts[[3L]], parts[[4L]])
+        )[[1L]]
+        if (length(parts) != 4L) {
+            stop(
+                "Invalid climatological time cell_methods clause.",
+                call. = FALSE
             )
         }
+        operations[[i]] <- data.frame(
+            method = parts[[2L]],
+            scope = paste(parts[[3L]], parts[[4L]])
+        )
     }
     if (kind != "climatology") {
         if (length(operations)) {
@@ -568,6 +583,34 @@ dataset__climatology_clock <- function(
     positions,
     variable = NULL
 ) {
+    dimensions <- bounds$dimensions
+    time_dimension <- bounds$time_dimension
+    if (
+        !is.character(dimensions) ||
+            length(dimensions) != 2L ||
+            anyNA(dimensions) ||
+            any(!nzchar(dimensions)) ||
+            anyDuplicated(dimensions) ||
+            length(time_dimension) != 1L ||
+            is.na(time_dimension) ||
+            !time_dimension %in% 1:2 ||
+            !identical(match("time", dimensions), as.integer(time_dimension))
+    ) {
+        stop(
+            "Invalid climatology boundary dimension provenance.",
+            call. = FALSE
+        )
+    }
+    data.table::set(
+        clock,
+        j = "climatology_bounds_time_dimension",
+        value = as.integer(time_dimension)
+    )
+    data.table::set(
+        clock,
+        j = "climatology_bounds_dimensions",
+        value = as.character(jsonlite::toJSON(dimensions, auto_unbox = FALSE))
+    )
     if (!is.null(variable)) {
         data.table::set(clock, j = "variable", value = variable)
     }
@@ -802,6 +845,7 @@ dataset__time_bounds <- function(
     if (kind == "climatology") {
         result$kind <- kind
         result$time_dimension <- time_dimension
+        result$dimensions <- dimension_names
     }
     result
 }
@@ -903,16 +947,14 @@ dataset__validate_time_intervals <- function(
     if (is.null(variable) || !any(native[, 2L] == native[, 1L])) {
         return(invisible(NULL))
     }
-    method <- tryCatch(
-        dataset$att_get(variable, "cell_methods", index),
-        error = function(error) NULL
+    method <- dataset__optional_attribute(
+        dataset,
+        variable,
+        "cell_methods",
+        index
     )
-    method <- gsub("\\([^)]*\\)", "", tolower(paste(method, collapse = " ")))
-    matches <- regmatches(
-        method,
-        gregexpr("\\btime[[:space:]]*:[[:space:]]*[a-z_]+", method, perl = TRUE)
-    )[[1L]]
-    operations <- sub("^time[[:space:]]*:[[:space:]]*", "", matches)
+    clauses <- dataset__time_method_clauses(method)
+    operations <- sub("[[:space:]].*$", "", tolower(clauses))
     if (!length(operations) || any(operations != "point")) {
         stop(
             sprintf(
@@ -1459,6 +1501,8 @@ EsgDataset <- R6::R6Class(
         #' `kind` distinguishes ordinary axes from `"climatology"`. The latter
         #' has a separate `climatology` descriptor with original boundary values,
         #' dimension order and native endpoints, while `bounds` remains `NULL`.
+        #' `climatology$dimensions` records the RNetCDF array dimension names;
+        #' `climatology$time_dimension` gives the native time position.
         #' Supplying `variable` returns its original `statistics$raw` cell methods
         #' and ordered `statistics$operations`; the climatology interpretation
         #' identifies annual or midnight wrapping and full-day daily intervals.

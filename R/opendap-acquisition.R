@@ -48,7 +48,7 @@ opendap__demand_ids <- function(links) {
         seq_len(nrow(links)),
         function(i) {
             store__hash(
-                "raw-demand-receipt-v3-cf-climatology",
+                "raw-demand-receipt-v4-cf-boundary-order",
                 links$source_key[[i]],
                 links$lon[[i]],
                 links$lat[[i]],
@@ -2974,6 +2974,8 @@ opendap__refresh_climatology <- function(values, definitions) {
         "time_index",
         "climatology_bounds_name",
         "climatology_cell_methods",
+        "climatology_bounds_dimensions",
+        "climatology_bounds_time_dimension",
         "climatology_bound_start_value",
         "climatology_bound_end_value"
     )
@@ -2997,7 +2999,12 @@ opendap__refresh_climatology <- function(values, definitions) {
         )
     }
     identity <- unique(values[,
-        c("climatology_bounds_name", "climatology_cell_methods"),
+        c(
+            "climatology_bounds_name",
+            "climatology_cell_methods",
+            "climatology_bounds_dimensions",
+            "climatology_bounds_time_dimension"
+        ),
         with = FALSE
     ])
     if (
@@ -3017,6 +3024,16 @@ opendap__refresh_climatology <- function(values, definitions) {
             call. = FALSE
         )
     }
+    dimensions <- tryCatch(
+        jsonlite::fromJSON(identity$climatology_bounds_dimensions[[1L]]),
+        error = function(e) {
+            stop(
+                "Invalid cached climatology boundary dimensions.",
+                call. = FALSE
+            )
+        }
+    )
+    time_dimension <- identity$climatology_bounds_time_dimension[[1L]]
     statistics <- dataset__parse_time_statistics(
         identity$climatology_cell_methods,
         "climatology"
@@ -3054,8 +3071,13 @@ opendap__refresh_climatology <- function(values, definitions) {
     )
     bounds <- list(
         name = identity$climatology_bounds_name,
-        raw_values = raw,
-        time_dimension = 1L,
+        raw_values = if (identical(as.integer(time_dimension), 1L)) {
+            raw
+        } else {
+            t(raw)
+        },
+        time_dimension = time_dimension,
+        dimensions = dimensions,
         start = start,
         end = end,
         start_coordinates = attr(start, "cf_coordinates"),
@@ -3160,6 +3182,9 @@ opendap__refresh_clock <- function(values) {
 #' an earlier CF decoder require a metadata recheck before reporting completion.
 #' Climatological values retain `time_kind = "climatology"`, original
 #' `climatology_bound_*` values, native endpoints and ordered `cell_methods`.
+#' `climatology_bounds_dimensions` contains JSON dimension names in the original
+#' RNetCDF array order; `climatology_bounds_time_dimension` identifies the time
+#' position, allowing exact reconstruction of the selected boundary array.
 #' Time selection uses representative labels; their boundary span must not be
 #' interpreted as continuous weather coverage. Missing or contradictory cached
 #' statistical metadata raises an error.

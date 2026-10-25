@@ -9,6 +9,9 @@
   or changing original offsets, bounds and source identities. Expose explicit
   climatological axes (including CMIP6 `time2`/`time3`) with original climatology
   bounds, native seasonal/daily cycles and ordered per-variable `cell_methods`.
+  Preserve grouped temporal methods without changing axis-name case, reject
+  stray method tokens, and retain original boundary dimension provenance in
+  immutable caches.
   Raw readers and resumable caches retain these statistical descriptors;
   ordinary weather extraction and bias adjustment reject climate aggregates
   rather than treating them as a continuous weather series (#306).

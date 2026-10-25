@@ -2955,4 +2955,170 @@ test_that("CF climatology isolates source value names from metadata columns", {
     }
 })
 
+# Grouped cell-method headers have order-independent axis names, while NetCDF
+# identifiers remain case-sensitive and method keywords remain case-insensitive.
+test_that("CF review parses grouped point methods without changing axis identity", {
+    sites <- data.frame(site_id = "a", lon = 10.25, lat = .25)
+    for (method in c(
+        "time: lat: point",
+        "lat: time: POINT",
+        "time: lat: point lon: mean"
+    )) {
+        path <- dataset_test__cf_point_fixture(
+            method = method,
+            calendar = "standard"
+        )
+        ds <- EsgDataset$new(path)
+        ds$open()
+        actual <- ds$read_neighborhood("tas", sites)
+        expect_equal(nrow(actual$values), 12L)
+        expect_identical(actual$time$bound_start_value, actual$time$time_value)
+        expect_identical(actual$time$bound_end_value, actual$time$time_value)
+        ds$close()
+        unlink(path)
+    }
+    for (method in c(
+        "TIME: point",
+        "lat: TIME: point",
+        "time: lat: mean",
+        "time: point time: mean",
+        "time: point-invalid",
+        "time: lat: point-invalid"
+    )) {
+        path <- dataset_test__cf_point_fixture(
+            method = method,
+            calendar = "standard"
+        )
+        ds <- EsgDataset$new(path)
+        ds$open()
+        expect_error(ds$read_neighborhood("tas", sites), "point|cell_methods")
+        ds$close()
+        unlink(path)
+    }
+})
+
+# Bare prefix tokens and a differently cased NetCDF axis cannot authorize
+# climatological time semantics, but method/qualifier keyword case is harmless.
+test_that("CF review rejects mismatched climatology axis names and stray tokens", {
+    for (method in c(
+        "TIME: mean within years TIME: mean over years",
+        "garbage time: mean within years time: mean over years"
+    )) {
+        path <- dataset_test__climatology_fixture(method = method)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        expect_error(
+            ds$get_time_axis(variable = "tas"),
+            "cell_methods|climatolog"
+        )
+        ds$close()
+        unlink(path)
+    }
+    method <- "time: MINIMUM Within Years time: MEAN Over Years"
+    path <- dataset_test__climatology_fixture(method = method)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    statistics <- ds$get_time_axis(variable = "tas")$statistics
+    expect_identical(statistics$raw, method)
+    expect_identical(statistics$operations$method, c("minimum", "mean"))
+    ds$close()
+    unlink(path)
+})
+
+# Normalized endpoint columns must retain enough provenance to recover the
+# original selected bounds matrix in its source dimension order losslessly.
+test_that("CF review preserves climatology boundary dimensions through raw reads", {
+    for (reversed in c(FALSE, TRUE)) {
+        path <- dataset_test__climatology_fixture(reversed = reversed)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        axis <- ds$get_time_axis(variable = "tas")
+        expected <- if (reversed) c("nv", "time") else c("time", "nv")
+        expect_identical(axis$climatology$dimensions, expected)
+        raw <- ds$read_neighborhood(
+            "tas",
+            data.frame(site_id = "a", lon = 10.25, lat = .25)
+        )
+        expect_identical(
+            unique(raw$bounds$bounds_time_dimension),
+            match("time", expected)
+        )
+        expect_identical(
+            jsonlite::fromJSON(raw$bounds$bounds_dimensions[[1L]]),
+            expected
+        )
+        expect_identical(
+            unique(raw$time$climatology_bounds_time_dimension),
+            match("time", expected)
+        )
+        expect_identical(
+            jsonlite::fromJSON(raw$time$climatology_bounds_dimensions[[1L]]),
+            expected
+        )
+        reconstructed <- cbind(
+            raw$bounds$bound_start_value,
+            raw$bounds$bound_end_value
+        )
+        if (reversed) {
+            reconstructed <- t(reconstructed)
+        }
+        expect_identical(reconstructed, axis$climatology$raw_values)
+        table <- ds$read_data_table("tas", rbind = TRUE)
+        expect_identical(
+            unique(table$climatology_bounds_time_dimension),
+            match("time", expected)
+        )
+        ds$close()
+        unlink(path)
+    }
+})
+
+# A different boundary layout cannot silently replace a committed source, even
+# when its normalized interval numbers and weather values are identical.
+test_that("CF review refuses a replica with contradictory boundary provenance", {
+    paths <- c(
+        dataset_test__climatology_fixture(),
+        dataset_test__climatology_fixture(reversed = TRUE)
+    )
+    on.exit(unlink(paths), add = TRUE)
+    first <- EsgDataset$new(paths[[1L]])
+    first$open()
+    on.exit(first$close(), add = TRUE)
+    captured <- NULL
+    sites <- data.frame(site_id = "a", lon = 10.25, lat = .25)
+    first$read_neighborhood("tas", sites, on_chunk = function(chunk) {
+        captured <<- chunk
+    })
+    second <- EsgDataset$new(paths[[2L]])
+    second$open()
+    on.exit(second$close(), add = TRUE)
+    reads <- 0L
+    reader <- RNetCDF::var.get.nc
+    testthat::with_mocked_bindings(
+        {
+            expect_error(
+                dataset__read_neighborhood(
+                    second,
+                    "tas",
+                    sites,
+                    time = NULL,
+                    on_chunk = NULL,
+                    expected_contract = captured$contract,
+                    expected_bounds = captured$bounds
+                ),
+                "identity"
+            )
+            expect_identical(reads, 0L)
+        },
+        var.get.nc = function(...) {
+            args <- list(...)
+            if (length(args) >= 2L && identical(args[[2L]], "tas")) {
+                reads <<- reads + 1L
+            }
+            reader(...)
+        },
+        .package = "RNetCDF"
+    )
+})
+
 # vim: fdm=marker :
