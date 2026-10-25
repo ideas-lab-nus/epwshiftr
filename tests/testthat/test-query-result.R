@@ -8729,4 +8729,79 @@ test_that("CF climatology acquisition preserves statistics and exact cached boun
     check_order(TRUE)
 })
 
+# Ordinary nested daily statistics must survive real native transport and
+# checksum-verified resume without being reconstructed as cyclic climatologies.
+test_that("CMIP6 monthly statistics resume ordinary native blocks unchanged", {
+    skip_if_not_installed("webfakes")
+    method <- "area: mean time: maximum within days time: mean over days"
+    server <- webfakes::new_app_process(subset_test__dap_app(
+        ordinary_method = method,
+        time_values = 30 * 0:7
+    ))
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("ordinary-monthly-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-08-30"
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), as.double(1:32))
+    expect_identical(unique(raw$values$cell_methods), method)
+    expect_equal(sort(unique(raw$values$time_value)), as.double(30 * 0:7))
+    expect_equal(
+        raw$values$bound_end_value - raw$values$bound_start_value,
+        rep(30, 32L)
+    )
+    expect_false(any(startsWith(names(raw$values), "climatology_")))
+    for (endpoint in c("bound_start_value", "bound_end_value")) {
+        invalid <- data.table::copy(raw$values)
+        data.table::set(invalid, j = endpoint, value = NULL)
+        expect_error(opendap__refresh_clock(invalid), "explicit time bounds")
+        invalid <- data.table::copy(raw$values)
+        data.table::set(invalid, i = 1L, j = endpoint, value = NA_real_)
+        expect_error(opendap__refresh_clock(invalid), "explicit time bounds")
+    }
+    blocks <- subset_status(dest, "blocks")
+    artifacts <- c(blocks$path, blocks$metadata_path)
+    hashes <- tools::sha256sum(artifacts)
+    attempts <- subset_status(dest, "attempts")
+    curl::curl_fetch_memory(paste0(server$url(), "reset"))
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(tools::sha256sum(artifacts), hashes)
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_equal(read_subset(dest)$values, raw$values)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)))
+})
+
 # vim: fdm=marker :

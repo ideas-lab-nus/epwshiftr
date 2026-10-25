@@ -3147,7 +3147,18 @@ opendap__refresh_clock <- function(values) {
     }
     if ("cell_methods" %in% names(values)) {
         for (method in unique(values$cell_methods)) {
-            dataset__parse_time_statistics(method, "ordinary")
+            # A compound ordinary statistic is only meaningful with its native
+            # interval endpoints; missing cached bounds cannot be reconstructed.
+            dataset__parse_time_statistics(
+                method,
+                "ordinary",
+                has_bounds = all(
+                    c("bound_start_value", "bound_end_value") %in% names(values)
+                ) &&
+                    all(is.finite(values$bound_start_value)) &&
+                    all(is.finite(values$bound_end_value)) &&
+                    all(values$bound_end_value > values$bound_start_value)
+            )
         }
     }
     for (side in c("start", "end")) {

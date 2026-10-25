@@ -1,5 +1,11 @@
 # epwshiftr (development version)
 
+* Accept CMIP6 monthly daily-extrema statistics on ordinary bounded time axes.
+  Retain ordered `cell_methods`, native offsets and interval bounds through raw
+  reads and cached resume, without inferring climatological cycles or daily
+  observations. Year-based climatologies still require an explicit declaration
+  (#308).
+
 * Support CF `julian` calendar coordinates and explicit `time: point` zero-width
   bounds. Preserve original native corner values and time bounds; interval-valued
   variables still require positive durations. Correct reference-zone conversion,
