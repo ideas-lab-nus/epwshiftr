@@ -602,13 +602,15 @@ data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
   Get time axis information
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{EsgDataset$get_time_axis(index = 1L)}
+    \preformatted{EsgDataset$get_time_axis(index = 1L, variable = NULL)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{index}}{File index for multi-file datasets. Default: \code{1L}.}
+      \item{\code{variable}}{Optional data-variable name whose ordered temporal
+\code{cell_methods} should be parsed and validated. Default: \code{NULL}.}
     }
     \if{html}{\out{</div>}}
   }
@@ -617,6 +619,28 @@ data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
 coordinates, optional CF interval bounds, and axis length.
 \code{raw_values} retains the original numeric time coordinates;
 \code{bounds$raw_values} retains bounds in their declared dimension order.
+Reference time zones are normalized to UTC without changing raw units.
+\code{standard} and \code{gregorian} use the Julian/Gregorian reform; their
+native dates before 1582-10-15 differ from proleptic Gregorian POSIX
+labels. Julian and fixed-calendar POSIX values are surrogate timestamps;
+canonical CF fields remain authoritative for calendar dates.
+Units \code{month} and \code{year} are fixed UDUNITS durations, not calendar
+increments. Fractional seconds retain available numeric precision.
+\code{kind} distinguishes ordinary axes from \code{"climatology"}. The latter
+has a separate \code{climatology} descriptor with original boundary values,
+dimension order and native endpoints, while \code{bounds} remains \code{NULL}.
+\code{climatology$dimensions} records the RNetCDF array dimension names;
+\code{climatology$time_dimension} gives the native time position.
+Supplying \code{variable} returns its original \code{statistics$raw} cell methods
+and ordered \code{statistics$operations}; the climatology interpretation
+identifies annual or midnight wrapping and full-day daily intervals.
+These are source-computed statistical values over possibly disjoint
+subintervals, not observations spanning the enclosing endpoint range.
+No climatology is recalculated or expanded into ordinary samples.
+Leap-second calendars and explicitly defined calendars are unsupported.
+Ordinary equal bounds are retained as native metadata. Weather reads accept
+them only for explicit \code{time: point} values at that same native time;
+interval-valued variables require positive native durations.
   }
   \subsection{Examples}{
     \if{html}{\out{<div class="r example copy">}}
@@ -735,6 +759,14 @@ worker phase. Only supported when \code{async = TRUE}.}
     }
     \if{html}{\out{</div>}}
   }
+  \subsection{Details}{
+    Climatological variables retain \code{time_kind = "climatology"},
+original \code{time_value} offsets and \verb{climatology_bound_*} columns, native
+endpoints, ordered cell methods and cycle interpretation. No temporal
+averaging is performed by this reader. A source value name that
+conflicts with coordinate/statistical columns receives \verb{_value}
+suffixes until unique, with a warning; source values are retained.
+  }
   \subsection{Returns}{
     If \code{rbind = FALSE}, a list of data.table (one per file).
 If \code{rbind = TRUE}, a single data.table with an extra \code{file_index} column.
@@ -800,6 +832,8 @@ read. Only supported when \code{async = TRUE}.}
 \code{time_bound_end}, canonical \verb{cf_*} calendar coordinates including
 \code{cf_second_of_day} (seconds since native-calendar midnight),
 \code{annual_phase}, \code{lon}, \code{lat}, \code{method}, and \code{value}.
+Climatological statistics require the raw readers and are rejected
+here instead of being treated as ordinary weather observations.
 The \code{"grid_sources"} attribute records contributing grid coordinates
 and weights.
   }
@@ -845,6 +879,10 @@ With a callback, values are delivered rather than accumulated.}
     For read_neighborhood(), a list of values, neighborhoods,
 native CF time coordinates and actual read_slices. A list of time
 ranges selects their union without fetching intervening dates.
+Climatological axes retain original offsets, climatology boundaries,
+ordered per-variable cell methods and explicit statistical-kind
+markers. Ranges select representative time labels, not every date
+enclosed by climatology bounds. No source statistic is recalculated.
   }
 }
 

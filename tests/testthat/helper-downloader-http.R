@@ -161,9 +161,23 @@ local_downloader_http_server <- function(env = parent.frame()) {
 # }}}
 
 # Serve DAP2 arrays with real constraints and XDR payloads, for real libnetcdf I/O.
-subset_test__dap_app <- function(fail_first = FALSE) {
+subset_test__dap_app <- function(
+    fail_first = FALSE,
+    calendar = "360_day",
+    point_bounds = FALSE,
+    time_units = NULL,
+    time_values = 0:7,
+    climatology_method = NULL,
+    bounds_reversed = FALSE
+) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
+    app$locals$calendar <- calendar
+    app$locals$point_bounds <- isTRUE(point_bounds)
+    app$locals$time_units <- time_units
+    app$locals$time_values <- time_values
+    app$locals$climatology_method <- climatology_method
+    app$locals$bounds_reversed <- isTRUE(bounds_reversed)
     app$locals$weather <- 0L
     app$locals$requests <- character()
     app$get('/recover', function(req, res, locals) {
@@ -225,6 +239,48 @@ subset_test__dap_app <- function(fail_first = FALSE) {
                     fixed = TRUE
                 )
             }
+            # Explicit point metadata and native zero-width bounds exercise the
+            # real transport without changing the default interval fixture.
+            attributes <- sub(
+                'calendar "360_day"',
+                paste0('calendar "', locals$calendar, '"'),
+                attributes,
+                fixed = TRUE
+            )
+            if (locals$point_bounds) {
+                attributes <- sub(
+                    'String units "K";',
+                    'String units "K"; String cell_methods "time: point";',
+                    attributes,
+                    fixed = TRUE
+                )
+            }
+            if (!is.null(locals$climatology_method)) {
+                attributes <- sub(
+                    'String bounds "time_bnds";',
+                    'String climatology "time_bnds";',
+                    attributes,
+                    fixed = TRUE
+                )
+                attributes <- sub(
+                    'String units "K";',
+                    paste0(
+                        'String units "K"; String cell_methods "',
+                        locals$climatology_method,
+                        '";'
+                    ),
+                    attributes,
+                    fixed = TRUE
+                )
+            }
+            if (!is.null(locals$time_units)) {
+                attributes <- sub(
+                    'days since 2060-01-01',
+                    locals$time_units,
+                    attributes,
+                    fixed = TRUE
+                )
+            }
             return(res$send(attributes))
         }
         query <- utils::URLdecode(
@@ -234,11 +290,17 @@ subset_test__dap_app <- function(fail_first = FALSE) {
             query <- substring(query, 2L)
         }
         variables <- list(
-            time = 0:7,
+            time = locals$time_values,
             lat = 0:1,
             lon = 10:11,
             tas = array(1:32, c(2, 2, 8)),
-            time_bnds = rbind(0:7, 1:8)
+            time_bnds = if (!is.null(locals$climatology_method)) {
+                rbind(locals$time_values, locals$time_values + 30 * 360 + 1)
+            } else if (locals$point_bounds) {
+                rbind(locals$time_values, locals$time_values)
+            } else {
+                rbind(locals$time_values, locals$time_values + 1)
+            }
         )
         dims <- list(
             time = 'time',
@@ -247,6 +309,12 @@ subset_test__dap_app <- function(fail_first = FALSE) {
             tas = c('time', 'lat', 'lon'),
             time_bnds = c('time', 'bnds')
         )
+        # DAP declarations and XDR payloads reverse together; the R array keeps
+        # its original source order for a lossless provenance check.
+        if (locals$bounds_reversed) {
+            variables$time_bnds <- t(variables$time_bnds)
+            dims$time_bnds <- rev(dims$time_bnds)
+        }
         sizes <- c(time = 8L, lat = 2L, lon = 2L, bnds = 2L)
         select <- if (nzchar(query)) {
             strsplit(query, ',', fixed = TRUE)[[1L]]

@@ -40,14 +40,15 @@ opendap__record_content <- function(conn, candidates) {
     invisible(NULL)
 }
 
-# Demand identity records only physical location and requested native window;
-# request/case labels continue to live solely in the association table.
+# Selection receipts include the CF decoder revision as well as the physical
+# window. Older derived selections must be checked again against the native
+# axis, while unchanged raw block contracts still permit exact weather reuse.
 opendap__demand_ids <- function(links) {
     vapply(
         seq_len(nrow(links)),
         function(i) {
             store__hash(
-                "raw-demand-receipt-v1",
+                "raw-demand-receipt-v4-cf-boundary-order",
                 links$source_key[[i]],
                 links$lon[[i]],
                 links$lat[[i]],
@@ -870,7 +871,11 @@ opendap__commit <- function(store, job, path, progress) {
     values <- merge(
         chunk$values,
         chunk$time,
-        by = c("file_index", "time_index"),
+        by = c(
+            "file_index",
+            "time_index",
+            if ("variable" %in% names(chunk$time)) "variable"
+        ),
         all.x = TRUE,
         sort = FALSE
     )
@@ -2871,6 +2876,9 @@ opendap__timing_status <- function(conn, source_key = NULL) {
 #'
 #' These views read only the local acquisition manifest. They never contact an
 #' ESGF index or data node, and data-node observations retain their client and age.
+#' For climatological sources, native coverage counts the selected representative
+#' time labels and their raw corners, not every date enclosed by the climatology
+#' bounds. Use [read_subset()] to inspect their explicit statistical metadata.
 #' @param dest Acquisition directory returned by `fetch_subset()`.
 #' @param source_key Optional source identities limiting coverage/timing inspection.
 #' @param view One of summary, blocks, attempts, nodes, links, candidates, coverage or timing.
@@ -2959,10 +2967,227 @@ subset_status <- function(
     data.table::as.data.table(ddb_read_table(conn, paste0("subset_", view)))
 }
 
+# Validate cached climatological descriptors and rebuild their derived view
+# from native values. No local cache read can silently erase statistical meaning.
+opendap__refresh_climatology <- function(values, definitions) {
+    required <- c(
+        "time_index",
+        "climatology_bounds_name",
+        "climatology_cell_methods",
+        "climatology_bounds_dimensions",
+        "climatology_bounds_time_dimension",
+        "climatology_bound_start_value",
+        "climatology_bound_end_value"
+    )
+    if (!all(required %in% names(values))) {
+        stop("Incomplete cached CF climatology metadata.", call. = FALSE)
+    }
+    if (
+        any(
+            c(
+                "time_bound_start",
+                "time_bound_end",
+                "bound_start_value",
+                "bound_end_value"
+            ) %in%
+                names(values)
+        )
+    ) {
+        stop(
+            "Cached climatology cannot also contain ordinary time intervals.",
+            call. = FALSE
+        )
+    }
+    identity <- unique(values[,
+        c(
+            "climatology_bounds_name",
+            "climatology_cell_methods",
+            "climatology_bounds_dimensions",
+            "climatology_bounds_time_dimension"
+        ),
+        with = FALSE
+    ])
+    if (
+        nrow(identity) != 1L ||
+            anyNA(identity) ||
+            !nzchar(identity$climatology_bounds_name)
+    ) {
+        stop("Conflicting cached climatology identity.", call. = FALSE)
+    }
+    if (
+        !"cell_methods" %in% names(values) ||
+            anyNA(values$cell_methods) ||
+            any(values$cell_methods != identity$climatology_cell_methods)
+    ) {
+        stop(
+            "Cached climatology cell_methods contradict its weather values.",
+            call. = FALSE
+        )
+    }
+    dimensions <- tryCatch(
+        jsonlite::fromJSON(identity$climatology_bounds_dimensions[[1L]]),
+        error = function(e) {
+            stop(
+                "Invalid cached climatology boundary dimensions.",
+                call. = FALSE
+            )
+        }
+    )
+    time_dimension <- identity$climatology_bounds_time_dimension[[1L]]
+    statistics <- dataset__parse_time_statistics(
+        identity$climatology_cell_methods,
+        "climatology"
+    )
+    native <- unique(values[,
+        c(
+            "time_index",
+            "climatology_bound_start_value",
+            "climatology_bound_end_value"
+        ),
+        with = FALSE
+    ])
+    if (anyDuplicated(native$time_index)) {
+        stop(
+            "Conflicting cached climatology boundaries for one native time.",
+            call. = FALSE
+        )
+    }
+    raw <- as.matrix(native[,
+        c("climatology_bound_start_value", "climatology_bound_end_value"),
+        with = FALSE
+    ])
+    if (any(!is.finite(raw)) || any(raw[, 2L] < raw[, 1L])) {
+        stop("Invalid cached climatology boundaries.", call. = FALSE)
+    }
+    start <- parse_cf_time(
+        raw[, 1L],
+        definitions$time_units,
+        definitions$cf_calendar
+    )
+    end <- parse_cf_time(
+        raw[, 2L],
+        definitions$time_units,
+        definitions$cf_calendar
+    )
+    bounds <- list(
+        name = identity$climatology_bounds_name,
+        raw_values = if (identical(as.integer(time_dimension), 1L)) {
+            raw
+        } else {
+            t(raw)
+        },
+        time_dimension = time_dimension,
+        dimensions = dimensions,
+        start = start,
+        end = end,
+        start_coordinates = attr(start, "cf_coordinates"),
+        end_coordinates = attr(end, "cf_coordinates")
+    )
+    dataset__climatology_clock(
+        values,
+        statistics,
+        bounds,
+        match(values$time_index, native$time_index)
+    )
+}
+
+# Rebuild derived timestamps from immutable native offsets on read. A parser
+# correction must not require rewriting raw artifacts or reuse stale clock fields.
+opendap__refresh_clock <- function(values) {
+    if (!nrow(values)) {
+        return(values)
+    }
+    definitions <- unique(values[,
+        c("time_units", "cf_calendar"),
+        with = FALSE
+    ])
+    if (nrow(definitions) != 1L) {
+        stop(
+            "Conflicting CF time definitions in a native block.",
+            call. = FALSE
+        )
+    }
+    # Decode each native time once, then expand to the reader-owned corner rows.
+    offsets <- unique(values$time_value)
+    positions <- match(values$time_value, offsets)
+    parsed <- parse_cf_time(
+        offsets,
+        definitions$time_units,
+        definitions$cf_calendar
+    )
+    coordinates <- attr(parsed, "cf_coordinates")
+    data.table::set(values, j = "time", value = parsed[positions])
+    for (column in CF_TIME_COORDINATE_COLUMNS) {
+        data.table::set(
+            values,
+            j = column,
+            value = coordinates[[column]][positions]
+        )
+    }
+    kind <- if ("time_kind" %in% names(values)) {
+        unique(values$time_kind)
+    } else {
+        "ordinary"
+    }
+    if (
+        length(kind) != 1L ||
+            is.na(kind) ||
+            !kind %in% c("ordinary", "climatology")
+    ) {
+        stop("Invalid cached CF time kind.", call. = FALSE)
+    }
+    if (kind == "climatology") {
+        return(opendap__refresh_climatology(values, definitions))
+    }
+    if (any(startsWith(names(values), "climatology_"))) {
+        stop(
+            "Cached climatology metadata requires an explicit time_kind marker.",
+            call. = FALSE
+        )
+    }
+    if ("cell_methods" %in% names(values)) {
+        for (method in unique(values$cell_methods)) {
+            dataset__parse_time_statistics(method, "ordinary")
+        }
+    }
+    for (side in c("start", "end")) {
+        column <- paste0("bound_", side, "_value")
+        if (column %in% names(values)) {
+            present <- which(!is.na(values[[column]]))
+            if (length(present)) {
+                endpoints <- unique(values[[column]][present])
+                decoded <- parse_cf_time(
+                    endpoints,
+                    definitions$time_units,
+                    definitions$cf_calendar
+                )
+                data.table::set(
+                    values,
+                    i = present,
+                    j = paste0("time_bound_", side),
+                    value = decoded[match(values[[column]][present], endpoints)]
+                )
+            }
+        }
+    }
+    values
+}
+
 #' Read locally saved raw climate neighborhoods
 #'
 #' Returns the unique native values together with city/corner membership and
 #' explicit acquisition gaps. No interpolation or implicit remote access occurs.
+#' Derived time fields are decoded from preserved native offsets and bounds;
+#' immutable raw artifacts are never rewritten. Selection receipts created with
+#' an earlier CF decoder require a metadata recheck before reporting completion.
+#' Climatological values retain `time_kind = "climatology"`, original
+#' `climatology_bound_*` values, native endpoints and ordered `cell_methods`.
+#' `climatology_bounds_dimensions` contains JSON dimension names in the original
+#' RNetCDF array order; `climatology_bounds_time_dimension` identifies the time
+#' position, allowing exact reconstruction of the selected boundary array.
+#' Time selection uses representative labels; their boundary span must not be
+#' interpreted as continuous weather coverage. Missing or contradictory cached
+#' statistical metadata raises an error.
 #' @param dest Acquisition directory.
 #' @param case_id Optional case labels to select.
 #' @param site_id Optional site identifiers to select.
@@ -3052,6 +3277,7 @@ read_subset <- function(
         if (!is.null(wanted_variables)) {
             values <- values[values$variable %in% wanted_variables]
         }
+        values <- opendap__refresh_clock(values)
         needed <- selections[
             list(blocks$source_key[[i]]),
             on = "source_key",

@@ -210,6 +210,18 @@ bias__calendar_data_error <- function(
     key_columns,
     key_message
 ) {
+    # Preserve the raw reader's explicit statistical-kind boundary at the
+    # shared daily/subdaily validator as well as the WeatherInput constructor.
+    if (
+        is.data.frame(data) &&
+            "time_kind" %in% names(data) &&
+            any(data[["time_kind"]] %in% "climatology")
+    ) {
+        return(
+            "CF climatology statistics are not ordinary daily or subdaily samples."
+        )
+    }
+
     if (!is.data.frame(data)) {
         return("`data` must be a data frame.")
     }

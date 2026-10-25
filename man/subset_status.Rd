@@ -33,4 +33,7 @@ Call these views only while the acquisition writer is closed.
 \description{
 These views read only the local acquisition manifest. They never contact an
 ESGF index or data node, and data-node observations retain their client and age.
+For climatological sources, native coverage counts the selected representative
+time labels and their raw corners, not every date enclosed by the climatology
+bounds. Use \code{\link[=read_subset]{read_subset()}} to inspect their explicit statistical metadata.
 }
