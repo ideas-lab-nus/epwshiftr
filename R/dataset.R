@@ -360,8 +360,9 @@ dataset__time_kind <- function(dataset, index) {
     kind
 }
 
-# Read grouped axis headers without changing NetCDF identifier case. Method
-# keywords are normalized only after extraction, and bare leading tokens cannot
+# Read complete grouped axis identifiers, including NetCDF punctuation,
+# without changing their case. Method keywords are normalized only after
+# extraction, and bare leading tokens cannot
 # disappear behind the first recognizable header.
 dataset__time_method_clauses <- function(method) {
     if (
@@ -377,7 +378,7 @@ dataset__time_method_clauses <- function(method) {
         stop("Invalid parentheses in time cell_methods.", call. = FALSE)
     }
     headers <- gregexpr(
-        "\\b(?:[A-Za-z_][A-Za-z_0-9]*\\s*:\\s*)+",
+        "(?<!\\S)(?:[^\\s:]+\\s*:\\s*)+",
         text,
         perl = TRUE
     )[[1L]]

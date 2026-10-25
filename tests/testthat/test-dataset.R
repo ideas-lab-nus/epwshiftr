@@ -2983,7 +2983,9 @@ test_that("CF review parses grouped point methods without changing axis identity
         "time: lat: mean",
         "time: point time: mean",
         "time: point-invalid",
-        "time: lat: point-invalid"
+        "time: lat: point-invalid",
+        "lon: mean not-time: point",
+        "lon: mean not.time: point"
     )) {
         path <- dataset_test__cf_point_fixture(
             method = method,
@@ -3002,7 +3004,9 @@ test_that("CF review parses grouped point methods without changing axis identity
 test_that("CF review rejects mismatched climatology axis names and stray tokens", {
     for (method in c(
         "TIME: mean within years TIME: mean over years",
-        "garbage time: mean within years time: mean over years"
+        "garbage time: mean within years time: mean over years",
+        "lon: mean not-time: minimum within years time: mean over years",
+        "lon: mean not.time: minimum within years time: mean over years"
     )) {
         path <- dataset_test__climatology_fixture(method = method)
         ds <- EsgDataset$new(path)

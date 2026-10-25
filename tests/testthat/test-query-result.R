@@ -8638,7 +8638,16 @@ test_that("CF climatology acquisition preserves statistics and exact cached boun
         expect_false("time_bound_start" %in% names(raw$values))
         expect_equal(nrow(raw$neighborhoods), 4L)
         blocks <- subset_status(dest, "blocks")
-        artifacts <- c(blocks$path, blocks$metadata_path)
+        artifacts <- unique(c(
+            blocks$path,
+            blocks$metadata_path,
+            list.files(
+                file.path(dest, "subsets"),
+                pattern = "[.](rds|parquet|json)$",
+                recursive = TRUE,
+                full.names = TRUE
+            )
+        ))
         hashes <- tools::sha256sum(artifacts)
         saved <- readRDS(blocks$metadata_path[[1L]])$bounds
         expect_identical(unique(saved$time_kind), "climatology")
