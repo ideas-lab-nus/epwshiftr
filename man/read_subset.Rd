@@ -28,4 +28,7 @@ directories, separately from native data coverage.
 \description{
 Returns the unique native values together with city/corner membership and
 explicit acquisition gaps. No interpolation or implicit remote access occurs.
+Derived time fields are decoded from preserved native offsets and bounds;
+immutable raw artifacts are never rewritten. Selection receipts created with
+an earlier CF decoder require a metadata recheck before reporting completion.
 }

@@ -8405,4 +8405,181 @@ test_that("raw subset acquisition resumes Julian instantaneous bounds exactly", 
     expect_equal(nrow(subset_status(dest, "attempts")), nrow(attempts))
 })
 
+# A corrected decoder must reuse native payloads, recheck earlier selection
+# receipts, and never label a legacy decoded window complete without that check.
+test_that("CF normalization resumes raw bounds after legacy selection rechecks", {
+    skip_if_not_installed("webfakes")
+    units <- "hours since 2060-01-01 00:00:00 +02:00"
+    server <- webfakes::new_app_process(subset_test__dap_app(
+        calendar = "standard",
+        point_bounds = TRUE,
+        time_units = units
+    ))
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-cf-normalization-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-01T05:00:00"
+    )
+    result <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), as.double(9:32))
+    expect_equal(sort(unique(raw$values$time_value)), as.double(2:7))
+    expect_identical(unique(raw$values$time_units), units)
+    expect_equal(raw$values$bound_start_value, raw$values$time_value)
+    expect_equal(raw$values$bound_end_value, raw$values$time_value)
+    expect_equal(raw$values$time_bound_start, raw$values$time)
+    expect_equal(nrow(raw$neighborhoods), 4L)
+    # Model old derived columns in memory; the raw payload and bounds remain
+    # authoritative and the refresh must recover the identical corrected view.
+    stale <- data.table::copy(raw$values)
+    data.table::set(stale, j = "time", value = stale$time + 7200)
+    data.table::set(
+        stale,
+        j = "cf_second_of_day",
+        value = stale$cf_second_of_day + 7200
+    )
+    data.table::set(
+        stale,
+        j = "time_bound_start",
+        value = stale$time_bound_start + 7200
+    )
+    expect_equal(opendap__refresh_clock(stale), raw$values)
+    blocks <- subset_status(dest, "blocks")
+    artifacts <- c(blocks$path, blocks$metadata_path)
+    conn <- ddb_connect(file.path(dest, "manifest.duckdb"))
+    demands <- data.table::as.data.table(ddb_read_table(conn, "subset_demands"))
+    descriptor <- readRDS(demands$receipt_path[[1L]])
+    legacy_id <- store__hash(
+        "raw-demand-receipt-v1",
+        descriptor$source_key[[1L]],
+        descriptor$lon[[1L]],
+        descriptor$lat[[1L]],
+        descriptor$time_start[[1L]],
+        descriptor$time_stop[[1L]]
+    )
+    descriptor$demand_id <- legacy_id
+    legacy_path <- file.path(dest, "subsets", "legacy-selection.rds")
+    store__extract_cache_write(legacy_path, descriptor)
+    data.table::set(demands, j = "demand_id", value = legacy_id)
+    data.table::set(demands, j = "receipt_path", value = legacy_path)
+    data.table::set(
+        demands,
+        j = "receipt_sha256",
+        value = checksum_file(legacy_path)
+    )
+    ddb_write_table(
+        conn,
+        "subset_demands",
+        as.data.frame(demands),
+        overwrite = TRUE
+    )
+    # Publish a synthetic pre-fix clock and selection in this test directory.
+    # The native raw columns, contract and weather values are unchanged.
+    for (i in seq_len(nrow(blocks))) {
+        metadata <- readRDS(blocks$metadata_path[[i]])
+        if (!is.null(metadata$demands)) {
+            metadata$demands$demand_id <- legacy_id
+        }
+        path <- file.path(
+            dest,
+            "subsets",
+            paste0("legacy-metadata-", i, ".rds")
+        )
+        store__extract_cache_write(path, metadata)
+        data.table::set(blocks, i = i, j = "metadata_path", value = path)
+        data.table::set(
+            blocks,
+            i = i,
+            j = "metadata_sha256",
+            value = checksum_file(path)
+        )
+        path <- file.path(
+            dest,
+            "subsets",
+            paste0("legacy-block-", i, ".parquet")
+        )
+        ddb_exec(
+            conn,
+            sprintf(
+                paste(
+                    "COPY (SELECT * REPLACE (time + INTERVAL '2 hours' AS time,",
+                    "cf_second_of_day + 7200 AS cf_second_of_day,",
+                    "time_bound_start + INTERVAL '2 hours' AS time_bound_start,",
+                    "time_bound_end + INTERVAL '2 hours' AS time_bound_end)",
+                    "FROM read_parquet(%s)) TO %s (FORMAT PARQUET)"
+                ),
+                ddb_literal(conn, blocks$path[[i]]),
+                ddb_literal(conn, path)
+            )
+        )
+        data.table::set(blocks, i = i, j = "path", value = path)
+        data.table::set(
+            blocks,
+            i = i,
+            j = "sha256",
+            value = checksum_file(path)
+        )
+    }
+    ddb_write_table(
+        conn,
+        "subset_blocks",
+        as.data.frame(blocks),
+        overwrite = TRUE
+    )
+    ddb_disconnect(conn)
+    artifacts <- c(blocks$path, blocks$metadata_path)
+    hashes <- tools::sha256sum(artifacts)
+    expect_equal(read_subset(dest)$values, raw$values)
+    expect_equal(nrow(read_subset(dest)$gaps$incomplete_requests), 1L)
+    expect_false(all(subset_status(dest, "coverage")$complete))
+    curl::curl_fetch_memory(paste0(server$url(), "reset"))
+    result <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    expect_identical(tools::sha256sum(artifacts), hashes)
+    expect_equal(read_subset(dest)$values, raw$values)
+    expect_equal(nrow(read_subset(dest)$gaps$incomplete_requests), 0L)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)))
+    expect_true(any(grepl("fast-bounds.nc.dods time", traffic, fixed = TRUE)))
+    attempts <- subset_status(dest, "attempts")
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(tools::sha256sum(artifacts), hashes)
+})
+
 # vim: fdm=marker :

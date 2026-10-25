@@ -40,14 +40,15 @@ opendap__record_content <- function(conn, candidates) {
     invisible(NULL)
 }
 
-# Demand identity records only physical location and requested native window;
-# request/case labels continue to live solely in the association table.
+# Selection receipts include the CF decoder revision as well as the physical
+# window. Older derived selections must be checked again against the native
+# axis, while unchanged raw block contracts still permit exact weather reuse.
 opendap__demand_ids <- function(links) {
     vapply(
         seq_len(nrow(links)),
         function(i) {
             store__hash(
-                "raw-demand-receipt-v1",
+                "raw-demand-receipt-v2-cf-time",
                 links$source_key[[i]],
                 links$lon[[i]],
                 links$lat[[i]],
@@ -2959,10 +2960,69 @@ subset_status <- function(
     data.table::as.data.table(ddb_read_table(conn, paste0("subset_", view)))
 }
 
+# Rebuild derived timestamps from immutable native offsets on read. A parser
+# correction must not require rewriting raw artifacts or reuse stale clock fields.
+opendap__refresh_clock <- function(values) {
+    if (!nrow(values)) {
+        return(values)
+    }
+    definitions <- unique(values[,
+        c("time_units", "cf_calendar"),
+        with = FALSE
+    ])
+    if (nrow(definitions) != 1L) {
+        stop(
+            "Conflicting CF time definitions in a native block.",
+            call. = FALSE
+        )
+    }
+    # Decode each native time once, then expand to the reader-owned corner rows.
+    offsets <- unique(values$time_value)
+    positions <- match(values$time_value, offsets)
+    parsed <- parse_cf_time(
+        offsets,
+        definitions$time_units,
+        definitions$cf_calendar
+    )
+    coordinates <- attr(parsed, "cf_coordinates")
+    data.table::set(values, j = "time", value = parsed[positions])
+    for (column in CF_TIME_COORDINATE_COLUMNS) {
+        data.table::set(
+            values,
+            j = column,
+            value = coordinates[[column]][positions]
+        )
+    }
+    for (side in c("start", "end")) {
+        column <- paste0("bound_", side, "_value")
+        if (column %in% names(values)) {
+            present <- which(!is.na(values[[column]]))
+            if (length(present)) {
+                endpoints <- unique(values[[column]][present])
+                decoded <- parse_cf_time(
+                    endpoints,
+                    definitions$time_units,
+                    definitions$cf_calendar
+                )
+                data.table::set(
+                    values,
+                    i = present,
+                    j = paste0("time_bound_", side),
+                    value = decoded[match(values[[column]][present], endpoints)]
+                )
+            }
+        }
+    }
+    values
+}
+
 #' Read locally saved raw climate neighborhoods
 #'
 #' Returns the unique native values together with city/corner membership and
 #' explicit acquisition gaps. No interpolation or implicit remote access occurs.
+#' Derived time fields are decoded from preserved native offsets and bounds;
+#' immutable raw artifacts are never rewritten. Selection receipts created with
+#' an earlier CF decoder require a metadata recheck before reporting completion.
 #' @param dest Acquisition directory.
 #' @param case_id Optional case labels to select.
 #' @param site_id Optional site identifiers to select.
@@ -3052,6 +3112,7 @@ read_subset <- function(
         if (!is.null(wanted_variables)) {
             values <- values[values$variable %in% wanted_variables]
         }
+        values <- opendap__refresh_clock(values)
         needed <- selections[
             list(blocks$source_key[[i]]),
             on = "source_key",

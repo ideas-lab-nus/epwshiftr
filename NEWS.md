@@ -2,7 +2,11 @@
 
 * Support CF `julian` calendar coordinates and explicit `time: point` zero-width
   bounds. Preserve original native corner values and time bounds; interval-valued
-  variables still require positive durations (#306).
+  variables still require positive durations. Correct reference-zone conversion,
+  mixed Gregorian/Julian reform dates, fixed UDUNITS month/year durations and
+  submillisecond native clock fields. Rebuild cached derived times from raw
+  offsets and recheck earlier native selections without discarding raw blocks
+  or changing original offsets, bounds and source identities (#306).
 
 * Retain checked native selections before the first weather value and expose
   read-only `subset_status()` coverage and timing views, optionally limited by

@@ -2298,7 +2298,9 @@ dataset_test__cf_point_fixture <- function(
     method = "time: point",
     calendar = "julian",
     width = 0,
-    reversed = FALSE
+    reversed = FALSE,
+    units = "days since 1900-02-28",
+    time_values = 0:2
 ) {
     path <- tempfile(fileext = ".nc")
     nc <- RNetCDF::create.nc(path)
@@ -2311,15 +2313,15 @@ dataset_test__cf_point_fixture <- function(
     RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
     dims <- if (reversed) c("bnds", "time") else c("time", "bnds")
     RNetCDF::var.def.nc(nc, "time_bnds", "NC_DOUBLE", dims)
-    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", "days since 1900-02-28")
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", units)
     RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
     RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
     RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
     if (!is.null(method)) {
         RNetCDF::att.put.nc(nc, "tas", "cell_methods", "NC_CHAR", method)
     }
-    RNetCDF::var.put.nc(nc, "time", 0:2)
-    bounds <- cbind(0:2, 0:2 + width)
+    RNetCDF::var.put.nc(nc, "time", time_values)
+    bounds <- cbind(time_values, time_values + width)
     RNetCDF::var.put.nc(nc, "time_bnds", if (reversed) t(bounds) else bounds)
     RNetCDF::var.put.nc(nc, "lat", c(0, 1))
     RNetCDF::var.put.nc(nc, "lon", c(10, 11))
@@ -2427,6 +2429,68 @@ test_that("instantaneous bounds validation remains variable-specific and native"
         wrong_ds$read_neighborhood("tas", sites),
         "equal their native time coordinate"
     )
+})
+
+# Public NetCDF reads must preserve the exact source coordinates and bounds
+# while selecting four native corners with corrected UTC and calendar fields.
+test_that("CF normalization preserves public native offsets bounds and selections", {
+    cases <- list(
+        list(
+            units = "hours since 2000-01-01 00:00:00 +02:00",
+            offsets = 0:2,
+            range = c("1999-12-31T22:00:00", "2000-01-01"),
+            days = c(31L, 31L, 1L)
+        ),
+        list(
+            units = "days since 1582-10-04",
+            offsets = 0:2,
+            range = c("1582-10-04", "1582-10-16"),
+            days = c(4L, 15L, 16L)
+        ),
+        list(
+            units = "months since 2000-01-31",
+            offsets = 0:2,
+            range = c("2000-01-31", "2000-04-02"),
+            days = c(31L, 1L, 31L)
+        ),
+        list(
+            units = "seconds since 2000-01-01",
+            offsets = c(0, .000002, .000004),
+            range = c(
+                "2000-01-01T00:00:00.000001",
+                "2000-01-01T00:00:00.000003"
+            ),
+            days = 1L
+        )
+    )
+    for (case in cases) {
+        path <- dataset_test__cf_point_fixture(
+            calendar = "standard",
+            units = case$units,
+            time_values = case$offsets
+        )
+        on.exit(unlink(path), add = TRUE)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        axis <- ds$get_time_axis()
+        expect_identical(as.numeric(axis$raw_values), as.numeric(case$offsets))
+        expect_identical(
+            as.numeric(axis$bounds$raw_values),
+            as.numeric(cbind(case$offsets, case$offsets))
+        )
+        expect_identical(axis$units, case$units)
+        result <- ds$read_neighborhood(
+            "tas",
+            data.frame(site_id = "a", lon = 10.25, lat = .25),
+            time = case$range
+        )
+        expect_equal(nrow(result$values), 4L * length(case$days))
+        expect_identical(result$time$cf_day, case$days)
+        expect_equal(result$time$bound_start_value, result$time$time_value)
+        expect_equal(result$time$bound_end_value, result$time$time_value)
+        expect_identical(unique(result$time$time_units), case$units)
+        ds$close()
+    }
 })
 
 # vim: fdm=marker :

@@ -235,7 +235,10 @@ CF_TIME_UNIT_SECONDS <- c(
     seconds = 1,
     minutes = 60,
     hours = 3600,
-    days = 86400
+    days = 86400,
+    # UDUNITS defines these durations independently of calendar month lengths.
+    months = 365.242198781 * 86400 / 12,
+    years = 365.242198781 * 86400
 )
 
 # Map fixed-length CF calendar aliases to the year length used by their shared
@@ -294,8 +297,8 @@ cf_time_parse_unit <- function(unit) {
         s = "seconds"
     )
     raw_unit <- tolower(unit)
-    unit <- aliases[[raw_unit]]
-    if (is.null(unit)) {
+    unit <- unname(aliases[raw_unit])
+    if (is.na(unit)) {
         stop(sprintf("Unsupported CF time unit: %s", raw_unit), call. = FALSE)
     }
     unit
@@ -325,7 +328,19 @@ cf_time_month_days <- function(year, month, calendar) {
             leap[month],
             common[month]
         ),
-        ifelse(cf_time_is_leap_gregorian(year), leap[month], common[month])
+        data.table::fifelse(
+            if (calendar %in% c("standard", "gregorian")) {
+                data.table::fifelse(
+                    year <= 1582L,
+                    year %% 4L == 0L,
+                    cf_time_is_leap_gregorian(year)
+                )
+            } else {
+                cf_time_is_leap_gregorian(year)
+            },
+            leap[month],
+            common[month]
+        )
     )
 }
 # }}}
@@ -338,13 +353,44 @@ cf_time_valid_days <- function(parts, calendar) {
         parts$month >= 1L &
         parts$month <= 12L &
         parts$day >= 1L
-    if (calendar == "julian") {
+    if (calendar %in% c("standard", "gregorian", "julian")) {
         valid <- valid & parts$year > 0L
+    }
+    if (calendar %in% c("standard", "gregorian")) {
+        valid <- valid &
+            !(parts$year == 1582L &
+                parts$month == 10L &
+                parts$day >= 5L &
+                parts$day <= 14L)
     }
     days <- cf_time_month_days(parts$year, parts$month, calendar)
     valid & !is.na(days) & parts$day <= days
 }
 # }}}
+
+# Decode the CF reference zone without using the host timezone database. The
+# sign describes local time relative to UTC, so it is subtracted exactly once.
+cf_time__timezone_seconds <- function(zone) {
+    if (zone %in% c("Z", "UTC", "+0000")) {
+        return(0)
+    }
+    value <- substring(zone, 2L)
+    if (grepl(":", value, fixed = TRUE)) {
+        parts <- strsplit(value, ":", fixed = TRUE)[[1L]]
+        hour <- as.integer(parts[[1L]])
+        minute <- as.integer(parts[[2L]])
+    } else if (nchar(value) > 2L) {
+        hour <- as.integer(substr(value, 1L, nchar(value) - 2L))
+        minute <- as.integer(substr(value, nchar(value) - 1L, nchar(value)))
+    } else {
+        hour <- as.integer(value)
+        minute <- 0L
+    }
+    if (is.na(hour) || is.na(minute) || hour > 23L || minute > 59L) {
+        stop("Invalid CF reference time zone.", call. = FALSE)
+    }
+    (if (startsWith(zone, "-")) -1 else 1) * (hour * 3600 + minute * 60)
+}
 
 # cf_time_parse_origin {{{
 cf_time_parse_origin <- function(origin, calendar) {
@@ -358,7 +404,7 @@ cf_time_parse_origin <- function(origin, calendar) {
         "(?::([0-5]?[0-9]))?",
         "(?::([0-5]?[0-9](?:\\.[0-9]+)?))?",
         ")?",
-        "(?:\\s*(Z|UTC|[+-][0-9]{2}(?::?[0-9]{2})?))?",
+        "(?:\\s*(Z|UTC|[+-][0-9]{1,2}(?::?[0-9]{2})?))?",
         "\\s*$"
     )
     proto <- data.frame(
@@ -384,8 +430,13 @@ cf_time_parse_origin <- function(origin, calendar) {
     parts$hour[is.na(parts$hour)] <- 0L
     parts$minute[is.na(parts$minute)] <- 0L
     parts$second[is.na(parts$second)] <- 0
-    parts$tz <- ifelse(is.na(parts$zone), "+0000", parts$zone)
+    parts$tz <- data.table::fifelse(
+        is.na(parts$zone) | !nzchar(parts$zone),
+        "+0000",
+        parts$zone
+    )
     parts$zone <- NULL
+    parts$utc_offset_seconds <- cf_time__timezone_seconds(parts$tz)
 
     if (!cf_time_valid_days(parts, calendar)) {
         stop(
@@ -567,6 +618,34 @@ cf_time__julian_offset2date <- function(offsets) {
 }
 # }}}
 
+# Align the Julian and Gregorian absolute-day epochs across the CF reform.
+# Julian October 4 and Gregorian October 15 are consecutive physical days.
+cf_time__standard_date2offset <- function(parts) {
+    gregorian <- parts$year > 1582L |
+        (parts$year == 1582L &
+            (parts$month > 10L | (parts$month == 10L & parts$day >= 15L)))
+    data.table::fifelse(
+        gregorian,
+        cf_time_gregorian_date2offset(parts),
+        cf_time__julian_date2offset(parts) - 2
+    )
+}
+
+# Invert mixed-calendar absolute days without creating dates in the reform gap.
+cf_time__standard_offset2date <- function(offsets) {
+    threshold <- cf_time_gregorian_date2offset(data.frame(
+        year = 1582L,
+        month = 10L,
+        day = 15L
+    ))
+    fields <- cf_time_gregorian_offset2date(offsets)
+    before <- which(offsets < threshold)
+    if (length(before)) {
+        fields[before, ] <- cf_time__julian_offset2date(offsets[before] + 2)
+    }
+    fields
+}
+
 # cf_time_date2offset {{{
 cf_time_date2offset <- function(parts, origin, calendar) {
     fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
@@ -579,6 +658,9 @@ cf_time_date2offset <- function(parts, origin, calendar) {
 
     switch(
         calendar,
+        "standard" = ,
+        "gregorian" = cf_time__standard_date2offset(parts) -
+            cf_time__standard_date2offset(origin),
         "julian" = cf_time__julian_date2offset(parts) -
             cf_time__julian_date2offset(origin),
         "360_day" = (parts$year - origin$year) *
@@ -604,6 +686,10 @@ cf_time_offset2date <- function(offsets, origin, calendar) {
 
     switch(
         calendar,
+        "standard" = ,
+        "gregorian" = cf_time__standard_offset2date(
+            offsets + cf_time__standard_date2offset(origin)
+        ),
         "julian" = cf_time__julian_offset2date(
             offsets + cf_time__julian_date2offset(origin)
         ),
@@ -638,68 +724,37 @@ cf_time_origin_posix <- function(origin, tz) {
 }
 # }}}
 
-# cf_time_add_seconds_to_fields {{{
-cf_time_add_seconds_to_fields <- function(fields, seconds, origin, calendar) {
-    total_seconds <- fields$hour *
-        3600 +
-        fields$minute * 60 +
-        fields$second +
-        seconds
-    day_offsets <- cf_time_date2offset(fields, origin, calendar) +
-        total_seconds %/% 86400L
-    seconds <- round(total_seconds %% 86400L, 3L)
-
-    fields <- cf_time_offset2date(day_offsets, origin, calendar)
-    fields$hour <- seconds %/% 3600L
-    fields$minute <- (seconds %% 3600L) %/% 60L
-    fields$second <- seconds %% 60L
-    fields
-}
-# }}}
-
+# Convert fixed-duration units into native dates and UTC clock fields. Retain
+# the precision of the input doubles; never round a late second into a new day.
 # cf_time_offsets2fields {{{
 cf_time_offsets2fields <- function(offsets, unit, origin, calendar) {
-    if (unit %in% names(CF_TIME_UNIT_SECONDS)) {
-        seconds <- offsets *
-            CF_TIME_UNIT_SECONDS[[unit]] +
-            origin$hour * 3600 +
-            origin$minute * 60 +
-            origin$second
-        day_offsets <- seconds %/% 86400L
-        seconds <- round(seconds %% 86400L, 3L)
-
-        fields <- cf_time_offset2date(day_offsets, origin, calendar)
-        fields$hour <- seconds %/% 3600L
-        fields$minute <- (seconds %% 3600L) %/% 60L
-        fields$second <- seconds %% 60L
-        return(fields)
+    if (!length(offsets)) {
+        return(data.frame(
+            year = integer(),
+            month = integer(),
+            day = integer(),
+            hour = numeric(),
+            minute = numeric(),
+            second = numeric()
+        ))
     }
-
-    whole_offsets <- offsets %/% 1L
-    fractional_offsets <- offsets - whole_offsets
-    fields <- origin[
-        rep(1L, length(offsets)),
-        c("year", "month", "day", "hour", "minute", "second")
-    ]
-    if (unit == "months") {
-        months <- fields$month + whole_offsets - 1L
-        fields$month <- months %% 12L + 1L
-        fields$year <- fields$year + months %/% 12L
-        fractional_seconds <- fractional_offsets * 30 * 86400
-    } else {
-        fields$year <- fields$year + whole_offsets
-        fractional_seconds <- fractional_offsets * 365 * 86400
-    }
-
-    if (any(fractional_seconds != 0)) {
-        fields <- cf_time_add_seconds_to_fields(
-            fields,
-            fractional_seconds,
-            origin,
-            calendar
-        )
-    }
-
+    seconds <- offsets *
+        CF_TIME_UNIT_SECONDS[[unit]] +
+        origin$hour * 3600 +
+        origin$minute * 60 +
+        origin$second -
+        origin$utc_offset_seconds
+    day_offsets <- floor(seconds / 86400)
+    seconds <- seconds - day_offsets * 86400
+    # Cancellation at the double-precision boundary can produce a full day.
+    # Carry that value before deriving fields, keeping the representation valid.
+    carry <- seconds >= 86400
+    day_offsets[carry] <- day_offsets[carry] + 1
+    seconds[carry] <- seconds[carry] - 86400
+    fields <- cf_time_offset2date(day_offsets, origin, calendar)
+    fields$hour <- floor(seconds / 3600)
+    fields$minute <- floor((seconds - fields$hour * 3600) / 60)
+    fields$second <- seconds - fields$hour * 3600 - fields$minute * 60
     fields
 }
 # }}}
@@ -707,21 +762,29 @@ cf_time_offsets2fields <- function(offsets, unit, origin, calendar) {
 # cf_time_fields2posix {{{
 cf_time_fields2posix <- function(fields, origin, calendar, tz) {
     if (calendar %in% c("standard", "gregorian", "proleptic_gregorian")) {
-        return(as.POSIXct(
-            ISOdatetime(
-                fields$year,
-                fields$month,
-                fields$day,
-                fields$hour,
-                fields$minute,
+        absolute <- if (calendar == "proleptic_gregorian") {
+            cf_time_gregorian_date2offset(fields)
+        } else {
+            cf_time__standard_date2offset(fields)
+        }
+        epoch <- cf_time_gregorian_date2offset(data.frame(
+            year = 1970L,
+            month = 1L,
+            day = 1L
+        ))
+        return(.POSIXct(
+            (absolute - epoch) *
+                86400 +
+                fields$hour * 3600 +
+                fields$minute * 60 +
                 fields$second,
-                tz = tz
-            ),
             tz = tz
         ))
     }
 
-    origin_time <- cf_time_origin_posix(origin, tz)
+    # Native model dates use a continuous Gregorian surrogate. Fields already
+    # include the reference-zone correction; do not apply it to the anchor again.
+    origin_time <- cf_time_origin_posix(origin, "UTC")
     day_offsets <- cf_time_date2offset(fields, origin, calendar)
     second_offsets <- fields$hour *
         3600 +
@@ -732,7 +795,10 @@ cf_time_fields2posix <- function(fields, origin, calendar, tz) {
             origin$minute[[1L]] * 60 +
             origin$second[[1L]])
 
-    as.POSIXct(origin_time + day_offsets * 86400 + second_offsets, tz = tz)
+    .POSIXct(
+        as.numeric(origin_time) + day_offsets * 86400 + second_offsets,
+        tz = tz
+    )
 }
 # }}}
 
@@ -753,7 +819,24 @@ cf_time__year_days <- function(year, calendar) {
             366L,
             365L
         ),
-        ifelse(cf_time_is_leap_gregorian(year), 366L, 365L)
+        if (calendar %in% c("standard", "gregorian")) {
+            start <- data.frame(
+                year = year,
+                month = rep.int(1L, length(year)),
+                day = rep.int(1L, length(year))
+            )
+            end <- data.frame(
+                year = year + 1L,
+                month = rep.int(1L, length(year)),
+                day = rep.int(1L, length(year))
+            )
+            as.integer(
+                cf_time__standard_date2offset(end) -
+                    cf_time__standard_date2offset(start)
+            )
+        } else {
+            data.table::fifelse(cf_time_is_leap_gregorian(year), 366L, 365L)
+        }
     )
 }
 # }}}
@@ -765,8 +848,8 @@ cf_time__year_days <- function(year, calendar) {
 cf_time__coordinates <- function(fields, calendar) {
     year_start <- data.frame(
         year = as.integer(fields$year),
-        month = 1L,
-        day = 1L
+        month = rep.int(1L, nrow(fields)),
+        day = rep.int(1L, nrow(fields))
     )
     day_of_year <- as.integer(
         cf_time_date2offset(fields, year_start, calendar) + 1L
@@ -794,9 +877,25 @@ cf_time__coordinates <- function(fields, calendar) {
 }
 # }}}
 
+# Compare native date tuples and clock seconds separately. Adding a fractional
+# day to a large date key would discard otherwise representable microseconds.
+cf_time__tuple_indices <- function(coordinates, boundary) {
+    dates <- (as.double(coordinates$cf_year) * 13 + coordinates$cf_month) *
+        32 +
+        coordinates$cf_day
+    limits <- (as.double(boundary$year) * 13 + boundary$month) *
+        32 +
+        boundary$day
+    seconds <- coordinates$cf_second_of_day
+    lower <- dates > limits[[1L]] |
+        (dates == limits[[1L]] & seconds >= boundary$second_of_day[[1L]])
+    upper <- dates < limits[[2L]] |
+        (dates == limits[[2L]] & seconds <= boundary$second_of_day[[2L]])
+    which(lower & upper)
+}
+
 # Select a user-supplied time range against calendar-native fields. Comparing
-# the CF date tuple avoids assigning the end of a 360-day year to the preceding
-# Gregorian year merely because its POSIXct value is a continuous surrogate.
+# native tuples avoids assigning model dates to their Gregorian surrogates.
 # cf_time__range_indices {{{
 cf_time__range_indices <- function(time, coordinates, range) {
     if (is.null(range)) {
@@ -808,38 +907,15 @@ cf_time__range_indices <- function(time, coordinates, range) {
             call. = FALSE
         )
     }
-
-    # Encode calendar date tuples into sortable day-scale keys. Month and day
-    # bases exceed their legal maxima, so numeric ordering is lexicographic.
-    coordinate_fraction <- coordinates$annual_phase *
-        coordinates$cf_year_days -
-        (coordinates$cf_day_of_year - 1L)
-    coordinate_key <- ((as.numeric(coordinates$cf_year) *
-        13 +
-        coordinates$cf_month) *
-        32 +
-        coordinates$cf_day) +
-        coordinate_fraction
-
-    boundary <- as.POSIXlt(range, tz = "UTC")
-    boundary_fraction <- (as.numeric(boundary$hour) *
-        3600 +
-        as.numeric(boundary$min) * 60 +
-        as.numeric(boundary$sec)) /
-        86400
-    boundary_key <- ((as.numeric(boundary$year + 1900L) *
-        13 +
-        boundary$mon +
-        1L) *
-        32 +
-        boundary$mday) +
-        boundary_fraction
-
-    which(
-        !is.na(time) &
-            coordinate_key >= boundary_key[[1L]] &
-            coordinate_key <= boundary_key[[2L]]
+    parts <- as.POSIXlt(range, tz = "UTC")
+    boundary <- data.frame(
+        year = parts$year + 1900L,
+        month = parts$mon + 1L,
+        day = parts$mday,
+        second_of_day = parts$hour * 3600 + parts$min * 60 + parts$sec
     )
+    selected <- cf_time__tuple_indices(coordinates, boundary)
+    selected[!is.na(time[selected])]
 }
 # }}}
 
@@ -861,9 +937,13 @@ parse_cf_time <- function(offsets, units, calendar = "standard", tz = "UTC") {
         parsed$origin,
         calendar
     )
-    if (calendar == "julian" && any(fields$year < 1L)) {
+    if (
+        calendar %in%
+            c("standard", "gregorian", "julian") &&
+            any(fields$year < 1L)
+    ) {
         stop(
-            "Julian CF dates must use positive years; climatological year zero is unsupported.",
+            "Ordinary CF dates in this calendar must use positive years; climatological year zero is unsupported.",
             call. = FALSE
         )
     }

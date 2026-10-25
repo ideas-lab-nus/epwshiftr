@@ -654,18 +654,24 @@ dataset__neighborhood_time_indices <- function(time, coordinates, range) {
     if (any(fields$hour > 23L | fields$minute > 59L | fields$second >= 60)) {
         stop("Invalid raw neighborhood clock endpoint.", call. = FALSE)
     }
-    boundary <- ((as.double(fields$year) * 13 + fields$month) *
-        32 +
-        fields$day) +
-        (fields$hour * 3600 + fields$minute * 60 + fields$second) / 86400
-    if (boundary[[2L]] < boundary[[1L]]) {
+    # Keep date and clock components separate to preserve submillisecond
+    # selection precision, including dates invalid in the Gregorian calendar.
+    boundary <- data.frame(
+        year = fields$year,
+        month = fields$month,
+        day = fields$day,
+        second_of_day = fields$hour * 3600 + fields$minute * 60 + fields$second
+    )
+    dates <- (as.double(fields$year) * 13 + fields$month) * 32 + fields$day
+    if (
+        dates[[2L]] < dates[[1L]] ||
+            (dates[[2L]] == dates[[1L]] &&
+                boundary$second_of_day[[2L]] < boundary$second_of_day[[1L]])
+    ) {
         stop("Raw time end precedes start.", call. = FALSE)
     }
-    key <- ((as.double(coordinates$cf_year) * 13 + coordinates$cf_month) *
-        32 +
-        coordinates$cf_day) +
-        coordinates$cf_second_of_day / 86400
-    which(!is.na(time) & key >= boundary[[1L]] & key <= boundary[[2L]])
+    selected <- cf_time__tuple_indices(coordinates, boundary)
+    selected[!is.na(time[selected])]
 }
 
 # Read only requested or previously required native bounds, normalize their

@@ -164,12 +164,16 @@ local_downloader_http_server <- function(env = parent.frame()) {
 subset_test__dap_app <- function(
     fail_first = FALSE,
     calendar = "360_day",
-    point_bounds = FALSE
+    point_bounds = FALSE,
+    time_units = NULL,
+    time_values = 0:7
 ) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
     app$locals$calendar <- calendar
     app$locals$point_bounds <- isTRUE(point_bounds)
+    app$locals$time_units <- time_units
+    app$locals$time_values <- time_values
     app$locals$weather <- 0L
     app$locals$requests <- character()
     app$get('/recover', function(req, res, locals) {
@@ -247,6 +251,14 @@ subset_test__dap_app <- function(
                     fixed = TRUE
                 )
             }
+            if (!is.null(locals$time_units)) {
+                attributes <- sub(
+                    'days since 2060-01-01',
+                    locals$time_units,
+                    attributes,
+                    fixed = TRUE
+                )
+            }
             return(res$send(attributes))
         }
         query <- utils::URLdecode(
@@ -256,14 +268,14 @@ subset_test__dap_app <- function(
             query <- substring(query, 2L)
         }
         variables <- list(
-            time = 0:7,
+            time = locals$time_values,
             lat = 0:1,
             lon = 10:11,
             tas = array(1:32, c(2, 2, 8)),
             time_bnds = if (locals$point_bounds) {
-                rbind(0:7, 0:7)
+                rbind(locals$time_values, locals$time_values)
             } else {
-                rbind(0:7, 1:8)
+                rbind(locals$time_values, locals$time_values + 1)
             }
         )
         dims <- list(

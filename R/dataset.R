@@ -1056,8 +1056,15 @@ EsgDataset <- R6::R6Class(
         #' coordinates, optional CF interval bounds, and axis length.
         #' `raw_values` retains the original numeric time coordinates;
         #' `bounds$raw_values` retains bounds in their declared dimension order.
-        #' Julian dates retain native CF fields, including century leap days;
-        #' POSIXct values for non-Gregorian calendars are surrogate timestamps.
+        #' Reference time zones are normalized to UTC without changing raw units.
+        #' `standard` and `gregorian` use the Julian/Gregorian reform; their
+        #' native dates before 1582-10-15 differ from proleptic Gregorian POSIX
+        #' labels. Julian and fixed-calendar POSIX values are surrogate timestamps;
+        #' canonical CF fields remain authoritative for calendar dates.
+        #' Units `month` and `year` are fixed UDUNITS durations, not calendar
+        #' increments. Fractional seconds retain available numeric precision.
+        #' These ordinary time coordinates do not implement CF climatological
+        #' averaging, leap-second calendars or explicitly defined calendars.
         #' Equal bounds are retained as native metadata. Weather reads accept
         #' them only for explicit `time: point` values at that same native time;
         #' interval-valued variables require positive native durations.
