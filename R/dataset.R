@@ -455,15 +455,6 @@ dataset__parse_time_statistics <- function(method, kind = "ordinary") {
             scope = paste(parts[[3L]], parts[[4L]])
         )
     }
-    if (kind != "climatology") {
-        if (length(operations)) {
-            stop(
-                "Climatological cell_methods require a time:climatology boundary declaration.",
-                call. = FALSE
-            )
-        }
-        return(NULL)
-    }
     if (!length(operations)) {
         stop(
             "CF climatology requires explicit time cell_methods statistics.",
@@ -501,6 +492,18 @@ dataset__parse_time_statistics <- function(method, kind = "ordinary") {
     ) {
         stop(
             "Unsupported or incorrectly ordered climatological cell_methods statistics.",
+            call. = FALSE
+        )
+    }
+    # CMIP6 Amon extrema summarize daily extrema inside ordinary monthly
+    # bounds. The daily qualifiers alone do not declare a cyclic climatology;
+    # year aggregation still requires an explicit climatology boundary.
+    if (
+        kind != "climatology" &&
+            !identical(operations$scope, c("within days", "over days"))
+    ) {
+        stop(
+            "Climatological cell_methods require a time:climatology boundary declaration.",
             call. = FALSE
         )
     }
@@ -1510,6 +1513,10 @@ EsgDataset <- R6::R6Class(
         #' These are source-computed statistical values over possibly disjoint
         #' subintervals, not observations spanning the enclosing endpoint range.
         #' No climatology is recalculated or expanded into ordinary samples.
+        #' CMIP6 monthly extrema can instead use ordered `within days` and
+        #' `over days` methods on ordinary interval bounds. Their statistics are
+        #' retained without adding a climatology descriptor or inferring daily
+        #' observations from the monthly summaries.
         #' Leap-second calendars and explicitly defined calendars are unsupported.
         #' Ordinary equal bounds are retained as native metadata. Weather reads accept
         #' them only for explicit `time: point` values at that same native time;

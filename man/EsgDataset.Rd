@@ -637,6 +637,10 @@ identifies annual or midnight wrapping and full-day daily intervals.
 These are source-computed statistical values over possibly disjoint
 subintervals, not observations spanning the enclosing endpoint range.
 No climatology is recalculated or expanded into ordinary samples.
+CMIP6 monthly extrema can instead use ordered \verb{within days} and
+\verb{over days} methods on ordinary interval bounds. Their statistics are
+retained without adding a climatology descriptor or inferring daily
+observations from the monthly summaries.
 Leap-second calendars and explicitly defined calendars are unsupported.
 Ordinary equal bounds are retained as native metadata. Weather reads accept
 them only for explicit \code{time: point} values at that same native time;

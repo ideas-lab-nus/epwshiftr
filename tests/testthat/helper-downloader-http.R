@@ -168,7 +168,8 @@ subset_test__dap_app <- function(
     time_units = NULL,
     time_values = 0:7,
     climatology_method = NULL,
-    bounds_reversed = FALSE
+    bounds_reversed = FALSE,
+    ordinary_method = NULL
 ) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
@@ -176,6 +177,7 @@ subset_test__dap_app <- function(
     app$locals$point_bounds <- isTRUE(point_bounds)
     app$locals$time_units <- time_units
     app$locals$time_values <- time_values
+    app$locals$ordinary_method <- ordinary_method
     app$locals$climatology_method <- climatology_method
     app$locals$bounds_reversed <- isTRUE(bounds_reversed)
     app$locals$weather <- 0L
@@ -251,6 +253,20 @@ subset_test__dap_app <- function(
                 attributes <- sub(
                     'String units "K";',
                     'String units "K"; String cell_methods "time: point";',
+                    attributes,
+                    fixed = TRUE
+                )
+            }
+            # Ordinary monthly extrema retain bounds rather than declaring a
+            # climatology; the same native DAP transport must accept both kinds.
+            if (!is.null(locals$ordinary_method)) {
+                attributes <- sub(
+                    'String units "K";',
+                    paste0(
+                        'String units "K"; String cell_methods "',
+                        locals$ordinary_method,
+                        '";'
+                    ),
                     attributes,
                     fixed = TRUE
                 )

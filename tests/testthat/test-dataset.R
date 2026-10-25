@@ -3125,4 +3125,64 @@ test_that("CF review refuses a replica with contradictory boundary provenance", 
     )
 })
 
+# CMIP6 monthly extrema use ordinary contiguous bounds, even though their
+# ordered cell methods contain within-days and over-days statistics.
+test_that("CMIP6 monthly statistics retain ordinary bounds and raw methods", {
+    offsets <- c(60280.5, 60310, 60339.5)
+    endpoints <- cbind(c(60265, 60296, 60324), c(60296, 60324, 60355))
+    for (method in c(
+        "area: mean time: maximum within days time: mean over days",
+        "area: mean time: minimum within days time: mean over days"
+    )) {
+        path <- dataset_test__climatology_fixture(
+            method = method,
+            calendar = "proleptic_gregorian",
+            units = "days since 1850-01-01",
+            times = offsets,
+            bounds = endpoints
+        )
+        nc <- RNetCDF::open.nc(path, write = TRUE)
+        RNetCDF::att.delete.nc(nc, "time", "climatology")
+        RNetCDF::att.put.nc(
+            nc,
+            "time",
+            "bounds",
+            "NC_CHAR",
+            "climatology_bounds"
+        )
+        RNetCDF::close.nc(nc)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        axis <- ds$get_time_axis(variable = "tas")
+        expect_identical(axis$kind, "ordinary")
+        expect_null(axis$climatology)
+        expect_identical(as.double(axis$raw_values), offsets)
+        expect_equal(axis$bounds$raw_values, endpoints)
+        expect_identical(axis$statistics$raw, method)
+        expect_identical(
+            axis$statistics$operations$scope,
+            c("within days", "over days")
+        )
+        raw <- ds$read_neighborhood(
+            "tas",
+            data.frame(site_id = "a", lon = 10.25, lat = .25)
+        )
+        expect_equal(nrow(raw$values), 12L)
+        expect_identical(unique(raw$values$cell_methods), method)
+        expect_identical(raw$time$time_value, offsets)
+        expect_equal(raw$time$bound_start_value, endpoints[, 1L])
+        expect_equal(raw$time$bound_end_value, endpoints[, 2L])
+        expect_false(any(startsWith(names(raw$time), "climatology_")))
+        ds$close()
+        unlink(path)
+    }
+    # Year aggregation without a climatology declaration remains ambiguous.
+    expect_error(
+        dataset__parse_time_statistics(
+            "time: mean within years time: mean over years"
+        ),
+        "climatology"
+    )
+})
+
 # vim: fdm=marker :
