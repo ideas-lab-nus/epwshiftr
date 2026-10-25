@@ -208,6 +208,8 @@ dataset__read_regions_one <- function(
     }
 
     time_info <- dataset__time_axis(dataset, index)
+    dataset__require_ordinary_time(time_info)
+    dataset__time_statistics(dataset, index, variable, time_info)
     base_selected <- cf_time__range_indices(
         time_info$values,
         time_info$coordinates,
@@ -690,8 +692,14 @@ dataset__neighborhood_bounds <- function(
         expected[expected$file_index == index & expected$variable == variable]
     }
     indices <- sort(unique(c(selected, prior$time_index)))
-    bounds <- if (!is.null(axis$bounds)) {
+    full_bounds <- if (identical(axis$kind, "climatology")) {
+        axis$climatology
+    } else {
         axis$bounds
+    }
+    statistics <- dataset__time_statistics(dataset, index, variable, axis)
+    bounds <- if (!is.null(full_bounds)) {
+        full_bounds
     } else {
         dataset__time_bounds(
             dataset,
@@ -718,17 +726,19 @@ dataset__neighborhood_bounds <- function(
         } else {
             t(bounds$raw_values)
         }
-        if (!is.null(axis$bounds)) {
+        if (!is.null(full_bounds)) {
             native <- native[indices, , drop = FALSE]
         }
-        dataset__validate_time_intervals(
-            dataset,
-            index,
-            variable,
-            native,
-            bounds$name,
-            axis$raw_values[indices]
-        )
+        if (!identical(axis$kind, "climatology")) {
+            dataset__validate_time_intervals(
+                dataset,
+                index,
+                variable,
+                native,
+                bounds$name,
+                axis$raw_values[indices]
+            )
+        }
         for (attribute in c("units", "calendar")) {
             declared <- tryCatch(
                 dataset$att_get(bounds$name, attribute, index),
@@ -771,9 +781,23 @@ dataset__neighborhood_bounds <- function(
             bounds = bounds
         )
     }
+    if (identical(axis$kind, "climatology")) {
+        data.table::set(values, j = "time_kind", value = "climatology")
+        data.table::set(values, j = "bounds_name", value = bounds$name)
+        data.table::set(values, j = "cell_methods", value = statistics$raw)
+    }
     if (!is.null(prior) && nrow(prior)) {
         positions <- match(prior$time_index, values$time_index)
         columns <- c("present", "bound_start_value", "bound_end_value")
+        if (identical(axis$kind, "climatology")) {
+            columns <- c(columns, "time_kind", "bounds_name", "cell_methods")
+        }
+        if (!all(columns %in% names(prior))) {
+            stop(
+                "Climatological boundary identity is missing from saved metadata.",
+                call. = FALSE
+            )
+        }
         same <- !anyNA(positions) &&
             isTRUE(all.equal(
                 as.data.frame(values[positions, columns, with = FALSE]),
@@ -1069,30 +1093,36 @@ dataset__read_neighborhood <- function(
                 error = function(e) NA_character_
             )
 
+            statistics <- dataset__time_statistics(dataset, index, name, axis)
             # Resume coverage is native-index based only after its complete
             # grid and CF-axis identity has been checked on this endpoint.
+            contract_definition <- list(
+                variable = name,
+                units = as.character(units),
+                cell_methods = cell_methods,
+                standard_name = standard_name,
+                lat = as.double(grid$lat),
+                lon = as.double(grid$lon),
+                time = as.double(axis$raw_values),
+                time_units = axis$units,
+                calendar = axis$calendar,
+                time_bounds_present = !is.null(tryCatch(
+                    dataset$att_get("time", "bounds", index),
+                    error = function(e) NULL
+                )),
+                dimensions = meta$names,
+                lengths = as.integer(meta$lengths)
+            )
+            if (identical(axis$kind, "climatology")) {
+                contract_definition$time_kind <- "climatology"
+                contract_definition$climatology <- as.character(dataset$att_get(
+                    "time",
+                    "climatology",
+                    index
+                ))
+            }
             contract <- checksum_bytes(
-                serialize(
-                    list(
-                        variable = name,
-                        units = as.character(units),
-                        cell_methods = cell_methods,
-                        standard_name = standard_name,
-                        lat = as.double(grid$lat),
-                        lon = as.double(grid$lon),
-                        time = as.double(axis$raw_values),
-                        time_units = axis$units,
-                        calendar = axis$calendar,
-                        time_bounds_present = !is.null(tryCatch(
-                            dataset$att_get("time", "bounds", index),
-                            error = function(e) NULL
-                        )),
-                        dimensions = meta$names,
-                        lengths = as.integer(meta$lengths)
-                    ),
-                    NULL,
-                    version = 3L
-                ),
+                serialize(contract_definition, NULL, version = 3L),
                 "sha256"
             )
             if (
@@ -1244,7 +1274,32 @@ dataset__read_neighborhood <- function(
                         run,
                         name
                     )
-                    if (!is.null(bounds)) {
+                    if (
+                        !is.null(bounds) && identical(axis$kind, "climatology")
+                    ) {
+                        cached <- private$metadata_cache[[sprintf(
+                            "time_bounds_%d",
+                            index
+                        )]]
+                        full <- axis$climatology
+                        climatology_bounds <- if (!is.null(full)) {
+                            full
+                        } else {
+                            cached$bounds
+                        }
+                        positions <- if (!is.null(full)) {
+                            run
+                        } else {
+                            match(run, cached$indices)
+                        }
+                        clock <- dataset__climatology_clock(
+                            clock,
+                            statistics,
+                            climatology_bounds,
+                            positions,
+                            name
+                        )
+                    } else if (!is.null(bounds)) {
                         data.table::set(
                             clock,
                             j = "time_bound_start",

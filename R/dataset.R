@@ -281,7 +281,345 @@ DatasetAsyncTask <- R6::R6Class(
     )
 )
 # }}}
-# Read and normalize the optional CF bounds attached to the time coordinate.
+# Missing optional metadata is different from an unreadable declared attribute.
+# Check native attribute names after a failed/empty read instead of hiding an
+# I/O or representation error behind an ordinary-axis fallback.
+dataset__optional_attribute <- function(dataset, variable, attribute, index) {
+    failure <- NULL
+    value <- tryCatch(
+        dataset$att_get(variable, attribute, index),
+        error = function(e) {
+            failure <<- e
+            NULL
+        }
+    )
+    if (is.null(failure) && !is.null(value)) {
+        return(value)
+    }
+    info <- dataset$var_inq(variable, index)
+    handle <- dataset__private(dataset)$nc_handles[[index]]
+    names <- vapply(
+        seq_len(info$natts) - 1L,
+        function(id) {
+            RNetCDF::att.inq.nc(handle, variable, id)$name
+        },
+        character(1L)
+    )
+    if (!attribute %in% names) {
+        return(NULL)
+    }
+    if (!is.null(failure)) {
+        stop(failure)
+    }
+    stop(
+        sprintf(
+            "Declared CF attribute '%s:%s' has no value.",
+            variable,
+            attribute
+        ),
+        call. = FALSE
+    )
+}
+
+# Classify the native axis from its declared boundary attribute, rejecting an
+# ambiguous mixture before any ordinary or climatological interpretation.
+dataset__time_kind <- function(dataset, index) {
+    private <- dataset__private(dataset)
+    key <- sprintf("time_kind_%d", index)
+    cached <- private$metadata_cache[[key]]
+    if (!is.null(cached)) {
+        return(cached)
+    }
+    attributes <- lapply(c("bounds", "climatology"), function(name) {
+        value <- dataset__optional_attribute(dataset, "time", name, index)
+        if (
+            !is.null(value) &&
+                (!is.character(value) ||
+                    length(value) != 1L ||
+                    is.na(value) ||
+                    !nzchar(trimws(value)))
+        ) {
+            stop(
+                sprintf(
+                    "The CF `time:%s` attribute must name one non-empty boundary variable.",
+                    name
+                ),
+                call. = FALSE
+            )
+        }
+        value
+    })
+    if (!is.null(attributes[[1L]]) && !is.null(attributes[[2L]])) {
+        stop(
+            "A CF time axis cannot declare both bounds and climatology.",
+            call. = FALSE
+        )
+    }
+    kind <- if (!is.null(attributes[[2L]])) "climatology" else "ordinary"
+    private$metadata_cache[[key]] <- kind
+    kind
+}
+
+# Parse only the ordered time clauses, retaining the exact source string and
+# ignoring parenthesized comments and other dimensions' statistical operations.
+dataset__parse_time_statistics <- function(method, kind = "ordinary") {
+    if (
+        is.null(method) ||
+            length(method) != 1L ||
+            is.na(method) ||
+            !nzchar(trimws(method))
+    ) {
+        if (kind == "climatology") {
+            stop(
+                "CF climatology requires explicit time cell_methods statistics.",
+                call. = FALSE
+            )
+        }
+        return(NULL)
+    }
+    raw <- as.character(method)
+    text <- tolower(gsub("\\([^()]*\\)", " ", raw))
+    if (
+        kind != "climatology" &&
+            !grepl("\\b(within|over)\\s+(years|days)\\b", text, perl = TRUE)
+    ) {
+        return(NULL)
+    }
+    if (grepl("[()]", text)) {
+        stop(
+            "Invalid parentheses in climatological cell_methods.",
+            call. = FALSE
+        )
+    }
+    headers <- gregexpr(
+        "\\b(?:[a-z_][a-z_0-9]*\\s*:\\s*)+",
+        text,
+        perl = TRUE
+    )[[1L]]
+    length_header <- attr(headers, "match.length")
+    operations <- list()
+    if (headers[[1L]] != -1L) {
+        for (i in seq_along(headers)) {
+            header <- substr(
+                text,
+                headers[[i]],
+                headers[[i]] + length_header[[i]] - 1L
+            )
+            axes <- strsplit(gsub("\\s", "", header), ":", fixed = TRUE)[[1L]]
+            if (!"time" %in% axes) {
+                next
+            }
+            end_position <- if (i < length(headers)) {
+                headers[[i + 1L]] - 1L
+            } else {
+                nchar(text)
+            }
+            clause <- trimws(substr(
+                text,
+                headers[[i]] + length_header[[i]],
+                end_position
+            ))
+            parts <- regmatches(
+                clause,
+                regexec(
+                    "^([a-z_]+)\\s+(within|over)\\s+(years|days)$",
+                    clause,
+                    perl = TRUE
+                )
+            )[[1L]]
+            if (length(parts) != 4L) {
+                stop(
+                    "Invalid climatological time cell_methods clause.",
+                    call. = FALSE
+                )
+            }
+            operations[[length(operations) + 1L]] <- data.frame(
+                method = parts[[2L]],
+                scope = paste(parts[[3L]], parts[[4L]])
+            )
+        }
+    }
+    if (kind != "climatology") {
+        if (length(operations)) {
+            stop(
+                "Climatological cell_methods require a time:climatology boundary declaration.",
+                call. = FALSE
+            )
+        }
+        return(NULL)
+    }
+    if (!length(operations)) {
+        stop(
+            "CF climatology requires explicit time cell_methods statistics.",
+            call. = FALSE
+        )
+    }
+    operations <- do.call(rbind, operations)
+    methods <- c(
+        "point",
+        "sum",
+        "maximum",
+        "maximum_absolute_value",
+        "median",
+        "mid_range",
+        "minimum",
+        "minimum_absolute_value",
+        "mean",
+        "mean_absolute_value",
+        "mean_of_upper_decile",
+        "mode",
+        "range",
+        "root_mean_square",
+        "standard_deviation",
+        "sum_of_squares",
+        "variance"
+    )
+    forms <- list(
+        c("within years", "over years"),
+        c("within days", "over days"),
+        c("within days", "over days", "over years")
+    )
+    if (
+        any(!operations$method %in% methods) ||
+            !any(vapply(forms, identical, logical(1L), operations$scope))
+    ) {
+        stop(
+            "Unsupported or incorrectly ordered climatological cell_methods statistics.",
+            call. = FALSE
+        )
+    }
+    list(raw = raw, operations = operations)
+}
+
+# Temporal statistics belong to the data variable, never to a shared axis cache.
+dataset__time_statistics <- function(dataset, index, variable, axis) {
+    private <- dataset__private(dataset)
+    key <- sprintf("time_statistics_%d_%s", index, variable)
+    cached <- private$metadata_cache[[key]]
+    if (!is.null(cached)) {
+        return(cached$value)
+    }
+    dataset$var_inq(variable, index)
+    method <- dataset__optional_attribute(
+        dataset,
+        variable,
+        "cell_methods",
+        index
+    )
+    value <- dataset__parse_time_statistics(
+        method,
+        if (identical(axis$kind, "climatology")) "climatology" else "ordinary"
+    )
+    private$metadata_cache[[key]] <- list(value = value)
+    value
+}
+
+# Decompose the declared first/last native endpoints without filling unobserved
+# subintervals. Daily equal clock endpoints denote a full day by CF section 7.4.
+dataset__climatology_interpretation <- function(bounds, statistics) {
+    first <- bounds$start_coordinates
+    last <- bounds$end_coordinates
+    start_day <- first$cf_month * 32L + first$cf_day
+    end_day <- last$cf_month * 32L + last$cf_day
+    yearly <- "over years" %in% statistics$operations$scope
+    daily <- "within days" %in% statistics$operations$scope
+    # Three-stage seasonal spans use month/day; their clock range belongs to
+    # the separate within-days operation.
+    annual_clock_wrap <- !daily &
+        end_day == start_day &
+        last$cf_second_of_day < first$cf_second_of_day
+    data.frame(
+        wraps_year = if (yearly) {
+            end_day < start_day | annual_clock_wrap
+        } else {
+            rep(NA, nrow(first))
+        },
+        wraps_day = if (daily) {
+            last$cf_second_of_day < first$cf_second_of_day
+        } else {
+            rep(NA, nrow(first))
+        },
+        full_day = if (daily) {
+            last$cf_second_of_day == first$cf_second_of_day
+        } else {
+            rep(NA, nrow(first))
+        }
+    )
+}
+
+# Ordinary weather operations cannot turn precomputed multi-year statistics
+# into a physical time series. Raw neighborhood APIs retain their own semantics.
+dataset__require_ordinary_time <- function(axis) {
+    if (identical(axis$kind, "climatology")) {
+        stop(
+            "CF climatology is not an ordinary weather time series; use get_time_axis(variable=) and raw read_neighborhood() with its statistical metadata.",
+            call. = FALSE
+        )
+    }
+    invisible(NULL)
+}
+
+# Decorate reader-owned raw corner clocks with explicit climatological bounds,
+# native endpoint fields and ordered statistics, preserving all original numbers.
+dataset__climatology_clock <- function(
+    clock,
+    statistics,
+    bounds,
+    positions,
+    variable = NULL
+) {
+    if (!is.null(variable)) {
+        data.table::set(clock, j = "variable", value = variable)
+    }
+    native <- if (bounds$time_dimension == 1L) {
+        bounds$raw_values
+    } else {
+        t(bounds$raw_values)
+    }
+    data.table::set(clock, j = "time_kind", value = "climatology")
+    data.table::set(clock, j = "climatology_bounds_name", value = bounds$name)
+    data.table::set(
+        clock,
+        j = "climatology_cell_methods",
+        value = statistics$raw
+    )
+    data.table::set(
+        clock,
+        j = "climatology_methods",
+        value = as.character(jsonlite::toJSON(
+            statistics$operations,
+            auto_unbox = TRUE
+        ))
+    )
+    for (i in seq_along(c("start", "end"))) {
+        side <- c("start", "end")[[i]]
+        prefix <- paste0("climatology_bound_", side)
+        data.table::set(
+            clock,
+            j = paste0(prefix, "_value"),
+            value = native[positions, i]
+        )
+        data.table::set(clock, j = prefix, value = bounds[[side]][positions])
+        coordinates <- bounds[[paste0(side, "_coordinates")]]
+        for (field in c("year", "month", "day", "second_of_day")) {
+            data.table::set(
+                clock,
+                j = paste0("climatology_", side, "_", field),
+                value = coordinates[[paste0("cf_", field)]][positions]
+            )
+        }
+    }
+    interpretation <- dataset__climatology_interpretation(bounds, statistics)
+    for (field in names(interpretation)) {
+        data.table::set(
+            clock,
+            j = paste0("climatology_", field),
+            value = interpretation[[field]][positions]
+        )
+    }
+    clock
+}
+
 # Bounds remain paired with their native-calendar POSIX surrogate so interval
 # semantics survive spatial extraction without assigning Gregorian dates to
 # non-Gregorian calendars.
@@ -294,25 +632,31 @@ dataset__time_bounds <- function(
     time_length,
     indices = NULL
 ) {
+    kind <- dataset__time_kind(dataset, index)
+    attribute <- if (kind == "climatology") "climatology" else "bounds"
     full_axis <- is.null(indices)
     if (full_axis) {
         indices <- seq_len(time_length)
     }
-    if (!length(indices)) {
+    if (!length(indices) && kind != "climatology") {
         return(NULL)
     }
-    checkmate::assert_integerish(
-        indices,
-        lower = 1L,
-        upper = time_length,
-        any.missing = FALSE,
-        min.len = 1L,
-        unique = TRUE
-    )
+    if (length(indices)) {
+        checkmate::assert_integerish(
+            indices,
+            lower = 1L,
+            upper = time_length,
+            any.missing = FALSE,
+            min.len = 1L,
+            unique = TRUE
+        )
+    }
     indices <- as.integer(indices)
-    bounds_name <- tryCatch(
-        dataset$att_get("time", "bounds", index),
-        error = function(error) NULL
+    bounds_name <- dataset__optional_attribute(
+        dataset,
+        "time",
+        attribute,
+        index
     )
     if (is.null(bounds_name)) {
         return(NULL)
@@ -404,6 +748,34 @@ dataset__time_bounds <- function(
         offset <- offset + length(run)
     }
 
+    # Boundary attributes inherit the parent's units/calendar when omitted;
+    # a contradictory declaration cannot be silently decoded with parent units.
+    for (name in c("units", "calendar")) {
+        declared <- dataset__optional_attribute(
+            dataset,
+            bounds_name,
+            name,
+            index
+        )
+        if (!is.null(declared)) {
+            actual <- if (name == "calendar") {
+                normalize_cf_calendar(declared)
+            } else {
+                as.character(declared)
+            }
+            required <- if (name == "calendar") {
+                normalize_cf_calendar(calendar)
+            } else {
+                as.character(units)
+            }
+            if (!identical(actual, required)) {
+                stop(
+                    "CF time boundary units or calendar contradict the time coordinate.",
+                    call. = FALSE
+                )
+            }
+        }
+    }
     # Parse both endpoints with the parent's native units and calendar.
     start <- parse_cf_time(ordered[, 1L], units, calendar)
     end <- parse_cf_time(ordered[, 2L], units, calendar)
@@ -417,7 +789,7 @@ dataset__time_bounds <- function(
         )
     }
 
-    list(
+    result <- list(
         name = bounds_name,
         # Keep the actual native values in their declared dimension order so
         # metadata consumers do not request the same remote bounds again.
@@ -427,6 +799,11 @@ dataset__time_bounds <- function(
         start_coordinates = attr(start, "cf_coordinates", exact = TRUE),
         end_coordinates = attr(end, "cf_coordinates", exact = TRUE)
     )
+    if (kind == "climatology") {
+        result$kind <- kind
+        result$time_dimension <- time_dimension
+    }
+    result
 }
 # }}}
 
@@ -487,11 +864,12 @@ dataset__time_axis <- function(dataset, index = 1L) {
     if (!is.null(cached)) {
         return(cached)
     }
+    kind <- dataset__time_kind(dataset, index)
     units <- dataset$att_get("time", "units", index)
-    calendar <- tryCatch(
-        dataset$att_get("time", "calendar", index),
-        error = function(error) "standard"
-    )
+    calendar <- dataset__optional_attribute(dataset, "time", "calendar", index)
+    if (is.null(calendar)) {
+        calendar <- "standard"
+    }
     raw_values <- dataset__coordinate_values(dataset, "time", index)
     values <- parse_cf_time(raw_values, units, calendar)
     result <- list(
@@ -501,6 +879,8 @@ dataset__time_axis <- function(dataset, index = 1L) {
         calendar = normalize_cf_calendar(calendar),
         coordinates = attr(values, "cf_coordinates", exact = TRUE),
         bounds = NULL,
+        kind = kind,
+        climatology = NULL,
         length = dataset$dim_inq("time", index)$length
     )
     private$metadata_cache[[key]] <- result
@@ -572,8 +952,16 @@ dataset__selected_bounds <- function(
     key <- sprintf("time_bounds_%d", index)
     cached <- private$metadata_cache[[key]]
     position <- match(indices, cached$indices)
-    if (!is.null(axis$bounds)) {
-        bounds <- axis$bounds
+    full <- if (identical(axis$kind, "climatology")) {
+        axis$climatology
+    } else {
+        axis$bounds
+    }
+    if (!is.null(variable)) {
+        dataset__time_statistics(dataset, index, variable, axis)
+    }
+    if (!is.null(full)) {
+        bounds <- full
         position <- indices
     } else if (!is.null(cached) && !anyNA(position)) {
         bounds <- cached$bounds
@@ -601,14 +989,16 @@ dataset__selected_bounds <- function(
     } else {
         t(bounds$raw_values)
     }
-    dataset__validate_time_intervals(
-        dataset,
-        index,
-        variable,
-        native[position, , drop = FALSE],
-        bounds$name,
-        axis$raw_values[indices]
-    )
+    if (!identical(axis$kind, "climatology")) {
+        dataset__validate_time_intervals(
+            dataset,
+            index,
+            variable,
+            native[position, , drop = FALSE],
+            bounds$name,
+            axis$raw_values[indices]
+        )
+    }
     list(start = bounds$start[position], end = bounds$end[position])
 }
 # }}}
@@ -1052,6 +1442,9 @@ EsgDataset <- R6::R6Class(
         #'
         #' @param index File index for multi-file datasets. Default: `1L`.
         #'
+        #' @param variable Optional data-variable name whose ordered temporal
+        #'        `cell_methods` should be parsed and validated. Default: `NULL`.
+        #'
         #' @return A list containing time values, units, calendar, canonical CF
         #' coordinates, optional CF interval bounds, and axis length.
         #' `raw_values` retains the original numeric time coordinates;
@@ -1063,9 +1456,17 @@ EsgDataset <- R6::R6Class(
         #' canonical CF fields remain authoritative for calendar dates.
         #' Units `month` and `year` are fixed UDUNITS durations, not calendar
         #' increments. Fractional seconds retain available numeric precision.
-        #' These ordinary time coordinates do not implement CF climatological
-        #' averaging, leap-second calendars or explicitly defined calendars.
-        #' Equal bounds are retained as native metadata. Weather reads accept
+        #' `kind` distinguishes ordinary axes from `"climatology"`. The latter
+        #' has a separate `climatology` descriptor with original boundary values,
+        #' dimension order and native endpoints, while `bounds` remains `NULL`.
+        #' Supplying `variable` returns its original `statistics$raw` cell methods
+        #' and ordered `statistics$operations`; the climatology interpretation
+        #' identifies annual or midnight wrapping and full-day daily intervals.
+        #' These are source-computed statistical values over possibly disjoint
+        #' subintervals, not observations spanning the enclosing endpoint range.
+        #' No climatology is recalculated or expanded into ordinary samples.
+        #' Leap-second calendars and explicitly defined calendars are unsupported.
+        #' Ordinary equal bounds are retained as native metadata. Weather reads accept
         #' them only for explicit `time: point` values at that same native time;
         #' interval-valued variables require positive native durations.
         #'
@@ -1074,25 +1475,43 @@ EsgDataset <- R6::R6Class(
         #' time_info <- ds$get_time_axis()
         #' }
         # get_time_axis {{{
-        get_time_axis = function(index = 1L) {
+        get_time_axis = function(index = 1L, variable = NULL) {
             private$check_open()
             private$check_index(index)
 
             cache_key <- sprintf("time_axis_%d", index)
-            if (!is.null(private$metadata_cache[[cache_key]])) {
-                return(private$metadata_cache[[cache_key]])
+            result <- private$metadata_cache[[cache_key]]
+            if (is.null(result)) {
+                result <- dataset__time_axis(self, index)
+                boundary <- dataset__time_bounds(
+                    self,
+                    index,
+                    result$units,
+                    result$calendar,
+                    result$length
+                )
+                if (identical(result$kind, "climatology")) {
+                    result$climatology <- boundary
+                } else {
+                    result$bounds <- boundary
+                }
+                private$metadata_cache[[cache_key]] <- result
             }
-            result <- dataset__time_axis(self, index)
-            result$bounds <- dataset__time_bounds(
-                self,
-                index,
-                result$units,
-                result$calendar,
-                result$length
-            )
-
-            # Cache the result
-            private$metadata_cache[[cache_key]] <- result
+            if (!is.null(variable)) {
+                checkmate::assert_string(variable)
+                result$statistics <- dataset__time_statistics(
+                    self,
+                    index,
+                    variable,
+                    result
+                )
+                if (identical(result$kind, "climatology")) {
+                    result$climatology$interpretation <- dataset__climatology_interpretation(
+                        result$climatology,
+                        result$statistics
+                    )
+                }
+            }
             result
         },
         # }}}
@@ -1216,6 +1635,11 @@ EsgDataset <- R6::R6Class(
         #' @return If `rbind = FALSE`, a list of data.table (one per file).
         #' If `rbind = TRUE`, a single data.table with an extra `file_index` column.
         #'
+        #' @details Climatological variables retain `time_kind = "climatology"`,
+        #' original `time_value` offsets and `climatology_bound_*` columns, native
+        #' endpoints, ordered cell methods and cycle interpretation. No temporal
+        #' averaging is performed by this reader.
+        #'
         #' @examples
         #' \dontrun{
         #' dt_list <- ds$read_data_table("tas")
@@ -1237,6 +1661,14 @@ EsgDataset <- R6::R6Class(
             private$validate_async_request(async, timeout)
             private$check_open()
 
+            # Validate variable-specific statistical meaning before weather I/O.
+            for (index in seq_len(self$file_count)) {
+                meta <- private$get_var_dim_meta(variable, index)
+                if ("time" %in% meta$names) {
+                    axis <- dataset__time_axis(self, index)
+                    dataset__time_statistics(self, index, variable, axis)
+                }
+            }
             # Always keep dimensions for table output
             arr_list <- self$read_array(
                 variable,
@@ -1302,6 +1734,8 @@ EsgDataset <- R6::R6Class(
         #' `time_bound_end`, canonical `cf_*` calendar coordinates including
         #' `cf_second_of_day` (seconds since native-calendar midnight),
         #' `annual_phase`, `lon`, `lat`, `method`, and `value`.
+        #' Climatological statistics require the raw readers and are rejected
+        #' here instead of being treated as ordinary weather observations.
         #' The `"grid_sources"` attribute records contributing grid coordinates
         #' and weights.
         #'
@@ -1433,6 +1867,10 @@ EsgDataset <- R6::R6Class(
         #' @return For read_neighborhood(), a list of values, neighborhoods,
         #'   native CF time coordinates and actual read_slices. A list of time
         #'   ranges selects their union without fetching intervening dates.
+        #'   Climatological axes retain original offsets, climatology boundaries,
+        #'   ordered per-variable cell methods and explicit statistical-kind
+        #'   markers. Ranges select representative time labels, not every date
+        #'   enclosed by climatology bounds. No source statistic is recalculated.
         # The shared reader keeps this additive interface independent of the
         # existing aggregated read_region() return contract.
         read_neighborhood = function(
@@ -2541,6 +2979,8 @@ EsgDataset <- R6::R6Class(
             }
 
             time_info <- dataset__time_axis(self, index)
+            dataset__require_ordinary_time(time_info)
+            dataset__time_statistics(self, index, variable, time_info)
             time_axis <- time_info$values
             time_coordinates <- time_info$coordinates
             # Calendar-native range matching is required for 360-day and other
@@ -2817,7 +3257,14 @@ EsgDataset <- R6::R6Class(
 
             time_axis <- NULL
             if ("time" %in% meta$names) {
-                time_axis <- dataset__time_axis(self, index)$values
+                axis <- dataset__time_axis(self, index)
+                statistics <- dataset__time_statistics(
+                    self,
+                    index,
+                    variable,
+                    axis
+                )
+                time_axis <- axis$values
             }
 
             # Build coordinates from linear index without assuming dimension count
@@ -2879,6 +3326,53 @@ EsgDataset <- R6::R6Class(
             # Reorder columns to NetCDF dimension order when possible
             keep_dims <- intersect(dim_names_nc, names(dt))
             data.table::setcolorder(dt, c(keep_dims, value_name))
+            if (!is.null(time_axis) && identical(axis$kind, "climatology")) {
+                # Keep each native representative coordinate alongside the
+                # already-computed statistic and its discontinuous cell metadata.
+                dimension <- match("time", dim_names_arr)
+                indices <- as.integer(idx_mat[, dimension]) +
+                    starts_arr[[dimension]] -
+                    1L
+                dataset__selected_bounds(
+                    self,
+                    index,
+                    axis,
+                    sort(unique(indices)),
+                    variable
+                )
+                cached <- private$metadata_cache[[sprintf(
+                    "time_bounds_%d",
+                    index
+                )]]
+                full <- axis$climatology
+                bounds <- if (!is.null(full)) full else cached$bounds
+                positions <- if (!is.null(full)) {
+                    indices
+                } else {
+                    match(indices, cached$indices)
+                }
+                data.table::set(dt, j = "time_index", value = indices)
+                data.table::set(
+                    dt,
+                    j = "time_value",
+                    value = axis$raw_values[indices]
+                )
+                data.table::set(dt, j = "time_units", value = axis$units)
+                for (field in CF_TIME_COORDINATE_COLUMNS) {
+                    data.table::set(
+                        dt,
+                        j = field,
+                        value = axis$coordinates[[field]][indices]
+                    )
+                }
+                dt <- dataset__climatology_clock(
+                    dt,
+                    statistics,
+                    bounds,
+                    positions,
+                    variable
+                )
+            }
 
             dt
         }

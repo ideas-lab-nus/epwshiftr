@@ -31,4 +31,9 @@ explicit acquisition gaps. No interpolation or implicit remote access occurs.
 Derived time fields are decoded from preserved native offsets and bounds;
 immutable raw artifacts are never rewritten. Selection receipts created with
 an earlier CF decoder require a metadata recheck before reporting completion.
+Climatological values retain \code{time_kind = "climatology"}, original
+\verb{climatology_bound_*} values, native endpoints and ordered \code{cell_methods}.
+Time selection uses representative labels; their boundary span must not be
+interpreted as continuous weather coverage. Missing or contradictory cached
+statistical metadata raises an error.
 }

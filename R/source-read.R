@@ -90,6 +90,7 @@ store__read_extract_dataset <- function(
     time_info <- tryCatch(
         {
             value <- dataset__time_axis(ds, index = 1L)
+            dataset__require_ordinary_time(value)
             valid <- value$values[!is.na(value$values)]
             if (!length(valid)) {
                 stop(

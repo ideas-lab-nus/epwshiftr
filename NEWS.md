@@ -6,7 +6,12 @@
   mixed Gregorian/Julian reform dates, fixed UDUNITS month/year durations and
   submillisecond native clock fields. Rebuild cached derived times from raw
   offsets and recheck earlier native selections without discarding raw blocks
-  or changing original offsets, bounds and source identities (#306).
+  or changing original offsets, bounds and source identities. Expose explicit
+  climatological axes (including CMIP6 `time2`/`time3`) with original climatology
+  bounds, native seasonal/daily cycles and ordered per-variable `cell_methods`.
+  Raw readers and resumable caches retain these statistical descriptors;
+  ordinary weather extraction and bias adjustment reject climate aggregates
+  rather than treating them as a continuous weather series (#306).
 
 * Retain checked native selections before the first weather value and expose
   read-only `subset_status()` coverage and timing views, optionally limited by

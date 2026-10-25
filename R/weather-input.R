@@ -77,6 +77,18 @@ WeatherInput <- S7::new_class(
                 )
             ))
         }
+        # Statistical aggregates cannot be relabelled as a physical weather
+        # series merely by supplying ordinary frequency/calendar descriptors.
+        if (
+            is.data.frame(self@source) &&
+                "time_kind" %in% names(self@source) &&
+                any(self@source[["time_kind"]] %in% "climatology") &&
+                self@representation %in% c("series", "grid")
+        ) {
+            return(
+                "CF climatology statistics cannot be used as an ordinary weather series or grid."
+            )
+        }
         for (property in c("variables", "frequencies", "calendars")) {
             value <- S7::prop(self, property)
             if (anyNA(value) || any(!nzchar(value)) || anyDuplicated(value)) {

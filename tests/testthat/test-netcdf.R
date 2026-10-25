@@ -843,4 +843,34 @@ test_that("CF normalization preserves submillisecond precision and midnight carr
     }
 })
 
+# A date-only helper cannot represent disjoint climatological intervals and
+# must not silently return representative labels as ordinary observations.
+test_that("CF climatology is rejected by the legacy date-only helper", {
+    path <- local_nc_time_file(0:2, "days since 1960-01-01")
+    on.exit(unlink(path), add = TRUE)
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::att.put.nc(
+        nc,
+        "time",
+        "climatology",
+        "NC_CHAR",
+        "climatology_bounds"
+    )
+    RNetCDF::close.nc(nc)
+    expect_error(get_nc_time(path), "climatolog")
+    expect_error(get_nc_time(path, range = TRUE), "climatolog")
+})
+
+# Climatology protection must leave ordinary native date decoding unchanged.
+test_that("CF climatology guard retains ordinary date-only decoding", {
+    path <- local_nc_time_file(0:2, "days since 1960-01-01")
+    on.exit(unlink(path), add = TRUE)
+    time <- get_nc_time(path)
+    expect_identical(attr(time, "cf_coordinates")$cf_day, 1:3)
+    expect_equal(
+        as.numeric(get_nc_time(path, range = TRUE)),
+        as.numeric(time[c(1L, 3L)])
+    )
+})
+
 # vim: fdm=marker :

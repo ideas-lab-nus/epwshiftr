@@ -973,6 +973,14 @@ get_nc_time <- function(x, range = FALSE) {
 
     time_units <- get_nc_time_att(atts, "units")
     time_calendar <- get_nc_time_att(atts, "calendar", default = "standard")
+    # This date-only legacy interface cannot carry climatological cells or
+    # their ordered statistics. Direct callers to the semantic axis API.
+    if (any(atts$variable == "time" & atts$attribute == "climatology")) {
+        stop(
+            "CF climatology requires EsgDataset$get_time_axis(variable=), not a date-only time axis.",
+            call. = FALSE
+        )
+    }
 
     if (range) {
         offsets <- c(

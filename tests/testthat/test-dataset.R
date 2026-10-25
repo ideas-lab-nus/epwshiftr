@@ -2493,4 +2493,438 @@ test_that("CF normalization preserves public native offsets bounds and selection
     }
 })
 
+
+# Encode the CF seasonal-climatology example as a local native 2x2 file. Raw
+# boundaries retain both dimension orders and are never inferred from spacing.
+dataset_test__climatology_fixture <- function(
+    method = "time: minimum within years time: mean over years",
+    calendar = "standard",
+    reversed = FALSE,
+    units = "days since 1960-01-01",
+    times = NULL,
+    bounds = NULL
+) {
+    if (is.null(times)) {
+        origin <- cf_time_parse_origin("1960-01-01", calendar)
+        dates <- data.frame(
+            year = c(1960L, 1960L, 1960L, 1961L),
+            month = c(4L, 7L, 10L, 1L),
+            day = 16L
+        )
+        times <- cf_time_date2offset(dates, origin, calendar)
+    }
+    if (is.null(bounds)) {
+        origin <- cf_time_parse_origin("1960-01-01", calendar)
+        start <- data.frame(year = 1960L, month = c(3L, 6L, 9L, 12L), day = 1L)
+        end <- data.frame(
+            year = c(1990L, 1990L, 1990L, 1991L),
+            month = c(6L, 9L, 12L, 3L),
+            day = 1L
+        )
+        bounds <- cbind(
+            cf_time_date2offset(start, origin, calendar),
+            cf_time_date2offset(end, origin, calendar)
+        )
+    }
+    path <- tempfile(fileext = ".nc")
+    nc <- RNetCDF::create.nc(path)
+    on.exit(RNetCDF::close.nc(nc), add = TRUE)
+    for (name in c("time", "lat", "lon", "nv")) {
+        RNetCDF::dim.def.nc(nc, name, if (name == "time") length(times) else 2L)
+    }
+    for (name in c("time", "lat", "lon")) {
+        RNetCDF::var.def.nc(nc, name, "NC_DOUBLE", name)
+    }
+    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
+    RNetCDF::var.def.nc(
+        nc,
+        "climatology_bounds",
+        "NC_DOUBLE",
+        if (reversed) c("nv", "time") else c("time", "nv")
+    )
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", units)
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
+    RNetCDF::att.put.nc(
+        nc,
+        "time",
+        "climatology",
+        "NC_CHAR",
+        "climatology_bounds"
+    )
+    if (!is.null(method)) {
+        RNetCDF::att.put.nc(nc, "tas", "cell_methods", "NC_CHAR", method)
+    }
+    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
+    RNetCDF::var.put.nc(nc, "time", times)
+    RNetCDF::var.put.nc(
+        nc,
+        "climatology_bounds",
+        if (reversed) t(bounds) else bounds
+    )
+    RNetCDF::var.put.nc(nc, "lat", c(0, 1))
+    RNetCDF::var.put.nc(nc, "lon", c(10, 11))
+    RNetCDF::var.put.nc(
+        nc,
+        "tas",
+        array(seq_len(length(times) * 4L) + 270, c(length(times), 2L, 2L))
+    )
+    path
+}
+
+# Reading a precomputed climatology preserves its statistics, representative
+# labels and discontinuous annual cells instead of inventing ordinary intervals.
+test_that("CF climatology exposes seasonal bounds and ordered statistics", {
+    for (calendar in c("standard", "julian", "360_day", "365_day")) {
+        for (reversed in c(FALSE, TRUE)) {
+            path <- dataset_test__climatology_fixture(
+                calendar = calendar,
+                reversed = reversed
+            )
+            ds <- EsgDataset$new(path)
+            ds$open()
+            axis <- ds$get_time_axis(variable = "tas")
+            expect_identical(axis$kind, "climatology")
+            expect_null(axis$bounds)
+            expect_identical(axis$climatology$name, "climatology_bounds")
+            expect_identical(
+                axis$statistics$operations$method,
+                c("minimum", "mean")
+            )
+            expect_identical(
+                axis$statistics$operations$scope,
+                c("within years", "over years")
+            )
+            expect_identical(
+                axis$climatology$interpretation$wraps_year,
+                c(FALSE, FALSE, FALSE, TRUE)
+            )
+            expect_equal(
+                dim(axis$climatology$raw_values),
+                if (reversed) c(2L, 4L) else c(4L, 2L)
+            )
+            actual <- ds$read_neighborhood(
+                "tas",
+                data.frame(site_id = "a", lon = 10.25, lat = .25),
+                time = c("1960-01-01", "1961-12-31")
+            )
+            expect_equal(sort(actual$values$value), as.double(271:286))
+            expect_identical(unique(actual$time$time_kind), "climatology")
+            expect_false("time_bound_start" %in% names(actual$time))
+            native <- if (reversed) {
+                t(axis$climatology$raw_values)
+            } else {
+                axis$climatology$raw_values
+            }
+            expect_equal(
+                actual$time$climatology_bound_start_value,
+                native[, 1L]
+            )
+            expect_equal(actual$time$climatology_bound_end_value, native[, 2L])
+            expect_equal(actual$time$time_value, as.double(axis$raw_values))
+            expect_identical(
+                unique(actual$time$climatology_cell_methods),
+                axis$statistics$raw
+            )
+            table <- ds$read_data_table("tas", rbind = TRUE)
+            expect_identical(unique(table$time_kind), "climatology")
+            expect_equal(sort(table$tas), as.double(271:286))
+            expect_equal(
+                sort(unique(table$time_value)),
+                sort(as.double(axis$raw_values))
+            )
+            expect_equal(
+                unique(table$climatology_bound_start_value),
+                native[, 1L]
+            )
+            expect_error(
+                ds$read_region(
+                    "tas",
+                    lon = 10.25,
+                    lat = .25,
+                    time = c("1960-01-01", "1961-12-31")
+                ),
+                "climatolog"
+            )
+            ds$close()
+            unlink(path)
+        }
+    }
+})
+
+# Method order distinguishes mean-of-minima from minimum-of-means; malformed
+# or undeclared climatological statistics must fail before any weather values.
+test_that("CF climatology rejects ambiguous or unsupported statistical declarations", {
+    methods <- list(
+        NULL,
+        "time: mean",
+        "time: mean over years time: mean within years",
+        "time: banana within years time: mean over years",
+        "time: mean within days time: mean over years"
+    )
+    for (method in methods) {
+        path <- dataset_test__climatology_fixture(method = method)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        expect_error(
+            ds$get_time_axis(variable = "tas"),
+            "climatolog|cell_methods"
+        )
+        expect_error(
+            ds$read_neighborhood(
+                "tas",
+                data.frame(site_id = "a", lon = 10.25, lat = .25)
+            ),
+            "climatolog|cell_methods"
+        )
+        ds$close()
+        unlink(path)
+    }
+    path <- dataset_test__climatology_fixture()
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "climatology_bounds")
+    RNetCDF::close.nc(nc)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    expect_error(ds$get_time_axis(), "climatolog.*bounds|bounds.*climatolog")
+    ds$close()
+    unlink(path)
+})
+
+# Daily climatologies preserve native clock ranges, including a whole day
+# with equal clock endpoints and a range that crosses midnight.
+test_that("CF climatology interprets daily and combined statistical cycles", {
+    for (method in c(
+        "time: mean within days time: mean over days",
+        "area: mean time: mean within days (interval: 1 hour) time: sum over days time: mean over years"
+    )) {
+        path <- dataset_test__climatology_fixture(
+            method = method,
+            units = "hours since 1995-04-01",
+            times = c(12, 24),
+            bounds = rbind(c(0, 30 * 24), c(23, 30 * 24 + 1))
+        )
+        ds <- EsgDataset$new(path)
+        ds$open()
+        axis <- ds$get_time_axis(variable = "tas")
+        expect_identical(
+            axis$climatology$interpretation$full_day,
+            c(TRUE, FALSE)
+        )
+        expect_identical(
+            axis$climatology$interpretation$wraps_day,
+            c(FALSE, TRUE)
+        )
+        expect_identical(axis$statistics$raw, method)
+        expect_equal(
+            as.numeric(axis$climatology$raw_values),
+            as.numeric(rbind(c(0, 30 * 24), c(23, 30 * 24 + 1)))
+        )
+        ds$close()
+        unlink(path)
+    }
+})
+
+# Three-stage statistics keep the annual day span separate from daily clocks.
+test_that("CF climatology separates annual and daily wraps in combined statistics", {
+    path <- dataset_test__climatology_fixture(
+        method = "time: mean within days time: sum over days time: mean over years"
+    )
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    axis <- ds$get_time_axis(variable = "tas")
+    expect_identical(
+        axis$climatology$interpretation$wraps_year,
+        c(FALSE, FALSE, FALSE, TRUE)
+    )
+    expect_identical(axis$climatology$interpretation$full_day, rep(TRUE, 4L))
+    expect_identical(axis$climatology$interpretation$wraps_day, rep(FALSE, 4L))
+})
+
+# A shared coordinate cache must never reuse another variable's statistical
+# operator sequence, and each raw clock must remain joinable to its own values.
+test_that("CF climatology keeps statistics per variable through shared caches", {
+    path <- dataset_test__climatology_fixture()
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::var.def.nc(nc, "tasmax", "NC_DOUBLE", c("time", "lat", "lon"))
+    RNetCDF::att.put.nc(nc, "tasmax", "units", "NC_CHAR", "K")
+    RNetCDF::att.put.nc(
+        nc,
+        "tasmax",
+        "cell_methods",
+        "NC_CHAR",
+        "time: mean within years time: maximum over years"
+    )
+    RNetCDF::var.put.nc(nc, "tasmax", array(as.double(301:316), c(4L, 2L, 2L)))
+    RNetCDF::close.nc(nc)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    expect_identical(
+        ds$get_time_axis(variable = "tas")$statistics$operations$method,
+        c("minimum", "mean")
+    )
+    expect_identical(
+        ds$get_time_axis(variable = "tasmax")$statistics$operations$method,
+        c("mean", "maximum")
+    )
+    raw <- ds$read_neighborhood(
+        c("tas", "tasmax"),
+        data.frame(site_id = "a", lon = 10.25, lat = .25)
+    )
+    expect_identical(sort(unique(raw$time$variable)), c("tas", "tasmax"))
+    joined <- merge(
+        raw$values,
+        raw$time,
+        by = c("file_index", "time_index", "variable")
+    )
+    expect_equal(nrow(joined), 32L)
+    expect_equal(
+        sort(joined$value[joined$variable == "tas"]),
+        as.double(271:286)
+    )
+    expect_equal(
+        sort(joined$value[joined$variable == "tasmax"]),
+        as.double(301:316)
+    )
+    expect_true(all(grepl(
+        "mean within years",
+        joined$climatology_cell_methods[joined$variable == "tasmax"],
+        fixed = TRUE
+    )))
+    ds$close()
+    unlink(path)
+})
+
+# Conflicting boundary attributes, dimensions, numbers and undeclared temporal
+# qualifiers must fail without returning an ordinary-looking weather payload.
+test_that("CF climatology validates boundary identity before weather reads", {
+    changes <- list(
+        function(nc) {
+            RNetCDF::att.put.nc(
+                nc,
+                "climatology_bounds",
+                "units",
+                "NC_CHAR",
+                "hours since 1960-01-01"
+            )
+        },
+        function(nc) {
+            RNetCDF::att.put.nc(
+                nc,
+                "climatology_bounds",
+                "calendar",
+                "NC_CHAR",
+                "360_day"
+            )
+        },
+        function(nc) {
+            RNetCDF::att.put.nc(
+                nc,
+                "time",
+                "climatology",
+                "NC_CHAR",
+                "missing_boundary"
+            )
+        },
+        function(nc) {
+            RNetCDF::att.put.nc(nc, "time", "climatology", "NC_CHAR", " ")
+        },
+        function(nc) {
+            RNetCDF::att.put.nc(nc, "time", "climatology", "NC_INT", 1L)
+        },
+        function(nc) {
+            RNetCDF::att.put.nc(nc, "time", "climatology", "NC_CHAR", "lat")
+        },
+        function(nc) {
+            RNetCDF::var.put.nc(
+                nc,
+                "climatology_bounds",
+                matrix(c(2, rep(1, 7)), 4L, 2L)
+            )
+        },
+        function(nc) {
+            RNetCDF::var.put.nc(
+                nc,
+                "climatology_bounds",
+                matrix(c(NA_real_, rep(1, 7)), 4L, 2L)
+            )
+        }
+    )
+    for (change in changes) {
+        path <- dataset_test__climatology_fixture()
+        nc <- RNetCDF::open.nc(path, write = TRUE)
+        change(nc)
+        RNetCDF::close.nc(nc)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        weather <- 0L
+        reader <- RNetCDF::var.get.nc
+        testthat::with_mocked_bindings(
+            {
+                expect_error(ds$get_time_axis(variable = "tas"))
+                expect_error(ds$read_neighborhood(
+                    "tas",
+                    data.frame(site_id = "a", lon = 10.25, lat = .25)
+                ))
+                expect_identical(weather, 0L)
+            },
+            var.get.nc = function(...) {
+                args <- list(...)
+                if (length(args) >= 2L && identical(args[[2L]], "tas")) {
+                    weather <<- weather + 1L
+                }
+                reader(...)
+            },
+            .package = "RNetCDF"
+        )
+        ds$close()
+        unlink(path)
+    }
+    path <- dataset_test__climatology_fixture()
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::att.delete.nc(nc, "time", "climatology")
+    RNetCDF::close.nc(nc)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    expect_error(ds$get_time_axis(variable = "tas"), "climatolog")
+    expect_error(
+        ds$read_neighborhood(
+            "tas",
+            data.frame(site_id = "a", lon = 10.25, lat = .25)
+        ),
+        "climatolog"
+    )
+    ds$close()
+    unlink(path)
+})
+
+# An attribute read failure cannot erase a declared climatology association,
+# even when the axis kind was already cached successfully.
+test_that("CF climatology propagates declared attribute read failures", {
+    path <- dataset_test__climatology_fixture()
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    expect_identical(dataset__time_kind(ds, 1L), "climatology")
+    reader <- RNetCDF::att.get.nc
+    testthat::with_mocked_bindings(
+        expect_error(
+            ds$get_time_axis(variable = "tas"),
+            "declared attribute I/O failure"
+        ),
+        att.get.nc = function(ncfile, variable, attribute, ...) {
+            if (
+                identical(variable, "time") &&
+                    identical(attribute, "climatology")
+            ) {
+                stop("declared attribute I/O failure")
+            }
+            reader(ncfile, variable, attribute, ...)
+        },
+        .package = "RNetCDF"
+    )
+})
+
 # vim: fdm=marker :

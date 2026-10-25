@@ -382,4 +382,18 @@ test_that("daily adjusted series enforces canonical calendar-native data", {
     )
 })
 
+# Shared daily/subdaily validators must retain the raw reader's distinction
+# when callers construct canonical weather tables directly.
+test_that("CF climatology cannot enter ordinary bias-adjustment samples", {
+    daily <- adjusted_series_test__daily()
+    daily$time_kind <- "climatology"
+    expect_match(bias__daily_data_error(daily), "climatolog")
+    subdaily <- adjusted_series_test__subdaily()
+    subdaily$time_kind <- "climatology"
+    expect_match(
+        bias__subdaily_data_error(subdaily, "3hr", 10800),
+        "climatolog"
+    )
+})
+
 # vim: fdm=marker :

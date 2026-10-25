@@ -152,4 +152,20 @@ test_that("morphing contexts expose explicit inputs and preserve legacy fields",
     )
 })
 
+# Climatology is a statistical representation, even if its labels and units
+# resemble the model's ordinary daily/hourly weather input descriptors.
+test_that("CF climatology cannot be relabelled as ordinary weather input", {
+    source <- data.frame(
+        variable_id = "tas",
+        frequency = "day",
+        cf_calendar = "standard",
+        time_kind = "climatology"
+    )
+    expect_error(weather__new_input("model_future", source), "climatolog")
+    expect_error(
+        weather__new_input("model_future", source, representation = "grid"),
+        "climatolog"
+    )
+})
+
 # vim: fdm=marker :

@@ -166,7 +166,8 @@ subset_test__dap_app <- function(
     calendar = "360_day",
     point_bounds = FALSE,
     time_units = NULL,
-    time_values = 0:7
+    time_values = 0:7,
+    climatology_method = NULL
 ) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
@@ -174,6 +175,7 @@ subset_test__dap_app <- function(
     app$locals$point_bounds <- isTRUE(point_bounds)
     app$locals$time_units <- time_units
     app$locals$time_values <- time_values
+    app$locals$climatology_method <- climatology_method
     app$locals$weather <- 0L
     app$locals$requests <- character()
     app$get('/recover', function(req, res, locals) {
@@ -251,6 +253,24 @@ subset_test__dap_app <- function(
                     fixed = TRUE
                 )
             }
+            if (!is.null(locals$climatology_method)) {
+                attributes <- sub(
+                    'String bounds "time_bnds";',
+                    'String climatology "time_bnds";',
+                    attributes,
+                    fixed = TRUE
+                )
+                attributes <- sub(
+                    'String units "K";',
+                    paste0(
+                        'String units "K"; String cell_methods "',
+                        locals$climatology_method,
+                        '";'
+                    ),
+                    attributes,
+                    fixed = TRUE
+                )
+            }
             if (!is.null(locals$time_units)) {
                 attributes <- sub(
                     'days since 2060-01-01',
@@ -272,7 +292,9 @@ subset_test__dap_app <- function(
             lat = 0:1,
             lon = 10:11,
             tas = array(1:32, c(2, 2, 8)),
-            time_bnds = if (locals$point_bounds) {
+            time_bnds = if (!is.null(locals$climatology_method)) {
+                rbind(locals$time_values, locals$time_values + 30 * 360 + 1)
+            } else if (locals$point_bounds) {
                 rbind(locals$time_values, locals$time_values)
             } else {
                 rbind(locals$time_values, locals$time_values + 1)

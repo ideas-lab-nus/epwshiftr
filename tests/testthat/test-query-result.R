@@ -8582,4 +8582,90 @@ test_that("CF normalization resumes raw bounds after legacy selection rechecks",
     expect_identical(tools::sha256sum(artifacts), hashes)
 })
 
+# Persisted climatological values remain explicitly statistical through real
+# DAP transport, immutable publication, read-back, and exact native resume.
+test_that("CF climatology acquisition preserves statistics and exact cached bounds", {
+    skip_if_not_installed("webfakes")
+    method <- "time: minimum within years time: mean over years"
+    server <- webfakes::new_app_process(subset_test__dap_app(
+        climatology_method = method
+    ))
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-climatology-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), as.double(1:32))
+    expect_identical(unique(raw$values$time_kind), "climatology")
+    expect_identical(unique(raw$values$climatology_cell_methods), method)
+    expect_identical(
+        jsonlite::fromJSON(raw$values$climatology_methods[[1L]])$method,
+        c("minimum", "mean")
+    )
+    expect_equal(
+        raw$values$climatology_bound_start_value,
+        raw$values$time_value
+    )
+    expect_equal(
+        raw$values$climatology_bound_end_value - raw$values$time_value,
+        rep(10801, 32L)
+    )
+    expect_false("time_bound_start" %in% names(raw$values))
+    expect_equal(nrow(raw$neighborhoods), 4L)
+    blocks <- subset_status(dest, "blocks")
+    artifacts <- c(blocks$path, blocks$metadata_path)
+    hashes <- tools::sha256sum(artifacts)
+    saved <- readRDS(blocks$metadata_path[[1L]])$bounds
+    expect_identical(unique(saved$time_kind), "climatology")
+    expect_identical(unique(saved$cell_methods), method)
+    expect_identical(unique(saved$bounds_name), "time_bnds")
+    # Stale derived fields are rebuilt without changing raw weather or bounds.
+    stale <- data.table::copy(raw$values)
+    data.table::set(stale, j = "climatology_start_year", value = 1L)
+    expect_equal(opendap__refresh_clock(stale), raw$values)
+    unmarked <- data.table::copy(raw$values)
+    data.table::set(unmarked, j = "time_kind", value = NULL)
+    expect_error(opendap__refresh_clock(unmarked), "climatolog")
+    curl::curl_fetch_memory(paste0(server$url(), "reset"))
+    attempts <- subset_status(dest, "attempts")
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_identical(tools::sha256sum(artifacts), hashes)
+    expect_equal(read_subset(dest)$values, raw$values)
+    traffic <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
+    ))
+    expect_false(any(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)))
+})
+
 # vim: fdm=marker :
