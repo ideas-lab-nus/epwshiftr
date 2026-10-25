@@ -312,6 +312,8 @@ subset_test__dap_app <- function(
             tas = array(1:32, c(2, 2, 8)),
             time_bnds = if (!is.null(locals$climatology_method)) {
                 rbind(locals$time_values, locals$time_values + 30 * 360 + 1)
+            } else if (!is.null(locals$ordinary_method)) {
+                rbind(locals$time_values, locals$time_values + 30)
             } else if (locals$point_bounds) {
                 rbind(locals$time_values, locals$time_values)
             } else {

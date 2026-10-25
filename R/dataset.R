@@ -410,7 +410,11 @@ dataset__time_method_clauses <- function(method) {
 
 # Parse only the ordered time clauses, retaining the exact source string and
 # ignoring parenthesized comments and other dimensions' statistical operations.
-dataset__parse_time_statistics <- function(method, kind = "ordinary") {
+dataset__parse_time_statistics <- function(
+    method,
+    kind = "ordinary",
+    has_bounds = FALSE
+) {
     if (
         is.null(method) ||
             length(method) != 1L ||
@@ -507,6 +511,12 @@ dataset__parse_time_statistics <- function(method, kind = "ordinary") {
             call. = FALSE
         )
     }
+    if (kind != "climatology" && !isTRUE(has_bounds)) {
+        stop(
+            "Compound ordinary time statistics require explicit time bounds.",
+            call. = FALSE
+        )
+    }
     list(raw = raw, operations = operations)
 }
 
@@ -527,7 +537,13 @@ dataset__time_statistics <- function(dataset, index, variable, axis) {
     )
     value <- dataset__parse_time_statistics(
         method,
-        if (identical(axis$kind, "climatology")) "climatology" else "ordinary"
+        if (identical(axis$kind, "climatology")) "climatology" else "ordinary",
+        has_bounds = !is.null(dataset__optional_attribute(
+            dataset,
+            "time",
+            "bounds",
+            index
+        ))
     )
     private$metadata_cache[[key]] <- list(value = value)
     value

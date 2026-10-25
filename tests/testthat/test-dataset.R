@@ -3174,6 +3174,20 @@ test_that("CMIP6 monthly statistics retain ordinary bounds and raw methods", {
         expect_equal(raw$time$bound_end_value, endpoints[, 2L])
         expect_false(any(startsWith(names(raw$time), "climatology_")))
         ds$close()
+        nc <- RNetCDF::open.nc(path, write = TRUE)
+        RNetCDF::att.delete.nc(nc, "time", "bounds")
+        RNetCDF::close.nc(nc)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        expect_error(ds$get_time_axis(variable = "tas"), "explicit time bounds")
+        expect_error(
+            ds$read_neighborhood(
+                "tas",
+                data.frame(site_id = "a", lon = 10.25, lat = .25)
+            ),
+            "explicit time bounds"
+        )
+        ds$close()
         unlink(path)
     }
     # Year aggregation without a climatology declaration remains ambiguous.
