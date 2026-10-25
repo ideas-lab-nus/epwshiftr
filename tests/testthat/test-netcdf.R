@@ -578,4 +578,73 @@ test_that("match_nc_time()", {
     }
 })
 
+
+# Julian century leap days must remain native dates, including subdaily and
+# negative offsets; surrogate POSIX timestamps do not redefine the calendar.
+test_that("Julian CF coordinates preserve century leap days and round trips", {
+    for (year in c(1900L, 2100L)) {
+        units <- sprintf("hours since %d-02-28 12:00:00", year)
+        time <- parse_cf_time(c(-12, 0, 12, 36, 60), units, "julian")
+        fields <- attr(time, "cf_coordinates")
+        expect_identical(fields$cf_year, rep.int(year, 5L))
+        expect_identical(fields$cf_month, c(2L, 2L, 2L, 3L, 3L))
+        expect_identical(fields$cf_day, c(28L, 28L, 29L, 1L, 2L))
+        expect_identical(fields$cf_year_days, rep.int(366L, 5L))
+        expect_equal(fields$cf_second_of_day, c(0, 43200, 0, 0, 0))
+        expect_equal(
+            fields$annual_phase,
+            (fields$cf_day_of_year - 1 + fields$cf_second_of_day / 86400) / 366
+        )
+        origin <- cf_time_parse_origin(sprintf("%d-01-01", year), "julian")
+        native <- data.frame(
+            year = fields$cf_year,
+            month = fields$cf_month,
+            day = fields$cf_day
+        )
+        offsets <- cf_time_date2offset(native, origin, "julian")
+        expect_equal(cf_time_offset2date(offsets, origin, "julian"), native)
+        leap_origin <- parse_cf_time(
+            c(-1, 0, 1),
+            sprintf("days since %d-02-29", year),
+            "julian"
+        )
+        expect_identical(
+            attr(leap_origin, "cf_coordinates")$cf_day,
+            c(28L, 29L, 1L)
+        )
+    }
+    time <- parse_cf_time(54787, "days since 1850-01-01", "julian")
+    expect_identical(attr(time, "cf_coordinates")$cf_year, 2000L)
+    expect_identical(attr(time, "cf_coordinates")$cf_day_of_year, 1L)
+    expect_error(parse_cf_time(0, "days since 1901-02-29", "julian"))
+})
+
+
+# CF Julian reference dates and computed ordinary dates cannot use negative
+# years; climatological year zero needs its separate CF interpretation.
+test_that("Julian ordinary dates reject unsupported epoch crossings", {
+    time <- parse_cf_time(c(-1, 0), "days since 0001-01-02", "julian")
+    fields <- attr(time, "cf_coordinates")
+    expect_identical(fields$cf_year, c(1L, 1L))
+    expect_identical(fields$cf_day, c(1L, 2L))
+    expect_error(
+        parse_cf_time(-1, "days since 0001-01-01", "julian"),
+        "positive years"
+    )
+    expect_error(
+        parse_cf_time(0, "days since 0000-01-01", "julian"),
+        "base date"
+    )
+    expect_error(
+        parse_cf_time(0, "days since -0001-01-01", "julian"),
+        "base date"
+    )
+    months <- parse_cf_time(c(0, 12), "months since 1900-03-01", "julian")
+    years <- parse_cf_time(c(0, 1), "years since 1900-03-01", "julian")
+    expect_identical(
+        attr(months, "cf_coordinates"),
+        attr(years, "cf_coordinates")
+    )
+})
+
 # vim: fdm=marker :

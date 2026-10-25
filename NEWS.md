@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Support CF `julian` calendar coordinates and explicit `time: point` zero-width
+  bounds. Preserve original native corner values and time bounds; interval-valued
+  variables still require positive durations (#306).
+
 * Retain checked native selections before the first weather value and expose
   read-only `subset_status()` coverage and timing views, optionally limited by
   source identity. Coverage separates checked four-corner completion, unknown

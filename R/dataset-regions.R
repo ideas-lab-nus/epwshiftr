@@ -356,7 +356,13 @@ dataset__read_regions_one <- function(
     time_position <- match("time", meta$names)
     lat_position <- match("lat", meta$names)
     lon_position <- match("lon", meta$names)
-    bounds <- dataset__selected_bounds(dataset, index, time_info, selected)
+    bounds <- dataset__selected_bounds(
+        dataset,
+        index,
+        time_info,
+        selected,
+        variable
+    )
     clock <- data.table::as.data.table(time_info$coordinates[
         selected,
         CF_TIME_COORDINATE_COLUMNS,
@@ -709,6 +715,14 @@ dataset__neighborhood_bounds <- function(
         if (!is.null(axis$bounds)) {
             native <- native[indices, , drop = FALSE]
         }
+        dataset__validate_time_intervals(
+            dataset,
+            index,
+            variable,
+            native,
+            bounds$name,
+            axis$raw_values[indices]
+        )
         for (attribute in c("units", "calendar")) {
             declared <- tryCatch(
                 dataset$att_get(bounds$name, attribute, index),
@@ -1221,7 +1235,8 @@ dataset__read_neighborhood <- function(
                         dataset,
                         index,
                         axis,
-                        run
+                        run,
+                        name
                     )
                     if (!is.null(bounds)) {
                         data.table::set(

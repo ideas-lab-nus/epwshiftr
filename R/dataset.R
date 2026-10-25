@@ -407,10 +407,10 @@ dataset__time_bounds <- function(
     # Parse both endpoints with the parent's native units and calendar.
     start <- parse_cf_time(ordered[, 1L], units, calendar)
     end <- parse_cf_time(ordered[, 2L], units, calendar)
-    if (any(as.numeric(end) <= as.numeric(start))) {
+    if (any(!is.finite(ordered)) || any(ordered[, 2L] < ordered[, 1L])) {
         stop(
             sprintf(
-                "The CF time bounds variable '%s' must contain increasing intervals.",
+                "The CF time bounds variable '%s' must contain non-decreasing finite intervals.",
                 bounds_name
             ),
             call. = FALSE
@@ -508,11 +508,63 @@ dataset__time_axis <- function(dataset, index = 1L) {
 }
 # }}}
 
+# Zero-width native bounds describe an instant only when every declared time
+# operation is point. Missing or interval-valued semantics cannot manufacture a
+# duration. This check is per variable even when the time-axis cache is shared.
+# dataset__validate_time_intervals {{{
+dataset__validate_time_intervals <- function(
+    dataset,
+    index,
+    variable,
+    native,
+    name,
+    coordinate
+) {
+    if (is.null(variable) || !any(native[, 2L] == native[, 1L])) {
+        return(invisible(NULL))
+    }
+    method <- tryCatch(
+        dataset$att_get(variable, "cell_methods", index),
+        error = function(error) NULL
+    )
+    method <- gsub("\\([^)]*\\)", "", tolower(paste(method, collapse = " ")))
+    matches <- regmatches(
+        method,
+        gregexpr("\\btime[[:space:]]*:[[:space:]]*[a-z_]+", method, perl = TRUE)
+    )[[1L]]
+    operations <- sub("^time[[:space:]]*:[[:space:]]*", "", matches)
+    if (!length(operations) || any(operations != "point")) {
+        stop(
+            sprintf(
+                "The CF time bounds variable '%s' must contain positive intervals for variable '%s' unless its time cell method is point.",
+                name,
+                variable
+            ),
+            call. = FALSE
+        )
+    }
+    zero <- native[, 2L] == native[, 1L]
+    if (any(native[zero, 1L] != coordinate[zero])) {
+        stop(
+            "Instantaneous CF bounds must equal their native time coordinate.",
+            call. = FALSE
+        )
+    }
+    invisible(NULL)
+}
+# }}}
+
 # Read actual bounds only for selected native positions and reuse the last
 # selection within this open dataset. Keep one bounded entry rather than grow
 # a cache for every region; a previously loaded full axis also serves subsets.
 # dataset__selected_bounds {{{
-dataset__selected_bounds <- function(dataset, index, axis, indices) {
+dataset__selected_bounds <- function(
+    dataset,
+    index,
+    axis,
+    indices,
+    variable = NULL
+) {
     if (!length(indices)) {
         return(NULL)
     }
@@ -543,6 +595,20 @@ dataset__selected_bounds <- function(dataset, index, axis, indices) {
     if (is.null(bounds)) {
         return(NULL)
     }
+    meta <- private$get_var_dim_meta(bounds$name, index)
+    native <- if (match("time", meta$names) == 1L) {
+        bounds$raw_values
+    } else {
+        t(bounds$raw_values)
+    }
+    dataset__validate_time_intervals(
+        dataset,
+        index,
+        variable,
+        native[position, , drop = FALSE],
+        bounds$name,
+        axis$raw_values[indices]
+    )
     list(start = bounds$start[position], end = bounds$end[position])
 }
 # }}}
@@ -990,6 +1056,11 @@ EsgDataset <- R6::R6Class(
         #' coordinates, optional CF interval bounds, and axis length.
         #' `raw_values` retains the original numeric time coordinates;
         #' `bounds$raw_values` retains bounds in their declared dimension order.
+        #' Julian dates retain native CF fields, including century leap days;
+        #' POSIXct values for non-Gregorian calendars are surrogate timestamps.
+        #' Equal bounds are retained as native metadata. Weather reads accept
+        #' them only for explicit `time: point` values at that same native time;
+        #' interval-valued variables require positive native durations.
         #'
         #' @examples
         #' \dontrun{
@@ -2634,7 +2705,8 @@ EsgDataset <- R6::R6Class(
                 self,
                 index,
                 time_info,
-                coordinate_idx
+                coordinate_idx,
+                variable
             )
             if (!is.null(bounds)) {
                 data.table::set(

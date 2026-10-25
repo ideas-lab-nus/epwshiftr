@@ -223,6 +223,7 @@ CF_TIME_CALENDARS <- c(
     "standard",
     "gregorian",
     "proleptic_gregorian",
+    "julian",
     "noleap",
     "365_day",
     "360_day",
@@ -319,6 +320,11 @@ cf_time_month_days <- function(year, month, calendar) {
         "noleap" = common[month],
         "366_day" = leap[month],
         "all_leap" = leap[month],
+        "julian" = data.table::fifelse(
+            year %% 4L == 0L,
+            leap[month],
+            common[month]
+        ),
         ifelse(cf_time_is_leap_gregorian(year), leap[month], common[month])
     )
 }
@@ -332,6 +338,9 @@ cf_time_valid_days <- function(parts, calendar) {
         parts$month >= 1L &
         parts$month <= 12L &
         parts$day >= 1L
+    if (calendar == "julian") {
+        valid <- valid & parts$year > 0L
+    }
     days <- cf_time_month_days(parts$year, parts$month, calendar)
     valid & !is.na(days) & parts$day <= days
 }
@@ -514,6 +523,50 @@ cf_time__fixed_offset2date <- function(offsets, year_days) {
 }
 # }}}
 
+# Convert Julian dates to absolute native days using four-year cycles. Century
+# years remain leap years; no Gregorian century correction is applied.
+# cf_time__julian_date2offset {{{
+cf_time__julian_date2offset <- function(parts) {
+    year <- parts$year
+    year1 <- year - 1L
+    correction <- data.table::fifelse(
+        parts$month <= 2L,
+        0L,
+        as.integer(year %% 4L == 0L) - 2L
+    )
+    365 *
+        year1 +
+        year1 %/% 4L +
+        (367L * parts$month - 362L) %/% 12L +
+        correction +
+        parts$day
+}
+# }}}
+
+# Invert native Julian day offsets. The last day in a leap cycle belongs to
+# its fourth year, rather than an artificial fifth common year.
+# cf_time__julian_offset2date {{{
+cf_time__julian_offset2date <- function(offsets) {
+    day0 <- offsets - 1
+    cycles <- day0 %/% 1461L
+    year <- 4 * cycles + pmin((day0 %% 1461L) %/% 365L, 3L) + 1L
+    jan1 <- 365 * (year - 1L) + (year - 1L) %/% 4L + 1L
+    leap <- as.integer(year %% 4L == 0L)
+    prior <- offsets -
+        jan1 +
+        data.table::fifelse(offsets < jan1 + 59L + leap, 0L, 2L - leap)
+    month <- (12L * prior + 373L) %/% 367L
+    day <- offsets -
+        cf_time__julian_date2offset(data.frame(
+            year = year,
+            month = month,
+            day = 1L
+        )) +
+        1L
+    data.frame(year = year, month = month, day = day)
+}
+# }}}
+
 # cf_time_date2offset {{{
 cf_time_date2offset <- function(parts, origin, calendar) {
     fixed_year_days <- CF_TIME_FIXED_YEAR_DAYS[[calendar]]
@@ -526,6 +579,8 @@ cf_time_date2offset <- function(parts, origin, calendar) {
 
     switch(
         calendar,
+        "julian" = cf_time__julian_date2offset(parts) -
+            cf_time__julian_date2offset(origin),
         "360_day" = (parts$year - origin$year) *
             360L +
             (parts$month - origin$month) * 30L +
@@ -549,6 +604,9 @@ cf_time_offset2date <- function(offsets, origin, calendar) {
 
     switch(
         calendar,
+        "julian" = cf_time__julian_offset2date(
+            offsets + cf_time__julian_date2offset(origin)
+        ),
         "360_day" = {
             year <- origin$year + offsets %/% 360L
             month <- origin$month + (offsets %% 360L) %/% 30L
@@ -690,6 +748,11 @@ cf_time__year_days <- function(year, calendar) {
         "noleap" = rep.int(365L, length(year)),
         "366_day" = rep.int(366L, length(year)),
         "all_leap" = rep.int(366L, length(year)),
+        "julian" = data.table::fifelse(
+            year %% 4L == 0L,
+            366L,
+            365L
+        ),
         ifelse(cf_time_is_leap_gregorian(year), 366L, 365L)
     )
 }
@@ -798,6 +861,12 @@ parse_cf_time <- function(offsets, units, calendar = "standard", tz = "UTC") {
         parsed$origin,
         calendar
     )
+    if (calendar == "julian" && any(fields$year < 1L)) {
+        stop(
+            "Julian CF dates must use positive years; climatological year zero is unsupported.",
+            call. = FALSE
+        )
+    }
     posix_time <- cf_time_fields2posix(fields, parsed$origin, calendar, tz)
     coordinates <- cf_time__coordinates(fields, calendar)
 

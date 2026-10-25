@@ -161,9 +161,15 @@ local_downloader_http_server <- function(env = parent.frame()) {
 # }}}
 
 # Serve DAP2 arrays with real constraints and XDR payloads, for real libnetcdf I/O.
-subset_test__dap_app <- function(fail_first = FALSE) {
+subset_test__dap_app <- function(
+    fail_first = FALSE,
+    calendar = "360_day",
+    point_bounds = FALSE
+) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
+    app$locals$calendar <- calendar
+    app$locals$point_bounds <- isTRUE(point_bounds)
     app$locals$weather <- 0L
     app$locals$requests <- character()
     app$get('/recover', function(req, res, locals) {
@@ -225,6 +231,22 @@ subset_test__dap_app <- function(fail_first = FALSE) {
                     fixed = TRUE
                 )
             }
+            # Explicit point metadata and native zero-width bounds exercise the
+            # real transport without changing the default interval fixture.
+            attributes <- sub(
+                'calendar "360_day"',
+                paste0('calendar "', locals$calendar, '"'),
+                attributes,
+                fixed = TRUE
+            )
+            if (locals$point_bounds) {
+                attributes <- sub(
+                    'String units "K";',
+                    'String units "K"; String cell_methods "time: point";',
+                    attributes,
+                    fixed = TRUE
+                )
+            }
             return(res$send(attributes))
         }
         query <- utils::URLdecode(
@@ -238,7 +260,11 @@ subset_test__dap_app <- function(fail_first = FALSE) {
             lat = 0:1,
             lon = 10:11,
             tas = array(1:32, c(2, 2, 8)),
-            time_bnds = rbind(0:7, 1:8)
+            time_bnds = if (locals$point_bounds) {
+                rbind(0:7, 0:7)
+            } else {
+                rbind(0:7, 1:8)
+            }
         )
         dims <- list(
             time = 'time',

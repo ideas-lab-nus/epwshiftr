@@ -8347,4 +8347,62 @@ test_that("acquisition recovery coverage shares eligibility history", {
     expect_equal(queries, 0L)
 })
 
+
+# A published File can use both Julian coordinates and point bounds. The public
+# acquisition must retain native values and resume its exact blocks without I/O.
+test_that("raw subset acquisition resumes Julian instantaneous bounds exactly", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app(
+        calendar = "julian",
+        point_bounds = TRUE
+    ))
+    on.exit(server$stop(), add = TRUE)
+    dest <- tempfile("raw-julian-point-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "fast-bounds.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    requests <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    result <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), as.double(1:32))
+    expect_equal(nrow(raw$neighborhoods), 4L)
+    expect_identical(unique(raw$values$cf_calendar), "julian")
+    expect_equal(raw$values$bound_start_value, raw$values$bound_end_value)
+    artifacts <- list.files(
+        file.path(dest, "subsets"),
+        "[.]parquet$",
+        full.names = TRUE
+    )
+    hashes <- tools::sha256sum(artifacts)
+    attempts <- subset_status(dest, "attempts")
+    result <- files$fetch_subset(
+        requests,
+        dest,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE
+    )
+    expect_true(result$complete)
+    expect_identical(tools::sha256sum(artifacts), hashes)
+    expect_equal(nrow(subset_status(dest, "attempts")), nrow(attempts))
+})
+
 # vim: fdm=marker :

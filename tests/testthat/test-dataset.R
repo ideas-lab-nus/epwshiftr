@@ -2291,4 +2291,142 @@ test_that("raw neighborhoods retain four corners and share disjoint demand", {
     )
 })
 
+
+# This local native 2x2 fixture exercises the public reader with both bounds
+# dimension orders and per-variable temporal semantics, without remote I/O.
+dataset_test__cf_point_fixture <- function(
+    method = "time: point",
+    calendar = "julian",
+    width = 0,
+    reversed = FALSE
+) {
+    path <- tempfile(fileext = ".nc")
+    nc <- RNetCDF::create.nc(path)
+    for (name in c("time", "lat", "lon", "bnds")) {
+        RNetCDF::dim.def.nc(nc, name, if (name == "time") 3L else 2L)
+    }
+    for (name in c("time", "lat", "lon")) {
+        RNetCDF::var.def.nc(nc, name, "NC_DOUBLE", name)
+    }
+    RNetCDF::var.def.nc(nc, "tas", "NC_DOUBLE", c("time", "lat", "lon"))
+    dims <- if (reversed) c("bnds", "time") else c("time", "bnds")
+    RNetCDF::var.def.nc(nc, "time_bnds", "NC_DOUBLE", dims)
+    RNetCDF::att.put.nc(nc, "time", "units", "NC_CHAR", "days since 1900-02-28")
+    RNetCDF::att.put.nc(nc, "time", "calendar", "NC_CHAR", calendar)
+    RNetCDF::att.put.nc(nc, "time", "bounds", "NC_CHAR", "time_bnds")
+    RNetCDF::att.put.nc(nc, "tas", "units", "NC_CHAR", "K")
+    if (!is.null(method)) {
+        RNetCDF::att.put.nc(nc, "tas", "cell_methods", "NC_CHAR", method)
+    }
+    RNetCDF::var.put.nc(nc, "time", 0:2)
+    bounds <- cbind(0:2, 0:2 + width)
+    RNetCDF::var.put.nc(nc, "time_bnds", if (reversed) t(bounds) else bounds)
+    RNetCDF::var.put.nc(nc, "lat", c(0, 1))
+    RNetCDF::var.put.nc(nc, "lon", c(10, 11))
+    RNetCDF::var.put.nc(nc, "tas", array(270 + seq_len(12L), c(3, 2, 2)))
+    RNetCDF::close.nc(nc)
+    path
+}
+
+test_that("instantaneous native bounds preserve Julian four-corner values", {
+    for (reversed in c(FALSE, TRUE)) {
+        path <- dataset_test__cf_point_fixture(reversed = reversed)
+        on.exit(unlink(path), add = TRUE)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        on.exit(ds$close(), add = TRUE)
+        # Populate the shared bounds cache before the variable-specific read.
+        axis <- ds$get_time_axis()
+        expect_equal(as.numeric(axis$bounds$end), as.numeric(axis$bounds$start))
+        actual <- ds$read_neighborhood(
+            "tas",
+            data.frame(site_id = "a", lon = 10.25, lat = .25),
+            time = c("1900-02-29", "1900-02-29")
+        )
+        expect_equal(nrow(actual$values), 4L)
+        expect_equal(sort(actual$values$value), c(272, 275, 278, 281))
+        expect_identical(unique(actual$time$cf_day), 29L)
+        expect_identical(unique(actual$time$cf_calendar), "julian")
+        expect_equal(actual$time$bound_start_value, rep(1, nrow(actual$time)))
+        expect_equal(actual$time$bound_end_value, actual$time$bound_start_value)
+    }
+})
+
+test_that("instantaneous bounds cannot weaken interval or identity validation", {
+    for (method in list(
+        "time: mean",
+        "time: sum",
+        NULL,
+        "time: point time: mean"
+    )) {
+        path <- dataset_test__cf_point_fixture(
+            method = method,
+            calendar = "standard"
+        )
+        on.exit(unlink(path), add = TRUE)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        on.exit(ds$close(), add = TRUE)
+        expect_error(
+            ds$read_neighborhood(
+                "tas",
+                data.frame(site_id = "a", lon = 10.25, lat = .25)
+            ),
+            "positive|increasing"
+        )
+    }
+    path <- dataset_test__cf_point_fixture(width = -1, calendar = "standard")
+    on.exit(unlink(path), add = TRUE)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    expect_error(ds$get_time_axis(), "increasing|non-decreasing")
+})
+
+
+# Bounds cached for a point variable must not authorize another variable's
+# averages. Native durations remain authoritative below POSIX precision.
+test_that("instantaneous bounds validation remains variable-specific and native", {
+    path <- dataset_test__cf_point_fixture(calendar = "standard")
+    on.exit(unlink(path), add = TRUE)
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    RNetCDF::var.def.nc(nc, "tas_mean", "NC_DOUBLE", c("time", "lat", "lon"))
+    RNetCDF::att.put.nc(nc, "tas_mean", "units", "NC_CHAR", "K")
+    RNetCDF::att.put.nc(nc, "tas_mean", "cell_methods", "NC_CHAR", "time: mean")
+    RNetCDF::var.put.nc(nc, "tas_mean", array(280, c(3, 2, 2)))
+    RNetCDF::close.nc(nc)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    on.exit(ds$close(), add = TRUE)
+    sites <- data.frame(site_id = "a", lon = 10.25, lat = .25)
+    expect_equal(nrow(ds$read_neighborhood("tas", sites)$values), 12L)
+    expect_error(ds$read_neighborhood("tas_mean", sites), "positive intervals")
+    short <- dataset_test__cf_point_fixture(
+        calendar = "standard",
+        method = "time: mean",
+        width = 1e-10
+    )
+    on.exit(unlink(short), add = TRUE)
+    short_ds <- EsgDataset$new(short)
+    short_ds$open()
+    on.exit(short_ds$close(), add = TRUE)
+    actual <- short_ds$read_neighborhood("tas", sites)
+    expect_equal(nrow(actual$values), 12L)
+    expect_true(all(
+        actual$time$bound_end_value > actual$time$bound_start_value
+    ))
+    wrong <- dataset_test__cf_point_fixture(calendar = "standard")
+    on.exit(unlink(wrong), add = TRUE)
+    nc <- RNetCDF::open.nc(wrong, write = TRUE)
+    RNetCDF::var.put.nc(nc, "time_bnds", cbind(1:3, 1:3))
+    RNetCDF::close.nc(nc)
+    wrong_ds <- EsgDataset$new(wrong)
+    wrong_ds$open()
+    on.exit(wrong_ds$close(), add = TRUE)
+    expect_error(
+        wrong_ds$read_neighborhood("tas", sites),
+        "equal their native time coordinate"
+    )
+})
+
 # vim: fdm=marker :

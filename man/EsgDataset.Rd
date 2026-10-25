@@ -617,6 +617,11 @@ data_async <- ds$var_get("tas", async = TRUE, timeout = 10)
 coordinates, optional CF interval bounds, and axis length.
 \code{raw_values} retains the original numeric time coordinates;
 \code{bounds$raw_values} retains bounds in their declared dimension order.
+Julian dates retain native CF fields, including century leap days;
+POSIXct values for non-Gregorian calendars are surrogate timestamps.
+Equal bounds are retained as native metadata. Weather reads accept
+them only for explicit \code{time: point} values at that same native time;
+interval-valued variables require positive native durations.
   }
   \subsection{Examples}{
     \if{html}{\out{<div class="r example copy">}}
