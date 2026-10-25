@@ -2927,4 +2927,32 @@ test_that("CF climatology propagates declared attribute read failures", {
     )
 })
 
+# Metadata columns must not overwrite source values when a custom variable name
+# collides with one or more generated climatology/coordinate column names.
+test_that("CF climatology isolates source value names from metadata columns", {
+    names <- c("variable", "time_kind", "climatology_bound_start")
+    expected <- c(
+        "variable_value",
+        "time_kind_value",
+        "climatology_bound_start_value_value"
+    )
+    for (i in seq_along(names)) {
+        path <- dataset_test__climatology_fixture()
+        nc <- RNetCDF::open.nc(path, write = TRUE)
+        RNetCDF::var.rename.nc(nc, "tas", names[[i]])
+        RNetCDF::close.nc(nc)
+        ds <- EsgDataset$new(path)
+        ds$open()
+        table <- NULL
+        expect_warning(
+            table <- ds$read_data_table(names[[i]], rbind = TRUE),
+            "conflicts"
+        )
+        expect_equal(sort(table[[expected[[i]]]]), as.double(271:286))
+        expect_identical(unique(table$time_kind), "climatology")
+        ds$close()
+        unlink(path)
+    }
+})
+
 # vim: fdm=marker :

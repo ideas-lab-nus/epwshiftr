@@ -761,7 +761,9 @@ worker phase. Only supported when \code{async = TRUE}.}
     Climatological variables retain \code{time_kind = "climatology"},
 original \code{time_value} offsets and \verb{climatology_bound_*} columns, native
 endpoints, ordered cell methods and cycle interpretation. No temporal
-averaging is performed by this reader.
+averaging is performed by this reader. A source value name that
+conflicts with coordinate/statistical columns receives \verb{_value}
+suffixes until unique, with a warning; source values are retained.
   }
   \subsection{Returns}{
     If \code{rbind = FALSE}, a list of data.table (one per file).

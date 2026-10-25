@@ -1638,7 +1638,9 @@ EsgDataset <- R6::R6Class(
         #' @details Climatological variables retain `time_kind = "climatology"`,
         #' original `time_value` offsets and `climatology_bound_*` columns, native
         #' endpoints, ordered cell methods and cycle interpretation. No temporal
-        #' averaging is performed by this reader.
+        #' averaging is performed by this reader. A source value name that
+        #' conflicts with coordinate/statistical columns receives `_value`
+        #' suffixes until unique, with a warning; source values are retained.
         #'
         #' @examples
         #' \dontrun{
@@ -3312,20 +3314,6 @@ EsgDataset <- R6::R6Class(
                 }
             }
 
-            value_name <- variable
-            if (value_name %in% dim_names_arr) {
-                value_name <- paste0(variable, "_value")
-                warning(sprintf(
-                    "Value column name '%s' conflicts with a dimension name; using '%s'.",
-                    variable,
-                    value_name
-                ))
-            }
-            dt[[value_name]] <- as.vector(arr)
-
-            # Reorder columns to NetCDF dimension order when possible
-            keep_dims <- intersect(dim_names_nc, names(dt))
-            data.table::setcolorder(dt, c(keep_dims, value_name))
             if (!is.null(time_axis) && identical(axis$kind, "climatology")) {
                 # Keep each native representative coordinate alongside the
                 # already-computed statistic and its discontinuous cell metadata.
@@ -3373,6 +3361,31 @@ EsgDataset <- R6::R6Class(
                     variable
                 )
             }
+
+            # Attach values after all coordinate/statistical columns exist. A
+            # finite name set may require multiple suffixes; never overwrite a
+            # raw source value or an original climatology boundary silently.
+            value_name <- variable
+            while (value_name %in% names(dt)) {
+                value_name <- paste0(value_name, "_value")
+            }
+            if (!identical(value_name, variable)) {
+                warning(sprintf(
+                    "Value column name '%s' conflicts with a coordinate or metadata column; using '%s'.",
+                    variable,
+                    value_name
+                ))
+            }
+            data.table::set(dt, j = value_name, value = as.vector(arr))
+            keep_dims <- intersect(dim_names_nc, names(dt))
+            data.table::setcolorder(
+                dt,
+                c(
+                    keep_dims,
+                    value_name,
+                    setdiff(names(dt), c(keep_dims, value_name))
+                )
+            )
 
             dt
         }
