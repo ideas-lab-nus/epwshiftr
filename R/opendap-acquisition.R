@@ -14,7 +14,11 @@ opendap__record_content <- function(conn, candidates) {
     }
     columns <- c("source_key", "version", "checksum_type", "checksum", "size")
     current <- unique(candidates[, columns, with = FALSE])
-    prior <- data.table::as.data.table(ddb_read_table(conn, "subset_content"))
+    prior <- opendap__source_rows(
+        conn,
+        "subset_content",
+        unique(current$source_key)
+    )
     for (key in unique(current$source_key)) {
         known <- prior[prior$source_key == key]
         incoming <- current[current$source_key == key]
@@ -30,13 +34,10 @@ opendap__record_content <- function(conn, candidates) {
             }
         }
     }
-    saved <- unique(data.table::rbindlist(list(prior, current), fill = TRUE))
-    ddb_write_table(
-        conn,
-        "subset_content",
-        as.data.frame(saved),
-        overwrite = TRUE
-    )
+    additions <- data.table::fsetdiff(current, prior)
+    if (nrow(additions)) {
+        ddb_append_table(conn, "subset_content", as.data.frame(additions))
+    }
     invisible(NULL)
 }
 
@@ -84,16 +85,19 @@ opendap__save_demands <- function(conn, demands, dest, transaction = TRUE) {
             "subsets",
             paste0("demand-", demands$demand_id[[i]], "-", version, ".rds")
         )
-        reusable <- file.exists(paths[[i]]) &&
-            identical(
-                tryCatch(readRDS(paths[[i]]), error = function(e) NULL),
-                payload
-            )
-        if (!reusable) {
-            store__extract_cache_write(paths[[i]], payload)
+        actual <- if (file.exists(paths[[i]])) {
+            checksum_file(paths[[i]])
+        } else {
+            NULL
         }
-        checksums[[i]] <- checksum_file(paths[[i]])
+        if (!identical(actual, version)) {
+            store__extract_cache_write(paths[[i]], payload)
+            actual <- checksum_file(paths[[i]])
+        }
+        stopifnot(identical(actual, version))
+        checksums[[i]] <- actual
     }
+
     # Register all immutable publications together. A failed replacement leaves
     # prior demand references intact; unregistered files can be reused later.
     if (transaction) {
@@ -104,19 +108,31 @@ opendap__save_demands <- function(conn, demands, dest, transaction = TRUE) {
         if (transaction && !committed) ddb_exec(conn, "ROLLBACK"),
         add = TRUE
     )
-    for (id in demands$demand_id) {
-        ddb_exec(
-            conn,
-            sprintf(
-                "DELETE FROM subset_demands WHERE demand_id = %s",
-                ddb_literal(conn, id)
-            )
-        )
-    }
     data.table::set(records, j = "native_ranges", value = NULL)
     data.table::set(records, j = "receipt_path", value = paths)
     data.table::set(records, j = "receipt_sha256", value = checksums)
-    ddb_append_table(conn, "subset_demands", as.data.frame(records))
+    # Identical verified selections need no manifest replacement for each city.
+    prior <- data.table::as.data.table(ddb_query(
+        conn,
+        sprintf(
+            "SELECT * FROM subset_demands WHERE demand_id IN (%s)",
+            paste(ddb_literal(conn, records$demand_id), collapse = ",")
+        )
+    ))
+    changed <- data.table::fsetdiff(
+        records[, names(prior), with = FALSE],
+        prior
+    )
+    if (nrow(changed)) {
+        ddb_exec(
+            conn,
+            sprintf(
+                "DELETE FROM subset_demands WHERE demand_id IN (%s)",
+                paste(ddb_literal(conn, changed$demand_id), collapse = ",")
+            )
+        )
+        ddb_append_table(conn, "subset_demands", as.data.frame(changed))
+    }
     if (transaction) {
         ddb_exec(conn, "COMMIT")
     }
@@ -477,7 +493,30 @@ opendap__save_membership <- function(conn, source_key, neighborhoods) {
         ),
         with = FALSE
     ]
-    ddb_append_table(conn, "subset_neighborhoods", as.data.frame(membership))
+    existing <- opendap__source_rows(conn, "subset_neighborhoods", source_key)
+    additions <- data.table::fsetdiff(membership, existing)
+    if (nrow(additions)) {
+        ddb_append_table(conn, "subset_neighborhoods", as.data.frame(additions))
+    }
+}
+
+# Register only new candidate identities and return the selected prior inventory.
+# Existing pinned candidates win, matching the former first-row deduplication.
+opendap__register_candidates <- function(conn, candidates) {
+    prior <- opendap__source_rows(
+        conn,
+        "subset_candidates",
+        unique(candidates$source_key)
+    )
+    incoming <- unique(
+        candidates[, names(prior), with = FALSE],
+        by = "candidate_id"
+    )
+    additions <- incoming[!incoming$candidate_id %in% prior$candidate_id]
+    if (nrow(additions)) {
+        ddb_append_table(conn, "subset_candidates", as.data.frame(additions))
+    }
+    prior
 }
 
 # Create only additive raw-subset tables in the existing single-owner Store.
@@ -843,12 +882,32 @@ opendap__block_artifact_path <- function(dest, block_id, sha256, extension) {
 
 # Publish a single received block through the Store's atomic Parquet writer.
 # The calling process alone registers it in the manifest transaction.
-opendap__commit <- function(store, job, path, progress) {
+opendap__commit <- function(store, job, path, progress, received = NULL) {
     receipt <- paste0(path, ".json")
-    if (!file.exists(receipt) || !store__extract_cache_available(path)) {
+    if (!file.exists(receipt)) {
         return(FALSE)
     }
-    chunk <- readRDS(path)
+    if (is.null(received)) {
+        if (!store__extract_cache_available(path)) {
+            return(FALSE)
+        }
+        chunk <- readRDS(path)
+    } else {
+        # Inbox filenames are immutable publications; fail closed if bytes change
+        # between their checked decode and the manifest-owning commit.
+        record <- tryCatch(
+            jsonlite::read_json(receipt, simplifyVector = TRUE),
+            error = function(error) NULL
+        )
+        if (
+            !is.list(record) ||
+                !identical(record$sha256, received$sha256) ||
+                !identical(checksum_file(path), received$sha256)
+        ) {
+            stop("A received raw block changed before commit.", call. = FALSE)
+        }
+        chunk <- received$chunk
+    }
     conn <- priv(store)$conn
     slice <- chunk$read_slices
     block_id <- store__hash(
@@ -1073,7 +1132,12 @@ opendap__read_source <- function(job) {
         metadata_began <- proc.time()[["elapsed"]]
         receive_metadata <- function(info) {
             metadata_count <<- metadata_count + 1L
-            info$demands <- demands
+            # This site's descriptor cannot certify another city's selection.
+            # Publish only its demands here; first-block and final receipts still
+            # retain the complete source plan for interrupted/forced refreshes.
+            info$demands <- demands[
+                demands$lon == site$lon[[1L]] & demands$lat == site$lat[[1L]]
+            ]
             info$open_seconds <- if (metadata_count == 1L) opened else 0
             info$metadata_seconds <- proc.time()[["elapsed"]] -
                 metadata_began +
@@ -1478,14 +1542,21 @@ opendap__drain <- function(store, state, client) {
         if (!file.exists(paste0(path, ".json"))) {
             next
         }
-        if (!store__extract_cache_available(path)) {
+        receipt <- tryCatch(
+            jsonlite::read_json(paste0(path, ".json"), simplifyVector = TRUE),
+            error = function(error) NULL
+        )
+        if (
+            !is.list(receipt) || !identical(receipt$sha256, checksum_file(path))
+        ) {
             stop(
                 "A received raw block failed its local checksum.",
                 call. = FALSE
             )
         }
         chunk <- readRDS(path)
-        if (opendap__commit(store, state$job, path, state$progress)) {
+        received <- list(chunk = chunk, sha256 = receipt$sha256)
+        if (opendap__commit(store, state$job, path, state$progress, received)) {
             changed <- TRUE
             row <- data.frame(
                 source_key = state$job$source_key,
@@ -1622,7 +1693,8 @@ opendap__fetch <- function(
     node_workers = 2L,
     progress = NULL,
     max_values = DATASET_REQUEST_MAX_VALUES,
-    replica_cooldown = 0
+    replica_cooldown = 0,
+    session = NULL
 ) {
     checkmate::assert_int(max_values, lower = 4L)
     checkmate::assert_number(
@@ -1637,6 +1709,10 @@ opendap__fetch <- function(
     checkmate::assert_count(retries)
     checkmate::assert_flag(discover)
     checkmate::assert_string(network_id)
+    if (!is.null(session)) {
+        stopifnot(inherits(session, "epwshiftr_subset_session"))
+        session$validate(workers, timeout)
+    }
     # With resume=FALSE, a new public invocation ignores earlier coverage.
     # Its own committed block identities survive endpoint retries and
     # directory-completion phases.
@@ -1759,25 +1835,17 @@ opendap__fetch <- function(
                 as.data.frame(directory_rows)
             )
             # Request bookkeeping is separate from the identity of persisted values.
-            existing_links <- data.table::as.data.table(ddb_read_table(
+            ddb_exec(
                 conn,
-                "subset_links"
-            ))
-            if (nrow(existing_links)) {
-                existing_links <- existing_links[
-                    !existing_links$request_id %in% requests$request_id
-                ]
-            }
-            all_links <- unique(data.table::rbindlist(
-                list(existing_links, links),
-                fill = TRUE
-            ))
-            ddb_write_table(
-                conn,
-                "subset_links",
-                as.data.frame(all_links),
-                overwrite = TRUE
+                sprintf(
+                    "DELETE FROM subset_links WHERE request_id IN (%s)",
+                    paste(
+                        ddb_literal(conn, requests$request_id),
+                        collapse = ","
+                    )
+                )
             )
+            ddb_append_table(conn, "subset_links", as.data.frame(unique(links)))
             ddb_exec(conn, "COMMIT")
             requests_committed <- TRUE
         },
@@ -1785,29 +1853,7 @@ opendap__fetch <- function(
             native_request_error <<- TRUE
         }
     )
-    prior_candidates <- data.table::as.data.table(ddb_read_table(
-        conn,
-        "subset_candidates"
-    ))
-    candidate_columns <- names(prior_candidates)
-    if (nrow(candidates)) {
-        saved_candidates <- unique(
-            data.table::rbindlist(
-                list(
-                    prior_candidates,
-                    candidates[, candidate_columns, with = FALSE]
-                ),
-                fill = TRUE
-            ),
-            by = "candidate_id"
-        )
-        ddb_write_table(
-            conn,
-            "subset_candidates",
-            as.data.frame(saved_candidates),
-            overwrite = TRUE
-        )
-    }
+    prior_candidates <- opendap__register_candidates(conn, candidates)
     # Preserve the caller's exact selection and configuration independently of
     # mutable case links. Each run has checked provenance, including code identity.
     run_id <- basename(tempfile("run-", tmpdir = file.path(dest, "subsets")))
@@ -1987,12 +2033,28 @@ opendap__fetch <- function(
     directory_ticket <- NULL
     directory_result <- NULL
     directory_error <- NULL
-    on.exit(if (!is.null(pool)) pool$close(force = TRUE), add = TRUE)
+    completed_call <- FALSE
+    on.exit(
+        {
+            if (!is.null(pool)) {
+                if (is.null(session)) {
+                    pool$close(force = TRUE)
+                } else if (!completed_call) {
+                    session$reset()
+                }
+            }
+        },
+        add = TRUE
+    )
     if (
         directory_needed ||
             any(!vapply(states, function(s) s$finished, logical(1L)))
     ) {
-        pool <- source__pool(workers, timeout = timeout)
+        pool <- if (is.null(session)) {
+            source__pool(workers, timeout = timeout)
+        } else {
+            session$acquire(workers, timeout)
+        }
     }
     # Each state has at most one active attempt. Queue only available worker
     # slots rather than serializing every File record into an unbounded queue.
@@ -2031,26 +2093,7 @@ opendap__fetch <- function(
                         state$result$source_key == state$key
                     ]
                     opendap__record_content(conn, additions)
-                    saved <- data.table::as.data.table(ddb_read_table(
-                        conn,
-                        "subset_candidates"
-                    ))
-                    saved <- unique(
-                        data.table::rbindlist(
-                            list(
-                                saved,
-                                additions[, names(saved), with = FALSE]
-                            ),
-                            fill = TRUE
-                        ),
-                        by = "candidate_id"
-                    )
-                    ddb_write_table(
-                        conn,
-                        "subset_candidates",
-                        as.data.frame(saved),
-                        overwrite = TRUE
-                    )
+                    opendap__register_candidates(conn, additions)
                     state$candidates <- unique(
                         data.table::rbindlist(
                             list(state$candidates, additions),
@@ -2368,8 +2411,12 @@ opendap__fetch <- function(
         Sys.sleep(.02)
     }
     if (!is.null(pool)) {
-        pool$close()
-        pool <- NULL
+        if (is.null(session)) {
+            pool$close()
+            pool <- NULL
+        } else {
+            stopifnot(pool$idle())
+        }
     }
     # Only index transport failures remain directory gaps. Invalid metadata,
     # implementation errors and caller-owned publication errors stay explicit.
@@ -2387,7 +2434,7 @@ opendap__fetch <- function(
             # Reuse the same acquisition implementation for newly found sources.
             # Carry only this invocation's durable block identities across phases;
             # an attempted source never authorizes reuse of its earlier cache.
-            return(opendap__fetch(
+            result <- opendap__fetch(
                 completed,
                 requests,
                 dest,
@@ -2400,11 +2447,15 @@ opendap__fetch <- function(
                 node_workers,
                 progress = progress,
                 max_values = max_values,
-                replica_cooldown = replica_cooldown
-            ))
+                replica_cooldown = replica_cooldown,
+                session = session
+            )
+            completed_call <- TRUE
+            return(result)
         }
     }
     jobs <- ddb_read_table(conn, "subset_jobs")
+    completed_call <- TRUE
     list(
         dest = dest,
         jobs = jobs,
