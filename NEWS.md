@@ -1,5 +1,13 @@
 # epwshiftr (development version)
 
+* Reduce repeated raw subset acquisition bookkeeping: publish site-scoped native
+  demands, register only changed receipts and new corner membership, and update
+  only current request/source associations. Private sequential coordinators can
+  reuse a fully drained worker pool across calls; failed calls retire only their
+  owned pool. Decode each verified transfer once while rechecking its receipt
+  and bytes before commit. Retain native offsets, bounds, identities, public
+  defaults and per-call node throttling (#310).
+
 * Accept CMIP6 monthly daily-extrema statistics on ordinary bounded time axes.
   Retain ordered `cell_methods`, native offsets and interval bounds through raw
   reads and cached resume, without inferring climatological cycles or daily
