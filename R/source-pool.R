@@ -335,6 +335,12 @@ source__pool <- function(
             )
         })
     }
+    # A caller may reuse this pool only after its queue and all slots are drained.
+    pool$idle <- function() {
+        guard()
+        !length(queue) &&
+            all(vapply(slots, function(s) is.null(s$active), logical(1L)))
+    }
     pool$close <- function(force = FALSE) {
         if (closed) {
             return(invisible(NULL))
@@ -358,6 +364,55 @@ source__pool <- function(
     }
     initialized <- TRUE
     pool
+}
+
+# Own a lazy pool across consecutive internal subset calls in one coordinator.
+# Failed calls discard only this session's pool; budgets and stores stay caller-owned.
+opendap__session <- function(workers, timeout) {
+    checkmate::assert_count(workers, positive = TRUE)
+    checkmate::assert_number(timeout, lower = .1, finite = TRUE)
+    owner <- Sys.getpid()
+    pool <- NULL
+    closed <- FALSE
+    session <- new.env(parent = emptyenv())
+    class(session) <- "epwshiftr_subset_session"
+    guard <- function() stopifnot(!closed, Sys.getpid() == owner)
+    # Reject configuration drift or reuse by a different coordinator.
+    session$validate <- function(requested_workers, requested_timeout) {
+        guard()
+        stopifnot(
+            identical(as.integer(requested_workers), as.integer(workers)),
+            identical(as.double(requested_timeout), as.double(timeout))
+        )
+        invisible(NULL)
+    }
+    # Only a fully drained pool may cross a call boundary.
+    session$acquire <- function(requested_workers, requested_timeout) {
+        session$validate(requested_workers, requested_timeout)
+        if (is.null(pool)) {
+            pool <<- source__pool(workers, timeout = timeout)
+        }
+        stopifnot(pool$idle())
+        pool
+    }
+    # Failed calls discard their own pool before any later source admission.
+    session$reset <- function() {
+        guard()
+        if (!is.null(pool)) {
+            pool$close(force = TRUE)
+        }
+        pool <<- NULL
+        invisible(NULL)
+    }
+    # The campaign owner can release its session repeatedly during unwinding.
+    session$close <- function() {
+        if (!closed) {
+            session$reset()
+            closed <<- TRUE
+        }
+        invisible(NULL)
+    }
+    session
 }
 
 # vim: fdm=marker :

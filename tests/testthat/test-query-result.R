@@ -6541,7 +6541,7 @@ test_that("raw subset reports partial directories independently of native comple
     changed$lon <- 10.75
     expect_error(
         partial$fetch_subset(changed, dest, discover = TRUE),
-        "View|view"
+        "View|view|base table"
     )
     expect_true(subset_status(dest)$directory_complete)
     expect_equal(read_subset(dest)$links$lon, 10.25)
@@ -6588,7 +6588,7 @@ test_that("raw subset reports partial directories independently of native comple
     duckdb::dbDisconnect(conn, shutdown = TRUE)
     expect_error(
         partial$fetch_subset(changed, dest, discover = TRUE),
-        "View|view"
+        "View|view|base table"
     )
     conn <- duckdb::dbConnect(
         duckdb::duckdb(),
@@ -8802,6 +8802,321 @@ test_that("CMIP6 monthly statistics resume ordinary native blocks unchanged", {
         curl::curl_fetch_memory(paste0(server$url(), "requests"))$content
     ))
     expect_false(any(grepl("fast-bounds.nc.dods tas", traffic, fixed = TRUE)))
+})
+
+# Check idempotent receipt registration without weakening corruption or rollback guards.
+test_that("serial overhead fixes register only changed demand receipts", {
+    dest <- tempfile("serial-demands-")
+    store <- opendap__open(dest)
+    on.exit(store$close(), add = TRUE)
+    conn <- priv(store)$conn
+    d <- data.table::data.table(
+        source_key = "serial-source",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08",
+        native_ranges = "[[1,8]]"
+    )
+    data.table::set(d, j = "demand_id", value = opendap__demand_ids(d))
+    appended <- 0L
+    append <- ddb_append_table
+    local_mocked_bindings(
+        .package = "epwshiftr",
+        ddb_append_table = function(conn, table, rows, ...) {
+            if (table == "subset_demands") {
+                appended <<- appended + nrow(rows)
+            }
+            append(conn, table, rows, ...)
+        }
+    )
+    opendap__save_demands(conn, d, dest)
+    first <- ddb_read_table(conn, "subset_demands")
+    sha <- tools::sha256sum(first$receipt_path)
+    opendap__save_demands(conn, d, dest)
+    expect_identical(appended, 1L)
+    expect_identical(ddb_read_table(conn, "subset_demands"), first)
+    expect_identical(tools::sha256sum(first$receipt_path), sha)
+    changed <- data.table::copy(d)
+    data.table::set(changed, j = "native_ranges", value = "[[1,4]]")
+    opendap__save_demands(conn, changed, dest)
+    expect_identical(appended, 2L)
+    expect_true(file.exists(first$receipt_path))
+    latest <- ddb_read_table(conn, "subset_demands")
+    expect_false(identical(latest$receipt_path, first$receipt_path))
+    # A damaged byte-addressed receipt is re-created only from its exact payload.
+    writeBin(as.raw(1L), latest$receipt_path)
+    opendap__save_demands(conn, changed, dest)
+    expect_identical(
+        unname(tools::sha256sum(latest$receipt_path)),
+        latest$receipt_sha256
+    )
+    expect_identical(appended, 2L)
+    opendap__save_demands(conn, d[0L], dest)
+    expect_identical(ddb_read_table(conn, "subset_demands"), latest)
+})
+
+# The real public call must keep other associations and avoid whole-table rewrites.
+test_that("serial overhead fixes update only current associations", {
+    skip_on_cran()
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "source.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    dest <- tempfile("serial-links-")
+    request <- data.frame(
+        request_id = "one",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    values <- read_subset(dest)$values
+    attempts <- subset_status(dest, "attempts")
+    original <- ddb_write_table
+    local_mocked_bindings(
+        .package = "epwshiftr",
+        ddb_write_table = function(conn, table, rows, ...) {
+            if (
+                table %in%
+                    c("subset_links", "subset_candidates", "subset_content")
+            ) {
+                stop("Unscoped ledger rewrite")
+            }
+            original(conn, table, rows, ...)
+        }
+    )
+    other <- request
+    other$request_id <- "two"
+    expect_true(
+        files$fetch_subset(other, dest, workers = 1L, discover = FALSE)$complete
+    )
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    expect_identical(subset_status(dest, "attempts"), attempts)
+    expect_equal(read_subset(dest)$values, values)
+    store <- opendap__open(dest)
+    on.exit(store$close(), add = TRUE)
+    expect_setequal(
+        ddb_read_table(priv(store)$conn, "subset_links")$request_id,
+        c("one", "two")
+    )
+})
+
+# Reuse one private pool across calls, and retire it after a caller-side failure.
+test_that("serial overhead fixes reuse and reset only the owned acquisition pool", {
+    skip_on_cran()
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    session <- opendap__session(1L, 2)
+    on.exit(session$close(), add = TRUE)
+    peer <- source__pool(1L, timeout = 2)
+    on.exit(peer$close(force = TRUE), add = TRUE)
+    peer_pid <- peer$status()[[1L]]$pid
+    dest <- tempfile("serial-session-")
+    request <- data.frame(
+        request_id = "city",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    make_files <- function(id) {
+        docs <- query_result_test_file_docs(paste0(
+            server$url(),
+            "source",
+            id,
+            ".nc|application/netcdf|OPENDAP"
+        ))
+        docs$variable_id <- "tas"
+        docs$instance_id <- docs$master_id <- paste0("serial-", id)
+        query_result_test_object("File", docs)
+    }
+    run <- function(id) {
+        opendap__fetch(
+            make_files(id),
+            request,
+            dest,
+            workers = 1L,
+            timeout = 2,
+            discover = FALSE,
+            session = session
+        )
+    }
+    expect_true(run(1L)$complete)
+    pid <- session$acquire(1L, 2)$status()[[1L]]$pid
+    handle <- ps::ps_handle(pid)
+    expect_true(run(2L)$complete)
+    expect_identical(session$acquire(1L, 2)$status()[[1L]]$pid, pid)
+    expect_error(session$acquire(2L, 2))
+    state <- opendap__job_state
+    with_mocked_bindings(
+        .package = "epwshiftr",
+        expect_error(run(3L), "owned caller failure"),
+        opendap__job_state = function(store, key, signature, status, ...) {
+            if (status == "running") {
+                stop("owned caller failure")
+            }
+            state(store, key, signature, status, ...)
+        }
+    )
+    expect_false(ps::ps_is_running(handle))
+    expect_true(ps::ps_is_running(ps::ps_handle(peer_pid)))
+    expect_true(run(3L)$complete)
+    expect_false(identical(session$acquire(1L, 2)$status()[[1L]]$pid, pid))
+    session$close()
+    expect_error(session$acquire(1L, 2))
+})
+
+# A manifest replacement failure must retain every prior demand reference.
+test_that("serial overhead fixes roll back a failed receipt replacement", {
+    dest <- tempfile("serial-rollback-")
+    store <- opendap__open(dest)
+    on.exit(store$close(), add = TRUE)
+    conn <- priv(store)$conn
+    demands <- data.table::data.table(
+        demand_id = "demand",
+        source_key = "source",
+        lon = 10,
+        lat = 1,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08",
+        native_ranges = "[[1,8]]"
+    )
+    opendap__save_demands(conn, demands, dest)
+    before <- ddb_read_table(conn, "subset_demands")
+    data.table::set(demands, j = "native_ranges", value = "[[1,4]]")
+    append <- ddb_append_table
+    with_mocked_bindings(
+        expect_error(
+            opendap__save_demands(conn, demands, dest),
+            "append failure"
+        ),
+        ddb_append_table = function(conn, table, rows, ...) {
+            if (table == "subset_demands") {
+                stop("append failure")
+            }
+            append(conn, table, rows, ...)
+        },
+        .package = "epwshiftr"
+    )
+    expect_identical(ddb_read_table(conn, "subset_demands"), before)
+    expect_identical(
+        unname(tools::sha256sum(before$receipt_path)),
+        before$receipt_sha256
+    )
+})
+
+# Real inbox transfers decode once, while a byte change before commit still fails closed.
+test_that("serial overhead fixes decode raw transfers once and reject changed bytes", {
+    skip_on_cran()
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "source.nc|application/netcdf|OPENDAP"
+    ))
+    docs$variable_id <- "tas"
+    files <- query_result_test_object("File", docs)
+    request <- data.frame(
+        request_id = "city",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    decoded <- 0L
+    commits <- 0L
+    mutate <- "none"
+    # Shadow only the coordinator's decoder, retaining the actual acquisition and commit.
+    shadow <- new.env(parent = environment(opendap__drain))
+    shadow$readRDS <- function(file, ...) {
+        if (grepl("^block-[0-9]+[.]rds$", basename(file))) {
+            decoded <<- decoded + 1L
+        }
+        base::readRDS(file, ...)
+    }
+    drain <- opendap__drain
+    environment(drain) <- shadow
+    commit <- opendap__commit
+    local_mocked_bindings(
+        opendap__drain = drain,
+        opendap__commit = function(
+            store,
+            job,
+            path,
+            progress,
+            received = NULL
+        ) {
+            stopifnot(!is.null(received))
+            commits <<- commits + 1L
+            if (mutate == "data") {
+                writeBin(as.raw(1L), path)
+            }
+            if (mutate == "receipt") {
+                jsonlite::write_json(
+                    list(sha256 = "changed"),
+                    paste0(path, ".json"),
+                    auto_unbox = TRUE
+                )
+            }
+            commit(store, job, path, progress, received)
+        },
+        .package = "epwshiftr"
+    )
+    dest <- tempfile("serial-decode-")
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE
+        )$complete
+    )
+    expect_gt(commits, 0L)
+    expect_identical(decoded, commits)
+    expect_equal(nrow(read_subset(dest)$values), 32L)
+    mutate <- "data"
+    expect_error(
+        files$fetch_subset(
+            request,
+            tempfile("serial-change-"),
+            workers = 1L,
+            discover = FALSE
+        ),
+        "changed before commit"
+    )
+    mutate <- "receipt"
+    expect_error(
+        files$fetch_subset(
+            request,
+            tempfile("serial-receipt-change-"),
+            workers = 1L,
+            discover = FALSE
+        ),
+        "changed before commit"
+    )
 })
 
 # vim: fdm=marker :

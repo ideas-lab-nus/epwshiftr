@@ -43,3 +43,42 @@ test_that("standalone worker startup has no host-package dependencies", {
     job <- mirai::mirai(42L, .compute = profile)
     expect_identical(mirai::collect_mirai(job), 42L)
 })
+
+# A persistent session retains its healthy slot when a different owned reader times out.
+test_that("subset sessions reject busy reuse and replace only timed out readers", {
+    skip_on_cran()
+    session <- opendap__session(2L, .15)
+    on.exit(session$close(), add = TRUE)
+    pool <- session$acquire(2L, .15)
+    identities <- vapply(pool$status(), function(s) s$pid, integer(1L))
+    timed_out <- 0L
+    ticket <- pool$submit(
+        list(
+            list(source_key = "slow", delay = 3),
+            list(source_key = "fast", delay = 0)
+        ),
+        read = function(job) {
+            Sys.sleep(job$delay)
+            Sys.getpid()
+        },
+        collect = function(job, value) NULL,
+        on_error = function(job, error) {
+            stopifnot(inherits(error, "epwshiftr_source_timeout"))
+            timed_out <<- timed_out + 1L
+        }
+    )
+    expect_error(session$acquire(2L, .15))
+    deadline <- proc.time()[["elapsed"]] + 10
+    while (ticket$status == "pending") {
+        stopifnot(proc.time()[["elapsed"]] < deadline)
+        pool$poll()
+        Sys.sleep(.01)
+    }
+    expect_identical(timed_out, 1L)
+    expect_identical(ticket$status, "done")
+    expect_true(pool$idle())
+    after <- vapply(pool$status(), function(s) s$pid, integer(1L))
+    expect_false(identical(identities[[1L]], after[[1L]]))
+    expect_identical(identities[[2L]], after[[2L]])
+    expect_identical(session$acquire(2L, .15), pool)
+})
