@@ -9119,4 +9119,226 @@ test_that("serial overhead fixes decode raw transfers once and reject changed by
     )
 })
 
+# Coordinate read rejection is local to its File/endpoint, never evidence of a broken identity or a node-wide outage.
+test_that("CF offset rejection stays retryable and local to its endpoint", {
+    error <- tryCatch(
+        parse_cf_time(c(0, NA_real_), "days since 2000-01-01", "noleap"),
+        error = identity
+    )
+    expect_s3_class(error, "error")
+    expect_identical(
+        conditionMessage(error),
+        "Invalid offsets for CF time coordinate."
+    )
+    expect_identical(opendap__failure_kind(error), "source_coordinate")
+    reason <- opendap__gap_reason(conditionMessage(error))
+    expect_identical(reason$kind, "source_coordinate")
+    expect_true(reason$retryable)
+    history <- data.table::data.table(
+        source_key = paste0("coordinate", 1:3),
+        url = paste0("url", 1:3),
+        data_node = "one-node",
+        client = "local",
+        observed_at = 1001:1003,
+        native_values = 0,
+        success = FALSE,
+        elapsed_seconds = 1,
+        open_seconds = 0,
+        error = conditionMessage(error),
+        error_kind = "source_coordinate"
+    )
+    candidates <- data.table::as.data.table(history[, c(
+        "source_key",
+        "url",
+        "data_node"
+    )])
+    expect_equal(opendap__cooldown_deadline(history[1L, ], 60), 1061)
+    expect_equal(opendap__cooldown_deadline(history, 60, node = TRUE), 0)
+    expect_equal(
+        opendap__cooling_until(candidates, history, "local", 60, now = 1004),
+        1061:1063
+    )
+    expect_equal(
+        opendap__recovery_limits(
+            candidates,
+            history,
+            "local",
+            60,
+            4L,
+            now = 1004
+        ),
+        rep(4L, 3L)
+    )
+    peer <- candidates[1L]
+    data.table::set(peer, j = "source_key", value = "independent")
+    expect_equal(
+        opendap__cooling_until(peer, history, "local", 60, now = 1004),
+        0
+    )
+    # Exact matching keeps unknown implementation errors and content conflicts fatal or non-retryable.
+    for (message in c(
+        "Invalid offsets for CF time coordinate. extra",
+        "Invalid offsets for CF time coordinate",
+        "Manifest publication failed"
+    )) {
+        expect_identical(opendap__failure_kind(message), "internal")
+        expect_false(opendap__gap_reason(message)$retryable)
+    }
+    expect_identical(
+        opendap__failure_kind("Replica grid identity conflicts"),
+        "source_metadata"
+    )
+    expect_false(
+        opendap__gap_reason("Replica grid identity conflicts")$retryable
+    )
+    expect_error(
+        parse_cf_time(Inf, "days since 2000-01-01"),
+        "Invalid offsets",
+        fixed = TRUE
+    )
+})
+
+# Drive the public acquisition path through a real native-parser error, leaving healthy publication and later resume unmocked.
+test_that("CF offset rejection preserves healthy files and later exact recovery", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()[c(1L, 1L), ]
+    docs$master_id <- docs$instance_id <- c("coordinate-file", "healthy-file")
+    docs$variable_id <- "tas"
+    docs$data_node <- c("invalid-coordinate", "healthy")
+    docs$url <- I(lapply(c("coordinate.nc", "healthy.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    request <- data.frame(
+        request_id = "raw",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    original <- opendap__read_source
+    # Generate the production condition with the native parser, instead of weakening or replacing the scientific validation.
+    reader <- function(job) {
+        if (job$data_node == "invalid-coordinate") {
+            get("parse_cf_time", asNamespace("epwshiftr"))(
+                c(0, NA_real_),
+                "days since 2000-01-01",
+                "noleap"
+            )
+        }
+        original(job)
+    }
+    environment(reader) <- list2env(
+        list(original = original),
+        parent = baseenv()
+    )
+    local_mocked_bindings(opendap__read_source = reader)
+    dest <- tempfile("coordinate-recovery-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    files <- query_result_test_object("File", docs)
+    first <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        retries = 0L
+    )
+    expect_false(first$complete)
+    attempts <- subset_status(dest, "attempts")
+    expect_identical(
+        attempts$error_kind[!attempts$success],
+        "source_coordinate"
+    )
+    expect_equal(sum(attempts$native_values), 32)
+    coverage <- subset_status(dest, "coverage")
+    missing <- coverage[!coverage$complete, ]
+    expect_equal(nrow(missing), 1L)
+    expect_identical(missing$gap_kind, "source_coordinate")
+    expect_true(missing$retryable)
+    expect_false(missing$axis_known)
+    expect_equal(sort(read_subset(dest)$values$value), as.double(1:32))
+    blocks <- subset_status(dest, "blocks")
+    hashes <- tools::sha256sum(blocks$path)
+    # A later call retries the rejected File while reusing every checked block of the healthy File.
+    local_mocked_bindings(opendap__read_source = original)
+    recovered <- files$fetch_subset(
+        request,
+        dest,
+        workers = 1L,
+        discover = FALSE,
+        retries = 0L
+    )
+    expect_true(recovered$complete)
+    saved <- subset_status(dest, "attempts")
+    # The ledger contains both chunk publications and final task observations.
+    # Every added observation must belong only to the previously rejected File.
+    resumed <- saved[seq.int(nrow(attempts) + 1L, nrow(saved)), ]
+    expect_gt(nrow(resumed), 0L)
+    expect_identical(unique(resumed$source_key), missing$source_key[[1L]])
+    expect_true(any(resumed$success & resumed$native_values > 0))
+    expect_equal(tools::sha256sum(names(hashes)), hashes)
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), sort(rep(as.double(1:32), 2L)))
+    expect_identical(unique(raw$values$cf_calendar), "360_day")
+    expect_equal(sort(unique(raw$values$cf_day)), 1:8)
+    expect_true(all(subset_status(dest, "coverage")$complete))
+})
+
+# A rejected endpoint must not prevent a compatible Replica of the same frozen File from supplying its native corners.
+test_that("CF offset rejection permits same-identity replica fallback", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app())
+    on.exit(server$stop(), add = TRUE)
+    docs <- query_result_test_file_docs()[c(1L, 1L), ]
+    docs$variable_id <- "tas"
+    docs$data_node <- c("invalid-coordinate", "consistent")
+    docs$url <- I(lapply(c("coordinate.nc", "consistent.nc"), function(name) {
+        paste0(server$url(), name, "|application/netcdf|OPENDAP")
+    }))
+    original <- opendap__read_source
+    reader <- function(job) {
+        if (job$data_node == "invalid-coordinate") {
+            get("parse_cf_time", asNamespace("epwshiftr"))(
+                NA_real_,
+                "days since 2000-01-01",
+                "noleap"
+            )
+        }
+        original(job)
+    }
+    environment(reader) <- list2env(
+        list(original = original),
+        parent = baseenv()
+    )
+    local_mocked_bindings(opendap__read_source = reader)
+    dest <- tempfile("coordinate-replica-")
+    on.exit(unlink(dest, recursive = TRUE), add = TRUE)
+    request <- data.frame(
+        request_id = "raw",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-08"
+    )
+    files <- query_result_test_object("File", docs)
+    expect_true(
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            discover = FALSE,
+            retries = 0L
+        )$complete
+    )
+    attempts <- subset_status(dest, "attempts")
+    expect_equal(length(unique(attempts$source_key)), 1L)
+    expect_identical(attempts$error_kind[[1L]], "source_coordinate")
+    expect_false(attempts$success[[1L]])
+    expect_true(attempts$success[[2L]])
+    expect_equal(sort(read_subset(dest)$values$value), as.double(1:32))
+})
+
 # vim: fdm=marker :

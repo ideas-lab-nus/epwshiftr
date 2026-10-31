@@ -1248,9 +1248,12 @@ opendap__cooldown_deadline <- function(
 ) {
     success <- rows$success & rows$native_values > 0
     last_success <- max(c(-Inf, rows$observed_at[success]), na.rm = TRUE)
+    # Invalid native offsets can be retried at this endpoint, but they do not
+    # corroborate a node outage or restrict independent Files on that node.
+    kinds <- if (node) "transport" else c("transport", "source_coordinate")
     failed <- !rows$success &
         !is.na(rows$error_kind) &
-        rows$error_kind == "transport" &
+        rows$error_kind %in% kinds &
         rows$observed_at > last_success
     rows <- rows[failed]
     if (!nrow(rows)) {
@@ -1408,6 +1411,11 @@ opendap__failure_kind <- function(error) {
     }
     if (length(message) != 1L || is.na(message)) {
         return("completion")
+    }
+    # Keep the native parser's exact rejection retryable without accepting
+    # its invalid values or masking unrelated implementation/identity errors.
+    if (identical(message, "Invalid offsets for CF time coordinate.")) {
+        return("source_coordinate")
     }
     if (
         grepl(
@@ -2506,7 +2514,7 @@ opendap__gap_reason <- function(error) {
         out$kind <- "no_candidate"
     } else {
         out$kind <- opendap__failure_kind(error)
-        out$retryable <- identical(out$kind, "transport")
+        out$retryable <- out$kind %in% c("transport", "source_coordinate")
     }
     out
 }
