@@ -1,5 +1,11 @@
 # epwshiftr (development version)
 
+* Keep invalid native CF time offsets local to their source during raw subset
+  acquisition. Preserve the rejected values as incomplete, allow compatible
+  Replicas and independent Files to continue, and retain later retry eligibility
+  with endpoint-local cooldown. Coordinate validity, source identities and
+  existing raw blocks remain unchanged (#311).
+
 * Reduce repeated raw subset acquisition bookkeeping: publish site-scoped native
   demands, register only changed receipts and new corner membership, and update
   only current request/source associations. Private sequential coordinators can
