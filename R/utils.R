@@ -1182,12 +1182,12 @@ store_write_json_atomic <- function(x, path, ...) {
     if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE, showWarnings = FALSE)
     }
-    tmp <- tempfile(pattern = paste0(basename(path), "-"), tmpdir = dir)
+    # A content-addressed final name can be close to the Windows path limit.
+    tmp <- tempfile(pattern = ".epw-", tmpdir = dir)
     on.exit(unlink(tmp, force = TRUE), add = TRUE)
     jsonlite::write_json(x, tmp, ...)
-    if (!file.rename(tmp, path)) {
-        file.copy(tmp, path, overwrite = TRUE)
-        unlink(tmp, force = TRUE)
+    if (!file.rename(tmp, path) && !file.copy(tmp, path, overwrite = TRUE)) {
+        stop("Could not publish the JSON file.", call. = FALSE)
     }
     path
 }

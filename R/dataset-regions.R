@@ -748,12 +748,12 @@ dataset__neighborhood_bounds <- function(
                 next
             }
             actual <- if (attribute == "calendar") {
-                normalize_cf_calendar(declared)
+                dataset__boundary_calendar(declared)
             } else {
                 as.character(declared)
             }
             required <- if (attribute == "calendar") {
-                axis$calendar
+                dataset__boundary_calendar(axis$calendar)
             } else {
                 as.character(axis$units)
             }
@@ -943,6 +943,62 @@ dataset__coverage_index <- function(
     )
 }
 
+# Split only a rejected 3D weather request along its native time dimension.
+# Keep the exact indices, array type, shape and missing values on every retry.
+dataset__read_dap_weather <- function(
+    dataset,
+    var,
+    start,
+    count,
+    index,
+    collapse
+) {
+    result <- tryCatch(
+        dataset$var_get(var, start, count, index, collapse = collapse),
+        error = identity
+    )
+    if (!inherits(result, "error")) {
+        return(result)
+    }
+    if (
+        count[[3L]] <= 1L ||
+            !identical(class(result), c("simpleError", "error", "condition")) ||
+            !conditionMessage(result) %in%
+                c(
+                    "NetCDF: DAP failure",
+                    "NetCDF: DAP server error",
+                    "NetCDF: Malformed or inaccessible DAP2 DATADDS or DAP4 DAP response"
+                )
+    ) {
+        stop(result)
+    }
+    first <- second <- count
+    first[[3L]] <- count[[3L]] %/% 2L
+    second[[3L]] <- count[[3L]] - first[[3L]]
+    next_start <- start
+    next_start[[3L]] <- start[[3L]] + first[[3L]]
+    left <- dataset__read_dap_weather(dataset, var, start, first, index, FALSE)
+    right <- dataset__read_dap_weather(
+        dataset,
+        var,
+        next_start,
+        second,
+        index,
+        FALSE
+    )
+    if (
+        !typeof(left) %in% c("integer", "double") ||
+            typeof(left) != typeof(right) ||
+            !identical(as.integer(dim(left)), as.integer(first)) ||
+            !identical(as.integer(dim(right)), as.integer(second)) ||
+            !identical(names(attributes(left)), "dim") ||
+            !identical(names(attributes(right)), "dim")
+    ) {
+        stop(result)
+    }
+    array(c(left, right), dim = count)
+}
+
 # Preserve enclosing native corners independently of later spatial algorithms.
 # Each callback receives a bounded value block plus its CF and grid provenance.
 dataset__read_neighborhood <- function(
@@ -955,7 +1011,8 @@ dataset__read_neighborhood <- function(
     expected_contract = NULL,
     expected_bounds = NULL,
     max_values = DATASET_REQUEST_MAX_VALUES,
-    on_metadata = NULL
+    on_metadata = NULL,
+    split_dap_read = FALSE
 ) {
     checkmate::assert_int(max_values, lower = 4L)
     checkmate::assert_character(
@@ -1209,7 +1266,15 @@ dataset__read_neighborhood <- function(
                         group$lon_count
                     )
                     began <- proc.time()[["elapsed"]]
-                    raw <- dataset$var_get(
+                    read <- if (
+                        split_dap_read &&
+                            identical(meta$names, c("lon", "lat", "time"))
+                    ) {
+                        function(...) dataset__read_dap_weather(dataset, ...)
+                    } else {
+                        dataset$var_get
+                    }
+                    raw <- read(
                         name,
                         start = start,
                         count = count,

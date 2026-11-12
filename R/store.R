@@ -295,10 +295,8 @@ store__extract_cache_available <- function(path) {
 # store__extract_cache_write {{{
 store__extract_cache_write <- function(path, payload) {
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-    temporary <- tempfile(
-        pattern = paste0(basename(path), "-"),
-        tmpdir = dirname(path)
-    )
+    # Keep staging on the same volume without adding to a long content address.
+    temporary <- tempfile(pattern = ".epw-", tmpdir = dirname(path))
     on.exit(if (file.exists(temporary)) unlink(temporary), add = TRUE)
     saveRDS(payload, temporary, version = 3L, compress = FALSE)
     if (file.exists(path)) {

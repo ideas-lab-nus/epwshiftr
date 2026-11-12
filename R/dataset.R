@@ -683,6 +683,13 @@ dataset__climatology_clock <- function(
     clock
 }
 
+# Accept the CF synonyms only when comparing boundary attributes.
+# Preserve the originally declared calendar in all saved native identities.
+dataset__boundary_calendar <- function(calendar) {
+    value <- normalize_cf_calendar(calendar)
+    if (identical(value, "noleap")) "365_day" else value
+}
+
 # Bounds remain paired with their native-calendar POSIX surrogate so interval
 # semantics survive spatial extraction without assigning Gregorian dates to
 # non-Gregorian calendars.
@@ -822,12 +829,12 @@ dataset__time_bounds <- function(
         )
         if (!is.null(declared)) {
             actual <- if (name == "calendar") {
-                normalize_cf_calendar(declared)
+                dataset__boundary_calendar(declared)
             } else {
                 as.character(declared)
             }
             required <- if (name == "calendar") {
-                normalize_cf_calendar(calendar)
+                dataset__boundary_calendar(calendar)
             } else {
                 as.character(units)
             }

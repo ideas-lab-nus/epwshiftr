@@ -2700,7 +2700,8 @@ EsgResultFile <- R6::R6Class(
         #' @description
         #' Acquire raw 2x2 climate neighborhoods with Replica switching and resume.
         #' @param requests Table with request_id, site_id, lon, lat, time_start,
-        #'   time_stop and optional source filters and case_id labels.
+        #'   time_stop and optional source filters and case_id labels. Use
+        #'   `source_key` to bind a request to one exact File identity.
         #' @param dest Local acquisition directory.
         #' @param workers Number of persistent source readers.
         #' @param resume Reuse locally verified native blocks.
@@ -2727,6 +2728,8 @@ EsgResultFile <- R6::R6Class(
         #'   only one recovery read is admitted until real native values succeed;
         #'   metadata-only success does not reopen all node slots. If every candidate is cooling,
         #'   the source remains incomplete for a later call.
+        #' @param verified_replicas Optional table of verified alternate
+        #'   endpoints, as described in [resume_subsets()].
         #' @return For fetch_subset(), a lightweight acquisition summary. `complete`
         #'   describes native coverage of the selected Files; the independent
         #'   `directory_complete` flag is false for a partially collected File
@@ -2748,7 +2751,8 @@ EsgResultFile <- R6::R6Class(
             network_id = "default",
             node_workers = 2L,
             max_values = 8192L,
-            replica_cooldown = 0
+            replica_cooldown = 0,
+            verified_replicas = NULL
         ) {
             opendap__fetch(
                 self,
@@ -2762,7 +2766,8 @@ EsgResultFile <- R6::R6Class(
                 network_id,
                 node_workers,
                 max_values = max_values,
-                replica_cooldown = replica_cooldown
+                replica_cooldown = replica_cooldown,
+                verified_replicas = verified_replicas
             )
         },
 
