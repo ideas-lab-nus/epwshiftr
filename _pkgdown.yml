@@ -77,6 +77,8 @@ reference:
       - EsgDataset
       - read_subset
       - subset_status
+      - resume_subsets
+      - import_subset_blocks
       - EsgStore
       - Downloader
       - store_reset
