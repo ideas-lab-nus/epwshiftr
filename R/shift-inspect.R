@@ -745,13 +745,36 @@ shift_inspect__query_run <- function(store, query_id) {
 }
 # }}}
 
+# Select each physical catalog row once, using the many-query membership table.
+# Direct ownership covers untracked collections only; a stale or retracted
+# tracked membership must never become current merely through that fallback.
+# shift_inspect__file_membership_sql {{{
+shift_inspect__file_membership_sql <- function(query_id) {
+    ids <- shift_stage__query_ids(query_id)
+    sprintf(
+        paste0(
+            "((file_catalog.query_id IN (%s) AND NOT EXISTS (",
+            "SELECT 1 FROM esg_query_file AS owner_membership ",
+            "WHERE owner_membership.file_key = file_catalog.file_key ",
+            "AND owner_membership.query_id = file_catalog.query_id)) OR EXISTS (",
+            "SELECT 1 FROM esg_query_file AS membership ",
+            "WHERE membership.file_key = file_catalog.file_key ",
+            "AND membership.query_id IN (%s) AND membership.status = 'current'))"
+        ),
+        ids,
+        ids
+    )
+}
+# }}}
+
+# Read a query's catalog even after another query reused its physical files.
 # shift_inspect__file_catalog {{{
 shift_inspect__file_catalog <- function(store, query_id) {
     shift_stage__query_maybe(
         store,
         sprintf(
-            "SELECT * FROM file_catalog WHERE query_id IN (%s)",
-            shift_stage__query_ids(query_id)
+            "SELECT * FROM file_catalog WHERE %s",
+            shift_inspect__file_membership_sql(query_id)
         )
     )
 }
@@ -767,9 +790,9 @@ shift_inspect__file_catalog_summary <- function(store, query_id) {
             paste(
                 "SELECT COUNT(*) AS file_count,",
                 "COALESCE(SUM(size), 0) AS total_size",
-                "FROM file_catalog WHERE query_id IN (%s)"
+                "FROM file_catalog WHERE %s"
             ),
-            shift_stage__query_ids(query_id)
+            shift_inspect__file_membership_sql(query_id)
         )
     )
 }
@@ -802,12 +825,12 @@ shift_inspect__file_catalog_preview <- function(store, query_id, n = 10L) {
             paste0(
                 "SELECT ",
                 columns,
-                " FROM file_catalog WHERE query_id IN (%s)",
+                " FROM file_catalog WHERE %s",
                 " ORDER BY source_id, experiment_id, variable_id, variant_label,",
                 " grid_label, table_id, datetime_start, filename",
                 limit
             ),
-            shift_stage__query_ids(query_id)
+            shift_inspect__file_membership_sql(query_id)
         )
     )
 }

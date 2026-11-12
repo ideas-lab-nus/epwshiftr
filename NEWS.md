@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Retain final-year CMIP6 File candidates, select humidity routes shared by historical and future periods, and retain each query's File memberships.
+
 * Preserve missing baseline opaque sky cover in monthly BWS/BTWS outputs. (#313)
 
 * Run supervised package checks with the active R libraries and standard R tooling. (#313)

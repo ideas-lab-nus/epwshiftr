@@ -1549,6 +1549,178 @@ shift_resolve__abort_cmip6_resolution <- function(diagnostic) {
 }
 # }}}
 
+# Select one common, ordered source alternative for each complete native
+# identity. Greedy per-role selection can otherwise prefer future HURS while
+# historical data only support HUSS/TAS/PS, discarding a valid paired route.
+# Candidate coverage and member/table/grid identity retain their strict checks.
+# shift_resolve__cmip6_paired_alternatives {{{
+shift_resolve__cmip6_paired_alternatives <- function(
+    future,
+    reference,
+    future_catalog,
+    reference_catalog,
+    models,
+    scenarios,
+    reference_experiment,
+    future_years,
+    reference_years,
+    variables,
+    frequency,
+    table,
+    requirements,
+    grid
+) {
+    original <- list(future = future, reference = reference)
+    if (all(lengths(requirements) == 1L)) {
+        return(original)
+    }
+
+    # Enumerate AND-sets in the recipe's existing OR preference order. Each
+    # forced set is applied to both roles, never stitched across identities.
+    sets <- list(list())
+    for (canonical in names(requirements)) {
+        sets <- unlist(
+            lapply(sets, function(current) {
+                lapply(requirements[[canonical]], function(alternative) {
+                    current[[canonical]] <- list(alternative)
+                    current
+                })
+            }),
+            recursive = FALSE
+        )
+    }
+    identity <- c(
+        "source_id",
+        "variant_label",
+        "frequency",
+        "required_partition_key",
+        "requirement_key"
+    )
+    pairs <- vector("list", length(sets))
+    candidates <- vector("list", length(sets))
+    alternative_inputs <- unique(unlist(
+        requirements,
+        recursive = TRUE,
+        use.names = FALSE
+    ))
+    for (i in seq_along(sets)) {
+        selected_inputs <- unique(unlist(
+            sets[[i]],
+            recursive = TRUE,
+            use.names = FALSE
+        ))
+        # Non-selected OR inputs are not optional weather fields. Keep the
+        # original optional contract while forcing the same route in both roles.
+        selected_variables <- setdiff(
+            variables,
+            setdiff(alternative_inputs, selected_inputs)
+        )
+        # Named table/frequency overrides belong to the selected raw variables;
+        # an excluded OR input must not remain as an unknown request override.
+        selected_frequency <- if (is.null(names(frequency))) {
+            frequency
+        } else {
+            frequency[intersect(names(frequency), selected_variables)]
+        }
+        selected_table <- if (is.null(names(table))) {
+            table
+        } else {
+            value <- table[intersect(names(table), selected_variables)]
+            if (length(value)) value else NULL
+        }
+        selected_future <- shift_resolve__cmip6_candidates(
+            future_catalog,
+            models,
+            scenarios,
+            selected_variables,
+            future_years,
+            selected_frequency,
+            selected_table,
+            requirements = sets[[i]],
+            grid = grid
+        )
+        selected_reference <- shift_resolve__cmip6_candidates(
+            reference_catalog,
+            models,
+            reference_experiment,
+            selected_variables,
+            reference_years,
+            selected_frequency,
+            selected_table,
+            requirements = sets[[i]],
+            grid = grid
+        )
+        common <- merge(
+            selected_future[complete %in% TRUE, identity, with = FALSE],
+            selected_reference[complete %in% TRUE, identity, with = FALSE],
+            by = identity,
+            all = FALSE,
+            sort = FALSE
+        )
+        data.table::set(
+            common,
+            j = "alternative_rank",
+            value = rep(i, nrow(common))
+        )
+        pairs[[i]] <- common
+        candidates[[i]] <- list(
+            future = selected_future,
+            reference = selected_reference
+        )
+    }
+    common <- data.table::rbindlist(pairs, use.names = TRUE)
+    if (!nrow(common)) {
+        # Keep the original failed candidates so diagnostics retain the actual
+        # missing-role/variable evidence instead of turning failure into empty input.
+        return(original)
+    }
+    data.table::setorderv(common, "alternative_rank")
+    native_identity <- setdiff(identity, "requirement_key")
+    common <- common[!duplicated(common, by = native_identity)]
+    selected <- lapply(seq_along(sets), function(i) {
+        keys <- common[
+            common[["alternative_rank"]] == i,
+            identity,
+            with = FALSE
+        ]
+        if (!nrow(keys)) {
+            return(NULL)
+        }
+        lapply(candidates[[i]], function(rows) {
+            merge(rows, keys, by = identity, all = FALSE, sort = FALSE)
+        })
+    })
+    selected <- Filter(Negate(is.null), selected)
+    result <- lapply(c("future", "reference"), function(role) {
+        paired_rows <- data.table::rbindlist(
+            lapply(selected, `[[`, role),
+            use.names = TRUE
+        )
+        # Retain failed native identities in inspection records. Replace only
+        # identities with a valid common alternative, not the diagnostic history.
+        paired_keys <- unique(common[, native_identity, with = FALSE])
+        data.table::set(
+            paired_keys,
+            j = "paired_identity",
+            value = rep(TRUE, nrow(paired_keys))
+        )
+        retained <- merge(
+            original[[role]],
+            paired_keys,
+            by = native_identity,
+            all.x = TRUE,
+            sort = FALSE
+        )
+        retained <- retained[is.na(retained[["paired_identity"]])]
+        data.table::set(retained, j = "paired_identity", value = NULL)
+        data.table::setcolorder(retained, names(original[[role]]))
+        data.table::rbindlist(list(paired_rows, retained), use.names = TRUE)
+    })
+    names(result) <- c("future", "reference")
+    result
+}
+# }}}
+
 # Intersect optional future/reference variables on their exact table and grid
 # while retaining each side's required rows. This makes optional SND and
 # extrema available only when both periods can support the same calculation.
@@ -1787,6 +1959,24 @@ shift_resolve__resolve_cmip6_selection <- function(
             requirements = requirements,
             grid = grid
         )
+        paired <- shift_resolve__cmip6_paired_alternatives(
+            future,
+            historical_candidates,
+            future_catalog,
+            reference_catalog,
+            models,
+            scenarios,
+            reference@experiment,
+            meta$periods$year,
+            reference@periods$year,
+            variables,
+            frequency,
+            table,
+            requirements,
+            grid
+        )
+        future <- paired$future
+        historical_candidates <- paired$reference
         diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
             future,
             reference = historical_candidates,
@@ -3106,7 +3296,14 @@ shift_resolve__as_esg_query <- function(x) {
     for (name in names(aliases)) {
         shift_resolve__query_set(query, name, aliases[[name]])
     }
-    if (!is.null(x@meta$time)) {
+    # Dataset endpoints may be Gregorian surrogates of non-Gregorian CF time
+    # (or representative mid-month samples). File-aware collection must not
+    # reject native final-year coverage before DRS/File and CF checks can run.
+    file_aware_time <- isTRUE(
+        options$time_filter_method %in%
+            c("auto", "drs", "opendap")
+    )
+    if (!is.null(x@meta$time) && !file_aware_time) {
         time <- as.character(x@meta$time)
         if (length(time) == 1L) {
             query$datetime_range(time[[1L]], time[[1L]])

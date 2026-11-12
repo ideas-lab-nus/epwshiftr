@@ -3705,4 +3705,47 @@ test_that("regional plans exclude files owned by other queries", {
     )
 })
 
+# A physical catalog row may outlive the first query that added it.
+test_that("File inspection follows current query membership without double counting", {
+    store <- EsgStore$new(tempfile("shared-file-inspection-"))
+    on.exit(store$close(), add = TRUE)
+    docs <- store_test__file_docs()
+    add <- function(node) {
+        result <- query_result__new(
+            EsgResultFile,
+            index_node = node,
+            params = store_test__params("File"),
+            result = store_test__response(docs)
+        )
+        store$add_files(result)
+    }
+    first <- add("https://first.example.org")
+    second <- add("https://second.example.org")
+    expect_false(identical(first, second))
+    file_stage <- function(ids) {
+        shift_stage__new(
+            ShiftFiles,
+            "files",
+            store_path = store$path,
+            ids = list(query_id = ids)
+        )
+    }
+    individual <- lapply(c(first, second), function(id) {
+        data.table::as.data.table(file_stage(id))
+    })
+    expect_true(all(lengths(lapply(individual, `[[`, "file_key")) == 1L))
+    expect_identical(individual[[1L]]$file_key, individual[[2L]]$file_key)
+    combined <- shift_inspect__file_catalog_summary(store, c(first, second))
+    expect_equal(combined$file_count, 1)
+    expect_equal(
+        as.numeric(combined$total_size),
+        as.numeric(individual[[1L]]$size)
+    )
+    expect_identical(add("https://second.example.org"), second)
+    expect_equal(
+        nrow(shift_inspect__file_catalog_preview(store, c(first, second))),
+        1L
+    )
+})
+
 # vim: fdm=marker :
