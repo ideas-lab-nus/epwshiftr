@@ -1,5 +1,11 @@
 # epwshiftr (development version)
 
+* Resume frozen subset recovery from an existing journal with `resume_subsets()`,
+  retain the original File and window scope, and transfer verified native blocks
+  and receipts with `import_subset_blocks()`. Bind verified alternate endpoints
+  to their original File keys and use short temporary names for Windows metadata
+  publication.
+
 * Keep invalid native CF time offsets local to their source during raw subset
   acquisition. Preserve the rejected values as incomplete, allow compatible
   Replicas and independent Files to continue, and retain later retry eligibility

@@ -707,7 +707,8 @@ opendap__requests <- function(requests, candidates) {
             "grid_label",
             "table_id",
             "variable_id",
-            "version"
+            "version",
+            "source_key"
         ),
         names(requests)
     )
@@ -872,7 +873,7 @@ opendap__block_artifact_path <- function(dest, block_id, sha256, extension) {
     path <- file.path(directory, paste0(name, extension))
     if (file.exists(path) && !identical(checksum_file(path), sha256)) {
         path <- tempfile(
-            pattern = paste0(name, "-"),
+            pattern = "repair-",
             tmpdir = directory,
             fileext = extension
         )
@@ -1042,6 +1043,23 @@ opendap__read_source <- function(job) {
     ds <- EsgDataset$new(paste0(job$url, separator, "noprefetch&nocache"))
     on.exit(ds$close(), add = TRUE)
     ds$open(progress = FALSE)
+    if (!is.null(job$replica_identity)) {
+        # The URL and index receipt are checked by the parent. Recheck the
+        # endpoint's own native identity before planning or reading weather.
+        for (field in names(job$replica_identity)) {
+            actual <- tryCatch(
+                ds$att_get("NC_GLOBAL", field),
+                error = function(error) NULL
+            )
+            if (!identical(actual, job$replica_identity[[field]])) {
+                stop(
+                    "Verified replica native identity mismatch: ",
+                    field,
+                    call. = FALSE
+                )
+            }
+        }
+    }
     opened <- proc.time()[["elapsed"]] - began
     counter <- 0L
     native_values <- 0
@@ -1162,7 +1180,8 @@ opendap__read_source <- function(job) {
             # Further cities share this same open, immutable source connection.
             expected_bounds = if (i == 1L) job$expected_bounds else NULL,
             max_values = job$max_values,
-            on_metadata = receive_metadata
+            on_metadata = receive_metadata,
+            split_dap_read = !is.null(job$replica_identity)
         )
         neighborhoods[[i]] <- selection$neighborhoods
     }
@@ -1702,7 +1721,8 @@ opendap__fetch <- function(
     progress = NULL,
     max_values = DATASET_REQUEST_MAX_VALUES,
     replica_cooldown = 0,
-    session = NULL
+    session = NULL,
+    verified_replicas = NULL
 ) {
     checkmate::assert_int(max_values, lower = 4L)
     checkmate::assert_number(
@@ -1791,11 +1811,17 @@ opendap__fetch <- function(
         }
     }
     candidates <- opendap__access_plan(files, expand = FALSE)
+    candidates <- opendap_recovery__add_replicas(
+        files,
+        candidates,
+        verified_replicas
+    )
     links <- opendap__requests(requests, candidates)
     store <- opendap__open(dest)
     on.exit(store$close(), add = TRUE)
     conn <- priv(store)$conn
     opendap__record_content(conn, candidates)
+    opendap_recovery__record_replicas(conn, verified_replicas)
     directory <- opendap__directory(files$selection())
     directory_rows <- data.table::data.table(request_id = requests$request_id)
     for (column in names(directory)) {
@@ -1889,6 +1915,8 @@ opendap__fetch <- function(
                 body(opendap__fetch),
                 body(opendap__read_source),
                 body(dataset__read_neighborhood),
+                body(dataset__read_dap_weather),
+                body(dataset__boundary_calendar),
                 body(dataset__neighborhood_time_indices),
                 body(dataset__neighborhood_bounds),
                 body(opendap__coverage),
@@ -2386,6 +2414,23 @@ opendap__fetch <- function(
             )
             if (kind == "read") {
                 state$tried[[row$candidate_id[[1L]]]] <- TRUE
+                proof <- which(
+                    verified_replicas$source_key == state$key &
+                        verified_replicas$url == job$url
+                )
+                if (length(proof)) {
+                    identity <- c(
+                        source_id = row$source_id[[1L]],
+                        experiment_id = row$experiment_id[[1L]],
+                        variant_label = row$member_id[[1L]],
+                        grid_label = row$grid_label[[1L]],
+                        table_id = row$table_id[[1L]],
+                        tracking_id = verified_replicas$tracking_id[[proof]]
+                    )
+                    job$replica_identity <- identity[
+                        !is.na(identity) & nzchar(identity)
+                    ]
+                }
             }
             state$job <- job
             state$result <- NULL
@@ -2456,7 +2501,8 @@ opendap__fetch <- function(
                 progress = progress,
                 max_values = max_values,
                 replica_cooldown = replica_cooldown,
-                session = session
+                session = session,
+                verified_replicas = verified_replicas
             )
             completed_call <- TRUE
             return(result)

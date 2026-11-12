@@ -169,7 +169,8 @@ subset_test__dap_app <- function(
     time_values = 0:7,
     climatology_method = NULL,
     bounds_reversed = FALSE,
-    ordinary_method = NULL
+    ordinary_method = NULL,
+    global_attributes = NULL
 ) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
@@ -178,6 +179,7 @@ subset_test__dap_app <- function(
     app$locals$time_units <- time_units
     app$locals$time_values <- time_values
     app$locals$ordinary_method <- ordinary_method
+    app$locals$global_attributes <- global_attributes
     app$locals$climatology_method <- climatology_method
     app$locals$bounds_reversed <- isTRUE(bounds_reversed)
     app$locals$weather <- 0L
@@ -295,6 +297,21 @@ subset_test__dap_app <- function(
                     locals$time_units,
                     attributes,
                     fixed = TRUE
+                )
+            }
+            if (length(locals$global_attributes)) {
+                fields <- paste0(
+                    'String ',
+                    names(locals$global_attributes),
+                    ' "',
+                    locals$global_attributes,
+                    '";',
+                    collapse = ' '
+                )
+                attributes <- sub(
+                    '}$',
+                    paste0('NC_GLOBAL { ', fields, ' } }'),
+                    attributes
                 )
             }
             return(res$send(attributes))

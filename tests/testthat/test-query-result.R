@@ -9341,4 +9341,238 @@ test_that("CF offset rejection permits same-identity replica fallback", {
     expect_equal(sort(read_subset(dest)$values$value), as.double(1:32))
 })
 
+test_that("frozen recovery reuses imported blocks with verified routes", {
+    skip_if_not_installed("webfakes")
+    identity <- c(
+        tracking_id = "hdl:21.14100/mock-file",
+        source_id = "fixture",
+        experiment_id = "ssp245",
+        table_id = "day"
+    )
+    server <- webfakes::new_app_process(
+        subset_test__dap_app(global_attributes = identity)
+    )
+    withr::defer(server$stop())
+    docs <- query_result_test_file_docs(paste0(
+        server$url(),
+        "missing.nc#show=url|application/netcdf|OPENDAP"
+    ))
+    docs$title <- "fast.nc"
+    docs$source_id <- "fixture"
+    docs$experiment_id <- "ssp245"
+    docs$table_id <- "day"
+    docs$variable_id <- "tas"
+    docs$checksum <- strrep("a", 64L)
+    files <- query_result_test_object("File", docs)
+    catalogue <- files$access_plan(expand = FALSE)
+    key <- unique(catalogue$source_key)
+    routes <- data.frame(
+        source_key = key,
+        url = paste0(server$url(), "fast.nc#show=url"),
+        logical_version = catalogue$version,
+        physical_version = "20260102",
+        tracking_id = docs$tracking_id,
+        checksum = docs$checksum,
+        size = as.character(docs$size),
+        receipt_sha256 = strrep("b", 64L)
+    )
+    requests <- data.frame(
+        request_id = c("first", "missing"),
+        case_id = "fixture-case",
+        site_id = "fixture-site",
+        lon = 10.25,
+        lat = 0.25,
+        time_start = c("2060-01-01", "2060-01-04"),
+        time_stop = c("2060-01-01", "2060-01-04"),
+        source_id = docs$source_id,
+        experiment_id = docs$experiment_id,
+        table_id = docs$table_id,
+        variable_id = docs$variable_id
+    )
+    root <- withr::local_tempdir()
+    original <- file.path(root, "original")
+    destination <- file.path(root, "destination")
+    traffic <- function() {
+        response <- curl::curl_fetch_memory(paste0(server$url(), "requests"))
+        calls <- jsonlite::fromJSON(rawToChar(response$content))
+        calls[grepl("[.]dods tas", calls)]
+    }
+    wrong <- routes
+    wrong$tracking_id <- "hdl:wrong"
+    expect_error(
+        files$fetch_subset(requests[1L, ], original, verified_replicas = wrong),
+        "does not match the frozen File identity"
+    )
+    first <- files$fetch_subset(
+        requests[1L, ],
+        original,
+        workers = 1L,
+        retries = 0L,
+        discover = FALSE,
+        verified_replicas = routes
+    )
+    expect_true(first$complete)
+    before <- subset_status(original, "blocks")
+    expect_length(traffic(), 1L)
+    expect_equal(
+        import_subset_blocks(original, destination, key)[["subset_blocks"]],
+        1L
+    )
+    expect_true(all(import_subset_blocks(original, destination, key) == 0L))
+
+    # Recreate the persisted layout of an interrupted recovery-v1 admission.
+    plan <- file.path(root, "plan")
+    dir.create(plan)
+    path <- files$save(file.path(plan, "catalogue.json"))
+    selection <- data.frame(
+        source_key = key,
+        owner = "pc",
+        batch = "pc-fixture",
+        catalogue = basename(path),
+        catalogue_sha256 = checksum_file(path),
+        record_indices = "[1]"
+    )
+    selected <- file.path(plan, "files.parquet")
+    requested <- file.path(plan, "requests.parquet")
+    write_parquet_file(selection, selected)
+    write_parquet_file(requests, requested)
+    metadata <- list(
+        files_sha256 = checksum_file(selected),
+        requests_sha256 = checksum_file(requested),
+        capacities = list(pc = 1L)
+    )
+    jsonlite::write_json(
+        metadata,
+        file.path(plan, "manifest.json"),
+        auto_unbox = TRUE
+    )
+    denominator <- file.path(root, "denominator.rds")
+    saveRDS(
+        list(
+            source_files_sha256 = metadata$files_sha256,
+            requests_sha256 = metadata$requests_sha256,
+            demands = cbind(
+                requests,
+                selection[rep(1L, 2L), c("source_key", "owner", "batch")]
+            )
+        ),
+        denominator
+    )
+    journal <- file.path(root, "journal")
+    dir.create(journal)
+    old <- opendap_recovery__persist(
+        list(
+            generation = 0L,
+            started = as.double(Sys.time()),
+            configuration = list(
+                version = 2L,
+                identity = list(
+                    node = "pc",
+                    files = metadata$files_sha256,
+                    requests = metadata$requests_sha256,
+                    denominator = checksum_file(denominator)
+                ),
+                max_rounds = Inf,
+                max_wait = Inf,
+                max_elapsed = Inf
+            ),
+            phase = "blocked_error",
+            round = 1L,
+            admissions = 1L,
+            wait_seconds = 0,
+            attempted = c("pc-fixture" = FALSE),
+            in_flight = list(
+                batch = "pc-fixture",
+                source_keys = key,
+                started = as.double(Sys.time())
+            )
+        ),
+        journal
+    )
+    recover <- function(max_batches) {
+        resume_subsets(
+            plan,
+            denominator,
+            journal,
+            destination,
+            verified_replicas = routes,
+            max_batches = max_batches,
+            discover = FALSE
+        )
+    }
+    expect_identical(recover(0L), old)
+    after <- recover(1L)
+    expect_identical(after$phase, "complete")
+    expect_identical(after$admissions, old$admissions)
+    expect_identical(after$started, old$started)
+    expect_null(after$in_flight)
+    blocks <- subset_status(destination, "blocks")
+    expect_identical(
+        blocks$sha256[match(before$block_id, blocks$block_id)],
+        before$sha256
+    )
+    added <- blocks[!blocks$block_id %in% before$block_id]
+    expect_true(all(added$time_start_index == 4L))
+    expect_equal(sum(added$lat_count * added$lon_count * added$time_count), 4L)
+    requests_sent <- traffic()
+    expect_length(requests_sent, 1L + nrow(added))
+    expect_true(all(grepl(
+        "tas%5b3(:3)?%5d",
+        requests_sent[-1L],
+        ignore.case = TRUE
+    )))
+    expect_identical(recover(1L)$phase, "complete")
+    expect_identical(traffic(), requests_sent)
+    saved <- read_subset(destination, case_id = "fixture-case")
+    expect_identical(sort(as.integer(saved$values$value)), c(1:4, 13:16))
+})
+
+test_that("native DAP slabs preserve their exact time indices", {
+    source <- array(as.integer(1:12), dim = c(2L, 2L, 3L))
+    source[1L, 1L, 2L] <- NA_integer_
+    requested <- list()
+    read <- function(var, start, count, index, collapse) {
+        requested[[length(requested) + 1L]] <<- c(start, count)
+        if (count[[3L]] > 1L) {
+            stop("NetCDF: DAP server error")
+        }
+        source[,, start[[3L]], drop = FALSE]
+    }
+    args <- list(
+        var = "tas",
+        start = c(1L, 1L, 1L),
+        count = c(2L, 2L, 3L),
+        index = 1L,
+        collapse = FALSE
+    )
+    expect_identical(
+        do.call(
+            dataset__read_dap_weather,
+            c(list(dataset = list(var_get = read)), args)
+        ),
+        source
+    )
+    expect_identical(
+        vapply(Filter(function(x) x[[6L]] == 1L, requested), "[[", 0L, 3L),
+        1:3
+    )
+    denied <- function(...) stop("Permission denied")
+    expect_error(
+        do.call(
+            dataset__read_dap_weather,
+            c(list(dataset = list(var_get = denied)), args)
+        ),
+        "Permission denied"
+    )
+    expect_identical(
+        dataset__boundary_calendar("noleap"),
+        dataset__boundary_calendar("365_day")
+    )
+    expect_false(identical(
+        dataset__boundary_calendar("360_day"),
+        dataset__boundary_calendar("365_day")
+    ))
+    expect_identical(normalize_cf_calendar("noleap"), "noleap")
+})
+
 # vim: fdm=marker :

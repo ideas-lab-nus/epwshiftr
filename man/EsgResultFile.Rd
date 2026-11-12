@@ -177,7 +177,8 @@ pages were fully collected.
   network_id = "default",
   node_workers = 2L,
   max_values = 8192L,
-  replica_cooldown = 0
+  replica_cooldown = 0,
+  verified_replicas = NULL
 )}
     \if{html}{\out{</div>}}
   }
@@ -185,7 +186,8 @@ pages were fully collected.
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{requests}}{Table with request_id, site_id, lon, lat, time_start,
-time_stop and optional source filters and case_id labels.}
+time_stop and optional source filters and case_id labels. Use
+\code{source_key} to bind a request to one exact File identity.}
       \item{\code{dest}}{Local acquisition directory.}
       \item{\code{workers}}{Number of persistent source readers.}
       \item{\code{resume}}{Reuse locally verified native blocks.}
@@ -212,6 +214,8 @@ reset the corresponding failure streak. After corroborated cooling,
 only one recovery read is admitted until real native values succeed;
 metadata-only success does not reopen all node slots. If every candidate is cooling,
 the source remains incomplete for a later call.}
+      \item{\code{verified_replicas}}{Optional table of verified alternate
+endpoints, as described in \code{\link[=resume_subsets]{resume_subsets()}}.}
     }
     \if{html}{\out{</div>}}
   }

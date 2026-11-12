@@ -139,6 +139,8 @@ Collate:
     'method-quantile-mapping.R'
     'method-scaled-distribution-mapping.R'
     'netcdf.R'
+    'opendap-acquisition.R'
+    'opendap-recovery.R'
     'print-truncation.R'
     'query-result-access.R'
     'query-result-plan.R'
@@ -172,7 +174,6 @@ Collate:
     'source-read.R'
     'standalone-cache.R'
     'standalone-downloader.R'
-    'opendap-acquisition.R'
     'weather-method.R'
     'zzz.R'
 Config/testthat/edition: 3
