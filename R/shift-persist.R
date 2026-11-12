@@ -502,6 +502,21 @@ shift_persist__stage_from_ref <- function(ref) {
     })
     meta <- shift_stage__coalesce(ref$meta, list())
     if (identical(stage, "request")) {
+        # Standalone resume intentionally decodes nested stage JSON without
+        # simplification. Restore the request's atomic-vector fields before
+        # calling its public validator, retaining NULL and any mapping names.
+        for (field in c(
+            "source",
+            "experiment",
+            "variant",
+            "variables",
+            "frequency",
+            "time"
+        )) {
+            if (is.list(meta[[field]])) {
+                meta[[field]] <- unlist(meta[[field]], recursive = FALSE)
+            }
+        }
         return(do.call(shift_request, meta))
     }
     if (identical(stage, "datasets")) {

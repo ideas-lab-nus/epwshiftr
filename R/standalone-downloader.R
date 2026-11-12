@@ -298,18 +298,100 @@ downloader__manifest_lock_metadata <- function(lock_dir) {
 }
 # }}}
 
-# Download-local manifest lock stale; kept here so the module can be copied alone.
+# Read only ownership records whose host and PID can be validated.
+# downloader__manifest_lock_owner {{{
+downloader__manifest_lock_owner <- function(lock_dir) {
+    owner <- tryCatch(
+        suppressWarnings(jsonlite::read_json(
+            downloader__manifest_lock_metadata(lock_dir)
+        )),
+        error = function(error) NULL
+    )
+    if (
+        !is.list(owner) ||
+            length(owner$pid) != 1L ||
+            !is.numeric(owner$pid) ||
+            is.na(owner$pid) ||
+            owner$pid <= 0 ||
+            owner$pid > .Machine$integer.max ||
+            owner$pid != as.integer(owner$pid) ||
+            !is.character(owner$hostname) ||
+            length(owner$hostname) != 1L ||
+            is.na(owner$hostname) ||
+            !nzchar(owner$hostname)
+    ) {
+        return(NULL)
+    }
+    owner
+}
+# }}}
+
+# Prove that an owner is absent on this host. Unknown hosts, malformed PIDs and
+# failed process queries are conservative: they never authorize takeover.
+# downloader__local_pid_absent {{{
+downloader__local_pid_absent <- function(pid, hostname) {
+    if (
+        length(pid) != 1L ||
+            !is.numeric(pid) ||
+            is.na(pid) ||
+            pid <= 0 ||
+            pid > .Machine$integer.max ||
+            pid != as.integer(pid) ||
+            !is.character(hostname) ||
+            length(hostname) != 1L ||
+            is.na(hostname)
+    ) {
+        return(FALSE)
+    }
+    if (!identical(hostname, unname(Sys.info()[["nodename"]]))) {
+        return(FALSE)
+    }
+    if (pid == Sys.getpid()) {
+        return(FALSE)
+    }
+    # Only the process API's explicit absence condition authorizes recovery.
+    tryCatch(
+        {
+            ps::ps_handle(as.integer(pid))
+            FALSE
+        },
+        no_such_process = function(error) TRUE,
+        error = function(error) FALSE
+    )
+}
+# }}}
+
+# A valid local owner outlives any age threshold. Only a positively observed
+# absent PID permits immediate recovery; permission/status errors remain locked.
+# The former stale_after argument is retained for existing callers.
 # downloader__manifest_lock_stale {{{
 downloader__manifest_lock_stale <- function(lock_dir, stale_after) {
     if (!dir.exists(lock_dir)) {
         return(FALSE)
     }
-    info <- file.info(lock_dir, extra_cols = FALSE)
-    if (is.na(info$mtime)) {
-        return(TRUE)
+    owner <- downloader__manifest_lock_owner(lock_dir)
+    !is.null(owner) && downloader__local_pid_absent(owner$pid, owner$hostname)
+}
+# }}}
+
+# Serialize orphan reclamation, then recheck ownership after winning the guard.
+# A second waiter must never remove a lock installed by the first waiter. Keep
+# the old ownership record for diagnosis; never touch climate/download payloads.
+# downloader__manifest_reclaim_lock {{{
+downloader__manifest_reclaim_lock <- function(lock_dir, stale_after) {
+    guard <- paste0(lock_dir, ".reclaim")
+    if (!dir.create(guard, showWarnings = FALSE)) {
+        return(FALSE)
     }
-    age <- as.numeric(difftime(Sys.time(), info$mtime, units = "secs"))
-    is.finite(age) && age > stale_after
+    on.exit(unlink(guard, recursive = TRUE), add = TRUE)
+    if (!downloader__manifest_lock_stale(lock_dir, stale_after)) {
+        return(FALSE)
+    }
+    archived <- tempfile(
+        pattern = paste0(basename(lock_dir), ".orphan-"),
+        tmpdir = dirname(lock_dir)
+    )
+    file.rename(lock_dir, archived)
 }
 # }}}
 
@@ -331,31 +413,67 @@ downloader__manifest_acquire_lock <- function(
             meta <- list(
                 pid = Sys.getpid(),
                 hostname = unname(Sys.info()[["nodename"]]),
+                token = basename(tempfile("lock-owner-")),
                 created_at = format(
                     Sys.time(),
                     "%Y-%m-%dT%H:%M:%SZ",
                     tz = "UTC"
                 )
             )
-            try(
-                jsonlite::write_json(
-                    meta,
-                    downloader__manifest_lock_metadata(lock_dir),
-                    auto_unbox = TRUE,
-                    pretty = TRUE
-                ),
-                silent = TRUE
+            # A failed or truncated owner write must not grant the lock. The
+            # release closure cannot identify such a directory later, leaving
+            # an ownerless lock that must be investigated.
+            publication_error <- tryCatch(
+                {
+                    jsonlite::write_json(
+                        meta,
+                        downloader__manifest_lock_metadata(lock_dir),
+                        auto_unbox = TRUE,
+                        pretty = TRUE
+                    )
+                    current <- downloader__manifest_lock_owner(lock_dir)
+                    if (!identical(current, meta)) {
+                        stop("Manifest lock owner readback did not match.")
+                    }
+                    NULL
+                },
+                error = identity
             )
+            if (inherits(publication_error, "error")) {
+                owner_path <- downloader__manifest_lock_metadata(lock_dir)
+                current <- if (file.exists(owner_path)) {
+                    downloader__manifest_lock_owner(lock_dir)
+                } else {
+                    NULL
+                }
+                entries <- list.files(lock_dir, all.files = TRUE, no.. = TRUE)
+                # This process just created the directory. Remove only its
+                # failed owner record; unexpected files or another valid
+                # owner remain available for explicit investigation.
+                if (
+                    (is.null(current) || identical(current, meta)) &&
+                        all(entries %in% "owner.json")
+                ) {
+                    unlink(lock_dir, recursive = TRUE, force = TRUE)
+                }
+                cli::cli_abort(
+                    "Cannot publish manifest lock ownership: {.path {lock_dir}}.",
+                    parent = publication_error
+                )
+            }
             return(function() {
-                if (dir.exists(lock_dir)) {
+                current <- downloader__manifest_lock_owner(lock_dir)
+                if (!is.null(current) && identical(current, meta)) {
                     unlink(lock_dir, recursive = TRUE, force = TRUE)
                 }
                 invisible(NULL)
             })
         }
 
-        if (downloader__manifest_lock_stale(lock_dir, stale_after)) {
-            unlink(lock_dir, recursive = TRUE, force = TRUE)
+        if (
+            downloader__manifest_lock_stale(lock_dir, stale_after) &&
+                downloader__manifest_reclaim_lock(lock_dir, stale_after)
+        ) {
             next
         }
 

@@ -34,6 +34,7 @@ Imports:
     rlang,
     S7
 Suggests:
+    processx,
     testthat (>= 3.0.0),
     webfakes,
     withr

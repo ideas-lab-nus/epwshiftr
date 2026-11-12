@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Recover manifest locks from confirmed exited local owners and resume staged downloads with their original session and task identities.
+
 * Validate resumed HTTP GETs before appending bytes and retry interrupted transfers at the current disk offset.
 
 * Require every selected fragment of a required climate input and re-evaluate older completion receipts. (#314)
