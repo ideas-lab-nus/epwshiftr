@@ -3769,6 +3769,36 @@ EsgStore <- R6::R6Class(
             finish()
         },
         # }}}
+        # export_plans
+        #' @description
+        #' Export exact pending or failed plan/catalogue metadata for an independent
+        #' execution store. Original IDs, coordinates and retry history are retained.
+        #' This metadata receipt does not authorize scientific use or ownership transfer.
+        #' @param plan_id Unique pending or failed extraction plan IDs.
+        #' @param path New plan receipt JSON path.
+        #' @return For `export_plans()`, receipt path, SHA256 and named query JSON paths.
+        #'   For `import_plans()`, original plan IDs and reuse flags.
+        export_plans = function(plan_id, path) {
+            store_exchange__export_plans(self, private, plan_id, path)
+        },
+        # import_plans
+        #' @description
+        #' Atomically install exact original plan metadata. Existing plans, retries
+        #' and completed outputs remain unchanged. Only query JSON controls are
+        #' copied; no native or extracted weather is copied or downloaded.
+        #' @param path Existing plan receipt JSON path.
+        #' @param checksum Expected SHA256 of the plan receipt.
+        #' @param query_paths Named local paths to the original synchronized query
+        #'   JSON controls, keyed by query ID. Each control is checked by SHA256.
+        import_plans = function(path, checksum, query_paths) {
+            store_exchange__import_plans(
+                self,
+                private,
+                path,
+                checksum,
+                query_paths
+            )
+        },
         # query
         #' @description
         #' Run a DuckDB SQL query against the extraction manifest.

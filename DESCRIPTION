@@ -75,6 +75,7 @@ Collate:
     'weather-transform.R'
     'backend-original-morphing.R'
     'store.R'
+    'store-exchange.R'
     'epw-morpher.R'
     'query-result.R'
     'solr-date.R'

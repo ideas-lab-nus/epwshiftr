@@ -71,6 +71,8 @@ Hongyuan Jia
 \item \href{#method-EsgStore-plan_regions}{\code{EsgStore$plan_regions()}}
 \item \href{#method-EsgStore-plan_sources}{\code{EsgStore$plan_sources()}}
 \item \href{#method-EsgStore-extract}{\code{EsgStore$extract()}}
+\item \href{#method-EsgStore-export_plans}{\code{EsgStore$export_plans()}}
+\item \href{#method-EsgStore-import_plans}{\code{EsgStore$import_plans()}}
 \item \href{#method-EsgStore-query}{\code{EsgStore$query()}}
 \item \href{#method-EsgStore-summarise}{\code{EsgStore$summarise()}}
 \item \href{#method-EsgStore-coverage}{\code{EsgStore$coverage()}}
@@ -1478,6 +1480,56 @@ is supplied, a ticket with \code{status}, \code{error}, and \code{value} fields;
 poll the pool until it resolves before closing this store. HTTP
 fallback uses the same reader slot and a recoverable Downloader;
 it does not block collection of independent source jobs.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-export_plans"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-export_plans}{}}}
+\subsection{\code{EsgStore$export_plans()}}{
+  Export exact pending or failed plan/catalogue metadata for an independent
+execution store. Original IDs, coordinates and retry history are retained.
+This metadata receipt does not authorize scientific use or ownership transfer.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$export_plans(plan_id, path)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan_id}}{Unique pending or failed extraction plan IDs.}
+      \item{\code{path}}{New plan receipt JSON path.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    For \code{export_plans()}, receipt path, SHA256 and named query JSON paths.
+For \code{import_plans()}, original plan IDs and reuse flags.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-import_plans"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-import_plans}{}}}
+\subsection{\code{EsgStore$import_plans()}}{
+  Atomically install exact original plan metadata. Existing plans, retries
+and completed outputs remain unchanged. Only query JSON controls are
+copied; no native or extracted weather is copied or downloaded.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$import_plans(path, checksum, query_paths)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{path}}{Existing plan receipt JSON path.}
+      \item{\code{checksum}}{Expected SHA256 of the plan receipt.}
+      \item{\code{query_paths}}{Named local paths to the original synchronized query
+JSON controls, keyed by query ID. Each control is checked by SHA256.}
+    }
+    \if{html}{\out{</div>}}
   }
 }
 
