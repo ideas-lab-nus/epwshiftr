@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Resolve artifact paths in order, scope validation to selected artifacts, and write Zstandard Parquet through compact paths on Windows.
+
 * Plan several sites with `EsgStore$plan_regions()` and inspect physical file identities with `EsgStore$plan_sources()`.
 
 * Recover manifest locks from confirmed exited local owners and resume staged downloads with their original session and task identities. (#315)

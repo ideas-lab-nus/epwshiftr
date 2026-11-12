@@ -4067,4 +4067,187 @@ test_that("plan source mapping groups replicas by physical identity", {
     expect_false(other$source_key[[1L]] == mapped$source_key[[1L]])
 })
 
+# Exercise subset validation through the same public interface used by a
+# long-lived coordinator, including corrupt artifacts outside its current job.
+test_that("EsgStore validates only requested artifacts and preserves full checks", {
+    skip_if_not_installed("duckdb")
+    store <- EsgStore$new(tempfile("artifact-scope-"))
+    on.exit(store$close(), add = TRUE)
+    paths <- file.path(
+        store$path,
+        c("first.bin", "second.bin", "unrelated.bin")
+    )
+    ids <- vapply(
+        seq_along(paths),
+        function(i) {
+            writeBin(as.raw(rep(i, 32L)), paths[[i]])
+            store$register_artifact("output", paths[[i]])
+        },
+        character(1)
+    )
+    writeBin(as.raw(rep(9L, 32L)), paths[[3L]])
+
+    selected <- store$validate(ids[c(2L, 1L, 2L)])
+    expect_identical(selected$artifact_id, ids[c(2L, 1L)])
+    expect_true(all(selected$exists & selected$checksum_ok & selected$size_ok))
+    expect_identical(
+        selected,
+        store$validate()[match(selected$artifact_id, artifact_id)]
+    )
+    full <- store$validate()
+    expect_false(full$checksum_ok[match(ids[[3L]], full$artifact_id)])
+    expect_true(full$size_ok[match(ids[[3L]], full$artifact_id)])
+    expect_identical(
+        store$artifact_path(ids[c(2L, 1L, 2L)]),
+        paths[c(2L, 1L, 2L)]
+    )
+    expect_identical(store$artifact_path(ids[[1L]]), paths[[1L]])
+    expect_error(store$validate(c(ids[[1L]], "unknown-id")), "not found")
+    expect_error(store$artifact_path(c(ids[[1L]], "unknown-id")), "not found")
+    expect_error(store$validate(NA_character_))
+    expect_error(store$validate(""))
+    expect_error(store$validate(1))
+    expect_error(store$artifact_path(NULL))
+
+    missing <- paths[[2L]]
+    unlink(missing)
+    checked <- store$validate(ids[[2L]])
+    expect_false(checked$exists)
+    expect_true(is.na(checked$checksum_ok))
+    expect_true(is.na(checked$size_ok))
+})
+
+# Empty selections are explicit no-work operations; quoted identifiers remain
+# literal strings and cannot broaden a manifest query.
+test_that("EsgStore artifact selections handle empty stores and literal IDs", {
+    skip_if_not_installed("duckdb")
+    store <- EsgStore$new(tempfile("artifact-scope-empty-"))
+    on.exit(store$close(), add = TRUE)
+    empty <- store$validate()
+    expect_identical(store$validate(character()), empty)
+    expect_identical(store$artifact_path(character()), character())
+    expect_error(store$validate("unknown"), "not found")
+    path <- file.path(store$path, "literal.bin")
+    writeBin(as.raw(1L), path)
+    id <- store$register_artifact("output", path)
+    expect_identical(store$validate(character()), empty)
+    expect_error(store$validate("x' OR TRUE --"), "not found")
+    expect_identical(store$validate(id)$artifact_id, id)
+})
+
+# Long Windows roots must retain unique immutable extraction identities without
+# requiring registry changes or moving previously completed Parquet files.
+test_that("extraction paths compact only when Windows needs a shorter path", {
+    partitions <- c("project=CMIP6", "source_id=MODEL", "year=2060")
+    plan <- strrep("a", 64L)
+    short <- store__extract_output_path(
+        "extracts",
+        partitions,
+        plan,
+        2060L,
+        windows = TRUE
+    )
+    expect_identical(
+        short,
+        file.path(
+            "extracts",
+            "project=CMIP6",
+            "source_id=MODEL",
+            "year=2060",
+            paste0("part-", plan, ".parquet")
+        )
+    )
+    root <- paste0("C:/", strrep("r", 120L), "/extracts")
+    windows <- store__extract_output_path(
+        root,
+        partitions,
+        plan,
+        2060L,
+        windows = TRUE
+    )
+    posix <- store__extract_output_path(
+        root,
+        partitions,
+        plan,
+        2060L,
+        windows = FALSE
+    )
+    expect_true(nchar(posix) > 240L)
+    expect_true(nchar(windows) < 240L)
+    expect_identical(
+        windows,
+        file.path(root, "by-plan", paste0("part-", plan, "-2060.parquet"))
+    )
+    expect_false(identical(
+        windows,
+        store__extract_output_path(
+            root,
+            partitions,
+            plan,
+            2080L,
+            windows = TRUE
+        )
+    ))
+    expect_false(identical(
+        windows,
+        store__extract_output_path(
+            root,
+            partitions,
+            strrep("b", 64L),
+            2060L,
+            windows = TRUE
+        )
+    ))
+})
+
+# A real Parquet write checks the requested codec and the unchanged mask/value
+# representation instead of just matching the implementation's SQL string.
+test_that("store extraction Parquet uses Zstandard and retains native values", {
+    dir <- tempfile("store-zstd-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+    path <- file.path(dir, "extracts", "test.parquet")
+    input <- data.table::data.table(value = c(280.25, NA_real_, 281.5))
+    priv(store)$write_parquet(input, path)
+    quoted <- as.character(DBI::dbQuoteString(DBI::ANSI(), path))
+    actual <- store$query(paste0("SELECT * FROM read_parquet(", quoted, ")"))
+    codec <- store$query(paste0(
+        "SELECT DISTINCT compression FROM parquet_metadata(",
+        quoted,
+        ")"
+    ))
+    expect_identical(actual$value, input$value)
+    expect_identical(codec$compression, "ZSTD")
+})
+
+# On Windows, exercise the normal Store entry with a deeply nested disposable
+# root and read back the actual artifact registered after extraction.
+test_that("Windows Store extraction publishes and reads compact artifacts", {
+    skip_if_not(.Platform$OS.type == "windows")
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    root <- file.path(withr::local_tempdir(), strrep("r", 62L))
+    store <- EsgStore$new(root)
+    on.exit(store$close(), add = TRUE)
+    source <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(source, 2060L)
+    query <- store$add_files(esgf_test__file_result(esgf_test__file_docs(
+        source
+    )))
+    plan <- store$plan_region(
+        query,
+        103.98,
+        1.37,
+        c("2060-01-01", "2060-01-03"),
+        site_id = strrep("site", 20L)
+    )
+    result <- store$extract(plan_id = plan$plan_id, fallback = "error")
+    expect_identical(result$status, "done")
+    actual <- store$query(
+        "SELECT output_path FROM extraction_result"
+    )$output_path
+    expect_match(actual, "by-plan")
+    expect_true(file.exists(file.path(store$path, actual)))
+    expect_true(all(store$validate()$checksum_ok))
+})
+
 # vim: fdm=marker :

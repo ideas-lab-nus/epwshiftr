@@ -278,36 +278,52 @@ The artifact ID.
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-artifact_path"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-artifact_path}{}}}
-\subsection{Method \code{artifact_path()}}{
-Return an artifact path from the manifest.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgStore$artifact_path(artifact_id)}\if{html}{\out{</div>}}
+\subsection{\code{EsgStore$artifact_path()}}{
+  Return an artifact path from the manifest.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$artifact_path(artifact_id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{artifact_id}}{Character vector of artifact IDs. Paths follow the
+requested order, including repeated IDs. An empty vector
+returns no paths. Unknown IDs are errors.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    Absolute artifact path.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{artifact_id}}{Artifact ID.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-Absolute artifact path.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-validate"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-validate}{}}}
-\subsection{Method \code{validate()}}{
-Validate registered artifact files against the manifest.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgStore$validate()}\if{html}{\out{</div>}}
+\subsection{\code{EsgStore$validate()}}{
+  Validate registered artifact files against the manifest.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$validate(artifact_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{artifact_id}}{Optional character vector restricting validation
+to these artifacts. Default \code{NULL} checks every artifact.
+Repeated IDs are checked once, in first-requested order;
+an empty vector checks no files. Unknown IDs are errors.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table with validation results.
+  }
 }
 
-\subsection{Returns}{
-A data.table with validation results.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-add_query"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-add_query}{}}}

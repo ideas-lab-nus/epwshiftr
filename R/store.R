@@ -993,39 +993,46 @@ EsgStore <- R6::R6Class(
         #' @description
         #' Return an artifact path from the manifest.
         #'
-        #' @param artifact_id Artifact ID.
+        #' @param artifact_id Character vector of artifact IDs. Paths follow the
+        #'        requested order, including repeated IDs. An empty vector
+        #'        returns no paths. Unknown IDs are errors.
         #'
         #' @return Absolute artifact path.
         # artifact_path {{{
         artifact_path = function(artifact_id) {
             private$check_open()
-            checkmate::assert_string(artifact_id, min.chars = 1L)
-
-            artifacts <- ddb_read_table(private$conn, "artifact")
-            row <- artifacts[
-                artifacts$artifact_id == artifact_id,
-                ,
-                drop = FALSE
-            ]
-            if (!nrow(row)) {
-                cli::cli_abort(
-                    "Artifact ID {.val {artifact_id}} was not found in the store manifest."
-                )
-            }
-            store_abs_path(row$relative_path[[1L]], root = private$store_path)
+            checkmate::assert_character(
+                artifact_id,
+                any.missing = FALSE,
+                min.chars = 1L
+            )
+            rows <- store__artifact_rows(private$conn, artifact_id)
+            paths <- rows$relative_path[match(artifact_id, rows$artifact_id)]
+            vapply(
+                paths,
+                store_abs_path,
+                character(1L),
+                root = private$store_path,
+                USE.NAMES = FALSE
+            )
         },
         # }}}
         # validate
         #' @description
         #' Validate registered artifact files against the manifest.
         #'
+        #' @param artifact_id Optional character vector restricting validation
+        #'        to these artifacts. Default `NULL` checks every artifact.
+        #'        Repeated IDs are checked once, in first-requested order;
+        #'        an empty vector checks no files. Unknown IDs are errors.
+        #'
         #' @return A data.table with validation results.
         # validate {{{
-        validate = function() {
+        validate = function(artifact_id = NULL) {
             private$check_open()
-            artifacts <- data.table::as.data.table(ddb_read_table(
+            artifacts <- data.table::as.data.table(store__artifact_rows(
                 private$conn,
-                "artifact"
+                artifact_id
             ))
             if (!nrow(artifacts)) {
                 return(data.table::data.table(
@@ -1039,17 +1046,26 @@ EsgStore <- R6::R6Class(
                 ))
             }
 
-            artifacts[,
-                expected_path := vapply(
-                    relative_path,
+            data.table::set(
+                artifacts,
+                j = "expected_path",
+                value = vapply(
+                    artifacts$relative_path,
                     store_abs_path,
                     character(1L),
-                    root = private$store_path
+                    root = private$store_path,
+                    USE.NAMES = FALSE
                 )
-            ]
-            artifacts[, exists := file.exists(expected_path)]
-            artifacts[,
-                checksum_ok := mapply(
+            )
+            data.table::set(
+                artifacts,
+                j = "exists",
+                value = file.exists(artifacts$expected_path)
+            )
+            data.table::set(
+                artifacts,
+                j = "checksum_ok",
+                value = mapply(
                     function(path, ok, checksum, checksum_type) {
                         if (
                             !isTRUE(ok) || is.na(checksum) || !nzchar(checksum)
@@ -1061,14 +1077,17 @@ EsgStore <- R6::R6Class(
                             tolower(checksum)
                         )
                     },
-                    expected_path,
-                    exists,
-                    checksum,
-                    checksum_type
+                    artifacts$expected_path,
+                    artifacts$exists,
+                    artifacts$checksum,
+                    artifacts$checksum_type,
+                    USE.NAMES = FALSE
                 )
-            ]
-            artifacts[,
-                size_ok := mapply(
+            )
+            data.table::set(
+                artifacts,
+                j = "size_ok",
+                value = mapply(
                     function(path, ok, size) {
                         if (!isTRUE(ok) || is.na(size)) {
                             return(NA)
@@ -1080,11 +1099,12 @@ EsgStore <- R6::R6Class(
                             as.numeric(size)
                         )
                     },
-                    expected_path,
-                    exists,
-                    size
+                    artifacts$expected_path,
+                    artifacts$exists,
+                    artifacts$size,
+                    USE.NAMES = FALSE
                 )
-            ]
+            )
             artifacts[,
                 .SD,
                 .SDcols = c(
@@ -9447,10 +9467,11 @@ EsgStore <- R6::R6Class(
                 "=",
                 vapply(parts, store__partition, character(1L))
             )
-            file.path(
+            store__extract_output_path(
                 private$extract_dir,
-                do.call(file.path, as.list(dirs)),
-                sprintf("part-%s.parquet", plan$plan_id[[1L]])
+                dirs,
+                plan$plan_id[[1L]],
+                year
             )
         },
         # }}}
@@ -9488,7 +9509,7 @@ EsgStore <- R6::R6Class(
             ddb_exec(
                 private$conn,
                 sprintf(
-                    "COPY %s TO %s (FORMAT PARQUET)",
+                    "COPY %s TO %s (FORMAT PARQUET, COMPRESSION ZSTD)",
                     ddb_ident(private$conn, tmp_table),
                     ddb_literal(private$conn, tmp_file)
                 )
@@ -10190,6 +10211,69 @@ store__region_plan_rows <- function(plan, query_id, sites, time_range, method) {
         )
     })
     unique(data.table::rbindlist(rows, use.names = TRUE))
+}
+# }}}
+
+# Keep the readable partition layout where supported. Windows paths that exceed
+# the conservative file-creation limit use the immutable plan identity instead;
+# source/site/year columns and the manifest preserve the same scientific keys.
+# store__extract_output_path {{{
+store__extract_output_path <- function(
+    extract_dir,
+    partitions,
+    plan_id,
+    year,
+    windows = identical(.Platform$OS.type, "windows")
+) {
+    path <- file.path(
+        extract_dir,
+        do.call(file.path, as.list(partitions)),
+        sprintf("part-%s.parquet", plan_id)
+    )
+    if (isTRUE(windows) && nchar(path, type = "chars") > 240L) {
+        # Plans include their file, site, method and time identity in their hash.
+        # The year also keeps multi-year partitions of one plan distinct.
+        path <- file.path(
+            extract_dir,
+            "by-plan",
+            sprintf("part-%s-%d.parquet", plan_id, year)
+        )
+    }
+    path
+}
+# }}}
+
+# Read one explicitly requested artifact set with a single manifest query.
+# NULL preserves the complete-table behavior; an empty selection still keeps
+# the manifest schema, and missing IDs fail before any artifact file is read.
+# store__artifact_rows {{{
+store__artifact_rows <- function(conn, artifact_id = NULL) {
+    if (is.null(artifact_id)) {
+        return(ddb_read_table(conn, "artifact"))
+    }
+    checkmate::assert_character(
+        artifact_id,
+        any.missing = FALSE,
+        min.chars = 1L
+    )
+    ids <- unique(artifact_id)
+    predicate <- if (length(ids)) {
+        paste0(
+            "artifact_id IN (",
+            paste(ddb_literal(conn, ids), collapse = ","),
+            ")"
+        )
+    } else {
+        "FALSE"
+    }
+    rows <- ddb_query(conn, paste0("SELECT * FROM artifact WHERE ", predicate))
+    missing <- setdiff(ids, rows$artifact_id)
+    if (length(missing)) {
+        cli::cli_abort(
+            "Artifact ID(s) {.val {missing}} were not found in the store manifest."
+        )
+    }
+    rows[match(ids, rows$artifact_id), , drop = FALSE]
 }
 # }}}
 
