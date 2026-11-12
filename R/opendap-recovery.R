@@ -847,18 +847,16 @@ opendap_recovery__run <- function(
         inputs$files$source_key
     )
     summarize <- function(rows = coverage) {
-        files <- rows[,
-            list(
-                covered = all(complete),
-                values = sum(available_native_values, na.rm = TRUE)
-            ),
-            by = "source_key"
-        ]
+        files <- data.table::uniqueN(rows$source_key)
+        unfinished <- unique(rows$source_key[!rows$complete])
+        partial <- unique(rows$source_key[which(
+            rows$available_native_values > 0
+        )])
         known <- !is.na(rows$expected_native_values)
         list(
-            files_complete = sum(files$covered),
-            files_partial = sum(!files$covered & files$values > 0),
-            files_total = nrow(files),
+            files_complete = files - length(unfinished),
+            files_partial = sum(unfinished %in% partial),
+            files_total = files,
             four_corner_windows_complete = sum(rows$complete),
             four_corner_windows_total = nrow(rows),
             known_axis_windows = sum(known),
