@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Plan independent hourly ERA5 requests and validate local raw NetCDF or ZIP files with explicit grids, units and UTC coverage.
+
 * Generate reference ERA5 EPWs at fractional fixed UTC offsets with shared spatial interpolation and explicit accumulation intervals.
 
 * Exchange verified extraction artifacts across manifests while preserving exact source identity and atomic registration. (#318)

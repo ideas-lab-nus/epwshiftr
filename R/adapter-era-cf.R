@@ -394,7 +394,16 @@ era__interval_seconds <- function(time) {
 era__convert_source <- function(source, source_variable) {
     data <- data.table::copy(source$data)
     units <- tolower(gsub("[[:space:]_]", "", source$units))
-    if (source_variable %in% c("tas", "tdps")) {
+    # The newly supported skin field also uses absolute temperature; preserve
+    # existing air/dewpoint behavior while rejecting unknown skin-temperature units.
+    if (
+        source_variable == "skt" &&
+            !units %in%
+                c("k", "kelvin", "c", "degc", "degreecelsius", "degreescelsius")
+    ) {
+        cli::cli_abort("Unknown skin-temperature units {.val {source$units}}.")
+    }
+    if (source_variable %in% c("tas", "tdps", "skt")) {
         if (units %in% c("c", "degc", "degreecelsius", "degreescelsius")) {
             data[, value := value + 273.15]
         }

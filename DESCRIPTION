@@ -62,6 +62,8 @@ Collate:
     'source-cds.R'
     'source-reanalysis.R'
     'source-era5.R'
+    'shift-plan-reanalysis.R'
+    'shift-read-reanalysis.R'
     'weather-pipeline.R'
     'weather-recipe.R'
     'calendar-subdaily.R'
