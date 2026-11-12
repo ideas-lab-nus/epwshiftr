@@ -1,6 +1,6 @@
 # epwshiftr (development version)
 
-* Reuse a caller-owned `source_pool()` for Store extraction and continue recoverable HTTPServer transfers where whole-file access is allowed.
+* Reuse a caller-owned `source_pool()` for Store extraction and continue recoverable HTTPServer transfers where whole-file access is allowed. (#317)
 
 * Resolve artifact paths in order, scope validation to selected artifacts, and write Zstandard Parquet through compact paths on Windows. (#316)
 
