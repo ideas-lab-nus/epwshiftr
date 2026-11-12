@@ -113,6 +113,7 @@ Collate:
     'component-bws-btws.R'
     'component-hourly-calendar-grouping.R'
     'data-node.R'
+    'spatial-grid.R'
     'dataset-regions.R'
     'dataset.R'
     'dict-check.R'

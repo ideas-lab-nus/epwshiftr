@@ -2,7 +2,7 @@
 % Please edit documentation in R/era5-epw.R
 \name{shift_epw_reanalysis}
 \alias{shift_epw_reanalysis}
-\title{Generate annual reference EPW files from ERA5}
+\title{Generate annual EPW files from ERA5 reanalysis}
 \usage{
 shift_epw_reanalysis(
   source,
@@ -12,7 +12,8 @@ shift_epw_reanalysis(
   leap_day = c("drop", "keep"),
   start_day = "calendar",
   precipitation = c("missing", "total_water_equivalent"),
-  resume = TRUE
+  resume = TRUE,
+  extraction_method = c("nearest", "idw", "bilinear", "mean")
 )
 }
 \arguments{
@@ -50,6 +51,20 @@ precipitation field, with a provenance warning.}
 
 \item{resume}{Reuse successful results only when inputs, implementation,
 options and all output hashes match.}
+
+\item{extraction_method}{Spatial method for local NetCDF input. Default
+\code{"nearest"} preserves coordinate-wise nearest selection. \code{"idw"} uses
+inverse squared spatial distance to the four nearest available points;
+\code{"bilinear"} interpolates the enclosing cell; \code{"mean"} averages its four
+corners. These three methods require an enclosing 0.25-degree ERA5 cell
+and local NetCDF paths for every site. They reject scalar point files,
+pre-extracted bundles and automatic downloads. Source domain coverage
+determines the available IDW neighbours; retain adequate surrounding data.
+Native fields share source coordinates and weights, including zero-weight
+points; a missing selected value is not silently omitted or reweighted.
+Wind and humidity are derived after extraction. Receipts record the method,
+points, distances and weights; interpolated \code{grid} denotes the target,
+with actual source points in \code{provenance$spatial$sources}.}
 }
 \value{
 A data.table with one row per site/year, status, reuse flag, EPW and
@@ -58,8 +73,13 @@ receipt paths, and any error. Partial failures are retained and warned.
 }
 \description{
 Create independent annual weather files without a baseline EPW or GCM.
-This first implementation supports hourly ERA5 single-level data and
-whole-hour standard timezone offsets, without daylight saving time.
+Supports hourly ERA5 single-level data and fixed standard timezone offsets,
+including fractional offsets, without daylight saving time.
+Fractional offsets interpolate instantaneous T, vapour pressure, pressure,
+wind components and cloud fraction between UTC endpoints; radiation and
+precipitation use exact overlap of preceding-hour intervals. Endpoint times
+and weights are saved in \code{time-alignment.csv}. Native and interpolated states
+must both satisfy physical constraints; no saturation clipping is performed.
 }
 \details{
 Instantaneous variables are assigned at hour end. Radiation and precipitation

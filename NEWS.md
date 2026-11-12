@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Generate reference ERA5 EPWs at fractional fixed UTC offsets with shared spatial interpolation and explicit accumulation intervals.
+
 * Exchange verified extraction artifacts across manifests while preserving exact source identity and atomic registration. (#318)
 
 * Export and import executable Store plans with their original query, File and plan identities. (#318)

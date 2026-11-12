@@ -605,3 +605,405 @@ test_that("missing per-site local input remains offline", {
     expect_identical(result$status, c("complete", "failed"))
     expect_match(result$error[[2L]], "Local input is missing")
 })
+
+# A complete native UTC leap year plus padding, with independently calculable
+# alternating accumulated inputs. Solar fields are zero to isolate timing.
+fractional_test__bundle <- function() {
+    time <- seq(
+        as.POSIXct("1999-12-30", tz = "UTC"),
+        as.POSIXct("2001-01-02", tz = "UTC"),
+        by = "hour"
+    )
+    even <- (as.numeric(time) / 3600) %% 2 == 0
+    list(
+        data = data.table::data.table(
+            utc_time = time,
+            tas = 280 + as.integer(even),
+            tdps = 270,
+            ps = 101325,
+            uas = 3,
+            vas = 4,
+            rsds = 0,
+            fdir = 0,
+            rlds = data.table::fifelse(even, 200, 400),
+            clt = 0.5,
+            pr = data.table::fifelse(even, 1, 3)
+        ),
+        units = c(
+            tas = "K",
+            tdps = "K",
+            ps = "Pa",
+            uas = "m/s",
+            vas = "m/s",
+            rsds = "Wh/m2",
+            fdir = "Wh/m2",
+            rlds = "Wh/m2",
+            clt = "1",
+            pr = "mm"
+        ),
+        grid = list(latitude = -12.5, longitude = 131),
+        interval_seconds = 3600,
+        provenance = list(source = "synthetic fractional-offset test")
+    )
+}
+
+test_that("fractional reference calendars preserve overlap energy and leap hours", {
+    input <- era_epw__normalize(fractional_test__bundle())
+    site <- shift_site(
+        "darwin",
+        lat = -12.415,
+        lon = 130.877,
+        metadata = list(timezone = 9.5, elevation = 31.4)
+    )
+    metadata <- era_epw__site(site)
+    original <- serialize(input, NULL)
+    annual <- era_epw__annual(
+        input,
+        metadata,
+        2000,
+        "keep",
+        "total_water_equivalent"
+    )
+    expect_equal(nrow(annual$weather), 8784)
+    expect_equal(annual$weather$dry_bulb_temperature, rep(280.5 - 273.15, 8784))
+    expect_equal(
+        annual$weather$horizontal_infrared_radiation_intensity_from_sky,
+        rep(300, 8784)
+    )
+    expect_equal(annual$weather$liquid_precip_depth, rep(2, 8784))
+    expect_equal(sum(annual$weather$liquid_precip_depth), 17568)
+    expect_identical(serialize(input, NULL), original)
+    expect_equal(
+        annual$alignment$source_utc_lower[1],
+        as.POSIXct("1999-12-31 15:00:00", tz = "UTC")
+    )
+    expect_equal(
+        annual$alignment$source_utc_upper[1],
+        as.POSIXct("1999-12-31 16:00:00", tz = "UTC")
+    )
+    expect_equal(annual$alignment$upper_weight, rep(0.5, 8784))
+    dropped <- era_epw__annual(
+        input,
+        metadata,
+        2000,
+        "drop",
+        "total_water_equivalent"
+    )
+    expect_equal(nrow(dropped$weather), 8760)
+    expect_equal(nrow(dropped$omitted), 24)
+    expect_equal(sum(!dropped$alignment$retained), 24)
+    quarter <- era_epw__calendar(2000, 5.75, "keep")
+    aligned <- era_epw__align_local(input$data, quarter)
+    expect_equal(unique(aligned$alignment$upper_weight), 0.25)
+    expect_setequal(unique(aligned$data$rlds), c(250, 350))
+    gap <- input
+    gap$data <- gap$data[
+        -which(gap$data$utc_time == annual$alignment$source_utc_lower[1])
+    ]
+    expect_error(
+        era_epw__annual(gap, metadata, 2000, "drop", "missing"),
+        "Missing"
+    )
+    directory <- tempfile()
+    withr::defer(unlink(directory, recursive = TRUE))
+    result <- shift_epw_reanalysis(
+        shift_era5(2000),
+        site,
+        directory,
+        data = fractional_test__bundle(),
+        leap_day = "keep"
+    )
+    expect_identical(result$status, "complete")
+    expect_match(readLines(result$epw, n = 1), ",9.5,31.4$")
+    mapping <- file.path(dirname(result$epw), "time-alignment.csv")
+    expect_true(file.exists(mapping))
+    expect_equal(nrow(data.table::fread(mapping)), 8784)
+    reused <- shift_epw_reanalysis(
+        shift_era5(2000),
+        site,
+        directory,
+        data = fractional_test__bundle(),
+        leap_day = "keep"
+    )
+    expect_true(reused$reused)
+})
+
+# Two individually unsaturated endpoints can yield supersaturation under T/e
+# interpolation. This is a physical failure, never a reason to silently clip.
+test_that("fractional alignment exposes moisture conflicts and invalid endpoints", {
+    input <- era_epw__normalize(fractional_test__bundle())$data[1:2]
+    data.table::set(input, j = "tas", value = c(293.0739746, 291.6134949))
+    data.table::set(input, j = "tdps", value = c(293.057251, 291.6097412))
+    calendar <- era_epw__calendar(2000, 9.5, "keep")[1]
+    calendar$utc_time <- input$utc_time[1] + 1800
+    expect_true(all(input$tdps < input$tas))
+    expect_error(
+        era_epw__align_local(input, calendar),
+        "physical inconsistency"
+    )
+    input$tdps <- 270
+    input$rsds <- c(-1, 3)
+    expect_error(
+        era_epw__align_local(input, calendar),
+        "physical inconsistency"
+    )
+    input$rsds <- 0
+    input$ps <- c(100, 101325)
+    expect_error(
+        era_epw__align_local(input, calendar),
+        "physical inconsistency"
+    )
+})
+
+# Write a complete synthetic year with a known affine temperature field and
+# opposing east/west winds. Independent analytic expectations expose errors
+# in corner order, axis direction, derived-variable order and time alignment.
+era_spatial_test__file <- function(
+    path,
+    reverse_lat = FALSE,
+    longitude = c(-0.125, 0.125),
+    missing_corner = FALSE
+) {
+    handle <- RNetCDF::create.nc(path)
+    on.exit(RNetCDF::close.nc(handle))
+    latitude <- if (reverse_lat) c(0.25, 0) else c(0, 0.25)
+    time <- as.numeric(as.POSIXct("2001-01-01", tz = "UTC")) + (1:8760) * 3600
+    axes <- list(longitude = longitude, latitude = latitude, time = time)
+    for (axis in names(axes)) {
+        RNetCDF::dim.def.nc(handle, axis, length(axes[[axis]]))
+        RNetCDF::var.def.nc(handle, axis, "NC_DOUBLE", axis)
+        RNetCDF::var.put.nc(handle, axis, axes[[axis]])
+    }
+    RNetCDF::att.put.nc(
+        handle,
+        "time",
+        "units",
+        "NC_CHAR",
+        "seconds since 1970-01-01 00:00:00"
+    )
+    base <- c(
+        t2m = 283.15,
+        d2m = 273.15,
+        sp = 101325,
+        u10 = 0,
+        v10 = 3,
+        ssrd = 0,
+        fdir = 0,
+        strd = 1080000,
+        tcc = 0.5,
+        tp = 0
+    )
+    units <- c(
+        "K",
+        "K",
+        "Pa",
+        "m s-1",
+        "m s-1",
+        "J m-2",
+        "J m-2",
+        "J m-2",
+        "1",
+        "m"
+    )
+    for (i in seq_along(base)) {
+        variable <- names(base)[[i]]
+        RNetCDF::var.def.nc(handle, variable, "NC_DOUBLE", names(axes))
+        RNetCDF::att.put.nc(handle, variable, "units", "NC_CHAR", units[[i]])
+        corners <- rep(base[[i]], 4)
+        if (variable %in% c("t2m", "d2m")) {
+            corners <- corners + c(0, 4, 8, 12)
+        }
+        if (variable == "u10") {
+            corners <- c(-2, 2, -2, 2)
+        }
+        if (missing_corner && variable == "t2m") {
+            RNetCDF::att.put.nc(
+                handle,
+                variable,
+                "_FillValue",
+                "NC_DOUBLE",
+                -9999
+            )
+            corners[[4L]] <- -9999
+        }
+        if (reverse_lat) {
+            corners <- corners[c(3, 4, 1, 2)]
+        }
+        RNetCDF::var.put.nc(
+            handle,
+            variable,
+            array(rep(corners, 8760), c(2, 2, 8760))
+        )
+    }
+}
+
+# Common site metadata isolates extraction from timezone and height choices.
+era_spatial_test__site <- function(lon = 0, lat = 0.0625) {
+    shift_site(
+        "spatial",
+        lon,
+        lat,
+        metadata = list(timezone = 0, elevation = 0)
+    )
+}
+
+test_that("local ERA5 spatial methods produce traceable annual weather and distinct caches", {
+    path <- tempfile(fileext = ".nc")
+    directory <- tempfile()
+    withr::defer(unlink(c(path, directory), recursive = TRUE))
+    era_spatial_test__file(path)
+    site <- era_spatial_test__site()
+    results <- lapply(c("nearest", "bilinear", "mean"), function(method) {
+        result <- shift_epw_reanalysis(
+            shift_era5(2001),
+            site,
+            directory,
+            data = path,
+            extraction_method = method
+        )
+        expect_identical(result$status, "complete")
+        expect_false(result$reused)
+        result
+    })
+    temperatures <- vapply(
+        results,
+        function(result) {
+            weather <- EpwFile$new(result$epw)$data()
+            expect_equal(nrow(weather), 8760)
+            weather$dry_bulb_temperature[[1L]]
+        },
+        numeric(1L)
+    )
+    expect_equal(temperatures, c(10, 14, 16))
+    interpolated <- EpwFile$new(results[[2L]]$epw)$data()
+    # Averaging wind speed first would retain sqrt(13), rather than 3 m/s.
+    expect_equal(interpolated$wind_speed, rep(3, 8760))
+    receipt <- jsonlite::read_json(results[[2L]]$receipt, simplifyVector = TRUE)
+    expect_identical(receipt$options$extraction_method, "bilinear")
+    expect_equal(
+        receipt$provenance$spatial$sources$weight,
+        c(0.375, 0.375, 0.125, 0.125)
+    )
+    expect_identical(receipt$provenance$spatial$grid_role, "target_point")
+    expect_equal(receipt$grid$latitude, 0.0625)
+    expect_equal(
+        receipt$provenance$spatial$sources$grid_lat,
+        c(0, 0, 0.25, 0.25)
+    )
+    expect_true(all(is.finite(receipt$provenance$spatial$sources$grid_dist_km)))
+    expect_length(
+        unique(vapply(results, function(x) x$receipt, character(1L))),
+        3
+    )
+    again <- shift_epw_reanalysis(
+        shift_era5(2001),
+        site,
+        directory,
+        data = path,
+        extraction_method = "bilinear"
+    )
+    expect_true(again$reused)
+    expect_identical(again$epw, results[[2L]]$epw)
+    idw <- shift_epw_reanalysis(
+        shift_era5(2001),
+        era_spatial_test__site(-0.125, 0),
+        directory,
+        data = path,
+        extraction_method = "idw"
+    )
+    expect_identical(idw$status, "complete")
+    expect_equal(
+        EpwFile$new(idw$epw)$data()$dry_bulb_temperature,
+        rep(10, 8760)
+    )
+    idw_receipt <- jsonlite::read_json(idw$receipt, simplifyVector = TRUE)
+    expect_equal(idw_receipt$provenance$spatial$sources$weight, c(1, 0, 0, 0))
+})
+
+test_that("ERA5 interpolation respects descending axes, dateline and regional edges", {
+    path <- tempfile(fileext = ".nc")
+    directory <- tempfile()
+    withr::defer(unlink(c(path, directory), recursive = TRUE))
+    era_spatial_test__file(
+        path,
+        reverse_lat = TRUE,
+        longitude = c(179.875, -179.875)
+    )
+    result <- shift_epw_reanalysis(
+        shift_era5(2001),
+        era_spatial_test__site(180),
+        directory,
+        data = path,
+        extraction_method = "bilinear"
+    )
+    expect_identical(result$status, "complete")
+    expect_equal(
+        EpwFile$new(result$epw)$data()$dry_bulb_temperature,
+        rep(14, 8760)
+    )
+    # An exact eastern endpoint remains a valid cell boundary.
+    edge <- shift_epw_reanalysis(
+        shift_era5(2001),
+        era_spatial_test__site(-179.875, 0.25),
+        directory,
+        data = path,
+        extraction_method = "bilinear"
+    )
+    expect_identical(edge$status, "complete")
+    expect_equal(
+        EpwFile$new(edge$epw)$data()$dry_bulb_temperature,
+        rep(22, 8760)
+    )
+    expect_warning(
+        outside <- shift_epw_reanalysis(
+            shift_era5(2001),
+            era_spatial_test__site(179.5),
+            directory,
+            data = path,
+            extraction_method = "bilinear"
+        ),
+        "failed"
+    )
+    expect_identical(outside$status, "failed")
+    expect_match(outside$error, "outside")
+})
+
+test_that("ERA5 interpolation cannot silently drop missing sources or fetch point data", {
+    path <- tempfile(fileext = ".nc")
+    directory <- tempfile()
+    withr::defer(unlink(c(path, directory), recursive = TRUE))
+    era_spatial_test__file(path, missing_corner = TRUE)
+    expect_warning(
+        result <- shift_epw_reanalysis(
+            shift_era5(2001),
+            era_spatial_test__site(-0.125, 0),
+            directory,
+            data = path,
+            extraction_method = "idw"
+        ),
+        "failed"
+    )
+    expect_identical(result$status, "failed")
+    expect_match(result$error, "finite")
+    expect_error(
+        shift_epw_reanalysis(
+            shift_era5(2001),
+            era_spatial_test__site(),
+            tempfile(),
+            extraction_method = "bilinear"
+        ),
+        "local NetCDF"
+    )
+    expect_error(
+        shift_epw_reanalysis(
+            shift_era5(2001),
+            era_spatial_test__site(),
+            tempfile(),
+            data = list(data = data.frame(x = 1)),
+            extraction_method = "mean"
+        ),
+        "local NetCDF"
+    )
+})
+
+# vim: fdm=marker :
