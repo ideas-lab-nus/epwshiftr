@@ -1,8 +1,8 @@
 # epwshiftr (development version)
 
-* Exchange verified extraction artifacts across manifests while preserving exact source identity and atomic registration.
+* Exchange verified extraction artifacts across manifests while preserving exact source identity and atomic registration. (#318)
 
-* Export and import executable Store plans with their original query, File and plan identities.
+* Export and import executable Store plans with their original query, File and plan identities. (#318)
 
 * Reuse a caller-owned `source_pool()` for Store extraction and continue recoverable HTTPServer transfers where whole-file access is allowed. (#317)
 
