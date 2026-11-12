@@ -219,4 +219,334 @@ test_that("typed numeric receipt columns preserve adversarial double bits", {
     expect_error(store_exchange__numeric_values(list("1e999")), "non-finite")
 })
 
+# Generated exchange fixtures are shared through helper-store-exchange.R.
+test_that("independent file fragments assemble without copying or re-extracting", {
+    local_cache_mode("off")
+    f <- exchange_test__fixture()
+    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
+    owner <- f$stores[[3L]]
+    file_keys <- unique(f$plans$file_key)
+    receipts <- vector("list", 2L)
+    for (i in 1:2) {
+        ids <- f$plans$plan_id[f$plans$file_key == file_keys[[i]]]
+        expect_true(all(f$stores[[i]]$extract(ids)$status == "done"))
+        receipts[[i]] <- f$stores[[i]]$export_extracts(
+            ids,
+            file.path(f$root, paste0("receipt-", i, ".json"))
+        )
+        # The source manifest can close before the other node sees the receipt.
+        f$stores[[i]]$close()
+        imported <- owner$import_extracts(
+            receipts[[i]]$path,
+            receipts[[i]]$checksum,
+            receipts[[i]]$artifact_paths
+        )
+        expect_identical(imported$plan_id, ids)
+        expect_false(any(imported$reused))
+        expect_equal(sum(owner$coverage()$status == "done"), 2L * i)
+        expect_equal(
+            nrow(owner$query(
+                "SELECT DISTINCT output_path FROM extraction_result"
+            )),
+            2L * i
+        )
+        # Import registers original files by reference, no second Parquet copy.
+        expect_length(
+            list.files(
+                file.path(owner$path, "extracts"),
+                recursive = TRUE,
+                pattern = "parquet$"
+            ),
+            0L
+        )
+    }
+    paths <- unlist(lapply(receipts, `[[`, "artifact_paths"), use.names = FALSE)
+    data <- owner$query(paste0(
+        "SELECT * FROM read_parquet([",
+        paste(ddb_literal(priv(owner)$conn, paths), collapse = ","),
+        "])"
+    ))
+    expect_equal(data.table::uniqueN(data$plan_id), 4L)
+    expect_equal(sort(unique(data$cf_day)), 1:2)
+    expect_equal(data[, .N, by = "site_id"]$N, c(2L, 2L))
+    expect_true(all(owner$coverage()$status == "done"))
+    before <- exchange_test__snapshot(owner)
+    for (receipt in receipts) {
+        expect_true(all(
+            owner$import_extracts(
+                receipt$path,
+                receipt$checksum,
+                receipt$artifact_paths
+            )$reused
+        ))
+    }
+    expect_identical(exchange_test__snapshot(owner), before)
+})
+
+test_that("missing bytes and changed plan or file identity never partially import", {
+    local_cache_mode("off")
+    f <- exchange_test__fixture()
+    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
+    source <- f$stores[[1L]]
+    owner <- f$stores[[3L]]
+    ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
+    source$extract(ids)
+    receipt <- source$export_extracts(ids, file.path(f$root, "receipt.json"))
+    before <- exchange_test__snapshot(owner)
+    expect_error(
+        owner$import_extracts(
+            receipt$path,
+            paste(rep("0", 64), collapse = ""),
+            receipt$artifact_paths
+        ),
+        "checksum"
+    )
+    missing <- receipt$artifact_paths
+    missing[[length(missing)]] <- file.path(owner$path, "missing.parquet")
+    expect_error(
+        owner$import_extracts(receipt$path, receipt$checksum, missing),
+        "missing or has changed"
+    )
+    expect_identical(exchange_test__snapshot(owner), before)
+    conn <- priv(owner)$conn
+    ddb_exec(conn, "UPDATE extraction_plan SET lon=lon+1")
+    expect_error(
+        owner$import_extracts(
+            receipt$path,
+            receipt$checksum,
+            receipt$artifact_paths
+        ),
+        "identity mismatch"
+    )
+    ddb_exec(conn, "UPDATE extraction_plan SET lon=lon-1")
+    # Restore exact doubles from the original plans rather than subtracting an
+    # offset in a production path; these test values happen to round-trip here.
+    ddb_exec(conn, "UPDATE file_catalog SET checksum='wrong-content'")
+    expect_error(
+        owner$import_extracts(
+            receipt$path,
+            receipt$checksum,
+            receipt$artifact_paths
+        ),
+        "identity mismatch"
+    )
+    expect_equal(nrow(owner$query("SELECT * FROM extraction_result")), 0L)
+})
+
+test_that("transaction failure restores every destination table", {
+    local_cache_mode("off")
+    f <- exchange_test__fixture()
+    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
+    source <- f$stores[[1L]]
+    owner <- f$stores[[3L]]
+    ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
+    source$extract(ids)
+    receipt <- source$export_extracts(ids, file.path(f$root, "receipt.json"))
+    before <- exchange_test__snapshot(owner)
+    original <- ddb_append_table
+    local_mocked_bindings(ddb_append_table = function(conn, table, ...) {
+        if (table == "extraction_grid_source") {
+            stop("injected registration failure")
+        }
+        original(conn, table, ...)
+    })
+    expect_error(
+        owner$import_extracts(
+            receipt$path,
+            receipt$checksum,
+            receipt$artifact_paths
+        ),
+        "injected registration failure"
+    )
+    expect_identical(exchange_test__snapshot(owner), before)
+})
+
+test_that("receipt type reconstruction preserves exact doubles and nulls", {
+    rows <- data.table::data.table(
+        precise = c(pi, 1.0000000000000002, NA_real_),
+        count = c(1L, NA_integer_, 3L),
+        name = c("one", NA_character_, "three"),
+        time = as.POSIXct(
+            c(0.123456, 123456.987654, NA_real_),
+            origin = "1970-01-01",
+            tz = "UTC"
+        )
+    )
+    json <- jsonlite::toJSON(
+        store_exchange__encode(rows),
+        auto_unbox = FALSE,
+        digits = NA,
+        na = "null"
+    )
+    actual <- store_exchange__decode(
+        jsonlite::fromJSON(json, simplifyVector = FALSE),
+        rows[0]
+    )
+    expect_identical(actual, rows)
+    expect_error(
+        store_exchange__decode(
+            list(count = list(1.5)),
+            rows[0, "count", with = FALSE]
+        ),
+        "non-integer"
+    )
+})
+
+# Hashes authenticate receipt transport, while lineage and coverage validation
+# still reject internally inconsistent receipts from a faulty producer.
+test_that("invalid lineage, counts and outside-root paths fail before adoption", {
+    local_cache_mode("off")
+    f <- exchange_test__fixture()
+    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
+    source <- f$stores[[1L]]
+    owner <- f$stores[[3L]]
+    ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
+    expect_error(
+        source$export_extracts(ids, file.path(f$root, "pending.json")),
+        "completed or empty"
+    )
+    source$extract(ids)
+    receipt <- source$export_extracts(ids, file.path(f$root, "receipt.json"))
+    before <- exchange_test__snapshot(owner)
+    original <- jsonlite::read_json(receipt$path, simplifyVector = FALSE)
+    variants <- list(
+        grid_identity = function(x) {
+            x$tables$extraction_grid_source$plan_id[[1L]] <- "unknown"
+            x
+        },
+        row_count = function(x) {
+            x$tables$extraction_result$row_count[[1L]] <- 999L
+            x
+        },
+        fractional_count = function(x) {
+            x$tables$extraction_result$row_count[[1L]] <- 1.5
+            x
+        },
+        nonterminal = function(x) {
+            x$tables$extraction_plan$status[[1L]] <- "pending"
+            x
+        }
+    )
+    for (name in names(variants)) {
+        path <- file.path(f$root, paste0(name, ".json"))
+        jsonlite::write_json(
+            variants[[name]](original),
+            path,
+            auto_unbox = TRUE,
+            digits = NA,
+            null = "null"
+        )
+        expect_error(owner$import_extracts(
+            path,
+            store_hash_file(path, "sha256"),
+            receipt$artifact_paths
+        ))
+        expect_identical(exchange_test__snapshot(owner), before)
+    }
+    outside <- receipt$artifact_paths
+    copy <- file.path(f$root, "outside.parquet")
+    expect_true(file.copy(outside[[1L]], copy))
+    outside[[1L]] <- copy
+    expect_error(
+        owner$import_extracts(receipt$path, receipt$checksum, outside),
+        "outside"
+    )
+    expect_identical(exchange_test__snapshot(owner), before)
+    empty <- source$export_extracts(
+        character(),
+        file.path(f$root, "empty.json")
+    )
+    expect_equal(
+        nrow(owner$import_extracts(
+            empty$path,
+            empty$checksum,
+            empty$artifact_paths
+        )),
+        0L
+    )
+    expect_identical(exchange_test__snapshot(owner), before)
+})
+
+# Exchange must adopt previously published Parquet by identity, including an
+# older codec and paths nested beyond the default Windows full-path limit.
+test_that("exchange reads a legacy Parquet at its original long path", {
+    skip_if(
+        .Platform$OS.type == "windows",
+        "Windows compact output is covered by its native path test"
+    )
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    root <- file.path(withr::local_tempdir(), strrep("nested", 22L))
+    fixture <- exchange_test__fixture(root = root)
+    on.exit(lapply(fixture$stores, function(store) store$close()), add = TRUE)
+    source <- fixture$stores[[1L]]
+    owner <- fixture$stores[[3L]]
+    # Emit the previously supported Snappy format before the original Store
+    # publishes the artifact, so its manifest records the original byte hash.
+    private <- priv(source)
+    unlockBinding("write_parquet", private)
+    private$write_parquet <- function(dt, path, overwrite = FALSE) {
+        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+        conn <- private$conn
+        duckdb::duckdb_register(conn, "legacy_exchange_input", dt)
+        on.exit(
+            duckdb::duckdb_unregister(conn, "legacy_exchange_input"),
+            add = TRUE
+        )
+        ddb_exec(
+            conn,
+            paste0(
+                "COPY legacy_exchange_input TO ",
+                ddb_literal(conn, path),
+                " (FORMAT PARQUET, COMPRESSION SNAPPY)"
+            )
+        )
+        invisible(path)
+    }
+    lockBinding("write_parquet", private)
+    id <- fixture$plans$plan_id[[1L]]
+    expect_identical(source$extract(id, fallback = "error")$status, "done")
+    receipt <- source$export_extracts(id, file.path(root, "legacy.json"))
+    path <- receipt$artifact_paths[[1L]]
+    expect_gt(nchar(path), 260L)
+    source$close()
+    imported <- owner$import_extracts(
+        receipt$path,
+        receipt$checksum,
+        receipt$artifact_paths
+    )
+    expect_identical(imported$plan_id, id)
+    local_id <- owner$query(
+        "SELECT artifact_id FROM extraction_result"
+    )$artifact_id
+    expect_identical(owner$artifact_path(local_id), path)
+    expect_true(owner$validate(local_id)$checksum_ok)
+    lineage <- owner$query(
+        "SELECT metadata_json FROM artifact WHERE kind = 'extract'"
+    )
+    expect_identical(
+        jsonlite::fromJSON(lineage$metadata_json)$original_artifact_id,
+        names(receipt$artifact_paths)
+    )
+    quoted <- ddb_literal(priv(owner)$conn, path)
+    values <- owner$query(paste0(
+        "SELECT value FROM read_parquet(",
+        quoted,
+        ")"
+    ))
+    codec <- owner$query(paste0(
+        "SELECT DISTINCT compression FROM parquet_metadata(",
+        quoted,
+        ")"
+    ))
+    expect_true(all(is.finite(values$value)))
+    expect_identical(codec$compression, "SNAPPY")
+    expect_true(
+        owner$import_extracts(
+            receipt$path,
+            receipt$checksum,
+            receipt$artifact_paths
+        )$reused
+    )
+})
+
 # vim: fdm=marker :

@@ -71,6 +71,8 @@ Hongyuan Jia
 \item \href{#method-EsgStore-plan_regions}{\code{EsgStore$plan_regions()}}
 \item \href{#method-EsgStore-plan_sources}{\code{EsgStore$plan_sources()}}
 \item \href{#method-EsgStore-extract}{\code{EsgStore$extract()}}
+\item \href{#method-EsgStore-export_extracts}{\code{EsgStore$export_extracts()}}
+\item \href{#method-EsgStore-import_extracts}{\code{EsgStore$import_extracts()}}
 \item \href{#method-EsgStore-export_plans}{\code{EsgStore$export_plans()}}
 \item \href{#method-EsgStore-import_plans}{\code{EsgStore$import_plans()}}
 \item \href{#method-EsgStore-query}{\code{EsgStore$query()}}
@@ -1480,6 +1482,59 @@ is supplied, a ticket with \code{status}, \code{error}, and \code{value} fields;
 poll the pool until it resolves before closing this store. HTTP
 fallback uses the same reader slot and a recoverable Downloader;
 it does not block collection of independent source jobs.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-export_extracts"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-export_extracts}{}}}
+\subsection{\code{EsgStore$export_extracts()}}{
+  Export immutable metadata for completed extraction plans. Weather data
+remain in their existing Parquet files; the receipt contains no values.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$export_extracts(plan_id, path)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan_id}}{Unique completed extraction plan IDs to export.}
+      \item{\code{path}}{New JSON receipt path. Existing receipts are never replaced.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    For \code{export_extracts()}, the receipt path, SHA256 and named
+artifact paths. For \code{import_extracts()}, plan status and reuse flags.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-import_extracts"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-import_extracts}{}}}
+\subsection{\code{EsgStore$import_extracts()}}{
+  Atomically reuse completed plans from a checked extraction receipt.
+Original query, file, site, period and physical source identities must
+already exist locally. No download, file copy or overwrite occurs.
+Missing or altered artifacts reject the entire import. Annual scientific
+completeness remains the caller's responsibility.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$import_extracts(path, checksum, artifact_paths)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{path}}{Existing extraction receipt JSON path.}
+      \item{\code{checksum}}{Expected SHA256 of the extraction receipt.}
+      \item{\code{artifact_paths}}{Named character vector of locally accessible
+Parquet paths inside this store root, keyed by the original artifact
+IDs in the receipt. Independently written child stores can share a
+synchronized parent root without sharing their live manifests.}
+    }
+    \if{html}{\out{</div>}}
   }
 }
 

@@ -3769,6 +3769,39 @@ EsgStore <- R6::R6Class(
             finish()
         },
         # }}}
+        # export_extracts
+        #' @description
+        #' Export immutable metadata for completed extraction plans. Weather data
+        #' remain in their existing Parquet files; the receipt contains no values.
+        #' @param plan_id Unique completed extraction plan IDs to export.
+        #' @param path New JSON receipt path. Existing receipts are never replaced.
+        #' @return For `export_extracts()`, the receipt path, SHA256 and named
+        #'   artifact paths. For `import_extracts()`, plan status and reuse flags.
+        export_extracts = function(plan_id, path) {
+            store_exchange__export(self, private, plan_id, path)
+        },
+        # import_extracts
+        #' @description
+        #' Atomically reuse completed plans from a checked extraction receipt.
+        #' Original query, file, site, period and physical source identities must
+        #' already exist locally. No download, file copy or overwrite occurs.
+        #' Missing or altered artifacts reject the entire import. Annual scientific
+        #' completeness remains the caller's responsibility.
+        #' @param path Existing extraction receipt JSON path.
+        #' @param checksum Expected SHA256 of the extraction receipt.
+        #' @param artifact_paths Named character vector of locally accessible
+        #'   Parquet paths inside this store root, keyed by the original artifact
+        #'   IDs in the receipt. Independently written child stores can share a
+        #'   synchronized parent root without sharing their live manifests.
+        import_extracts = function(path, checksum, artifact_paths) {
+            store_exchange__import(
+                self,
+                private,
+                path,
+                checksum,
+                artifact_paths
+            )
+        },
         # export_plans
         #' @description
         #' Export exact pending or failed plan/catalogue metadata for an independent
