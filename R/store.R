@@ -3198,180 +3198,120 @@ EsgStore <- R6::R6Class(
             method <- match.arg(method, ESG_GRID_METHOD_CHOICES)
             private$check_open()
 
-            time_range <- store__time_range(time)
-            # file_catalog stores one shared row per file; its query_id is
-            # only the latest writer. Use the many-to-many membership table
-            # and filter in DuckDB before materializing this query's catalog.
-            catalog <- data.table::as.data.table(ddb_query(
-                private$conn,
-                sprintf(
-                    paste(
-                        "SELECT catalog.* FROM file_catalog AS catalog",
-                        "INNER JOIN esg_query_file AS membership",
-                        "ON catalog.file_key = membership.file_key",
-                        "WHERE membership.query_id = %s",
-                        "AND membership.status = 'current'"
-                    ),
-                    ddb_literal(private$conn, query_id)
-                )
-            ))
-            if (!nrow(catalog)) {
-                cli::cli_abort(
-                    "No cataloged file records were found for query ID {.val {query_id}}."
-                )
-            }
-
-            data.table::set(catalog, j = "query_id", value = query_id)
-
-            filter_names <- names(filters)
-            if (length(filters)) {
-                if (is.null(filter_names) || any(!nzchar(filter_names))) {
-                    cli::cli_abort("All file catalog filters must be named.")
-                }
-                unknown <- setdiff(filter_names, names(catalog))
-                if (length(unknown)) {
-                    cli::cli_abort(
-                        "Unknown file catalog filter column(s): {.val {unknown}}."
-                    )
-                }
-
-                for (name in filter_names) {
-                    value <- filters[[name]]
-                    checkmate::assert_atomic_vector(
-                        value,
-                        any.missing = FALSE,
-                        min.len = 1L,
-                        .var.name = sprintf("filters$%s", name)
-                    )
-                    catalog <- catalog[
-                        as.character(get(name)) %in% as.character(value)
-                    ]
-                }
-            }
-
-            if (!nrow(catalog)) {
-                cli::cli_abort(
-                    "No cataloged file records match the requested extraction plan filters."
-                )
-            }
-
-            requested_variable_id <- variable_id
-            if (!is.null(requested_variable_id)) {
-                if (any(!is.na(catalog$variable_id))) {
-                    catalog <- catalog[
-                        catalog$variable_id %in% requested_variable_id
-                    ]
-                }
-            } else {
-                requested_variable_id <- unique(catalog$variable_id)
-                requested_variable_id <- requested_variable_id[
-                    !is.na(requested_variable_id) &
-                        nzchar(requested_variable_id)
-                ]
-                if (!length(requested_variable_id)) {
-                    cli::cli_abort(
-                        "Cannot plan extraction without `variable_id` because the file catalog does not contain variable IDs."
-                    )
-                }
-            }
-
-            plan <- data.table::as.data.table(catalog)
+            private$plan_regions_from_sites(
+                query_id,
+                data.frame(site_id = site_id, lon = lon, lat = lat),
+                time,
+                variable_id,
+                filters,
+                method
+            )
+        },
+        # }}}
+        # plan_regions
+        #' @description
+        #' Plan extraction for multiple sites with one catalogue lookup and
+        #' one append of missing plans. Existing plans keep their status,
+        #' attempt count, errors and timestamps.
+        #'
+        #' @param query_id Query ID returned by `$add_files()`.
+        #' @param sites A data.frame or data.table with unique character
+        #'   `site_id` values and finite numeric `lon` and `lat` columns.
+        #'   Other columns are ignored. The caller's object is not modified.
+        #'   An empty table returns zero plan rows without reading the catalogue.
+        #' @param time Length-2 time range shared by all sites.
+        #' @param variable_id Optional variable IDs. If `NULL`, all cataloged
+        #'   variables in the query are used.
+        #' @param filters Named list of exact-match file catalog filters.
+        #' @param method One of `"nearest"`, `"idw"`, `"bilinear"`, or `"mean"`.
+        #'
+        #' @return A data.table in input site order. Within a site, existing
+        #'   manifest order is retained, as for successive `plan_region()` calls.
+        # plan_regions {{{
+        plan_regions = function(
+            query_id,
+            sites,
+            time,
+            variable_id = NULL,
+            filters = list(),
+            method = "nearest"
+        ) {
+            checkmate::assert_string(query_id)
+            checkmate::assert_data_frame(sites)
+            required <- c("site_id", "lon", "lat")
             if (
-                !any(!is.na(plan$variable_id)) &&
-                    !is.null(requested_variable_id)
+                anyDuplicated(names(sites)) || !all(required %in% names(sites))
             ) {
-                plan <- plan[rep(
-                    seq_len(nrow(plan)),
-                    each = length(requested_variable_id)
-                )]
-                plan$variable_id <- rep(
-                    requested_variable_id,
-                    times = nrow(catalog)
-                )
-            } else {
-                plan <- plan[plan$variable_id %in% requested_variable_id]
-            }
-            if (!nrow(plan)) {
                 cli::cli_abort(
-                    "No cataloged file records match the requested variable IDs."
+                    "`sites` must have unambiguous site_id, lon and lat columns."
                 )
             }
-
-            now <- store__now()
-            out <- data.frame(
-                plan_id = vapply(
-                    seq_len(nrow(plan)),
-                    function(i) {
-                        # Manifest ownership belongs to the current catalog query.
-                        # The source cache deliberately excludes query and plan IDs,
-                        # so query isolation does not duplicate source reads.
-                        store__hash(
-                            query_id,
-                            plan$file_key[[i]],
-                            site_id,
-                            plan$variable_id[[i]],
-                            lon,
-                            lat,
-                            method,
-                            time_range$start,
-                            time_range$stop
-                        )
-                    },
-                    character(1L)
-                ),
-                query_id = query_id,
-                file_key = plan$file_key,
-                site_id = site_id,
-                variable_id = plan$variable_id,
-                lon = lon,
-                lat = lat,
-                method = method,
-                time_start = time_range$start,
-                time_stop = time_range$stop,
-                status = "pending",
-                available_time_count = NA_integer_,
-                attempt_count = 0L,
-                last_error = NA_character_,
-                created_at = now,
-                updated_at = now,
-                stringsAsFactors = FALSE
+            checkmate::assert_character(
+                sites$site_id,
+                min.chars = 1L,
+                any.missing = FALSE,
+                unique = TRUE
             )
-            out <- unique(out)
-            append_out <- out
-            existing_plan_cols <- names(private$read_table("extraction_plan"))
-            append_out <- append_out[,
-                intersect(existing_plan_cols, names(append_out)),
-                drop = FALSE
-            ]
-            private$append_new_rows("extraction_plan", append_out, "plan_id")
-
-            existing <- data.table::as.data.table(ddb_read_table(
-                private$conn,
-                "extraction_plan"
-            ))
-            plan_cols <- c(
-                "plan_id",
-                "query_id",
-                "file_key",
-                "site_id",
-                "variable_id",
-                "lon",
-                "lat",
-                "method",
-                "time_start",
-                "time_stop",
-                "status",
-                "available_time_count",
-                "attempt_count",
-                "last_error",
-                "created_at",
-                "updated_at"
+            checkmate::assert_numeric(
+                sites$lon,
+                lower = -180,
+                upper = 360,
+                any.missing = FALSE,
+                finite = TRUE
             )
-            existing[
-                plan_id %in% out$plan_id,
-                intersect(plan_cols, names(existing)),
-                with = FALSE
-            ]
+            checkmate::assert_numeric(
+                sites$lat,
+                lower = -90,
+                upper = 90,
+                any.missing = FALSE,
+                finite = TRUE
+            )
+            checkmate::assert_character(
+                variable_id,
+                any.missing = FALSE,
+                min.len = 1L,
+                unique = TRUE,
+                null.ok = TRUE
+            )
+            checkmate::assert_list(filters, names = "unique")
+            method <- match.arg(method, ESG_GRID_METHOD_CHOICES)
+            private$check_open()
+            private$plan_regions_from_sites(
+                query_id,
+                sites,
+                time,
+                variable_id,
+                filters,
+                method
+            )
+        },
+        # }}}
+        # plan_sources
+        #' @description
+        #' Resolve the physical source identities used by explicit extraction
+        #' plans, without opening a source or changing plan state. Independent
+        #' plans can share a persistent store while callers use these keys to
+        #' avoid filling an external queue with work for the same physical file.
+        #'
+        #' @param plan_id Unique extraction plan IDs. An empty character vector
+        #'   returns a typed zero-row table. Unknown plans or missing catalog
+        #'   records are errors.
+        #'
+        #' @return A data.table with `plan_id`, `file_key`, and `source_key`, in
+        #'   requested plan order. `source_key` uses the same metadata identity
+        #'   as the source reader; published replicas of one physical file can
+        #'   therefore share a key despite different access URLs. The keys do
+        #'   not certify provider availability or scientific acceptance.
+        # plan_sources {{{
+        plan_sources = function(plan_id) {
+            checkmate::assert_character(
+                plan_id,
+                any.missing = FALSE,
+                min.chars = 1L,
+                unique = TRUE
+            )
+            private$check_open()
+            store__plan_source_rows(private$conn, plan_id)
         },
         # }}}
         # extract
@@ -4008,6 +3948,168 @@ EsgStore <- R6::R6Class(
         # }}}
     ),
     private = list(
+        # Share catalogue selection across a batch and persist only absent IDs.
+        # Validations happen before this method, so a bad site cannot partially
+        # publish a multi-site batch. Empty work returns the native SQL schema.
+        plan_regions_from_sites = function(
+            query_id,
+            sites,
+            time,
+            variable_id,
+            filters,
+            method
+        ) {
+            time_range <- store__time_range(time)
+            if (!nrow(sites)) {
+                return(data.table::as.data.table(ddb_query(
+                    private$conn,
+                    "SELECT * FROM extraction_plan WHERE FALSE"
+                )))
+            }
+            # file_catalog stores one shared row per file; its query_id is
+            # only the latest writer. Use the many-to-many membership table
+            # and filter in DuckDB before materializing this query's catalog.
+            catalog <- data.table::as.data.table(ddb_query(
+                private$conn,
+                sprintf(
+                    paste(
+                        "SELECT catalog.* FROM file_catalog AS catalog",
+                        "INNER JOIN esg_query_file AS membership",
+                        "ON catalog.file_key = membership.file_key",
+                        "WHERE membership.query_id = %s",
+                        "AND membership.status = 'current'"
+                    ),
+                    ddb_literal(private$conn, query_id)
+                )
+            ))
+            if (!nrow(catalog)) {
+                cli::cli_abort(
+                    "No cataloged file records were found for query ID {.val {query_id}}."
+                )
+            }
+
+            data.table::set(catalog, j = "query_id", value = query_id)
+
+            filter_names <- names(filters)
+            if (length(filters)) {
+                if (is.null(filter_names) || any(!nzchar(filter_names))) {
+                    cli::cli_abort("All file catalog filters must be named.")
+                }
+                unknown <- setdiff(filter_names, names(catalog))
+                if (length(unknown)) {
+                    cli::cli_abort(
+                        "Unknown file catalog filter column(s): {.val {unknown}}."
+                    )
+                }
+
+                for (name in filter_names) {
+                    value <- filters[[name]]
+                    checkmate::assert_atomic_vector(
+                        value,
+                        any.missing = FALSE,
+                        min.len = 1L,
+                        .var.name = sprintf("filters$%s", name)
+                    )
+                    catalog <- catalog[
+                        as.character(get(name)) %in% as.character(value)
+                    ]
+                }
+            }
+
+            if (!nrow(catalog)) {
+                cli::cli_abort(
+                    "No cataloged file records match the requested extraction plan filters."
+                )
+            }
+
+            requested_variable_id <- variable_id
+            if (!is.null(requested_variable_id)) {
+                if (any(!is.na(catalog$variable_id))) {
+                    catalog <- catalog[
+                        catalog$variable_id %in% requested_variable_id
+                    ]
+                }
+            } else {
+                requested_variable_id <- unique(catalog$variable_id)
+                requested_variable_id <- requested_variable_id[
+                    !is.na(requested_variable_id) &
+                        nzchar(requested_variable_id)
+                ]
+                if (!length(requested_variable_id)) {
+                    cli::cli_abort(
+                        "Cannot plan extraction without `variable_id` because the file catalog does not contain variable IDs."
+                    )
+                }
+            }
+
+            plan <- data.table::as.data.table(catalog)
+            if (
+                !any(!is.na(plan$variable_id)) &&
+                    !is.null(requested_variable_id)
+            ) {
+                plan <- plan[rep(
+                    seq_len(nrow(plan)),
+                    each = length(requested_variable_id)
+                )]
+                plan$variable_id <- rep(
+                    requested_variable_id,
+                    times = nrow(catalog)
+                )
+            } else {
+                plan <- plan[plan$variable_id %in% requested_variable_id]
+            }
+            if (!nrow(plan)) {
+                cli::cli_abort(
+                    "No cataloged file records match the requested variable IDs."
+                )
+            }
+
+            out <- store__region_plan_rows(
+                plan,
+                query_id,
+                sites,
+                time_range,
+                method
+            )
+            private$with_store_lock({
+                # Restrict both lookups to this batch. Historical unrelated
+                # plans must not be materialized once per requested site.
+                ids <- paste(
+                    ddb_literal(private$conn, out$plan_id),
+                    collapse = ", "
+                )
+                sql <- paste0(
+                    "SELECT * FROM extraction_plan WHERE plan_id IN (",
+                    ids,
+                    ")"
+                )
+                existing <- data.table::as.data.table(ddb_query(
+                    private$conn,
+                    sql
+                ))
+                fresh <- out[
+                    !out$plan_id %in% existing$plan_id,
+                    intersect(names(existing), names(out)),
+                    with = FALSE
+                ]
+                if (nrow(fresh)) {
+                    ddb_append_table(
+                        private$conn,
+                        "extraction_plan",
+                        as.data.frame(fresh)
+                    )
+                    existing <- data.table::as.data.table(ddb_query(
+                        private$conn,
+                        sql
+                    ))
+                }
+                existing[
+                    order(match(existing$site_id, sites$site_id)),
+                    intersect(names(out), names(existing)),
+                    with = FALSE
+                ]
+            })
+        },
         store_path = NULL,
         manifest_path = NULL,
         query_dir = NULL,
@@ -9978,6 +10080,116 @@ store__sync_download_job <- function(path, downloader) {
     on.exit(store$close(), add = TRUE)
     store$sync_downloads(downloader)
     invisible(NULL)
+}
+# }}}
+
+# Resolve a bounded requested plan set against its normalized catalog rows.
+# The source reader's key function is the single authority for physical identity;
+# neither access URL nor logical model/field grouping becomes a new lock key.
+# store__plan_source_rows {{{
+store__plan_source_rows <- function(conn, plan_id) {
+    if (!length(plan_id)) {
+        return(data.table::data.table(
+            plan_id = character(),
+            file_key = character(),
+            source_key = character()
+        ))
+    }
+    plans <- ddb_query(
+        conn,
+        paste0(
+            "SELECT plan_id,file_key FROM extraction_plan WHERE plan_id IN (",
+            paste(ddb_literal(conn, plan_id), collapse = ","),
+            ")"
+        )
+    )
+    missing <- setdiff(plan_id, plans$plan_id)
+    if (length(missing)) {
+        cli::cli_abort(
+            "Extraction plan ID(s) {.val {missing}} were not found in the store manifest."
+        )
+    }
+    plans <- plans[match(plan_id, plans$plan_id), , drop = FALSE]
+    file_keys <- unique(plans$file_key)
+    catalog <- data.table::as.data.table(ddb_query(
+        conn,
+        paste0(
+            "SELECT * FROM file_catalog WHERE file_key IN (",
+            paste(ddb_literal(conn, file_keys), collapse = ","),
+            ")"
+        )
+    ))
+    if (
+        anyNA(file_keys) ||
+            anyDuplicated(catalog$file_key) ||
+            !all(file_keys %in% catalog$file_key)
+    ) {
+        cli::cli_abort(
+            "An extraction plan has no unambiguous file catalog record."
+        )
+    }
+    # Multiple sites and years can reference one file. Hash each distinct
+    # selected catalog record once, then restore the caller's exact plan order.
+    physical_keys <- vapply(
+        seq_len(nrow(catalog)),
+        function(i) source__physical_key(catalog[i]),
+        character(1L)
+    )
+    data.table::data.table(
+        plan_id = plans$plan_id,
+        file_key = plans$file_key,
+        source_key = physical_keys[match(plans$file_key, catalog$file_key)]
+    )
+}
+# }}}
+
+# Construct the same scalar plan identities for every site/file pair. The
+# per-row hash is intentional: IDs are part of the persisted public protocol.
+# Preallocated site batches avoid repeated table growth and retain site order.
+# store__region_plan_rows {{{
+store__region_plan_rows <- function(plan, query_id, sites, time_range, method) {
+    now <- store__now()
+    rows <- lapply(seq_len(nrow(sites)), function(site) {
+        site_id <- sites$site_id[[site]]
+        lon <- sites$lon[[site]]
+        lat <- sites$lat[[site]]
+        data.frame(
+            plan_id = vapply(
+                seq_len(nrow(plan)),
+                function(i) {
+                    store__hash(
+                        query_id,
+                        plan$file_key[[i]],
+                        site_id,
+                        plan$variable_id[[i]],
+                        lon,
+                        lat,
+                        method,
+                        time_range$start,
+                        time_range$stop
+                    )
+                },
+                character(1L)
+            ),
+            query_id = query_id,
+            file_key = plan$file_key,
+            site_id = site_id,
+            variable_id = plan$variable_id,
+            lon = lon,
+            lat = lat,
+            method = method,
+            time_start = time_range$start,
+            time_stop = time_range$stop,
+            status = "pending",
+            available_time_count = NA_integer_,
+            attempt_count = 0L,
+            last_error = NA_character_,
+            created_at = now,
+            updated_at = now,
+            stringsAsFactors = FALSE
+        )
+    })
+    unique(data.table::rbindlist(rows, use.names = TRUE))
 }
 # }}}
 

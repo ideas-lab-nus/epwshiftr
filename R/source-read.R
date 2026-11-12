@@ -418,4 +418,47 @@ source__read_acquisition <- function(job) {
 }
 # }}}
 
+# Identify physical content independently of catalogue query IDs and replica
+# hosts. Distinct versions/fields remain distinct; exact replicas share a key.
+# source__physical_key {{{
+source__physical_key <- function(file) {
+    fields <- intersect(
+        c(
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "grid_label",
+            "table_id",
+            "variable_id",
+            "title",
+            "version",
+            "tracking_id",
+            "checksum_type",
+            "checksum"
+        ),
+        names(file)
+    )
+    identity <- as.list(file[1L, fields, with = FALSE])
+    # Missing content and PID values do not identify a replica. Retain the
+    # catalog key and available endpoints for weaker historical records.
+    strong <- c("tracking_id", "checksum")
+    if (
+        !all(vapply(
+            identity[strong],
+            function(x) {
+                length(x) == 1L && !is.na(x) && nzchar(x)
+            },
+            logical(1L)
+        ))
+    ) {
+        fallback <- intersect(
+            c("file_key", "url_opendap", "url_download"),
+            names(file)
+        )
+        identity <- c(identity, as.list(file[1L, fallback, with = FALSE]))
+    }
+    fast_hash(identity)
+}
+# }}}
+
 # vim: fdm=marker :

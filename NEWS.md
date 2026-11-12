@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Plan several sites with `EsgStore$plan_regions()` and inspect physical file identities with `EsgStore$plan_sources()`.
+
 * Recover manifest locks from confirmed exited local owners and resume staged downloads with their original session and task identities. (#315)
 
 * Validate resumed HTTP GETs before appending bytes and retry interrupted transfers at the current disk offset. (#315)
