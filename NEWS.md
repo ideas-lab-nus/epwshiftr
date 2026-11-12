@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Require every selected fragment of a required climate input and re-evaluate older completion receipts.
+
 * Retain final-year CMIP6 File candidates, select humidity routes shared by historical and future periods, and retain each query's File memberships.
 
 * Preserve missing baseline opaque sky cover in monthly BWS/BTWS outputs. (#313)

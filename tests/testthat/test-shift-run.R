@@ -297,4 +297,93 @@ test_that("failure commands are concise for default stores and explicit otherwis
     expect_match(custom, store_normalize_path(custom_store), fixed = TRUE)
 })
 
+# Failed required fragments must block a case even when another fragment of
+# the same variable succeeded; optional fields and valid alternatives remain usable.
+test_that("case coverage requires all selected mandatory source fragments", {
+    cases <- data.table::data.table(
+        source_id = "model",
+        experiment_id = "ssp245",
+        variant_label = "r1i1p1f1",
+        grid_label = "gn"
+    )
+    coverage <- data.table::data.table(
+        source_id = "model",
+        experiment_id = "ssp245",
+        variant_label = "r1i1p1f1",
+        grid_label = "gn",
+        variable_id = c("tas", "tas"),
+        plan_id = c("fragment-1995-2009", "fragment-2010-2014"),
+        complete = c(TRUE, FALSE)
+    )
+    reference <- data.table::copy(coverage)
+    data.table::set(reference, j = "experiment_id", value = "historical")
+    data.table::set(coverage, j = "complete", value = c(TRUE, TRUE))
+    result <- shift_run__case_fulfilment(
+        cases,
+        coverage,
+        reference,
+        "tas",
+        TRUE
+    )
+    expect_identical(result$status, "missing")
+    expect_identical(result$missing_reason, "reference/tas")
+
+    data.table::set(reference, j = "complete", value = c(TRUE, TRUE))
+    data.table::set(coverage, j = "complete", value = c(TRUE, FALSE))
+    result <- shift_run__case_fulfilment(
+        cases,
+        coverage,
+        reference,
+        "tas",
+        TRUE
+    )
+    expect_identical(result$status, "missing")
+    expect_identical(result$missing_reason, "future/tas")
+
+    data.table::set(coverage, j = "complete", value = c(TRUE, TRUE))
+    result <- shift_run__case_fulfilment(
+        cases,
+        coverage,
+        reference,
+        "tas",
+        TRUE
+    )
+    expect_identical(result$status, "ready")
+    expect_true(is.na(result$missing_reason))
+})
+
+test_that("optional failures do not block a complete required-variable alternative", {
+    cases <- data.table::data.table(
+        source_id = "model",
+        experiment_id = "ssp245",
+        variant_label = "r1i1p1f1",
+        grid_label = "gn"
+    )
+    coverage <- data.table::data.table(
+        source_id = "model",
+        experiment_id = "ssp245",
+        variant_label = "r1i1p1f1",
+        grid_label = "gn",
+        variable_id = c("tas", "tasmin", "hurs", "hurs", "huss", "ps"),
+        plan_id = paste0("plan-", 1:6),
+        complete = c(TRUE, FALSE, TRUE, FALSE, TRUE, TRUE)
+    )
+    result <- shift_run__case_fulfilment(
+        cases,
+        coverage,
+        data.table::data.table(),
+        c("tas", "hurs"),
+        FALSE,
+        requirements = list(
+            tas = list("tas"),
+            hurs = list("hurs", c("huss", "tas", "ps"))
+        )
+    )
+    expect_identical(result$status, "ready")
+    expect_identical(
+        shift_run__complete_variables(data.table::data.table()),
+        character()
+    )
+})
+
 # vim: fdm=marker :

@@ -1985,8 +1985,25 @@ S7::method(shift_extract, ShiftDownload) <- function(
 }
 # }}}
 
-# Match one coverage table against the expected future cases and, when
-# required, the corresponding explicit reference extraction.
+# A variable spanning several source files is available only when every
+# selected fragment completed. One successful fragment cannot stand in for a
+# failed historical or future fragment and silently shorten the study period.
+# shift_run__complete_variables {{{
+shift_run__complete_variables <- function(coverage) {
+    if (!nrow(coverage)) {
+        return(character())
+    }
+    grouped <- coverage[,
+        list(complete = all(.SD[[1L]] %in% TRUE)),
+        by = "variable_id",
+        .SDcols = "complete"
+    ]
+    grouped[["variable_id"]][grouped[["complete"]]]
+}
+# }}}
+
+# Match required-variable alternatives using complete selected file unions,
+# retaining incomplete cases for the existing allow_partial decision.
 # shift_run__case_fulfilment {{{
 shift_run__case_fulfilment <- function(
     cases,
@@ -2052,13 +2069,13 @@ shift_run__case_fulfilment <- function(
             case,
             include_experiment = TRUE
         )
+        complete_variables <- shift_run__complete_variables(future)
         for (variable in required_variables) {
             alternatives <- if (is.null(requirements[[variable]])) {
                 list(variable)
             } else {
                 requirements[[variable]]
             }
-            complete_variables <- unique(future[complete %in% TRUE]$variable_id)
             if (
                 !length(morpher__requirement_match(
                     complete_variables,
@@ -2074,15 +2091,13 @@ shift_run__case_fulfilment <- function(
                 case,
                 include_experiment = FALSE
             )
+            complete_variables <- shift_run__complete_variables(reference)
             for (variable in required_variables) {
                 alternatives <- if (is.null(requirements[[variable]])) {
                     list(variable)
                 } else {
                     requirements[[variable]]
                 }
-                complete_variables <- unique(
-                    reference[complete %in% TRUE]$variable_id
-                )
                 if (
                     !length(morpher__requirement_match(
                         complete_variables,

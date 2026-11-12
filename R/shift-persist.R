@@ -238,6 +238,9 @@ shift_persist__plan_spec <- function(x) {
     }
     spec <- list(
         version = 2L,
+        # Earlier completed runs may have omitted a failed mandatory fragment.
+        # Invalidate their run receipts while retaining reusable source extracts.
+        coverage_version = 2L,
         task = "future_epw",
         request = if (is.null(climate)) {
             shift_persist__request_spec_value(meta$request)
