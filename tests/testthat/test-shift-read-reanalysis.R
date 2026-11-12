@@ -479,4 +479,213 @@ test_that("saved point plans retain exact contracts through local reading", {
     expect_error(shift_read_reanalysis(changed, files), "unchanged")
 })
 
+# Native CDS-style singleton spatial dimensions and valid_time are literal
+# fixtures. UTC hours are supplied by the test, independently of the planner.
+cds_data_test__file <- function(path, variable, units, value, hours = 24:47) {
+    nc <- RNetCDF::create.nc(path)
+    on.exit(RNetCDF::close.nc(nc))
+    for (axis in c("longitude", "latitude", "valid_time")) {
+        RNetCDF::dim.def.nc(
+            nc,
+            axis,
+            if (axis == "valid_time") length(hours) else 1L
+        )
+        RNetCDF::var.def.nc(nc, axis, "NC_DOUBLE", axis)
+    }
+    RNetCDF::att.put.nc(nc, "longitude", "units", "NC_CHAR", "degrees_east")
+    RNetCDF::att.put.nc(nc, "latitude", "units", "NC_CHAR", "degrees_north")
+    RNetCDF::att.put.nc(
+        nc,
+        "valid_time",
+        "units",
+        "NC_CHAR",
+        "hours since 2000-01-01 00:00:00"
+    )
+    RNetCDF::var.put.nc(nc, "longitude", 104)
+    RNetCDF::var.put.nc(nc, "latitude", 1.25)
+    RNetCDF::var.put.nc(nc, "valid_time", hours)
+    RNetCDF::var.def.nc(
+        nc,
+        variable,
+        "NC_DOUBLE",
+        c("longitude", "latitude", "valid_time")
+    )
+    RNetCDF::att.put.nc(nc, variable, "units", "NC_CHAR", units)
+    RNetCDF::var.put.nc(
+        nc,
+        variable,
+        array(value, dim = c(1L, 1L, length(hours)))
+    )
+    path
+}
+
+# Exact dates avoid year/month/day cross-products, including leap days and gaps.
+test_that("CDS point plans preserve exact days and raw dependencies", {
+    dates <- as.Date(c("1999-12-31", "2000-02-28", "2000-02-29", "2000-03-02"))
+    source <- shift_era5(
+        2000,
+        variables = c("rsdsdiff", "clt"),
+        frequency = "hour",
+        access = "cds"
+    )
+    site <- shift_site("a", lat = 1.25, lon = 104)
+    plan <- shift_plan_reanalysis(source, site, dates = dates)
+    expect_equal(nrow(plan$requests), 9L)
+    expect_equal(sum(plan$requests$expected_hours), 4 * 24 * 3)
+    expect_setequal(plan$requests$variable_id, c("rsds", "fdir", "clt"))
+    expect_identical(plan$source$dates, as.character(dates))
+    expect_true(all(plan$requests$dataset == "reanalysis-era5-single-levels"))
+    for (req in plan$requests$request) {
+        expect_identical(req$area, c(1.25, 104, 1.25, 104))
+        expect_length(req$year, 1L)
+        expect_length(req$month, 1L)
+        expect_length(req$variable, 1L)
+        expect_length(req$time, 24L)
+        selected <- as.Date(paste(req$year, req$month, req$day, sep = "-"))
+        expect_true(all(selected %in% dates))
+    }
+    reordered <- shift_plan_reanalysis(
+        source,
+        site,
+        dates = c(rev(dates), dates[1])
+    )
+    expect_true(reanalysis_plan__identical(plan, reordered))
+    integer_dates <- shift_plan_reanalysis(
+        source,
+        site,
+        dates = data.table::as.IDate(dates)
+    )
+    expect_true(reanalysis_plan__identical(plan, integer_dates))
+    from_iso <- shift_plan_reanalysis(source, site, dates = plan$source$dates)
+    expect_true(reanalysis_plan__identical(plan, from_iso))
+    expect_error(
+        shift_plan_reanalysis(
+            source,
+            shift_site("b", lat = 1.3, lon = 104),
+            dates
+        ),
+        "native 0.25"
+    )
+    for (bad in list(
+        character(),
+        NA_character_,
+        "2000-02-30",
+        "2000-01-02junk",
+        "1998-01-01",
+        1,
+        as.Date(0.5, origin = "2000-01-01")
+    )) {
+        expect_error(
+            shift_plan_reanalysis(source, site, dates = bad),
+            "[Dd]ates|ISO"
+        )
+    }
+    arco <- shift_plan_reanalysis(
+        shift_era5(
+            2000,
+            variables = "tas",
+            frequency = "hour",
+            access = "arco"
+        ),
+        site,
+        dates
+    )
+    expect_equal(sum(arco$requests$expected_hours), 96)
+    expect_equal(nrow(arco$requests), 3L)
+})
+
+# The public local-acquisition seam exercises plan reconstruction, real NetCDF
+# decoding, physical units, persistence, exact date identity and cache reuse.
+test_that("CDS radiation and clouds pass through public local replay", {
+    directory <- tempfile()
+    raw <- tempfile()
+    dir.create(raw)
+    withr::defer(unlink(c(directory, raw), recursive = TRUE))
+    source <- shift_era5(
+        2000,
+        variables = c("rsdsdiff", "clt"),
+        frequency = "hour",
+        access = "cds"
+    )
+    site <- shift_site("a", lat = 1.25, lon = 104)
+    dates <- as.Date("2000-01-02")
+    plan <- shift_reanalysis_data(source, site, dates = dates, dry_run = TRUE)
+    files <- setNames(
+        file.path(raw, paste0(plan$requests$variable_id, ".nc")),
+        plan$requests$request_id
+    )
+    aliases <- c(fdir = "fdir", rsds = "ssrd", clt = "tcc")
+    units <- c(fdir = "J m**-2", rsds = "J m**-2", clt = "(0 - 1)")
+    values <- c(fdir = 180000, rsds = 360000, clt = 0.4)
+    for (i in seq_along(files)) {
+        variable <- plan$requests$variable_id[i]
+        cds_data_test__file(
+            files[i],
+            aliases[[variable]],
+            units[[variable]],
+            values[[variable]]
+        )
+    }
+    restored <- tempfile()
+    withr::defer(unlink(restored))
+    saveRDS(plan, restored)
+    direct <- shift_read_reanalysis(readRDS(restored), files)
+    expect_equal(unique(direct$data[variable_id == "fdir", value]), 50)
+    expect_equal(unique(direct$data[variable_id == "rsds", value]), 100)
+    expect_equal(unique(direct$data[variable_id == "clt", value]), 40)
+    expect_equal(nrow(direct$data), 72)
+    expect_equal(
+        as.numeric(
+            direct$data[variable_id == "fdir", interval_end - interval_start],
+            units = "secs"
+        ),
+        rep(3600, 24)
+    )
+    expect_true(all(is.na(direct$data[variable_id == "clt", interval_start])))
+    first <- shift_reanalysis_data(
+        source,
+        site,
+        directory,
+        data = files,
+        dates = dates
+    )
+    expect_identical(first$status, "complete")
+    second <- shift_reanalysis_data(
+        source,
+        site,
+        directory,
+        data = files,
+        dates = dates
+    )
+    expect_identical(second$data, first$data)
+    expect_true(second$execution$normalized_reused)
+    expect_equal(second$execution$submissions, 0)
+    altered <- data.table::copy(plan)
+    altered$source$dates <- "2000-01-03"
+    expect_error(shift_read_reanalysis(altered, files), "unchanged")
+    cloud <- files[plan$requests$variable_id == "clt"]
+    cds_data_test__file(cloud, "tcc", "%", 0.4)
+    expect_equal(
+        unique(shift_read_reanalysis(plan, files)$data[
+            variable_id == "clt",
+            value
+        ]),
+        0.4
+    )
+    cds_data_test__file(cloud, "tcc", "(0 - 1)", 1.01)
+    expect_error(shift_read_reanalysis(plan, files), "physical bounds")
+    cds_data_test__file(cloud, "tcc", "unknown", 0.4)
+    expect_error(shift_read_reanalysis(plan, files), "cloud-cover units")
+    cds_data_test__file(cloud, "tcc", "0-1", 0.4)
+    expect_equal(
+        unique(shift_read_reanalysis(plan, files)$data[
+            variable_id == "clt",
+            value
+        ]),
+        40
+    )
+    cds_data_test__file(cloud, "tcc", "1", 0.4, hours = c(24:46, 48))
+    expect_error(shift_read_reanalysis(plan, files), "coverage|hourly|axis")
+})
+
 # vim: fdm=marker :

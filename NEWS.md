@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Acquire and resume ERA5 point data with durable submission and byte limits, and persist verified normalized tables.
+
 * Plan independent hourly ERA5 requests and validate local raw NetCDF or ZIP files with explicit grids, units and UTC coverage.
 
 * Generate reference ERA5 EPWs at fractional fixed UTC offsets with shared spatial interpolation and explicit accumulation intervals.
