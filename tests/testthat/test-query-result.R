@@ -9501,6 +9501,23 @@ test_that("frozen recovery reuses imported blocks with verified routes", {
         )
     }
     expect_identical(recover(0L), old)
+
+    # Block publication using a real filesystem collision in the test Store.
+    # The inherited admission and the moved-aside prior payload must survive.
+    subsets <- file.path(destination, "subsets")
+    held <- file.path(destination, "held")
+    stopifnot(file.rename(subsets, held), file.create(subsets))
+    failed <- suppressWarnings(recover(1L))
+    expect_identical(failed$phase, "blocked_error")
+    expect_identical(failed$in_flight, old$in_flight)
+    expect_identical(failed$admissions, old$admissions)
+    expect_identical(
+        checksum_file(file.path(held, basename(before$path))),
+        before$sha256
+    )
+    expect_length(traffic(), 1L)
+    stopifnot(unlink(subsets) == 0L, file.rename(held, subsets))
+
     after <- recover(1L)
     expect_identical(after$phase, "complete")
     expect_identical(after$admissions, old$admissions)
