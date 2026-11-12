@@ -19,8 +19,5 @@
 ^reports$
 ^outputs$
 ^air\.toml$
-^\.uvr$
-^uvr\.toml$
-^uvr\.lock$
 ^AGENTS\.md$
 ^\.vscode$

@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Run supervised package checks with the active R libraries and standard R tooling.
+
 * Declare `rlang` as a runtime dependency for validation and CLI diagnostics.
 
 * Resume frozen subset recovery from an existing journal with `resume_subsets()`,
