@@ -31,11 +31,14 @@ associated site IDs remain in the plan. Request IDs identify the exact dataset
 and request body. Expected coverage is a request specification, not downloaded
 coverage. The returned grid coordinates must still be checked.
 
-## Exact UTC dates and CDS-only fields
+## Exact UTC dates and radiation dependencies
 
-Use explicit native 0.25-degree coordinates with `access = "cds"` to acquire
-fields absent from ARCO. Public `rsdsdiff` expands to its two raw dependencies,
-SSRD and FDIR; the saved data keep both, without calculating diffuse radiation.
+Cloud cover (`clt`) and direct horizontal solar radiation are listed in the
+[official ERA5 ARCO parameter table](https://confluence.ecmwf.int/pages/viewpage.action?pageId=505390919).
+Both `access = "arco"` and explicit `access = "cds"` support these fields.
+Public `rsdsdiff` expands to its two raw dependencies, SSRD and FDIR; the saved
+data keep both, without calculating diffuse radiation. The CDS route requires
+explicit native 0.25-degree coordinates; the following example uses that route.
 
 ```r
 source <- shift_era5(2001, variables = c("rsdsdiff", "rlds", "clt", "pr"),

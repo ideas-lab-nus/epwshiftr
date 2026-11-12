@@ -99,7 +99,11 @@ test_that("ERA5 access and requests reflect variable and time-zone needs", {
         era5__resolve_access(source, c("tas", "hurs")),
         "arco"
     )
-    expect_identical(era5__resolve_access(source, "clt"), "cds")
+    expect_identical(era5__resolve_access(source, "clt"), "arco")
+    expect_identical(
+        era5__resolve_access(shift_era5(2001, access = "cds"), "clt"),
+        "cds"
+    )
 
     arco <- era5__request(source, "tas", site, "arco")
     expect_identical(

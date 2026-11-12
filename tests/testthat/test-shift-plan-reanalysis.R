@@ -122,7 +122,7 @@ test_that("independent plans reject implicit or unsupported source intent", {
         ),
         "frequency"
     )
-    expect_error(
+    expect_equal(
         shift_plan_reanalysis(
             shift_era5(
                 2001,
@@ -131,8 +131,8 @@ test_that("independent plans reject implicit or unsupported source intent", {
                 access = "arco"
             ),
             site
-        ),
-        "no CDS fallback"
+        )$requests$variable_id,
+        "clt"
     )
     expect_error(
         shift_plan_reanalysis(

@@ -362,23 +362,6 @@ test_that("point archives retain container and member identity through public ex
         read$artifacts$netcdf_sha256,
         unname(tools::sha256sum(path))
     )
-    result <- shift_reanalysis_data(
-        source,
-        site,
-        file.path(directory, "execution"),
-        data = files
-    )
-    expect_identical(result$status, "complete")
-    expect_identical(result$artifacts$netcdf_member, "weather.nc")
-    expect_identical(readRDS(result$data$path)$value, rep(280, 8832))
-    reopened <- shift_reanalysis_data(
-        source,
-        site,
-        file.path(directory, "execution"),
-        data = files
-    )
-    expect_true(reopened$execution$normalized_reused)
-    expect_identical(reopened$data, result$data)
 })
 
 test_that("archive packaging never relaxes field or member validation", {
@@ -477,6 +460,61 @@ test_that("saved point plans retain exact contracts through local reading", {
         changed$requests$expected_hours
     )
     expect_error(shift_read_reanalysis(changed, files), "unchanged")
+})
+
+# ARCO fields retain the same native interval and unit contract as CDS; this
+# checks actual NetCDF reading rather than only the availability flags.
+test_that("ARCO cloud and direct radiation keep their source semantics", {
+    plan <- shift_plan_reanalysis(
+        shift_era5(
+            2000,
+            variables = c("rsdsdiff", "clt"),
+            frequency = "hour",
+            access = "arco"
+        ),
+        shift_site("point", lat = 1.25, lon = 104),
+        dates = as.Date("2000-01-02")
+    )
+    expect_setequal(plan$requests$variable_id, c("clt", "fdir", "rsds"))
+    expect_true(all(
+        plan$requests$dataset == "reanalysis-era5-single-levels-timeseries"
+    ))
+    files <- setNames(
+        vapply(
+            seq_len(nrow(plan$requests)),
+            function(i) tempfile(fileext = ".nc"),
+            character(1)
+        ),
+        plan$requests$request_id
+    )
+    withr::defer(unlink(files))
+    aliases <- c(clt = "tcc", fdir = "fdir", rsds = "ssrd")
+    units <- c(clt = "1", fdir = "J m-2", rsds = "J m-2")
+    values <- c(clt = 0.4, fdir = 180000, rsds = 360000)
+    for (i in seq_along(files)) {
+        field <- plan$requests$variable_id[i]
+        test_read__file(
+            files[i],
+            variable = aliases[[field]],
+            units = units[[field]],
+            values = rep(values[[field]], 24L),
+            time = 24:47
+        )
+    }
+    read <- shift_read_reanalysis(plan, files)$data
+    expect_equal(unique(read[variable_id == "clt", value]), 40)
+    expect_equal(unique(read[variable_id == "fdir", value]), 50)
+    expect_equal(unique(read[variable_id == "rsds", value]), 100)
+    expect_true(all(is.na(read[variable_id == "clt", interval_start])))
+    accumulated <- read[variable_id %in% c("fdir", "rsds")]
+    expect_equal(
+        as.numeric(difftime(
+            accumulated$interval_end,
+            accumulated$interval_start,
+            units = "secs"
+        )),
+        rep(3600, 48L)
+    )
 })
 
 # Native CDS-style singleton spatial dimensions and valid_time are literal

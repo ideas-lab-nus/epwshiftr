@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Support total cloud cover and direct horizontal shortwave through ERA5 ARCO alongside explicit CDS access.
+
 * Acquire and resume ERA5 point data with durable submission and byte limits, and persist verified normalized tables.
 
 * Plan independent hourly ERA5 requests and validate local raw NetCDF or ZIP files with explicit grids, units and UTC coverage.
