@@ -3361,8 +3361,16 @@ EsgStore <- R6::R6Class(
         #' @param resume Whether to reuse complete existing extraction outputs.
         #'        Default: `TRUE`.
         #' @param reporter Optional workflow reporter used by task-level runs.
+        #' @param pool Optional package-owned persistent source pool. With a
+        #'        pool, return a pending extraction ticket and persist results
+        #'        when the owning process polls the pool. Default synchronous
+        #'        behavior is unchanged.
         #'
-        #' @return A data.table of processed extraction plan rows.
+        #' @return A data.table of processed extraction plan rows. When `pool`
+        #'   is supplied, a ticket with `status`, `error`, and `value` fields;
+        #'   poll the pool until it resolves before closing this store. HTTP
+        #'   fallback uses the same reader slot and a recoverable Downloader;
+        #'   it does not block collection of independent source jobs.
         # extract {{{
         extract = function(
             plan_id = NULL,
@@ -3370,7 +3378,8 @@ EsgStore <- R6::R6Class(
             fallback = c("auto", "error"),
             overwrite = FALSE,
             resume = TRUE,
-            reporter = NULL
+            reporter = NULL,
+            pool = NULL
         ) {
             checkmate::assert_character(
                 plan_id,
@@ -3386,6 +3395,11 @@ EsgStore <- R6::R6Class(
             checkmate::assert_flag(overwrite)
             checkmate::assert_flag(resume)
             fallback <- match.arg(fallback)
+            if (!is.null(pool)) {
+                stopifnot(
+                    inherits(pool, "epwshiftr_source_pool")
+                )
+            }
             private$check_open()
 
             plans <- data.table::as.data.table(ddb_read_table(
@@ -3580,6 +3594,17 @@ EsgStore <- R6::R6Class(
                         local,
                         root = private$store_path
                     ))
+                if (!is.null(pool) && has_local) {
+                    file <- data.table::copy(file)
+                    data.table::set(
+                        file,
+                        j = "url_opendap",
+                        value = store_abs_path(
+                            local,
+                            root = private$store_path
+                        )
+                    )
+                }
                 cached <- if (!identical(cache__mode(), "off")) {
                     store__extract_cache_read(store__extract_cache_path(
                         plan,
@@ -3602,9 +3627,10 @@ EsgStore <- R6::R6Class(
                         )
                     )
                 } else if (
-                    has_local ||
-                        is.na(endpoint) ||
-                        !grepl("^https?://", endpoint) ||
+                    (is.null(pool) &&
+                        (has_local ||
+                            is.na(endpoint) ||
+                            !grepl("^https?://", endpoint))) ||
                         identical(cache__mode(), "offline")
                 ) {
                     process(i)
@@ -3617,7 +3643,13 @@ EsgStore <- R6::R6Class(
             if (length(jobs)) {
                 # Without disk caching, return one plan per task so a file's
                 # entire city collection is never accumulated in worker memory.
-                group <- if (identical(cache__mode(), "off")) {
+                group <- if (!is.null(pool)) {
+                    vapply(
+                        jobs,
+                        function(job) source__physical_key(job$file),
+                        character(1L)
+                    )
+                } else if (identical(cache__mode(), "off")) {
                     seq_along(jobs)
                 } else {
                     vapply(
@@ -3627,6 +3659,16 @@ EsgStore <- R6::R6Class(
                     )
                 }
                 groups <- split(seq_along(jobs), group)
+                if (!is.null(pool)) {
+                    # Bound in-memory city payloads even with disk caching off.
+                    # Groups sharing one physical key are serialized by the pool.
+                    groups <- unlist(
+                        lapply(groups, function(rows) {
+                            split(rows, ceiling(seq_along(rows) / 8L))
+                        }),
+                        recursive = FALSE
+                    )
+                }
                 jobs <- lapply(groups, function(rows) {
                     list(
                         indices = vapply(
@@ -3642,39 +3684,89 @@ EsgStore <- R6::R6Class(
                     )
                 })
             }
+            collect_source <- function(job, value) {
+                # Register verified native downloads only in the manifest owner;
+                # readers never receive or write this store's DuckDB connection.
+                if (!is.null(value$download_manifest)) {
+                    stopifnot(identical(
+                        value$download_manifest,
+                        job$http$manifest
+                    ))
+                    store__sync_pool_download(self, value$download_manifest)
+                }
+                for (index in seq_along(job$indices)) {
+                    row <- job$indices[[index]]
+                    resolved <- value$results[[index]]
+                    if (inherits(resolved, "error")) {
+                        failures[[row]] <<- resolved
+                    } else {
+                        if (!is.null(resolved$cache_path)) {
+                            resolved$payload <- store__extract_cache_read(
+                                resolved$cache_path
+                            )
+                            if (is.null(resolved$payload)) {
+                                cli::cli_abort(
+                                    "A completed source payload is missing from the shared cache."
+                                )
+                            }
+                        }
+                        process(row, resolved)
+                    }
+                }
+            }
+            finish <- function() {
+                for (i in which(!vapply(failures, is.null, logical(1L)))) {
+                    process(i, failures[[i]])
+                }
+                data.table::rbindlist(processed, use.names = TRUE, fill = TRUE)
+            }
+            if (!is.null(pool)) {
+                jobs <- lapply(jobs, function(job) {
+                    job$source_key <- source__physical_key(job$file)
+                    if (identical(fallback, "auto")) {
+                        directory <- pool$download_dir
+                        if (is.null(directory)) {
+                            directory <- private$download_dir
+                        }
+                        job$http <- store__pool_download_config(
+                            job$file,
+                            directory,
+                            pool$download_timeout
+                        )
+                    }
+                    # Annual bounded windows prevent accidental whole-period
+                    # payload accumulation in the persistent reader.
+                    stopifnot(all(
+                        as.double(difftime(
+                            job$plans$time_stop,
+                            job$plans$time_start,
+                            units = "days"
+                        )) <=
+                            366
+                    ))
+                    job
+                })
+                return(pool$submit(
+                    jobs,
+                    store__read_task,
+                    collect_source,
+                    finish = finish,
+                    on_error = function(job, error) {
+                        for (i in job$indices) {
+                            failures[[i]] <<- error
+                        }
+                    }
+                ))
+            }
             source__apply(
                 jobs,
                 store__read_task,
-                collect = function(job, value) {
-                    for (index in seq_along(job$indices)) {
-                        row <- job$indices[[index]]
-                        resolved <- value$results[[index]]
-                        if (inherits(resolved, "error")) {
-                            failures[[row]] <<- resolved
-                        } else {
-                            if (!is.null(resolved$cache_path)) {
-                                resolved$payload <- store__extract_cache_read(
-                                    resolved$cache_path
-                                )
-                                if (is.null(resolved$payload)) {
-                                    cli::cli_abort(
-                                        "A completed source payload is missing from the shared cache."
-                                    )
-                                }
-                            }
-                            process(row, resolved)
-                        }
-                    }
-                },
+                collect = collect_source,
                 reporter = reporter
             )
             # HTTP fallback owns the store manifest and starts only after the
             # source pool has drained, so it cannot exceed the read limit.
-            for (i in which(!vapply(failures, is.null, logical(1L)))) {
-                process(i, failures[[i]])
-            }
-
-            data.table::rbindlist(processed, use.names = TRUE, fill = TRUE)
+            finish()
         },
         # }}}
         # query

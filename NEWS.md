@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Reuse a caller-owned `source_pool()` for Store extraction and continue recoverable HTTPServer transfers where whole-file access is allowed.
+
 * Resolve artifact paths in order, scope validation to selected artifacts, and write Zstandard Parquet through compact paths on Windows. (#316)
 
 * Plan several sites with `EsgStore$plan_regions()` and inspect physical file identities with `EsgStore$plan_sources()`. (#316)
