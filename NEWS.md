@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Preserve missing baseline opaque sky cover in monthly BWS/BTWS outputs.
+
 * Run supervised package checks with the active R libraries and standard R tooling.
 
 * Declare `rlang` as a runtime dependency for validation and CLI diagnostics.
