@@ -874,4 +874,14 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
     expect_true(any(grepl("Shift workflow run", rendered)))
 })
 
+# Invalid inputs must retain their intended diagnostic in installations that
+# contain runtime dependencies only, rather than relying on test dependencies.
+test_that("CLI validation retains the original source error condition", {
+    expect_error(
+        weather__new_input(WEATHER_INPUT_ROLES[[1L]], source = NULL),
+        "source.*cannot be NULL",
+        class = "rlang_error"
+    )
+})
+
 # vim: fdm=marker :
