@@ -702,6 +702,7 @@ test_that("serialized downloader worker dependencies support both worker algorit
             "format_byte",
             "headers_text",
             "resume_supported",
+            "resume_guard",
             "copy_file_range",
             "merge_piece_files",
             "target_path",
@@ -2502,6 +2503,105 @@ test_that("Downloader reports asynchronous worker failures", {
     expect_identical(result$status, DownloadStatus$Failed)
     expect_true(nzchar(result$error))
     expect_false(file.exists(file.path(root, "absent.bin")))
+})
+
+# Exercise actual GET semantics through the public downloader. The fixture
+# records Range requests and returns only tiny tails for offsets above 2 GB.
+test_that("ordinary HTTP resume validates GETs and retries at the written offset", {
+    skip_on_cran()
+    skip_if_not_installed("webfakes")
+    app <- webfakes::new_app()
+    app$locals$bytes <- as.raw(rep(0:255, 32))
+    app$locals$start <- numeric()
+    app$get("/offsets", function(req, res, locals) res$send_json(locals$start))
+    app$head("/:mode", function(req, res, locals) {
+        start <- as.numeric(gsub("[^0-9]", "", req$get_header("Range")))
+        total <- if (start > 2^31) start + 4 else length(locals$bytes)
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf("bytes %.0f-%.0f/%.0f", start, total - 1, total)
+        )$send(raw())
+    })
+    app$get("/:mode", function(req, res, locals) {
+        start <- as.numeric(gsub("[^0-9]", "", req$get_header("Range")))
+        mode <- req$params$mode
+        if (mode == "ignore") {
+            return(res$send(locals$bytes))
+        }
+        locals$start <- c(locals$start, start)
+        total <- if (mode == "large") start + 4 else length(locals$bytes)
+        reported <- if (mode == "wrong") start + 1 else start
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf("bytes %.0f-%.0f/%.0f", reported, total - 1, total)
+        )
+        if (mode == "large") {
+            return(res$send(as.raw(1:4)))
+        }
+        if (mode == "retry" && length(locals$start) == 1L) {
+            # Send a cleanly terminated but short chunked tail. The guard
+            # must keep its valid bytes and reject finalization.
+            res$send_chunk(locals$bytes[(start + 1):2048])
+            return(invisible(NULL))
+        }
+        res$send(locals$bytes[(start + 1):total])
+    })
+    server <- webfakes::new_app_process(app)
+    on.exit(server$stop(), add = TRUE)
+    root <- withr::local_tempdir()
+    temp <- file.path(root, "temp")
+    downloader <- Downloader$new(
+        dest = file.path(root, "dest"),
+        temp = temp,
+        retries = 2L,
+        n_workers = 0L
+    )
+    prefix <- app$locals$bytes[1:1024]
+    # Retry is the first request so only this attempt hits the truncation branch.
+    writeBin(prefix, file.path(temp, "retry.part"))
+    expect_warning(
+        result <- downloader$download(
+            server$url("/retry"),
+            filename = "retry.bin",
+            progress = FALSE,
+            checksum = checksum_bytes(app$locals$bytes, "md5"),
+            checksum_type = "md5",
+            .tmp_id = "retry"
+        ),
+        "Waiting.*before retry"
+    )
+    expect_identical(readBin(result, "raw", n = 8192L), app$locals$bytes)
+    offsets <- curl::curl_fetch_memory(server$url("/offsets"))$content
+    expect_equal(jsonlite::fromJSON(rawToChar(offsets)), c(1024, 2048))
+    for (mode in c("ignore", "wrong")) {
+        partial <- file.path(temp, paste0(mode, ".part"))
+        writeBin(prefix, partial)
+        expect_error(suppressWarnings(downloader$download(
+            server$url(paste0("/", mode)),
+            filename = paste0(mode, ".bin"),
+            progress = FALSE,
+            .tmp_id = mode
+        )))
+        expect_identical(readBin(partial, "raw", n = 8192L), prefix)
+    }
+    # Check the real server response at a large offset without allocating a
+    # multi-gigabyte file in the test filesystem.
+    start <- 2^31 + 123
+    expect_true(downloader__resume_supported(server$url("/large"), start, 5L))
+    handle <- curl::new_handle(resume_from_large = start)
+    guard <- downloader__worker_dependencies()$resume_guard(handle, start)
+    body <- raw()
+    response <- curl::curl_fetch_stream(
+        server$url("/large"),
+        function(chunk) {
+            guard$accept(chunk)
+            body <<- chunk
+            TRUE
+        },
+        handle = handle
+    )
+    expect_no_error(guard$finish(response))
+    expect_identical(body, as.raw(1:4))
 })
 
 # vim: fdm=marker :

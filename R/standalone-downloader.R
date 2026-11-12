@@ -1353,7 +1353,7 @@ downloader__resume_supported <- function(
         low_speed_time = low_speed_time,
         nobody = TRUE
     )
-    curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
+    curl::handle_setheaders(handle, Range = sprintf("bytes=%.0f-", start_byte))
     response <- tryCatch(
         curl::curl_fetch_memory(url, handle = handle),
         error = function(e) NULL
@@ -1365,8 +1365,8 @@ downloader__resume_supported <- function(
     }
     headers <- tolower(downloader__headers_text(response$headers))
     pattern <- sprintf(
-        "content-range:[[:space:]]*bytes[[:space:]]+%d-",
-        as.integer(start_byte)
+        "content-range:[[:space:]]*bytes[[:space:]]+%.0f-",
+        start_byte
     )
     grepl(pattern, headers, perl = TRUE)
 }
@@ -1704,7 +1704,7 @@ downloader__worker_dependencies <- function() {
         )
         curl::handle_setheaders(
             handle,
-            Range = sprintf("bytes=%d-", start_byte)
+            Range = sprintf("bytes=%.0f-", start_byte)
         )
         response <- tryCatch(
             curl::curl_fetch_memory(url, handle = handle),
@@ -1717,10 +1717,114 @@ downloader__worker_dependencies <- function() {
             return(FALSE)
         }
         pattern <- sprintf(
-            "content-range:[[:space:]]*bytes[[:space:]]+%d-",
-            as.integer(start_byte)
+            "content-range:[[:space:]]*bytes[[:space:]]+%.0f-",
+            start_byte
         )
         grepl(pattern, tolower(headers_text(response$headers)), perl = TRUE)
+    }
+
+    # Check the actual GET before appending any resumed bytes. HEAD negotiation
+    # alone cannot protect a partial when a gateway changes its response later.
+    resume_guard <- function(handle, start_byte) {
+        stopifnot(
+            length(start_byte) == 1L,
+            is.finite(start_byte),
+            start_byte >= 0,
+            start_byte <= 2^53 - 1,
+            start_byte == floor(start_byte)
+        )
+        received <- 0
+        expected <- NULL
+        validated <- FALSE
+        validate <- function(response) {
+            if (start_byte == 0 || validated) {
+                return(invisible(NULL))
+            }
+            lines <- strsplit(headers_text(response$headers), "\r?\n")[[1L]]
+            # Redirect/proxy response blocks must not supply missing headers for
+            # the final GET. Only that final block describes appended bytes.
+            status_lines <- grep("^HTTP/", lines)
+            if (length(status_lines)) {
+                lines <- lines[seq.int(tail(status_lines, 1L), length(lines))]
+            }
+            value <- function(name) {
+                hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
+                if (!length(hit)) {
+                    return(NA_character_)
+                }
+                trimws(sub("^[^:]+:", "", lines[[tail(hit, 1L)]]))
+            }
+            text <- value("content-range")
+            parts <- if (!is.na(text)) {
+                regmatches(
+                    text,
+                    regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
+                )[[1L]]
+            } else {
+                character()
+            }
+            bounds <- suppressWarnings(as.numeric(parts[-1L]))
+            valid <- length(bounds) == 3L &&
+                all(is.finite(bounds)) &&
+                all(bounds <= 2^53 - 1) &&
+                bounds[[1L]] == start_byte &&
+                bounds[[2L]] >= start_byte &&
+                bounds[[2L]] == bounds[[3L]] - 1
+            if (!identical(as.integer(response$status_code), 206L) || !valid) {
+                stop(
+                    "HTTP resume GET did not return the exact remaining Content-Range.",
+                    call. = FALSE
+                )
+            }
+            expected <<- bounds[[2L]] - bounds[[1L]] + 1
+            length_header <- value("content-length")
+            encoding <- value("content-encoding")
+            if (
+                (!is.na(length_header) &&
+                    !identical(
+                        suppressWarnings(as.numeric(length_header)),
+                        expected
+                    )) ||
+                    (!is.na(encoding) && tolower(encoding) != "identity")
+            ) {
+                stop(
+                    "HTTP resume GET has inconsistent length or encoding.",
+                    call. = FALSE
+                )
+            }
+            validated <<- TRUE
+            invisible(NULL)
+        }
+        # curl exposes the final response headers before its first body callback.
+        accept <- function(chunk) {
+            if (start_byte == 0) {
+                return(invisible(NULL))
+            }
+            validate(curl::handle_data(handle))
+            if (received + length(chunk) > expected) {
+                stop(
+                    "HTTP resume GET exceeded its declared byte range.",
+                    call. = FALSE
+                )
+            }
+            received <<- received + length(chunk)
+            invisible(NULL)
+        }
+        # Keep an interrupted valid prefix, but never seal an incomplete tail.
+        finish <- function(response) {
+            if (start_byte == 0) {
+                return(invisible(NULL))
+            }
+            validate(response)
+            if (!identical(received, expected)) {
+                stop(
+                    "HTTP resume GET ended before its declared byte range.",
+                    call. = FALSE
+                )
+            }
+            invisible(NULL)
+        }
+        list(accept = accept, finish = finish)
     }
 
     # Copy one byte range from a local file URL into an atomic piece file.
@@ -1847,6 +1951,7 @@ downloader__worker_dependencies <- function() {
         format_byte = format_byte,
         headers_text = headers_text,
         resume_supported = resume_supported,
+        resume_guard = resume_guard,
         copy_file_range = copy_file_range,
         merge_piece_files = merge_piece_files,
         target_path = target_path,
@@ -2367,20 +2472,27 @@ downloader__worker_download <- function(
         if (start_byte > 0) {
             curl::handle_setheaders(
                 handle,
-                Range = sprintf("bytes=%d-", start_byte)
+                Range = sprintf("bytes=%.0f-", start_byte)
             )
+            curl::handle_setopt(handle, resume_from_large = start_byte)
         }
 
+        guard <- worker_dependencies$resume_guard(
+            handle,
+            if (grepl("^https?://", url, ignore.case = TRUE)) start_byte else 0
+        )
         con <- file(tmp_part, if (start_byte > 0) "ab" else "wb")
         on.exit(close(con), add = TRUE)
-        curl::curl_fetch_stream(
+        response <- curl::curl_fetch_stream(
             url,
             function(chunk) {
+                guard$accept(chunk)
                 writeBin(chunk, con)
                 TRUE
             },
             handle = handle
         )
+        guard$finish(response)
         close(con)
         on.exit(NULL)
         file.rename(tmp_part, tmp_done)
@@ -2424,6 +2536,12 @@ downloader__worker_download <- function(
     last_error <- NULL
     checksum_history <- character()
     while (attempt <= retries) {
+        # The previous interrupted stream may have added valid bytes.
+        if (isTRUE(resume) && file.exists(tmp_part)) {
+            start_byte <- as.numeric(
+                file.info(tmp_part, extra_cols = FALSE)$size
+            )
+        }
         ok <- tryCatch(
             {
                 stream(
@@ -2981,6 +3099,13 @@ Downloader <- R6::R6Class(
             chksum_history <- character(0) # track checksums for intelligent retry
 
             while (attempt <= private$retries) {
+                # Re-read the partial after each failed GET rather than appending
+                # the same tail again from an obsolete starting offset.
+                if (isTRUE(resume) && file.exists(tmp_part)) {
+                    start_byte <- as.numeric(
+                        file.info(tmp_part, extra_cols = FALSE)$size
+                    )
+                }
                 result <- tryCatch(
                     {
                         private$download_with_streaming(
@@ -8810,10 +8935,19 @@ Downloader <- R6::R6Class(
             if (start_byte > 0) {
                 curl::handle_setheaders(
                     handle,
-                    Range = sprintf("bytes=%d-", start_byte)
+                    Range = sprintf("bytes=%.0f-", start_byte)
                 )
+                curl::handle_setopt(handle, resume_from_large = start_byte)
             }
 
+            guard <- downloader__worker_dependencies()$resume_guard(
+                handle,
+                if (grepl("^https?://", url, ignore.case = TRUE)) {
+                    start_byte
+                } else {
+                    0
+                }
+            )
             # Open file for writing
             mode <- if (start_byte > 0) "ab" else "wb"
             con <- file(tmp_part, mode)
@@ -8884,10 +9018,11 @@ Downloader <- R6::R6Class(
             }
 
             # Download with streaming
-            curl::curl_fetch_stream(
+            response <- curl::curl_fetch_stream(
                 url,
                 function(chunk) {
                     # Write chunk to file
+                    guard$accept(chunk)
                     writeBin(chunk, con)
                     bytes_downloaded <<- bytes_downloaded + length(chunk)
 
@@ -8929,6 +9064,7 @@ Downloader <- R6::R6Class(
                 },
                 handle = handle
             )
+            guard$finish(response)
 
             close(con)
             on.exit(NULL)
