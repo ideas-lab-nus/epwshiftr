@@ -499,6 +499,54 @@ test_that("EsgDataset$get_spatial_grid()", {
     expect_true("lat" %in% names(grid))
     expect_true("lon" %in% names(grid))
 })
+
+# Simulate one native read failure with a real NetCDF file so the retry uses
+# the same dataset handle and must retrieve the original coordinate values.
+test_that("EsgDataset retries a failed coordinate read on the same object", {
+    path <- file.path(withr::local_tempdir(), "grid.nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    read_variable <- RNetCDF::var.get.nc
+    fail_latitude <- TRUE
+    testthat::local_mocked_bindings(
+        .package = "RNetCDF",
+        var.get.nc = function(ncfile, variable, ...) {
+            if (fail_latitude && identical(variable, "lat")) {
+                stop("NetCDF: DAP server error", call. = FALSE)
+            }
+            read_variable(ncfile, variable, ...)
+        }
+    )
+    ds <- EsgDataset$new(path)
+    ds$open()
+    withr::defer(ds$close())
+
+    expect_error(ds$get_spatial_grid(), "DAP server error")
+
+    fail_latitude <- FALSE
+    grid <- ds$get_spatial_grid()
+    expect_equal(as.numeric(grid$lat), c(1, 2, 41))
+    expect_equal(as.numeric(grid$lon), c(103.5, 104, 104.5, 254))
+})
+
+# A missing declaration is still a valid partial grid, even though a failed
+# read of an existing coordinate must propagate to the caller.
+test_that("EsgDataset returns NULL for an undeclared coordinate", {
+    path <- file.path(withr::local_tempdir(), "grid.nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    nc <- RNetCDF::open.nc(path, write = TRUE)
+    tryCatch(
+        RNetCDF::var.rename.nc(nc, "lat", "other_latitude"),
+        finally = RNetCDF::close.nc(nc)
+    )
+    ds <- EsgDataset$new(path)
+    ds$open()
+    withr::defer(ds$close())
+
+    grid <- ds$get_spatial_grid()
+    expect_named(grid, c("lat", "lon"))
+    expect_null(grid$lat)
+    expect_equal(as.numeric(grid$lon), c(103.5, 104, 104.5, 254))
+})
 # }}}
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get()", {

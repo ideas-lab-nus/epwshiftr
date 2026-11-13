@@ -1613,16 +1613,20 @@ EsgDataset <- R6::R6Class(
                 return(private$metadata_cache[[cache_key]])
             }
 
-            # Get lat/lon data
-            lat <- tryCatch(
-                self$var_get("lat", index = index),
-                error = function(e) NULL
-            )
-
-            lon <- tryCatch(
-                self$var_get("lon", index = index),
-                error = function(e) NULL
-            )
+            # A coordinate counts as absent only when the file does not declare
+            # it. A declared coordinate that fails to read is a transport or
+            # parsing failure: it propagates to the caller and is never cached,
+            # otherwise one transient error would permanently mislabel the file
+            # as lacking lat/lon.
+            declared <- self$get_variables(index = index)
+            read_coordinate <- function(name) {
+                if (!name %in% declared) {
+                    return(NULL)
+                }
+                self$var_get(name, index = index)
+            }
+            lat <- read_coordinate("lat")
+            lon <- read_coordinate("lon")
 
             result <- list(
                 lat = lat,
