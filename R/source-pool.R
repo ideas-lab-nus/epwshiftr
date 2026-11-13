@@ -87,11 +87,10 @@ source__pool <- function(
         }
         value
     }
-    # Disconnect idle Windows readers so they exit without deserializing the
-    # shutdown message, which can raise R_UnboundValue inside a direct daemon.
+    # Disconnect direct readers so they exit without deserializing the
+    # shutdown message, which can raise R_UnboundValue in the daemon.
     close_idle <- function(profile) {
-        shutdown <- if (.Platform$OS.type == "windows") 0L else NULL
-        mirai::daemons(shutdown, .compute = profile)
+        mirai::daemons(0L, .compute = profile)
     }
     # Capture the worker's process identity before loading application code.
     start <- function(i) {
