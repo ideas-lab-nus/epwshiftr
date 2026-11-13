@@ -132,6 +132,7 @@ test_that("persistent reader output is opt-in and preserves process reuse", {
             error_on_status = FALSE
         )
         expect_identical(result$status, 0L, info = result$stderr)
+        expect_false(grepl("R_UnboundValue", result$stderr, fixed = TRUE))
         expect_match(result$stdout, "OUTPUT_READER_REUSE_PASSED")
         expect_identical(
             grepl("EPWSHIFTR_READER_STDOUT", result$stdout, fixed = TRUE),
