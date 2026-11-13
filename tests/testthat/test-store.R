@@ -3266,8 +3266,16 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
     expect_equal(processed$available_time_count, 2L)
     expect_identical(results$year, c(2060L, 2061L))
     expect_identical(results$row_count, c(1L, 1L))
-    expect_true(grepl("year=2060", results$output_path[[1L]], fixed = TRUE))
-    expect_true(grepl("year=2061", results$output_path[[2L]], fixed = TRUE))
+    # Both the partitioned and compact layouts identify the native year.
+    for (i in seq_len(nrow(results))) {
+        year <- results$year[[i]]
+        path <- results$output_path[[i]]
+        if (startsWith(path, "extracts/by-plan/")) {
+            expect_true(endsWith(path, sprintf("-%d.parquet", year)))
+        } else {
+            expect_true(grepl(sprintf("year=%d/", year), path, fixed = TRUE))
+        }
+    }
 
     rows <- data.table::rbindlist(lapply(results$output_path, function(path) {
         parquet <- store_abs_path(path, root = dir)
@@ -3746,6 +3754,525 @@ test_that("File inspection follows current query membership without double count
         nrow(shift_inspect__file_catalog_preview(store, c(first, second))),
         1L
     )
+})
+
+# Use generated catalogue controls only; planning must never open their URLs.
+store_test__multi_site_files <- function() {
+    docs <- data.table::rbindlist(lapply(seq_len(4L), function(i) {
+        esgf_test__file_docs(
+            path = sprintf("generated-plan-%d.nc", i),
+            opendap_url = sprintf("https://example.invalid/%d.nc", i)
+        )
+    }))
+    esgf_test__file_result(docs)
+}
+
+# Compare the real multi-city caller against successive existing public calls,
+# including preserved failed/done state and literal site identifiers.
+test_that("multi-site plans match scalar plans and retain existing state", {
+    files <- store_test__multi_site_files()
+    old <- EsgStore$new(tempfile("scalar-plan-"))
+    new <- EsgStore$new(tempfile("multi-plan-"))
+    on.exit(old$close(), add = TRUE)
+    on.exit(new$close(), add = TRUE)
+    q1 <- old$add_files(files)
+    q2 <- new$add_files(files)
+    sites <- data.table::data.table(
+        site_id = c("same-point-a", "same-point-b", "city'quoted", "four"),
+        lon = c(110, 110, -180, 360),
+        lat = c(30, 30, -90, 90)
+    )
+    saved_sites <- data.table::copy(sites)
+    time <- c("2060-01-01", "2060-12-31")
+    for (method in c("nearest", "idw", "bilinear", "mean")) {
+        expected <- data.table::rbindlist(lapply(
+            seq_len(nrow(sites)),
+            function(i) {
+                old$plan_region(
+                    q1,
+                    sites$lon[[i]],
+                    sites$lat[[i]],
+                    time,
+                    site_id = sites$site_id[[i]],
+                    method = method
+                )
+            }
+        ))
+        actual <- new$plan_regions(q2, sites, time, method = method)
+        columns <- setdiff(names(expected), c("created_at", "updated_at"))
+        expect_identical(
+            actual[, columns, with = FALSE],
+            expected[, columns, with = FALSE]
+        )
+        expect_identical(sites, saved_sites)
+        expect_false(anyDuplicated(actual$plan_id) > 0L)
+    }
+    literal <- ddb_literal(priv(new)$conn, actual$plan_id[[1L]])
+    ddb_exec(
+        priv(new)$conn,
+        paste0(
+            "UPDATE extraction_plan SET status='failed',attempt_count=3,last_error='retained failure' WHERE plan_id=",
+            literal
+        )
+    )
+    before <- new$query("SELECT * FROM extraction_plan")
+    repeated <- new$plan_regions(q2, sites, time, method = "mean")
+    expect_identical(new$query("SELECT * FROM extraction_plan"), before)
+    row <- repeated[repeated$plan_id == actual$plan_id[[1L]]]
+    expect_identical(row$status, "failed")
+    expect_identical(row$attempt_count, 3L)
+    expect_identical(row$last_error, "retained failure")
+})
+
+# Invalid batches fail before any rows are appended; empty input retains the
+# ordinary typed plan schema without manufacturing a source or site.
+test_that("multi-site planning validates whole batches before publication", {
+    store <- EsgStore$new(tempfile("multi-plan-invalid-"))
+    on.exit(store$close(), add = TRUE)
+    q <- store$add_files(store_test__multi_site_files())
+    sites <- data.frame(site_id = c("a", "b"), lon = c(1, 2), lat = c(3, 4))
+    time <- c("2060-01-01", "2060-12-31")
+    empty <- store$plan_regions(q, sites[FALSE, ], time)
+    expect_s3_class(empty, "data.table")
+    expect_equal(nrow(empty), 0L)
+    expect_named(empty, names(store$query("SELECT * FROM extraction_plan")))
+    expect_s3_class(empty$time_start, "POSIXct")
+    expect_error(store$plan_regions(q, sites[, c("site_id", "lon")], time))
+    expect_error(store$plan_regions(
+        q,
+        transform(sites, site_id = c("a", "a")),
+        time
+    ))
+    expect_error(store$plan_regions(
+        q,
+        transform(sites, lon = c(1, NA_real_)),
+        time
+    ))
+    expect_error(store$plan_regions(q, transform(sites, lat = c(3, Inf)), time))
+    expect_error(store$plan_regions(q, transform(sites, lon = c(1, 361)), time))
+    expect_error(store$plan_regions(q, transform(sites, lat = c(3, -91)), time))
+    expect_error(store$plan_regions(
+        q,
+        transform(sites, site_id = c("a", NA)),
+        time
+    ))
+    expect_error(
+        store$plan_regions(q, sites, time, filters = list(unknown_field = "x")),
+        "Unknown"
+    )
+    expect_error(
+        store$plan_regions(q, sites, time, variable_id = "absent"),
+        "variable"
+    )
+    expect_equal(nrow(store$query("SELECT * FROM extraction_plan")), 0L)
+    keys <- store$query("SELECT file_key FROM file_catalog LIMIT 2")$file_key
+    plan <- store$plan_regions(q, sites, time, filters = list(file_key = keys))
+    expect_equal(nrow(plan), 4L)
+    expect_setequal(plan$file_key, keys)
+    expect_identical(plan$site_id, rep(sites$site_id, each = 2L))
+})
+
+# Public extraction must preserve native calendar labels and values after
+# batching sites, and resume completed outputs when their source is absent.
+test_that("multi-site extraction matches scalar output and reuses completed data", {
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    # Use the existing synchronous extraction entry point.
+    collect <- function(results) {
+        expect_true(all(results$status %in% c("done", "empty")))
+    }
+    # Read only these stores' generated outputs in a stable native-clock order.
+    values <- function(store) {
+        paths <- store$query(
+            "SELECT output_path FROM extraction_result"
+        )$output_path
+        paths <- file.path(store$path, paths)
+        sql <- paste0(
+            "SELECT * FROM read_parquet([",
+            paste(ddb_literal(priv(store)$conn, paths), collapse = ","),
+            "]) ORDER BY site_id,cf_year,cf_month,cf_day,cf_second_of_day"
+        )
+        store$query(sql)
+    }
+    for (calendar in c("proleptic_gregorian", "365_day", "360_day")) {
+        path <- tempfile(fileext = ".nc")
+        write_local_cmip6_netcdf_fixture(path, 2060L, calendar = calendar)
+        docs <- esgf_test__file_docs(path)
+        files <- esgf_test__file_result(docs)
+        old <- EsgStore$new(tempfile("scalar-generated-"))
+        new <- EsgStore$new(tempfile("multi-generated-"))
+        sites <- data.frame(
+            site_id = c("a", "b"),
+            lon = c(103.98, 104.4),
+            lat = c(1.37, 2)
+        )
+        time <- c("2060-01-01T00:00:00Z", "2060-01-03T23:59:59Z")
+        q1 <- old$add_files(files)
+        q2 <- new$add_files(files)
+        scalar <- data.table::rbindlist(lapply(
+            seq_len(nrow(sites)),
+            function(i) {
+                old$plan_region(
+                    q1,
+                    sites$lon[[i]],
+                    sites$lat[[i]],
+                    time,
+                    site_id = sites$site_id[[i]]
+                )
+            }
+        ))
+        batch <- new$plan_regions(q2, sites, time)
+        collect(old$extract(
+            plan_id = scalar$plan_id,
+            fallback = "error"
+        ))
+        collect(new$extract(
+            plan_id = batch$plan_id,
+            fallback = "error"
+        ))
+        expect_identical(values(new), values(old))
+        hashes <- new$validate()
+        expect_true(all(hashes$checksum_ok))
+        absent <- paste0(path, ".absent")
+        expect_true(file.rename(path, absent))
+        collect(new$extract(
+            plan_id = batch$plan_id,
+            fallback = "error"
+        ))
+        expect_identical(new$validate(), hashes)
+        old$close()
+        new$close()
+    }
+})
+
+# Build only catalogue controls: plan-source inspection must never open URLs.
+store_test__source_key_files <- function() {
+    docs <- data.table::rbindlist(lapply(1:3, function(i) {
+        esgf_test__file_docs(
+            path = sprintf("generated-source-map-%d.nc", i),
+            opendap_url = sprintf("https://example.invalid/source-%d.nc", i)
+        )
+    }))
+    esgf_test__file_result(docs)
+}
+
+# The public mapping uses normalized manifest metadata and exact input order,
+# while its source keys agree with the pool's identity implementation.
+test_that("plan source mapping preserves order and manifest state", {
+    store <- EsgStore$new(tempfile("plan-source-map-"))
+    on.exit(store$close(), add = TRUE)
+    query_id <- store$add_files(store_test__source_key_files())
+    plans <- store$plan_regions(
+        query_id,
+        data.frame(
+            site_id = c("city-a", "city-b"),
+            lon = c(110, 120),
+            lat = c(20, 30)
+        ),
+        c("2060-01-01", "2060-12-31")
+    )
+    before <- store$query("SELECT * FROM extraction_plan")
+    requested <- rev(plans$plan_id)
+    actual <- store$plan_sources(requested)
+    expect_s3_class(actual, "data.table")
+    expect_identical(actual$plan_id, requested)
+    expect_identical(actual$file_key, rev(plans$file_key))
+    catalog <- store$query("SELECT * FROM file_catalog")
+    expected <- vapply(
+        seq_len(nrow(actual)),
+        function(i) {
+            source__physical_key(catalog[
+                catalog$file_key == actual$file_key[[i]]
+            ])
+        },
+        character(1)
+    )
+    expect_identical(actual$source_key, expected)
+    expect_equal(data.table::uniqueN(actual$source_key), 3L)
+    expect_identical(store$query("SELECT * FROM extraction_plan"), before)
+    expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 0L)
+})
+
+# Empty/invalid/missing identifiers cannot create fake unblocked work. Catalog
+# corruption must fail before a caller submits an extraction to the pool.
+test_that("plan source mapping validates complete requested identities", {
+    store <- EsgStore$new(tempfile("plan-source-invalid-"))
+    on.exit(store$close(), add = TRUE)
+    empty <- store$plan_sources(character())
+    expect_identical(
+        empty,
+        data.table::data.table(
+            plan_id = character(),
+            file_key = character(),
+            source_key = character()
+        )
+    )
+    expect_error(store$plan_sources(NA_character_))
+    expect_error(store$plan_sources(""))
+    expect_error(store$plan_sources(c("a", "a")))
+    expect_error(store$plan_sources("absent'quoted"), "not found")
+    q <- store$add_files(store_test__source_key_files())
+    plans <- store$plan_region(q, 110, 30, c("2060-01-01", "2060-12-31"))
+    expect_error(
+        store$plan_sources(c(plans$plan_id[[1L]], "absent")),
+        "not found"
+    )
+    ddb_exec(
+        priv(store)$conn,
+        paste0(
+            "UPDATE extraction_plan SET file_key='absent-file' WHERE plan_id=",
+            ddb_literal(priv(store)$conn, plans$plan_id[[1L]])
+        )
+    )
+    expect_error(store$plan_sources(plans$plan_id[[1L]]), "file catalog")
+    store$close()
+    expect_error(store$plan_sources(character()), "closed")
+})
+
+# Published replica access URLs do not create another physical reader slot;
+# independently identified files remain distinct even within one query.
+test_that("plan source mapping groups replicas by physical identity", {
+    store <- EsgStore$new(tempfile("plan-source-replica-"))
+    on.exit(store$close(), add = TRUE)
+    q <- store$add_files(store_test__source_key_files())
+    plans <- store$plan_region(q, 110, 30, c("2060-01-01", "2060-12-31"))
+    catalog <- store$query("SELECT * FROM file_catalog")
+    keys <- catalog$file_key[1:2]
+    fields <- c(
+        "source_id",
+        "experiment_id",
+        "variant_label",
+        "grid_label",
+        "table_id",
+        "variable_id",
+        "title",
+        "version",
+        "tracking_id",
+        "checksum_type",
+        "checksum"
+    )
+    for (name in fields) {
+        ddb_exec(
+            priv(store)$conn,
+            paste0(
+                "UPDATE file_catalog SET ",
+                name,
+                "=",
+                ddb_literal(priv(store)$conn, catalog[[name]][[1L]]),
+                " WHERE file_key=",
+                ddb_literal(priv(store)$conn, keys[[2L]])
+            )
+        )
+    }
+    ids <- plans$plan_id[match(keys, plans$file_key)]
+    mapped <- store$plan_sources(ids)
+    expect_identical(mapped$source_key[[1L]], mapped$source_key[[2L]])
+    other <- store$plan_sources(plans$plan_id[
+        plans$file_key == catalog$file_key[[3L]]
+    ])
+    expect_false(other$source_key[[1L]] == mapped$source_key[[1L]])
+})
+
+# Exercise subset validation through the same public interface used by a
+# long-lived coordinator, including corrupt artifacts outside its current job.
+test_that("EsgStore validates only requested artifacts and preserves full checks", {
+    skip_if_not_installed("duckdb")
+    store <- EsgStore$new(tempfile("artifact-scope-"))
+    on.exit(store$close(), add = TRUE)
+    paths <- file.path(
+        store$path,
+        c("first.bin", "second.bin", "unrelated.bin")
+    )
+    ids <- vapply(
+        seq_along(paths),
+        function(i) {
+            writeBin(as.raw(rep(i, 32L)), paths[[i]])
+            store$register_artifact("output", paths[[i]])
+        },
+        character(1)
+    )
+    writeBin(as.raw(rep(9L, 32L)), paths[[3L]])
+
+    selected <- store$validate(ids[c(2L, 1L, 2L)])
+    expect_identical(selected$artifact_id, ids[c(2L, 1L)])
+    expect_true(all(selected$exists & selected$checksum_ok & selected$size_ok))
+    expect_identical(
+        selected,
+        store$validate()[match(selected$artifact_id, artifact_id)]
+    )
+    full <- store$validate()
+    expect_false(full$checksum_ok[match(ids[[3L]], full$artifact_id)])
+    expect_true(full$size_ok[match(ids[[3L]], full$artifact_id)])
+    expect_identical(
+        store$artifact_path(ids[c(2L, 1L, 2L)]),
+        paths[c(2L, 1L, 2L)]
+    )
+    expect_identical(store$artifact_path(ids[[1L]]), paths[[1L]])
+    expect_error(store$validate(c(ids[[1L]], "unknown-id")), "not found")
+    expect_error(store$artifact_path(c(ids[[1L]], "unknown-id")), "not found")
+    expect_error(store$validate(NA_character_))
+    expect_error(store$validate(""))
+    expect_error(store$validate(1))
+    expect_error(store$artifact_path(NULL))
+
+    missing <- paths[[2L]]
+    unlink(missing)
+    checked <- store$validate(ids[[2L]])
+    expect_false(checked$exists)
+    expect_true(is.na(checked$checksum_ok))
+    expect_true(is.na(checked$size_ok))
+})
+
+# Empty selections are explicit no-work operations; quoted identifiers remain
+# literal strings and cannot broaden a manifest query.
+test_that("EsgStore artifact selections handle empty stores and literal IDs", {
+    skip_if_not_installed("duckdb")
+    store <- EsgStore$new(tempfile("artifact-scope-empty-"))
+    on.exit(store$close(), add = TRUE)
+    empty <- store$validate()
+    expect_identical(store$validate(character()), empty)
+    expect_identical(store$artifact_path(character()), character())
+    expect_error(store$validate("unknown"), "not found")
+    path <- file.path(store$path, "literal.bin")
+    writeBin(as.raw(1L), path)
+    id <- store$register_artifact("output", path)
+    expect_identical(store$validate(character()), empty)
+    expect_error(store$validate("x' OR TRUE --"), "not found")
+    expect_identical(store$validate(id)$artifact_id, id)
+})
+
+# Long Windows roots must retain unique immutable extraction identities without
+# requiring registry changes or moving previously completed Parquet files.
+test_that("extraction paths compact only when Windows needs a shorter path", {
+    partitions <- c("project=CMIP6", "source_id=MODEL", "year=2060")
+    plan <- strrep("a", 64L)
+    short <- store__extract_output_path(
+        "extracts",
+        partitions,
+        plan,
+        2060L,
+        windows = TRUE
+    )
+    expect_identical(
+        short,
+        file.path(
+            "extracts",
+            "project=CMIP6",
+            "source_id=MODEL",
+            "year=2060",
+            paste0("part-", plan, ".parquet")
+        )
+    )
+    root <- paste0("C:/", strrep("r", 120L), "/extracts")
+    windows <- store__extract_output_path(
+        root,
+        partitions,
+        plan,
+        2060L,
+        windows = TRUE
+    )
+    posix <- store__extract_output_path(
+        root,
+        partitions,
+        plan,
+        2060L,
+        windows = FALSE
+    )
+    expect_true(nchar(posix) > 240L)
+    expect_true(nchar(windows) < 240L)
+    expect_identical(
+        windows,
+        file.path(root, "by-plan", paste0("part-", plan, "-2060.parquet"))
+    )
+    expect_false(identical(
+        windows,
+        store__extract_output_path(
+            root,
+            partitions,
+            plan,
+            2080L,
+            windows = TRUE
+        )
+    ))
+    expect_false(identical(
+        windows,
+        store__extract_output_path(
+            root,
+            partitions,
+            strrep("b", 64L),
+            2060L,
+            windows = TRUE
+        )
+    ))
+})
+
+# A real Parquet write checks the requested codec and the unchanged mask/value
+# representation instead of just matching the implementation's SQL string.
+test_that("store extraction Parquet uses Zstandard and retains native values", {
+    dir <- tempfile("store-zstd-")
+    store <- EsgStore$new(dir)
+    on.exit(store$close(), add = TRUE)
+    path <- file.path(dir, "extracts", "test.parquet")
+    input <- data.table::data.table(value = c(280.25, NA_real_, 281.5))
+    priv(store)$write_parquet(input, path)
+    quoted <- ddb_literal(priv(store)$conn, path)
+    actual <- store$query(paste0("SELECT * FROM read_parquet(", quoted, ")"))
+    codec <- store$query(paste0(
+        "SELECT DISTINCT compression FROM parquet_metadata(",
+        quoted,
+        ")"
+    ))
+    expect_identical(actual$value, input$value)
+    expect_identical(codec$compression, "ZSTD")
+})
+
+# On Windows, exercise the normal Store entry with a deeply nested disposable
+# root and read back the actual artifact registered after extraction.
+test_that("Windows Store extraction publishes and reads compact artifacts", {
+    if (.Platform$OS.type != "windows") {
+        # Exercise the same Store write and readback on hosts whose default
+        # path policy allows the long layout.
+        output_path <- store__extract_output_path
+        local_mocked_bindings(
+            store__extract_output_path = function(
+                extract_dir,
+                partitions,
+                plan_id,
+                year
+            ) {
+                output_path(
+                    extract_dir,
+                    partitions,
+                    plan_id,
+                    year,
+                    windows = TRUE
+                )
+            }
+        )
+    }
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    root <- file.path(withr::local_tempdir(), strrep("r", 62L))
+    store <- EsgStore$new(root)
+    on.exit(store$close(), add = TRUE)
+    source <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(source, 2060L)
+    query <- store$add_files(esgf_test__file_result(esgf_test__file_docs(
+        source
+    )))
+    plan <- store$plan_region(
+        query,
+        103.98,
+        1.37,
+        c("2060-01-01", "2060-01-03"),
+        site_id = strrep("site", 20L)
+    )
+    result <- store$extract(plan_id = plan$plan_id, fallback = "error")
+    expect_identical(result$status, "done")
+    actual <- store$query(
+        "SELECT output_path FROM extraction_result"
+    )$output_path
+    expect_match(actual, "by-plan")
+    expect_true(file.exists(file.path(store$path, actual)))
+    expect_true(all(store$validate()$checksum_ok))
 })
 
 # vim: fdm=marker :

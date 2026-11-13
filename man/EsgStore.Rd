@@ -68,6 +68,8 @@ Hongyuan Jia
 \item \href{#method-EsgStore-download_files}{\code{EsgStore$download_files()}}
 \item \href{#method-EsgStore-sync_downloads}{\code{EsgStore$sync_downloads()}}
 \item \href{#method-EsgStore-plan_region}{\code{EsgStore$plan_region()}}
+\item \href{#method-EsgStore-plan_regions}{\code{EsgStore$plan_regions()}}
+\item \href{#method-EsgStore-plan_sources}{\code{EsgStore$plan_sources()}}
 \item \href{#method-EsgStore-extract}{\code{EsgStore$extract()}}
 \item \href{#method-EsgStore-query}{\code{EsgStore$query()}}
 \item \href{#method-EsgStore-summarise}{\code{EsgStore$summarise()}}
@@ -276,36 +278,52 @@ The artifact ID.
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-artifact_path"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-artifact_path}{}}}
-\subsection{Method \code{artifact_path()}}{
-Return an artifact path from the manifest.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgStore$artifact_path(artifact_id)}\if{html}{\out{</div>}}
+\subsection{\code{EsgStore$artifact_path()}}{
+  Return an artifact path from the manifest.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$artifact_path(artifact_id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{artifact_id}}{Character vector of artifact IDs. Paths follow the
+requested order, including repeated IDs. An empty vector
+returns no paths. Unknown IDs are errors.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    Absolute artifact path.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{artifact_id}}{Artifact ID.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-Absolute artifact path.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-validate"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-validate}{}}}
-\subsection{Method \code{validate()}}{
-Validate registered artifact files against the manifest.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgStore$validate()}\if{html}{\out{</div>}}
+\subsection{\code{EsgStore$validate()}}{
+  Validate registered artifact files against the manifest.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$validate(artifact_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{artifact_id}}{Optional character vector restricting validation
+to these artifacts. Default \code{NULL} checks every artifact.
+Repeated IDs are checked once, in first-requested order;
+an empty vector checks no files. Unknown IDs are errors.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table with validation results.
+  }
 }
 
-\subsection{Returns}{
-A data.table with validation results.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-add_query"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-add_query}{}}}
@@ -1295,10 +1313,11 @@ A data.table of completed tasks.
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-plan_region"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-plan_region}{}}}
-\subsection{Method \code{plan_region()}}{
-Plan regional extraction jobs from cataloged files.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{EsgStore$plan_region(
+\subsection{\code{EsgStore$plan_region()}}{
+  Plan regional extraction jobs from cataloged files.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$plan_region(
   query_id,
   lon,
   lat,
@@ -1307,34 +1326,101 @@ Plan regional extraction jobs from cataloged files.
   variable_id = NULL,
   filters = list(),
   method = "nearest"
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{query_id}}{Query ID returned by \verb{$add_files()}.}
-
-\item{\code{lon, lat}}{Target longitude and latitude.}
-
-\item{\code{time}}{Length-2 time range.}
-
-\item{\code{site_id}}{Site identifier. Default: \code{"site-1"}.}
-
-\item{\code{variable_id}}{Optional variable IDs. If \code{NULL}, all cataloged
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{query_id}}{Query ID returned by \verb{$add_files()}.}
+      \item{\code{lon, lat}}{Target longitude and latitude.}
+      \item{\code{time}}{Length-2 time range.}
+      \item{\code{site_id}}{Site identifier. Default: \code{"site-1"}.}
+      \item{\code{variable_id}}{Optional variable IDs. If \code{NULL}, all cataloged
 variables in the query are used.}
-
-\item{\code{filters}}{Named list of exact-match file catalog filters.}
-
-\item{\code{method}}{Grid extraction method. One of \code{"nearest"}, \code{"idw"},
+      \item{\code{filters}}{Named list of exact-match file catalog filters.}
+      \item{\code{method}}{Grid extraction method. One of \code{"nearest"}, \code{"idw"},
 \code{"bilinear"}, or \code{"mean"}. Default: \code{"nearest"}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table of extraction plan rows.
+  }
 }
-\if{html}{\out{</div>}}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-plan_regions"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-plan_regions}{}}}
+\subsection{\code{EsgStore$plan_regions()}}{
+  Plan extraction for multiple sites with one catalogue lookup and
+one append of missing plans. Existing plans keep their status,
+attempt count, errors and timestamps.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$plan_regions(
+  query_id,
+  sites,
+  time,
+  variable_id = NULL,
+  filters = list(),
+  method = "nearest"
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{query_id}}{Query ID returned by \verb{$add_files()}.}
+      \item{\code{sites}}{A data.frame or data.table with unique character
+\code{site_id} values and finite numeric \code{lon} and \code{lat} columns.
+Other columns are ignored. The caller's object is not modified.
+An empty table returns zero plan rows without reading the catalogue.}
+      \item{\code{time}}{Length-2 time range shared by all sites.}
+      \item{\code{variable_id}}{Optional variable IDs. If \code{NULL}, all cataloged
+variables in the query are used.}
+      \item{\code{filters}}{Named list of exact-match file catalog filters.}
+      \item{\code{method}}{One of \code{"nearest"}, \code{"idw"}, \code{"bilinear"}, or \code{"mean"}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table in input site order. Within a site, existing
+manifest order is retained, as for successive \code{plan_region()} calls.
+  }
 }
-\subsection{Returns}{
-A data.table of extraction plan rows.
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-EsgStore-plan_sources"></a>}}
+\if{latex}{\out{\hypertarget{method-EsgStore-plan_sources}{}}}
+\subsection{\code{EsgStore$plan_sources()}}{
+  Resolve the physical source identities used by explicit extraction
+plans, without opening a source or changing plan state. Independent
+plans can share a persistent store while callers use these keys to
+avoid filling an external queue with work for the same physical file.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{EsgStore$plan_sources(plan_id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan_id}}{Unique extraction plan IDs. An empty character vector
+returns a typed zero-row table. Unknown plans or missing catalog
+records are errors.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.table with \code{plan_id}, \code{file_key}, and \code{source_key}, in
+requested plan order. \code{source_key} uses the same metadata identity
+as the source reader; published replicas of one physical file can
+therefore share a key despite different access URLs. The keys do
+not certify provider availability or scientific acceptance.
+  }
 }
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-EsgStore-extract"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgStore-extract}{}}}
