@@ -149,6 +149,31 @@ test_that("opaque sky cover preserves baseline proportions", {
     )
 })
 
+# Optional opaque cloud observations must retain unknown rows, including when
+# total cover is zero; only a known clear-sky row can use the established fallback.
+test_that("opaque sky cover preserves missing observations without inventing fractions", {
+    expect_identical(
+        epwphys__opaque_sky_cover(
+            c(6, 4, 4, NA, 6),
+            c(8, 0, 0, 8, NA),
+            c(4, NA, 0, 4, 3)
+        ),
+        c(3L, NA_integer_, 2L, NA_integer_, NA_integer_)
+    )
+    expect_identical(
+        epwphys__opaque_sky_cover(c(4, 6), c(0, 8), c(NA, NA)),
+        c(NA_integer_, NA_integer_)
+    )
+    expect_identical(
+        epwphys__opaque_sky_cover(numeric(), numeric(), numeric()),
+        integer()
+    )
+    expect_identical(epwphys__opaque_sky_cover(5, 8, 3, integer = FALSE), 1.875)
+    expect_error(epwphys__opaque_sky_cover(4, 8, Inf), "finite or missing")
+    expect_error(epwphys__opaque_sky_cover(4, 8, NaN), "finite or missing")
+    expect_error(epwphys__opaque_sky_cover(4, c(8, 8), 3), "matching lengths")
+})
+
 test_that("paper-faithful preservation diagnoses without changing humidity", {
     template <- epwphys_test__weather()
     result <- epwphys__apply(

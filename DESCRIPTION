@@ -31,6 +31,7 @@ Imports:
     ps (>= 1.9.0),
     R6,
     RNetCDF,
+    rlang,
     S7
 Suggests:
     testthat (>= 3.0.0),

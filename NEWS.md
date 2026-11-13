@@ -1,5 +1,11 @@
 # epwshiftr (development version)
 
+* Preserve missing baseline opaque sky cover in monthly BWS/BTWS outputs. (#313)
+
+* Run supervised package checks with the active R libraries and standard R tooling. (#313)
+
+* Declare `rlang` as a runtime dependency for validation and CLI diagnostics. (#313)
+
 * Resume frozen subset recovery from an existing journal with `resume_subsets()`,
   retain the original File and window scope, and transfer verified native blocks
   and receipts with `import_subset_blocks()`. Bind verified alternate endpoints

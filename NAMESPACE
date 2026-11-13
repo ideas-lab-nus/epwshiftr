@@ -112,6 +112,7 @@ importFrom(mirai,
   daemons,
   mirai
 )
+importFrom(rlang,abort)
 importFrom(utils,
   flush.console,
   head,

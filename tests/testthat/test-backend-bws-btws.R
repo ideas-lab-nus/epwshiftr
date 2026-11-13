@@ -520,4 +520,31 @@ test_that("BWS/BTWS public transform survives dry-run plan reconstruction", {
     expect_silent(shift_job__validate_background_plan(plan))
 })
 
+# Exercise the registered monthly recipe and the EPW round-trip with both
+# valid observations and unknown opaque cover at different total covers.
+test_that("monthly BWS/BTWS retains unknown opaque cover on EPW readback", {
+    context <- bws_btws_monthly_test__context()
+    weather <- context$epw$data()
+    data.table::set(weather, 1:4, "total_sky_cover", c(0L, 8L, 0L, 8L))
+    data.table::set(
+        weather,
+        1:4,
+        "opaque_sky_cover",
+        c(NA_integer_, NA_integer_, 0L, 4L)
+    )
+    context$epw$set(weather)
+    result <- morpher__run_context(context)
+    output <- context$epw$clone()
+    output$set(result$data)
+    path <- tempfile(fileext = ".epw")
+    output$save(path)
+    actual <- epw_file_read(path)$data()[1:4]
+    expect_true(all(is.na(actual$opaque_sky_cover[1:2])))
+    expect_true(all(is.finite(actual$opaque_sky_cover[3:4])))
+    expect_true(all(actual$opaque_sky_cover[3:4] >= 0L))
+    expect_true(all(
+        actual$opaque_sky_cover[3:4] <= actual$total_sky_cover[3:4]
+    ))
+})
+
 # vim: fdm=marker :

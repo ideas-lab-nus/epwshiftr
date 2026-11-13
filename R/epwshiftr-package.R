@@ -56,6 +56,7 @@
 #' @importFrom mirai daemons mirai
 #' @importFrom R6 R6Class
 #' @importFrom RNetCDF utcal.nc
+#' @importFrom rlang abort
 #' @importFrom utils flush.console head menu tail
 #' @importFrom S7 convert
 #' @rawNamespace if (getRversion() < "4.3.0") importFrom("S7", "@")

@@ -540,7 +540,8 @@ epwphys__bound_field <- function(value, field, upper = NULL) {
 
 # Preserve the baseline opaque-to-total cloud fraction after a method changes
 # total sky cover. The half-cover fallback retains established Belcher behavior
-# for a baseline row whose total cover is zero.
+# for a known baseline row whose total cover is zero. Missing cloud fields stay
+# missing: an unknown opaque fraction must not become an invented half-cover value.
 # epwphys__opaque_sky_cover {{{
 epwphys__opaque_sky_cover <- function(
     total,
@@ -562,24 +563,23 @@ epwphys__opaque_sky_cover <- function(
     lengths <- c(length(total), length(baseline_total), length(baseline_opaque))
     if (
         length(unique(lengths)) != 1L ||
-            any(
-                !is.finite(c(
-                    total,
-                    baseline_total,
-                    baseline_opaque
-                ))
-            )
+            any(is.infinite(c(total, baseline_total, baseline_opaque))) ||
+            any(is.nan(c(total, baseline_total, baseline_opaque)))
     ) {
         cli::cli_abort(
-            "Total and opaque sky-cover vectors must have matching finite values."
+            "Total and opaque sky-cover vectors must have matching lengths and finite or missing values."
         )
     }
-    fraction <- ifelse(
-        baseline_total > .Machine$double.eps,
-        baseline_opaque / baseline_total,
+    known <- is.finite(total) &
+        is.finite(baseline_total) &
+        is.finite(baseline_opaque)
+    fraction <- data.table::fifelse(
+        baseline_total[known] > .Machine$double.eps,
+        baseline_opaque[known] / baseline_total[known],
         fallback_fraction
     )
-    opaque <- pmin(total, pmax(0, total * fraction))
+    opaque <- rep.int(NA_real_, length(total))
+    opaque[known] <- pmin(total[known], pmax(0, total[known] * fraction))
     if (isTRUE(integer)) {
         opaque <- as.integer(round(opaque))
         opaque <- pmin(as.integer(round(total)), opaque)
