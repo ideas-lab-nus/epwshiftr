@@ -349,11 +349,34 @@ downloader__local_pid_absent <- function(pid, hostname) {
     if (pid == Sys.getpid()) {
         return(FALSE)
     }
-    # On Linux a handle can be created after exit. Read its status so a
-    # missing or unreaped process is distinguished from an access error.
+    pid <- as.integer(pid)
+    # An unreaped process may retain its PID after releasing its resources.
     tryCatch(
-        ps::ps_status(ps::ps_handle(as.integer(pid))) %in% c("dead", "zombie"),
+        ps::ps_status(ps::ps_handle(pid)) %in% c("dead", "zombie"),
         no_such_process = function(error) TRUE,
+        os_error = function(error) {
+            if (
+                !identical(Sys.info()[["sysname"]], "Linux") ||
+                    !identical(error$errno, 2L)
+            ) {
+                return(FALSE)
+            }
+            # On Linux ps_handle() reports ENOENT for an absent /proc entry.
+            # A restricted procfs can hide live processes, so confirm ESRCH
+            # with a zero signal, which cannot stop or alter a process.
+            output <- tryCatch(
+                suppressWarnings(system2(
+                    "kill",
+                    c("-0", pid),
+                    stdout = TRUE,
+                    stderr = TRUE,
+                    env = "LC_ALL=C"
+                )),
+                error = function(error) NULL
+            )
+            identical(attr(output, "status"), 1L) &&
+                any(endsWith(output, ": No such process"))
+        },
         error = function(error) FALSE
     )
 }
