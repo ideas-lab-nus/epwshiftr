@@ -3769,6 +3769,69 @@ EsgStore <- R6::R6Class(
             finish()
         },
         # }}}
+        # export_extracts
+        #' @description
+        #' Export immutable metadata for completed extraction plans. Weather data
+        #' remain in their existing Parquet files; the receipt contains no values.
+        #' @param plan_id Unique completed extraction plan IDs to export.
+        #' @param path New JSON receipt path. Existing receipts are never replaced.
+        #' @return For `export_extracts()`, the receipt path, SHA256 and named
+        #'   artifact paths. For `import_extracts()`, plan status and reuse flags.
+        export_extracts = function(plan_id, path) {
+            store_exchange__export(self, private, plan_id, path)
+        },
+        # import_extracts
+        #' @description
+        #' Atomically reuse completed plans from a checked extraction receipt.
+        #' Original query, file, site, period and physical source identities must
+        #' already exist locally. No download, file copy or overwrite occurs.
+        #' Missing or altered artifacts reject the entire import. Annual scientific
+        #' completeness remains the caller's responsibility.
+        #' @param path Existing extraction receipt JSON path.
+        #' @param checksum Expected SHA256 of the extraction receipt.
+        #' @param artifact_paths Named character vector of locally accessible
+        #'   Parquet paths inside this store root, keyed by the original artifact
+        #'   IDs in the receipt. Independently written child stores can share a
+        #'   synchronized parent root without sharing their live manifests.
+        import_extracts = function(path, checksum, artifact_paths) {
+            store_exchange__import(
+                self,
+                private,
+                path,
+                checksum,
+                artifact_paths
+            )
+        },
+        # export_plans
+        #' @description
+        #' Export exact pending or failed plan/catalogue metadata for an independent
+        #' execution store. Original IDs, coordinates and retry history are retained.
+        #' This metadata receipt does not authorize scientific use or ownership transfer.
+        #' @param plan_id Unique pending or failed extraction plan IDs.
+        #' @param path New plan receipt JSON path.
+        #' @return For `export_plans()`, receipt path, SHA256 and named query JSON paths.
+        #'   For `import_plans()`, original plan IDs and reuse flags.
+        export_plans = function(plan_id, path) {
+            store_exchange__export_plans(self, private, plan_id, path)
+        },
+        # import_plans
+        #' @description
+        #' Atomically install exact original plan metadata. Existing plans, retries
+        #' and completed outputs remain unchanged. Only query JSON controls are
+        #' copied; no native or extracted weather is copied or downloaded.
+        #' @param path Existing plan receipt JSON path.
+        #' @param checksum Expected SHA256 of the plan receipt.
+        #' @param query_paths Named local paths to the original synchronized query
+        #'   JSON controls, keyed by query ID. Each control is checked by SHA256.
+        import_plans = function(path, checksum, query_paths) {
+            store_exchange__import_plans(
+                self,
+                private,
+                path,
+                checksum,
+                query_paths
+            )
+        },
         # query
         #' @description
         #' Run a DuckDB SQL query against the extraction manifest.
