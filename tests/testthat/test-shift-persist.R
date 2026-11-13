@@ -104,6 +104,33 @@ test_that("an identical complete workflow returns its original durable run", {
     before <- file.info(c(canonical, exported))[, "mtime", drop = TRUE]
     checksums <- unname(tools::md5sum(c(canonical, exported)))
 
+    # A receipt produced before mandatory-fragment validation cannot certify
+    # the corrected workflow merely because its EPW files still exist.
+    current_spec <- shift_persist__plan_spec(plan)
+    expect_identical(current_spec$coverage_version, 2L)
+    earlier_spec <- current_spec
+    earlier_spec$coverage_version <- NULL
+    earlier_json <- shift_persist__spec_json(earlier_spec)
+    earlier_hash <- store__hash(earlier_json)
+    expect_false(identical(earlier_hash, expected_hash))
+    store <- shift_store(plan)
+    shift_job__run_update(
+        store,
+        run_id,
+        spec_json = earlier_json,
+        spec_hash = earlier_hash
+    )
+    store$close()
+    expect_null(shift_run__run_existing(plan))
+    store <- shift_store(plan)
+    shift_job__run_update(
+        store,
+        run_id,
+        spec_json = shift_persist__spec_json(current_spec),
+        spec_hash = expected_hash
+    )
+    store$close()
+
     existing <- shift_run__run_existing(plan)
     expect_s7_class(existing, ShiftRun)
     expect_identical(existing@ids$run_id, run_id)

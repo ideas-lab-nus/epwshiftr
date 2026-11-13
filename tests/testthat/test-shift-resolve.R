@@ -908,4 +908,371 @@ test_that("workflow resolver removes HTTP-only files when downloads are forbidde
     expect_equal(nrow(catalog), 0L)
 })
 
+# Exercise Dataset -> File collection where a real noleap Dataset endpoint is
+# earlier than the Gregorian request end, but the DRS File covers native 2100.
+test_that("CF-aware collection retains final-year File candidates", {
+    skip_if_not_installed("duckdb")
+    dataset_queries <- list()
+    docs <- esgf_test__file_docs(
+        "tas_Amon_CMCC-ESM2_ssp245_r1i1p1f1_gn_201501-210012.nc",
+        datetime_start = NA_character_,
+        datetime_end = NA_character_,
+        frequency = "mon",
+        table_id = "Amon"
+    )
+    data.table::set(docs, j = "source_id", value = "CMCC-ESM2")
+    data.table::set(docs, j = "experiment_id", value = "ssp245")
+    data.table::set(docs, j = "grid_label", value = "gn")
+    testthat::local_mocked_bindings(
+        query__collect = function(
+            index_node,
+            params,
+            required_fields = NULL,
+            all = FALSE,
+            limit = TRUE,
+            constraints = TRUE,
+            dict_check = FALSE,
+            progress_callback = NULL
+        ) {
+            type <- query_param__value(params$type())
+            if (identical(type, "Dataset")) {
+                bounds <- params$datetime_range()
+                dataset_queries[[length(dataset_queries) + 1L]] <<- bounds
+                data <- esgf_test__dataset_docs("tas", "mon")
+                # Replay the observed containment rejection, rather than always
+                # returning a successful Dataset fixture regardless of the query.
+                if (!is.null(query_param__value(bounds$stop))) data <- data[0L]
+            } else {
+                data <- docs
+            }
+            params$fields(unique(c(names(data), required_fields)))
+            response <- esgf_test__response(data)
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
+        },
+        .package = "epwshiftr"
+    )
+    request <- shift_cmip6_scenario(
+        "CMCC-ESM2",
+        "ssp245",
+        years = 2081:2100,
+        member = "r1i1p1f1",
+        variables = "tas",
+        frequency = "mon",
+        table_id = "Amon",
+        grid_label = "gn",
+        index_node = "https://example.org",
+        options = list(time_filter_method = "auto")
+    )
+    files <- shift_collect(request, store = tempfile("end-window-store-"))
+    store <- shift_store(files)
+    on.exit(store$close(), add = TRUE)
+    catalog <- shift_inspect__file_catalog(store, shift_ids(files)$query_id)
+    expect_equal(nrow(catalog), 1L)
+    expect_equal(format(catalog$datetime_end, "%Y", tz = "UTC"), "2100")
+    expect_null(query_param__value(dataset_queries[[1L]]$stop))
+    # Candidate retention cannot promote a File that actually stops in 2099.
+    short <- data.table::copy(catalog)
+    data.table::set(
+        short,
+        j = "datetime_end",
+        value = as.POSIXct("2099-12-31", tz = "UTC")
+    )
+    candidates <- shift_resolve__cmip6_candidates(
+        short,
+        models = "CMCC-ESM2",
+        experiments = "ssp245",
+        variables = "tas",
+        years = 2081:2100,
+        frequency = "mon",
+        table = "Amon"
+    )
+    expect_false(any(candidates$complete))
+})
+
+# Explicit metadata-mode requests retain their documented Dataset date filter;
+# File-aware strategies defer to DRS/native coordinates without changing time intent.
+test_that("only File-aware strategies defer Dataset containment dates", {
+    for (mode in c("auto", "drs", "opendap", "metadata", "default")) {
+        request <- shift_request(
+            project = "CMIP6",
+            source = "CMCC-ESM2",
+            experiment = "ssp245",
+            variables = "tas",
+            frequency = "mon",
+            time = c(2081L, 2100L),
+            options = if (mode == "default") {
+                list()
+            } else {
+                list(time_filter_method = mode)
+            }
+        )
+        query <- shift_resolve__as_esg_query(request)
+        bounds <- query$datetime_range()
+        if (mode %in% c("auto", "drs", "opendap")) {
+            expect_null(query_param__value(bounds$start))
+            expect_null(query_param__value(bounds$stop))
+        } else {
+            expect_match(query$url(), "2100")
+            expect_false(is.null(query_param__value(bounds$stop)))
+        }
+        expect_equal(
+            request@meta$time,
+            c("2081-01-01T00:00:00Z", "2100-12-31T23:59:59Z")
+        )
+    }
+})
+
+# NetCDF end coverage is taken from the original 360-day bounds.
+test_that("retained final-year File can be verified on its native calendar", {
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(
+        path,
+        year = 2100L,
+        calendar = "360_day",
+        frequency = "mon"
+    )
+    dataset <- EsgDataset$new(path)
+    dataset$open()
+    on.exit(dataset$close(), add = TRUE)
+    axis <- dataset$get_time_axis(variable = "tas")
+    expect_identical(axis$calendar, "360_day")
+    expect_identical(unique(axis$coordinates$cf_year), 2100L)
+    expect_identical(axis$coordinates$cf_month, 1:12)
+    expect_equal(max(axis$bounds$raw_values), 360)
+})
+
+# Build real-shaped File catalogue rows with explicit role, native identity and
+# span. These checks target the failed cross-role selection, not weather values.
+resolvecheck__paired_catalog <- function(
+    variables,
+    experiment,
+    member = "r1i1p1f1"
+) {
+    historical <- experiment == "historical"
+    span <- if (historical) "199501-201412" else "205501-206512"
+    start <- if (historical) "1995-01-01T00:00:00Z" else "2055-01-01T00:00:00Z"
+    end <- if (historical) "2014-12-31T23:59:59Z" else "2065-12-31T23:59:59Z"
+    data.table::rbindlist(
+        lapply(variables, function(variable) {
+            docs <- esgf_test__file_docs(
+                sprintf(
+                    "%s_Amon_Model-A_%s_%s_gn_%s.nc",
+                    variable,
+                    experiment,
+                    member,
+                    span
+                ),
+                variable_id = variable,
+                datetime_start = start,
+                datetime_end = end
+            )
+            docs$source_id <- "Model-A"
+            docs$experiment_id <- experiment
+            docs$variant_label <- member
+            docs$frequency <- "mon"
+            docs$table_id <- "Amon"
+            docs$grid_label <- "gn"
+            docs
+        }),
+        fill = TRUE
+    )
+}
+
+# Exercise the same strict role candidates and paired selection used by plans.
+resolvecheck__paired_selection <- function(
+    future_catalog,
+    reference_catalog,
+    requirements = list(hurs = list("hurs", c("huss", "tas", "ps"))),
+    frequency = "mon",
+    table = "Amon"
+) {
+    variables <- unique(unlist(requirements, recursive = TRUE))
+    future <- shift_resolve__cmip6_candidates(
+        future_catalog,
+        "Model-A",
+        "ssp126",
+        variables,
+        2055:2065,
+        frequency,
+        table,
+        requirements,
+        "gn"
+    )
+    reference <- shift_resolve__cmip6_candidates(
+        reference_catalog,
+        "Model-A",
+        "historical",
+        variables,
+        1995:2014,
+        frequency,
+        table,
+        requirements,
+        "gn"
+    )
+    shift_resolve__cmip6_paired_alternatives(
+        future,
+        reference,
+        future_catalog,
+        reference_catalog,
+        "Model-A",
+        "ssp126",
+        "historical",
+        2055:2065,
+        1995:2014,
+        variables,
+        frequency,
+        table,
+        requirements,
+        "gn"
+    )
+}
+
+test_that("an unmatched future HURS cannot hide a complete paired HUSS route", {
+    future <- resolvecheck__paired_catalog(
+        c("hurs", "huss", "tas", "ps"),
+        "ssp126"
+    )
+    reference <- resolvecheck__paired_catalog(
+        c("huss", "tas", "ps"),
+        "historical"
+    )
+    selected <- resolvecheck__paired_selection(future, reference)
+    expect_true(all(selected$future$complete))
+    expect_identical(
+        selected$future$requirement_key,
+        selected$reference$requirement_key
+    )
+    expect_match(selected$future$requirement_key, "huss")
+    shared <- shift_resolve__cmip6_shared_partitions(
+        selected$future$partitions_json[[1L]],
+        selected$reference$partitions_json[[1L]]
+    )
+    expect_setequal(shared$future$variable_id, c("huss", "tas", "ps"))
+    expect_setequal(shared$reference$variable_id, c("huss", "tas", "ps"))
+})
+
+test_that("a paired direct HURS route retains the recipe preference", {
+    variables <- c("hurs", "huss", "tas", "ps")
+    selected <- resolvecheck__paired_selection(
+        resolvecheck__paired_catalog(variables, "ssp126"),
+        resolvecheck__paired_catalog(variables, "historical")
+    )
+    expect_equal(nrow(selected$future), 1L)
+    expect_identical(
+        selected$future$requirement_key,
+        selected$reference$requirement_key
+    )
+    expect_false(grepl("huss", selected$future$requirement_key))
+})
+
+test_that("paired alternatives do not substitute sea-level pressure or mix members", {
+    future <- resolvecheck__paired_catalog(
+        c("hurs", "huss", "tas", "ps"),
+        "ssp126"
+    )
+    for (reference in list(
+        resolvecheck__paired_catalog(c("huss", "tas", "psl"), "historical"),
+        resolvecheck__paired_catalog(
+            c("huss", "tas", "ps"),
+            "historical",
+            "r2i1p1f1"
+        )
+    )) {
+        selected <- resolvecheck__paired_selection(future, reference)
+        diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
+            selected$future,
+            selected$reference,
+            "Model-A",
+            reference_required = TRUE
+        )
+        expect_equal(diagnostic$shared_complete_candidates, 0L)
+    }
+})
+
+test_that("paired alternatives still require the entire historical span", {
+    future <- resolvecheck__paired_catalog(
+        c("hurs", "huss", "tas", "ps"),
+        "ssp126"
+    )
+    reference <- resolvecheck__paired_catalog(
+        c("huss", "tas", "ps"),
+        "historical"
+    )
+    reference$datetime_end <- "2013-12-31T23:59:59Z"
+    reference$filename <- sub(
+        "201412",
+        "201312",
+        reference$filename,
+        fixed = TRUE
+    )
+    reference$title <- sub("201412", "201312", reference$title, fixed = TRUE)
+    selected <- resolvecheck__paired_selection(future, reference)
+    diagnostic <- shift_resolve__cmip6_resolution_diagnostic(
+        selected$future,
+        selected$reference,
+        "Model-A",
+        reference_required = TRUE
+    )
+    expect_equal(diagnostic$shared_complete_candidates, 0L)
+})
+
+test_that("non-selected humidity alternatives do not become optional fields", {
+    variables <- c("hurs", "huss", "tas", "ps")
+    selected <- resolvecheck__paired_selection(
+        resolvecheck__paired_catalog(variables, "ssp126"),
+        resolvecheck__paired_catalog(variables, "historical"),
+        requirements = list(hurs = list(c("huss", "tas", "ps"), "hurs"))
+    )
+    partitions <- shift_resolve__cmip6_partitions(selected$future$partitions_json[[
+        1L
+    ]])
+    expect_false("hurs" %in% partitions$variable_id)
+    expect_setequal(partitions$variable_id, c("huss", "tas", "ps"))
+})
+
+test_that("unsuccessful native identities remain inspectable after pairing", {
+    future <- data.table::rbindlist(lapply(
+        c("r1i1p1f1", "r2i1p1f1"),
+        function(member) {
+            resolvecheck__paired_catalog(
+                c("hurs", "huss", "tas", "ps"),
+                "ssp126",
+                member
+            )
+        }
+    ))
+    reference <- data.table::rbindlist(list(
+        resolvecheck__paired_catalog(c("huss", "tas", "ps"), "historical"),
+        resolvecheck__paired_catalog(
+            c("huss", "tas", "psl"),
+            "historical",
+            "r2i1p1f1"
+        )
+    ))
+    selected <- resolvecheck__paired_selection(future, reference)
+    expect_setequal(selected$reference$variant_label, c("r1i1p1f1", "r2i1p1f1"))
+    expect_false(selected$reference$complete[
+        selected$reference$variant_label == "r2i1p1f1"
+    ])
+})
+
+test_that("named native overrides follow the selected humidity route", {
+    variables <- c("hurs", "huss", "tas", "ps")
+    selected <- resolvecheck__paired_selection(
+        resolvecheck__paired_catalog(variables, "ssp126"),
+        resolvecheck__paired_catalog(c("huss", "tas", "ps"), "historical"),
+        frequency = stats::setNames(rep("mon", length(variables)), variables),
+        table = stats::setNames(rep("Amon", length(variables)), variables)
+    )
+    expect_identical(
+        selected$future$requirement_key,
+        selected$reference$requirement_key
+    )
+    expect_match(selected$future$requirement_key, "huss")
+})
+
 # vim: fdm=marker :
