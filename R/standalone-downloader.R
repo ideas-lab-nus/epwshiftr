@@ -349,12 +349,10 @@ downloader__local_pid_absent <- function(pid, hostname) {
     if (pid == Sys.getpid()) {
         return(FALSE)
     }
-    # Only the process API's explicit absence condition authorizes recovery.
+    # On Linux a handle can be created after exit. Read its status so a
+    # missing or unreaped process is distinguished from an access error.
     tryCatch(
-        {
-            ps::ps_handle(as.integer(pid))
-            FALSE
-        },
+        ps::ps_status(ps::ps_handle(as.integer(pid))) %in% c("dead", "zombie"),
         no_such_process = function(error) TRUE,
         error = function(error) FALSE
     )
