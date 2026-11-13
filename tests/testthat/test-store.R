@@ -3266,8 +3266,16 @@ test_that("EsgStore$extract() persists and partitions calendar-native years", {
     expect_equal(processed$available_time_count, 2L)
     expect_identical(results$year, c(2060L, 2061L))
     expect_identical(results$row_count, c(1L, 1L))
-    expect_true(grepl("year=2060", results$output_path[[1L]], fixed = TRUE))
-    expect_true(grepl("year=2061", results$output_path[[2L]], fixed = TRUE))
+    # Both the partitioned and compact layouts identify the native year.
+    for (i in seq_len(nrow(results))) {
+        year <- results$year[[i]]
+        path <- results$output_path[[i]]
+        if (startsWith(path, "extracts/by-plan/")) {
+            expect_true(endsWith(path, sprintf("-%d.parquet", year)))
+        } else {
+            expect_true(grepl(sprintf("year=%d/", year), path, fixed = TRUE))
+        }
+    }
 
     rows <- data.table::rbindlist(lapply(results$output_path, function(path) {
         parquet <- store_abs_path(path, root = dir)
@@ -4223,7 +4231,27 @@ test_that("store extraction Parquet uses Zstandard and retains native values", {
 # On Windows, exercise the normal Store entry with a deeply nested disposable
 # root and read back the actual artifact registered after extraction.
 test_that("Windows Store extraction publishes and reads compact artifacts", {
-    skip_if_not(.Platform$OS.type == "windows")
+    if (.Platform$OS.type != "windows") {
+        # Exercise the same Store write and readback on hosts whose default
+        # path policy allows the long layout.
+        output_path <- store__extract_output_path
+        local_mocked_bindings(
+            store__extract_output_path = function(
+                extract_dir,
+                partitions,
+                plan_id,
+                year
+            ) {
+                output_path(
+                    extract_dir,
+                    partitions,
+                    plan_id,
+                    year,
+                    windows = TRUE
+                )
+            }
+        )
+    }
     withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
     root <- file.path(withr::local_tempdir(), strrep("r", 62L))
     store <- EsgStore$new(root)
