@@ -124,7 +124,10 @@ test_that("persistent reader output is opt-in and preserves process reuse", {
         result <- processx::run(
             file.path(R.home("bin"), "Rscript"),
             c("--vanilla", script, if (enabled) "yes" else "no"),
+            # Preserve the OS environment; replacing it can crash R on Windows
+            # after the child has already finished running the assertions.
             env = c(
+                "current",
                 R_LIBS_USER = paste(libraries, collapse = .Platform$path.sep)
             ),
             timeout = 45,
@@ -139,7 +142,13 @@ test_that("persistent reader output is opt-in and preserves process reuse", {
             enabled
         )
         expect_identical(
-            grepl("EPWSHIFTR_READER_STDERR", result$stderr, fixed = TRUE),
+            # Windows keeps the native stderr stream separate; other hosts
+            # may forward it through the process's stdout.
+            grepl(
+                "EPWSHIFTR_READER_STDERR",
+                paste(result$stdout, result$stderr),
+                fixed = TRUE
+            ),
             enabled
         )
     }
