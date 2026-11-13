@@ -87,6 +87,12 @@ source__pool <- function(
         }
         value
     }
+    # Disconnect idle Windows readers so they exit without deserializing the
+    # shutdown message, which can raise R_UnboundValue inside a direct daemon.
+    close_idle <- function(profile) {
+        shutdown <- if (.Platform$OS.type == "windows") 0L else NULL
+        mirai::daemons(shutdown, .compute = profile)
+    }
     # Capture the worker's process identity before loading application code.
     start <- function(i) {
         profile <- paste0(
@@ -110,7 +116,7 @@ source__pool <- function(
         # and bootstrap failures must release this exact profile here.
         registered <- FALSE
         on.exit(
-            if (!registered) mirai::daemons(NULL, .compute = profile),
+            if (!registered) close_idle(profile),
             add = TRUE
         )
         pid <- await(mirai::mirai(Sys.getpid(), .compute = profile))
@@ -154,9 +160,9 @@ source__pool <- function(
         slot <- slots[[i]]
         h <- slot$handle
         if (is.null(slot$active)) {
-            # Give idle daemons an exit signal before closing the host
-            # transport. Busy or timed-out readers still require owned kill.
-            mirai::daemons(NULL, .compute = slot$profile)
+            # Idle readers can exit through their transport. Busy or timed-out
+            # readers still require owned kill before the next source is admitted.
+            close_idle(slot$profile)
             deadline <- clock() + 5
             while (ps::ps_is_running(h) && clock() < deadline) {
                 Sys.sleep(.01)

@@ -5891,7 +5891,7 @@ test_that("raw subset worker bootstrap failure retires its owned profile", {
         # real launch and shutdown unchanged to the installed mirai runtime.
         local_mocked_bindings(
             daemons = function(n, ..., .compute = NULL) {
-                if (n > 0L && !is.null(.compute)) {
+                if (!is.null(n) && n > 0L && !is.null(.compute)) {
                     profile <<- .compute
                 }
                 daemons(n, ..., .compute = .compute)
