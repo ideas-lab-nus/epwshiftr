@@ -3807,10 +3807,7 @@ test_that("multi-site plans match scalar plans and retain existing state", {
         expect_identical(sites, saved_sites)
         expect_false(anyDuplicated(actual$plan_id) > 0L)
     }
-    literal <- as.character(DBI::dbQuoteString(
-        DBI::ANSI(),
-        actual$plan_id[[1L]]
-    ))
+    literal <- ddb_literal(priv(new)$conn, actual$plan_id[[1L]])
     ddb_exec(
         priv(new)$conn,
         paste0(
@@ -4217,7 +4214,7 @@ test_that("store extraction Parquet uses Zstandard and retains native values", {
     path <- file.path(dir, "extracts", "test.parquet")
     input <- data.table::data.table(value = c(280.25, NA_real_, 281.5))
     priv(store)$write_parquet(input, path)
-    quoted <- as.character(DBI::dbQuoteString(DBI::ANSI(), path))
+    quoted <- ddb_literal(priv(store)$conn, path)
     actual <- store$query(paste0("SELECT * FROM read_parquet(", quoted, ")"))
     codec <- store$query(paste0(
         "SELECT DISTINCT compression FROM parquet_metadata(",
