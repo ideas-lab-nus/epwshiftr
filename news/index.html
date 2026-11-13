@@ -95,7 +95,12 @@
 
     <div class="section level2">
 <h2 class="page-header" data-toc-text="development version" id="epwshiftr-development-version">epwshiftr (development version)<a class="anchor" aria-label="anchor" href="#epwshiftr-development-version"></a></h2>
-<ul><li><p>Exchange verified extraction artifacts across manifests while preserving exact source identity and atomic registration. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/318" class="external-link">#318</a>)</p></li>
+<ul><li><p>Report failed coordinate reads from <code>EsgDataset$get_spatial_grid()</code> and allow retries on the same dataset. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/320" class="external-link">#320</a>)</p></li>
+<li><p>Support total cloud cover and direct horizontal shortwave through ERA5 ARCO alongside explicit CDS access. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/319" class="external-link">#319</a>)</p></li>
+<li><p>Acquire and resume ERA5 point data with durable submission and byte limits, and persist verified normalized tables. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/319" class="external-link">#319</a>)</p></li>
+<li><p>Plan independent hourly ERA5 requests and validate local raw NetCDF or ZIP files with explicit grids, units and UTC coverage. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/319" class="external-link">#319</a>)</p></li>
+<li><p>Generate reference ERA5 EPWs at fractional fixed UTC offsets with shared spatial interpolation and explicit accumulation intervals. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/319" class="external-link">#319</a>)</p></li>
+<li><p>Exchange verified extraction artifacts across manifests while preserving exact source identity and atomic registration. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/318" class="external-link">#318</a>)</p></li>
 <li><p>Export and import executable Store plans with their original query, File and plan identities. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/318" class="external-link">#318</a>)</p></li>
 <li><p>Reuse a caller-owned <code><a href="../reference/source_pool.html">source_pool()</a></code> for Store extraction and continue recoverable HTTPServer transfers where whole-file access is allowed. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/317" class="external-link">#317</a>)</p></li>
 <li><p>Resolve artifact paths in order, scope validation to selected artifacts, and write Zstandard Parquet through compact paths on Windows. (<a href="https://github.com/ideas-lab-nus/epwshiftr/issues/316" class="external-link">#316</a>)</p></li>

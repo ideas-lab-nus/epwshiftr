@@ -163,8 +163,12 @@ complete CDS subset service.</p></dd>
     <div id="details">
     <h2>Details</h2>
     <p><code>rsdsdiff</code> is derived from matched hourly SSRD minus FDIR accumulations
-(direct horizontal solar radiation, not DNI). It requires the full CDS
-single-level product; automatic access falls back from ARCO to CDS.</p>
+(direct horizontal solar radiation, not DNI). These fields and total cloud
+cover (<code>clt</code>) are available through both single-level CDS and its ARCO-backed
+time-series service; automatic access prefers the time-series service.
+<code>skt</code> requests skin temperature in kelvin and is available through both
+full CDS and the hourly point time-series service. For independent local
+point-file validation, use <code><a href="shift_read_reanalysis.html">shift_read_reanalysis()</a></code>.</p>
     </div>
     <div id="references">
     <h2>References</h2>

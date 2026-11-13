@@ -1,5 +1,6 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/404.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/ERA5-DATA.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/LICENSE-text.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/LICENSE.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/articles/cli-esgf-store.html</loc></url>
@@ -51,10 +52,14 @@
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_api.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_batch_get.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_cmip6_avail.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_download_reanalysis.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_epw_reanalysis.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_era5.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_era6.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_history.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_plan_reanalysis.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_read_reanalysis.html</loc></url>
+<url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_reanalysis_data.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_selection.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/shift_summary.html</loc></url>
 <url><loc>https://ideas-lab-nus.github.io/epwshiftr/reference/solr_date.html</loc></url>
