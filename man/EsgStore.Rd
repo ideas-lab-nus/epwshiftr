@@ -1445,7 +1445,8 @@ number of independent tasks and the remote service.
   fallback = c("auto", "error"),
   overwrite = FALSE,
   resume = TRUE,
-  reporter = NULL
+  reporter = NULL,
+  pool = NULL
 )}
     \if{html}{\out{</div>}}
   }
@@ -1464,11 +1465,19 @@ Default: \code{FALSE}.}
       \item{\code{resume}}{Whether to reuse complete existing extraction outputs.
 Default: \code{TRUE}.}
       \item{\code{reporter}}{Optional workflow reporter used by task-level runs.}
+      \item{\code{pool}}{Optional package-owned persistent source pool. With a
+pool, return a pending extraction ticket and persist results
+when the owning process polls the pool. Default synchronous
+behavior is unchanged.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    A data.table of processed extraction plan rows.
+    A data.table of processed extraction plan rows. When \code{pool}
+is supplied, a ticket with \code{status}, \code{error}, and \code{value} fields;
+poll the pool until it resolves before closing this store. HTTP
+fallback uses the same reader slot and a recoverable Downloader;
+it does not block collection of independent source jobs.
   }
 }
 

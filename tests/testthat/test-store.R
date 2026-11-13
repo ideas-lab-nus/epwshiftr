@@ -4275,4 +4275,366 @@ test_that("Windows Store extraction publishes and reads compact artifacts", {
     expect_true(all(store$validate()$checksum_ok))
 })
 
+# Serve generated NetCDF bytes with a deliberately failed DAP endpoint. The
+# server owns its counters so tests distinguish reuse from another download.
+store_test__fallback_app <- function(bytes, delay = 0) {
+    app <- webfakes::new_app()
+    app$locals$bytes <- bytes
+    app$locals$delay <- delay
+    app$locals$gets <- 0L
+    app$locals$dods <- 0L
+    app$locals$ranges <- character()
+    for (path in c(
+        "/dods/source.nc",
+        "/dods/source.nc.dds",
+        "/dods/source.nc.das",
+        "/dods/source.nc.dods"
+    )) {
+        app$all(path, function(req, res, locals) {
+            locals$dods <- locals$dods + 1L
+            res$set_status(504L)$send(
+                "<html><body>504 Gateway Time-out</body></html>"
+            )
+        })
+    }
+    app$all("/files/source.nc", function(req, res, locals) {
+        size <- length(locals$bytes)
+        res$set_header("Content-Type", "application/x-netcdf")$set_header(
+            "Accept-Ranges",
+            "bytes"
+        )$set_header("Last-Modified", "Mon, 01 Jan 2024 00:00:00 GMT")
+        if (identical(req$method, "HEAD")) {
+            return(res$set_header("Content-Length", size)$send(raw()))
+        }
+        locals$gets <- locals$gets + 1L
+        Sys.sleep(locals$delay)
+        header <- req$get_header("Range")
+        if (!is.null(header) && nzchar(header)) {
+            locals$ranges <- c(locals$ranges, header)
+            start <- as.integer(sub("^bytes=([0-9]+)-.*$", "\\1", header))
+            if (start >= size) {
+                return(res$set_status(416L)$set_header(
+                    "Content-Range",
+                    sprintf("bytes */%d", size)
+                )$send(raw()))
+            }
+            body <- locals$bytes[seq.int(start + 1L, size)]
+            return(res$set_status(206L)$set_header(
+                "Content-Range",
+                sprintf("bytes %d-%d/%d", start, size - 1L, size)
+            )$set_header("Content-Length", length(body))$send(body))
+        }
+        res$set_header("Content-Length", size)$send(locals$bytes)
+    })
+    app$get("/counts", function(req, res, locals) {
+        res$set_header(
+            "Content-Type",
+            "application/json"
+        )$send(jsonlite::toJSON(
+            list(
+                gets = locals$gets,
+                dods = locals$dods,
+                ranges = locals$ranges
+            ),
+            auto_unbox = TRUE
+        ))
+    })
+    app$post("/fast", function(req, res, locals) {
+        locals$delay <- 0
+        res$send("ok")
+    })
+    app
+}
+environment(store_test__fallback_app) <- baseenv()
+
+# Build the same public catalogue used by extraction with real size/checksum.
+store_test__fallback_files <- function(
+    path,
+    server,
+    checksum = checksum_file(path)
+) {
+    docs <- esgf_test__file_docs(
+        path,
+        opendap_url = server$url("/dods/source.nc"),
+        download_url = server$url("/files/source.nc")
+    )
+    data.table::set(docs, j = "checksum", value = checksum)
+    data.table::set(docs, j = "size", value = as.double(file.info(path)$size))
+    esgf_test__file_result(docs)
+}
+
+# Poll the actual persistent pool and retain per-ticket completion ordering.
+store_test__drain_fallback <- function(pool, tickets, limit = 25) {
+    end <- as.double(Sys.time()) + limit
+    finished <- rep(NA_real_, length(tickets))
+    while (
+        any(vapply(tickets, function(x) x$status == "pending", logical(1)))
+    ) {
+        pool$poll()
+        for (i in seq_along(tickets)) {
+            if (is.na(finished[[i]]) && tickets[[i]]$status != "pending") {
+                finished[[i]] <- as.double(Sys.time())
+            }
+        }
+        stopifnot(as.double(Sys.time()) < end)
+        Sys.sleep(.01)
+    }
+    finished
+}
+
+# A failed remote read must recover inside its own reader, while another reader
+# completes independently and only the owner writes the extraction manifests.
+test_that("persistent extraction recovers 504 through HTTP without blocking peers", {
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    path <- tempfile(fileext = ".nc")
+    peer_path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, calendar = "360_day")
+    write_local_cmip6_netcdf_fixture(peer_path, 2060L, variable_id = "huss")
+    bytes <- readBin(path, "raw", n = file.info(path)$size)
+    server <- webfakes::new_app_process(store_test__fallback_app(
+        bytes,
+        delay = 1
+    ))
+    withr::defer(server$stop())
+    remote <- EsgStore$new(tempfile("fallback-remote-"))
+    peer <- EsgStore$new(tempfile("fallback-peer-"))
+    withr::defer(remote$close())
+    withr::defer(peer$close())
+    pool <- source_pool(2L, timeout = 15)
+    withr::defer(pool$close(force = TRUE))
+    q1 <- remote$add_files(store_test__fallback_files(path, server))
+    q2 <- peer$add_files(esgf_test__file_result(esgf_test__file_docs(
+        peer_path,
+        variable_id = "huss"
+    )))
+    time <- c("2060-01-01", "2060-01-03")
+    p1 <- remote$plan_region(q1, 104, 1.37, time)
+    p2 <- peer$plan_region(q2, 104, 1.37, time)
+    first <- remote$extract(
+        plan_id = p1$plan_id,
+        fallback = "auto",
+        pool = pool
+    )
+    second <- peer$extract(
+        plan_id = p2$plan_id,
+        fallback = "error",
+        pool = pool
+    )
+    finished <- store_test__drain_fallback(pool, list(first, second))
+    expect_identical(first$status, "done")
+    expect_identical(second$status, "done")
+    expect_lt(finished[[2L]], finished[[1L]])
+    expect_true(
+        all(first$value$status == "done"),
+        info = paste(first$value$last_error, collapse = "\n")
+    )
+    expect_true(all(second$value$status == "done"))
+    expect_true(all(remote$validate()$checksum_ok))
+    result <- remote$query("select * from extraction_result")
+    expected <- EsgStore$new(tempfile("fallback-reference-"))
+    withr::defer(expected$close())
+    q3 <- expected$add_files(esgf_test__file_result(esgf_test__file_docs(path)))
+    p3 <- expected$plan_region(q3, 104, 1.37, time)
+    expected$extract(plan_id = p3$plan_id, fallback = "error")
+    reference <- expected$query("select * from extraction_result")
+    read_values <- function(store, rows) {
+        store$query(paste0(
+            "select cf_year,cf_month,cf_day,cf_second_of_day,value,units from read_parquet(",
+            ddb_literal(
+                priv(store)$conn,
+                file.path(store$path, rows$output_path[[1L]])
+            ),
+            ") order by cf_year,cf_month,cf_day,cf_second_of_day"
+        ))
+    }
+    expect_identical(
+        read_values(remote, result),
+        read_values(expected, reference)
+    )
+    before <- jsonlite::fromJSON(
+        rawToChar(curl::curl_fetch_memory(server$url("/counts"))$content)
+    )$gets
+    repeated <- remote$extract(
+        plan_id = p1$plan_id,
+        fallback = "auto",
+        pool = pool
+    )
+    store_test__drain_fallback(pool, list(repeated))
+    expect_identical(repeated$status, "done")
+    after <- jsonlite::fromJSON(
+        rawToChar(curl::curl_fetch_memory(server$url("/counts"))$content)
+    )$gets
+    expect_identical(after, before)
+    expect_identical(remote$query("select * from extraction_result"), result)
+})
+
+# A valid HTTP status cannot publish a corrupted source as a completed plan.
+test_that("persistent HTTP fallback retains checksum failures", {
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    bytes <- readBin(path, "raw", n = file.info(path)$size)
+    server <- webfakes::new_app_process(store_test__fallback_app(bytes))
+    withr::defer(server$stop())
+    store <- EsgStore$new(tempfile("fallback-checksum-"))
+    withr::defer(store$close())
+    pool <- source_pool(1L, timeout = 15)
+    withr::defer(pool$close(force = TRUE))
+    q <- store$add_files(store_test__fallback_files(
+        path,
+        server,
+        strrep("0", 64L)
+    ))
+    plan <- store$plan_region(q, 104, 1.37, c("2060-01-01", "2060-01-03"))
+    ticket <- store$extract(
+        plan_id = plan$plan_id,
+        fallback = "auto",
+        pool = pool
+    )
+    store_test__drain_fallback(pool, list(ticket))
+    expect_identical(ticket$status, "done")
+    expect_identical(ticket$value$status, "failed")
+    expect_match(ticket$value$last_error, "HTTP|checksum", ignore.case = TRUE)
+    expect_equal(nrow(store$query("select * from extraction_result")), 0L)
+})
+
+# A real worker deadline leaves the original task/session and seeded partial
+# bytes recoverable. The next worker resumes Range bytes without reopening DAP.
+test_that("HTTP fallback resumes one retained session after a reader deadline", {
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    path <- tempfile(fileext = ".nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    bytes <- readBin(path, "raw", n = file.info(path)$size)
+    server <- webfakes::new_app_process(store_test__fallback_app(
+        bytes,
+        delay = 3
+    ))
+    withr::defer(server$stop())
+    root <- tempfile("retained-http-cache-")
+    store <- EsgStore$new(tempfile("fallback-deadline-"))
+    withr::defer(store$close())
+    q <- store$add_files(store_test__fallback_files(path, server))
+    plan <- store$plan_region(q, 104, 1.37, c("2060-01-01", "2060-01-03"))
+    file <- store$query("select * from file_catalog")
+    config <- store__pool_download_config(file, root, 10L)
+    downloader <- do.call(Downloader$new, config)
+    session <- downloader$enqueue(store__download_plan_rows(file))
+    task <- downloader$tasks()
+    partial <- file.path(config$temp, paste0(task$task_id[[1L]], ".part"))
+    writeBin(bytes[1:1024], partial)
+    priv(downloader)$disconnect_manifest()
+    pool <- source_pool(1L, timeout = .5, download_dir = root)
+    withr::defer(pool$close(force = TRUE))
+    old <- ps::ps_handle(pool$status()[[1L]]$pid)
+    ticket <- store$extract(
+        plan_id = plan$plan_id,
+        fallback = "auto",
+        pool = pool
+    )
+    store_test__drain_fallback(pool, list(ticket))
+    expect_identical(ticket$value$status, "failed")
+    expect_false(ps::ps_is_running(old))
+    expect_true(file.exists(partial))
+    expect_identical(readBin(partial, "raw", n = 1024L), bytes[1:1024])
+    pool$close()
+    curl::curl_fetch_memory(
+        server$url("/fast"),
+        curl::new_handle(postfields = "")
+    )
+    resumed_pool <- source_pool(1L, timeout = 15, download_dir = root)
+    withr::defer(resumed_pool$close(force = TRUE))
+    resumed <- store$extract(
+        plan_id = plan$plan_id,
+        fallback = "auto",
+        pool = resumed_pool
+    )
+    store_test__drain_fallback(resumed_pool, list(resumed))
+    expect_identical(
+        resumed$status,
+        "done",
+        info = if (!is.null(resumed$error)) conditionMessage(resumed$error)
+    )
+    expect_gt(nrow(resumed$value), 0L)
+    expect_true(
+        all(resumed$value$status == "done"),
+        info = resumed$value$last_error
+    )
+    downloader <- Downloader$new(manifest = config$manifest, n_workers = 0L)
+    withr::defer(priv(downloader)$disconnect_manifest())
+    after <- downloader$tasks()
+    expect_identical(after$session_id, session)
+    expect_identical(after$task_id, task$task_id)
+    expect_true(all(downloader$verify()$checksum_ok))
+    references <- list.files(
+        file.path(store$path, "sources"),
+        "^pool-download-.*[.]json$",
+        full.names = TRUE
+    )
+    expect_length(references, 1L)
+    expect_match(
+        basename(references[[1L]]),
+        "^pool-download-[a-f0-9]{64}[.]json$"
+    )
+    reference <- jsonlite::read_json(references[[1L]])
+    expect_true(reference$checksum_verified_by_reader)
+    expect_identical(
+        reference$cache_path,
+        store_normalize_path(after$target_path[[1L]])
+    )
+    expect_identical(reference$checksum, after$checksum[[1L]])
+    expect_true(file.exists(reference$cache_path))
+    expect_length(
+        list.files(
+            file.path(store$path, "downloads"),
+            "[.]nc$",
+            recursive = TRUE
+        ),
+        0L
+    )
+    expect_error(
+        store$register_artifact("netcdf", path = reference$cache_path),
+        "outside"
+    )
+    reference_time <- file.info(references[[1L]])$mtime
+    store__sync_pool_download(store, config$manifest)
+    expect_identical(file.info(references[[1L]])$mtime, reference_time)
+    counts <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(server$url("/counts"))$content
+    ))
+    expect_true(any(counts$ranges == "bytes=1024-"))
+    expect_identical(counts$dods, 0L)
+    priv(downloader)$disconnect_manifest()
+    # Another store/query may reuse the same content without another DAP or
+    # HTTP request; its manifest must still receive its own native artifact.
+    alias <- EsgStore$new(tempfile("fallback-other-store-"))
+    withr::defer(alias$close())
+    files <- store_test__fallback_files(path, server)
+    query <- alias$add_files(files, label = "independent-query")
+    other_plan <- alias$plan_region(
+        query,
+        104,
+        1.37,
+        c("2060-01-01", "2060-01-03")
+    )
+    other <- alias$extract(
+        plan_id = other_plan$plan_id,
+        fallback = "auto",
+        pool = resumed_pool
+    )
+    store_test__drain_fallback(resumed_pool, list(other))
+    expect_identical(other$status, "done")
+    expect_gt(nrow(other$value), 0L)
+    expect_true(
+        all(other$value$status == "done"),
+        info = other$value$last_error
+    )
+    expect_true(all(alias$validate()$checksum_ok))
+    repeated <- jsonlite::fromJSON(rawToChar(
+        curl::curl_fetch_memory(server$url("/counts"))$content
+    ))
+    expect_identical(repeated$gets, counts$gets)
+    expect_identical(repeated$dods, counts$dods)
+    expect_error(source_pool(1L, download_dir = TRUE), "download_dir")
+})
+
 # vim: fdm=marker :

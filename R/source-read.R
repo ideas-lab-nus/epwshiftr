@@ -369,8 +369,8 @@ source__apply <- function(
 }
 # }}}
 
-# Preserve per-plan failures as results for the manifest owner. Native failures
-# are not resubmitted by the pool; HTTP fallback runs after the pool drains.
+# Preserve per-plan failures as results for the manifest owner. HTTP fallback
+# occupies this same physical-source slot; peers remain independently pollable.
 # store__read_task {{{
 store__read_task <- function(job) {
     source <- new.env(parent = emptyenv())
@@ -381,6 +381,17 @@ store__read_task <- function(job) {
     )
     results <- vector("list", nrow(job$plans))
     failure <- NULL
+    download_manifest <- NULL
+    # A retained transfer is already on the HTTP recovery path. Resume its
+    # exact session before repeating an OPeNDAP request that previously failed.
+    if (!is.null(job$http) && file.exists(job$http$manifest)) {
+        local <- tryCatch(store__pool_http_download(job), error = identity)
+        if (inherits(local, "error")) {
+            return(list(results = rep(list(local), nrow(job$plans))))
+        }
+        source$opened <- store__open_dataset(local$path, "HTTPServer")
+        download_manifest <- local$manifest
+    }
     for (index in seq_len(nrow(job$plans))) {
         if (is.null(failure)) {
             results[[index]] <- store__read_job(
@@ -392,9 +403,247 @@ store__read_task <- function(job) {
             results[[index]] <- failure
         }
     }
-    list(results = results)
+    if (
+        !is.null(job$http) &&
+            inherits(failure, "epwshiftr_store_access_error") &&
+            identical(failure$service, "OPeNDAP")
+    ) {
+        remote_error <- failure
+        if (!is.null(source$opened)) {
+            source$opened$dataset$close()
+            source$opened <- NULL
+        }
+        recovered <- tryCatch(
+            {
+                local <- store__pool_http_download(job)
+                source$opened <- store__open_dataset(local$path, "HTTPServer")
+                local
+            },
+            error = identity
+        )
+        if (inherits(recovered, "error")) {
+            recovered <- store__fallback_error(remote_error, recovered)
+            for (index in seq_along(results)) {
+                if (inherits(results[[index]], "error")) {
+                    results[[index]] <- recovered
+                }
+            }
+        } else {
+            download_manifest <- recovered$manifest
+            # Successful earlier city payloads stay untouched. Only unresolved
+            # plans are retried through the identical native CF reader.
+            for (index in seq_along(results)) {
+                if (inherits(results[[index]], "error")) {
+                    results[[index]] <- store__read_job(
+                        list(plan = job$plans[index], file = job$file),
+                        source
+                    )
+                    if (!inherits(results[[index]], "error")) {
+                        results[[index]]$recovery_error <- remote_error
+                    }
+                }
+            }
+        }
+    }
+    list(results = results, download_manifest = download_manifest)
 }
 # }}}
+
+# Give each physical content identity its own recoverable Downloader manifest.
+# Full native files may live outside a synchronized extraction store, and the
+# SHA-256 directory key does not depend on a query, city or requested year.
+store__pool_download_config <- function(file, directory, timeout) {
+    fields <- intersect(
+        c(
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "grid_label",
+            "table_id",
+            "variable_id",
+            "title",
+            "version",
+            "tracking_id",
+            "checksum_type",
+            "checksum"
+        ),
+        names(file)
+    )
+    identity <- as.list(file[1L, fields, with = FALSE])
+    key <- checksum_bytes(serialize(identity, NULL))
+    directory <- file.path(directory, "_source_pool", key)
+    list(
+        dest = directory,
+        temp = file.path(directory, ".tmp"),
+        manifest = file.path(directory, "manifest.duckdb"),
+        n_workers = 0L,
+        retries = 1L,
+        timeout = timeout,
+        connect_timeout = 10L,
+        # Extraction callers schedule their own retries. The download-only
+        # manifest must not add a second hour-long host cooldown to that policy.
+        node_policy = list(
+            cooldown_after_failures = 3L,
+            cooldown_seconds = 1L,
+            min_attempts = 1L
+        ),
+        cleanup = FALSE
+    )
+}
+
+# Reuse one exact persistent session, including its .part file after a worker
+# deadline. This runs synchronously inside the reserved reader, with no nested
+# reader pool and no access to the extraction manifest connection.
+store__pool_http_download <- function(job) {
+    started <- proc.time()[["elapsed"]]
+    tryCatch(
+        {
+            config <- job$http
+            dir.create(config$dest, recursive = TRUE, showWarnings = FALSE)
+            release <- manifest_acquire_lock(
+                file.path(config$dest, "source-transfer"),
+                timeout = 5
+            )
+            on.exit(release(), add = TRUE)
+            downloader <- do.call(Downloader$new, config)
+            on.exit(priv(downloader)$disconnect_manifest(), add = TRUE)
+            plan <- store__download_plan_rows(job$file)
+            # Match the ordinary extraction fallback's supported checksum policy.
+            checksum_type <- tolower(plan$checksum_type)
+            unsupported <- is.na(checksum_type) |
+                !checksum_type %in% c("md5", "sha256")
+            data.table::set(
+                plan,
+                j = "checksum_type",
+                value = data.table::fifelse(
+                    unsupported,
+                    "sha256",
+                    checksum_type
+                )
+            )
+            data.table::set(
+                plan,
+                i = which(unsupported),
+                j = "checksum",
+                value = NA_character_
+            )
+            tasks <- downloader$tasks()
+            if (!nrow(tasks)) {
+                session <- downloader$enqueue(
+                    plan,
+                    session_label = "source-pool-http-fallback"
+                )
+            } else {
+                stopifnot(
+                    nrow(tasks) == 1L,
+                    tasks$logical_file_id[[1L]] == plan$logical_file_id[[1L]]
+                )
+                session <- tasks$session_id[[1L]]
+            }
+            tasks <- downloader$resume(
+                session_id = session,
+                progress = FALSE,
+                overwrite = FALSE,
+                resume = TRUE
+            )
+            stopifnot(nrow(tasks) == 1L)
+            if (!tasks$status[[1L]] %in% c("done", "skipped")) {
+                stop(
+                    paste(
+                        "HTTPServer download failed:",
+                        tasks$last_error[[1L]]
+                    ),
+                    call. = FALSE
+                )
+            }
+            verified <- downloader$verify(session_id = session)
+            stopifnot(nrow(verified) == 1L, isTRUE(verified$checksum_ok[[1L]]))
+            list(path = tasks$target_path[[1L]], manifest = config$manifest)
+        },
+        error = function(error) {
+            stop(store__access_error(
+                error,
+                "download",
+                "HTTPServer",
+                store__chr1(job$file$url_download),
+                started
+            ))
+        }
+    )
+}
+
+# Import store-owned downloads normally. An external shared cache instead gets
+# a small provenance artifact inside this store: its native bytes must not be
+# copied into every city/year store or admitted as a store-relative artifact.
+# The reader has already verified the Downloader checksum before returning.
+store__sync_pool_download <- function(store, manifest) {
+    downloader <- Downloader$new(manifest = manifest, n_workers = 0L)
+    on.exit(priv(downloader)$disconnect_manifest(), add = TRUE)
+    root <- store_normalize_path(store$path)
+    tasks <- data.table::as.data.table(downloader$tasks(
+        status = c("done", "skipped")
+    ))
+    if (!nrow(tasks)) {
+        return(invisible(NULL))
+    }
+    paths <- vapply(tasks$target_path, store_normalize_path, character(1L))
+    inside <- startsWith(paths, paste0(sub("/+$", "", root), "/"))
+    if (all(inside)) {
+        store$sync_downloads(downloader)
+        return(invisible(NULL))
+    }
+    stopifnot(!any(inside), all(file.exists(paths)))
+    catalog <- data.table::as.data.table(store$query(
+        "SELECT * FROM file_catalog"
+    ))
+    for (i in seq_len(nrow(tasks))) {
+        task <- tasks[i]
+        key <- priv(store)$match_download_task(task, catalog)
+        stopifnot(!is.na(key))
+        file <- catalog[catalog[["file_key"]] == key]
+        reference <- list(
+            schema = "epwshiftr-external-download-reference-v1",
+            file_key = key,
+            logical_file_id = task$logical_file_id[[1L]],
+            source_url = task$selected_url[[1L]],
+            checksum_type = task$checksum_type[[1L]],
+            checksum = task$checksum[[1L]],
+            checksum_verified_by_reader = TRUE,
+            bytes = as.double(file.info(paths[[i]])$size),
+            cache_path = paths[[i]],
+            cache_manifest = store_normalize_path(manifest)
+        )
+        path <- file.path(
+            root,
+            "sources",
+            # Catalogue keys can contain ':'; hashing prevents Windows alternate
+            # data streams and other path syntax while keeping the key in JSON.
+            paste0("pool-download-", store__hash(key), ".json")
+        )
+        # Reuse identical evidence rather than rewriting a synchronized file.
+        previous <- if (file.exists(path)) jsonlite::read_json(path) else NULL
+        if (!isTRUE(all.equal(previous, reference, check.attributes = FALSE))) {
+            store_write_json_atomic(
+                reference,
+                path,
+                auto_unbox = TRUE,
+                digits = NA,
+                null = "null"
+            )
+        }
+        store$register_artifact(
+            kind = "source",
+            path = path,
+            role = "source",
+            project = "CMIP6",
+            query_id = file$query_id[[1L]],
+            file_key = key,
+            source_url = task$selected_url[[1L]],
+            metadata = list(external_download_reference = TRUE)
+        )
+    }
+    invisible(NULL)
+}
 
 # One batch task shares all of its sites and writes recoverable windows. No
 # child manifest is opened in the source worker.

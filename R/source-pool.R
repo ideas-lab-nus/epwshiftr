@@ -1,14 +1,66 @@
+#' Create a reusable pool of source-reading workers
+#'
+#' Pass this pool to `EsgStore$extract(pool = pool)`. Automatic HTTP fallback
+#' stays within its source's reader slot and retains interrupted transfers.
+#' Poll it from the store-owning process until each returned ticket has status
+#' `"done"` or `"failed"`. Only that process writes extraction manifests and
+#' Parquet files. A pool serializes jobs for identical physical source content,
+#' independently of the extraction cache policy.
+#'
+#' @param workers Positive integer number of persistent readers.
+#' @param timeout Positive execution deadline in seconds for a dispatched source
+#'   job. A timed-out reader is confirmed stopped before its source is reused.
+#' @param output Whether to forward reader standard output and standard error to
+#'   the owning R process. Defaults to `FALSE`. Enable for native-library
+#'   diagnostics that R message handlers cannot capture; this does not increase
+#'   the worker count or change source exclusion and execution deadlines.
+#' @param download_dir Optional directory for recoverable HTTP fallback files.
+#'   Defaults to each store's download directory. Use a persistent node-local
+#'   directory to share verified files and partial transfers across stores.
+#' @param download_timeout Optional total HTTP transfer limit in seconds, at
+#'   least `timeout`. When set, a transfer may exceed the ordinary source
+#'   deadline while its retained file grows. No new bytes for `timeout` seconds
+#'   still retires that reader. OPeNDAP reads keep the ordinary deadline.
+#' @return An opaque pool with `poll()`, `status()` and `close()` methods.
+#'   Drain pending tickets before calling `close()`.
+#' @export
+source_pool <- function(
+    workers = 4L,
+    timeout = 180,
+    output = FALSE,
+    download_dir = NULL,
+    download_timeout = NULL
+) {
+    source__pool(workers, timeout, output, download_dir, download_timeout)
+}
+
 # Own a reusable bounded reader pool. Each slot has a separate mirai compute
 # profile so a timed-out native reader can be replaced without cancelling peers.
 # Stores and collection callbacks remain exclusively in the calling process.
 source__pool <- function(
     workers = 4L,
     timeout = 180,
-    output = FALSE
+    output = FALSE,
+    download_dir = NULL,
+    download_timeout = NULL
 ) {
     checkmate::assert_count(workers, positive = TRUE)
     checkmate::assert_number(timeout, lower = .1, finite = TRUE)
     checkmate::assert_flag(output)
+    checkmate::assert_string(download_dir, null.ok = TRUE)
+    checkmate::assert_number(
+        download_timeout,
+        null.ok = TRUE,
+        lower = timeout,
+        finite = TRUE
+    )
+    if (!is.null(download_dir)) {
+        # Readers may have a different working directory from the caller.
+        download_dir <- store_abs_path(
+            path.expand(download_dir),
+            root = getwd()
+        )
+    }
     owner <- Sys.getpid()
     closed <- FALSE
     queue <- list()
@@ -35,6 +87,11 @@ source__pool <- function(
         }
         value
     }
+    # Disconnect direct readers so they exit without deserializing the
+    # shutdown message, which can raise R_UnboundValue in the daemon.
+    close_idle <- function(profile) {
+        mirai::daemons(0L, .compute = profile)
+    }
     # Capture the worker's process identity before loading application code.
     start <- function(i) {
         profile <- paste0(
@@ -58,7 +115,7 @@ source__pool <- function(
         # and bootstrap failures must release this exact profile here.
         registered <- FALSE
         on.exit(
-            if (!registered) mirai::daemons(0L, .compute = profile),
+            if (!registered) close_idle(profile),
             add = TRUE
         )
         pid <- await(mirai::mirai(Sys.getpid(), .compute = profile))
@@ -101,6 +158,15 @@ source__pool <- function(
     retire <- function(i) {
         slot <- slots[[i]]
         h <- slot$handle
+        if (is.null(slot$active)) {
+            # Idle readers can exit through their transport. Busy or timed-out
+            # readers still require owned kill before the next source is admitted.
+            close_idle(slot$profile)
+            deadline <- clock() + 5
+            while (ps::ps_is_running(h) && clock() < deadline) {
+                Sys.sleep(.01)
+            }
+        }
         if (ps::ps_is_running(h)) {
             stopifnot(
                 identical(ps::ps_cmdline(h), slot$command),
@@ -129,6 +195,15 @@ source__pool <- function(
         slots[i] <<- list(NULL)
     }
     pool <- new.env(parent = emptyenv())
+    # Store adapters may choose a durable cache without opening a manifest in
+    # the coordinator's dispatch path. The actual deadline remains pool-owned.
+    pool$download_dir <- download_dir
+    pool$download_timeout <- max(
+        1L,
+        as.integer(ceiling(
+            if (is.null(download_timeout)) timeout else download_timeout
+        ))
+    )
     class(pool) <- "epwshiftr_source_pool"
     # A ticket owns only its callbacks and small result metadata. Weather payloads
     # are collected and persisted promptly rather than retained for the batch.
@@ -228,6 +303,30 @@ source__pool <- function(
                 }
                 timed <- now - active$last_progress >= timeout
             }
+            http <- active$entry$job$http
+            if (!is.null(download_timeout) && !is.null(http)) {
+                # Sample metadata at most once a second. Existing partial bytes
+                # are the baseline; rewriting them cannot manufacture progress.
+                if (now - active$progress_sample >= min(1, timeout / 4)) {
+                    active$progress_sample <- now
+                    if (file.exists(http$manifest)) {
+                        if (is.null(active$transfer_started)) {
+                            active$transfer_started <- now
+                            active$last_progress <- now
+                        }
+                        size <- source__transfer_size(active$entry$job)
+                        if (size > active$transfer_bytes) {
+                            active$transfer_bytes <- size
+                            active$last_progress <- now
+                        }
+                    }
+                    slots[[i]]$active <<- active
+                }
+                if (!is.null(active$transfer_started)) {
+                    timed <- now - active$last_progress >= timeout ||
+                        now - active$transfer_started >= download_timeout
+                }
+            }
             if (mirai::unresolved(active$task) && !timed) {
                 next
             }
@@ -308,7 +407,14 @@ source__pool <- function(
                 entry = entry,
                 task = task,
                 started = clock(),
-                last_progress = clock()
+                progress_sample = clock() - 1,
+                transfer_started = NULL,
+                last_progress = clock(),
+                transfer_bytes = if (is.null(download_timeout)) {
+                    0
+                } else {
+                    source__transfer_size(entry$job)
+                }
             )
             keys[[i]] <- entry$job$source_key
         }
@@ -413,6 +519,26 @@ opendap__session <- function(workers, timeout) {
         invisible(NULL)
     }
     session
+}
+
+# Count retained bytes using filesystem metadata only. A rename from .part to
+# .done/final keeps the same high-water mark and never reads a weather array.
+source__transfer_size <- function(job) {
+    http <- job$http
+    if (is.null(http)) {
+        return(0)
+    }
+    paths <- list.files(
+        http$temp,
+        pattern = "[.](part|done)$",
+        full.names = TRUE,
+        all.files = TRUE
+    )
+    if (!is.null(job$file$title)) {
+        paths <- c(paths, file.path(http$dest, job$file$title[[1L]]))
+    }
+    sizes <- file.info(paths, extra_cols = FALSE)$size
+    max(c(0, sizes[is.finite(sizes)]))
 }
 
 # vim: fdm=marker :
