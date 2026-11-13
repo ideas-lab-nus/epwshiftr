@@ -1669,7 +1669,7 @@ S7::method(shift_download, ShiftFiles) <- function(
     checkmate::assert_flag(overwrite)
 
     store <- shift_store(x)
-    if (is.null(downloader) && (!isTRUE(run) || !is.null(reporter))) {
+    if (is.null(downloader)) {
         downloader <- if (isTRUE(run)) {
             store$downloader()
         } else {
@@ -1693,27 +1693,100 @@ S7::method(shift_download, ShiftFiles) <- function(
         # create a second, competing live region.
         dots$progress <- FALSE
     }
-    session <- do.call(
-        store$download_files,
-        c(
-            list(
-                query_id = x@ids$query_id,
-                downloader = downloader,
-                run = run,
-                background = background,
-                resume = resume,
-                overwrite = overwrite,
-                session_label = session_label
-            ),
-            dots
+    session_id <- store__chr1(x@ids$session_id)
+    continuing <- !is.na(session_id) && nzchar(session_id)
+    if (continuing) {
+        sessions <- downloader$sessions()
+        if (!session_id %in% sessions$session_id) {
+            cli::cli_abort(
+                "Saved download session {.val {session_id}} is missing."
+            )
+        }
+        session <- session_id
+    } else {
+        # Persist the queue identity before any network transfer can be killed.
+        # The same public store planner still owns candidate selection.
+        session <- do.call(
+            store$download_files,
+            c(
+                list(
+                    query_id = x@ids$query_id,
+                    downloader = downloader,
+                    run = FALSE,
+                    background = background,
+                    resume = resume,
+                    overwrite = overwrite,
+                    session_label = session_label
+                ),
+                dots
+            )
         )
-    )
+    }
     session_id <- if (is.character(session) && length(session) == 1L) {
         session
     } else if (is.data.frame(session) && "session_id" %in% names(session)) {
         session$session_id[[1L]]
     } else {
         NA_character_
+    }
+    if (!is.na(session_id) && nzchar(session_id)) {
+        checkpoint <- shift_stage__new(
+            ShiftDownload,
+            "download",
+            store_path = x@store_path,
+            ids = utils::modifyList(x@ids, list(session_id = session_id)),
+            meta = list(files = x, session = session_id)
+        )
+        # Composite workflows can own a reporter without a standalone step.
+        # Only the actual download step receives this restart checkpoint.
+        step_id <- if (is.null(reporter)) NULL else reporter$step_id()
+        if (!is.null(step_id) && !is.na(step_id) && nzchar(step_id)) {
+            step <- shift_inspect__rows(
+                store,
+                "shift_run_step",
+                "step_id",
+                step_id
+            )
+            if (nrow(step) && identical(step$task[[1L]], "download")) {
+                # A hard interruption can leave this as the final stage record;
+                # attribute it to this download, not the upstream collection.
+                checkpoint@ids <- utils::modifyList(
+                    checkpoint@ids,
+                    list(run_id = step$run_id[[1L]], step_id = step_id)
+                )
+                shift_job__step_update(
+                    store,
+                    step_id,
+                    output_stage_json = shift_persist__spec_json(
+                        shift_persist__stage_ref(checkpoint)
+                    )
+                )
+            }
+        }
+        if (isTRUE(run)) {
+            if (isTRUE(background)) {
+                session <- downloader$start(
+                    session_id = session_id,
+                    overwrite = overwrite,
+                    resume = resume,
+                    mode = shift_stage__coalesce(dots$mode, "process"),
+                    store_path = store$path
+                )
+            } else {
+                transfer <- if (continuing) {
+                    downloader$resume
+                } else {
+                    downloader$run
+                }
+                transfer(
+                    session_id = session_id,
+                    progress = shift_stage__coalesce(dots$progress, TRUE),
+                    overwrite = overwrite,
+                    resume = resume
+                )
+                store$sync_downloads(downloader)
+            }
+        }
     }
     diagnostics <- shift_check(
         shift_stage__new(

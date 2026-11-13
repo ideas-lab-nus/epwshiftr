@@ -495,4 +495,256 @@ test_that("run updates preserve other runs and explicit nullable fields", {
     expect_identical(shift_runs(store)$run_id, c(second, first))
 })
 
+# Recreate the on-disk evidence left by a process that exited without releasing
+# its lock. A real short-lived R child provides a PID known to have exited.
+shift_download_test__exited_owner <- function(directory) {
+    code <- sprintf(
+        'jsonlite::write_json(list(pid=Sys.getpid(), hostname=unname(Sys.info()[["nodename"]])), %s, auto_unbox=TRUE)',
+        encodeString(file.path(directory, 'owner.json'), quote = '"')
+    )
+    status <- system2(
+        file.path(R.home('bin'), 'Rscript'),
+        c('--vanilla', '-e', shQuote(code)),
+        stdout = FALSE,
+        stderr = FALSE
+    )
+    stopifnot(status == 0L)
+    jsonlite::read_json(file.path(directory, 'owner.json'))
+}
+
+# Foreground staged operations persist a PID just like detached operations.
+# Reopening a run must reconcile a dead owner before public resume tests status.
+test_that('foreground owner death is reconciled without touching live or remote runs', {
+    root <- withr::local_tempdir()
+    owner <- shift_download_test__exited_owner(root)
+    for (kind in c('dead', 'live', 'remote')) {
+        path <- file.path(root, kind)
+        store <- shift_store(path, create = TRUE)
+        run_id <- shift_job__task_run_register(
+            store,
+            'collect',
+            spec = list(),
+            status = 'queued'
+        )
+        shift_job__run_update(store, run_id, status = 'running')
+        job <- shift_job__job_create(
+            store,
+            run_id,
+            mode = 'foreground',
+            ui = shift_ui('none')
+        )
+        shift_job__job_update(
+            store,
+            job$job_id,
+            pid = if (kind == 'live') Sys.getpid() else owner$pid,
+            hostname = if (kind == 'remote') {
+                paste0(owner$hostname, '-remote')
+            } else {
+                owner$hostname
+            }
+        )
+        store$close()
+        run <- shift_run_get(run_id, store = path)
+        expect_identical(
+            shift_status(run, refresh = FALSE),
+            if (kind == 'dead') 'failed' else 'running'
+        )
+        if (kind == 'dead') {
+            expect_match(run@meta$run$last_error, 'PID .* is not running')
+        }
+    }
+})
+
+# Resume decodes JSON without automatic vector simplification. Preserve bounded
+# time and multi-valued scientific identities when reconstructing a request.
+test_that('saved staged requests restore vectors before public validation', {
+    request <- shift_request(
+        project = 'CMIP6',
+        source = c('Model-A', 'Model-B'),
+        experiment = c('ssp245', 'ssp585'),
+        variant = c('r1i1p1f1', 'r2i1p1f1'),
+        variables = c('tas', 'psl'),
+        frequency = c('mon', 'day'),
+        time = c(2041L, 2060L)
+    )
+    ref <- jsonlite::fromJSON(
+        shift_persist__spec_json(shift_persist__stage_ref(request)),
+        simplifyVector = FALSE
+    )
+    restored <- shift_persist__stage_from_ref(ref)
+    expect_identical(restored@meta, request@meta)
+    empty <- shift_request()
+    restored <- shift_persist__stage_from_ref(jsonlite::fromJSON(
+        shift_persist__spec_json(shift_persist__stage_ref(empty)),
+        simplifyVector = FALSE
+    ))
+    expect_identical(restored@meta, empty@meta)
+})
+
+# Kill only the fixture-owned R process tree after a real GET has written its
+# prefix. The new process must request a Range for the retained file's length.
+test_that("shift_resume reopens a stopped process's original download session", {
+    skip_on_cran()
+    skip_if_not_installed("webfakes")
+    root <- withr::local_tempdir()
+    bytes <- downloader_http_bytes(32768L)
+    app <- webfakes::new_app()
+    app$locals$bytes <- bytes
+    app$locals$offset <- NULL
+    app$get("/offset", function(req, res, locals) res$send_json(locals$offset))
+    app$head("/source.bin", function(req, res, locals) {
+        range <- req$get_header("Range")
+        start <- as.numeric(gsub("[^0-9]", "", range))
+        end <- length(locals$bytes) - 1L
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf("bytes %.0f-%d/%d", start, end, end + 1L)
+        )$send(raw())
+    })
+    app$get("/source.bin", function(req, res, locals) {
+        range <- req$get_header("Range")
+        if (is.null(range)) {
+            res$send_chunk(locals$bytes[1:8192])
+            Sys.sleep(4)
+            return(invisible(NULL))
+        }
+        start <- as.numeric(gsub("[^0-9]", "", range))
+        end <- length(locals$bytes) - 1L
+        locals$offset <- start
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf("bytes %.0f-%d/%d", start, end, end + 1L)
+        )$send(locals$bytes[seq.int(start + 1L, end + 1L)])
+    })
+    server <- webfakes::new_app_process(app)
+    on.exit(server$stop(), add = TRUE)
+    docs <- esgf_test__file_docs(
+        "source.bin",
+        download_url = server$url("/source.bin")
+    )
+    data.table::set(docs, j = "size", value = length(bytes))
+    data.table::set(
+        docs,
+        j = "checksum",
+        value = checksum_bytes(bytes, "sha256")
+    )
+    store <- EsgStore$new(file.path(root, "store"))
+    query <- store$add_files(esgf_test__file_result(docs))
+    store_path <- store$path
+    temp <- priv(store)$tmp_download_dir
+    store$close()
+    child <- file.path(root, "child.R")
+    writeLines(
+        c(
+            "library(epwshiftr)",
+            "args <- commandArgs(TRUE)",
+            "ns <- asNamespace('epwshiftr')",
+            "files <- ns$shift_stage__new(ns$ShiftFiles, 'files', store_path=args[[1L]], ids=list(query_id=args[[2L]]), meta=list(variables='tas'))",
+            "shift_download(files, ui=shift_ui('none'))"
+        ),
+        child
+    )
+    process <- processx::process$new(
+        file.path(R.home("bin"), "Rscript"),
+        c("--vanilla", child, store_path, query),
+        env = c(
+            R_LIBS_USER = paste(
+                shift_execution__library_paths(),
+                collapse = .Platform$path.sep
+            )
+        ),
+        stdout = file.path(root, "stdout.log"),
+        stderr = file.path(root, "stderr.log"),
+        cleanup_tree = TRUE
+    )
+    on.exit(if (process$is_alive()) process$kill_tree(), add = TRUE)
+    deadline <- Sys.time() + 20
+    repeat {
+        partial <- list.files(
+            temp,
+            pattern = "[.]part$",
+            all.files = TRUE,
+            full.names = TRUE
+        )
+        size <- file.info(partial)$size
+        if (length(size) == 1L && is.finite(size) && size > 0L) {
+            break
+        }
+        if (!process$is_alive() || Sys.time() >= deadline) {
+            stop(
+                "Fixture never wrote a partial: ",
+                paste(readLines(file.path(root, "stderr.log")), collapse = "\n")
+            )
+        }
+        Sys.sleep(.02)
+    }
+    expect_true(process$is_alive())
+    process$kill_tree()
+    process$wait(timeout = 5000)
+    expect_false(process$is_alive())
+    size <- file.info(partial)$size
+    expect_gt(size, 0L)
+    expect_lt(size, length(bytes))
+    expect_identical(readBin(partial, "raw", n = size), head(bytes, size))
+    store <- EsgStore$new(store_path)
+    on.exit(store$close(), add = TRUE)
+    downloader <- store$downloader(n_workers = 0L)
+    sessions <- downloader$sessions()
+    expect_equal(nrow(sessions), 1L)
+    tasks <- downloader$tasks(session_id = sessions$session_id)
+    expect_equal(nrow(tasks), 1L)
+    expect_identical(basename(partial), paste0(tasks$task_id, ".part"))
+    run_id <- store$query(
+        "SELECT run_id FROM shift_run WHERE task = 'download'"
+    )$run_id
+    expect_length(run_id, 1L)
+    store$close()
+    reopened <- shift_resume(run_id, store = store_path, ui = shift_ui("none"))
+    expect_identical(shift_ids(reopened)$session_id, sessions$session_id)
+    store <- EsgStore$new(store_path)
+    downloader <- store$downloader(n_workers = 0L)
+    expect_identical(downloader$sessions()$session_id, sessions$session_id)
+    actual <- downloader$tasks(session_id = sessions$session_id)
+    expect_identical(actual$task_id, tasks$task_id)
+    expect_identical(actual$status, "done")
+    expect_equal(
+        nrow(store$query("SELECT * FROM artifact WHERE role='download'")),
+        1L
+    )
+    expect_identical(actual$selected_url, server$url("/source.bin"))
+    expect_identical(
+        checksum_file(actual$target_path),
+        checksum_bytes(bytes, "sha256")
+    )
+    expect_false(file.exists(partial))
+    offset <- curl::curl_fetch_memory(server$url("/offset"))$content
+    expect_equal(jsonlite::fromJSON(rawToChar(offset)), size)
+})
+
+# A stale checkpoint must not silently create a replacement session.
+test_that("a missing saved session reports the original session ID", {
+    store <- EsgStore$new(withr::local_tempdir())
+    on.exit(store$close(), add = TRUE)
+    files <- shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = store$path,
+        ids = list(
+            query_id = "query-fixture",
+            session_id = "missing-fixture-session"
+        )
+    )
+    failure <- tryCatch(
+        shift_download(files, ui = shift_ui("none")),
+        epwshiftr_shift_error = identity
+    )
+    expect_s3_class(failure, "epwshiftr_shift_error")
+    expect_match(conditionMessage(failure), "missing-fixture-session")
+    expect_identical(
+        shift_status(shift_run_get(failure$run_id, store = store$path)),
+        "failed"
+    )
+    expect_equal(nrow(store$downloader(n_workers = 0L)$sessions()), 0L)
+})
+
 # vim: fdm=marker :

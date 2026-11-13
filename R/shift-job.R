@@ -34,6 +34,23 @@ shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
     input <- shift_persist__stage_from_ref(input_ref)
     spec <- jsonlite::fromJSON(step$spec_json[[1L]], simplifyVector = TRUE)
     task <- as.character(step$task[[1L]])
+    # A queued download is a durable checkpoint even when transfer never
+    # returned. Carry its session into the next attempt instead of enqueueing
+    # new task IDs whose partial-file names would no longer match.
+    if (
+        identical(task, "download") &&
+            !is.na(step$output_stage_json[[1L]]) &&
+            nzchar(step$output_stage_json[[1L]])
+    ) {
+        checkpoint <- jsonlite::fromJSON(
+            step$output_stage_json[[1L]],
+            simplifyVector = FALSE
+        )
+        session_id <- store__chr1(unlist(checkpoint$ids$session_id))
+        if (!is.na(session_id) && nzchar(session_id)) {
+            input@ids$session_id <- session_id
+        }
+    }
     if (isTRUE(background) && !identical(task, "download")) {
         cli::cli_abort(
             "Background resume is currently supported only for standalone download steps."
@@ -1155,8 +1172,8 @@ shift_job__latest_job <- function(store, run_id) {
 }
 # }}}
 
-# Reconcile detached jobs when a worker exits before it can persist a terminal
-# state, preventing background runs from appearing active forever.
+# Reconcile both foreground and detached owners that exit before persisting a
+# terminal state. Host/PID evidence is required before a new process can resume.
 # shift_job__reconcile_run_job {{{
 shift_job__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
     job <- shift_job__latest_job(store, run_id)
@@ -1181,10 +1198,20 @@ shift_job__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
             )
         }
     } else if (
-        identical(job$mode[[1L]], "process") && !downloader__pid_alive(pid)
+        job$mode[[1L]] %in%
+            c("foreground", "process") &&
+            downloader__local_pid_absent(pid, job$hostname[[1L]])
     ) {
         stale <- TRUE
-        reason <- sprintf("Background worker PID %d is not running.", pid)
+        reason <- sprintf(
+            "%s worker PID %d is not running.",
+            if (identical(job$mode[[1L]], "foreground")) {
+                "Foreground"
+            } else {
+                "Background"
+            },
+            pid
+        )
     }
     if (!isTRUE(stale)) {
         return(invisible(job))
@@ -1771,18 +1798,19 @@ shift_job__step_finish <- function(
         status,
         c("completed", "partial", "failed", "cancelled")
     )
-    shift_job__step_update(
-        store,
-        step_id,
-        status = status,
-        output_stage_json = if (is.null(output_stage)) {
-            NA_character_
-        } else {
-            shift_persist__spec_json(shift_persist__stage_ref(output_stage))
-        },
+    updates <- list(
         completed_at = store__now(),
-        last_error = store__chr1(last_error)
+        last_error = store__chr1(last_error),
+        status = status
     )
+    # Failure after queueing must retain the checkpoint already written by the
+    # download method. A fresh step without a checkpoint remains empty.
+    if (!is.null(output_stage)) {
+        updates$output_stage_json <- shift_persist__spec_json(
+            shift_persist__stage_ref(output_stage)
+        )
+    }
+    do.call(shift_job__step_update, c(list(store, step_id), updates))
 }
 # }}}
 

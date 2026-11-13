@@ -702,6 +702,7 @@ test_that("serialized downloader worker dependencies support both worker algorit
             "format_byte",
             "headers_text",
             "resume_supported",
+            "resume_guard",
             "copy_file_range",
             "merge_piece_files",
             "target_path",
@@ -2502,6 +2503,339 @@ test_that("Downloader reports asynchronous worker failures", {
     expect_identical(result$status, DownloadStatus$Failed)
     expect_true(nzchar(result$error))
     expect_false(file.exists(file.path(root, "absent.bin")))
+})
+
+# Exercise actual GET semantics through the public downloader. The fixture
+# records Range requests and returns only tiny tails for offsets above 2 GB.
+test_that("ordinary HTTP resume validates GETs and retries at the written offset", {
+    skip_on_cran()
+    skip_if_not_installed("webfakes")
+    app <- webfakes::new_app()
+    app$locals$bytes <- as.raw(rep(0:255, 32))
+    app$locals$start <- numeric()
+    app$get("/offsets", function(req, res, locals) res$send_json(locals$start))
+    app$head("/:mode", function(req, res, locals) {
+        start <- as.numeric(gsub("[^0-9]", "", req$get_header("Range")))
+        total <- if (start > 2^31) start + 4 else length(locals$bytes)
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf("bytes %.0f-%.0f/%.0f", start, total - 1, total)
+        )$send(raw())
+    })
+    app$get("/:mode", function(req, res, locals) {
+        start <- as.numeric(gsub("[^0-9]", "", req$get_header("Range")))
+        mode <- req$params$mode
+        if (mode == "ignore") {
+            return(res$send(locals$bytes))
+        }
+        locals$start <- c(locals$start, start)
+        total <- if (mode == "large") start + 4 else length(locals$bytes)
+        reported <- if (mode == "wrong") start + 1 else start
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf("bytes %.0f-%.0f/%.0f", reported, total - 1, total)
+        )
+        if (mode == "large") {
+            return(res$send(as.raw(1:4)))
+        }
+        if (mode == "retry" && length(locals$start) == 1L) {
+            # Send a cleanly terminated but short chunked tail. The guard
+            # must keep its valid bytes and reject finalization.
+            res$send_chunk(locals$bytes[(start + 1):2048])
+            return(invisible(NULL))
+        }
+        res$send(locals$bytes[(start + 1):total])
+    })
+    server <- webfakes::new_app_process(app)
+    on.exit(server$stop(), add = TRUE)
+    root <- withr::local_tempdir()
+    temp <- file.path(root, "temp")
+    downloader <- Downloader$new(
+        dest = file.path(root, "dest"),
+        temp = temp,
+        retries = 2L,
+        n_workers = 0L
+    )
+    prefix <- app$locals$bytes[1:1024]
+    # Retry is the first request so only this attempt hits the truncation branch.
+    writeBin(prefix, file.path(temp, "retry.part"))
+    expect_warning(
+        result <- downloader$download(
+            server$url("/retry"),
+            filename = "retry.bin",
+            progress = FALSE,
+            checksum = checksum_bytes(app$locals$bytes, "md5"),
+            checksum_type = "md5",
+            .tmp_id = "retry"
+        ),
+        "Waiting.*before retry"
+    )
+    expect_identical(readBin(result, "raw", n = 8192L), app$locals$bytes)
+    offsets <- curl::curl_fetch_memory(server$url("/offsets"))$content
+    expect_equal(jsonlite::fromJSON(rawToChar(offsets)), c(1024, 2048))
+    for (mode in c("ignore", "wrong")) {
+        partial <- file.path(temp, paste0(mode, ".part"))
+        writeBin(prefix, partial)
+        expect_error(suppressWarnings(downloader$download(
+            server$url(paste0("/", mode)),
+            filename = paste0(mode, ".bin"),
+            progress = FALSE,
+            .tmp_id = mode
+        )))
+        expect_identical(readBin(partial, "raw", n = 8192L), prefix)
+    }
+    # Check the real server response at a large offset without allocating a
+    # multi-gigabyte file in the test filesystem.
+    start <- 2^31 + 123
+    expect_true(downloader__resume_supported(server$url("/large"), start, 5L))
+    handle <- curl::new_handle(resume_from_large = start)
+    guard <- downloader__worker_dependencies()$resume_guard(handle, start)
+    body <- raw()
+    response <- curl::curl_fetch_stream(
+        server$url("/large"),
+        function(chunk) {
+            guard$accept(chunk)
+            body <<- chunk
+            TRUE
+        },
+        handle = handle
+    )
+    expect_no_error(guard$finish(response))
+    expect_identical(body, as.raw(1:4))
+})
+
+# Simulate owner-record write failures without filling a real disk or touching
+# a production manifest. Download payloads remain outside the generated lock.
+test_that('manifest acquisition refuses an unpublished owner record', {
+    root <- withr::local_tempdir()
+    manifest <- file.path(root, 'manifest.duckdb')
+    payload <- file.path(root, 'retained.part')
+    writeBin(charToRaw('retained-generated-partial'), payload)
+    before <- readBin(payload, 'raw', n = file.info(payload)$size)
+    testthat::local_mocked_bindings(
+        write_json = function(...) stop('generated ownership write failure'),
+        .package = 'jsonlite'
+    )
+    expect_error(
+        downloader__manifest_acquire_lock(manifest, timeout = 0),
+        'Cannot publish manifest lock ownership'
+    )
+    expect_false(dir.exists(paste0(manifest, '.lock')))
+    expect_identical(
+        readBin(payload, 'raw', n = file.info(payload)$size),
+        before
+    )
+})
+
+# A write can return normally while leaving truncated bytes. Readback must be
+# checked before the acquisition is returned to a Downloader or Store caller.
+test_that('manifest acquisition verifies its own owner publication', {
+    root <- withr::local_tempdir()
+    manifest <- file.path(root, 'manifest.duckdb')
+    testthat::local_mocked_bindings(
+        write_json = function(x, path, ...) writeLines('{"pid":', path),
+        .package = 'jsonlite'
+    )
+    expect_error(
+        downloader__manifest_acquire_lock(manifest, timeout = 0),
+        'Cannot publish manifest lock ownership'
+    )
+    expect_false(dir.exists(paste0(manifest, '.lock')))
+})
+
+# Failure cleanup is limited to the just-created ownership record. Unknown
+# entries are preserved for investigation instead of being recursively erased.
+test_that('failed publication never erases an unexpected lock entry', {
+    root <- withr::local_tempdir()
+    manifest <- file.path(root, 'manifest.duckdb')
+    testthat::local_mocked_bindings(
+        write_json = function(x, path, ...) {
+            writeLines(
+                'preserve-generated-evidence',
+                file.path(dirname(path), 'unexpected.txt')
+            )
+            stop('generated write failure with extra evidence')
+        },
+        .package = 'jsonlite'
+    )
+    expect_error(
+        downloader__manifest_acquire_lock(manifest, timeout = 0),
+        'Cannot publish manifest lock ownership'
+    )
+    expect_identical(
+        readLines(file.path(paste0(manifest, '.lock'), 'unexpected.txt')),
+        'preserve-generated-evidence'
+    )
+})
+
+# Ordinary acquisition still publishes the original token and releases only its
+# exact record; neither the public API nor the stale-lock takeover policy changes.
+test_that('successful owner publication keeps the original release contract', {
+    root <- withr::local_tempdir()
+    manifest <- file.path(root, 'manifest.duckdb')
+    release <- downloader__manifest_acquire_lock(manifest, timeout = 0)
+    owner <- downloader__manifest_lock_owner(paste0(manifest, '.lock'))
+    expect_identical(owner$pid, Sys.getpid())
+    expect_identical(owner$hostname, unname(Sys.info()[['nodename']]))
+    expect_true(nzchar(owner$token))
+    release()
+    expect_false(dir.exists(paste0(manifest, '.lock')))
+})
+
+# Recreate the on-disk evidence left by a process that exited without releasing
+# its lock. A real short-lived R child provides a PID known to have exited.
+lock_recovery_test__owner <- function(directory) {
+    code <- sprintf(
+        'jsonlite::write_json(list(pid=Sys.getpid(), hostname=unname(Sys.info()[["nodename"]])), %s, auto_unbox=TRUE)',
+        encodeString(file.path(directory, 'owner.json'), quote = '"')
+    )
+    status <- system2(
+        file.path(R.home('bin'), 'Rscript'),
+        c('--vanilla', '-e', shQuote(code)),
+        stdout = FALSE,
+        stderr = FALSE
+    )
+    stopifnot(status == 0L)
+    jsonlite::read_json(file.path(directory, 'owner.json'))
+}
+
+test_that('both manifest users immediately recover an exited local owner', {
+    for (acquire in list(
+        manifest_acquire_lock,
+        downloader__manifest_acquire_lock
+    )) {
+        root <- withr::local_tempdir()
+        path <- file.path(root, 'manifest')
+        lock <- paste0(path, '.lock')
+        dir.create(lock)
+        owner <- lock_recovery_test__owner(lock)
+        expect_false(downloader__pid_alive(owner$pid))
+        release <- acquire(path, timeout = 0)
+        current <- jsonlite::read_json(file.path(lock, 'owner.json'))
+        expect_equal(current$pid, Sys.getpid())
+        expect_true(nzchar(current$token))
+        expect_length(list.files(root, 'orphan'), 1L)
+        release()
+        expect_false(dir.exists(lock))
+    }
+})
+
+test_that('live local and foreign owners cannot be reclaimed by age', {
+    for (acquire in list(
+        manifest_acquire_lock,
+        downloader__manifest_acquire_lock
+    )) {
+        root <- withr::local_tempdir()
+        path <- file.path(root, 'manifest')
+        release <- acquire(path, timeout = 0)
+        lock <- paste0(path, '.lock')
+        Sys.setFileTime(lock, Sys.time() - 86400 * 2)
+        expect_error(acquire(path, timeout = 0, stale_after = 1), 'locked')
+        owner <- jsonlite::read_json(file.path(lock, 'owner.json'))
+        owner$hostname <- paste0(owner$hostname, '-foreign')
+        jsonlite::write_json(
+            owner,
+            file.path(lock, 'owner.json'),
+            auto_unbox = TRUE
+        )
+        Sys.setFileTime(lock, Sys.time() - 86400 * 2)
+        expect_error(acquire(path, timeout = 0, stale_after = 1), 'locked')
+        release()
+        # Restore the local identity only for scoped fixture cleanup.
+        unlink(lock, recursive = TRUE)
+    }
+})
+
+test_that('a release closure never removes a newer lock owner', {
+    root <- withr::local_tempdir()
+    path <- file.path(root, 'manifest')
+    release <- manifest_acquire_lock(path, timeout = 0)
+    old <- paste0(path, '.lock')
+    expect_true(file.rename(old, file.path(root, 'preserved-old')))
+    newer <- manifest_acquire_lock(path, timeout = 0)
+    release()
+    expect_true(dir.exists(old))
+    newer()
+    expect_false(dir.exists(old))
+})
+
+# Concurrent waiters use the current helper definitions in fresh R processes,
+# rather than accidentally testing a globally installed older package.
+test_that('simultaneous orphan recovery preserves mutual exclusion', {
+    root <- withr::local_tempdir()
+    path <- file.path(root, 'manifest')
+    dir.create(paste0(path, '.lock'))
+    lock_recovery_test__owner(paste0(path, '.lock'))
+    names <- c('path', 'metadata', 'owner', 'stale')
+    names <- c(
+        paste0('downloader__manifest_lock_', names),
+        'downloader__manifest_reclaim_lock',
+        'downloader__manifest_acquire_lock',
+        'downloader__local_pid_absent'
+    )
+    env <- new.env(parent = baseenv())
+    for (name in names) {
+        fun <- get(name)
+        environment(fun) <- env
+        assign(name, fun, env)
+    }
+    functions <- file.path(root, 'functions.rds')
+    saveRDS(env, functions)
+    children <- file.path(root, paste0('child-', 1:3))
+    for (child in children) {
+        code <- sprintf(
+            paste0(
+                'env <- readRDS(%s); ',
+                'release <- env$downloader__manifest_acquire_lock(%s, timeout=15); ',
+                'ok <- dir.create(%s, showWarnings=FALSE); ',
+                'if (ok) { Sys.sleep(0.1); unlink(%s, recursive=TRUE) }; ',
+                'release(); writeLines(as.character(ok), %s)'
+            ),
+            encodeString(functions, quote = '"'),
+            encodeString(path, quote = '"'),
+            encodeString(file.path(root, 'inside'), quote = '"'),
+            encodeString(file.path(root, 'inside'), quote = '"'),
+            encodeString(child, quote = '"')
+        )
+        script <- paste0(child, '.R')
+        writeLines(code, script)
+        system2(
+            file.path(R.home('bin'), 'Rscript'),
+            c('--vanilla', shQuote(script)),
+            wait = FALSE,
+            stdout = paste0(child, '.log'),
+            stderr = paste0(child, '.log')
+        )
+    }
+    deadline <- Sys.time() + 20
+    while (!all(file.exists(children)) && Sys.time() < deadline) {
+        Sys.sleep(0.1)
+    }
+    expect_true(all(file.exists(children)))
+    if (all(file.exists(children))) {
+        expect_identical(
+            vapply(children, readLines, character(1), USE.NAMES = FALSE),
+            rep('TRUE', 3)
+        )
+    }
+})
+
+# Age alone cannot establish that an unidentified process has stopped writing.
+test_that("unidentified and malformed owners retain the manifest lock", {
+    path <- file.path(withr::local_tempdir(), "manifest")
+    lock <- manifest_lock_path(path)
+    dir.create(lock)
+    Sys.setFileTime(lock, Sys.time() - 3600)
+    expect_error(
+        manifest_acquire_lock(path, timeout = 0, stale_after = 1),
+        "locked"
+    )
+    writeLines("{", manifest_lock_metadata(lock))
+    expect_error(
+        manifest_acquire_lock(path, timeout = 0, stale_after = 1),
+        "locked"
+    )
+    expect_true(dir.exists(lock))
 })
 
 # vim: fdm=marker :

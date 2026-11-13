@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Recover manifest locks from confirmed exited local owners and resume staged downloads with their original session and task identities. (#315)
+
+* Validate resumed HTTP GETs before appending bytes and retry interrupted transfers at the current disk offset. (#315)
+
 * Require every selected fragment of a required climate input and re-evaluate older completion receipts. (#314)
 
 * Retain final-year CMIP6 File candidates, select humidity routes shared by historical and future periods, and retain each query's File memberships. (#314)

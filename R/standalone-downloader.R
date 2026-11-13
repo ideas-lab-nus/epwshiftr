@@ -298,18 +298,121 @@ downloader__manifest_lock_metadata <- function(lock_dir) {
 }
 # }}}
 
-# Download-local manifest lock stale; kept here so the module can be copied alone.
+# Read only ownership records whose host and PID can be validated.
+# downloader__manifest_lock_owner {{{
+downloader__manifest_lock_owner <- function(lock_dir) {
+    owner <- tryCatch(
+        suppressWarnings(jsonlite::read_json(
+            downloader__manifest_lock_metadata(lock_dir)
+        )),
+        error = function(error) NULL
+    )
+    if (
+        !is.list(owner) ||
+            length(owner$pid) != 1L ||
+            !is.numeric(owner$pid) ||
+            is.na(owner$pid) ||
+            owner$pid <= 0 ||
+            owner$pid > .Machine$integer.max ||
+            owner$pid != as.integer(owner$pid) ||
+            !is.character(owner$hostname) ||
+            length(owner$hostname) != 1L ||
+            is.na(owner$hostname) ||
+            !nzchar(owner$hostname)
+    ) {
+        return(NULL)
+    }
+    owner
+}
+# }}}
+
+# Prove that an owner is absent on this host. Unknown hosts, malformed PIDs and
+# failed process queries are conservative: they never authorize takeover.
+# downloader__local_pid_absent {{{
+downloader__local_pid_absent <- function(pid, hostname) {
+    if (
+        length(pid) != 1L ||
+            !is.numeric(pid) ||
+            is.na(pid) ||
+            pid <= 0 ||
+            pid > .Machine$integer.max ||
+            pid != as.integer(pid) ||
+            !is.character(hostname) ||
+            length(hostname) != 1L ||
+            is.na(hostname)
+    ) {
+        return(FALSE)
+    }
+    if (!identical(hostname, unname(Sys.info()[["nodename"]]))) {
+        return(FALSE)
+    }
+    if (pid == Sys.getpid()) {
+        return(FALSE)
+    }
+    pid <- as.integer(pid)
+    # An unreaped process may retain its PID after releasing its resources.
+    tryCatch(
+        ps::ps_status(ps::ps_handle(pid)) %in% c("dead", "zombie"),
+        no_such_process = function(error) TRUE,
+        os_error = function(error) {
+            if (
+                !identical(Sys.info()[["sysname"]], "Linux") ||
+                    !identical(error$errno, 2L)
+            ) {
+                return(FALSE)
+            }
+            # On Linux ps_handle() reports ENOENT for an absent /proc entry.
+            # A restricted procfs can hide live processes, so confirm ESRCH
+            # with a zero signal, which cannot stop or alter a process.
+            output <- tryCatch(
+                suppressWarnings(system2(
+                    "kill",
+                    c("-0", pid),
+                    stdout = TRUE,
+                    stderr = TRUE,
+                    env = "LC_ALL=C"
+                )),
+                error = function(error) NULL
+            )
+            identical(attr(output, "status"), 1L) &&
+                any(endsWith(output, ": No such process"))
+        },
+        error = function(error) FALSE
+    )
+}
+# }}}
+
+# A valid local owner outlives any age threshold. Only a positively observed
+# absent PID permits immediate recovery; permission/status errors remain locked.
+# The former stale_after argument is retained for existing callers.
 # downloader__manifest_lock_stale {{{
 downloader__manifest_lock_stale <- function(lock_dir, stale_after) {
     if (!dir.exists(lock_dir)) {
         return(FALSE)
     }
-    info <- file.info(lock_dir, extra_cols = FALSE)
-    if (is.na(info$mtime)) {
-        return(TRUE)
+    owner <- downloader__manifest_lock_owner(lock_dir)
+    !is.null(owner) && downloader__local_pid_absent(owner$pid, owner$hostname)
+}
+# }}}
+
+# Serialize orphan reclamation, then recheck ownership after winning the guard.
+# A second waiter must never remove a lock installed by the first waiter. Keep
+# the old ownership record for diagnosis; never touch climate/download payloads.
+# downloader__manifest_reclaim_lock {{{
+downloader__manifest_reclaim_lock <- function(lock_dir, stale_after) {
+    guard <- paste0(lock_dir, ".reclaim")
+    if (!dir.create(guard, showWarnings = FALSE)) {
+        return(FALSE)
     }
-    age <- as.numeric(difftime(Sys.time(), info$mtime, units = "secs"))
-    is.finite(age) && age > stale_after
+    on.exit(unlink(guard, recursive = TRUE), add = TRUE)
+    if (!downloader__manifest_lock_stale(lock_dir, stale_after)) {
+        return(FALSE)
+    }
+    archived <- tempfile(
+        pattern = paste0(basename(lock_dir), ".orphan-"),
+        tmpdir = dirname(lock_dir)
+    )
+    file.rename(lock_dir, archived)
 }
 # }}}
 
@@ -331,31 +434,67 @@ downloader__manifest_acquire_lock <- function(
             meta <- list(
                 pid = Sys.getpid(),
                 hostname = unname(Sys.info()[["nodename"]]),
+                token = basename(tempfile("lock-owner-")),
                 created_at = format(
                     Sys.time(),
                     "%Y-%m-%dT%H:%M:%SZ",
                     tz = "UTC"
                 )
             )
-            try(
-                jsonlite::write_json(
-                    meta,
-                    downloader__manifest_lock_metadata(lock_dir),
-                    auto_unbox = TRUE,
-                    pretty = TRUE
-                ),
-                silent = TRUE
+            # A failed or truncated owner write must not grant the lock. The
+            # release closure cannot identify such a directory later, leaving
+            # an ownerless lock that must be investigated.
+            publication_error <- tryCatch(
+                {
+                    jsonlite::write_json(
+                        meta,
+                        downloader__manifest_lock_metadata(lock_dir),
+                        auto_unbox = TRUE,
+                        pretty = TRUE
+                    )
+                    current <- downloader__manifest_lock_owner(lock_dir)
+                    if (!identical(current, meta)) {
+                        stop("Manifest lock owner readback did not match.")
+                    }
+                    NULL
+                },
+                error = identity
             )
+            if (inherits(publication_error, "error")) {
+                owner_path <- downloader__manifest_lock_metadata(lock_dir)
+                current <- if (file.exists(owner_path)) {
+                    downloader__manifest_lock_owner(lock_dir)
+                } else {
+                    NULL
+                }
+                entries <- list.files(lock_dir, all.files = TRUE, no.. = TRUE)
+                # This process just created the directory. Remove only its
+                # failed owner record; unexpected files or another valid
+                # owner remain available for explicit investigation.
+                if (
+                    (is.null(current) || identical(current, meta)) &&
+                        all(entries %in% "owner.json")
+                ) {
+                    unlink(lock_dir, recursive = TRUE, force = TRUE)
+                }
+                cli::cli_abort(
+                    "Cannot publish manifest lock ownership: {.path {lock_dir}}.",
+                    parent = publication_error
+                )
+            }
             return(function() {
-                if (dir.exists(lock_dir)) {
+                current <- downloader__manifest_lock_owner(lock_dir)
+                if (!is.null(current) && identical(current, meta)) {
                     unlink(lock_dir, recursive = TRUE, force = TRUE)
                 }
                 invisible(NULL)
             })
         }
 
-        if (downloader__manifest_lock_stale(lock_dir, stale_after)) {
-            unlink(lock_dir, recursive = TRUE, force = TRUE)
+        if (
+            downloader__manifest_lock_stale(lock_dir, stale_after) &&
+                downloader__manifest_reclaim_lock(lock_dir, stale_after)
+        ) {
             next
         }
 
@@ -1353,7 +1492,7 @@ downloader__resume_supported <- function(
         low_speed_time = low_speed_time,
         nobody = TRUE
     )
-    curl::handle_setheaders(handle, Range = sprintf("bytes=%d-", start_byte))
+    curl::handle_setheaders(handle, Range = sprintf("bytes=%.0f-", start_byte))
     response <- tryCatch(
         curl::curl_fetch_memory(url, handle = handle),
         error = function(e) NULL
@@ -1365,8 +1504,8 @@ downloader__resume_supported <- function(
     }
     headers <- tolower(downloader__headers_text(response$headers))
     pattern <- sprintf(
-        "content-range:[[:space:]]*bytes[[:space:]]+%d-",
-        as.integer(start_byte)
+        "content-range:[[:space:]]*bytes[[:space:]]+%.0f-",
+        start_byte
     )
     grepl(pattern, headers, perl = TRUE)
 }
@@ -1704,7 +1843,7 @@ downloader__worker_dependencies <- function() {
         )
         curl::handle_setheaders(
             handle,
-            Range = sprintf("bytes=%d-", start_byte)
+            Range = sprintf("bytes=%.0f-", start_byte)
         )
         response <- tryCatch(
             curl::curl_fetch_memory(url, handle = handle),
@@ -1717,10 +1856,114 @@ downloader__worker_dependencies <- function() {
             return(FALSE)
         }
         pattern <- sprintf(
-            "content-range:[[:space:]]*bytes[[:space:]]+%d-",
-            as.integer(start_byte)
+            "content-range:[[:space:]]*bytes[[:space:]]+%.0f-",
+            start_byte
         )
         grepl(pattern, tolower(headers_text(response$headers)), perl = TRUE)
+    }
+
+    # Check the actual GET before appending any resumed bytes. HEAD negotiation
+    # alone cannot protect a partial when a gateway changes its response later.
+    resume_guard <- function(handle, start_byte) {
+        stopifnot(
+            length(start_byte) == 1L,
+            is.finite(start_byte),
+            start_byte >= 0,
+            start_byte <= 2^53 - 1,
+            start_byte == floor(start_byte)
+        )
+        received <- 0
+        expected <- NULL
+        validated <- FALSE
+        validate <- function(response) {
+            if (start_byte == 0 || validated) {
+                return(invisible(NULL))
+            }
+            lines <- strsplit(headers_text(response$headers), "\r?\n")[[1L]]
+            # Redirect/proxy response blocks must not supply missing headers for
+            # the final GET. Only that final block describes appended bytes.
+            status_lines <- grep("^HTTP/", lines)
+            if (length(status_lines)) {
+                lines <- lines[seq.int(tail(status_lines, 1L), length(lines))]
+            }
+            value <- function(name) {
+                hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
+                if (!length(hit)) {
+                    return(NA_character_)
+                }
+                trimws(sub("^[^:]+:", "", lines[[tail(hit, 1L)]]))
+            }
+            text <- value("content-range")
+            parts <- if (!is.na(text)) {
+                regmatches(
+                    text,
+                    regexec("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", text)
+                )[[1L]]
+            } else {
+                character()
+            }
+            bounds <- suppressWarnings(as.numeric(parts[-1L]))
+            valid <- length(bounds) == 3L &&
+                all(is.finite(bounds)) &&
+                all(bounds <= 2^53 - 1) &&
+                bounds[[1L]] == start_byte &&
+                bounds[[2L]] >= start_byte &&
+                bounds[[2L]] == bounds[[3L]] - 1
+            if (!identical(as.integer(response$status_code), 206L) || !valid) {
+                stop(
+                    "HTTP resume GET did not return the exact remaining Content-Range.",
+                    call. = FALSE
+                )
+            }
+            expected <<- bounds[[2L]] - bounds[[1L]] + 1
+            length_header <- value("content-length")
+            encoding <- value("content-encoding")
+            if (
+                (!is.na(length_header) &&
+                    !identical(
+                        suppressWarnings(as.numeric(length_header)),
+                        expected
+                    )) ||
+                    (!is.na(encoding) && tolower(encoding) != "identity")
+            ) {
+                stop(
+                    "HTTP resume GET has inconsistent length or encoding.",
+                    call. = FALSE
+                )
+            }
+            validated <<- TRUE
+            invisible(NULL)
+        }
+        # curl exposes the final response headers before its first body callback.
+        accept <- function(chunk) {
+            if (start_byte == 0) {
+                return(invisible(NULL))
+            }
+            validate(curl::handle_data(handle))
+            if (received + length(chunk) > expected) {
+                stop(
+                    "HTTP resume GET exceeded its declared byte range.",
+                    call. = FALSE
+                )
+            }
+            received <<- received + length(chunk)
+            invisible(NULL)
+        }
+        # Keep an interrupted valid prefix, but never seal an incomplete tail.
+        finish <- function(response) {
+            if (start_byte == 0) {
+                return(invisible(NULL))
+            }
+            validate(response)
+            if (!identical(received, expected)) {
+                stop(
+                    "HTTP resume GET ended before its declared byte range.",
+                    call. = FALSE
+                )
+            }
+            invisible(NULL)
+        }
+        list(accept = accept, finish = finish)
     }
 
     # Copy one byte range from a local file URL into an atomic piece file.
@@ -1847,6 +2090,7 @@ downloader__worker_dependencies <- function() {
         format_byte = format_byte,
         headers_text = headers_text,
         resume_supported = resume_supported,
+        resume_guard = resume_guard,
         copy_file_range = copy_file_range,
         merge_piece_files = merge_piece_files,
         target_path = target_path,
@@ -2367,20 +2611,27 @@ downloader__worker_download <- function(
         if (start_byte > 0) {
             curl::handle_setheaders(
                 handle,
-                Range = sprintf("bytes=%d-", start_byte)
+                Range = sprintf("bytes=%.0f-", start_byte)
             )
+            curl::handle_setopt(handle, resume_from_large = start_byte)
         }
 
+        guard <- worker_dependencies$resume_guard(
+            handle,
+            if (grepl("^https?://", url, ignore.case = TRUE)) start_byte else 0
+        )
         con <- file(tmp_part, if (start_byte > 0) "ab" else "wb")
         on.exit(close(con), add = TRUE)
-        curl::curl_fetch_stream(
+        response <- curl::curl_fetch_stream(
             url,
             function(chunk) {
+                guard$accept(chunk)
                 writeBin(chunk, con)
                 TRUE
             },
             handle = handle
         )
+        guard$finish(response)
         close(con)
         on.exit(NULL)
         file.rename(tmp_part, tmp_done)
@@ -2424,6 +2675,12 @@ downloader__worker_download <- function(
     last_error <- NULL
     checksum_history <- character()
     while (attempt <= retries) {
+        # The previous interrupted stream may have added valid bytes.
+        if (isTRUE(resume) && file.exists(tmp_part)) {
+            start_byte <- as.numeric(
+                file.info(tmp_part, extra_cols = FALSE)$size
+            )
+        }
         ok <- tryCatch(
             {
                 stream(
@@ -2981,6 +3238,13 @@ Downloader <- R6::R6Class(
             chksum_history <- character(0) # track checksums for intelligent retry
 
             while (attempt <= private$retries) {
+                # Re-read the partial after each failed GET rather than appending
+                # the same tail again from an obsolete starting offset.
+                if (isTRUE(resume) && file.exists(tmp_part)) {
+                    start_byte <- as.numeric(
+                        file.info(tmp_part, extra_cols = FALSE)$size
+                    )
+                }
                 result <- tryCatch(
                     {
                         private$download_with_streaming(
@@ -8810,10 +9074,19 @@ Downloader <- R6::R6Class(
             if (start_byte > 0) {
                 curl::handle_setheaders(
                     handle,
-                    Range = sprintf("bytes=%d-", start_byte)
+                    Range = sprintf("bytes=%.0f-", start_byte)
                 )
+                curl::handle_setopt(handle, resume_from_large = start_byte)
             }
 
+            guard <- downloader__worker_dependencies()$resume_guard(
+                handle,
+                if (grepl("^https?://", url, ignore.case = TRUE)) {
+                    start_byte
+                } else {
+                    0
+                }
+            )
             # Open file for writing
             mode <- if (start_byte > 0) "ab" else "wb"
             con <- file(tmp_part, mode)
@@ -8884,10 +9157,11 @@ Downloader <- R6::R6Class(
             }
 
             # Download with streaming
-            curl::curl_fetch_stream(
+            response <- curl::curl_fetch_stream(
                 url,
                 function(chunk) {
                     # Write chunk to file
+                    guard$accept(chunk)
                     writeBin(chunk, con)
                     bytes_downloaded <<- bytes_downloaded + length(chunk)
 
@@ -8929,6 +9203,7 @@ Downloader <- R6::R6Class(
                 },
                 handle = handle
             )
+            guard$finish(response)
 
             close(con)
             on.exit(NULL)
