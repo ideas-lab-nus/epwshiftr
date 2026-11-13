@@ -137,8 +137,17 @@ era5__variable_manifest <- function() {
             TRUE
         )
     )
+    # ECMWF's current single-level ARCO parameter table includes cloud cover
+    # and direct horizontal solar radiation. Keep ERA5-Land flags separate:
+    # https://confluence.ecmwf.int/pages/viewpage.action?pageId=505390919
+    data.table::set(
+        manifest,
+        i = which(manifest$variable_id == "clt"),
+        j = "time_series_single_levels",
+        value = TRUE
+    )
     # FDIR is a direct horizontal accumulation, not direct-normal radiation.
-    # The diffuse row is a derived public variable; both require full CDS.
+    # Diffuse radiation still requires matched SSRD and FDIR source intervals.
     radiation <- data.table::copy(manifest[rep(
         which(manifest$variable_id == "rsds"),
         2L
@@ -160,10 +169,20 @@ era5__variable_manifest <- function() {
             character()
         ))
     )
-    for (column in c("land", "time_series_single_levels", "time_series_land")) {
+    for (column in c("land", "time_series_land")) {
         data.table::set(radiation, j = column, value = FALSE)
     }
-    data.table::rbindlist(list(manifest, radiation))
+    # ECMWF's 2025-09-25 announcement adds skin temperature to both hourly
+    # time-series products; it is an instantaneous surface temperature in K.
+    skin <- data.table::copy(manifest[manifest$variable_id == "tas"])
+    data.table::set(skin, j = "variable_id", value = "skt")
+    data.table::set(skin, j = "era_variable", value = "skin_temperature")
+    data.table::set(
+        skin,
+        j = "aliases",
+        value = I(list(c("skt", "skin_temperature")))
+    )
+    data.table::rbindlist(list(manifest, radiation, skin))
 }
 # }}}
 
@@ -189,7 +208,8 @@ era5__source_variables <- function(variables, product = "single_levels") {
         pr = "pr",
         hurs = c("tas", "tdps"),
         huss = c("tas", "tdps", "ps"),
-        snd = "snd"
+        snd = "snd",
+        skt = "skt"
     )
     manifest <- era5__variable_manifest()
     supported <- manifest[get(product) %in% TRUE, variable_id]
@@ -309,8 +329,12 @@ era5__request <- function(spec, variable, site, access) {
 #' when retrieval begins and are never accepted by the package.
 #'
 #' `rsdsdiff` is derived from matched hourly SSRD minus FDIR accumulations
-#' (direct horizontal solar radiation, not DNI). It requires the full CDS
-#' single-level product; automatic access falls back from ARCO to CDS.
+#' (direct horizontal solar radiation, not DNI). These fields and total cloud
+#' cover (`clt`) are available through both single-level CDS and its ARCO-backed
+#' time-series service; automatic access prefers the time-series service.
+#' `skt` requests skin temperature in kelvin and is available through both
+#' full CDS and the hourly point time-series service. For independent local
+#' point-file validation, use [shift_read_reanalysis()].
 #'
 #' @param years Calendar years used as the observed reference period.
 #' @param product ERA5 single-level product. `"single_levels"` uses global

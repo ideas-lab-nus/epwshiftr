@@ -46,8 +46,12 @@ when retrieval begins and are never accepted by the package.
 }
 \details{
 \code{rsdsdiff} is derived from matched hourly SSRD minus FDIR accumulations
-(direct horizontal solar radiation, not DNI). It requires the full CDS
-single-level product; automatic access falls back from ARCO to CDS.
+(direct horizontal solar radiation, not DNI). These fields and total cloud
+cover (\code{clt}) are available through both single-level CDS and its ARCO-backed
+time-series service; automatic access prefers the time-series service.
+\code{skt} requests skin temperature in kelvin and is available through both
+full CDS and the hourly point time-series service. For independent local
+point-file validation, use \code{\link[=shift_read_reanalysis]{shift_read_reanalysis()}}.
 }
 \references{
 \href{https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-timeseries}{Copernicus Climate Data Store ERA5 hourly time-series data}

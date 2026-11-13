@@ -36,7 +36,7 @@ era_epw__fields <- function(precipitation) {
         minute = "60",
         data_source = "ERA5 reanalysis; see field provenance",
         dry_bulb_temperature = "tas: K to degC",
-        dew_point_temperature = "tdps: original liquid-water dew point; K to degC",
+        dew_point_temperature = "tdps: liquid-water dew point, native or reconstructed after UTC alignment; K to degC",
         relative_humidity = "100 * IFS water saturation(tdps) / saturation(tas)",
         atmospheric_pressure = "ps: surface pressure in Pa",
         extraterrestrial_horizontal_radiation = "shared solar interval geometry",
@@ -67,20 +67,9 @@ era_epw__fields <- function(precipitation) {
     )
 }
 
-# Check the complete requested calendar, including leap hours that may later
-# be omitted. Do not repair negative radiation, supersaturation or missing data.
-era_epw__annual <- function(input, site, year, leap_day, precipitation) {
-    calendar <- era_epw__calendar(year, site$timezone, leap_day)
-    index <- match(
-        as.numeric(calendar$utc_time),
-        as.numeric(input$data$utc_time)
-    )
-    if (anyNA(index)) {
-        cli::cli_abort(
-            "Missing {sum(is.na(index))} required UTC hour(s) for local year {year}."
-        )
-    }
-    all <- input$data[index]
+# Validate both contributing native hours and resampled local states. Invalid
+# endpoints must not be hidden by averaging; no humidity/radiation repair occurs.
+era_epw__validate_hours <- function(all) {
     if (any(!is.finite(as.matrix(all[, ERA_EPW_VARIABLES, with = FALSE])))) {
         cli::cli_abort("Required ERA5 hours contain non-finite weather values.")
     }
@@ -89,6 +78,7 @@ era_epw__annual <- function(input, site, year, leap_day, precipitation) {
             any(all$clt < 0 | all$clt > 1) ||
             any(all$pr < 0) ||
             any(all$ps <= 0) ||
+            any(era_epw__water_pressure(all$tdps) >= all$ps) ||
             any(
                 all$rsds < 0 | all$fdir < 0 | all$rlds < 0 | all$fdir > all$rsds
             )
@@ -97,6 +87,69 @@ era_epw__annual <- function(input, site, year, leap_day, precipitation) {
             "ERA5 physical inconsistency: check dew point, cloud, precipitation, pressure and radiation."
         )
     }
+    invisible(TRUE)
+}
+
+# Align hourly endpoints to a fixed local offset. For a fractional endpoint,
+# instantaneous states interpolate linearly (humidity in vapour-pressure space).
+# One-hour accumulated quantities use the same weights as exact interval overlap.
+era_epw__align_local <- function(data, calendar) {
+    time <- as.numeric(calendar$utc_time)
+    lower <- floor(time / 3600) * 3600
+    weight <- (time - lower) / 3600
+    upper <- lower + data.table::fifelse(weight == 0, 0, 3600)
+    i <- match(lower, as.numeric(data$utc_time))
+    j <- match(upper, as.numeric(data$utc_time))
+    missing <- is.na(i) | is.na(j)
+    if (any(missing)) {
+        cli::cli_abort(
+            "Missing {sum(missing)} required UTC hour(s) for local calendar."
+        )
+    }
+    era_epw__validate_hours(data[unique(c(i, j))])
+    aligned <- data.table::copy(data[i])
+    if (any(weight != 0)) {
+        interpolate <- function(value) {
+            value[i] * (1 - weight) + value[j] * weight
+        }
+        for (variable in setdiff(ERA_EPW_VARIABLES, "tdps")) {
+            data.table::set(
+                aligned,
+                j = variable,
+                value = interpolate(data[[variable]])
+            )
+        }
+        vapour <- interpolate(era_epw__water_pressure(data$tdps))
+        q <- log(vapour / 611.21)
+        dewpoint <- (17.502 * 273.16 - q * 32.19) / (17.502 - q)
+        # Exact saturation states retain Td=T; this removes inversion roundoff
+        # only when the primary vapour pressure equals saturation exactly.
+        saturated <- which(vapour == era_epw__water_pressure(aligned$tas))
+        dewpoint[saturated] <- aligned$tas[saturated]
+        data.table::set(aligned, j = "tdps", value = dewpoint)
+    }
+    data.table::set(aligned, j = "utc_time", value = calendar$utc_time)
+    era_epw__validate_hours(aligned)
+    alignment <- data.table::data.table(
+        local_year = calendar$year,
+        local_month = calendar$month,
+        local_day = calendar$day,
+        local_hour = calendar$hour,
+        utc_time = calendar$utc_time,
+        source_utc_lower = as.POSIXct(lower, origin = "1970-01-01", tz = "UTC"),
+        source_utc_upper = as.POSIXct(upper, origin = "1970-01-01", tz = "UTC"),
+        upper_weight = weight,
+        retained = calendar$retained
+    )
+    list(data = aligned, alignment = alignment)
+}
+
+# Check the complete requested calendar, including leap hours that may later
+# be omitted. Do not repair negative radiation, supersaturation or missing data.
+era_epw__annual <- function(input, site, year, leap_day, precipitation) {
+    calendar <- era_epw__calendar(year, site$timezone, leap_day)
+    aligned <- era_epw__align_local(input$data, calendar)
+    all <- aligned$data
     omitted <- all[!calendar$retained]
     data <- all[calendar$retained]
     weather <- calendar[
@@ -240,7 +293,8 @@ era_epw__annual <- function(input, site, year, leap_day, precipitation) {
         weather = weather[, EPW_FILE_COLUMNS, with = FALSE],
         diagnostics = diagnostics,
         omitted = omitted,
-        fields = era_epw__fields(precipitation)
+        fields = era_epw__fields(precipitation),
+        alignment = aligned$alignment
     )
 }
 
@@ -324,11 +378,22 @@ era_epw__write <- function(annual, site, year, leap_day, start_day, path) {
 era_epw__implementation <- function() {
     functions <- c(
         "era_epw__annual",
+        "era_epw__align_local",
+        "era_epw__validate_hours",
         "era_epw__calendar",
         "era_epw__fields",
         "era_epw__normalize",
         "era_epw__read_field",
         "era_epw__read_files",
+        "era_epw__grid_sources",
+        "spatial__region_grid_sources",
+        "spatial__make_region_grid_coords",
+        "spatial__select_nearest_grid_sources",
+        "spatial__select_cell_grid_sources",
+        "spatial__find_lat_bounds",
+        "spatial__find_lon_bounds",
+        "spatial__lon_to_360",
+        "tunnel_dist",
         "era_epw__water_pressure",
         "era_epw__write",
         "solar__epw_interval_geometry",
@@ -465,6 +530,10 @@ era_epw__job <- function(
             )
             data.table::fwrite(annual$fields, file.path(attempt, "fields.csv"))
             data.table::fwrite(
+                annual$alignment,
+                file.path(attempt, "time-alignment.csv")
+            )
+            data.table::fwrite(
                 annual$diagnostics,
                 file.path(attempt, "diagnostics.csv")
             )
@@ -479,6 +548,7 @@ era_epw__job <- function(
                     "weather.epw",
                     "fields.csv",
                     "diagnostics.csv",
+                    "time-alignment.csv",
                     "omitted-leap-hours.rds"
                 )
             )
@@ -517,11 +587,16 @@ era_epw__job <- function(
     )
 }
 
-#' Generate annual reference EPW files from ERA5
+#' Generate annual EPW files from ERA5 reanalysis
 #'
 #' Create independent annual weather files without a baseline EPW or GCM.
-#' This first implementation supports hourly ERA5 single-level data and
-#' whole-hour standard timezone offsets, without daylight saving time.
+#' Supports hourly ERA5 single-level data and fixed standard timezone offsets,
+#' including fractional offsets, without daylight saving time.
+#' Fractional offsets interpolate instantaneous T, vapour pressure, pressure,
+#' wind components and cloud fraction between UTC endpoints; radiation and
+#' precipitation use exact overlap of preceding-hour intervals. Endpoint times
+#' and weights are saved in `time-alignment.csv`. Native and interpolated states
+#' must both satisfy physical constraints; no saturation clipping is performed.
 #'
 #' @param source A [shift_era5()] specification for `product = "single_levels"`.
 #'   Leave `variables` and `frequency` unset. Its years select local calendar years.
@@ -550,6 +625,19 @@ era_epw__job <- function(
 #'   precipitation field, with a provenance warning.
 #' @param resume Reuse successful results only when inputs, implementation,
 #'   options and all output hashes match.
+#' @param extraction_method Spatial method for local NetCDF input. Default
+#'   `"nearest"` preserves coordinate-wise nearest selection. `"idw"` uses
+#'   inverse squared spatial distance to the four nearest available points;
+#'   `"bilinear"` interpolates the enclosing cell; `"mean"` averages its four
+#'   corners. These three methods require an enclosing 0.25-degree ERA5 cell
+#'   and local NetCDF paths for every site. They reject scalar point files,
+#'   pre-extracted bundles and automatic downloads. Source domain coverage
+#'   determines the available IDW neighbours; retain adequate surrounding data.
+#'   Native fields share source coordinates and weights, including zero-weight
+#'   points; a missing selected value is not silently omitted or reweighted.
+#'   Wind and humidity are derived after extraction. Receipts record the method,
+#'   points, distances and weights; interpolated `grid` denotes the target,
+#'   with actual source points in `provenance$spatial$sources`.
 #'
 #' @details
 #' Instantaneous variables are assigned at hour end. Radiation and precipitation
@@ -594,7 +682,8 @@ shift_epw_reanalysis <- function(
     leap_day = c("drop", "keep"),
     start_day = "calendar",
     precipitation = c("missing", "total_water_equivalent"),
-    resume = TRUE
+    resume = TRUE,
+    extraction_method = c("nearest", "idw", "bilinear", "mean")
 ) {
     if (
         !S7::S7_inherits(source, ShiftReanalysisSpec) ||
@@ -612,6 +701,7 @@ shift_epw_reanalysis <- function(
     }
     leap_day <- match.arg(leap_day)
     precipitation <- match.arg(precipitation)
+    extraction_method <- match.arg(extraction_method)
     checkmate::assert_choice(
         start_day,
         c(
@@ -647,6 +737,23 @@ shift_epw_reanalysis <- function(
             "Local inputs must be file paths, a bundle, or a list keyed by site ID."
         )
     }
+    if (extraction_method != "nearest") {
+        local_paths <- function(x) {
+            is.character(x) && length(x) > 0L && !anyNA(x)
+        }
+        valid <- if (is.character(data)) {
+            local_paths(data)
+        } else if (is.list(data) && !is_bundle) {
+            all(vapply(data[ids], local_paths, logical(1L)))
+        } else {
+            FALSE
+        }
+        if (!valid) {
+            cli::cli_abort(
+                "Interpolated extraction requires local NetCDF paths for every site; no automatic download or pre-extracted bundle is supported."
+            )
+        }
+    }
     dir.create(dir, recursive = TRUE, showWarnings = FALSE)
     directory <- normalizePath(dir, winslash = "/", mustWork = TRUE)
     lock <- file.path(directory, ".reference-lock")
@@ -666,7 +773,8 @@ shift_epw_reanalysis <- function(
     options <- list(
         leap_day = leap_day,
         start_day = start_day,
-        precipitation = precipitation
+        precipitation = precipitation,
+        extraction_method = extraction_method
     )
     rows <- vector("list", length(sites) * length(source@years))
     row_index <- 0L
@@ -693,7 +801,11 @@ shift_epw_reanalysis <- function(
                     )
                 }
                 if (is.character(selected)) {
-                    selected <- era_epw__read_files(selected, sites[[i]])
+                    selected <- era_epw__read_files(
+                        selected,
+                        sites[[i]],
+                        extraction_method
+                    )
                 }
                 era_epw__normalize(selected)
             },

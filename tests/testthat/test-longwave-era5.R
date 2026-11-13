@@ -16,7 +16,7 @@ longwave_test__era <- function() {
     list(rsds = make(c(0, 100, 300, 0)), fdir = make(c(0, 40, 250, 0)))
 }
 
-test_that("ERA5 diffuse uses matched horizontal fluxes and full CDS access", {
+test_that("ERA5 diffuse uses matched horizontal fluxes and ARCO access", {
     raw <- longwave_test__era()
     expect_equal(
         era__canonical_hourly(raw, "rsdsdiff")$data$rsdsdiff,
@@ -27,7 +27,11 @@ test_that("ERA5 diffuse uses matched horizontal fluxes and full CDS access", {
         raw$rsds$data$utc_time - 3600
     )
     expect_identical(era5__source_variables("rsdsdiff"), c("rsds", "fdir"))
-    expect_identical(era5__resolve_access(shift_era5(2001), "rsdsdiff"), "cds")
+    expect_identical(era5__resolve_access(shift_era5(2001), "rsdsdiff"), "arco")
+    expect_identical(
+        era5__resolve_access(shift_era5(2001, access = "cds"), "rsdsdiff"),
+        "cds"
+    )
     expect_error(era5__source_variables("rsdsdiff", "land"), "does not provide")
     raw$fdir$data <- raw$fdir$data[-2]
     expect_error(

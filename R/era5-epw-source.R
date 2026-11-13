@@ -41,7 +41,7 @@ era_epw__json <- function(value, path) {
 }
 
 # Accept explicit metadata without requiring a baseline weather file.
-# Whole-hour standard offsets avoid implicit interpolation of hourly records.
+# Fractional standard offsets use the explicit local-hour alignment contract.
 era_epw__site <- function(site) {
     if (!S7::S7_inherits(site, ShiftSite)) {
         cli::cli_abort("Each site must be constructed with {.fn shift_site}.")
@@ -50,11 +50,6 @@ era_epw__site <- function(site) {
     timezone <- metadata$timezone
     elevation <- metadata$elevation
     checkmate::assert_number(timezone, lower = -12, upper = 14, finite = TRUE)
-    if (timezone != round(timezone)) {
-        cli::cli_abort(
-            "Reference EPW currently requires a whole-hour standard timezone."
-        )
-    }
     checkmate::assert_number(
         elevation,
         lower = -500,
@@ -84,9 +79,59 @@ era_epw__site <- function(site) {
     )
 }
 
-# Read one nearest rectilinear grid point without loading the whole spatial
-# variable. Extra ensemble/forecast dimensions are never silently combined.
-era_epw__read_field <- function(handle, variable, site) {
+# Select native ERA5 points before temporal or psychrometric transformations.
+# Keep the existing coordinate-wise nearest convention; interpolated methods
+# share the GCM weight implementation but require a complete local cell.
+era_epw__grid_sources <- function(latitude, longitude, site, method) {
+    checkmate::assert_choice(method, c("nearest", "idw", "bilinear", "mean"))
+    if (method == "nearest") {
+        yi <- which.min(abs(latitude - site@lat))
+        xi <- which.min(abs(((longitude - site@lon + 180) %% 360) - 180))
+        sources <- spatial__region_grid_sources(
+            method,
+            latitude[yi],
+            longitude[xi],
+            site@lat,
+            site@lon
+        )
+        data.table::set(sources, j = "ind_lat", value = yi)
+        data.table::set(sources, j = "ind_lon", value = xi)
+        return(sources)
+    }
+    if (anyDuplicated(latitude) || anyDuplicated((longitude + 180) %% 360)) {
+        cli::cli_abort("Interpolated ERA5 axes must have unique coordinates.")
+    }
+    # This bounded adapter accepts the regular 0.25-degree ERA5 product.
+    # Check a real enclosing cell even for IDW, preventing a partial point
+    # download from being silently advertised as a four-point extraction.
+    cell <- spatial__region_grid_sources(
+        "bilinear",
+        latitude,
+        longitude,
+        site@lat,
+        site@lon,
+        cyclic = FALSE
+    )
+    lat_span <- diff(range(cell$grid_lat))
+    lon_span <- diff(range((cell$grid_lon - site@lon + 180) %% 360 - 180))
+    if (abs(lat_span - 0.25) > 1e-8 || abs(lon_span - 0.25) > 1e-8) {
+        cli::cli_abort(
+            "Interpolated ERA5 input must enclose the site with a complete 0.25-degree cell."
+        )
+    }
+    spatial__region_grid_sources(
+        method,
+        latitude,
+        longitude,
+        site@lat,
+        site@lon,
+        cyclic = FALSE
+    )
+}
+
+# Read at most four rectilinear points without loading the spatial weather
+# array. Extra ensemble/forecast dimensions are never silently combined.
+era_epw__read_field <- function(handle, variable, site, method = "nearest") {
     names <- era__netcdf_variables(handle)
     aliases <- era5__variable_manifest()[variable_id == variable]$aliases[[1L]]
     found <- intersect(aliases, names)
@@ -115,8 +160,7 @@ era_epw__read_field <- function(handle, variable, site) {
     if (any(!is.finite(c(latitude, longitude)))) {
         cli::cli_abort("Non-finite ERA5 grid coordinates.")
     }
-    yi <- which.min(abs(latitude - site@lat))
-    xi <- which.min(abs(((longitude - site@lon + 180) %% 360) - 180))
+    sources <- era_epw__grid_sources(latitude, longitude, site, method)
     info <- RNetCDF::var.inq.nc(handle, found)
     dims <- lapply(info$dimids, function(id) RNetCDF::dim.inq.nc(handle, id))
     dn <- vapply(dims, "[[", character(1L), "name")
@@ -150,10 +194,8 @@ era_epw__read_field <- function(handle, variable, site) {
     for (index in seq_along(dn)) {
         dimid <- info$dimids[[index]]
         if (dimid %in% lat_dims) {
-            starts[[index]] <- yi
             counts[[index]] <- 1L
         } else if (dimid %in% lon_dims) {
-            starts[[index]] <- xi
             counts[[index]] <- 1L
         } else if (index != ti && counts[[index]] != 1L) {
             cli::cli_abort(
@@ -161,29 +203,44 @@ era_epw__read_field <- function(handle, variable, site) {
             )
         }
     }
-    values <- as.numeric(RNetCDF::var.get.nc(
-        handle,
-        found,
-        start = starts,
-        count = counts,
-        # Decode packed CF values before applying physical unit conversions.
-        unpack = TRUE
-    ))
-    if (length(values) != length(time$value)) {
-        cli::cli_abort(
-            "ERA5 values and validity-time coordinate differ in length."
-        )
+    values <- numeric(length(time$value))
+    # Bounded external I/O: each selected point is read once, including
+    # zero-weight points. Missing values are not silently reweighted away.
+    for (i in seq_len(nrow(sources))) {
+        starts[info$dimids %in% lat_dims] <- sources$ind_lat[[i]]
+        starts[info$dimids %in% lon_dims] <- sources$ind_lon[[i]]
+        point <- as.numeric(RNetCDF::var.get.nc(
+            handle,
+            found,
+            start = starts,
+            count = counts,
+            unpack = TRUE
+        ))
+        if (length(point) != length(time$value)) {
+            cli::cli_abort(
+                "ERA5 values and validity-time coordinate differ in length."
+            )
+        }
+        values <- values + point * sources$weight[[i]]
     }
     list(
         data = data.table::data.table(utc_time = time$value, value = values),
         units = as.character(era__netcdf_attribute(handle, found, "units", "")),
-        grid = c(latitude = latitude[[yi]], longitude = longitude[[xi]])
+        grid = if (method == "nearest") {
+            c(
+                latitude = sources$grid_lat[[1L]],
+                longitude = sources$grid_lon[[1L]]
+            )
+        } else {
+            c(latitude = site@lat, longitude = reanalysis__longitude(site@lon))
+        },
+        grid_sources = sources
     )
 }
 
 # Assemble split files after checking native units, grid identity and exact
 # validity-time alignment. Overlapping records must not be deduplicated away.
-era_epw__read_files <- function(paths, site) {
+era_epw__read_files <- function(paths, site, method = "nearest") {
     checkmate::assert_character(
         paths,
         min.len = 1L,
@@ -217,7 +274,7 @@ era_epw__read_files <- function(paths, site) {
                 )]
                 stats::setNames(
                     lapply(selected, function(v) {
-                        era_epw__read_field(handle, v, site)
+                        era_epw__read_field(handle, v, site, method)
                     }),
                     selected
                 )
@@ -235,11 +292,34 @@ era_epw__read_files <- function(paths, site) {
     }
     units <- stats::setNames(character(length(entries)), names(entries))
     grid <- NULL
+    grid_sources <- NULL
     table <- NULL
     for (v in names(entries)) {
         pieces <- entries[[v]]
         declared <- unique(vapply(pieces, "[[", character(1L), "units"))
         grids <- lapply(pieces, "[[", "grid")
+        # Axis storage order may differ across files. Physical coordinates,
+        # roles and weights must agree, independent of NetCDF array indices.
+        source_sets <- lapply(pieces, function(piece) {
+            as.data.frame(piece$grid_sources[,
+                c(
+                    "role",
+                    "grid_lat",
+                    "grid_lon",
+                    "grid_dist_km",
+                    "weight"
+                ),
+                with = FALSE
+            ])
+        })
+        if (is.null(grid_sources)) {
+            grid_sources <- source_sets[[1L]]
+        }
+        if (!all(vapply(source_sets, identical, logical(1L), grid_sources))) {
+            cli::cli_abort(
+                "ERA5 files or variables use different source points or weights."
+            )
+        }
         if (
             length(declared) != 1L ||
                 !all(vapply(grids, identical, logical(1L), grids[[1L]]))
@@ -252,7 +332,9 @@ era_epw__read_files <- function(paths, site) {
             grid <- grids[[1L]]
         }
         if (!identical(grid, grids[[1L]])) {
-            cli::cli_abort("ERA5 variables use different nearest grid points.")
+            cli::cli_abort(
+                "ERA5 variables use different extraction coordinates."
+            )
         }
         values <- data.table::rbindlist(lapply(pieces, "[[", "data"))
         data.table::setorder(values, utc_time)
@@ -278,6 +360,22 @@ era_epw__read_files <- function(paths, site) {
         grid = as.list(grid),
         interval_seconds = 3600,
         provenance = list(
+            spatial = list(
+                method = method,
+                nearest_convention = if (method == "nearest") {
+                    "coordinate_wise"
+                } else {
+                    NULL
+                },
+                grid_role = if (method == "nearest") {
+                    "source_point"
+                } else {
+                    "target_point"
+                },
+                sources = grid_sources,
+                elevation_adjustment = FALSE,
+                land_mask_filter = FALSE
+            ),
             files = as.data.frame(data.table::data.table(
                 path = paths,
                 sha256 = vapply(paths, checksum_file, character(1L))
