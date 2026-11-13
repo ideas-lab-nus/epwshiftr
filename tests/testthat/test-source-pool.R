@@ -103,6 +103,7 @@ test_that("persistent reader output is opt-in and preserves process reuse", {
             "pool <- source_pool(1L, timeout = 5, output = enabled)",
             "on.exit(pool$close(force = TRUE), add = TRUE)",
             "worker <- pool$status()[[1L]]$pid",
+            "worker_handle <- ps::ps_handle(worker)",
             "values <- integer()",
             "for (i in 1:2) {",
             "ticket <- pool$submit(list(list(source_key = 'generated')), function(job) {cat('EPWSHIFTR_READER_STDOUT\\n');message('EPWSHIFTR_READER_STDERR');Sys.getpid()}, function(job, value) {values <<- c(values, value)})",
@@ -111,6 +112,8 @@ test_that("persistent reader output is opt-in and preserves process reuse", {
             "stopifnot(ticket$status == 'done')",
             "}",
             "stopifnot(length(values) == 2L, all(values == worker), worker != Sys.getpid())",
+            "pool$close()",
+            "stopifnot(!ps::ps_is_running(worker_handle))",
             "cat('OUTPUT_READER_REUSE_PASSED\\n')",
             "}",
             "run()"
@@ -128,7 +131,7 @@ test_that("persistent reader output is opt-in and preserves process reuse", {
             cleanup_tree = TRUE,
             error_on_status = FALSE
         )
-        expect_identical(result$status, 0L)
+        expect_identical(result$status, 0L, info = result$stderr)
         expect_match(result$stdout, "OUTPUT_READER_REUSE_PASSED")
         expect_identical(
             grepl("EPWSHIFTR_READER_STDOUT", result$stdout, fixed = TRUE),

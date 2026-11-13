@@ -80,6 +80,7 @@ reference:
       - resume_subsets
       - import_subset_blocks
       - EsgStore
+      - source_pool
       - Downloader
       - store_reset
 

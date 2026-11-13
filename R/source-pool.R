@@ -110,7 +110,7 @@ source__pool <- function(
         # and bootstrap failures must release this exact profile here.
         registered <- FALSE
         on.exit(
-            if (!registered) mirai::daemons(0L, .compute = profile),
+            if (!registered) mirai::daemons(NULL, .compute = profile),
             add = TRUE
         )
         pid <- await(mirai::mirai(Sys.getpid(), .compute = profile))
@@ -153,6 +153,15 @@ source__pool <- function(
     retire <- function(i) {
         slot <- slots[[i]]
         h <- slot$handle
+        if (is.null(slot$active)) {
+            # Give idle daemons an exit signal before closing the host
+            # transport. Busy or timed-out readers still require owned kill.
+            mirai::daemons(NULL, .compute = slot$profile)
+            deadline <- clock() + 5
+            while (ps::ps_is_running(h) && clock() < deadline) {
+                Sys.sleep(.01)
+            }
+        }
         if (ps::ps_is_running(h)) {
             stopifnot(
                 identical(ps::ps_cmdline(h), slot$command),
