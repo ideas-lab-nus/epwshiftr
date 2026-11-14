@@ -2731,9 +2731,10 @@ EsgResultFile <- R6::R6Class(
         #' @param verified_replicas Optional table of verified alternate
         #'   endpoints, as described in [resume_subsets()].
         #' @return For fetch_subset(), a lightweight acquisition summary. `complete`
-        #'   describes native coverage of the selected Files; the independent
-        #'   `directory_complete` flag is false for a partially collected File
-        #'   directory. An intentional slice of a fully collected directory
+        #'   describes verified, committed native coverage of the selected Files.
+        #'   A source attempt can report an error after all its blocks are committed.
+        #'   The independent `directory_complete` flag is false for a partially
+        #'   collected File directory. An intentional slice of a fully collected directory
         #'   retains true directory completeness. No missing pages are implied
         #'   to have been collected by successful reads or cache reuse. A verified
         #'   completed original query is saved locally and reused on repeat calls.

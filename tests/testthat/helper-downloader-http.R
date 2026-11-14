@@ -170,10 +170,12 @@ subset_test__dap_app <- function(
     climatology_method = NULL,
     bounds_reversed = FALSE,
     ordinary_method = NULL,
-    global_attributes = NULL
+    global_attributes = NULL,
+    fail_last_corner = FALSE
 ) {
     app <- webfakes::new_app()
     app$locals$unavailable <- isTRUE(fail_first)
+    app$locals$fail_last_corner <- isTRUE(fail_last_corner)
     app$locals$calendar <- calendar
     app$locals$point_bounds <- isTRUE(point_bounds)
     app$locals$time_units <- time_units
@@ -186,6 +188,11 @@ subset_test__dap_app <- function(
     app$locals$requests <- character()
     app$get('/recover', function(req, res, locals) {
         locals$unavailable <- FALSE
+        locals$fail_last_corner <- FALSE
+        res$send('ok')
+    })
+    app$get('/fail', function(req, res, locals) {
+        locals$unavailable <- TRUE
         res$send('ok')
     })
     app$get('/requests', function(req, res, locals) {
@@ -399,10 +406,14 @@ subset_test__dap_app <- function(
                 if (grepl('[.]dods$', name)) {
                     locals$weather <- locals$weather + 1L
                 }
+                # Let the 7/8 fixture fail only on day two's last grid point.
                 if (
                     grepl('[.]dods$', name) &&
                         ((grepl('bad', name) && locals$weather > 1L) ||
-                            locals$unavailable)
+                            locals$unavailable ||
+                            (locals$fail_last_corner &&
+                                all(lengths(indices) == 1L) &&
+                                all(unlist(indices) == 2L)))
                 ) {
                     return(res$set_status(503L)$send('temporary read failure'))
                 }

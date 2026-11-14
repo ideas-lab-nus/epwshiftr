@@ -9592,4 +9592,265 @@ test_that("native DAP slabs preserve their exact time indices", {
     expect_identical(normalize_cf_calendar("noleap"), "noleap")
 })
 
+test_that("fetch, read-back, status and frozen recovery agree on the missing corner", {
+    skip_if_not_installed("webfakes")
+    server <- webfakes::new_app_process(subset_test__dap_app(
+        fail_last_corner = TRUE
+    ))
+    withr::defer(server$stop())
+    dest <- withr::local_tempdir()
+    docs <- data.frame(
+        id = "coverage-file",
+        dataset_id = "coverage-dataset",
+        size = 32,
+        checksum = strrep("a", 64L),
+        checksum_type = "SHA256",
+        instance_id = "coverage-instance",
+        master_id = "coverage-master",
+        replica = FALSE,
+        tracking_id = "hdl:21.14100/coverage-fixture",
+        title = "source.nc",
+        version = 20260101L,
+        data_node = "fixture",
+        source_id = "fixture",
+        experiment_id = "ssp245",
+        table_id = "day",
+        variable_id = "tas"
+    )
+    docs$url <- I(list(paste0(
+        server$url(),
+        "source.nc|application/netcdf|OPENDAP"
+    )))
+    files <- query_result__new(
+        EsgResultFile,
+        index_node = "https://example.org",
+        params = query_param__as_store(list(type = "File", project = "CMIP6")),
+        result = esgf_test__response(docs, timestamp = Sys.time())
+    )
+    request <- data.frame(
+        request_id = "two-days",
+        case_id = "city",
+        site_id = "city",
+        lon = 10.25,
+        lat = .25,
+        time_start = "2060-01-01",
+        time_stop = "2060-01-02",
+        source_id = docs$source_id,
+        experiment_id = docs$experiment_id,
+        table_id = docs$table_id,
+        variable_id = docs$variable_id
+    )
+    fetch <- function(request, resume = TRUE) {
+        files$fetch_subset(
+            request,
+            dest,
+            workers = 1L,
+            retries = 0L,
+            discover = FALSE,
+            resume = resume,
+            max_values = 4L
+        )
+    }
+    control <- function(path) {
+        curl::curl_fetch_memory(paste0(server$url(), path))$content
+    }
+    weather_requests <- function() {
+        calls <- jsonlite::fromJSON(rawToChar(control("requests")))
+        grep("[.]dods tas", calls, value = TRUE)
+    }
+
+    # Seed one full day so the real worker reads only missing points on day two.
+    first <- request
+    first$request_id <- "one-day"
+    first$time_stop <- first$time_start
+    expect_true(fetch(first)$complete)
+    expect_false(fetch(request)$complete)
+
+    # The fixture's second-day values are 5–8, with 8 at native (2,2,2).
+    raw <- read_subset(dest)
+    expect_equal(sort(raw$values$value), as.double(1:7))
+    expect_identical(raw$gaps$incomplete_requests$request_id, "two-days")
+    checked <- subset_status(dest, "coverage")
+    checked <- checked[checked$request_id == "two-days", ]
+    expect_false(checked$complete)
+    expect_equal(checked$available_native_values, 7)
+    expect_equal(checked$expected_native_values, 8)
+    before <- subset_status(dest, "blocks")
+    old_hashes <- tools::sha256sum(c(before$path, before$metadata_path))
+
+    # A different site shares the same grid. Its interrupted forced refresh
+    # publishes selection metadata but no coverage for the new request.
+    control("fail")
+    pending <- request
+    pending$request_id <- pending$case_id <- pending$site_id <- "pending"
+    pending$lon <- 10.75
+    expect_false(fetch(pending, resume = FALSE)$complete)
+    checked <- subset_status(dest, "coverage")
+    expect_equal(
+        checked$available_native_values[match(
+            c("two-days", "pending"),
+            checked$request_id
+        )],
+        c(7, 0)
+    )
+    waiting <- checked[checked$request_id == "pending", ]
+    expect_true(waiting$axis_known)
+    expect_equal(waiting$expected_native_values, 8)
+    expect_false(waiting$complete)
+    raw <- read_subset(dest, case_id = "pending")
+    expect_equal(nrow(raw$values), 0)
+    expect_identical(raw$gaps$incomplete_requests$request_id, "pending")
+
+    # Build the same frozen-plan/journal inputs used by a real recovery call.
+    plan <- withr::local_tempdir()
+    catalogue <- files$save(file.path(plan, "catalogue.json"))
+    selection <- data.frame(
+        source_key = checked$source_key[[1L]],
+        owner = "pc",
+        batch = "pc-fixture",
+        catalogue = basename(catalogue),
+        catalogue_sha256 = checksum_file(catalogue),
+        record_indices = "[1]"
+    )
+    selected <- file.path(plan, "files.parquet")
+    requested <- file.path(plan, "requests.parquet")
+    write_parquet_file(selection, selected)
+    write_parquet_file(request, requested)
+    metadata <- list(
+        files_sha256 = checksum_file(selected),
+        requests_sha256 = checksum_file(requested),
+        capacities = list(pc = 1L)
+    )
+    jsonlite::write_json(
+        metadata,
+        file.path(plan, "manifest.json"),
+        auto_unbox = TRUE
+    )
+    denominator <- file.path(plan, "denominator.rds")
+    saveRDS(
+        list(
+            source_files_sha256 = metadata$files_sha256,
+            requests_sha256 = metadata$requests_sha256,
+            demands = cbind(
+                request,
+                selection[c("source_key", "owner", "batch")]
+            )
+        ),
+        denominator
+    )
+    journal <- withr::local_tempdir()
+    original <- opendap_recovery__persist(
+        list(
+            generation = 0L,
+            started = as.double(Sys.time()),
+            configuration = list(
+                version = 2L,
+                identity = list(
+                    node = "pc",
+                    files = metadata$files_sha256,
+                    requests = metadata$requests_sha256,
+                    denominator = checksum_file(denominator)
+                ),
+                max_rounds = Inf,
+                max_wait = Inf,
+                max_elapsed = Inf
+            ),
+            phase = "blocked_error",
+            round = 1L,
+            admissions = 1L,
+            wait_seconds = 0,
+            attempted = c("pc-fixture" = FALSE),
+            in_flight = list(
+                batch = "pc-fixture",
+                source_keys = selection$source_key,
+                started = as.double(Sys.time())
+            )
+        ),
+        journal
+    )
+    control("recover")
+    control("reset")
+
+    # Simulate a transport error after the real worker has written its last
+    # complete block. The coordinator still drains and commits that block.
+    drain <- opendap__drain
+    local_mocked_bindings(opendap__drain = function(store, state, client) {
+        changed <- drain(store, state, client)
+        if (is.null(state$error) && !is.null(state$result)) {
+            state$error <- simpleError("NetCDF: connection reset after data")
+        }
+        changed
+    })
+    resume_batch <- function() {
+        resume_subsets(
+            plan,
+            denominator,
+            journal,
+            dest,
+            max_batches = 1L,
+            discover = FALSE
+        )
+    }
+    resumed <- resume_batch()
+    expect_equal(resumed$summary$files_complete, 1)
+    expect_equal(resumed$summary$available_native_values_known_axes, 8)
+    expect_identical(resumed$admissions, original$admissions)
+    expect_identical(tools::sha256sum(names(old_hashes)), old_hashes)
+    added <- subset_status(dest, "blocks")
+    added <- added[!added$block_id %in% before$block_id, ]
+    expect_equal(nrow(added), 1)
+    expect_equal(
+        added[,
+            c(
+                "time_start_index",
+                "ind_lat",
+                "ind_lon",
+                "time_count",
+                "lat_count",
+                "lon_count"
+            ),
+            with = FALSE
+        ] |>
+            as.list() |>
+            unlist(use.names = FALSE),
+        c(2, 2, 2, 1, 1, 1)
+    )
+    traffic <- weather_requests()
+    expect_length(traffic, 1L)
+    expect_match(
+        utils::URLdecode(traffic),
+        "tas[[]1(:1(:1)?)?[]][[]1(:1(:1)?)?[]][[]1(:1(:1)?)?[]]"
+    )
+    saved <- subset_status(dest, "coverage")
+    expect_true(saved$complete[saved$request_id == "two-days"])
+    expect_equal(
+        saved$available_native_values[saved$request_id == "two-days"],
+        8
+    )
+    expect_false(saved$complete[saved$request_id == "pending"])
+    expect_equal(
+        saved$available_native_values[saved$request_id == "pending"],
+        0
+    )
+
+    raw <- read_subset(dest, case_id = "city")
+    expect_equal(sort(raw$values$value), as.double(1:8))
+    expect_equal(nrow(raw$gaps$incomplete_requests), 0)
+    expect_true(fetch(request)$complete)
+    expect_identical(resume_batch()$phase, "complete")
+    expect_identical(weather_requests(), traffic)
+
+    # Still report verified coverage when the attempt failed after committing.
+    late_failure <- fetch(request, resume = FALSE)
+    expect_identical(late_failure$jobs$status, "failed")
+    expect_match(late_failure$jobs$error, "connection reset after data")
+    expect_true(late_failure$complete)
+
+    # An unsuccessful forced refresh cannot claim blocks from a prior call.
+    control("fail")
+    expect_false(fetch(request, resume = FALSE)$complete)
+    saved <- subset_status(dest, "coverage")
+    expect_true(saved$complete[saved$request_id == "two-days"])
+})
+
 # vim: fdm=marker :

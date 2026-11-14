@@ -140,98 +140,144 @@ opendap__save_demands <- function(conn, demands, dest, transaction = TRUE) {
     invisible(NULL)
 }
 
-# Test interval unions without expanding every native position or borrowing
-# spatially unrelated blocks. Intervals are inclusive and sorted only locally.
-opendap__ranges_covered <- function(required, available) {
-    if (!length(required) || !nrow(available)) {
-        return(FALSE)
-    }
-    positions <- order(available$time_start_index)
-    starts <- available$time_start_index[positions]
-    stops <- starts + available$time_count[positions] - 1L
-    for (range in required) {
-        cursor <- as.integer(range[[1L]])
-        last <- cursor + as.integer(range[[2L]]) - 1L
-        for (i in seq_along(starts)) {
-            if (stops[[i]] < cursor) {
-                next
-            }
-            if (starts[[i]] > cursor) {
-                break
-            }
-            cursor <- max(cursor, stops[[i]] + 1L)
-            if (cursor > last) break
+# Load the most recent checked selection for this demand. It can describe the
+# native denominator before the writer publishes the target's demand receipt.
+opendap__pending_selection <- function(selections, key, id) {
+    pending <- selections[list(key), on = "source_key", nomatch = 0L]
+    pending <- pending[order(pending$observed_at, decreasing = TRUE)]
+    for (i in seq_len(nrow(pending))) {
+        path <- pending$metadata_path[[i]]
+        if (
+            !file.exists(path) ||
+                !identical(checksum_file(path), pending$metadata_sha256[[i]])
+        ) {
+            next
         }
-        if (cursor <= last) return(FALSE)
+        info <- readRDS(path)
+        selected <- info$demands[info$demands$demand_id == id, , drop = FALSE]
+        if (nrow(selected) == 1L) {
+            return(list(descriptor = selected, corners = info$neighborhoods))
+        }
     }
-    TRUE
+    NULL
 }
 
-# Derive current and historical completion from exact native demand receipts
-# plus valid spatial/time coverage, independently of the latest source job.
-opendap__coverage <- function(links, demands, membership, blocks) {
+# Evaluate each physical demand once, using only blocks the caller has already
+# verified and is allowed to reuse. Pending selections can describe a native
+# window but only a committed demand can authorize using its existing blocks.
+opendap__coverage <- function(
+    links,
+    demands,
+    membership,
+    blocks,
+    selections = NULL
+) {
     ids <- opendap__demand_ids(links)
     unique_ids <- unique(ids)
-    covered <- logical(length(unique_ids))
+    rows <- links[match(unique_ids, ids)]
+    axis_known <- complete <- logical(length(unique_ids))
+    expected <- available <- rep(NA_real_, length(unique_ids))
+    corner_count <- integer(length(unique_ids))
     for (i in seq_along(unique_ids)) {
         id <- unique_ids[[i]]
-        row <- links[match(id, ids)]
+        row <- rows[i]
         if (is.na(row$source_key)) {
             next
         }
         receipt <- demands[demands$demand_id == id]
-        if (nrow(receipt) != 1L) {
+        committed <- nrow(receipt) == 1L &&
+            file.exists(receipt$receipt_path) &&
+            identical(
+                checksum_file(receipt$receipt_path),
+                receipt$receipt_sha256
+            )
+        if (committed) {
+            descriptor <- readRDS(receipt$receipt_path)
+            corners <- membership[
+                list(row$source_key),
+                on = "source_key",
+                nomatch = 0L
+            ]
+        } else if (!is.null(selections)) {
+            pending <- opendap__pending_selection(
+                selections,
+                row$source_key,
+                id
+            )
+            if (is.null(pending)) {
+                next
+            }
+            descriptor <- pending$descriptor
+            corners <- data.table::as.data.table(pending$corners)
+        } else {
             next
         }
         if (
-            !file.exists(receipt$receipt_path) ||
-                !identical(
-                    checksum_file(receipt$receipt_path),
-                    receipt$receipt_sha256
-                )
+            nrow(descriptor) != 1L ||
+                !identical(opendap__demand_ids(descriptor), id)
         ) {
             next
         }
-        descriptor <- readRDS(receipt$receipt_path)
-        if (!identical(opendap__demand_ids(descriptor), id)) {
-            next
-        }
+
         required <- jsonlite::fromJSON(
             descriptor$native_ranges[[1L]],
             simplifyVector = FALSE
         )
-        if (!length(required)) {
-            next
-        }
-        corners <- unique(membership[
-            membership$source_key == row$source_key &
-                membership$target_lon == row$lon &
-                membership$target_lat == row$lat,
+        # Receipt runs are disjoint and contain native start/count pairs.
+        # Each original corner must cover every selected native position.
+        per_corner <- sum(vapply(required, function(x) as.double(x[[2L]]), 0))
+        axis_known[[i]] <- TRUE
+        expected[[i]] <- 4 * per_corner
+        corners <- unique(corners[
+            corners$target_lon == row$lon & corners$target_lat == row$lat,
             c("ind_lat", "ind_lon"),
             with = FALSE
         ])
-        if (nrow(corners) != 4L) {
-            next
+        corner_count[[i]] <- nrow(corners)
+        available[[i]] <- 0
+        if (committed && per_corner > 0 && nrow(corners)) {
+            source <- blocks[
+                list(row$source_key),
+                on = "source_key",
+                nomatch = 0L
+            ]
+            # Publication and import pin one native contract per climate file.
+            # Report contradictory saved evidence explicitly if encountered.
+            if (data.table::uniqueN(source$contract) > 1L) {
+                stop(
+                    "Saved blocks have conflicting native identities.",
+                    call. = FALSE
+                )
+            }
+            values <- vapply(
+                seq_len(nrow(corners)),
+                function(j) {
+                    piece <- source[
+                        source$ind_lat <= corners$ind_lat[[j]] &
+                            source$ind_lat + source$lat_count >
+                                corners$ind_lat[[j]] &
+                            source$ind_lon <= corners$ind_lon[[j]] &
+                            source$ind_lon + source$lon_count >
+                                corners$ind_lon[[j]]
+                    ]
+                    opendap__range_values(required, piece)
+                },
+                0
+            )
+            available[[i]] <- sum(values)
+            complete[[i]] <- nrow(corners) == 4L && all(values == per_corner)
         }
-        source_blocks <- blocks[blocks$source_key == row$source_key]
-        points <- vapply(
-            seq_len(nrow(corners)),
-            function(j) {
-                available <- source_blocks[
-                    source_blocks$ind_lat <= corners$ind_lat[[j]] &
-                        source_blocks$ind_lat + source_blocks$lat_count >
-                            corners$ind_lat[[j]] &
-                        source_blocks$ind_lon <= corners$ind_lon[[j]] &
-                        source_blocks$ind_lon + source_blocks$lon_count >
-                            corners$ind_lon[[j]]
-                ]
-                opendap__ranges_covered(required, available)
-            },
-            logical(1L)
-        )
-        covered[[i]] <- all(points)
     }
-    covered[match(ids, unique_ids)]
+    # Restore aliases such as case and request labels in the caller's order.
+    result <- data.table::data.table(
+        demand_id = unique_ids,
+        complete = complete,
+        axis_known = axis_known,
+        expected_native_values = expected,
+        available_native_values = available,
+        corner_count = corner_count
+    )
+    result[match(ids, unique_ids)]
 }
 
 # Read normalized previously required interval observations from checked local
@@ -1558,6 +1604,9 @@ opendap__drain <- function(store, state, client) {
             )
         }
         opendap__save_metadata(store, state$job, readRDS(path))
+        if (isTRUE(state$job$publish_metadata)) {
+            state$coverage_changed <- TRUE
+        }
         unlink(c(path, paste0(path, ".json")))
     }
     paths <- list.files(
@@ -1584,7 +1633,7 @@ opendap__drain <- function(store, state, client) {
         chunk <- readRDS(path)
         received <- list(chunk = chunk, sha256 = receipt$sha256)
         if (opendap__commit(store, state$job, path, state$progress, received)) {
-            changed <- TRUE
+            changed <- state$coverage_changed <- TRUE
             row <- data.frame(
                 source_key = state$job$source_key,
                 url = state$job$url,
@@ -2038,15 +2087,22 @@ opendap__fetch <- function(
         state$history_revision <- -1L
         state$round <- 0L
         state$discovered <- !discover
-        state$finished <- FALSE
+        state$finished <- state$complete <- FALSE
         complete <- saved_blocks[list(key), on = "source_key", nomatch = 0L]
-        if (resume || nrow(complete)) {
-            state$finished <- all(opendap__coverage(
-                state$links,
-                saved_demands[list(key), on = "source_key", nomatch = 0L],
-                saved_membership[list(key), on = "source_key", nomatch = 0L],
-                complete
-            ))
+        if (nrow(complete)) {
+            state$complete <- all(
+                opendap__coverage(
+                    state$links,
+                    saved_demands[list(key), on = "source_key", nomatch = 0L],
+                    saved_membership[
+                        list(key),
+                        on = "source_key",
+                        nomatch = 0L
+                    ],
+                    complete
+                )$complete
+            )
+            state$finished <- state$complete
         }
         # A checked publication can finish after the prior owner exited while
         # its job still said running. Receipt coverage is authoritative locally.
@@ -2160,24 +2216,46 @@ opendap__fetch <- function(
                     stop(state$error)
                 }
                 if (is.null(state$error)) {
-                    blocks <- reusable(opendap__valid_blocks(store, state$key))
                     opendap__save_demands(conn, state$result$demands, dest)
                     opendap__save_membership(
                         conn,
                         state$key,
                         state$result$neighborhoods
                     )
-                    covered <- opendap__coverage(
-                        state$links,
-                        opendap__source_rows(conn, "subset_demands", state$key),
-                        opendap__source_rows(
-                            conn,
-                            "subset_neighborhoods",
-                            state$key
-                        ),
-                        blocks
+                }
+                # Recheck a failed attempt only if it published coverage evidence.
+                # This also recognizes a transport failure after the last commit.
+                if (is.null(state$error) || state$coverage_changed) {
+                    blocks <- reusable(opendap__valid_blocks(store, state$key))
+                    state$complete <- all(
+                        opendap__coverage(
+                            state$links,
+                            opendap__source_rows(
+                                conn,
+                                "subset_demands",
+                                state$key
+                            ),
+                            opendap__source_rows(
+                                conn,
+                                "subset_neighborhoods",
+                                state$key
+                            ),
+                            blocks
+                        )$complete
                     )
-                    if (!all(covered)) {
+                }
+                if (!is.null(state$error) && state$complete) {
+                    opendap__job_state(
+                        store,
+                        state$key,
+                        state$signature,
+                        "failed",
+                        conditionMessage(state$error)
+                    )
+                    state$finished <- TRUE
+                }
+                if (is.null(state$error)) {
+                    if (!state$complete) {
                         opendap__job_state(
                             store,
                             state$key,
@@ -2448,6 +2526,7 @@ opendap__fetch <- function(
                     on_error = function(job, error) target$error <- error
                 )
             })
+            state$coverage_changed <- FALSE
             opendap__job_state(store, state$key, state$signature, "running")
             active <- active + 1L
         }
@@ -2515,7 +2594,11 @@ opendap__fetch <- function(
         jobs = jobs,
         unmatched_requests = links[is.na(links$source_key)],
         directory_complete = directory$directory_complete,
-        complete = all(jobs$status[jobs$source_key %in% keys] == "done") &&
+        complete = all(vapply(
+            states,
+            function(state) state$complete,
+            logical(1L)
+        )) &&
             !anyNA(links$source_key)
     )
 }
@@ -2707,25 +2790,29 @@ opendap__coverage_status <- function(conn, source_key = NULL) {
     blocks <- blocks[valid]
     data.table::setindexv(blocks, "source_key")
     data.table::setindexv(membership, "source_key")
-    ids <- opendap__demand_ids(links)
+    coverage <- opendap__coverage(
+        links,
+        demands,
+        membership,
+        blocks,
+        if (nrow(selections)) selections
+    )
+    ids <- coverage$demand_id
     retry_times <- opendap__retry_times(
         conn,
         unique(stats::na.omit(links$source_key))
     )
     out <- data.table::copy(links)
-    columns <- list(
-        demand_id = ids,
-        complete = rep(FALSE, nrow(links)),
-        axis_known = rep(FALSE, nrow(links)),
-        expected_native_values = rep(NA_real_, nrow(links)),
-        available_native_values = rep(NA_real_, nrow(links)),
-        corner_count = integer(nrow(links)),
-        status = rep("pending", nrow(links)),
-        gap_kind = rep(NA_character_, nrow(links)),
-        retryable = rep(TRUE, nrow(links)),
-        retry_after = rep(NA_real_, nrow(links)),
-        job_status = jobs$status[match(links$source_key, jobs$source_key)],
-        error = jobs$error[match(links$source_key, jobs$source_key)]
+    columns <- c(
+        as.list(coverage),
+        list(
+            status = rep("pending", nrow(links)),
+            gap_kind = rep(NA_character_, nrow(links)),
+            retryable = rep(TRUE, nrow(links)),
+            retry_after = rep(NA_real_, nrow(links)),
+            job_status = jobs$status[match(links$source_key, jobs$source_key)],
+            error = jobs$error[match(links$source_key, jobs$source_key)]
+        )
     )
     for (name in names(columns)) {
         data.table::set(out, j = name, value = columns[[name]])
@@ -2742,9 +2829,7 @@ opendap__coverage_status <- function(conn, source_key = NULL) {
             reason$kind <- "deferred"
             reason$retry_after <- retry_times[[row$source_key]]
         }
-        expected <- available <- NA_real_
-        known <- complete <- FALSE
-        count <- 0L
+        facts <- coverage[positions[[1L]]]
         if (is.na(row$source_key)) {
             status <- "unmatched"
             reason <- list(
@@ -2753,120 +2838,16 @@ opendap__coverage_status <- function(conn, source_key = NULL) {
                 retry_after = NA_real_
             )
         } else {
-            receipt <- demands[demands$demand_id == id]
-            descriptor <- NULL
-            selection_corners <- NULL
-            if (
-                nrow(receipt) == 1L &&
-                    file.exists(receipt$receipt_path) &&
-                    identical(
-                        checksum_file(receipt$receipt_path),
-                        receipt$receipt_sha256
-                    )
-            ) {
-                descriptor <- readRDS(receipt$receipt_path)
+            if (isTRUE(facts$expected_native_values == 0)) {
+                reason <- list(
+                    kind = "empty_selection",
+                    retryable = FALSE,
+                    retry_after = NA_real_
+                )
             }
-            # A forced pre-commit refresh supplies a denominator, not permission
-            # to reuse old values for a newly selected target. Keep that evidence
-            # separate from committed target membership used by read_subset().
-            if (is.null(descriptor) && nrow(selections)) {
-                pending <- selections[selections$source_key == row$source_key]
-                pending <- pending[order(
-                    pending$observed_at,
-                    decreasing = TRUE
-                )]
-                for (k in seq_len(nrow(pending))) {
-                    path <- pending$metadata_path[[k]]
-                    if (
-                        !file.exists(path) ||
-                            !identical(
-                                checksum_file(path),
-                                pending$metadata_sha256[[k]]
-                            )
-                    ) {
-                        next
-                    }
-                    info <- readRDS(path)
-                    selected <- info$demands[
-                        info$demands$demand_id == id,
-                        ,
-                        drop = FALSE
-                    ]
-                    if (nrow(selected) == 1L) {
-                        descriptor <- selected
-                        selection_corners <- data.table::as.data.table(
-                            info$neighborhoods
-                        )
-                        break
-                    }
-                }
-            }
-            if (!is.null(descriptor)) {
-                if (identical(opendap__demand_ids(descriptor), id)) {
-                    required <- jsonlite::fromJSON(
-                        descriptor$native_ranges[[1L]],
-                        simplifyVector = FALSE
-                    )
-                    known <- TRUE
-                    expected <- 4 *
-                        sum(vapply(
-                            required,
-                            function(x) as.double(x[[2L]]),
-                            numeric(1L)
-                        ))
-                    available <- 0
-                    corners <- if (!is.null(selection_corners)) {
-                        selection_corners
-                    } else {
-                        membership[
-                            list(row$source_key),
-                            on = "source_key",
-                            nomatch = 0L
-                        ]
-                    }
-                    corners <- unique(corners[
-                        corners$target_lon == row$lon &
-                            corners$target_lat == row$lat,
-                        c("ind_lat", "ind_lon"),
-                        with = FALSE
-                    ])
-                    count <- nrow(corners)
-                    source <- blocks[
-                        list(row$source_key),
-                        on = "source_key",
-                        nomatch = 0L
-                    ]
-                    if (!is.null(selection_corners)) {
-                        source <- source[0L]
-                    }
-                    values <- numeric(count)
-                    for (j in seq_len(count)) {
-                        piece <- source[
-                            source$ind_lat <= corners$ind_lat[[j]] &
-                                source$ind_lat + source$lat_count >
-                                    corners$ind_lat[[j]] &
-                                source$ind_lon <= corners$ind_lon[[j]] &
-                                source$ind_lon + source$lon_count >
-                                    corners$ind_lon[[j]]
-                        ]
-                        values[[j]] <- opendap__range_values(required, piece)
-                    }
-                    available <- sum(values)
-                    complete <- expected > 0 &&
-                        count == 4L &&
-                        all(values == expected / 4)
-                    if (!expected) {
-                        reason <- list(
-                            kind = "empty_selection",
-                            retryable = FALSE,
-                            retry_after = NA_real_
-                        )
-                    }
-                }
-            }
-            status <- if (complete) {
+            status <- if (facts$complete) {
                 "complete"
-            } else if (!is.na(available) && available > 0) {
+            } else if (isTRUE(facts$available_native_values > 0)) {
                 "partial"
             } else if (identical(reason$kind, "deferred")) {
                 "deferred"
@@ -2875,9 +2856,11 @@ opendap__coverage_status <- function(conn, source_key = NULL) {
             } else {
                 "pending"
             }
-            if (!known && is.na(reason$kind)) reason$kind <- "unknown_selection"
+            if (!facts$axis_known && is.na(reason$kind)) {
+                reason$kind <- "unknown_selection"
+            }
         }
-        if (complete) {
+        if (facts$complete) {
             reason <- list(
                 kind = NA_character_,
                 retryable = FALSE,
@@ -2885,11 +2868,6 @@ opendap__coverage_status <- function(conn, source_key = NULL) {
             )
         }
         result <- list(
-            complete = complete,
-            axis_known = known,
-            expected_native_values = expected,
-            available_native_values = available,
-            corner_count = count,
             status = status,
             gap_kind = reason$kind,
             retryable = reason$retryable,
@@ -3452,7 +3430,7 @@ read_subset <- function(
         membership,
         blocks[valid]
     )
-    incomplete <- links[!coverage]
+    incomplete <- links[!coverage$complete]
     affected <- unique(incomplete$source_key[!is.na(incomplete$source_key)])
     affected_jobs <- data.table::copy(jobs[jobs$source_key %in% affected])
     if (nrow(affected_jobs)) {
