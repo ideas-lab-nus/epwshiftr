@@ -1376,6 +1376,72 @@ test_that("Downloader$run() cancels stale downloading tasks", {
     expect_true(file.exists(file.path(dest, "stale.txt")))
 })
 # }}}
+# An interrupted row replacement must leave the original task runnable
+# together with its existing partial bytes.
+test_that("Downloader resumes the same task after a manifest write fails", {
+    root <- withr::local_tempdir()
+    src <- file.path(root, "source.txt")
+    bytes <- charToRaw("retained download bytes")
+    writeBin(bytes, src)
+    dest <- file.path(root, "downloads")
+    temp <- file.path(root, "temp")
+    manifest <- file.path(root, "manifest.duckdb")
+    dl <- Downloader$new(
+        dest = dest,
+        temp = temp,
+        manifest = manifest,
+        n_workers = 0L
+    )
+    withr::defer(priv(dl)$disconnect_manifest())
+    session <- dl$enqueue(downloader_test_df(
+        logical_file_id = "tracking:retained-task",
+        filename = "source.txt",
+        url = paste0("file://", normalizePath(src, winslash = "/")),
+        checksum = as.character(tools::md5sum(src)),
+        checksum_type = "md5"
+    ))
+    original <- dl$cancel(session_id = session)
+    partial <- file.path(temp, paste0(original$task_id, ".part"))
+    writeBin(bytes[1:8], partial)
+
+    local({
+        append <- downloader__ddb_append_table
+        local_mocked_bindings(downloader__ddb_append_table = function(
+            conn,
+            table,
+            rows,
+            ...
+        ) {
+            if (identical(table, "download_task")) {
+                stop(
+                    "interrupted before the task row was restored",
+                    call. = FALSE
+                )
+            }
+            append(conn, table, rows, ...)
+        })
+        expect_error(
+            dl$resume(session),
+            "interrupted before the task row was restored"
+        )
+    })
+    priv(dl)$disconnect_manifest()
+    dl <- Downloader$new(manifest = manifest, n_workers = 0L)
+    restored <- dl$tasks(session_id = session)
+    expect_identical(restored$task_id, original$task_id)
+    expect_identical(restored$status, "cancelled")
+    expect_identical(readBin(partial, "raw", n = 8L), bytes[1:8])
+
+    complete <- dl$resume(session, progress = FALSE)
+    expect_identical(complete$task_id, original$task_id)
+    expect_identical(complete$session_id, session)
+    expect_identical(complete$status, "done")
+    expect_identical(
+        readBin(complete$target_path, "raw", n = length(bytes)),
+        bytes
+    )
+})
+
 # Downloader$cancel() / Downloader$retry() {{{
 test_that("Downloader$cancel() / Downloader$retry()", {
     root <- tempfile("downloader-")

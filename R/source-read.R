@@ -438,7 +438,15 @@ store__read_task <- function(job) {
                         list(plan = job$plans[index], file = job$file),
                         source
                     )
-                    if (!inherits(results[[index]], "error")) {
+                    # Preserve both failures just as for download/open errors.
+                    # A successful payload retains the recovered remote error for
+                    # later publication diagnostics.
+                    if (inherits(results[[index]], "error")) {
+                        results[[index]] <- store__fallback_error(
+                            remote_error,
+                            results[[index]]
+                        )
+                    } else {
                         results[[index]]$recovery_error <- remote_error
                     }
                 }

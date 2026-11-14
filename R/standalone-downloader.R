@@ -5497,11 +5497,20 @@ Downloader <- R6::R6Class(
         },
         # }}}
 
+        # Replace the entire set atomically. If a source worker is retired
+        # between the delete and append, its prior task still owns the partial bytes.
         # replace_rows {{{
         replace_rows = function(table, rows, key) {
             if (!nrow(rows)) {
                 return(invisible(rows))
             }
+            conn <- private$manifest_conn
+            downloader__ddb_exec(conn, "BEGIN TRANSACTION")
+            committed <- FALSE
+            on.exit(
+                if (!committed) downloader__ddb_exec(conn, "ROLLBACK"),
+                add = TRUE
+            )
             for (value in rows[[key]]) {
                 downloader__ddb_exec(
                     private$manifest_conn,
@@ -5518,6 +5527,8 @@ Downloader <- R6::R6Class(
                 table,
                 as.data.frame(rows)
             )
+            downloader__ddb_exec(conn, "COMMIT")
+            committed <- TRUE
             invisible(rows)
         },
         # }}}

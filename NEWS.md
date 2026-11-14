@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Preserve both the OPeNDAP and HTTPServer read errors when Store fallback
+  fails, and update Downloader manifest rows atomically so an interrupted
+  reader can resume the original transfer.
+
 * Report failed coordinate reads from `EsgDataset$get_spatial_grid()` and allow retries on the same dataset. (#320)
 
 * Support total cloud cover and direct horizontal shortwave through ERA5 ARCO alongside explicit CDS access. (#319)
