@@ -4,6 +4,10 @@
   fails, and update Downloader manifest rows atomically so an interrupted
   reader can resume the original transfer. (#322)
 
+* Use verified committed native blocks to determine coverage in `fetch_subset()`,
+  `read_subset()`, `subset_status()`, and `resume_subsets()`. Pending selection metadata
+  can describe a window without counting its values as acquired. (#321)
+
 * Report failed coordinate reads from `EsgDataset$get_spatial_grid()` and allow retries on the same dataset. (#320)
 
 * Support total cloud cover and direct horizontal shortwave through ERA5 ARCO alongside explicit CDS access. (#319)
