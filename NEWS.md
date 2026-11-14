@@ -2,7 +2,7 @@
 
 * Preserve both the OPeNDAP and HTTPServer read errors when Store fallback
   fails, and update Downloader manifest rows atomically so an interrupted
-  reader can resume the original transfer.
+  reader can resume the original transfer. (#322)
 
 * Report failed coordinate reads from `EsgDataset$get_spatial_grid()` and allow retries on the same dataset. (#320)
 
