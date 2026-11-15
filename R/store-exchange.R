@@ -556,6 +556,15 @@ store_exchange__import <- function(
             }
         }
         pending <- setdiff(plans$plan_id, reused)
+        result <- data.table::data.table(
+            plan_id = plans$plan_id,
+            status = plans$status,
+            reused = plans$plan_id %in% reused
+        )
+        if (!length(pending)) {
+            return(result)
+        }
+
         prior_results <- store_exchange__rows(
             private$conn,
             "extraction_result",
@@ -574,75 +583,61 @@ store_exchange__import <- function(
                 class = "epwshiftr_store_extract_conflict"
             )
         }
-        ddb_exec(private$conn, "BEGIN TRANSACTION")
-        committed <- FALSE
-        on.exit(if (!committed) ddb_exec(private$conn, "ROLLBACK"), add = TRUE)
-        new_ids <- character(nrow(artifacts))
-        for (i in seq_len(nrow(artifacts))) {
-            a <- artifacts[i]
-            if (
-                !any(
-                    results$plan_id[results$artifact_id == a$artifact_id] %in%
-                        pending
-                )
-            ) {
-                next
-            }
-            new_ids[[i]] <- store$register_artifact(
-                "extract",
-                artifact_paths[[i]],
-                role = a$role,
-                project = a$project,
-                checksum = a$checksum,
-                checksum_type = a$checksum_type,
-                size = a$size,
-                query_id = a$query_id,
-                file_key = a$file_key,
-                metadata = list(
-                    extraction_receipt_sha256 = checksum,
-                    original_artifact_id = a$artifact_id
-                )
-            )
-        }
         inserted <- results[results$plan_id %in% pending]
-        index <- match(inserted$artifact_id, artifacts$artifact_id)
-        data.table::set(inserted, j = "artifact_id", value = new_ids[index])
-        data.table::set(
-            inserted,
-            j = "output_path",
-            value = vapply(
-                artifact_paths[index],
-                store_rel_path,
-                character(1L),
-                root = private$store_path,
-                USE.NAMES = FALSE
-            )
-        )
         grid <- data$extraction_grid_source
-        if (nrow(inserted)) {
-            ddb_append_table(private$conn, "extraction_result", inserted)
-        }
-        grid <- grid[grid$plan_id %in% pending]
-        if (nrow(grid)) {
-            ddb_append_table(private$conn, "extraction_grid_source", grid)
-        }
-        for (id in pending) {
-            plan <- local[local$plan_id == id]
-            incoming <- plans[plans$plan_id == id]
-            private$mark_plan_status(
-                plan,
-                incoming$status[[1L]],
-                available_time_count = incoming$available_time_count[[1L]],
-                last_error = NA_character_
-            )
-        }
-        ddb_exec(private$conn, "COMMIT")
-        committed <- TRUE
-        data.table::data.table(
-            plan_id = plans$plan_id,
-            status = plans$status,
-            reused = plans$plan_id %in% reused
+        incoming <- plans[match(pending, plans$plan_id)]
+        private$publish_extract(
+            local[match(pending, local$plan_id)],
+            status = incoming$status,
+            available_time_count = incoming$available_time_count,
+            prepare = {
+                # Use local artifact IDs and paths for the pending plans. A
+                # receipt can reference one artifact from several result rows.
+                new_ids <- character(nrow(artifacts))
+                for (i in which(
+                    artifacts$artifact_id %in% inserted$artifact_id
+                )) {
+                    a <- artifacts[i]
+                    new_ids[[i]] <- store$register_artifact(
+                        "extract",
+                        artifact_paths[[i]],
+                        role = a$role,
+                        project = a$project,
+                        checksum = a$checksum,
+                        checksum_type = a$checksum_type,
+                        size = a$size,
+                        query_id = a$query_id,
+                        file_key = a$file_key,
+                        metadata = list(
+                            extraction_receipt_sha256 = checksum,
+                            original_artifact_id = a$artifact_id
+                        )
+                    )
+                }
+                index <- match(inserted$artifact_id, artifacts$artifact_id)
+                data.table::set(
+                    inserted,
+                    j = "artifact_id",
+                    value = new_ids[index]
+                )
+                data.table::set(
+                    inserted,
+                    j = "output_path",
+                    value = vapply(
+                        artifact_paths[index],
+                        store_rel_path,
+                        character(1L),
+                        root = private$store_path,
+                        USE.NAMES = FALSE
+                    )
+                )
+                list(
+                    results = inserted,
+                    grid_sources = grid[grid$plan_id %in% pending]
+                )
+            }
         )
+        result
     })
 }
 

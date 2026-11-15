@@ -3548,57 +3548,59 @@ test_that("uncached source tasks return one site plan at a time", {
     expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 2L)
 })
 
-# A late manifest error must roll back every plan record while preserving the
-# already-written Parquet evidence for explicit recovery/conflict handling.
-test_that("extraction persistence rolls back manifest changes on failure", {
-    fixture <- store_test__planned_extract()
-    store <- fixture$store
-    on.exit(store$close(), add = TRUE)
-    on.exit(unlink(fixture$nc), add = TRUE)
-    dataset <- EsgDataset$new(fixture$nc)
-    dataset$open()
-    on.exit(dataset$close(), add = TRUE)
-    opened <- list(
-        dataset = dataset,
-        access_method = "local",
-        target = fixture$nc
-    )
-    payload <- store__read_extract_dataset(
-        dataset,
-        fixture$plan,
-        fixture$file,
-        opened
-    )
-    original <- store$query("SELECT * FROM file_catalog")
-    store_test__mock_private(store, "mark_plan_status", function(...) {
-        stop("injected late manifest failure", call. = FALSE)
-    })
-    expect_error(
-        priv(store)$persist_extract_payload(
-            payload,
-            fixture$plan,
-            fixture$file,
-            opened
-        ),
-        "injected late manifest failure"
-    )
-    expect_equal(store$query("SELECT * FROM file_catalog"), original)
-    expect_equal(nrow(store$query("SELECT * FROM extraction_result")), 0L)
-    expect_equal(nrow(store$query("SELECT * FROM extraction_grid_source")), 0L)
+# Exercise the public extraction error path. After rollback only the explicit
+# failure record survives; the Parquet follows the existing overwrite policy.
+test_that("extraction rolls back a failed commit and publishes once on retry", {
+    local_cache_mode("off")
+    fixture <- exchange_test__fixture()
+    withr::defer(lapply(fixture$stores, function(store) store$close()))
+    store <- fixture$stores[[1L]]
+    id <- fixture$plans$plan_id[[1L]]
+    before <- exchange_test__snapshot(store)
+    before_file <- store$query("SELECT * FROM file_catalog ORDER BY file_key")
+    fault <- exchange_test__fail_publication_commit(store, id)
+
+    failed <- store$extract(id, fallback = "error")
+    expect_identical(fault$staged$status, "done")
+    expect_equal(fault$staged$results, 1L)
+    expect_equal(fault$staged$artifacts, 1L)
+    expect_gt(fault$staged$grid_sources, 0L)
+    expect_identical(failed$status, "failed")
+    expect_match(failed$last_error, "injected publication commit failure")
     expect_equal(
-        nrow(store$query("SELECT * FROM artifact WHERE kind = 'extract'")),
-        0L
+        failed$attempt_count,
+        before$extraction_plan$attempt_count[
+            before$extraction_plan$plan_id == id
+        ] +
+            1L
     )
-    expect_gt(
-        length(list.files(
-            fixture$dir,
-            pattern = "\\.parquet$",
-            recursive = TRUE
-        )),
-        0L
+    after <- exchange_test__snapshot(store)
+    expect_identical(after[-1L], before[-1L])
+    expect_identical(
+        store$query("SELECT * FROM file_catalog ORDER BY file_key"),
+        before_file
     )
-    # The transaction is closed even when persistence throws.
-    expect_equal(store$query("SELECT 1 AS value")$value, 1L)
+
+    parquet <- list.files(store$path, pattern = "\\.parquet$", recursive = TRUE)
+    expect_length(parquet, 1L)
+    expect_error(
+        store$extract(id, fallback = "error"),
+        class = "epwshiftr_store_extract_conflict"
+    )
+    expect_identical(
+        store$extract(id, fallback = "error", overwrite = TRUE)$status,
+        "done"
+    )
+    ready <- exchange_test__snapshot(store)
+    expect_equal(nrow(ready$extraction_result), 1L)
+    expect_equal(sum(ready$artifact$kind == "extract"), 1L)
+    expect_equal(nrow(ready$extraction_grid_source), fault$staged$grid_sources)
+    expect_identical(
+        list.files(store$path, pattern = "\\.parquet$", recursive = TRUE),
+        parquet
+    )
+    expect_identical(store$extract(id, fallback = "error")$status, "done")
+    expect_identical(exchange_test__snapshot(store), ready)
 })
 
 test_that("EsgStore$plan_region() keeps identical files scoped to the current query", {
