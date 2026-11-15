@@ -354,6 +354,7 @@ test_that("registered recipe identity survives JSON and transform persistence", 
     )
 
     for (rebuilt in list(json_roundtrip, transform_roundtrip)) {
+        expect_identical(rebuilt$name, "epwshiftr_daily_power")
         expect_identical(
             rebuilt$recipe_spec,
             "epwshiftr_daily_power"
@@ -368,17 +369,6 @@ test_that("registered recipe identity survives JSON and transform persistence", 
     cli_recipe <- transform__recipe(monthly_transform("epwshiftr"))
     expect_identical(cli_recipe$recipe_spec, "epwshiftr_monthly")
     expect_identical(cli_recipe$profile, "enhanced")
-
-    aliased <- transform__recipe(daily_transform("epwshiftr"))
-    aliased_roundtrip <- cli_shift__recipe_from_json(
-        morpher__json(aliased)
-    )
-    expect_identical(aliased_roundtrip$name, "epwshiftr_daily_power")
-    expect_identical(
-        aliased_roundtrip$recipe_spec,
-        "epwshiftr_daily_power"
-    )
-    expect_identical(aliased_roundtrip$policy, "harmonized")
 })
 
 # vim: fdm=marker :

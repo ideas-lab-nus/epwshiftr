@@ -340,9 +340,7 @@ cli_shift__output_metadata <- function(outputs) {
 # epwshiftr_cli_required_option {{{
 epwshiftr_cli_required_option <- function(parsed, option) {
     value <- parsed$options[[option]]
-    if (
-        is.null(value) || !length(value) || !nzchar(as.character(value[[1L]]))
-    ) {
+    if (!length(value) || !nzchar(as.character(value[[1L]]))) {
         epwshiftr_cli_usage_abort(sprintf("%s is required.", option))
     }
     value
@@ -417,7 +415,7 @@ epwshiftr_cli_time_range <- function(value) {
 
 # epwshiftr_cli_key_value_list {{{
 epwshiftr_cli_key_value_list <- function(values, name = "--filter") {
-    if (is.null(values) || !length(values)) {
+    if (!length(values)) {
         return(list())
     }
     out <- list()
@@ -447,7 +445,7 @@ epwshiftr_cli_key_value_list <- function(values, name = "--filter") {
 
 # epwshiftr_cli_periods_from_cli {{{
 epwshiftr_cli_periods_from_cli <- function(values) {
-    if (is.null(values) || !length(values)) {
+    if (!length(values)) {
         epwshiftr_cli_usage_abort(
             "At least one --period PERIOD=YEARS value is required."
         )

@@ -831,7 +831,7 @@ transform__from_recipe <- function(record, recipe) {
         character()
     }
     source_references <- recipe_spec@source$references
-    if (is.null(source_references) || !length(source_references)) {
+    if (!length(source_references)) {
         source_references <- method_spec@references
     }
     WeatherTransformSpec(
@@ -979,7 +979,7 @@ transform__persistence_snapshot <- function(transform) {
 # arrays to vectors or equal-width alternatives to matrices.
 # transform__variable_sets_from_value {{{
 transform__variable_sets_from_value <- function(variable_sets) {
-    if (is.null(variable_sets) || !length(variable_sets)) {
+    if (!length(variable_sets)) {
         return(list())
     }
     if (is.matrix(variable_sets)) {
@@ -1000,7 +1000,7 @@ transform__variable_sets_from_value <- function(variable_sets) {
 # before comparing it with the current registry definition.
 # transform__input_contract_from_value {{{
 transform__input_contract_from_value <- function(contract) {
-    if (is.null(contract) || !length(contract)) {
+    if (!length(contract)) {
         return(list())
     }
     lapply(contract, function(requirement) {

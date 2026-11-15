@@ -868,11 +868,9 @@ test_that("region readers preserve metadata failures and retry the full series",
 })
 
 test_that("nearest and IDW source cells preserve full-grid ranking", {
-    ds <- EsgDataset$new("unused")
-    private <- dataset__private(ds)
     grid_lat <- c(-80, -40, 0, 40, 80)
     grid_lon <- c(0, 60, 120, 180, 240, 300)
-    coords <- private$make_region_grid_coords(grid_lat, grid_lon)
+    coords <- spatial__make_region_grid_coords(grid_lat, grid_lon)
 
     for (target in list(c(22, 75), c(79, 359), c(-78, 181))) {
         distances <- tunnel_dist(
@@ -883,7 +881,7 @@ test_that("nearest and IDW source cells preserve full-grid ranking", {
         )
         expected <- coords[order(distances)]
         for (method in c("nearest", "idw")) {
-            actual <- private$region_grid_sources(
+            actual <- spatial__region_grid_sources(
                 method,
                 grid_lat,
                 grid_lon,

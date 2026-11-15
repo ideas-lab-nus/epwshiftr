@@ -269,7 +269,7 @@ dataset__read_regions_one <- function(
     # Nearest and IDW sites reuse one coordinate table. Cell methods use only
     # their four surrounding coordinates and need no full-grid expansion.
     nearest_coords <- if (any(sites$method %in% c("nearest", "idw"))) {
-        private$make_region_grid_coords(grid_lat, grid_lon)
+        spatial__make_region_grid_coords(grid_lat, grid_lon)
     } else {
         NULL
     }
@@ -277,7 +277,7 @@ dataset__read_regions_one <- function(
     for (site_index in seq_len(nrow(sites))) {
         site <- sites[site_index]
         target_lon <- private$normalize_lon_for_grid(site$lon[[1L]], grid_lon)
-        source <- private$region_grid_sources(
+        source <- spatial__region_grid_sources(
             site$method[[1L]],
             grid_lat,
             grid_lon,
@@ -1092,7 +1092,7 @@ dataset__read_neighborhood <- function(
             source <- data.table::rbindlist(lapply(
                 seq_len(nrow(sites)),
                 function(i) {
-                    corners <- private$region_grid_sources(
+                    corners <- spatial__region_grid_sources(
                         "mean",
                         grid$lat,
                         grid$lon,

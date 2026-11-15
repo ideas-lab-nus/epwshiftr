@@ -255,7 +255,7 @@ original_morphing__monthly_reference_variable <- function(
 # }}}
 
 # original_morphing__epw_monthly {{{
-original_morphing__epw_monthly <- function(data_epw, var, keep_units = TRUE) {
+original_morphing__epw_monthly <- function(data_epw, var) {
     monthly <- data_epw[,
         {
             value <- as.numeric(.SD[[1L]])
@@ -3719,7 +3719,7 @@ original_morphing__change_precip <- function(data_epw, context) {
 # Summarise runtime fallback and clipping states into inspectable factor rows
 # and compact diagnostics without emitting one message per EPW hour.
 # morpher__enhanced_factor_metadata {{{
-morpher__enhanced_factor_metadata <- function(context, parts) {
+morpher__enhanced_factor_metadata <- function(parts) {
     rows <- list()
     for (part_name in names(parts)) {
         part <- parts[[part_name]]
@@ -4002,7 +4002,7 @@ original_morphing__execute <- function(context, change_factor = FALSE) {
             intersect(names(parts[[name]]), names(data_epw))
         )
     }
-    metadata <- morpher__enhanced_factor_metadata(context, parts)
+    metadata <- morpher__enhanced_factor_metadata(parts)
     morpher__engine_output(
         context,
         epw,

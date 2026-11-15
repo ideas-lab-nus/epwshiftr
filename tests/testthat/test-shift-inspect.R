@@ -25,12 +25,7 @@ test_that("artifact row reader preserves order, metadata, and global limits", {
         artifact_label = c("first", "second", "third"),
         check.names = FALSE
     )
-    calls <- new.env(parent = emptyenv())
-    calls$paths <- character()
-    calls$limits <- numeric()
     reader <- function(path, limit, columns) {
-        calls$paths <- c(calls$paths, basename(path))
-        calls$limits <- c(calls$limits, limit)
         rows <- data.table::data.table(value = c(1L, 2L))
         if (!is.infinite(limit)) {
             rows <- utils::head(rows, limit)
@@ -58,8 +53,6 @@ test_that("artifact row reader preserves order, metadata, and global limits", {
     expect_named(out, c("artifact_label", "value"))
     expect_identical(out$artifact_label, c("first", "first", "second"))
     expect_identical(out$value, c(1L, 2L, 1L))
-    expect_identical(calls$paths, basename(paths[1:2]))
-    expect_identical(calls$limits, c(3, 1))
 
     unlink(paths[[1L]])
     expect_error(

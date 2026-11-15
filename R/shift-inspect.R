@@ -997,16 +997,10 @@ shift_inspect__read_artifact_rows <- function(
     missing,
     stage
 ) {
-    checkmate::assert_choice(path_column, names(records))
-    checkmate::assert_function(reader)
-    checkmate::assert_function(metadata, null.ok = TRUE)
-    checkmate::assert_character(missing, any.missing = FALSE, min.len = 1L)
-    checkmate::assert_string(stage, min.chars = 1L)
-
     pieces <- vector("list", nrow(records))
     remaining <- n
     for (i in seq_len(nrow(records))) {
-        if (!is.infinite(remaining) && remaining <= 0L) {
+        if (remaining <= 0L) {
             break
         }
         path <- store_abs_path(records[[path_column]][[i]], root = store$path)
@@ -1014,17 +1008,14 @@ shift_inspect__read_artifact_rows <- function(
             cli::cli_abort(missing)
         }
 
-        limit <- if (is.infinite(remaining)) Inf else remaining
-        dt <- data.table::as.data.table(reader(path, limit, columns))
+        dt <- data.table::as.data.table(reader(path, remaining, columns))
         if (!is.null(metadata)) {
             # Add record-level identity before selecting requested columns so
             # callers may request both stored and manifest-backed fields.
             dt <- shift_inspect__add_constant_columns(dt, metadata(records, i))
         }
         pieces[[i]] <- shift_inspect__select_data_columns(dt, columns, stage)
-        if (!is.infinite(remaining)) {
-            remaining <- remaining - nrow(dt)
-        }
+        remaining <- remaining - nrow(dt)
     }
 
     pieces <- Filter(Negate(is.null), pieces)
@@ -1161,10 +1152,7 @@ shift_inspect__stage_query_result <- function(
     generator <- switch(
         run$result_type[[1L]],
         File = EsgResultFile,
-        Aggregation = EsgResultAggregation,
-        cli::cli_abort(
-            "Unsupported stored query result type: {.val {run$result_type[[1L]]}}."
-        )
+        Aggregation = EsgResultAggregation
     )
     query_result__new(
         generator,
@@ -1830,7 +1818,7 @@ shift_data <- function(
                 "`case_id` is only supported for morphed and EPW output stages."
             )
         }
-        if (is.null(ids$plan_id) || !length(ids$plan_id)) {
+        if (!length(ids$plan_id)) {
             return(data.table::data.table())
         }
         results <- shift_inspect__extraction_result_rows(store, ids$plan_id)
@@ -1873,7 +1861,7 @@ shift_data <- function(
     }
 
     if (S7::S7_inherits(x, ShiftMorphed)) {
-        if (is.null(ids$morph_id) || !length(ids$morph_id)) {
+        if (!length(ids$morph_id)) {
             return(data.table::data.table())
         }
         results <- shift_inspect__morph_result_rows(
@@ -1893,7 +1881,7 @@ shift_data <- function(
     }
 
     if (S7::S7_inherits(x, ShiftOutputs)) {
-        if (is.null(ids$morph_id) || !length(ids$morph_id)) {
+        if (!length(ids$morph_id)) {
             return(data.table::data.table())
         }
         outputs <- shift_inspect__epw_output_rows(

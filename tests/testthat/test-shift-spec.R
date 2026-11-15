@@ -106,8 +106,6 @@ test_that("shift_cmip6 model values express explicit and automatic selection", {
     expect_null(all_models@n_models)
     expect_identical(explicit@model, c("Model-A", "Model-B"))
     expect_null(explicit@n_models)
-    expect_identical(formals(shift_cmip6)$model, 3L)
-    expect_false("n_models" %in% names(formals(shift_cmip6)))
     expect_error(shift_cmip6(model = 0L, scenarios = "ssp585"))
     expect_error(shift_cmip6(model = 1.5, scenarios = "ssp585"))
 })
@@ -258,7 +256,6 @@ test_that("weather transforms remain reusable and validate execution references"
 
     transform <- monthly_transform("original_morphing")
     expect_true(S7::S7_inherits(transform, WeatherTransformSpec))
-    expect_false("reference" %in% S7::props(transform))
     expect_true(transform__validate_execution_inputs(transform, historical))
     expect_true(transform__validate_execution_inputs(transform, manual))
     expect_error(

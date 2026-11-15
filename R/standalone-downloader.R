@@ -698,7 +698,7 @@ downloader__hash <- function(...) {
     values <- vapply(
         list(...),
         function(x) {
-            if (is.null(x) || length(x) == 0L || all(is.na(x))) {
+            if (!length(x) || all(is.na(x))) {
                 return("")
             }
             paste(as.character(x), collapse = "\r")
@@ -779,7 +779,7 @@ downloader__pid_kill <- function(pid) {
 
 # downloader__one_chr {{{
 downloader__one_chr <- function(x) {
-    if (is.null(x) || length(x) == 0L) {
+    if (!length(x)) {
         return(NA_character_)
     }
     out <- as.character(x[[1L]])
@@ -1000,7 +1000,7 @@ downloader__resource_policy_defaults <- function(policy = NULL) {
 
 # downloader__config_optional_integer {{{
 downloader__config_optional_integer <- function(value) {
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NA_integer_)
     }
     as.integer(value[[1L]])
@@ -1009,7 +1009,7 @@ downloader__config_optional_integer <- function(value) {
 
 # downloader__config_optional_number {{{
 downloader__config_optional_number <- function(value) {
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NA_real_)
     }
     as.numeric(value[[1L]])
@@ -1022,7 +1022,7 @@ downloader__config_null_if_na <- function(
     type = c("character", "integer", "double", "logical")
 ) {
     type <- match.arg(type)
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NULL)
     }
     switch(
@@ -1532,7 +1532,7 @@ downloader__worker_dependencies <- function() {
 
     # Read one usable scalar string from worker input or return a missing value.
     one_chr <- function(x) {
-        if (is.null(x) || !length(x)) {
+        if (!length(x)) {
             return(NA_character_)
         }
         value <- as.character(x[[1L]])
@@ -1541,7 +1541,7 @@ downloader__worker_dependencies <- function() {
 
     # Normalize optional numeric transfer settings inside an isolated process.
     normalize_count <- function(x) {
-        if (is.null(x) || length(x) == 0L || is.na(x)) {
+        if (!length(x) || is.na(x)) {
             return(NULL)
         }
         as.numeric(x)
@@ -6284,7 +6284,7 @@ Downloader <- R6::R6Class(
                     return(default)
                 }
                 value <- task[[column]][[1L]]
-                if (is.null(value) || !length(value) || is.na(value)) {
+                if (!length(value) || is.na(value)) {
                     return(default)
                 }
                 value

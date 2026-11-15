@@ -5,8 +5,8 @@ test_local_dependencies(list(
 ))
 
 # The live snapshot is a durable read model of a run. Reading it through one
-# verified connection must produce the same payload as reading every table
-# through store$query(), and must not repeat the lifecycle check per table.
+# connection must produce the same payload as reading every table through
+# store$query().
 shift_live_snapshot_test__run <- function(env = parent.frame()) {
     store_path <- tempfile("shift-snapshot-store-")
     plan <- shift_epw_future(
@@ -77,7 +77,7 @@ shift_live_snapshot_test__oracle <- function(store, run_id, event_limit) {
     )
 }
 
-test_that("live snapshot payload matches per-table reads and checks the store once", {
+test_that("live snapshot payload matches per-table reads", {
     fixture <- shift_live_snapshot_test__run()
     store <- fixture$store
     run_id <- fixture$run_id
@@ -108,23 +108,6 @@ test_that("live snapshot payload matches per-table reads and checks the store on
         tail_events$event_id,
         tail(all_events$event_id, 2L)
     )
-
-    original <- ddb_is_valid
-    snapshot_conn <- priv(store)$conn
-    checks <- 0L
-    local_mocked_bindings(
-        ddb_is_valid = function(conn) {
-            # Collection of another Store can check its connection here.
-            if (identical(conn, snapshot_conn)) {
-                checks <<- checks + 1L
-            }
-            original(conn)
-        },
-        .package = "epwshiftr"
-    )
-    shift_job__live_snapshot_write(store, run_id)
-    # The snapshot checks its Store once through the package wrapper.
-    expect_identical(checks, 1L)
 })
 
 test_that("live snapshot of an unknown run writes nothing and a closed store errors", {

@@ -256,18 +256,6 @@ test_that("signal transforms validate values and persist complete defaults", {
 test_that("persisted transforms reject reconstruction and catalog drift", {
     transform <- daily_transform("qdm")
     spec <- transform__spec_value(transform)
-    round_trip <- jsonlite::fromJSON(
-        jsonlite::toJSON(
-            spec,
-            auto_unbox = TRUE,
-            null = "null",
-            na = "null"
-        ),
-        simplifyVector = TRUE
-    )
-    restored <- transform__from_spec(round_trip)
-
-    expect_equal(restored@options, transform@options)
     expect_true(all(
         c(
             "method_version",

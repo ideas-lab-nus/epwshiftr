@@ -2276,7 +2276,7 @@ shift_job__live_snapshot <- function(
 shift_job__live_snapshot_flush <- function(store, run_id) {
     key <- paste(store$path, run_id, sep = "|")
     state <- shift_job__snapshot_state[[key]]
-    if (is.null(state) || !isTRUE(state$pending)) {
+    if (!isTRUE(state$pending)) {
         return(invisible(FALSE))
     }
     if (
@@ -2412,7 +2412,7 @@ shift_job__live_run_get <- function(run_id, store_path) {
 # to manifest reconciliation so stale runs still become failed.
 # shift_job__live_process_is_active {{{
 shift_job__live_process_is_active <- function(run, startup_grace = 60) {
-    if (is.null(run) || !S7::S7_inherits(run, ShiftRun)) {
+    if (!S7::S7_inherits(run, ShiftRun)) {
         return(FALSE)
     }
     status <- shift_status(run, refresh = FALSE)

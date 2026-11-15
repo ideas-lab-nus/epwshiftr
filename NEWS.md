@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Remove obsolete Dataset spatial forwarding methods, unused internal arguments,
+  and repeated empty-input checks; simplify artifact read limits and remove
+  duplicate persistence and implementation-detail test assertions. (#329)
+
 * Simplify Downloader job completion, configuration serialization and async
   submission; remove unused internal options and the obsolete stop lookup. (#329)
 

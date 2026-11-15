@@ -1594,10 +1594,7 @@ EsgStore <- R6::R6Class(
                 )
                 previews[[i]] <- private$preview_query_update(
                     row = rows[i],
-                    files = files,
-                    fields = fields,
-                    all = all,
-                    limit = limit
+                    files = files
                 )
             }
 
@@ -1801,10 +1798,7 @@ EsgStore <- R6::R6Class(
             )
             preview <- private$preview_query_update(
                 row = row,
-                files = files,
-                fields = fields,
-                all = all,
-                limit = limit
+                files = files
             )
 
             node_stats <- if (!is.null(downloader)) {
@@ -3770,7 +3764,7 @@ EsgStore <- R6::R6Class(
         #' @return For `export_plans()`, receipt path, SHA256 and named query JSON paths.
         #'   For `import_plans()`, original plan IDs and reuse flags.
         export_plans = function(plan_id, path) {
-            store_exchange__export_plans(self, private, plan_id, path)
+            store_exchange__export_plans(private, plan_id, path)
         },
         # import_plans
         #' @description
@@ -3783,7 +3777,6 @@ EsgStore <- R6::R6Class(
         #'   JSON controls, keyed by query ID. Each control is checked by SHA256.
         import_plans = function(path, checksum, query_paths) {
             store_exchange__import_plans(
-                self,
                 private,
                 path,
                 checksum,
@@ -6350,13 +6343,9 @@ EsgStore <- R6::R6Class(
                 existing_links[["query_id"]] == wanted_query_id
             ]
             existing_files <- private$read_table("esg_file")
-            if (nrow(existing_links) && nrow(existing_files)) {
-                existing_files <- existing_files[
-                    existing_files[["file_key"]] %in% existing_links$file_key
-                ]
-            } else {
-                existing_files <- existing_files[0]
-            }
+            existing_files <- existing_files[
+                existing_files[["file_key"]] %in% existing_links$file_key
+            ]
             file_rows <- private$file_rows(dt, now)
             update_id <- store__hash(
                 query_id,
@@ -6434,13 +6423,7 @@ EsgStore <- R6::R6Class(
         # }}}
         # preview_query_update
         # preview_query_update {{{
-        preview_query_update = function(
-            row,
-            files,
-            fields = "*",
-            all = TRUE,
-            limit = FALSE
-        ) {
+        preview_query_update = function(row, files) {
             store__result_type(files)
             dt <- store__file_table(files)
             now <- store__now()
@@ -6451,13 +6434,9 @@ EsgStore <- R6::R6Class(
                 existing_links[["query_id"]] == wanted_query_id
             ]
             existing_files <- private$read_table("esg_file")
-            if (nrow(existing_links) && nrow(existing_files)) {
-                existing_files <- existing_files[
-                    existing_files[["file_key"]] %in% existing_links$file_key
-                ]
-            } else {
-                existing_files <- existing_files[0]
-            }
+            existing_files <- existing_files[
+                existing_files[["file_key"]] %in% existing_links$file_key
+            ]
             file_rows <- private$file_rows(dt, now)
             update_id <- store__hash(
                 "preview",
@@ -6487,32 +6466,19 @@ EsgStore <- R6::R6Class(
         # query_update_preview_summary {{{
         query_update_preview_summary = function(row, changes) {
             count_type <- function(type) {
-                if (!nrow(changes)) {
-                    return(0L)
-                }
                 as.integer(sum(changes$change_type == type, na.rm = TRUE))
             }
             count_flag <- function(column) {
-                if (!nrow(changes) || !column %in% names(changes)) {
-                    return(0L)
-                }
                 as.integer(sum(changes[[column]] %in% TRUE, na.rm = TRUE))
             }
             sum_size <- function(rows) {
-                if (!nrow(rows) || !"current_size" %in% names(rows)) {
-                    return(0)
-                }
                 sum(
                     suppressWarnings(as.numeric(rows$current_size)),
                     na.rm = TRUE
                 )
             }
 
-            active <- if (nrow(changes)) {
-                changes[changes[["current_status"]] == "current"]
-            } else {
-                changes
-            }
+            active <- changes[changes[["current_status"]] == "current"]
             data.table::data.table(
                 query_id = row$query_id[[1L]],
                 label = store__chr1(row$label[[1L]]),
@@ -7869,10 +7835,7 @@ EsgStore <- R6::R6Class(
             if (is.na(file_key) || !nzchar(file_key)) {
                 return(list(done = FALSE, message = "missing file_key"))
             }
-            private$clear_file_local_reference(
-                file_key,
-                artifact_id = store__chr1(action$artifact_id[[1L]])
-            )
+            private$clear_file_local_reference(file_key)
             list(done = TRUE, message = "cleared missing local reference")
         },
         # }}}
@@ -7969,10 +7932,7 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # clear_file_local_reference {{{
-        clear_file_local_reference = function(
-            file_key,
-            artifact_id = NA_character_
-        ) {
+        clear_file_local_reference = function(file_key) {
             for (table in c("file_catalog", "esg_file")) {
                 rows <- private$read_table(table)
                 rows <- rows[rows[["file_key"]] == file_key]
@@ -8257,14 +8217,11 @@ EsgStore <- R6::R6Class(
             cutoff = NULL
         ) {
             files <- data.table::as.data.table(files)
-            if (!nrow(files)) {
-                return(private$cleanup_empty(scope))
-            }
             if (!is.null(cutoff) && "mtime" %in% names(files)) {
                 files <- files[mtime <= cutoff]
             }
             if (!nrow(files)) {
-                return(private$cleanup_empty(scope))
+                return(private$cleanup_empty())
             }
             deleted <- rep(FALSE, nrow(files))
             if (!isTRUE(dry_run)) {
@@ -8289,7 +8246,7 @@ EsgStore <- R6::R6Class(
         cleanup_orphan_records = function(orphans, dry_run = TRUE) {
             orphans <- data.table::as.data.table(orphans)
             if (!nrow(orphans)) {
-                return(private$cleanup_empty("orphan_records"))
+                return(private$cleanup_empty())
             }
             removed <- rep(FALSE, nrow(orphans))
             deleted <- rep(FALSE, nrow(orphans))
@@ -8331,7 +8288,7 @@ EsgStore <- R6::R6Class(
         cleanup_missing_records = function(records, dry_run = TRUE) {
             records <- data.table::as.data.table(records)
             if (!nrow(records)) {
-                return(private$cleanup_empty("missing_records"))
+                return(private$cleanup_empty())
             }
             removed <- rep(FALSE, nrow(records))
             if (!isTRUE(dry_run)) {
@@ -8393,7 +8350,7 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # cleanup_empty {{{
-        cleanup_empty = function(scope_name) {
+        cleanup_empty = function() {
             data.table::data.table(
                 scope = character(),
                 action = character(),
@@ -8405,7 +8362,7 @@ EsgStore <- R6::R6Class(
                 deleted = logical(),
                 record_removed = logical(),
                 dry_run = logical()
-            )[0]
+            )
         },
         # }}}
         # orphaned_files
@@ -9054,8 +9011,7 @@ EsgStore <- R6::R6Class(
                             results = results,
                             grid_sources = private$decorate_extract_grid_sources(
                                 payload$grid_sources,
-                                plan,
-                                file
+                                plan
                             )
                         )
                     } else {
@@ -9430,7 +9386,7 @@ EsgStore <- R6::R6Class(
         # decorate_extract_grid_sources
         # Persists one static set of method-specific source grid cells per plan.
         # decorate_extract_grid_sources {{{
-        decorate_extract_grid_sources = function(sources, plan, file) {
+        decorate_extract_grid_sources = function(sources, plan) {
             if (is.null(sources)) {
                 return(data.table::data.table())
             }
@@ -9809,12 +9765,12 @@ store__hash_piece <- function(x) {
 
 # store__chr1 {{{
 store__chr1 <- function(x) {
-    if (is.null(x) || !length(x)) {
+    if (!length(x)) {
         return(NA_character_)
     }
 
     value <- x[[1L]]
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NA_character_)
     }
 
@@ -9835,7 +9791,7 @@ store__chr <- function(x) {
 
 # store__flag {{{
 store__flag <- function(x) {
-    if (is.null(x) || !length(x) || is.na(x[[1L]])) {
+    if (!length(x) || is.na(x[[1L]])) {
         return(FALSE)
     }
 

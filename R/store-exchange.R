@@ -638,7 +638,7 @@ store_exchange__import <- function(
 
 # Export executable plan metadata separately from completed result receipts. The
 # original IDs and typed manifest values survive lossy catalogue JSON formatting.
-store_exchange__export_plans <- function(store, private, plan_id, path) {
+store_exchange__export_plans <- function(private, plan_id, path) {
     checkmate::assert_character(
         plan_id,
         min.len = 1L,
@@ -829,7 +829,6 @@ store_exchange__validate_plans <- function(plans, files, queries, links) {
 # writer. Existing rows, retry history and completed outputs are never replaced.
 # Only small query JSON controls are copied; no native nc or Parquet is copied.
 store_exchange__import_plans <- function(
-    store,
     private,
     path,
     checksum,

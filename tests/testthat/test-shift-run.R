@@ -255,25 +255,6 @@ test_that("dynamic stack scopes restore nested and failing values", {
     expect_identical(stack$values, integer())
 })
 
-test_that("standalone shift APIs carry run context without session arguments", {
-    apis <- list(
-        shift_datasets,
-        shift_collect,
-        shift_download,
-        shift_extract,
-        shift_morph,
-        shift_epw_write,
-        shift_epw_export
-    )
-    for (api in apis) {
-        arguments <- names(formals(api))
-        expect_false("session" %in% arguments)
-        expect_false(".reporter" %in% arguments)
-    }
-    expect_false("progress" %in% names(formals(shift_datasets)))
-    expect_true(all(c("store", "ui") %in% names(formals(shift_datasets))))
-})
-
 test_that("failure commands are concise for default stores and explicit otherwise", {
     default_store <- tempfile("shift-default-command-store-")
     custom_store <- tempfile("shift-custom-command-store-")

@@ -2048,7 +2048,7 @@ EsgDataset <- R6::R6Class(
         # time_filter {{{
         time_filter = function() {
             ctx <- private$context$time_filter
-            if (is.null(ctx) || !length(ctx)) {
+            if (!length(ctx)) {
                 return(NULL)
             }
 
@@ -2691,91 +2691,6 @@ EsgDataset <- R6::R6Class(
             lon
         },
         # }}}
-        # lon_to_360
-        # Delegate to the shared spatial selector used by climate adapters.
-        # lon_to_360 {{{
-        lon_to_360 = function(lon) {
-            spatial__lon_to_360(lon)
-        },
-        # }}}
-        # make_region_grid_coords
-        # Delegate to the shared spatial selector used by climate adapters.
-        # make_region_grid_coords {{{
-        make_region_grid_coords = function(grid_lat, grid_lon) {
-            spatial__make_region_grid_coords(grid_lat, grid_lon)
-        },
-        # }}}
-        # select_nearest_grid_sources
-        # Delegate to the shared spatial selector used by climate adapters.
-        # select_nearest_grid_sources {{{
-        select_nearest_grid_sources = function(
-            coords,
-            method,
-            lat,
-            target_lon
-        ) {
-            spatial__select_nearest_grid_sources(
-                coords,
-                method,
-                lat,
-                target_lon
-            )
-        },
-        # }}}
-        # find_lat_bounds
-        # Delegate to the shared spatial selector used by climate adapters.
-        # find_lat_bounds {{{
-        find_lat_bounds = function(grid_lat, lat) {
-            spatial__find_lat_bounds(grid_lat, lat)
-        },
-        # }}}
-        # find_lon_bounds
-        # Delegate to the shared spatial selector used by climate adapters.
-        # find_lon_bounds {{{
-        find_lon_bounds = function(grid_lon, target_lon) {
-            spatial__find_lon_bounds(grid_lon, target_lon)
-        },
-        # }}}
-        # select_cell_grid_sources
-        # Delegate to the shared spatial selector used by climate adapters.
-        # select_cell_grid_sources {{{
-        select_cell_grid_sources = function(
-            grid_lat,
-            grid_lon,
-            lat,
-            target_lon,
-            method
-        ) {
-            spatial__select_cell_grid_sources(
-                grid_lat,
-                grid_lon,
-                lat,
-                target_lon,
-                method
-            )
-        },
-        # }}}
-        # region_grid_sources
-        # Delegate to the shared spatial selector used by climate adapters.
-        # region_grid_sources {{{
-        region_grid_sources = function(
-            method,
-            grid_lat,
-            grid_lon,
-            lat,
-            target_lon,
-            coords = NULL
-        ) {
-            spatial__region_grid_sources(
-                method,
-                grid_lat,
-                grid_lon,
-                lat,
-                target_lon,
-                coords
-            )
-        },
-        # }}}
         # read_region_one
         # read_region_one {{{
         read_region_one = function(
@@ -2872,7 +2787,7 @@ EsgDataset <- R6::R6Class(
             grid_lon <- as.vector(grid$lon)
             target_lon <- private$normalize_lon_for_grid(lon, grid_lon)
 
-            sources <- private$region_grid_sources(
+            sources <- spatial__region_grid_sources(
                 method,
                 grid_lat,
                 grid_lon,
@@ -3336,7 +3251,7 @@ dataset__set_context <- function(dataset, context = NULL) {
     if (!"context" %in% names(private)) {
         return(invisible(dataset))
     }
-    if (is.null(context) || !length(context)) {
+    if (!length(context)) {
         private$context <- list()
     } else if (is.list(context)) {
         private$context <- context
