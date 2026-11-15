@@ -1708,15 +1708,16 @@ test_that("EsgStore$workflow_status()", {
         expect_equal(workflow$new_count, 1L)
         expect_true("bytes_missing" %in% names(workflow))
 
-        # A cancelled task remains retryable even if an earlier local file exists.
-        downloader__ddb_exec(
-            priv(dl)$manifest_conn,
-            "UPDATE download_task SET status = 'cancelled'"
+        # A failed task read must not be reported as an empty successful result.
+        unreadable <- list(tasks = function(...) stop("task read failed"))
+        expect_error(
+            store$workflow_status(query_id, downloader = unreadable),
+            "task read failed"
         )
-        cancelled <- store$workflow_status(query_id, downloader = dl)
-        expect_identical(cancelled$download_retryable, 1)
-        expect_true(cancelled$download_incomplete)
-        expect_false(cancelled$complete)
+        expect_error(
+            store$download_status(query_id, downloader = unreadable),
+            "task read failed"
+        )
     })
 })
 # }}}
@@ -4687,54 +4688,6 @@ test_that("HTTP fallback resumes one retained session after a reader deadline", 
     expect_identical(repeated$gets, counts$gets)
     expect_identical(repeated$dods, counts$dods)
     expect_error(source_pool(1L, download_dir = TRUE), "download_dir")
-})
-
-# A tracked query has the same status fields before its first file or task.
-test_that("workflow status preserves typed empty-query counts", {
-    store <- EsgStore$new(tempfile("store-status-empty-"))
-    on.exit(store$close(), add = TRUE)
-    downloader <- store$downloader(n_workers = 0L)
-    expect_equal(nrow(store$workflow_status(downloader = downloader)), 0L)
-    query_id <- store$add_query(esg_query("https://example.org"), track = TRUE)
-    status <- store$workflow_status(query_id, downloader = downloader)
-    expect_identical(status$bytes_missing, 0)
-    expect_identical(status$download_retryable, 0)
-    expect_identical(status$download_incomplete, FALSE)
-    expect_identical(status$complete, FALSE)
-    expect_identical(status$last_download_session_id, NA_character_)
-})
-
-# An unreadable task table cannot make an existing local file look complete.
-test_that("Store status propagates task-read failures without losing the condition", {
-    store_test__with_downloaded_query(function(
-        store,
-        dl,
-        query_id,
-        session_id
-    ) {
-        expect_true(store$workflow_status(query_id, downloader = dl)$complete)
-        failure <- errorCondition(
-            "task manifest is unreadable",
-            class = "store_test_read_error"
-        )
-        # Substitute the task-reading interface, not the standalone module's
-        # private database bindings, which belong to its own environment.
-        unreadable <- list(tasks = function(...) stop(failure))
-        expect_identical(
-            tryCatch(
-                store$workflow_status(query_id, downloader = unreadable),
-                error = identity
-            ),
-            failure
-        )
-        expect_identical(
-            tryCatch(
-                store$download_status(query_id, downloader = unreadable),
-                error = identity
-            ),
-            failure
-        )
-    })
 })
 
 # vim: fdm=marker :

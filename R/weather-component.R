@@ -445,7 +445,7 @@ component__registry_key <- function(stage, name) {
 # component__register {{{
 component__register <- function(
     component,
-    on_conflict = c("error", "replace", "keep"),
+    on_conflict = c("error", "keep"),
     registry = WEATHER_COMPONENT_REGISTRY
 ) {
     if (!S7::S7_inherits(component, WeatherComponentSpec)) {
@@ -461,11 +461,9 @@ component__register <- function(
         if (on_conflict == "keep") {
             return(invisible(get(key, envir = registry, inherits = FALSE)))
         }
-        if (on_conflict == "error") {
-            cli::cli_abort(
-                "Weather component {.val {key}} is already registered."
-            )
-        }
+        cli::cli_abort(
+            "Weather component {.val {key}} is already registered."
+        )
     }
     assign(key, component, envir = registry)
     invisible(component)

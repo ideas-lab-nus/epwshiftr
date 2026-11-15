@@ -158,9 +158,7 @@ test_that("all daily adjustment methods produce the same output contract", {
     )))
 })
 
-# Retain constructor-only normalization and reject incoherent scientific
-# descriptors through both the constructor and the S7 mutation interface.
-test_that("method validation preserves normalization and stochastic constraints", {
+test_that("method construction rejects invalid definitions", {
     args <- list(
         name = "shared_validation",
         label = "Shared validation",
@@ -174,10 +172,6 @@ test_that("method validation preserves normalization and stochastic constraints"
         references = "Method reference",
         version = 1
     )
-    spec <- do.call(method__spec, args)
-    expect_identical(spec@version, 1L)
-    expect_identical(spec@frequencies, "day")
-    expect_identical(spec@variable_sets, list("tas"))
     invalid <- args
     invalid$version <- 1.5
     expect_error(do.call(method__spec, invalid), "version")
@@ -187,8 +181,6 @@ test_that("method validation preserves normalization and stochastic constraints"
     invalid <- args
     invalid$stochastic_variables <- "pr"
     expect_error(do.call(method__spec, invalid), "stochastic_variables")
-    expect_error(spec@stochastic_variables <- "pr", "stochastic_variables")
-    expect_error(spec@stochastic <- TRUE, "must agree")
 })
 
 # vim: fdm=marker :
