@@ -713,7 +713,9 @@ If <code>rbind = TRUE</code>, a single data.table with an extra <code>file_index
 
 <p></p><hr><a id="method-EsgDataset-read_region"></a><div class="section">
 <h3 id="esgdataset-read-region-"><code>EsgDataset$read_region()</code><a class="anchor" aria-label="anchor" href="#esgdataset-read-region-"></a></h3>
-<p>Read variable values near a target coordinate and optional time range</p><div class="section">
+<p>Read variable values near a target coordinate and optional time range.
+Variables absent from a file are skipped. Metadata lookup failures
+are reported to the caller so a partial read cannot appear successful.</p><div class="section">
 <h4 id="usage-16">Usage<a class="anchor" aria-label="anchor" href="#usage-16"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">EsgDataset</span><span class="op">$</span><span class="fu">read_region</span><span class="op">(</span></span>
 <span>  <span class="va">variable</span>,</span>
