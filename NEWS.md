@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Share Store extraction recovery between ordinary and pooled readers, retaining
+  HTTP fallback, resumable transfer sessions and both remote and local failures.
+
 * Remove obsolete Dataset spatial forwarding methods, unused internal arguments,
   and repeated empty-input checks; simplify artifact read limits and remove
   duplicate persistence and implementation-detail test assertions. (#329)

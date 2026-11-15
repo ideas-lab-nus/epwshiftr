@@ -8698,204 +8698,48 @@ EsgStore <- R6::R6Class(
             reporter = NULL,
             resolved = NULL
         ) {
-            # Keep the complete service and fallback sequence inside the cache
-            # generator so concurrent method children wait for one source read.
-            source_error <- if (inherits(resolved, "error")) resolved else NULL
-            if (
-                !is.null(source_error) &&
-                    (!inherits(source_error, "epwshiftr_store_access_error") ||
-                        !identical(source_error$service, "OPeNDAP") ||
-                        identical(fallback, "error"))
-            ) {
-                stop(source_error)
-            }
-            generate <- function() {
-                opened <- private$open_plan_dataset(
+            if (is.null(resolved) || inherits(resolved, "error")) {
+                source <- new.env(parent = emptyenv())
+                source$opened <- NULL
+                source$target <- store__chr1(file$url_opendap)
+                source$service <- "OPeNDAP"
+                source$remote_error <- resolved
+                local <- store__chr1(file$local_path)
+                if (!is.na(local) && nzchar(local)) {
+                    local <- store_abs_path(local, root = private$store_path)
+                    if (file.exists(local)) {
+                        source$target <- local
+                        source$service <- "local"
+                    }
+                }
+                on.exit(
+                    if (!is.null(source$opened)) source$opened$dataset$close(),
+                    add = TRUE
+                )
+                # Keep the Store-owned downloader and reporter in the owner;
+                # the shared reader only decides when this recovery is needed.
+                download <- if (identical(fallback, "auto")) {
+                    function() {
+                        list(
+                            path = private$download_plan_file(
+                                file,
+                                overwrite = overwrite,
+                                reporter = reporter
+                            )
+                        )
+                    }
+                }
+                resolved <- store__read_source(
+                    plan,
                     file,
-                    fallback = fallback,
-                    overwrite = overwrite,
-                    reporter = reporter,
-                    remote_error = source_error
+                    source,
+                    download = download,
+                    reporter = reporter
                 )
-                ds <- opened$dataset
-                on.exit(if (isTRUE(ds$is_open)) ds$close(), add = TRUE)
-                recovery_error <- opened$remote_error
-
-                payload <- tryCatch(
-                    private$read_extract_dataset(
-                        ds,
-                        plan,
-                        file,
-                        opened,
-                        reporter = reporter
-                    ),
-                    error = identity
-                )
-                remote_error <- if (
-                    inherits(
-                        payload,
-                        "epwshiftr_store_access_error"
-                    ) &&
-                        identical(opened$access_method, "OPeNDAP")
-                ) {
-                    payload
-                } else {
-                    NULL
+                if (!is.null(source$opened)) {
+                    source$opened$dataset$close()
+                    source$opened <- NULL
                 }
-                if (
-                    !is.null(remote_error) &&
-                        identical(opened$access_method, "OPeNDAP") &&
-                        identical(fallback, "auto")
-                ) {
-                    recovery_error <- remote_error
-                    store__report_access_failure(
-                        reporter,
-                        file,
-                        remote_error,
-                        attempt = 1L
-                    )
-                    if (isTRUE(ds$is_open)) {
-                        ds$close()
-                    }
-
-                    download_started <- proc.time()[["elapsed"]]
-                    local_path <- tryCatch(
-                        private$download_plan_file(
-                            file,
-                            overwrite = overwrite,
-                            reporter = reporter
-                        ),
-                        error = function(error) {
-                            store__access_error(
-                                error,
-                                phase = "download",
-                                service = "HTTPServer",
-                                target = store__chr1(file$url_download),
-                                started_at = download_started
-                            )
-                        }
-                    )
-                    if (
-                        inherits(
-                            local_path,
-                            "epwshiftr_store_access_error"
-                        )
-                    ) {
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_path,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            remote_error,
-                            local_path
-                        ))
-                    }
-
-                    local_open <- tryCatch(
-                        private$open_dataset(
-                            local_path,
-                            service = "HTTPServer"
-                        ),
-                        error = identity
-                    )
-                    if (inherits(local_open, "error")) {
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_open,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            remote_error,
-                            local_open
-                        ))
-                    }
-                    opened <- local_open
-                    ds <- opened$dataset
-                    payload <- tryCatch(
-                        private$read_extract_dataset(
-                            ds,
-                            plan,
-                            file,
-                            opened,
-                            reporter = reporter
-                        ),
-                        error = identity
-                    )
-                    if (inherits(payload, "error")) {
-                        local_error <- if (
-                            inherits(
-                                payload,
-                                "epwshiftr_store_access_error"
-                            )
-                        ) {
-                            payload
-                        } else {
-                            store__access_error(
-                                payload,
-                                phase = "read",
-                                service = "HTTPServer",
-                                target = local_path,
-                                started_at = proc.time()[["elapsed"]]
-                            )
-                        }
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_error,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            remote_error,
-                            local_error
-                        ))
-                    }
-                } else if (inherits(payload, "error")) {
-                    if (!is.null(recovery_error)) {
-                        local_error <- if (
-                            inherits(
-                                payload,
-                                "epwshiftr_store_access_error"
-                            )
-                        ) {
-                            payload
-                        } else {
-                            store__access_error(
-                                payload,
-                                phase = "read",
-                                service = opened$access_method,
-                                target = opened$target,
-                                started_at = proc.time()[["elapsed"]]
-                            )
-                        }
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_error,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            recovery_error,
-                            local_error
-                        ))
-                    }
-                    stop(payload)
-                }
-
-                list(
-                    payload = payload,
-                    opened = opened,
-                    recovery_error = recovery_error
-                )
-            }
-            if (is.null(resolved) || !is.null(source_error)) {
-                resolved <- store__extract_cache_resolve(plan, file, generate)
             }
             payload <- resolved$payload
             opened <- resolved$opened
@@ -8954,18 +8798,6 @@ EsgStore <- R6::R6Class(
                     stop(classified)
                 }
             )
-        },
-        # }}}
-        # read_extract_dataset
-        # read_extract_dataset {{{
-        read_extract_dataset = function(
-            ds,
-            plan,
-            file,
-            opened,
-            reporter = NULL
-        ) {
-            store__read_extract_dataset(ds, plan, file, opened, reporter)
         },
         # }}}
         # persist_extract_payload
@@ -9083,123 +8915,6 @@ EsgStore <- R6::R6Class(
             ddb_exec(private$conn, "COMMIT")
             committed <- TRUE
             updated
-        },
-        # }}}
-        # open_dataset
-        # Construct and open one EsgDataset inside a single classified phase so
-        # constructor failures and NetCDF open failures follow the same recovery
-        # path and retain the exact service and target in diagnostics.
-        # open_dataset {{{
-        open_dataset = function(target, service) {
-            store__open_dataset(target, service)
-        },
-        # }}}
-        # open_plan_dataset
-        # open_plan_dataset {{{
-        open_plan_dataset = function(
-            file,
-            fallback = "auto",
-            overwrite = FALSE,
-            reporter = NULL,
-            remote_error = NULL
-        ) {
-            local <- store__chr1(file$local_path)
-            if (!is.na(local) && nzchar(local)) {
-                local <- store_abs_path(local, root = private$store_path)
-                if (file.exists(local)) {
-                    return(private$open_dataset(local, service = "local"))
-                }
-            }
-            opendap <- store__chr1(file$url_opendap)
-            if (!is.null(remote_error)) {
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    remote_error,
-                    attempt = 1L
-                )
-            }
-            if (is.null(remote_error) && !is.na(opendap) && nzchar(opendap)) {
-                opened <- tryCatch(
-                    private$open_dataset(opendap, service = "OPeNDAP"),
-                    error = identity
-                )
-                if (!inherits(opened, "error")) {
-                    if (file.exists(opendap)) {
-                        opened$access_method <- "local"
-                    }
-                    return(opened)
-                }
-                remote_error <- opened
-                if (identical(fallback, "error")) {
-                    stop(remote_error)
-                }
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    remote_error,
-                    attempt = 1L
-                )
-            }
-
-            if (identical(fallback, "error")) {
-                stop(
-                    "OPeNDAP is not available for this file record.",
-                    call. = FALSE
-                )
-            }
-
-            download_started <- proc.time()[["elapsed"]]
-            local_path <- tryCatch(
-                private$download_plan_file(
-                    file,
-                    overwrite = overwrite,
-                    reporter = reporter
-                ),
-                error = function(error) {
-                    store__access_error(
-                        error,
-                        phase = "download",
-                        service = "HTTPServer",
-                        target = store__chr1(file$url_download),
-                        started_at = download_started
-                    )
-                }
-            )
-            if (inherits(local_path, "epwshiftr_store_access_error")) {
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    local_path,
-                    attempt = if (is.null(remote_error)) 1L else 2L,
-                    outcome = "failed"
-                )
-                if (!is.null(remote_error)) {
-                    stop(store__fallback_error(remote_error, local_path))
-                }
-                stop(local_path)
-            }
-            local_open <- tryCatch(
-                private$open_dataset(local_path, service = "HTTPServer"),
-                error = identity
-            )
-            if (inherits(local_open, "error")) {
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    local_open,
-                    attempt = if (is.null(remote_error)) 1L else 2L,
-                    outcome = "failed"
-                )
-                if (!is.null(remote_error)) {
-                    stop(store__fallback_error(remote_error, local_open))
-                }
-                stop(local_open)
-            }
-            if (!is.null(remote_error)) {
-                local_open$remote_error <- remote_error
-            }
-            local_open
         },
         # }}}
         # download_plan_file
