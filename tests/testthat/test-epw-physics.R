@@ -50,7 +50,7 @@ test_that("all registered complete recipes resolve a physical policy", {
         vapply(
             seq_len(nrow(recipes)),
             function(index) {
-                spec <- epw_morph_recipe_spec(recipes$name[[index]])
+                spec <- recipe__get(recipes$name[[index]])
                 unname(spec@physical_policies[[spec@default_policy]])
             },
             character(1L)

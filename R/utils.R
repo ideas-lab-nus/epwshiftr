@@ -805,38 +805,17 @@ manifest_lock_path <- function(path) {
 }
 # }}}
 
-# manifest_lock_metadata {{{
-manifest_lock_metadata <- function(lock_dir) {
-    file.path(lock_dir, "owner.json")
-}
-# }}}
-
-# manifest_lock_stale {{{
-manifest_lock_stale <- function(lock_dir, stale_after) {
-    downloader__manifest_lock_stale(lock_dir, stale_after)
-}
-# }}}
-
 # manifest_acquire_lock {{{
-manifest_acquire_lock <- function(path, timeout = 30, stale_after = 24 * 3600) {
+manifest_acquire_lock <- function(path, timeout = 30) {
     # Store, batch, window and standalone-download locks share one ownership
     # protocol so an interrupted process is recoverable at every boundary.
-    downloader__manifest_acquire_lock(path, timeout, stale_after)
+    downloader__manifest_acquire_lock(path, timeout)
 }
 # }}}
 
 # manifest_with_lock {{{
-manifest_with_lock <- function(
-    path,
-    expr,
-    timeout = 30,
-    stale_after = 24 * 3600
-) {
-    release <- manifest_acquire_lock(
-        path,
-        timeout = timeout,
-        stale_after = stale_after
-    )
+manifest_with_lock <- function(path, expr, timeout = 30) {
+    release <- manifest_acquire_lock(path, timeout = timeout)
     on.exit(release(), add = TRUE)
     force(expr)
 }

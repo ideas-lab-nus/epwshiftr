@@ -502,6 +502,58 @@ shift_run__task_execute <- function(
         last_error = NA_character_
     )
 
+    # Preserve the original condition if recording its result also fails.
+    # Interrupts and ordinary failures share one coherent step/run/event commit.
+    failed <- function(error) {
+        interrupted <- inherits(error, "interrupt")
+        cancelled <- interrupted || inherits(error, "epwshiftr_shift_cancelled")
+        outcome <- if (cancelled) "cancelled" else "failed"
+        message <- if (interrupted) {
+            sprintf("%s was cancelled.", shift_run__task_label(task))
+        } else {
+            conditionMessage(error)
+        }
+        details <- list(
+            phase = "operation",
+            stage = task,
+            step_id = step_id,
+            outcome = outcome
+        )
+        if (!interrupted) {
+            details$cause <- message
+        }
+        try(
+            shift_job__publish_result(
+                opened,
+                run_id,
+                run = list(
+                    status = outcome,
+                    current_stage = task,
+                    last_error = message
+                ),
+                event = list(
+                    stage = task,
+                    status = outcome,
+                    message = message,
+                    details = details,
+                    step_id = step_id
+                ),
+                step = list(
+                    step_id = step_id,
+                    status = outcome,
+                    last_error = message
+                )
+            ),
+            silent = TRUE
+        )
+        reporter$operation_failed(
+            message,
+            cancelled = cancelled,
+            details = if (!interrupted) list(cause = message)
+        )
+        stop(shift_run__task_condition(error, run_id, step_id, opened$path))
+    }
+
     shift_execution__run(
         execution,
         tryCatch(
@@ -526,28 +578,6 @@ shift_run__task_execute <- function(
                     isTRUE(spec$background) &&
                     !is.na(session_id) &&
                     nzchar(session_id)
-                if (isTRUE(detached)) {
-                    # The Downloader owns the long-running process after registration.
-                    # Keep this step open until shift_run_get() reconciles its durable
-                    # session instead of claiming that the next stage is ready.
-                    shift_job__step_update(
-                        opened,
-                        step_id,
-                        status = "running",
-                        output_stage_json = shift_persist__spec_json(shift_persist__stage_ref(
-                            result
-                        )),
-                        completed_at = as.POSIXct(NA, tz = "UTC"),
-                        last_error = NA_character_
-                    )
-                } else {
-                    shift_job__step_finish(
-                        opened,
-                        step_id,
-                        step_status,
-                        output_stage = result
-                    )
-                }
                 ids <- result@ids
                 run_updates <- list()
                 # Each step owns only part of the artifact graph. Preserve identifiers
@@ -579,52 +609,18 @@ shift_run__task_execute <- function(
                     )) <
                         1L
                 terminal <- isTRUE(auto_complete) || isTRUE(empty_collection)
-                if (isTRUE(detached)) {
-                    do.call(
-                        shift_job__run_update,
-                        c(
-                            list(
-                                store = opened,
-                                run_id = run_id,
-                                status = "running",
-                                current_stage = task,
-                                last_error = NA_character_
-                            ),
-                            run_updates
-                        )
-                    )
+                run_status <- if (isTRUE(detached)) {
+                    "running"
                 } else if (isTRUE(terminal)) {
-                    final_status <- shift_job__run_completion_status(
-                        opened,
-                        run_id
-                    )
-                    do.call(
-                        shift_job__run_finish,
-                        c(
-                            list(
-                                store = opened,
-                                run_id = run_id,
-                                status = final_status,
-                                current_stage = task,
-                                last_error = NA_character_
-                            ),
-                            run_updates
-                        )
-                    )
+                    # Include this result before its step is committed, while
+                    # retaining partial outcomes from earlier completed stages.
+                    if (identical(step_status, "partial")) {
+                        "partial"
+                    } else {
+                        shift_job__run_completion_status(opened, run_id)
+                    }
                 } else {
-                    do.call(
-                        shift_job__run_update,
-                        c(
-                            list(
-                                store = opened,
-                                run_id = run_id,
-                                status = "waiting",
-                                current_stage = task,
-                                last_error = NA_character_
-                            ),
-                            run_updates
-                        )
-                    )
+                    "waiting"
                 }
                 summary <- shift_run__task_summary(task, result)
                 paths <- shift_run__task_output_paths(result)
@@ -635,24 +631,46 @@ shift_run__task_execute <- function(
                 } else {
                     "waiting"
                 }
-                shift_job__run_event(
+                shift_job__publish_result(
                     opened,
                     run_id,
-                    task,
-                    event_status,
-                    summary,
-                    details = list(
-                        phase = "operation",
+                    run = c(
+                        list(
+                            status = run_status,
+                            current_stage = task,
+                            last_error = NA_character_
+                        ),
+                        run_updates
+                    ),
+                    event = list(
                         stage = task,
-                        stage_sequence = sequence$sequence,
+                        status = event_status,
+                        message = summary,
+                        details = list(
+                            phase = "operation",
+                            stage = task,
+                            stage_sequence = sequence$sequence,
+                            step_id = step_id,
+                            outcome = if (isTRUE(detached)) {
+                                "running"
+                            } else {
+                                step_status
+                            }
+                        ),
+                        step_id = step_id
+                    ),
+                    # Downloader owns the ongoing transfer after registration;
+                    # its step remains open until reconciliation publishes it.
+                    step = list(
                         step_id = step_id,
-                        outcome = if (isTRUE(detached)) {
+                        status = if (isTRUE(detached)) {
                             "running"
                         } else {
                             step_status
-                        }
-                    ),
-                    step_id = step_id
+                        },
+                        output_stage = result,
+                        last_error = NA_character_
+                    )
                 )
                 if (isTRUE(detached)) {
                     reporter$operation_detached(
@@ -681,98 +699,8 @@ shift_run__task_execute <- function(
                 }
                 result
             },
-            interrupt = function(e) {
-                message <- sprintf(
-                    "%s was cancelled.",
-                    shift_run__task_label(task)
-                )
-                try(
-                    shift_job__step_finish(
-                        opened,
-                        step_id,
-                        "cancelled",
-                        last_error = message
-                    ),
-                    silent = TRUE
-                )
-                try(
-                    shift_job__run_finish(
-                        opened,
-                        run_id,
-                        "cancelled",
-                        current_stage = task,
-                        last_error = message
-                    ),
-                    silent = TRUE
-                )
-                try(
-                    shift_job__run_event(
-                        opened,
-                        run_id,
-                        task,
-                        "cancelled",
-                        message,
-                        details = list(
-                            phase = "operation",
-                            stage = task,
-                            step_id = step_id,
-                            outcome = "cancelled"
-                        ),
-                        step_id = step_id
-                    ),
-                    silent = TRUE
-                )
-                reporter$operation_failed(message, cancelled = TRUE)
-                stop(shift_run__task_condition(e, run_id, step_id, opened$path))
-            },
-            error = function(e) {
-                message <- conditionMessage(e)
-                cancelled <- inherits(e, "epwshiftr_shift_cancelled")
-                outcome <- if (cancelled) "cancelled" else "failed"
-                try(
-                    shift_job__step_finish(
-                        opened,
-                        step_id,
-                        outcome,
-                        last_error = message
-                    ),
-                    silent = TRUE
-                )
-                try(
-                    shift_job__run_finish(
-                        opened,
-                        run_id,
-                        outcome,
-                        current_stage = task,
-                        last_error = message
-                    ),
-                    silent = TRUE
-                )
-                try(
-                    shift_job__run_event(
-                        opened,
-                        run_id,
-                        task,
-                        outcome,
-                        message,
-                        details = list(
-                            phase = "operation",
-                            stage = task,
-                            step_id = step_id,
-                            outcome = outcome,
-                            cause = message
-                        ),
-                        step_id = step_id
-                    ),
-                    silent = TRUE
-                )
-                reporter$operation_failed(
-                    message,
-                    cancelled = cancelled,
-                    details = list(cause = message)
-                )
-                stop(shift_run__task_condition(e, run_id, step_id, opened$path))
-            }
+            interrupt = failed,
+            error = failed
         )
     )
 }
@@ -824,24 +752,27 @@ shift_complete <- function(x) {
         ))
     }
     final_status <- shift_job__run_completion_status(store, run@ids$run_id)
-    shift_job__run_finish(
+    shift_job__publish_result(
         store,
         run@ids$run_id,
-        final_status,
-        current_stage = latest$task[[1L]],
-        last_error = NA_character_
-    )
-    shift_job__run_event(
-        store,
-        run@ids$run_id,
-        latest$task[[1L]],
-        final_status,
-        sprintf(
-            "%s marked as the final stage.",
-            shift_run__task_label(latest$task[[1L]])
+        run = list(
+            status = final_status,
+            current_stage = latest$task[[1L]],
+            last_error = NA_character_
         ),
-        details = list(step_id = latest$step_id[[1L]], outcome = final_status),
-        step_id = latest$step_id[[1L]]
+        event = list(
+            stage = latest$task[[1L]],
+            status = final_status,
+            message = sprintf(
+                "%s marked as the final stage.",
+                shift_run__task_label(latest$task[[1L]])
+            ),
+            details = list(
+                step_id = latest$step_id[[1L]],
+                outcome = final_status
+            ),
+            step_id = latest$step_id[[1L]]
+        )
     )
     shift_job__run_handle(store, run@ids$run_id)
 }
@@ -1949,9 +1880,9 @@ shift_run__extract_plans_task <- function(
             fields = "*"
         )
     )
-    spec <- list(
-        site = shift_persist__site_ref(site),
-        periods = split(as.integer(periods$year), periods$period),
+    spec <- shift_persist__extract_spec(list(
+        site = site,
+        periods = periods,
         variables = unique(plans$variable_id),
         time = c(time_start, time_stop),
         filters = list(),
@@ -1959,7 +1890,7 @@ shift_run__extract_plans_task <- function(
         fallback = fallback,
         overwrite = overwrite,
         resume = resume
-    )
+    ))
     shift_run__task_execute(
         "extract",
         files,
@@ -2485,23 +2416,20 @@ shift_run__plan_run <- function(
             )
         )
         try(
-            shift_job__run_finish(
+            shift_job__publish_result(
                 store,
                 run_id,
-                status = final_status,
-                current_stage = current_stage,
-                last_error = message
-            ),
-            silent = TRUE
-        )
-        try(
-            shift_job__run_event(
-                store,
-                run_id,
-                current_stage,
-                final_status,
-                message,
-                details = failure_details
+                run = list(
+                    status = final_status,
+                    current_stage = current_stage,
+                    last_error = message
+                ),
+                event = list(
+                    stage = current_stage,
+                    status = final_status,
+                    message = message,
+                    details = failure_details
+                )
             ),
             silent = TRUE
         )
@@ -2998,19 +2926,22 @@ shift_run__plan_run <- function(
             } else {
                 "partial"
             }
-            shift_job__run_finish(
+            shift_job__publish_result(
                 store,
                 run_id,
-                status = final_status,
-                current_stage = "completed",
-                last_error = NA_character_
-            )
-            shift_job__run_event(
-                store,
-                run_id,
-                "completed",
-                final_status,
-                sprintf("Produced %d final EPW file(s).", output_count)
+                run = list(
+                    status = final_status,
+                    current_stage = "completed",
+                    last_error = NA_character_
+                ),
+                event = list(
+                    stage = "completed",
+                    status = final_status,
+                    message = sprintf(
+                        "Produced %d final EPW file(s).",
+                        output_count
+                    )
+                )
             )
             run <- shift_job__run_handle(
                 store,

@@ -816,7 +816,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         run_id
     ))
     expect_equal(diagnostics$status, 0L)
-    expect_named(diagnostics$result, shift_stage__diagnostic_columns())
+    expect_false("error" %in% diagnostics$result$severity)
 
     outputs <- epwshiftr_cli(c(
         "--quiet",

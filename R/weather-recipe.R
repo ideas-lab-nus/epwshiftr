@@ -114,7 +114,7 @@ WeatherRecipeSpec <- S7::new_class(
             "status"
         )) {
             value <- S7::prop(self, property)
-            if (length(value) != 1L || is.na(value) || !nzchar(value)) {
+            if (!checkmate::test_string(value, min.chars = 1L)) {
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
@@ -199,7 +199,7 @@ WeatherRecipeSpec <- S7::new_class(
         if (!self@output_type %in% WEATHER_RECIPE_OUTPUT_TYPES) {
             return("`output_type` contains an unknown weather output type.")
         }
-        if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
+        if (!checkmate::test_flag(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
         if (!self@status %in% WEATHER_RECIPE_STATUSES) {
@@ -310,40 +310,16 @@ recipe__spec <- function(
     status = "experimental",
     version = 1L
 ) {
-    checkmate::assert_string(name, pattern = "^[a-z][a-z0-9_]*$")
+    # S7 owns the final invariants; retain checks before coercion or
+    # stage selection, plus stricter executable identifier requirements.
     checkmate::assert_count(version, positive = TRUE)
-    checkmate::assert_string(label, min.chars = 1L)
     checkmate::assert_string(method, pattern = "^[a-z][a-z0-9_]*$")
     checkmate::assert_string(backend, pattern = "^[a-z][a-z0-9_]*$")
-    checkmate::assert_choice(
-        implementation,
-        WEATHER_RECIPE_IMPLEMENTATIONS
-    )
     checkmate::assert_list(source, names = "unique")
-    if (is.null(names(source)) || any(!nzchar(names(source)))) {
-        cli::cli_abort("{.arg source} must be a named list.")
-    }
-    if (!all(c("type", "citation") %in% names(source))) {
-        cli::cli_abort(
-            "{.arg source} must contain {.field type} and {.field citation}."
-        )
-    }
     source <- lapply(source, function(value) {
         checkmate::assert_character(value, any.missing = FALSE)
         as.character(value)
     })
-    for (property in c("type", "citation")) {
-        checkmate::assert_character(
-            source[[property]],
-            any.missing = FALSE,
-            min.len = 1L
-        )
-        if (any(!nzchar(source[[property]]))) {
-            cli::cli_abort(
-                "{.arg source} field {.field {property}} cannot contain empty text."
-            )
-        }
-    }
     required_inputs <- component__requirements(
         required_inputs,
         "required_inputs"
@@ -352,27 +328,10 @@ recipe__spec <- function(
         optional_inputs,
         "optional_inputs"
     )
-    overlap <- intersect(names(required_inputs), names(optional_inputs))
-    if (length(overlap)) {
-        cli::cli_abort(
-            "Recipe input role(s) cannot be both required and optional: {.val {overlap}}."
-        )
-    }
     checkmate::assert_string(
         calendar_policy,
         pattern = "^[a-z][a-z0-9_]*$"
     )
-    checkmate::assert_character(
-        target_calendar,
-        max.len = 1L,
-        any.missing = FALSE
-    )
-    if (length(target_calendar)) {
-        checkmate::assert_string(
-            target_calendar,
-            pattern = "^[a-z][a-z0-9_]*$"
-        )
-    }
     if (is.character(components) && !is.null(names(components))) {
         components <- as.list(components)
     }
@@ -391,42 +350,6 @@ recipe__spec <- function(
         ))
     }
     components <- components[WEATHER_COMPONENT_STAGES]
-    checkmate::assert_character(
-        policy_profiles,
-        any.missing = FALSE,
-        min.len = 1L,
-        names = "named"
-    )
-    if (
-        any(!nzchar(names(policy_profiles))) ||
-            any(!nzchar(policy_profiles))
-    ) {
-        cli::cli_abort(
-            "{.arg policy_profiles} cannot contain empty policy or profile names."
-        )
-    }
-    checkmate::assert_subset(
-        names(policy_profiles),
-        WEATHER_RECIPE_POLICIES
-    )
-    checkmate::assert_character(
-        physical_policies,
-        any.missing = FALSE,
-        min.len = 1L,
-        names = "named"
-    )
-    if (!identical(names(physical_policies), names(policy_profiles))) {
-        cli::cli_abort(
-            "{.arg physical_policies} must map every declared execution policy in the same order."
-        )
-    }
-    checkmate::assert_subset(
-        unname(physical_policies),
-        names(EPW_PHYS_POLICY_SPECS)
-    )
-    checkmate::assert_choice(default_policy, names(policy_profiles))
-    checkmate::assert_choice(output_type, WEATHER_RECIPE_OUTPUT_TYPES)
-    checkmate::assert_flag(stochastic)
     diagnostics <- weather__descriptor_values(
         diagnostics,
         "diagnostics"
@@ -435,7 +358,6 @@ recipe__spec <- function(
         provenance,
         "provenance"
     )
-    checkmate::assert_choice(status, WEATHER_RECIPE_STATUSES)
 
     WeatherRecipeSpec(
         name = name,
@@ -1245,26 +1167,6 @@ recipe__default_specs <- function() {
 }
 # }}}
 
-# Resolve the algorithm actually used at the hourly stage. Adapter components
-# may expose a shared reconstruction key while keeping their own stable name.
-# recipe__hourly_reconstruction {{{
-recipe__hourly_reconstruction <- function(spec) {
-    if (!identical(spec@implementation, "pipeline")) {
-        return(character())
-    }
-    component <- component__get("hourly", spec@components$hourly)
-    reconstruction <- component@metadata$reconstruction
-    if (is.null(reconstruction)) {
-        reconstruction <- component@name
-    }
-    checkmate::assert_string(
-        reconstruction,
-        pattern = "^[a-z][a-z0-9_]*$"
-    )
-    reconstruction
-}
-# }}}
-
 # Resolve the output calendar declared by a recipe. Backend recipes state this
 # contract directly, while componentized recipes inherit it from their output
 # component unless an explicit recipe-level contract takes precedence.
@@ -1344,21 +1246,11 @@ recipe__validate_registration <- function(spec) {
 # recipe__register {{{
 recipe__register <- function(
     spec,
-    overwrite = FALSE,
     registry = WEATHER_RECIPE_REGISTRY
 ) {
-    if (!S7::S7_inherits(spec, WeatherRecipeSpec)) {
-        cli::cli_abort(
-            "{.arg spec} must be a WeatherRecipeSpec object."
-        )
-    }
-    checkmate::assert_flag(overwrite)
     checkmate::assert_environment(registry)
     recipe__validate_registration(spec)
-    if (
-        exists(spec@name, envir = registry, inherits = FALSE) &&
-            !isTRUE(overwrite)
-    ) {
+    if (exists(spec@name, envir = registry, inherits = FALSE)) {
         cli::cli_abort(
             "Future-weather recipe {.val {spec@name}} is already registered."
         )
@@ -1368,8 +1260,7 @@ recipe__register <- function(
 }
 # }}}
 
-# Populate the built-in catalog once while retaining any explicitly replaced
-# process-local entries.
+# Populate the built-in catalog once while retaining existing process-local entries.
 # recipe__register_defaults {{{
 recipe__register_defaults <- function() {
     registered <- ls(
@@ -1408,7 +1299,6 @@ recipe__get <- function(
     if (identical(registry, WEATHER_RECIPE_REGISTRY)) {
         recipe__register_defaults()
     }
-    name <- tolower(name)
     if (!exists(name, envir = registry, inherits = FALSE)) {
         cli::cli_abort(
             "Unknown future-weather recipe: {.val {name}}."
@@ -1424,21 +1314,6 @@ recipe__get <- function(
         }
     }
     spec
-}
-# }}}
-
-# Convert one role requirement into a function-free record suitable for
-# listings, JSON diagnostics, and user inspection.
-# recipe__requirement_record {{{
-recipe__requirement_record <- function(requirement) {
-    list(
-        role = requirement@role,
-        representations = requirement@representations,
-        frequencies = requirement@frequencies,
-        variable_frequencies = requirement@variable_frequencies,
-        calendars = requirement@calendars,
-        variable_sets = requirement@variable_sets
-    )
 }
 # }}}
 
@@ -1501,11 +1376,11 @@ recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
                 source = list(spec@source),
                 required_inputs = list(lapply(
                     spec@required_inputs,
-                    recipe__requirement_record
+                    component__input_requirement_record
                 )),
                 optional_inputs = list(lapply(
                     spec@optional_inputs,
-                    recipe__requirement_record
+                    component__input_requirement_record
                 )),
                 components = list(spec@components),
                 diagnostics = list(spec@diagnostics),
@@ -1604,23 +1479,6 @@ recipe__variable_frequencies <- function(
 }
 # }}}
 
-# Return all role-level input failures before a registered recipe starts its
-# backend or component implementation.
-# recipe__input_errors {{{
-recipe__input_errors <- function(spec, inputs) {
-    if (!S7::S7_inherits(spec, WeatherRecipeSpec)) {
-        cli::cli_abort(
-            "{.arg spec} must be a WeatherRecipeSpec object."
-        )
-    }
-    weather__input_requirement_errors(
-        spec@required_inputs,
-        spec@optional_inputs,
-        inputs
-    )
-}
-# }}}
-
 # Abort with the complete role diagnostics so queued and foreground execution
 # enforce the same registered recipe contract.
 # recipe__validate_inputs {{{
@@ -1652,14 +1510,6 @@ recipe__validate_inputs <- function(
 # epw_morph_recipes {{{
 epw_morph_recipes <- function() {
     recipe__list()
-}
-# }}}
-
-# Return one internal complete-recipe contract by its registered key.
-#' @noRd
-# epw_morph_recipe_spec {{{
-epw_morph_recipe_spec <- function(name) {
-    recipe__get(name)
 }
 # }}}
 

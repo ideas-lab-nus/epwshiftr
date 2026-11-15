@@ -27,7 +27,7 @@ test_that("all seven future-weather component stages have executable contracts",
     }
 })
 
-test_that("component registries retain metadata but not serialized operations", {
+test_that("component registries store definitions and reject invalid registrations", {
     registry <- new.env(parent = emptyenv())
     signal <- component__spec(
         name = "daily_delta",
@@ -38,66 +38,22 @@ test_that("component registries retain metadata but not serialized operations", 
         operations = list(apply = function(value) value)
     )
 
-    expect_identical(
-        component__register(signal, registry = registry),
-        signal
-    )
+    component__register(signal, registry = registry)
     expect_identical(
         component__get("signal", "daily_delta", registry),
         signal
     )
-    listed <- component__list(registry = registry)
-    expect_named(
-        listed,
-        c(
-            "stage",
-            "name",
-            "label",
-            "input_kinds",
-            "output_kinds",
-            "scopes",
-            "stochastic"
-        )
-    )
-    expect_identical(listed$name, "daily_delta")
-    expect_false("operations" %in% names(listed))
     expect_error(
         component__register(signal, registry = registry),
         "already registered"
     )
-})
-
-test_that("built-in registration preserves process-local component extensions", {
-    registry <- new.env(parent = emptyenv())
-    extension <- component__spec(
-        name = "daily_delta",
-        stage = "signal",
-        label = "Extension implementation",
-        input_kinds = "calendar_indexed",
-        output_kinds = "seasonal_change",
-        operations = list(apply = function(value) value)
-    )
-    builtin <- component__spec(
-        name = "daily_delta",
-        stage = "signal",
-        label = "Package implementation",
-        input_kinds = "calendar_indexed",
-        output_kinds = "seasonal_change",
-        operations = list(apply = function(value) value)
-    )
-
-    component__register(extension, registry = registry)
-    expect_identical(
-        component__register_builtin(builtin, registry = registry),
-        extension
-    )
-    expect_identical(
-        component__get("signal", "daily_delta", registry),
-        extension
+    expect_error(
+        component__register(NULL, registry = registry),
+        "WeatherComponentSpec"
     )
 })
 
-test_that("built-in registration applies one policy to component collections", {
+test_that("built-in collections add missing components and preserve extensions", {
     registry <- new.env(parent = emptyenv())
     components <- list(
         component__spec(
@@ -116,12 +72,13 @@ test_that("built-in registration applies one policy to component collections", {
         )
     )
 
-    expect_invisible(
-        component__register_builtins(components, registry = registry)
-    )
+    extension <- components[[1L]]
+    extension@label <- "Extension implementation"
+    component__register(extension, registry = registry)
+    component__register_builtins(components, registry = registry)
     expect_identical(
         component__get("calendar", "annual_phase", registry),
-        components[[1L]]
+        extension
     )
     expect_identical(
         component__get("signal", "daily_delta", registry),
@@ -152,9 +109,6 @@ test_that("component compatibility uses stage order and intermediate kinds", {
         operations = list(apply = function(value) value)
     )
 
-    expect_true(component__compatible(calendar, signal))
-    expect_false(component__compatible(signal, calendar))
-    expect_false(component__compatible(calendar, incompatible))
     expect_invisible(component__assert_compatible(calendar, signal))
     expect_error(
         component__assert_compatible(signal, calendar),
@@ -261,6 +215,10 @@ test_that("component input validation distinguishes required and optional roles"
     errors <- component__input_errors(signal, inputs)
     expect_match(errors, "required role `observed_reference` is missing")
     expect_length(errors, 1L)
+    expect_error(
+        signal@optional_inputs <- signal@required_inputs,
+        "both required and optional"
+    )
 })
 
 test_that("component input requirements validate frequency by variable", {

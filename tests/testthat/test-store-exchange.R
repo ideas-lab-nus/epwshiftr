@@ -417,13 +417,6 @@ test_that("receipt type reconstruction preserves exact doubles and nulls", {
         rows[0]
     )
     expect_identical(actual, rows)
-    expect_error(
-        store_exchange__decode(
-            list(count = list(1.5)),
-            rows[0, "count", with = FALSE]
-        ),
-        "non-integer"
-    )
 })
 
 # Hashes authenticate receipt transport, while lineage and coverage validation

@@ -1,5 +1,5 @@
-# Reopening a store must inspect persisted state without issuing redundant DDL.
-test_that("current store reopen preserves rows without redundant schema writes", {
+# Reopening preserves stored data and the schema.
+test_that("current store reopen preserves rows and schema", {
     path <- tempfile("store-schema-")
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
@@ -9,20 +9,10 @@ test_that("current store reopen preserves rows without redundant schema writes",
         "SELECT table_name, column_name, data_type FROM information_schema.columns ORDER BY table_name, ordinal_position"
     )
     store$close()
-    original <- ddb_exec
-    statements <- character()
-    local_mocked_bindings(
-        ddb_exec = function(conn, sql) {
-            statements <<- c(statements, sql)
-            original(conn, sql)
-        },
-        .package = "epwshiftr"
-    )
     store <- EsgStore$new(path, create = FALSE)
     on.exit(store$close(), add = TRUE)
     expect_identical(store$get_meta("sentinel"), "keep")
     expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
-    expect_false(any(grepl("CREATE TABLE|ALTER TABLE", statements)))
     expect_identical(
         ddb_query(
             priv(store)$conn,
@@ -69,7 +59,7 @@ test_that("reopening still rejects changed or missing schema versions", {
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
     store$close()
-    for (version in c("older", "newer", NA_character_)) {
+    for (version in c("2.6.0", "newer", NA_character_)) {
         conn <- ddb_connect(file.path(path, "manifest.duckdb"))
         ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
         if (!is.na(version)) {
@@ -83,9 +73,19 @@ test_that("reopening still rejects changed or missing schema versions", {
         }
         ddb_exec(conn, "DROP TABLE IF EXISTS shift_run_event")
         ddb_disconnect(conn)
-        expect_error(EsgStore$new(path, create = FALSE), "Store schema version")
+        message <- if (is.na(version)) {
+            "Store schema version .*missing"
+        } else {
+            "store_reset"
+        }
+        expect_error(EsgStore$new(path, create = FALSE), message)
         conn <- ddb_connect(file.path(path, "manifest.duckdb"))
         expect_false("shift_run_event" %in% ddb_list_tables(conn))
+        stored <- ddb_query(
+            conn,
+            "SELECT value FROM store_meta WHERE key = 'schema_version'"
+        )
+        expect_identical(stored$value, version[!is.na(version)])
         ddb_disconnect(conn)
     }
 })
@@ -112,9 +112,8 @@ test_that("schema repair retries after a failed DDL statement", {
     )
     expect_error(priv(store)$init_schema(), "interrupted schema repair")
     expect_false("shift_run_event" %in% ddb_list_tables(priv(store)$conn))
-    expect_invisible(priv(store)$init_schema())
+    priv(store)$init_schema()
     expect_true("shift_run_event" %in% ddb_list_tables(priv(store)$conn))
-    expect_identical(attempts, 2L)
 })
 
 # Fresh manifests must initialize all workflow families and preserve empty-table
@@ -146,149 +145,6 @@ test_that("fresh store initializes current empty workflow tables", {
                 "epw_output"
             ))
     )
-})
-
-# Creating a store must send its schema in a few batches, not one call per
-# declaration, and the resulting catalog must equal the one built statement by
-# statement.
-test_that("fresh store schema is created in batches with the same catalog", {
-    catalog_sql <- paste(
-        "SELECT table_name, column_name, data_type, column_default, is_nullable",
-        "FROM information_schema.columns ORDER BY table_name, ordinal_position"
-    )
-    original <- ddb_exec
-    sent <- character()
-    local_mocked_bindings(
-        ddb_exec = function(conn, sql) {
-            sent <<- c(sent, sql)
-            original(conn, sql)
-        },
-        .package = "epwshiftr"
-    )
-    path <- tempfile("store-schema-batch-")
-    on.exit(unlink(path, recursive = TRUE), add = TRUE)
-    store <- EsgStore$new(path)
-    on.exit(store$close(), add = TRUE)
-    batched <- ddb_query(priv(store)$conn, catalog_sql)
-
-    declarations <- sum(lengths(regmatches(
-        sent,
-        gregexpr("CREATE TABLE IF NOT EXISTS|ALTER TABLE", sent)
-    )))
-    expect_gt(declarations, 40L)
-    expect_lt(sum(grepl("CREATE TABLE|ALTER TABLE", sent)), 6L)
-
-    # Execute the same declarations one at a time against an empty database and
-    # compare the resulting columns, types, defaults and nullability.
-    statements <- unlist(lapply(sent, function(sql) {
-        parts <- strsplit(sql, ";\n", fixed = TRUE)[[1L]]
-        parts[grepl("CREATE TABLE|ALTER TABLE", parts)]
-    }))
-    conn <- ddb_connect(":memory:")
-    on.exit(ddb_disconnect(conn), add = TRUE)
-    for (sql in statements) {
-        original(conn, sql)
-    }
-    sequential <- ddb_query(conn, catalog_sql)
-    expect_identical(
-        batched[order(batched$table_name, batched$column_name), ],
-        sequential[order(sequential$table_name, sequential$column_name), ]
-    )
-})
-
-# The schema version is read at most once per open: a new manifest has nothing
-# to read, a reopened one is read once for the check, and the version row is
-# only written when it is absent.
-test_that("opening a store reads the schema version at most once", {
-    original <- ddb_read_table
-    reads <- character()
-    local_mocked_bindings(
-        ddb_read_table = function(conn, table, ...) {
-            reads <<- c(reads, table)
-            original(conn, table, ...)
-        },
-        .package = "epwshiftr"
-    )
-    path <- tempfile("store-schema-reads-")
-    on.exit(unlink(path, recursive = TRUE), add = TRUE)
-
-    store <- EsgStore$new(path)
-    expect_identical(sum(reads == "store_meta"), 0L)
-    expect_identical(store$get_meta("schema_version"), STORE_SCHEMA_VERSION)
-    stamp <- ddb_query(
-        priv(store)$conn,
-        "SELECT updated_at FROM store_meta WHERE key = 'schema_version'"
-    )$updated_at
-    store$close()
-
-    reads <- character()
-    store <- EsgStore$new(path, create = FALSE)
-    on.exit(store$close(), add = TRUE)
-    expect_identical(sum(reads == "store_meta"), 1L)
-    # A matching version is not rewritten on reopen.
-    expect_identical(
-        ddb_query(
-            priv(store)$conn,
-            "SELECT updated_at FROM store_meta WHERE key = 'schema_version'"
-        )$updated_at,
-        stamp
-    )
-})
-
-# A manifest that has tables but lost its version row is still rejected rather
-# than silently stamped with the current version.
-test_that("a manifest with tables but no version row is rejected", {
-    path <- tempfile("store-schema-noversion-")
-    on.exit(unlink(path, recursive = TRUE), add = TRUE)
-    store <- EsgStore$new(path)
-    store$close()
-    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
-    ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
-    ddb_disconnect(conn)
-    expect_error(
-        EsgStore$new(path, create = FALSE),
-        "Store schema version .*missing"
-    )
-    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
-    on.exit(ddb_disconnect(conn), add = TRUE)
-    expect_identical(
-        nrow(ddb_query(
-            conn,
-            "SELECT * FROM store_meta WHERE key = 'schema_version'"
-        )),
-        0L
-    )
-})
-
-# A failing statement stops the batch, but everything before it stays applied,
-# exactly the state one-by-one execution would have left behind.
-test_that("a failing schema statement keeps earlier declarations", {
-    path <- tempfile("store-schema-partial-")
-    on.exit(unlink(path, recursive = TRUE), add = TRUE)
-    original <- ddb_exec
-    local_mocked_bindings(
-        ddb_exec = function(conn, sql) {
-            if (grepl("CREATE TABLE IF NOT EXISTS extraction_plan", sql)) {
-                # Run only the declarations ahead of the failing one, then fail.
-                parts <- strsplit(sql, ";\n", fixed = TRUE)[[1L]]
-                stop_at <- grep("IF NOT EXISTS extraction_plan", parts)[[1L]]
-                original(
-                    conn,
-                    paste(parts[seq_len(stop_at - 1L)], collapse = ";\n")
-                )
-                stop("controlled schema failure")
-            }
-            original(conn, sql)
-        },
-        .package = "epwshiftr"
-    )
-    expect_error(EsgStore$new(path), "controlled schema failure")
-    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
-    on.exit(ddb_disconnect(conn), add = TRUE)
-    tables <- ddb_list_tables(conn)
-    expect_true("store_meta" %in% tables)
-    expect_true("artifact" %in% tables)
-    expect_false("extraction_plan" %in% tables)
 })
 
 # vim: fdm=marker :

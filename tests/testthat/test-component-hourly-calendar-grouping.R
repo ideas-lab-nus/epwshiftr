@@ -391,7 +391,7 @@ test_that("three-hour source roles compile through the real hourly bridge", {
             operations = list(write = identity)
         )
     )
-    invisible(lapply(downstream, component__register, overwrite = TRUE))
+    invisible(lapply(downstream, component__register))
     temporal__register_linear_component()
     hourly_calendar__register_component()
     kqdm__register_component()

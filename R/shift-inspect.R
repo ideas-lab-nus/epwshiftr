@@ -735,13 +735,10 @@ shift_summary <- function(
 
 # shift_inspect__query_run {{{
 shift_inspect__query_run <- function(store, query_id) {
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            "SELECT * FROM query_run WHERE query_id IN (%s)",
-            shift_stage__query_ids(query_id)
-        )
-    )
+    store$query(sprintf(
+        "SELECT * FROM query_run WHERE query_id IN (%s)",
+        shift_stage__query_ids(query_id)
+    ))
 }
 # }}}
 
@@ -770,13 +767,10 @@ shift_inspect__file_membership_sql <- function(query_id) {
 # Read a query's catalog even after another query reused its physical files.
 # shift_inspect__file_catalog {{{
 shift_inspect__file_catalog <- function(store, query_id) {
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            "SELECT * FROM file_catalog WHERE %s",
-            shift_inspect__file_membership_sql(query_id)
-        )
-    )
+    store$query(sprintf(
+        "SELECT * FROM file_catalog WHERE %s",
+        shift_inspect__file_membership_sql(query_id)
+    ))
 }
 # }}}
 
@@ -784,17 +778,14 @@ shift_inspect__file_catalog <- function(store, query_id) {
 # to print a ShiftFiles object.
 # shift_inspect__file_catalog_summary {{{
 shift_inspect__file_catalog_summary <- function(store, query_id) {
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            paste(
-                "SELECT COUNT(*) AS file_count,",
-                "COALESCE(SUM(size), 0) AS total_size",
-                "FROM file_catalog WHERE %s"
-            ),
-            shift_inspect__file_membership_sql(query_id)
-        )
-    )
+    store$query(sprintf(
+        paste(
+            "SELECT COUNT(*) AS file_count,",
+            "COALESCE(SUM(size), 0) AS total_size",
+            "FROM file_catalog WHERE %s"
+        ),
+        shift_inspect__file_membership_sql(query_id)
+    ))
 }
 # }}}
 
@@ -819,71 +810,59 @@ shift_inspect__file_catalog_preview <- function(store, query_id, n = 10L) {
         collapse = ", "
     )
     limit <- if (is.infinite(n)) "" else sprintf(" LIMIT %d", as.integer(n))
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            paste0(
-                "SELECT ",
-                columns,
-                " FROM file_catalog WHERE %s",
-                " ORDER BY source_id, experiment_id, variable_id, variant_label,",
-                " grid_label, table_id, datetime_start, filename",
-                limit
-            ),
-            shift_inspect__file_membership_sql(query_id)
-        )
-    )
+    store$query(sprintf(
+        paste0(
+            "SELECT ",
+            columns,
+            " FROM file_catalog WHERE %s",
+            " ORDER BY source_id, experiment_id, variable_id, variant_label,",
+            " grid_label, table_id, datetime_start, filename",
+            limit
+        ),
+        shift_inspect__file_membership_sql(query_id)
+    ))
 }
 # }}}
 
 # shift_inspect__extraction_plan {{{
 shift_inspect__extraction_plan <- function(store, plan_id) {
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            paste(
-                "SELECT plan_id, query_id, file_key, site_id, variable_id,",
-                "lon, lat, method, time_start, time_stop, status,",
-                "available_time_count, attempt_count, last_error, created_at, updated_at",
-                "FROM extraction_plan WHERE plan_id IN (%s)"
-            ),
-            shift_stage__query_ids(plan_id)
-        )
-    )
+    store$query(sprintf(
+        paste(
+            "SELECT plan_id, query_id, file_key, site_id, variable_id,",
+            "lon, lat, method, time_start, time_stop, status,",
+            "available_time_count, attempt_count, last_error, created_at, updated_at",
+            "FROM extraction_plan WHERE plan_id IN (%s)"
+        ),
+        shift_stage__query_ids(plan_id)
+    ))
 }
 # }}}
 
 # shift_inspect__extraction_result_rows {{{
 shift_inspect__extraction_result_rows <- function(store, plan_id) {
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            paste(
-                "SELECT r.*,",
-                "p.site_id,",
-                "f.source_id, f.experiment_id, f.variant_label, f.frequency,",
-                "p.variable_id",
-                "FROM extraction_result r",
-                "LEFT JOIN extraction_plan p ON r.plan_id = p.plan_id",
-                "LEFT JOIN file_catalog f ON p.query_id = f.query_id AND p.file_key = f.file_key",
-                "WHERE r.plan_id IN (%s)",
-                "ORDER BY p.variable_id, r.year, r.output_path"
-            ),
-            shift_stage__query_ids(plan_id)
-        )
-    )
+    store$query(sprintf(
+        paste(
+            "SELECT r.*,",
+            "p.site_id,",
+            "f.source_id, f.experiment_id, f.variant_label, f.frequency,",
+            "p.variable_id",
+            "FROM extraction_result r",
+            "LEFT JOIN extraction_plan p ON r.plan_id = p.plan_id",
+            "LEFT JOIN file_catalog f ON p.query_id = f.query_id AND p.file_key = f.file_key",
+            "WHERE r.plan_id IN (%s)",
+            "ORDER BY p.variable_id, r.year, r.output_path"
+        ),
+        shift_stage__query_ids(plan_id)
+    ))
 }
 # }}}
 
 # shift_inspect__morph_plan {{{
 shift_inspect__morph_plan <- function(store, morph_id) {
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            "SELECT * FROM epw_morph_plan WHERE morph_id IN (%s)",
-            shift_stage__query_ids(morph_id)
-        )
-    )
+    store$query(sprintf(
+        "SELECT * FROM epw_morph_plan WHERE morph_id IN (%s)",
+        shift_stage__query_ids(morph_id)
+    ))
 }
 # }}}
 
@@ -899,7 +878,7 @@ shift_inspect__morph_result_rows <- function(store, morph_id, case_id = NULL) {
             sprintf("AND case_id IN (%s)", shift_stage__query_ids(case_id))
         )
     }
-    shift_stage__query_maybe(store, paste(sql, "ORDER BY case_id, output_path"))
+    store$query(paste(sql, "ORDER BY case_id, output_path"))
 }
 # }}}
 
@@ -916,7 +895,7 @@ shift_inspect__epw_output_rows <- function(store, morph_id, case_id = NULL) {
             sprintf("AND case_id IN (%s)", shift_stage__query_ids(case_id))
         )
     }
-    shift_stage__query_maybe(store, paste(sql, "ORDER BY case_id, path"))
+    store$query(paste(sql, "ORDER BY case_id, path"))
 }
 # }}}
 
@@ -927,13 +906,10 @@ shift_inspect__artifact_rows <- function(store, artifact_id) {
     if (!length(artifact_id)) {
         return(data.table::data.table())
     }
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            "SELECT * FROM artifact WHERE artifact_id IN (%s)",
-            shift_stage__query_ids(artifact_id)
-        )
-    )
+    store$query(sprintf(
+        "SELECT * FROM artifact WHERE artifact_id IN (%s)",
+        shift_stage__query_ids(artifact_id)
+    ))
 }
 # }}}
 
@@ -951,9 +927,6 @@ shift_inspect__data_limit <- function(n) {
         return(Inf)
     }
     checkmate::assert_count(n, positive = FALSE)
-    if (is.na(n)) {
-        cli::cli_abort("`n` cannot be missing.")
-    }
     as.integer(n)
 }
 # }}}
@@ -1024,16 +997,10 @@ shift_inspect__read_artifact_rows <- function(
     missing,
     stage
 ) {
-    checkmate::assert_choice(path_column, names(records))
-    checkmate::assert_function(reader)
-    checkmate::assert_function(metadata, null.ok = TRUE)
-    checkmate::assert_character(missing, any.missing = FALSE, min.len = 1L)
-    checkmate::assert_string(stage, min.chars = 1L)
-
     pieces <- vector("list", nrow(records))
     remaining <- n
     for (i in seq_len(nrow(records))) {
-        if (!is.infinite(remaining) && remaining <= 0L) {
+        if (remaining <= 0L) {
             break
         }
         path <- store_abs_path(records[[path_column]][[i]], root = store$path)
@@ -1041,17 +1008,14 @@ shift_inspect__read_artifact_rows <- function(
             cli::cli_abort(missing)
         }
 
-        limit <- if (is.infinite(remaining)) Inf else remaining
-        dt <- data.table::as.data.table(reader(path, limit, columns))
+        dt <- data.table::as.data.table(reader(path, remaining, columns))
         if (!is.null(metadata)) {
             # Add record-level identity before selecting requested columns so
             # callers may request both stored and manifest-backed fields.
             dt <- shift_inspect__add_constant_columns(dt, metadata(records, i))
         }
         pieces[[i]] <- shift_inspect__select_data_columns(dt, columns, stage)
-        if (!is.infinite(remaining)) {
-            remaining <- remaining - nrow(dt)
-        }
+        remaining <- remaining - nrow(dt)
     }
 
     pieces <- Filter(Negate(is.null), pieces)
@@ -1188,10 +1152,7 @@ shift_inspect__stage_query_result <- function(
     generator <- switch(
         run$result_type[[1L]],
         File = EsgResultFile,
-        Aggregation = EsgResultAggregation,
-        cli::cli_abort(
-            "Unsupported stored query result type: {.val {run$result_type[[1L]]}}."
-        )
+        Aggregation = EsgResultAggregation
     )
     query_result__new(
         generator,
@@ -1857,7 +1818,7 @@ shift_data <- function(
                 "`case_id` is only supported for morphed and EPW output stages."
             )
         }
-        if (is.null(ids$plan_id) || !length(ids$plan_id)) {
+        if (!length(ids$plan_id)) {
             return(data.table::data.table())
         }
         results <- shift_inspect__extraction_result_rows(store, ids$plan_id)
@@ -1900,7 +1861,7 @@ shift_data <- function(
     }
 
     if (S7::S7_inherits(x, ShiftMorphed)) {
-        if (is.null(ids$morph_id) || !length(ids$morph_id)) {
+        if (!length(ids$morph_id)) {
             return(data.table::data.table())
         }
         results <- shift_inspect__morph_result_rows(
@@ -1920,7 +1881,7 @@ shift_data <- function(
     }
 
     if (S7::S7_inherits(x, ShiftOutputs)) {
-        if (is.null(ids$morph_id) || !length(ids$morph_id)) {
+        if (!length(ids$morph_id)) {
             return(data.table::data.table())
         }
         outputs <- shift_inspect__epw_output_rows(
@@ -2158,18 +2119,15 @@ shift_artifacts <- function(x) {
         return(data.table::data.table())
     }
     quoted <- shift_stage__query_ids(values)
-    shift_stage__query_maybe(
-        store,
-        sprintf(
-            paste(
-                "SELECT * FROM artifact",
-                "WHERE query_id IN (%1$s)",
-                "OR file_key IN (%1$s)",
-                "OR artifact_id IN (%1$s)"
-            ),
-            quoted
-        )
-    )
+    store$query(sprintf(
+        paste(
+            "SELECT * FROM artifact",
+            "WHERE query_id IN (%1$s)",
+            "OR file_key IN (%1$s)",
+            "OR artifact_id IN (%1$s)"
+        ),
+        quoted
+    ))
 }
 # }}}
 

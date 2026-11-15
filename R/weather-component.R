@@ -104,10 +104,7 @@ WeatherInputRequirement <- S7::new_class(
                 ))
             }
         }
-        if (
-            length(self@representations) &&
-                !all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)
-        ) {
+        if (!all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)) {
             return(
                 "`representations` contains an unknown input representation."
             )
@@ -198,17 +195,10 @@ component__input_requirement <- function(
     calendars = character(),
     variable_sets = list()
 ) {
-    checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
     representations <- weather__descriptor_values(
         representations,
         "representations"
     )
-    if (length(representations)) {
-        checkmate::assert_subset(
-            representations,
-            WEATHER_INPUT_REPRESENTATIONS
-        )
-    }
     WeatherInputRequirement(
         role = role,
         representations = representations,
@@ -262,6 +252,21 @@ component__requirements <- function(requirements, name) {
 }
 # }}}
 
+# Convert one role requirement into a function-free record suitable for
+# catalog displays and persisted workflow contracts.
+# component__input_requirement_record {{{
+component__input_requirement_record <- function(requirement) {
+    list(
+        role = requirement@role,
+        representations = requirement@representations,
+        frequencies = requirement@frequencies,
+        variable_frequencies = requirement@variable_frequencies,
+        calendars = requirement@calendars,
+        variable_sets = requirement@variable_sets
+    )
+}
+# }}}
+
 # WeatherComponentSpec describes one executable implementation independently
 # of any complete future-weather recipe.
 # WeatherComponentSpec {{{
@@ -304,11 +309,7 @@ WeatherComponentSpec <- S7::new_class(
         ) {
             return("`stage` must identify one future-weather component stage.")
         }
-        if (
-            length(self@label) != 1L ||
-                is.na(self@label) ||
-                !nzchar(self@label)
-        ) {
+        if (!checkmate::test_string(self@label, min.chars = 1L)) {
             return("`label` must be one non-empty string.")
         }
         overlap <- intersect(
@@ -338,7 +339,7 @@ WeatherComponentSpec <- S7::new_class(
         if (!all(self@scopes %in% WEATHER_COMPONENT_SCOPES)) {
             return("`scopes` contains an unknown component scope.")
         }
-        if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
+        if (!checkmate::test_flag(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
         if (
@@ -388,9 +389,8 @@ component__spec <- function(
     operations,
     metadata = list()
 ) {
-    checkmate::assert_string(name, pattern = "^[a-z][a-z0-9_]*$")
-    checkmate::assert_choice(stage, WEATHER_COMPONENT_STAGES)
-    checkmate::assert_string(label, min.chars = 1L)
+    # The S7 validator owns object invariants on construction and mutation.
+    # Normalize descriptors here, retaining checks needed before conversion.
     required_inputs <- component__requirements(
         required_inputs,
         "required_inputs"
@@ -399,18 +399,9 @@ component__spec <- function(
         optional_inputs,
         "optional_inputs"
     )
-    overlap <- intersect(names(required_inputs), names(optional_inputs))
-    if (length(overlap)) {
-        cli::cli_abort(
-            "Input role(s) cannot be both required and optional: {.val {overlap}}."
-        )
-    }
     input_kinds <- weather__descriptor_values(input_kinds, "input_kinds")
     output_kinds <- weather__descriptor_values(output_kinds, "output_kinds")
     scopes <- weather__descriptor_values(scopes, "scopes")
-    checkmate::assert_subset(scopes, WEATHER_COMPONENT_SCOPES)
-    checkmate::assert_flag(stochastic)
-    checkmate::assert_list(operations, names = "unique")
     checkmate::assert_list(metadata, names = "unique")
 
     WeatherComponentSpec(
@@ -439,12 +430,12 @@ component__registry_key <- function(stage, name) {
 }
 # }}}
 
-# Register one executable component while keeping serialized recipes free from
-# process-specific function objects.
+# Register one executable component with an explicit conflict policy. Validation,
+# key selection and mutation stay together for extensions and built-in defaults.
 # component__register {{{
 component__register <- function(
     component,
-    overwrite = FALSE,
+    on_conflict = c("error", "keep"),
     registry = WEATHER_COMPONENT_REGISTRY
 ) {
     if (!S7::S7_inherits(component, WeatherComponentSpec)) {
@@ -452,13 +443,14 @@ component__register <- function(
             "{.arg component} must be a WeatherComponentSpec object."
         )
     }
-    checkmate::assert_flag(overwrite)
+    on_conflict <- match.arg(on_conflict)
     checkmate::assert_environment(registry)
-    key <- component__registry_key(component@stage, component@name)
-    if (
-        exists(key, envir = registry, inherits = FALSE) &&
-            !isTRUE(overwrite)
-    ) {
+    # The validated S7 object already owns the stage and name constraints.
+    key <- paste(component@stage, component@name, sep = "::")
+    if (exists(key, envir = registry, inherits = FALSE)) {
+        if (on_conflict == "keep") {
+            return(invisible(get(key, envir = registry, inherits = FALSE)))
+        }
         cli::cli_abort(
             "Weather component {.val {key}} is already registered."
         )
@@ -475,20 +467,7 @@ component__register_builtin <- function(
     component,
     registry = WEATHER_COMPONENT_REGISTRY
 ) {
-    if (!S7::S7_inherits(component, WeatherComponentSpec)) {
-        cli::cli_abort(
-            "{.arg component} must be a WeatherComponentSpec object."
-        )
-    }
-    checkmate::assert_environment(registry)
-    key <- component__registry_key(component@stage, component@name)
-
-    # Package-load registration is idempotent and must preserve an extension
-    # installed earlier in the current R process.
-    if (exists(key, envir = registry, inherits = FALSE)) {
-        return(invisible(get(key, envir = registry, inherits = FALSE)))
-    }
-    component__register(component, registry = registry)
+    component__register(component, on_conflict = "keep", registry = registry)
 }
 # }}}
 
@@ -502,11 +481,6 @@ component__register_builtins <- function(
     checkmate::assert_list(components)
     checkmate::assert_environment(registry)
     for (component in components) {
-        if (!S7::S7_inherits(component, WeatherComponentSpec)) {
-            cli::cli_abort(
-                "Every {.arg components} entry must be a WeatherComponentSpec object."
-            )
-        }
         component__register_builtin(component, registry = registry)
     }
     invisible(NULL)
@@ -526,61 +500,6 @@ component__get <- function(
         cli::cli_abort("Unknown weather component: {.val {key}}.")
     }
     get(key, envir = registry, inherits = FALSE)
-}
-# }}}
-
-# Return inspectable registry metadata without exposing executable functions.
-# component__list {{{
-component__list <- function(
-    stage = NULL,
-    registry = WEATHER_COMPONENT_REGISTRY
-) {
-    checkmate::assert_choice(
-        stage,
-        WEATHER_COMPONENT_STAGES,
-        null.ok = TRUE
-    )
-    checkmate::assert_environment(registry)
-    keys <- ls(envir = registry, all.names = TRUE)
-    components <- lapply(keys, get, envir = registry, inherits = FALSE)
-    if (!is.null(stage)) {
-        components <- Filter(
-            function(component) identical(component@stage, stage),
-            components
-        )
-    }
-    if (!length(components)) {
-        return(data.table::data.table(
-            stage = character(),
-            name = character(),
-            label = character(),
-            input_kinds = character(),
-            output_kinds = character(),
-            scopes = character(),
-            stochastic = logical()
-        ))
-    }
-    out <- data.table::rbindlist(lapply(components, function(component) {
-        data.table::data.table(
-            stage = component@stage,
-            name = component@name,
-            label = component@label,
-            input_kinds = paste(component@input_kinds, collapse = ","),
-            output_kinds = paste(component@output_kinds, collapse = ","),
-            scopes = paste(component@scopes, collapse = ","),
-            stochastic = component@stochastic
-        )
-    }))
-    # Use explicit column access so package checks do not treat temporary
-    # ordering columns as unresolved symbols.
-    data.table::set(
-        out,
-        j = ".stage_order",
-        value = match(out[["stage"]], WEATHER_COMPONENT_STAGES)
-    )
-    data.table::setorderv(out, c(".stage_order", "name"))
-    data.table::set(out, j = ".stage_order", value = NULL)
-    out[]
 }
 # }}}
 

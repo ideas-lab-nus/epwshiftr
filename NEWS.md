@@ -1,5 +1,47 @@
 # epwshiftr (development version)
 
+* Publish related Shift workflow result records in one transaction before updating
+  the live snapshot, preserving distinct step, run and execution-attempt states. (#331)
+
+* Keep extraction and morphing task serialization beside their resume decoding,
+  reuse execution arguments when saving tasks, and check resumability once before
+  changing run state. (#332)
+
+* Share Store extraction recovery between ordinary and pooled readers, retaining
+  HTTP fallback, resumable transfer sessions and both remote and local failures,
+  including failures while publishing recovered payloads to the shared cache. (#330)
+
+* Remove obsolete Dataset spatial forwarding methods, unused internal arguments,
+  and repeated empty-input checks; simplify artifact read limits and remove
+  duplicate persistence and implementation-detail test assertions. (#329)
+
+* Simplify Downloader job completion, configuration serialization and async
+  submission; remove unused internal options and the obsolete stop lookup. (#329)
+
+* Remove unused Dataset task-retention options and repeated internal checks;
+  propagate workflow inspection query failures instead of returning empty records. (#329)
+
+* Remove unused downloader helpers and internal catalog wrappers; consolidate
+  original-morphing options and simplify receipt and input-contract checks.
+  Remove self-validation of the fixed transform catalog and repeated catalog
+  lookups while retaining public argument and persisted-contract validation. (#329)
+
+* Remove unused internal CLI helpers and registry replacement options, and
+  consolidate recipe and reanalysis specification validation in S7. (#329)
+
+* Propagate download-task read errors through Store status reports instead of
+  treating them as empty task lists, and simplify derived workflow status fields. (#329)
+
+* Centralize weather component registration and remove its unused replacement
+  policy; share specification validation while retaining normalization and
+  scientific input constraints. (#329)
+
+* Simplify regional reads and Store receipt checks, and share run diagnostics,
+  manifest owner validation, and weather input requirement records. (#329)
+
+* Remove the unused manifest lock age argument and consolidate download
+  policy validation while preserving older configurations and explicit `NULL` limits. (#328)
+
 * Use a shared saved-plan validator for ERA5 downloads and offline readback. (#327)
 
 * Publish a finished background download's step, run, and event in one Store

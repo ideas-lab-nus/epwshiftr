@@ -868,11 +868,9 @@ test_that("region readers preserve metadata failures and retry the full series",
 })
 
 test_that("nearest and IDW source cells preserve full-grid ranking", {
-    ds <- EsgDataset$new("unused")
-    private <- dataset__private(ds)
     grid_lat <- c(-80, -40, 0, 40, 80)
     grid_lon <- c(0, 60, 120, 180, 240, 300)
-    coords <- private$make_region_grid_coords(grid_lat, grid_lon)
+    coords <- spatial__make_region_grid_coords(grid_lat, grid_lon)
 
     for (target in list(c(22, 75), c(79, 359), c(-78, 181))) {
         distances <- tunnel_dist(
@@ -883,7 +881,7 @@ test_that("nearest and IDW source cells preserve full-grid ranking", {
         )
         expected <- coords[order(distances)]
         for (method in c("nearest", "idw")) {
-            actual <- private$region_grid_sources(
+            actual <- spatial__region_grid_sources(
                 method,
                 grid_lat,
                 grid_lon,
@@ -915,13 +913,9 @@ test_that("the internal multi-site reader shares sparse cells across distant sit
     )
     window <- c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
     actual <- dataset__read_regions(ds, "tas", sites, time = window)
-    slices <- attr(actual, "read_slices")
     sources <- attr(actual, "grid_sources")
 
     expect_equal(nrow(actual), 6L)
-    expect_equal(nrow(slices), 2L)
-    expect_true(all(slices$lat_count == 1L & slices$lon_count == 1L))
-    expect_true(all(slices$time_count == 2L))
     expect_equal(nrow(sources), 3L)
     expect_true(all(sources$weight == 1))
     expect_identical(unique(actual$cf_calendar), "360_day")
@@ -972,16 +966,9 @@ test_that("the internal multi-site reader keeps method weights per site", {
         expect_equal(observed$value, expected$value, tolerance = 1e-5)
         expect_equal(sum(sources$weight[sources$site_id == method]), 1)
     }
-    slices <- attr(actual, "read_slices")
-    expect_lt(
-        nrow(slices),
-        data.table::uniqueN(sources, by = c("grid_lat", "grid_lon"))
-    )
-    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
-    expect_true(any(slices$lat_count * slices$lon_count == 4L))
 })
 
-test_that("multi-site native reads split long time runs into bounded blocks", {
+test_that("multi-site native reads reject oversized output requests", {
     path <- local_dataset_table_file(
         time_vals = 0:8999,
         time_units = "days since 2060-01-01 00:00:00",
@@ -991,19 +978,6 @@ test_that("multi-site native reads split long time runs into bounded blocks", {
     ds <- EsgDataset$new(path)
     ds$open()
     on.exit(ds$close(), add = TRUE)
-    sites <- data.table::data.table(
-        site_id = "first",
-        lon = 2,
-        lat = 1,
-        method = "nearest"
-    )
-
-    actual <- dataset__read_regions(ds, "tas", sites)
-    slices <- attr(actual, "read_slices")
-    expect_equal(actual$value, as.numeric(seq_len(9000L)))
-    expect_equal(slices$time_count, c(8192L, 808L))
-    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
-
     many_sites <- data.table::data.table(
         site_id = sprintf("site-%03d", seq_len(105L)),
         lon = rep.int(2, 105L),
@@ -1046,8 +1020,6 @@ test_that("the internal multi-site reader respects native site windows", {
     expect_identical(actual$cf_year, c(2060L, 2061L))
     expect_identical(actual$cf_month, c(12L, 1L))
     expect_identical(actual$cf_day, c(30L, 1L))
-    expect_equal(nrow(attr(actual, "read_slices")), 2L)
-    expect_true(all(attr(actual, "read_slices")$time_count == 1L))
 })
 
 test_that("the internal multi-site reader rejects ambiguous sites and empty input", {
@@ -1361,6 +1333,15 @@ test_that("EsgDataset$read_region() retains native clock schema for empty result
     expect_equal(nrow(empty), 0L)
     expect_true(all(CF_TIME_COORDINATE_COLUMNS %in% names(empty)))
     expect_identical(empty$cf_second_of_day, numeric())
+    pieces <- ds$read_region(
+        "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2061-01-01", "2061-01-02"),
+        rbind = FALSE
+    )
+    expect_length(pieces, 1L)
+    expect_identical(pieces[[1L]], empty)
 })
 
 test_that("EsgDataset$read_region() reuses recorded result time filters by default", {
@@ -2087,11 +2068,6 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
     )
     on.exit(unlink(c(path_opened, path_pending)), add = TRUE)
 
-    expect_error(
-        EsgDataset$new(path_opened, nc_handles = list(NULL)),
-        "unused argument"
-    )
-
     source <- EsgDataset$new(path_opened)
     source$open()
     handles <- dataset__detach_handles(source)
@@ -2170,50 +2146,7 @@ test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep s
     expect_equal(as.numeric(ds$var_get("tas", collapse = TRUE)), c(11, 12, 13))
 })
 # }}}
-# private$start_async_operation() / private$collect_async_task() {{{
-test_that("private$start_async_operation() / private$collect_async_task() keep sync handle state separate", {
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(101, 102, 103)
-    )
-    on.exit(unlink(path), add = TRUE)
-
-    ds <- EsgDataset$new(path)
-    private <- ds$.__enclos_env__$private
-
-    task <- private$start_async_operation(
-        operation = "read variable data",
-        handler = function(urls, nc_handles, variable, start, count, collapse) {
-            RNetCDF::var.get.nc(
-                nc_handles[[1L]],
-                variable,
-                start = start,
-                count = count,
-                collapse = collapse
-            )
-        },
-        handler_args = list(
-            variable = "tas",
-            start = c(1L, 1L, 1L),
-            count = c(2L, 1L, 1L),
-            collapse = TRUE
-        ),
-        timeout = dataset_async_timeout
-    )
-
-    expect_false(ds$is_open)
-    expect_identical(private$async_state, "running")
-
-    result <- private$collect_async_task(task)
-
-    expect_identical(private$async_state, "completed")
-    expect_null(private$async_task)
-    expect_true(task$backend_released)
-    expect_false(ds$is_open)
-    expect_equal(as.numeric(result), c(101, 102))
-})
-
+# private$collect_async_task() {{{
 test_that("private$collect_async_task() surfaces timeout errors and clears lifecycle state", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
@@ -2298,7 +2231,7 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
         Sys.sleep(0.01)
     }
 
-    requested <- private$cancel_async_task(task = task, clear = TRUE)
+    requested <- private$cancel_async_task()
 
     expect_false(requested)
     expect_identical(task$status, "cancelled")

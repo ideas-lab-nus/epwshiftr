@@ -1,4 +1,4 @@
-# downloader_test_df() / downloader_test_file_url() / downloader_test_queued_job() / downloader_test_async_task() {{{
+# downloader_test_df() / downloader_test_file_url() / downloader_test_queued_job() {{{
 # downloader_test_df {{{
 downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
@@ -55,14 +55,6 @@ downloader_test_queued_job <- function(label = "job") {
 }
 # }}}
 
-# downloader_test_async_task {{{
-downloader_test_async_task <- function(dl, task_id = "async-task") {
-    task <- DownloadTask$new("file:///tmp/async-source.bin", "async-target.bin")
-    task$update_progress(5L, 10L)
-    priv(dl)$async_tasks[[task_id]] <- task
-    task_id
-}
-# }}}
 # }}}
 # Downloader$new() {{{
 test_that("Downloader$new()", {
@@ -196,12 +188,6 @@ test_that("Downloader$enqueue() creates sessions and tasks", {
     )
 
     expect_true(file.exists(dl$manifest))
-    expect_true(schema_validate(
-        SCHEMA_DOWNLOADER_CONFIG,
-        dl$config,
-        mode = "test",
-        name = "downloader-config"
-    ))
 
     plan <- downloader_test_df(
         logical_file_id = "tracking:local-test",
@@ -688,29 +674,6 @@ test_that("serialized downloader worker dependencies support both worker algorit
         downloader__worker_dependencies(),
         NULL
     ))
-    expect_named(
-        dependencies,
-        c(
-            "as_df",
-            "one_chr",
-            "normalize_count",
-            "normalize_transfer_policy",
-            "checksum_file",
-            "verify_checksum",
-            "null_if_empty",
-            "curl_handle",
-            "format_byte",
-            "headers_text",
-            "resume_supported",
-            "resume_guard",
-            "copy_file_range",
-            "merge_piece_files",
-            "target_path",
-            "finalize"
-        )
-    )
-    expect_true(dependencies$verify_checksum(src, checksum, "md5"))
-
     ordinary <- downloader__worker_download(
         url = file_url,
         filename = "ordinary.bin",
@@ -1100,6 +1063,10 @@ test_that("Downloader$new() migrates older manifests", {
     ddb_exec(conn, "DROP TABLE IF EXISTS download_job")
     ddb_exec(conn, "DROP TABLE IF EXISTS download_daemon")
     ddb_exec(conn, "DROP TABLE IF EXISTS download_control")
+    ddb_exec(
+        conn,
+        "ALTER TABLE download_config DROP COLUMN transfer_piece_size"
+    )
     ddb_disconnect(conn, shutdown = TRUE)
     conn <- NULL
 
@@ -1109,6 +1076,8 @@ test_that("Downloader$new() migrates older manifests", {
         manifest = manifest,
         n_workers = 0L
     )
+    expect_identical(restored$transfer_policy$piece_size, 16777216L)
+    expect_null(restored$transfer_policy$bandwidth_limit)
     rm(restored)
     gc()
 
@@ -2330,60 +2299,14 @@ test_that("Downloader$download() offline mode allows verified files", {
     expect_equal(normalizePath(result), normalizePath(test_file))
 })
 # }}}
-# Downloader$get_tasks() {{{
-test_that("Downloader$get_tasks()", {
+# Downloader async task access {{{
+test_that("async task access handles empty lists and rejects unknown IDs", {
     dl <- Downloader$new(n_workers = 0L)
-    task_id <- downloader_test_async_task(dl, "async-get-tasks")
-
-    tasks <- dl$get_tasks()
-    expect_named(tasks, task_id)
-    expect_s3_class(tasks[[task_id]], "DownloadTask")
-})
-# }}}
-# Downloader$get_task_status() {{{
-test_that("Downloader$get_task_status()", {
-    dl <- Downloader$new(n_workers = 0L)
-    task_id <- downloader_test_async_task(dl, "async-status")
-    priv(dl)$async_tasks[[task_id]]$mark_completed()
-
-    status <- dl$get_task_status(task_id)
-    expect_equal(status$task_id, task_id)
-    expect_equal(status$url, "file:///tmp/async-source.bin")
-    expect_equal(status$filename, "async-target.bin")
-    expect_equal(status$status, DownloadStatus$Completed)
-    expect_equal(status$progress, 5L)
-    expect_equal(status$total, 10L)
-    expect_null(status$error)
-    expect_s3_class(status$completed_at, "POSIXct")
-
+    expect_equal(dl$wait_for_tasks(progress = FALSE), list())
     expect_error(
         dl$get_task_status("missing-task"),
         "Task ID 'missing-task' not found"
     )
-})
-# }}}
-# Downloader$wait_for_tasks() {{{
-test_that("Downloader$wait_for_tasks()", {
-    dl <- Downloader$new(n_workers = 0L)
-    expect_equal(dl$wait_for_tasks(progress = FALSE), list())
-
-    task_id <- downloader_test_async_task(dl, "async-wait")
-    results <- dl$wait_for_tasks(task_id, progress = FALSE)
-
-    expect_named(results, task_id)
-    expect_equal(results[[task_id]]$task_id, task_id)
-    expect_equal(results[[task_id]]$status, DownloadStatus$Pending)
-    expect_equal(results[[task_id]]$progress, 5L)
-    expect_equal(results[[task_id]]$total, 10L)
-})
-# }}}
-# Downloader$cancel_task() {{{
-test_that("Downloader$cancel_task()", {
-    dl <- Downloader$new(n_workers = 0L)
-    task_id <- downloader_test_async_task(dl, "async-cancel")
-
-    cancelled <- suppressMessages(dl$cancel_task(task_id))
-    expect_false(cancelled)
     expect_error(
         dl$cancel_task("missing-task"),
         "Task ID 'missing-task' not found"
@@ -2531,7 +2454,15 @@ test_that("Downloader owns its worker pool without interrupting other instances"
     on.exit(first$.__enclos_env__$private$finalize(), add = TRUE)
     on.exit(second$.__enclos_env__$private$finalize(), add = TRUE)
     one <- first$download(url, block = FALSE)
-    first$wait_for_tasks(one, progress = FALSE)
+    expect_named(first$get_tasks(), one)
+    expect_s3_class(first$get_tasks()[[one]], "DownloadTask")
+    result <- first$wait_for_tasks(one, progress = FALSE)[[one]]
+    expect_identical(result$task_id, one)
+    expect_identical(result$url, url)
+    expect_identical(result$filename, "source.bin")
+    expect_identical(result$status, DownloadStatus$Completed)
+    expect_null(result$error)
+    expect_s3_class(result$completed_at, "POSIXct")
     two <- second$download(
         url,
         checksum = checksum,
@@ -2765,51 +2696,55 @@ lock_recovery_test__owner <- function(directory) {
     jsonlite::read_json(file.path(directory, 'owner.json'))
 }
 
-test_that('both manifest users immediately recover an exited local owner', {
-    for (acquire in list(
-        manifest_acquire_lock,
-        downloader__manifest_acquire_lock
-    )) {
-        root <- withr::local_tempdir()
-        path <- file.path(root, 'manifest')
-        lock <- paste0(path, '.lock')
-        dir.create(lock)
-        owner <- lock_recovery_test__owner(lock)
-        expect_false(downloader__pid_alive(owner$pid))
-        release <- acquire(path, timeout = 0)
-        current <- jsonlite::read_json(file.path(lock, 'owner.json'))
-        expect_equal(current$pid, Sys.getpid())
-        expect_true(nzchar(current$token))
-        expect_length(list.files(root, 'orphan'), 1L)
-        release()
-        expect_false(dir.exists(lock))
-    }
+test_that("manifest acquisition recovers an exited local owner immediately", {
+    root <- withr::local_tempdir()
+    path <- file.path(root, "manifest")
+    lock <- paste0(path, ".lock")
+    dir.create(lock)
+    lock_recovery_test__owner(lock)
+
+    release <- manifest_acquire_lock(path, timeout = 0)
+    current <- jsonlite::read_json(file.path(lock, "owner.json"))
+    expect_identical(current$pid, Sys.getpid())
+    expect_length(list.files(root, "orphan"), 1L)
+    release()
+    expect_false(dir.exists(lock))
 })
 
-test_that('live local and foreign owners cannot be reclaimed by age', {
-    for (acquire in list(
-        manifest_acquire_lock,
-        downloader__manifest_acquire_lock
-    )) {
-        root <- withr::local_tempdir()
-        path <- file.path(root, 'manifest')
-        release <- acquire(path, timeout = 0)
-        lock <- paste0(path, '.lock')
-        Sys.setFileTime(lock, Sys.time() - 86400 * 2)
-        expect_error(acquire(path, timeout = 0, stale_after = 1), 'locked')
-        owner <- jsonlite::read_json(file.path(lock, 'owner.json'))
-        owner$hostname <- paste0(owner$hostname, '-foreign')
-        jsonlite::write_json(
-            owner,
-            file.path(lock, 'owner.json'),
-            auto_unbox = TRUE
-        )
-        Sys.setFileTime(lock, Sys.time() - 86400 * 2)
-        expect_error(acquire(path, timeout = 0, stale_after = 1), 'locked')
-        release()
-        # Restore the local identity only for scoped fixture cleanup.
-        unlink(lock, recursive = TRUE)
-    }
+test_that("manifest acquisition respects old locks with live or unknown owners", {
+    root <- withr::local_tempdir()
+    path <- file.path(root, "manifest")
+    lock <- paste0(path, ".lock")
+    owner_path <- file.path(lock, "owner.json")
+
+    release <- manifest_acquire_lock(path, timeout = 0)
+    Sys.setFileTime(lock, Sys.time() - 2 * 86400)
+    expect_error(manifest_acquire_lock(path, timeout = 0), "locked")
+    release()
+    expect_false(dir.exists(lock))
+
+    dir.create(lock)
+    Sys.setFileTime(lock, Sys.time() - 2 * 86400)
+    expect_error(manifest_acquire_lock(path, timeout = 0), "locked")
+    writeLines("{", owner_path)
+    Sys.setFileTime(lock, Sys.time() - 2 * 86400)
+    expect_error(manifest_acquire_lock(path, timeout = 0), "locked")
+
+    # A fractional PID must never be coerced to the exited process's PID,
+    # even when the difference falls within checkmate's default tolerance.
+    owner <- lock_recovery_test__owner(lock)
+    fractional <- owner
+    fractional$pid <- fractional$pid + 1e-8
+    jsonlite::write_json(fractional, owner_path, auto_unbox = TRUE, digits = NA)
+    expect_error(manifest_acquire_lock(path, timeout = 0), "locked")
+
+    # An exited local PID also cannot authorize taking over a foreign lock.
+    foreign <- owner
+    foreign$hostname <- paste0(foreign$hostname, "-foreign")
+    jsonlite::write_json(foreign, owner_path, auto_unbox = TRUE)
+    expect_error(manifest_acquire_lock(path, timeout = 0), "locked")
+    expect_identical(jsonlite::read_json(owner_path), foreign)
+    expect_length(list.files(root, "orphan"), 0L)
 })
 
 test_that('a release closure never removes a newer lock owner', {
@@ -2837,6 +2772,7 @@ test_that('simultaneous orphan recovery preserves mutual exclusion', {
         paste0('downloader__manifest_lock_', names),
         'downloader__manifest_reclaim_lock',
         'downloader__manifest_acquire_lock',
+        'downloader__owner_identity_valid',
         'downloader__local_pid_absent'
     )
     env <- new.env(parent = baseenv())
@@ -2847,61 +2783,52 @@ test_that('simultaneous orphan recovery preserves mutual exclusion', {
     }
     functions <- file.path(root, 'functions.rds')
     saveRDS(env, functions)
-    children <- file.path(root, paste0('child-', 1:3))
-    for (child in children) {
-        code <- sprintf(
-            paste0(
-                'env <- readRDS(%s); ',
-                'release <- env$downloader__manifest_acquire_lock(%s, timeout=15); ',
-                'ok <- dir.create(%s, showWarnings=FALSE); ',
-                'if (ok) { Sys.sleep(0.1); unlink(%s, recursive=TRUE) }; ',
-                'release(); writeLines(as.character(ok), %s)'
-            ),
-            encodeString(functions, quote = '"'),
-            encodeString(path, quote = '"'),
-            encodeString(file.path(root, 'inside'), quote = '"'),
-            encodeString(file.path(root, 'inside'), quote = '"'),
-            encodeString(child, quote = '"')
+    script <- file.path(root, "waiter.R")
+    writeLines(
+        c(
+            "args <- commandArgs(trailingOnly = TRUE)",
+            "env <- readRDS(args[[1L]])",
+            "root <- dirname(args[[1L]])",
+            "file.create(args[[2L]])",
+            "deadline <- Sys.time() + 15",
+            "while (!file.exists(file.path(root, 'start')) && Sys.time() < deadline) Sys.sleep(0.02)",
+            "stopifnot(file.exists(file.path(root, 'start')))",
+            "release <- env$downloader__manifest_acquire_lock(file.path(root, 'manifest'), timeout = 15)",
+            "inside <- file.path(root, 'inside')",
+            "stopifnot(dir.create(inside, showWarnings = FALSE))",
+            "Sys.sleep(0.1)",
+            "unlink(inside, recursive = TRUE)",
+            "release()"
+        ),
+        script
+    )
+    ready <- file.path(root, paste0("ready-", seq_len(3L)))
+    test_env <- environment()
+    children <- lapply(ready, function(marker) {
+        child <- processx::process$new(
+            file.path(R.home("bin"), "Rscript"),
+            c("--vanilla", script, functions, marker),
+            stdout = paste0(marker, ".log"),
+            stderr = "2>&1",
+            cleanup_tree = TRUE
         )
-        script <- paste0(child, '.R')
-        writeLines(code, script)
-        system2(
-            file.path(R.home('bin'), 'Rscript'),
-            c('--vanilla', shQuote(script)),
-            wait = FALSE,
-            stdout = paste0(child, '.log'),
-            stderr = paste0(child, '.log')
-        )
-    }
-    deadline <- Sys.time() + 20
-    while (!all(file.exists(children)) && Sys.time() < deadline) {
-        Sys.sleep(0.1)
-    }
-    expect_true(all(file.exists(children)))
-    if (all(file.exists(children))) {
-        expect_identical(
-            vapply(children, readLines, character(1), USE.NAMES = FALSE),
-            rep('TRUE', 3)
-        )
-    }
-})
+        withr::defer(if (child$is_alive()) child$kill_tree(), envir = test_env)
+        child
+    })
 
-# Age alone cannot establish that an unidentified process has stopped writing.
-test_that("unidentified and malformed owners retain the manifest lock", {
-    path <- file.path(withr::local_tempdir(), "manifest")
-    lock <- manifest_lock_path(path)
-    dir.create(lock)
-    Sys.setFileTime(lock, Sys.time() - 3600)
-    expect_error(
-        manifest_acquire_lock(path, timeout = 0, stale_after = 1),
-        "locked"
-    )
-    writeLines("{", manifest_lock_metadata(lock))
-    expect_error(
-        manifest_acquire_lock(path, timeout = 0, stale_after = 1),
-        "locked"
-    )
-    expect_true(dir.exists(lock))
+    # Release the waiters together after every process has started.
+    deadline <- Sys.time() + 10
+    while (!all(file.exists(ready)) && Sys.time() < deadline) {
+        Sys.sleep(0.02)
+    }
+    expect_true(all(file.exists(ready)))
+    file.create(file.path(root, "start"))
+    for (child in children) {
+        child$wait(timeout = 20000)
+        expect_identical(child$get_exit_status(), 0L)
+    }
+    expect_length(list.files(root, "orphan"), 1L)
+    expect_false(dir.exists(paste0(path, ".lock")))
 })
 
 # vim: fdm=marker :

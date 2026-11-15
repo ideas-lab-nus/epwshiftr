@@ -238,8 +238,6 @@ test_that("single and multiple site calls use one batch contract", {
     expect_s7_class(single, ShiftBatch)
     expect_identical(single@ids$batch_id, wrapped@ids$batch_id)
     expect_identical(single@meta$manifest$site_id, c("A", "A"))
-    expect_false("epw" %in% names(formals(shift_epw_future)))
-    expect_identical(names(formals(shift_epw_future))[[1L]], "sites")
 })
 
 test_that("version 3 location arrays plan and restore through the CLI", {
