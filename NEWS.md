@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Simplify regional reads and Store receipt checks, and share run diagnostics,
+  manifest owner validation, and weather input requirement records. (#329)
+
 * Remove the unused manifest lock age argument and consolidate download
   policy validation while preserving older configurations and explicit `NULL` limits. (#328)
 
