@@ -4498,6 +4498,46 @@ test_that("persistent HTTP fallback retains checksum failures", {
     expect_equal(nrow(store$query("select * from extraction_result")), 0L)
 })
 
+# The HTTP response is a valid NetCDF with the declared size and hash, but
+# its contents cannot satisfy the requested variable after the file opens.
+test_that("both Store recovery modes retain remote and local read failures", {
+    withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
+    root <- withr::local_tempdir()
+    path <- file.path(root, "source.nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L, variable_id = "huss")
+    bytes <- readBin(path, "raw", n = file.info(path)$size)
+    server <- webfakes::new_app_process(store_test__fallback_app(bytes))
+    withr::defer(server$stop())
+
+    pool <- source_pool(1L, timeout = 15)
+    withr::defer(pool$close(force = TRUE))
+    for (mode in c("ordinary", "pooled")) {
+        store <- EsgStore$new(file.path(root, mode))
+        withr::defer(store$close())
+        query <- store$add_files(store_test__fallback_files(path, server))
+        plan <- store$plan_region(
+            query,
+            104,
+            1.37,
+            c("2060-01-01", "2060-01-03")
+        )
+        result <- store$extract(
+            plan_id = plan$plan_id,
+            fallback = "auto",
+            pool = if (mode == "pooled") pool
+        )
+        if (mode == "pooled") {
+            store_test__drain_fallback(pool, list(result))
+            expect_identical(result$status, "done")
+            result <- result$value
+        }
+        expect_identical(result$status, "failed", info = mode)
+        expect_match(result$last_error, "OPeNDAP open failed", info = mode)
+        expect_match(result$last_error, "HTTPServer read failed", info = mode)
+        expect_equal(nrow(store$query("select * from extraction_result")), 0L)
+    }
+})
+
 # A real worker deadline leaves the original task/session and seeded partial
 # bytes recoverable. The next worker resumes Range bytes without reopening DAP.
 test_that("HTTP fallback resumes one retained session after a reader deadline", {

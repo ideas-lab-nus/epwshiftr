@@ -1,5 +1,9 @@
 # epwshiftr (development version)
 
+* Preserve both the OPeNDAP and HTTPServer read errors when Store fallback
+  fails, and update Downloader manifest rows atomically so an interrupted
+  reader can resume the original transfer. (#322)
+
 * Use verified committed native blocks to determine coverage in `fetch_subset()`,
   `read_subset()`, `subset_status()`, and `resume_subsets()`. Pending selection metadata
   can describe a window without counting its values as acquired. (#321)
