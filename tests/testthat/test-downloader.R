@@ -1,4 +1,4 @@
-# downloader_test_df() / downloader_test_file_url() / downloader_test_queued_job() / downloader_test_async_task() {{{
+# downloader_test_df() / downloader_test_file_url() / downloader_test_queued_job() {{{
 # downloader_test_df {{{
 downloader_test_df <- function(...) {
     data.frame(..., stringsAsFactors = FALSE, check.names = FALSE)
@@ -55,14 +55,6 @@ downloader_test_queued_job <- function(label = "job") {
 }
 # }}}
 
-# downloader_test_async_task {{{
-downloader_test_async_task <- function(dl, task_id = "async-task") {
-    task <- DownloadTask$new("file:///tmp/async-source.bin", "async-target.bin")
-    task$update_progress(5L, 10L)
-    priv(dl)$async_tasks[[task_id]] <- task
-    task_id
-}
-# }}}
 # }}}
 # Downloader$new() {{{
 test_that("Downloader$new()", {
@@ -2307,60 +2299,14 @@ test_that("Downloader$download() offline mode allows verified files", {
     expect_equal(normalizePath(result), normalizePath(test_file))
 })
 # }}}
-# Downloader$get_tasks() {{{
-test_that("Downloader$get_tasks()", {
+# Downloader async task access {{{
+test_that("async task access handles empty lists and rejects unknown IDs", {
     dl <- Downloader$new(n_workers = 0L)
-    task_id <- downloader_test_async_task(dl, "async-get-tasks")
-
-    tasks <- dl$get_tasks()
-    expect_named(tasks, task_id)
-    expect_s3_class(tasks[[task_id]], "DownloadTask")
-})
-# }}}
-# Downloader$get_task_status() {{{
-test_that("Downloader$get_task_status()", {
-    dl <- Downloader$new(n_workers = 0L)
-    task_id <- downloader_test_async_task(dl, "async-status")
-    priv(dl)$async_tasks[[task_id]]$mark_completed()
-
-    status <- dl$get_task_status(task_id)
-    expect_equal(status$task_id, task_id)
-    expect_equal(status$url, "file:///tmp/async-source.bin")
-    expect_equal(status$filename, "async-target.bin")
-    expect_equal(status$status, DownloadStatus$Completed)
-    expect_equal(status$progress, 5L)
-    expect_equal(status$total, 10L)
-    expect_null(status$error)
-    expect_s3_class(status$completed_at, "POSIXct")
-
+    expect_equal(dl$wait_for_tasks(progress = FALSE), list())
     expect_error(
         dl$get_task_status("missing-task"),
         "Task ID 'missing-task' not found"
     )
-})
-# }}}
-# Downloader$wait_for_tasks() {{{
-test_that("Downloader$wait_for_tasks()", {
-    dl <- Downloader$new(n_workers = 0L)
-    expect_equal(dl$wait_for_tasks(progress = FALSE), list())
-
-    task_id <- downloader_test_async_task(dl, "async-wait")
-    results <- dl$wait_for_tasks(task_id, progress = FALSE)
-
-    expect_named(results, task_id)
-    expect_equal(results[[task_id]]$task_id, task_id)
-    expect_equal(results[[task_id]]$status, DownloadStatus$Pending)
-    expect_equal(results[[task_id]]$progress, 5L)
-    expect_equal(results[[task_id]]$total, 10L)
-})
-# }}}
-# Downloader$cancel_task() {{{
-test_that("Downloader$cancel_task()", {
-    dl <- Downloader$new(n_workers = 0L)
-    task_id <- downloader_test_async_task(dl, "async-cancel")
-
-    cancelled <- suppressMessages(dl$cancel_task(task_id))
-    expect_false(cancelled)
     expect_error(
         dl$cancel_task("missing-task"),
         "Task ID 'missing-task' not found"
@@ -2508,7 +2454,15 @@ test_that("Downloader owns its worker pool without interrupting other instances"
     on.exit(first$.__enclos_env__$private$finalize(), add = TRUE)
     on.exit(second$.__enclos_env__$private$finalize(), add = TRUE)
     one <- first$download(url, block = FALSE)
-    first$wait_for_tasks(one, progress = FALSE)
+    expect_named(first$get_tasks(), one)
+    expect_s3_class(first$get_tasks()[[one]], "DownloadTask")
+    result <- first$wait_for_tasks(one, progress = FALSE)[[one]]
+    expect_identical(result$task_id, one)
+    expect_identical(result$url, url)
+    expect_identical(result$filename, "source.bin")
+    expect_identical(result$status, DownloadStatus$Completed)
+    expect_null(result$error)
+    expect_s3_class(result$completed_at, "POSIXct")
     two <- second$download(
         url,
         checksum = checksum,

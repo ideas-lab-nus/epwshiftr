@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Simplify Downloader job completion, configuration serialization and async
+  submission; remove unused internal options and the obsolete stop lookup. (#329)
+
 * Remove unused Dataset task-retention options and repeated internal checks;
   propagate workflow inspection query failures instead of returning empty records. (#329)
 

@@ -900,7 +900,7 @@ downloader__node_policy_defaults <- function(policy = NULL) {
     checkmate::assert_list(policy, names = "unique")
     defaults <- DOWNLOADER_NODE_POLICY_DEFAULT
     for (name in names(defaults)) {
-        if (!name %in% names(policy) || is.null(policy[[name]])) {
+        if (is.null(policy[[name]])) {
             policy[[name]] <- defaults[[name]]
         }
     }
@@ -917,11 +917,11 @@ downloader__node_policy_defaults <- function(policy = NULL) {
 # }}}
 
 # downloader__nullable_count {{{
-downloader__nullable_count <- function(value, positive = TRUE, name = "value") {
+downloader__nullable_count <- function(value, name = "value") {
     if (is.null(value)) {
         return(NULL)
     }
-    checkmate::assert_count(value, positive = positive, .var.name = name)
+    checkmate::assert_count(value, positive = TRUE, .var.name = name)
     as.numeric(value)
 }
 # }}}
@@ -934,7 +934,7 @@ downloader__transfer_policy_defaults <- function(policy = NULL) {
     checkmate::assert_list(policy, names = "unique")
     defaults <- DOWNLOADER_TRANSFER_POLICY_DEFAULT
     for (name in names(defaults)) {
-        if (!name %in% names(policy) || is.null(policy[[name]])) {
+        if (is.null(policy[[name]])) {
             policy[name] <- list(defaults[[name]])
         }
     }
@@ -983,7 +983,7 @@ downloader__resource_policy_defaults <- function(policy = NULL) {
     checkmate::assert_list(policy, names = "unique")
     defaults <- DOWNLOADER_RESOURCE_POLICY_DEFAULT
     for (name in names(defaults)) {
-        if (!name %in% names(policy) || is.null(policy[[name]])) {
+        if (is.null(policy[[name]])) {
             policy[name] <- list(defaults[[name]])
         }
     }
@@ -1013,13 +1013,6 @@ downloader__config_optional_number <- function(value) {
         return(NA_real_)
     }
     as.numeric(value[[1L]])
-}
-# }}}
-
-# downloader__config_optional_character {{{
-downloader__config_optional_character <- function(value) {
-    value <- downloader__one_chr(value)
-    if (is.na(value)) NA_character_ else value
 }
 # }}}
 
@@ -1053,11 +1046,11 @@ downloader__config_flatten <- function(config) {
         retries = as.integer(config$retries),
         timeout = as.integer(config$timeout),
         ssl_verifypeer = isTRUE(config$ssl_verifypeer),
-        proxy = downloader__config_optional_character(config$proxy),
+        proxy = downloader__one_chr(config$proxy),
         connect_timeout = downloader__config_optional_integer(
             config$connect_timeout
         ),
-        useragent = downloader__config_optional_character(config$useragent),
+        useragent = downloader__one_chr(config$useragent),
         cleanup = isTRUE(config$cleanup),
         n_workers = as.integer(config$n_workers),
         node_cooldown_after_failures = as.integer(
@@ -2988,7 +2981,6 @@ Downloader <- R6::R6Class(
                         url,
                         filename,
                         subdir,
-                        progress,
                         overwrite,
                         checksum,
                         checksum_type,
@@ -5770,11 +5762,6 @@ Downloader <- R6::R6Class(
                     return(invisible(job))
                 }
                 now <- downloader__now()
-                job$status <- status
-                job$completed_at <- now
-                job$heartbeat_at <- now
-                job$exit_code <- as.integer(exit_code)
-                job$error <- downloader__one_chr(error)
                 private$update_job_progress(job_id)
                 job <- private$select_jobs(job_id = job_id)
                 job$status <- status
@@ -5792,17 +5779,6 @@ Downloader <- R6::R6Class(
                 )
                 job
             })
-        },
-        # }}}
-
-        # job_stop_requested {{{
-        job_stop_requested = function(job_id) {
-            controls <- private$select_controls(
-                target_type = "job",
-                target_id = job_id,
-                status = "queued"
-            )
-            any(controls$command %in% "stop")
         },
         # }}}
 
@@ -8744,7 +8720,6 @@ Downloader <- R6::R6Class(
             url,
             filename,
             subdir,
-            progress,
             overwrite,
             checksum,
             checksum_type,
@@ -8775,10 +8750,7 @@ Downloader <- R6::R6Class(
             task <- DownloadTask$new(url, filename)
             private$async_tasks[[task_id]] <- task
 
-            # Start mirai download
-            if (!requireNamespace("mirai", quietly = TRUE)) {
-                stop("mirai package required for async downloads")
-            }
+            # Pool setup owns dependency checks and runs once per submission.
             private$ensure_mirai_daemons()
 
             # Capture self parameters for mirai
@@ -8795,8 +8767,6 @@ Downloader <- R6::R6Class(
                 transfer_policy = private$transfer_policy_config,
                 resource_policy = private$resource_policy_config
             )
-
-            private$ensure_mirai_daemons()
 
             task$mirai_obj <- mirai::mirai(
                 {
