@@ -2776,9 +2776,16 @@ test_that("manifest acquisition respects old locks with live or unknown owners",
     Sys.setFileTime(lock, Sys.time() - 2 * 86400)
     expect_error(manifest_acquire_lock(path, timeout = 0), "locked")
 
-    # Use a PID known to have exited locally to distinguish hostname checks
-    # from the separate check that a process is still running.
-    foreign <- lock_recovery_test__owner(lock)
+    # A fractional PID must never be coerced to the exited process's PID,
+    # even when the difference falls within checkmate's default tolerance.
+    owner <- lock_recovery_test__owner(lock)
+    fractional <- owner
+    fractional$pid <- fractional$pid + 1e-8
+    jsonlite::write_json(fractional, owner_path, auto_unbox = TRUE, digits = NA)
+    expect_error(manifest_acquire_lock(path, timeout = 0), "locked")
+
+    # An exited local PID also cannot authorize taking over a foreign lock.
+    foreign <- owner
     foreign$hostname <- paste0(foreign$hostname, "-foreign")
     jsonlite::write_json(foreign, owner_path, auto_unbox = TRUE)
     expect_error(manifest_acquire_lock(path, timeout = 0), "locked")

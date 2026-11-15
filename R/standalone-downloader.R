@@ -302,16 +302,12 @@ downloader__manifest_lock_metadata <- function(lock_dir) {
 # using them as evidence in a local process lookup.
 # downloader__owner_identity_valid {{{
 downloader__owner_identity_valid <- function(pid, hostname) {
-    length(pid) == 1L &&
-        is.numeric(pid) &&
-        !is.na(pid) &&
-        pid > 0 &&
-        pid <= .Machine$integer.max &&
-        pid == as.integer(pid) &&
-        is.character(hostname) &&
-        length(hostname) == 1L &&
-        !is.na(hostname) &&
-        nzchar(hostname)
+    # Check integrality explicitly: checkmate 2.0.0 rejects double PIDs with
+    # zero tolerance even when their value is an exact integer.
+    is.numeric(pid) &&
+        checkmate::test_count(pid, positive = TRUE) &&
+        pid == trunc(pid) &&
+        checkmate::test_string(hostname, min.chars = 1L)
 }
 # }}}
 
