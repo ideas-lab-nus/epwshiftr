@@ -104,10 +104,7 @@ WeatherInputRequirement <- S7::new_class(
                 ))
             }
         }
-        if (
-            length(self@representations) &&
-                !all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)
-        ) {
+        if (!all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)) {
             return(
                 "`representations` contains an unknown input representation."
             )
@@ -198,17 +195,10 @@ component__input_requirement <- function(
     calendars = character(),
     variable_sets = list()
 ) {
-    checkmate::assert_choice(role, WEATHER_INPUT_ROLES)
     representations <- weather__descriptor_values(
         representations,
         "representations"
     )
-    if (length(representations)) {
-        checkmate::assert_subset(
-            representations,
-            WEATHER_INPUT_REPRESENTATIONS
-        )
-    }
     WeatherInputRequirement(
         role = role,
         representations = representations,
@@ -510,61 +500,6 @@ component__get <- function(
         cli::cli_abort("Unknown weather component: {.val {key}}.")
     }
     get(key, envir = registry, inherits = FALSE)
-}
-# }}}
-
-# Return inspectable registry metadata without exposing executable functions.
-# component__list {{{
-component__list <- function(
-    stage = NULL,
-    registry = WEATHER_COMPONENT_REGISTRY
-) {
-    checkmate::assert_choice(
-        stage,
-        WEATHER_COMPONENT_STAGES,
-        null.ok = TRUE
-    )
-    checkmate::assert_environment(registry)
-    keys <- ls(envir = registry, all.names = TRUE)
-    components <- lapply(keys, get, envir = registry, inherits = FALSE)
-    if (!is.null(stage)) {
-        components <- Filter(
-            function(component) identical(component@stage, stage),
-            components
-        )
-    }
-    if (!length(components)) {
-        return(data.table::data.table(
-            stage = character(),
-            name = character(),
-            label = character(),
-            input_kinds = character(),
-            output_kinds = character(),
-            scopes = character(),
-            stochastic = logical()
-        ))
-    }
-    out <- data.table::rbindlist(lapply(components, function(component) {
-        data.table::data.table(
-            stage = component@stage,
-            name = component@name,
-            label = component@label,
-            input_kinds = paste(component@input_kinds, collapse = ","),
-            output_kinds = paste(component@output_kinds, collapse = ","),
-            scopes = paste(component@scopes, collapse = ","),
-            stochastic = component@stochastic
-        )
-    }))
-    # Use explicit column access so package checks do not treat temporary
-    # ordering columns as unresolved symbols.
-    data.table::set(
-        out,
-        j = ".stage_order",
-        value = match(out[["stage"]], WEATHER_COMPONENT_STAGES)
-    )
-    data.table::setorderv(out, c(".stage_order", "name"))
-    data.table::set(out, j = ".stage_order", value = NULL)
-    out[]
 }
 # }}}
 

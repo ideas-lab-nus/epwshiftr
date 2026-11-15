@@ -215,7 +215,7 @@ store_exchange__export <- function(store, private, plan_id, path) {
         done <- plans$plan_id[plans$status == "done"]
         empty <- plans$plan_id[plans$status == "empty"]
         if (
-            !setequal(unique(results$plan_id), done) ||
+            !setequal(results$plan_id, done) ||
                 any(grid$plan_id %in% empty) ||
                 !all(artifacts$kind == "extract") ||
                 !all(artifacts$status == "available") ||
@@ -398,10 +398,10 @@ store_exchange__import <- function(
         store_exchange__identity(files, local_files, file_columns, "file_key")
         done_plan_ids <- plans$plan_id[plans$status == "done"]
         if (
-            !setequal(unique(plans$file_key), files$file_key) ||
+            !setequal(plans$file_key, files$file_key) ||
                 !all(plans$status %in% c("done", "empty")) ||
                 !setequal(results$plan_id, done_plan_ids) ||
-                !setequal(unique(results$artifact_id), artifacts$artifact_id) ||
+                !setequal(results$artifact_id, artifacts$artifact_id) ||
                 anyDuplicated(artifacts$artifact_id) ||
                 !all(artifacts$kind == "extract") ||
                 !all(artifacts$status == "available") ||
@@ -492,25 +492,23 @@ store_exchange__import <- function(
             cli::cli_abort("Extraction result or grid lineage is inconsistent.")
         }
         for (table in list(results, grid_sources)) {
-            if (nrow(table)) {
-                expected <- plans[match(table$plan_id, plans$plan_id)]
-                if (
-                    !identical(table$file_key, expected$file_key) ||
-                        !identical(table$query_id, expected$query_id) ||
-                        ("variable_id" %in%
-                            names(table) &&
-                            !identical(
-                                table$variable_id,
-                                expected$variable_id
-                            )) ||
-                        ("method" %in%
-                            names(table) &&
-                            !identical(table$method, expected$method))
-                ) {
-                    cli::cli_abort(
-                        "Extraction result or grid lineage is inconsistent."
-                    )
-                }
+            expected <- plans[match(table$plan_id, plans$plan_id)]
+            if (
+                !identical(table$file_key, expected$file_key) ||
+                    !identical(table$query_id, expected$query_id) ||
+                    ("variable_id" %in%
+                        names(table) &&
+                        !identical(
+                            table$variable_id,
+                            expected$variable_id
+                        )) ||
+                    ("method" %in%
+                        names(table) &&
+                        !identical(table$method, expected$method))
+            ) {
+                cli::cli_abort(
+                    "Extraction result or grid lineage is inconsistent."
+                )
             }
         }
         reused <- local$plan_id[local$status %in% c("done", "empty")]
@@ -781,11 +779,10 @@ store_exchange__validate_plans <- function(plans, files, queries, links) {
             anyDuplicated(queries$query_id) ||
             anyDuplicated(links$link_id) ||
             !all(plans$status %in% c("pending", "failed")) ||
-            !setequal(unique(plans$file_key), files$file_key) ||
-            !setequal(unique(plans$query_id), queries$query_id) ||
-            !all(files$query_id %in% queries$query_id) ||
+            !setequal(plans$file_key, files$file_key) ||
+            !setequal(plans$query_id, queries$query_id) ||
             !all(links$query_id %in% queries$query_id) ||
-            !setequal(unique(links$file_key), files$file_key) ||
+            !setequal(links$file_key, files$file_key) ||
             anyNA(plans$time_start) ||
             anyNA(plans$time_stop) ||
             any(plans$time_start > plans$time_stop) ||

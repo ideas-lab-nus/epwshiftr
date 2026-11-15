@@ -553,7 +553,10 @@ test_that("original-morphing profiles and current recipe JSON have explicit sema
     expect_identical(legacy$options$transition_hours, 0L)
     expect_identical(legacy$options$design_conditions, "preserve")
     expect_error(
-        original_morphing__options(transition_hours = 337L),
+        epw_morph_recipe(
+            "original_morphing",
+            options = list(transition_hours = 337L)
+        ),
         "0 and 336"
     )
 
@@ -1018,7 +1021,11 @@ test_that("structured EPW headers round trip and enhanced policies recalculate",
     expect_identical(readLines(path, n = 8L), readLines(untouched, n = 8L))
 
     weather <- epw$data()
-    epw_file__apply_morph_headers(epw, weather, original_morphing__options())
+    epw_file__apply_morph_headers(
+        epw,
+        weather,
+        epw_morph_recipe("original_morphing")$options
+    )
     expect_identical(epw$header("DESIGN CONDITIONS"), "0")
     expect_identical(epw$header("GROUND TEMPERATURES")[[1L]], "3")
     expect_length(epw$header("GROUND TEMPERATURES"), 49L)

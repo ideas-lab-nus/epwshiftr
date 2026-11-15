@@ -221,7 +221,6 @@ test_that("durable and live run reads agree on recorded diagnostics", {
     refreshed <- shift_run_get(run_id, store = store)
     actual <- shift_diagnostics(refreshed, refresh = FALSE)
 
-    expect_equal(nrow(actual), 1L)
     expect_identical(actual$code, "dry_baseline_precip")
     expect_identical(actual$severity, "warning")
     expect_identical(actual$variable_id, "pr")

@@ -27,7 +27,7 @@ test_that("all seven future-weather component stages have executable contracts",
     }
 })
 
-test_that("component registries retain metadata but not serialized operations", {
+test_that("component registries store definitions and reject invalid registrations", {
     registry <- new.env(parent = emptyenv())
     signal <- component__spec(
         name = "daily_delta",
@@ -43,20 +43,6 @@ test_that("component registries retain metadata but not serialized operations", 
         component__get("signal", "daily_delta", registry),
         signal
     )
-    listed <- component__list(registry = registry)
-    expect_named(
-        listed,
-        c(
-            "stage",
-            "name",
-            "label",
-            "input_kinds",
-            "output_kinds",
-            "scopes",
-            "stochastic"
-        )
-    )
-    expect_identical(listed$name, "daily_delta")
     expect_error(
         component__register(signal, registry = registry),
         "already registered"

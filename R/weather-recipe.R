@@ -1513,12 +1513,4 @@ epw_morph_recipes <- function() {
 }
 # }}}
 
-# Return one internal complete-recipe contract by its registered key.
-#' @noRd
-# epw_morph_recipe_spec {{{
-epw_morph_recipe_spec <- function(name) {
-    recipe__get(name)
-}
-# }}}
-
 # vim: fdm=marker :

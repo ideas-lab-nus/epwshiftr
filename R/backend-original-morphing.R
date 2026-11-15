@@ -164,26 +164,25 @@ EPW_MORPH_ORIGINAL_RULES[,
     })
 ]
 
-# Validate one complete original-morphing option list before it enters a recipe. Keeping
-# this check at construction time prevents workers from interpreting malformed
-# task JSON differently after a resume.
-# original_morphing__validate_options {{{
-original_morphing__validate_options <- function(options) {
-    if (
-        !is.list(options) ||
-            is.null(names(options)) ||
-            any(!nzchar(names(options)))
-    ) {
-        cli::cli_abort(
-            "Original morphing `options` must be a named list or the result of {.fn original_morphing__options}."
-        )
-    }
-    unknown <- setdiff(
-        names(options),
-        names(EPW_MORPH_ORIGINAL_PROFILE_OPTIONS$enhanced)
-    )
-    if (length(unknown)) {
-        cli::cli_abort("Unknown original morphing option(s): {.val {unknown}}.")
+# Resolve partial options and validate the complete profile once before a recipe
+# can be persisted or sent to workers. Check unknown names before merging so
+# even an unknown option with a NULL value is rejected.
+# original_morphing__resolve_options {{{
+original_morphing__resolve_options <- function(profile, options = NULL) {
+    defaults <- EPW_MORPH_ORIGINAL_PROFILE_OPTIONS[[profile]]
+    if (is.null(options)) {
+        options <- defaults
+    } else {
+        if (!is.list(options)) {
+            cli::cli_abort("Original morphing `options` must be a named list.")
+        }
+        unknown <- setdiff(names(options), names(defaults))
+        if (length(unknown)) {
+            cli::cli_abort(
+                "Unknown original morphing option(s): {.val {unknown}}."
+            )
+        }
+        options <- utils::modifyList(defaults, unclass(options))
     }
     transition_hours <- options$transition_hours
     checkmate::assert_count(transition_hours, na.ok = FALSE)
@@ -208,31 +207,6 @@ original_morphing__validate_options <- function(options) {
 }
 # }}}
 
-# Resolve partial user options against the selected profile. This function is
-# also the single compatibility boundary used when old serialized recipes are
-# reconstructed explicitly with `profile = "legacy"`.
-# original_morphing__resolve_options {{{
-original_morphing__resolve_options <- function(profile, options = NULL) {
-    defaults <- EPW_MORPH_ORIGINAL_PROFILE_OPTIONS[[profile]]
-    if (is.null(options)) {
-        return(original_morphing__validate_options(defaults))
-    }
-    if (!is.list(options)) {
-        cli::cli_abort(
-            "Original morphing `options` must be a named list or the result of {.fn original_morphing__options}."
-        )
-    }
-    unknown <- setdiff(names(options), names(defaults))
-    if (length(unknown)) {
-        cli::cli_abort("Unknown original morphing option(s): {.val {unknown}}.")
-    }
-    original_morphing__validate_options(utils::modifyList(
-        defaults,
-        unclass(options)
-    ))
-}
-# }}}
-
 # Resolve the profile-specific method baseline independently of the backend's
 # registry default so legacy recipes retain their historical methods.
 # original_morphing__profile_methods {{{
@@ -243,70 +217,6 @@ original_morphing__profile_methods <- function(backend, profile) {
         EPW_MORPH_ORIGINAL_PROFILE_METHODS[[profile]]
     }
     unlist(methods, use.names = TRUE)
-}
-# }}}
-
-#' Configure enhanced original morphing
-#'
-#' @param transition_hours Total width in hours of each cyclic transition
-#'   centered on a month boundary. Must be between 0 and 336; `0` disables
-#'   smoothing.
-#' @param humidity_source Humidity state input: `"auto"`, `"huss"`, or
-#'   `"hurs"`.
-#' @param diffuse_model Diffuse-radiation model: `"rbl_2010"` or
-#'   `"preserve_fraction"`.
-#' @param illuminance_model Illuminance model: `"perez_1990"` or `"preserve"`.
-#' @param snow_depth Snow-depth policy: `"auto"`, `"required"`, or `"off"`.
-#' @param precipitation Precipitation policy: `"required"` scales valid
-#'   baseline wet-hour timing with CMIP precipitation, while `"off"` preserves
-#'   the baseline EPW precipitation fields without requesting `pr`.
-#' @param ground_temperatures Ground-temperature header policy:
-#'   `"recalculate"` applies the Kusuda--Achenbach model to the morphed year,
-#'   while `"preserve"` retains the baseline EPW header.
-#' @param typical_extreme_periods Typical/extreme-period header policy:
-#'   `"recalculate"` finds six hemisphere-aware periods from the morphed year,
-#'   while `"preserve"` retains the baseline EPW header.
-#' @param design_conditions Design-condition header policy. `"drop"` writes
-#'   `DESIGN CONDITIONS,0` because one morphed year cannot support a new ASHRAE
-#'   design-condition calculation; `"preserve"` retains the baseline header.
-#'
-#' @return A validated `original_morphing_options` list.
-#'
-#' @references
-#' Ridley B, Boland J, Lauret P (2010), "Modelling of diffuse solar fraction
-#' with multiple predictors", *Renewable Energy*.
-#' \doi{10.1016/j.renene.2009.07.018}
-#'
-#' Perez R, Ineichen P, Seals R, Michalsky J, Stewart R (1990), "Modeling
-#' daylight availability and irradiance components from direct and global
-#' irradiance", *Solar Energy*.
-#'
-#' EnergyPlus Weather File Data Dictionary:
-#' <https://bigladdersoftware.com/epx/docs/22-2/auxiliary-programs/energyplus-weather-file-epw-data-dictionary.html>
-#' @noRd
-# original_morphing__options {{{
-original_morphing__options <- function(
-    transition_hours = 72L,
-    humidity_source = "auto",
-    diffuse_model = "rbl_2010",
-    illuminance_model = "perez_1990",
-    snow_depth = "auto",
-    precipitation = "required",
-    ground_temperatures = "recalculate",
-    typical_extreme_periods = "recalculate",
-    design_conditions = "drop"
-) {
-    original_morphing__validate_options(list(
-        transition_hours = transition_hours,
-        humidity_source = humidity_source,
-        diffuse_model = diffuse_model,
-        illuminance_model = illuminance_model,
-        snow_depth = snow_depth,
-        precipitation = precipitation,
-        ground_temperatures = ground_temperatures,
-        typical_extreme_periods = typical_extreme_periods,
-        design_conditions = design_conditions
-    ))
 }
 # }}}
 

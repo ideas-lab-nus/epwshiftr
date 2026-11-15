@@ -223,7 +223,7 @@ test_that("BWS/BTWS recipe exposes the complete weather boundary", {
 
     backend <- epw_morph_backend("bws_btws_monthly")
     recipe <- epw_morph_recipe("bws_btws_monthly")
-    spec <- epw_morph_recipe_spec("bws_btws_monthly")
+    spec <- recipe__get("bws_btws_monthly")
 
     expect_true(backend$requires_reference)
     expect_equal(

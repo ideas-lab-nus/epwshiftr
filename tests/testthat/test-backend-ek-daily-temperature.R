@@ -121,7 +121,7 @@ test_that("Ek recipe registers its temperature-focused daily contract", {
     expect_true("ek_daily_factors" %in% epw_morph_recipes()[["name"]])
     backend <- epw_morph_backend("ek_daily_temperature")
     recipe <- epw_morph_recipe("ek_daily_factors")
-    spec <- epw_morph_recipe_spec("ek_daily_factors")
+    spec <- recipe__get("ek_daily_factors")
 
     expect_true(backend$requires_reference)
     expect_identical(recipe$policy, "paper_faithful")

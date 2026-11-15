@@ -777,12 +777,6 @@ downloader__pid_kill <- function(pid) {
 }
 # }}}
 
-# downloader__bool {{{
-downloader__bool <- function(x) {
-    isTRUE(x)
-}
-# }}}
-
 # downloader__one_chr {{{
 downloader__one_chr <- function(x) {
     if (is.null(x) || length(x) == 0L) {
@@ -790,25 +784,6 @@ downloader__one_chr <- function(x) {
     }
     out <- as.character(x[[1L]])
     if (is.na(out) || !nzchar(out)) NA_character_ else out
-}
-# }}}
-
-# downloader__absolute_path {{{
-downloader__absolute_path <- function(path) {
-    grepl("^(/|[A-Za-z]:[/\\\\])", path)
-}
-# }}}
-
-# downloader__resolve_path {{{
-downloader__resolve_path <- function(path, base = getwd()) {
-    if (is.null(path) || is.na(path) || !nzchar(path)) {
-        return(NULL)
-    }
-    path <- path.expand(path)
-    if (!downloader__absolute_path(path)) {
-        path <- file.path(base, path)
-    }
-    normalizePath(path, mustWork = FALSE, winslash = "/")
 }
 # }}}
 
@@ -1395,12 +1370,6 @@ downloader__resume_supported <- function(
         start_byte
     )
     grepl(pattern, headers, perl = TRUE)
-}
-# }}}
-
-# downloader__format_byte {{{
-downloader__format_byte <- function(x) {
-    format(as.numeric(x), scientific = FALSE, trim = TRUE)
 }
 # }}}
 

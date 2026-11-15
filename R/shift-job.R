@@ -1933,8 +1933,7 @@ shift_job__run_completion_status <- function(store, run_id) {
 # shift_job__run_event_diagnostic {{{
 shift_job__run_event_diagnostic <- function(event, run_id, store_path) {
     details <- if (
-        !is.null(event$details_json) &&
-            length(event$details_json) &&
+        length(event$details_json) &&
             !is.na(event$details_json[[1L]]) &&
             nzchar(event$details_json[[1L]])
     ) {
@@ -2324,7 +2323,7 @@ shift_job__live_time <- function(x) {
 # needed by status age calculations and watch rendering.
 # shift_job__live_table {{{
 shift_job__live_table <- function(x) {
-    if (is.null(x) || !length(x)) {
+    if (!length(x)) {
         return(data.table::data.table())
     }
     out <- data.table::as.data.table(x)

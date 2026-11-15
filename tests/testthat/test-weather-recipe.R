@@ -69,7 +69,7 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
     )
     expect_false(any(recipes$stochastic))
 
-    daily <- epw_morph_recipe_spec("epwshiftr_daily_power")
+    daily <- recipe__get("epwshiftr_daily_power")
     expect_true(S7::S7_inherits(daily, WeatherRecipeSpec))
     expect_identical(daily@backend, "daily_temperature")
     expect_identical(daily@method, "daily_temperature_delta")
@@ -133,7 +133,7 @@ test_that("complete recipes expose one comparable EPW field-role contract", {
 
 test_that("recipe registry rejects duplicate and incompatible definitions", {
     registry <- new.env(parent = emptyenv())
-    daily <- epw_morph_recipe_spec("epwshiftr_daily_power")
+    daily <- recipe__get("epwshiftr_daily_power")
 
     recipe__register(daily, registry = registry)
     expect_identical(
@@ -297,8 +297,8 @@ test_that("recipe input roles validate before backend execution", {
         monthly_variables
     )
     template <- recipe_test__weather_template()
-    faithful <- epw_morph_recipe_spec("original_morphing_monthly")
-    enhanced <- epw_morph_recipe_spec("epwshiftr_monthly")
+    faithful <- recipe__get("original_morphing_monthly")
+    enhanced <- recipe__get("epwshiftr_monthly")
 
     without_historical <- weather__new_inputs(
         weather_template = template,

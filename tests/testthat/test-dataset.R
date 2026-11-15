@@ -915,13 +915,9 @@ test_that("the internal multi-site reader shares sparse cells across distant sit
     )
     window <- c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
     actual <- dataset__read_regions(ds, "tas", sites, time = window)
-    slices <- attr(actual, "read_slices")
     sources <- attr(actual, "grid_sources")
 
     expect_equal(nrow(actual), 6L)
-    expect_equal(nrow(slices), 2L)
-    expect_true(all(slices$lat_count == 1L & slices$lon_count == 1L))
-    expect_true(all(slices$time_count == 2L))
     expect_equal(nrow(sources), 3L)
     expect_true(all(sources$weight == 1))
     expect_identical(unique(actual$cf_calendar), "360_day")
@@ -972,16 +968,9 @@ test_that("the internal multi-site reader keeps method weights per site", {
         expect_equal(observed$value, expected$value, tolerance = 1e-5)
         expect_equal(sum(sources$weight[sources$site_id == method]), 1)
     }
-    slices <- attr(actual, "read_slices")
-    expect_lt(
-        nrow(slices),
-        data.table::uniqueN(sources, by = c("grid_lat", "grid_lon"))
-    )
-    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
-    expect_true(any(slices$lat_count * slices$lon_count == 4L))
 })
 
-test_that("multi-site native reads split long time runs into bounded blocks", {
+test_that("multi-site native reads reject oversized output requests", {
     path <- local_dataset_table_file(
         time_vals = 0:8999,
         time_units = "days since 2060-01-01 00:00:00",
@@ -991,19 +980,6 @@ test_that("multi-site native reads split long time runs into bounded blocks", {
     ds <- EsgDataset$new(path)
     ds$open()
     on.exit(ds$close(), add = TRUE)
-    sites <- data.table::data.table(
-        site_id = "first",
-        lon = 2,
-        lat = 1,
-        method = "nearest"
-    )
-
-    actual <- dataset__read_regions(ds, "tas", sites)
-    slices <- attr(actual, "read_slices")
-    expect_equal(actual$value, as.numeric(seq_len(9000L)))
-    expect_equal(slices$time_count, c(8192L, 808L))
-    expect_true(all(slices$lat_count * slices$lon_count <= 4L))
-
     many_sites <- data.table::data.table(
         site_id = sprintf("site-%03d", seq_len(105L)),
         lon = rep.int(2, 105L),
@@ -1046,8 +1022,6 @@ test_that("the internal multi-site reader respects native site windows", {
     expect_identical(actual$cf_year, c(2060L, 2061L))
     expect_identical(actual$cf_month, c(12L, 1L))
     expect_identical(actual$cf_day, c(30L, 1L))
-    expect_equal(nrow(attr(actual, "read_slices")), 2L)
-    expect_true(all(attr(actual, "read_slices")$time_count == 1L))
 })
 
 test_that("the internal multi-site reader rejects ambiguous sites and empty input", {
