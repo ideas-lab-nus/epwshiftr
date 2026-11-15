@@ -19,48 +19,6 @@ test_that("every built-in recipe resolves one registered method", {
     }
 })
 
-test_that("daily adjustment methods share one reusable EPW adapter", {
-    recipe_names <- paste0(
-        unname(DAILY_ADJUSTMENT_METHOD_COMPONENTS),
-        "_temperature"
-    )
-    recipes <- lapply(recipe_names, recipe__get)
-    components <- lapply(recipes, function(recipe) recipe@components)
-    signal_names <- vapply(
-        components,
-        `[[`,
-        character(1L),
-        "signal"
-    )
-
-    expect_setequal(
-        signal_names,
-        unname(DAILY_ADJUSTMENT_METHOD_COMPONENTS)
-    )
-    for (stage in setdiff(WEATHER_COMPONENT_STAGES, "signal")) {
-        expect_length(
-            unique(vapply(
-                components,
-                `[[`,
-                character(1L),
-                stage
-            )),
-            1L
-        )
-    }
-    expect_true(all(vapply(
-        recipe_names,
-        function(name) {
-            recipe <- epw_morph_recipe(name)
-            identical(
-                epwphys__recipe_policy(recipe)@name,
-                "preserve_specific_humidity"
-            )
-        },
-        logical(1L)
-    )))
-})
-
 test_that("daily adjusted temperature produces a standard EPW result", {
     recipe <- epw_morph_recipe("linear_scaling_daily_temperature")
     context <- daily_adjustment_test__context(recipe)

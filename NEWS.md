@@ -1,7 +1,9 @@
 # epwshiftr (development version)
 
 * Remove unused downloader helpers and internal catalog wrappers; consolidate
-  original-morphing options and simplify receipt and input-contract checks. (#329)
+  original-morphing options and simplify receipt and input-contract checks.
+  Remove self-validation of the fixed transform catalog and repeated catalog
+  lookups while retaining public argument and persisted-contract validation. (#329)
 
 * Remove unused internal CLI helpers and registry replacement options, and
   consolidate recipe and reanalysis specification validation in S7. (#329)

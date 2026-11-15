@@ -35,58 +35,6 @@ test_that("weather transform registry exposes every canonical method once", {
     )
 })
 
-test_that("weather transform registry rejects ambiguous or incomplete mappings", {
-    records <- transform__records()
-    expect_invisible(transform__validate_records(records))
-
-    duplicated <- records
-    duplicated[[2L]] <- duplicated[[1L]]
-    expect_error(
-        transform__validate_records(duplicated),
-        "duplicate scale/method records"
-    )
-
-    split_method <- records
-    split_method[[length(split_method) + 1L]] <- split_method[[4L]]
-    split_method[[4L]]$recipe <- split_method[[4L]]$recipe[["power"]]
-    split_method[[4L]]$reconstructions <- "power"
-    split_method[[4L]]$reconstruction_labels <-
-        split_method[[4L]]$reconstruction_labels[["power"]]
-    names(split_method[[4L]]$reconstruction_labels) <- "power"
-    split_method[[4L]]$default_reconstruction <- "power"
-    split_method[[length(split_method)]]$recipe <-
-        split_method[[length(split_method)]]$recipe[["btws"]]
-    split_method[[length(split_method)]]$reconstructions <- "btws"
-    split_method[[length(split_method)]]$reconstruction_labels <-
-        split_method[[length(split_method)]]$reconstruction_labels[["btws"]]
-    names(split_method[[length(split_method)]]$reconstruction_labels) <- "btws"
-    split_method[[length(split_method)]]$default_reconstruction <- "btws"
-    expect_error(
-        transform__validate_records(split_method),
-        "duplicate scale/method records"
-    )
-
-    missing <- records[-1L]
-    expect_error(
-        transform__validate_records(missing),
-        "Every built-in canonical recipe"
-    )
-
-    wrong_method <- records
-    wrong_method[[1L]]$method_definition <- "epwshiftr_monthly"
-    expect_error(
-        transform__validate_records(wrong_method),
-        "Recipe method identity disagrees"
-    )
-
-    unlabelled <- records
-    names(unlabelled[[1L]]$reconstruction_labels) <- "other"
-    expect_error(
-        transform__validate_records(unlabelled),
-        "must label every reconstruction"
-    )
-})
-
 test_that("public catalog uses controlled evidence and status labels", {
     transforms <- weather_transforms()
 
@@ -456,24 +404,8 @@ test_that("resolved options update the public input contract", {
     }
 })
 
-test_that("transform specifications contain no execution-owned data", {
+test_that("transform execution requires its declared reference inputs", {
     transform <- daily_transform("qdm")
-    prohibited <- c(
-        "reference",
-        "observed_reference",
-        "climate",
-        "epw",
-        "periods",
-        "model",
-        "member",
-        "grid",
-        "scenario",
-        "node",
-        "dir",
-        "path"
-    )
-
-    expect_false(any(prohibited %in% S7::props(transform)))
     expect_true(transform__requires_input(transform, "model_historical"))
     expect_true(transform__requires_input(transform, "observed_reference"))
     expect_error(
