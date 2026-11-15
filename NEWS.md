@@ -1,7 +1,7 @@
 # epwshiftr (development version)
 
 * Use a shared Store transaction for extraction and receipt import to publish
-  artifacts, results, grid sources, and plan status together.
+  artifacts, results, grid sources, and plan status together. (#324)
 
 * Report region metadata lookup failures for declared variables and allow
   callers to retry on the same open dataset. (#323)
