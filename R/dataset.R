@@ -1472,12 +1472,22 @@ EsgDataset <- R6::R6Class(
             private$check_open()
             private$check_index(index)
 
+            # Share declarations between readers on this open handle. Publish
+            # only after the entire inquiry succeeds, so failures stay retryable.
+            cache_key <- sprintf("variable_names_%d", index)
+            cached <- private$metadata_cache[[cache_key]]
+            if (!is.null(cached)) {
+                return(cached)
+            }
+
             info <- self$file_inq(index)
-            private$inquiry_names(
+            declared <- private$inquiry_names(
                 private$nc_handles[[index]],
                 info$nvars,
                 RNetCDF::var.inq.nc
             )
+            private$metadata_cache[[cache_key]] <- declared
+            declared
         },
         # }}}
         # get_dimensions
@@ -1789,7 +1799,9 @@ EsgDataset <- R6::R6Class(
         # }}}
         # read_region
         #' @description
-        #' Read variable values near a target coordinate and optional time range
+        #' Read variable values near a target coordinate and optional time range.
+        #' Variables absent from a file are skipped. Metadata lookup failures
+        #' are reported to the caller so a partial read cannot appear successful.
         #'
         #' @param variable Character vector of variable names.
         #' @param lon Target longitude.
@@ -1869,7 +1881,9 @@ EsgDataset <- R6::R6Class(
             found <- stats::setNames(rep(FALSE, length(variable)), variable)
 
             for (i in seq_along(private$urls)) {
-                for (var in variable) {
+                # Skip only variables the file does not declare. An inquiry
+                # error for a declared variable must reach the caller.
+                for (var in intersect(variable, self$get_variables(i))) {
                     chunk <- private$read_region_one(
                         variable = var,
                         lon = lon,
@@ -1880,10 +1894,6 @@ EsgDataset <- R6::R6Class(
                         async = async,
                         timeout = timeout
                     )
-                    if (is.null(chunk)) {
-                        next
-                    }
-
                     found[[var]] <- TRUE
                     pieces[[length(pieces) + 1L]] <- chunk
                 }
@@ -2797,13 +2807,7 @@ EsgDataset <- R6::R6Class(
             async = FALSE,
             timeout = NULL
         ) {
-            meta <- tryCatch(
-                private$get_var_dim_meta(variable, index = index),
-                error = function(e) NULL
-            )
-            if (is.null(meta)) {
-                return(NULL)
-            }
+            meta <- private$get_var_dim_meta(variable, index = index)
 
             required_dims <- c("time", "lat", "lon")
             missing_dims <- setdiff(required_dims, meta$names)

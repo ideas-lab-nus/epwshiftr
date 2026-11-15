@@ -791,7 +791,9 @@ dt_async <- ds$read_data_table("tas", async = TRUE, timeout = 10)
 \if{html}{\out{<a id="method-EsgDataset-read_region"></a>}}
 \if{latex}{\out{\hypertarget{method-EsgDataset-read_region}{}}}
 \subsection{\code{EsgDataset$read_region()}}{
-  Read variable values near a target coordinate and optional time range
+  Read variable values near a target coordinate and optional time range.
+Variables absent from a file are skipped. Metadata lookup failures
+are reported to the caller so a partial read cannot appear successful.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{EsgDataset$read_region(
