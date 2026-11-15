@@ -748,6 +748,35 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
 }
 # }}}
 
+# Recognize the old interrupted publication only for a completed background
+# step whose matching workflow attempt has already returned.
+# shift_job__unpublished_download {{{
+shift_job__unpublished_download <- function(store, run_id, step) {
+    if (!identical(step$status, "completed")) {
+        return(FALSE)
+    }
+    run <- shift_inspect__rows(store, "shift_run", "run_id", run_id)
+    if (
+        !identical(run$status, "running") ||
+            !identical(run$current_stage, "download")
+    ) {
+        return(FALSE)
+    }
+    job <- shift_job__latest_job(store, run_id)
+    if (
+        !identical(job$status, "completed") ||
+            !identical(job$step_id, step$step_id)
+    ) {
+        return(FALSE)
+    }
+    spec <- tryCatch(
+        jsonlite::fromJSON(step$spec_json[[1L]], simplifyVector = TRUE),
+        error = function(e) NULL
+    )
+    is.list(spec) && isTRUE(spec$background)
+}
+# }}}
+
 # Resolve the Downloader session that owns an open standalone download step.
 # The returned context joins the shift run identity to the existing persistent
 # downloader manifest without duplicating its task or process tables.
@@ -755,16 +784,24 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
 shift_job__background_download_context <- function(
     store,
     run_id,
-    active_only = TRUE
+    active_only = TRUE,
+    recover_completed = FALSE
 ) {
     checkmate::assert_flag(active_only)
     step <- shift_job__latest_step(store, run_id)
     if (
         !nrow(step) ||
             !identical(step$task[[1L]], "download") ||
-            (isTRUE(active_only) && !identical(step$status[[1L]], "running")) ||
             is.na(step$output_stage_json[[1L]]) ||
             !nzchar(step$output_stage_json[[1L]])
+    ) {
+        return(NULL)
+    }
+    if (
+        isTRUE(active_only) &&
+            !identical(step$status, "running") &&
+            !(recover_completed &&
+                shift_job__unpublished_download(store, run_id, step))
     ) {
         return(NULL)
     }
@@ -813,7 +850,11 @@ shift_job__background_download_context <- function(
 # create shift step/run events, so watch refreshes do not become heartbeat spam.
 # shift_job__reconcile_background_download {{{
 shift_job__reconcile_background_download <- function(store, run_id) {
-    context <- shift_job__background_download_context(store, run_id)
+    context <- shift_job__background_download_context(
+        store,
+        run_id,
+        recover_completed = TRUE
+    )
     if (is.null(context)) {
         return(invisible(NULL))
     }
@@ -849,67 +890,91 @@ shift_job__reconcile_background_download <- function(store, run_id) {
         session_id = context$session_id,
         downloader_status = status
     )
-    if (identical(status, "done")) {
-        # The detached downloader has released its manifest and output files;
-        # synchronize those files before exposing the next-stage boundary.
-        store$sync_downloads(context$downloader)
-        shift_job__step_finish(
-            store,
-            step_id,
-            "completed",
-            output_stage = context$stage
-        )
-        shift_job__run_update(
-            store,
-            run_id,
-            status = "waiting",
-            current_stage = "download",
-            last_error = NA_character_
-        )
-        shift_job__run_event(
-            store,
-            run_id,
-            "download",
-            "waiting",
-            "Background download completed; ready for the next stage.",
-            details = c(details, list(outcome = "completed")),
-            step_id = step_id
-        )
+    done <- identical(status, "done")
+    step_completed <- identical(context$step$status, "completed")
+    if (step_completed && !done) {
         return(invisible(context))
     }
-
-    terminal_status <- if (identical(status, "cancelled")) {
+    if (done) {
+        # The Downloader owns its transfer manifest. Sync its completed files
+        # before opening the separate transaction for workflow state.
+        store$sync_downloads(context$downloader)
+    }
+    step_status <- if (done) {
+        "completed"
+    } else if (identical(status, "cancelled")) {
         "cancelled"
     } else {
         "failed"
     }
-    message <- if (identical(terminal_status, "cancelled")) {
-        "Background download was cancelled."
-    } else {
-        sprintf("Background download failed with status %s.", status)
-    }
-    shift_job__step_finish(
-        store,
-        step_id,
-        terminal_status,
-        last_error = message
+    run_status <- if (done) "waiting" else step_status
+    message <- switch(
+        step_status,
+        completed = "Background download completed; ready for the next stage.",
+        cancelled = "Background download was cancelled.",
+        failed = sprintf("Background download failed with status %s.", status)
     )
-    shift_job__run_finish(
-        store,
-        run_id,
-        terminal_status,
-        current_stage = "download",
-        last_error = message
-    )
-    shift_job__run_event(
-        store,
-        run_id,
-        "download",
-        terminal_status,
-        message,
-        details = c(details, list(outcome = terminal_status)),
-        step_id = step_id
-    )
+    last_error <- if (done) NA_character_ else message
+
+    private <- morpher__private_store(store)
+    private$with_store_lock({
+        # Recheck after taking the lock so a second observer cannot publish an
+        # already acknowledged result or overwrite a newer step.
+        latest <- shift_job__latest_step(store, run_id)
+        if (
+            !identical(latest$step_id, step_id) ||
+                !identical(latest$status, context$step$status) ||
+                (step_completed &&
+                    !shift_job__unpublished_download(store, run_id, latest))
+        ) {
+            return(invisible(context))
+        }
+        conn <- private$conn
+        ddb_exec(conn, "BEGIN TRANSACTION")
+        committed <- FALSE
+        tryCatch(
+            {
+                if (!step_completed) {
+                    shift_job__step_finish(
+                        store,
+                        step_id,
+                        step_status,
+                        output_stage = if (done) context$stage,
+                        last_error = last_error,
+                        snapshot = FALSE
+                    )
+                }
+                update_run <- if (done) {
+                    shift_job__run_update
+                } else {
+                    shift_job__run_finish
+                }
+                update_run(
+                    store,
+                    run_id,
+                    status = run_status,
+                    current_stage = "download",
+                    last_error = last_error,
+                    snapshot = FALSE
+                )
+                shift_job__run_event(
+                    store,
+                    run_id,
+                    "download",
+                    run_status,
+                    message,
+                    details = c(details, list(outcome = step_status)),
+                    snapshot = FALSE,
+                    step_id = step_id
+                )
+                ddb_exec(conn, "COMMIT")
+                committed <- TRUE
+            },
+            finally = if (!committed) ddb_exec(conn, "ROLLBACK")
+        )
+    })
+    # Publish only committed state, even when the mutable sidecar cannot be written.
+    shift_job__live_snapshot(store, run_id, urgent = TRUE)
     invisible(context)
 }
 # }}}
@@ -1485,7 +1550,7 @@ shift_job__job_main <- function(store_path, run_id, job_id) {
 # Update a run row after a state transition while leaving the original spec
 # and unique run identity unchanged.
 # shift_job__run_update {{{
-shift_job__run_update <- function(store, run_id, ...) {
+shift_job__run_update <- function(store, run_id, ..., snapshot = TRUE) {
     wanted_run_id <- run_id
     row <- shift_inspect__rows(store, "shift_run", "run_id", wanted_run_id)
     if (!nrow(row)) {
@@ -1507,13 +1572,13 @@ shift_job__run_update <- function(store, run_id, ...) {
         row,
         unique(c(names(updates), "updated_at"))
     )
-    # Every terminal state goes through shift_job__run_finish(), which sets a
-    # status, so terminal run updates are always written immediately.
-    shift_job__live_snapshot(
-        store,
-        run_id,
-        urgent = "status" %in% names(updates)
-    )
+    if (isTRUE(snapshot)) {
+        shift_job__live_snapshot(
+            store,
+            run_id,
+            urgent = "status" %in% names(updates)
+        )
+    }
     invisible(row)
 }
 # }}}
@@ -1749,7 +1814,7 @@ shift_job__step_create <- function(
 
 # Update mutable step state while preserving its stable task specification.
 # shift_job__step_update {{{
-shift_job__step_update <- function(store, step_id, ...) {
+shift_job__step_update <- function(store, step_id, ..., snapshot = TRUE) {
     wanted_step_id <- step_id
     row <- shift_inspect__rows(
         store,
@@ -1776,11 +1841,13 @@ shift_job__step_update <- function(store, step_id, ...) {
         row,
         unique(c(names(updates), "updated_at"))
     )
-    shift_job__live_snapshot(
-        store,
-        row$run_id[[1L]],
-        urgent = "status" %in% names(updates)
-    )
+    if (isTRUE(snapshot)) {
+        shift_job__live_snapshot(
+            store,
+            row$run_id[[1L]],
+            urgent = "status" %in% names(updates)
+        )
+    }
     invisible(row)
 }
 # }}}
@@ -1792,7 +1859,8 @@ shift_job__step_finish <- function(
     step_id,
     status,
     output_stage = NULL,
-    last_error = NULL
+    last_error = NULL,
+    snapshot = TRUE
 ) {
     checkmate::assert_choice(
         status,
@@ -1810,7 +1878,10 @@ shift_job__step_finish <- function(
             shift_persist__stage_ref(output_stage)
         )
     }
-    do.call(shift_job__step_update, c(list(store, step_id), updates))
+    do.call(
+        shift_job__step_update,
+        c(list(store, step_id, snapshot = snapshot), updates)
+    )
 }
 # }}}
 

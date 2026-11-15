@@ -747,4 +747,153 @@ test_that("a missing saved session reports the original session ID", {
     expect_equal(nrow(store$downloader(n_workers = 0L)$sessions()), 0L)
 })
 
+# Prepare a real local download while leaving the workflow's background step
+# running, as it would be immediately after the Downloader process exits.
+shift_job_test__finished_background_download <- function(env = parent.frame()) {
+    skip_on_cran()
+    server <- local_downloader_http_server(env)
+    bytes <- downloader_http_bytes()
+    docs <- esgf_test__file_docs(
+        "source.bin",
+        download_url = server$url("/files/ok.bin")
+    )
+    data.table::set(docs, j = "size", value = length(bytes))
+    hash <- checksum_bytes(bytes, "sha256")
+    data.table::set(docs, j = "checksum", value = hash)
+    store <- shift_store(
+        file.path(withr::local_tempdir(.local_envir = env), "store"),
+        create = TRUE
+    )
+    on.exit(store$close(), add = TRUE)
+    path <- store$path
+    query <- store$add_files(esgf_test__file_result(docs))
+    files <- shift_stage__new(
+        ShiftFiles,
+        "files",
+        store_path = path,
+        ids = list(query_id = query),
+        meta = list(variables = "tas")
+    )
+    downloader <- store$downloader(n_workers = 1L)
+    stage <- shift_download(
+        files,
+        downloader = downloader,
+        run = FALSE,
+        background = TRUE,
+        ui = shift_ui("none")
+    )
+    ids <- shift_ids(stage)
+    store$close()
+
+    # Complete the queued session directly in the Downloader's own manifest.
+    # This models an exited worker without involving process startup or polling.
+    task <- downloader$run(session_id = ids$session_id, progress = FALSE)
+    expect_identical(task$status, "done")
+    expect_identical(checksum_file(task$target_path), hash)
+    list(
+        path = path,
+        ids = ids,
+        downloader = downloader,
+        task_id = task$task_id
+    )
+}
+
+# Use a real local transfer. Inject the interruption exactly after the
+# completed step write and before the matching run status write.
+test_that("an interrupted background download publication reopens the original result", {
+    fixture <- shift_job_test__finished_background_download()
+    ids <- fixture$ids
+    path <- fixture$path
+    write_snapshot <- shift_job__live_snapshot_write
+    snapshots <- 0L
+
+    update_row <- shift_job__update_row
+    interrupted <- FALSE
+    testthat::local_mocked_bindings(
+        shift_job__update_row = function(store, table, key, row, fields) {
+            if (
+                !interrupted &&
+                    identical(table, "shift_run") &&
+                    identical(row$status, "waiting")
+            ) {
+                interrupted <<- TRUE
+                stop("fixture interruption before run update", call. = FALSE)
+            }
+            update_row(store, table, key, row, fields)
+        },
+        shift_job__live_snapshot_write = function(store, run_id, ...) {
+            snapshots <<- snapshots + 1L
+            write_snapshot(store, run_id, ...)
+        },
+        .package = "epwshiftr"
+    )
+    expect_error(
+        shift_run_get(ids$run_id, store = path),
+        "fixture interruption before run update"
+    )
+    expect_true(interrupted)
+    expect_identical(snapshots, 0L)
+    store <- shift_store(path)
+    on.exit(store$close(), add = TRUE)
+    expect_identical(
+        shift_job__latest_step(store, ids$run_id)$status,
+        "running"
+    )
+    store$close()
+    reopened <- shift_run_get(ids$run_id, store = path)
+    expect_identical(shift_status(reopened, refresh = FALSE), "waiting")
+    expect_identical(snapshots, 1L)
+    expect_equal(
+        sum(
+            reopened@meta$events$message %in%
+                "Background download completed; ready for the next stage."
+        ),
+        1L
+    )
+    expect_error(
+        shift_resume(ids$run_id, store = path, ui = shift_ui("none")),
+        "waiting for its next stage"
+    )
+    expect_identical(
+        shift_ids(shift_result(reopened))$session_id,
+        ids$session_id
+    )
+    expect_identical(shift_status(shift_complete(reopened)), "completed")
+    expect_identical(fixture$downloader$sessions()$session_id, ids$session_id)
+    expect_identical(
+        fixture$downloader$tasks(session_id = ids$session_id)$task_id,
+        fixture$task_id
+    )
+})
+
+# Emulate a previously interrupted store after the old step write committed.
+# A completed Downloader session and a terminal workflow owner justify repair.
+test_that("reopening a legacy download commit repairs the waiting run once", {
+    fixture <- shift_job_test__finished_background_download()
+    ids <- fixture$ids
+    store <- shift_store(fixture$path)
+    on.exit(store$close(), add = TRUE)
+    shift_job__step_finish(store, ids$step_id, "completed")
+    step <- shift_job__latest_step(store, ids$run_id)
+    expect_identical(step$status, "completed")
+    store$close()
+
+    run <- shift_run_get(ids$run_id, store = fixture$path)
+    expect_identical(shift_status(run, refresh = FALSE), "waiting")
+    expect_identical(shift_ids(shift_result(run))$session_id, ids$session_id)
+    again <- shift_run_get(ids$run_id, store = fixture$path)
+    expect_equal(
+        sum(
+            again@meta$events$message %in%
+                "Background download completed; ready for the next stage."
+        ),
+        1L
+    )
+    store <- shift_store(fixture$path)
+    expect_identical(
+        shift_job__latest_step(store, ids$run_id)$completed_at,
+        step$completed_at
+    )
+})
+
 # vim: fdm=marker :
