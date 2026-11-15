@@ -540,11 +540,7 @@ dataset__read_regions <- function(
     output_rows <- 0L
     found <- stats::setNames(rep.int(FALSE, length(variable)), variable)
     for (index in seq_along(private$urls)) {
-        available <- dataset$get_variables(index = index)
-        for (name in variable) {
-            if (!name %in% available) {
-                next
-            }
+        for (name in intersect(variable, dataset$get_variables(index))) {
             piece <- dataset__read_regions_one(
                 dataset,
                 name,

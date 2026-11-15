@@ -460,6 +460,45 @@ test_that("EsgDataset metadata-name methods reject closed datasets", {
     expect_error(ds$get_variables(), "not open")
     expect_error(ds$get_dimensions(), "not open")
 })
+
+# A failed enumeration must be retried. A successful declaration list is valid
+# only for the current open handles, even if the next open uses the same path.
+test_that("variable declarations are cached only after success until close", {
+    path <- file.path(withr::local_tempdir(), "source.nc")
+    write_local_cmip6_netcdf_fixture(path, 2060L)
+    ds <- EsgDataset$new(path)
+    ds$open()
+    withr::defer(ds$close())
+
+    inquire <- RNetCDF::var.inq.nc
+    declaration_reads <- 0L
+    testthat::local_mocked_bindings(
+        .package = "RNetCDF",
+        var.inq.nc = function(ncfile, variable) {
+            declaration_reads <<- declaration_reads + 1L
+            if (declaration_reads == 2L) {
+                stop("NetCDF: declaration inquiry failed", call. = FALSE)
+            }
+            inquire(ncfile, variable)
+        }
+    )
+    expect_error(ds$get_variables(), "declaration inquiry failed")
+    declared <- ds$get_variables()
+    expect_true("tas" %in% declared)
+    count <- declaration_reads
+    expect_identical(count, ds$file_inq()$nvars + 2L)
+    expect_identical(ds$get_variables(), declared)
+    expect_identical(declaration_reads, count)
+
+    ds$close()
+    write_local_cmip6_netcdf_fixture(path, 2060L, "huss")
+    ds$open()
+    expect_identical(
+        ds$get_variables(),
+        replace(declared, declared == "tas", "huss")
+    )
+    expect_gt(declaration_reads, count)
+})
 # }}}
 
 # EsgDataset$get_time_axis() {{{
@@ -773,6 +812,61 @@ test_that("EsgDataset$read_data_table() returns UTC POSIXct time for CMIP6-like 
 })
 # }}}
 # EsgDataset$read_region() {{{
+# The first file lacks tas, while two later files declare it. A failed
+# inquiry in the second file must not yield a successful, partial series.
+test_that("region readers preserve metadata failures and retry the full series", {
+    root <- withr::local_tempdir()
+    paths <- file.path(root, c("huss.nc", "tas-first.nc", "tas-second.nc"))
+    write_local_cmip6_netcdf_fixture(paths[[1L]], 2059L, "huss")
+    write_local_cmip6_netcdf_fixture(paths[[2L]], 2060L)
+    write_local_cmip6_netcdf_fixture(paths[[3L]], 2061L)
+
+    inquire <- RNetCDF::var.inq.nc
+    fail_next <- FALSE
+    testthat::local_mocked_bindings(
+        .package = "RNetCDF",
+        var.inq.nc = function(ncfile, variable) {
+            info <- inquire(ncfile, variable)
+            if (fail_next && identical(variable, "tas")) {
+                fail_next <<- FALSE
+                stop("NetCDF: DAP dimension inquiry failed", call. = FALSE)
+            }
+            info
+        }
+    )
+    sites <- data.table::data.table(
+        site_id = "point",
+        lon = 104,
+        lat = 1,
+        method = "nearest"
+    )
+
+    # Use a fresh dataset per entry point so the other read cannot warm its
+    # metadata cache. Retry immediately on the same object after the error.
+    read_with_retry <- function(read) {
+        ds <- EsgDataset$new(paths)
+        ds$open()
+        on.exit(ds$close(), add = TRUE)
+        fail_next <<- TRUE
+        expect_error(read(ds), "DAP dimension inquiry failed")
+        read(ds)
+    }
+    scalar <- read_with_retry(function(ds) {
+        ds$read_region("tas", lon = 104, lat = 1, time = NULL)
+    })
+    multi <- read_with_retry(function(ds) {
+        dataset__read_regions(ds, "tas", sites, time = NULL)
+    })
+
+    expect_identical(unique(scalar$file_index), c(2L, 3L))
+    expect_equal(nrow(scalar), 731L)
+    columns <- c("file_index", CF_TIME_COORDINATE_COLUMNS, "value")
+    expect_equal(
+        lapply(columns, function(name) multi[[name]]),
+        lapply(columns, function(name) scalar[[name]])
+    )
+})
+
 test_that("nearest and IDW source cells preserve full-grid ranking", {
     ds <- EsgDataset$new("unused")
     private <- dataset__private(ds)

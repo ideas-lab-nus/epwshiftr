@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Report region metadata lookup failures for declared variables and allow
+  callers to retry on the same open dataset.
+
 * Preserve both the OPeNDAP and HTTPServer read errors when Store fallback
   fails, and update Downloader manifest rows atomically so an interrupted
   reader can resume the original transfer. (#322)
