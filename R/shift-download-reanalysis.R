@@ -58,29 +58,7 @@ shift_download_reanalysis <- function(
         lower = .Machine$double.eps,
         finite = TRUE
     )
-    if (!is.list(plan) || !identical(plan$schema_version, 1L)) {
-        cli::cli_abort("Supply an unchanged reanalysis plan.")
-    }
-    canonical <- shift_plan_reanalysis(
-        shift_era5(
-            plan$source$years,
-            variables = plan$variables$variable_id,
-            product = plan$source$product,
-            frequency = plan$source$frequency,
-            access = plan$source$access
-        ),
-        lapply(seq_len(nrow(plan$sites)), function(i) {
-            shift_site(
-                plan$sites$site_id[[i]],
-                lat = plan$sites$latitude[[i]],
-                lon = plan$sites$longitude[[i]]
-            )
-        }),
-        dates = plan$source$dates
-    )
-    if (!reanalysis_plan__identical(plan, canonical)) {
-        cli::cli_abort("Supply an unchanged reanalysis plan.")
-    }
+    reanalysis_plan__validate(plan)
     settings <- reanalysis_transfer__limits(limits)
     config <- cds__config(require_key = FALSE)
     # Store only a plain origin/base path; URL credentials, query strings and
