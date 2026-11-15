@@ -615,43 +615,6 @@ test_that("site extraction cache is shared without store-local identities", {
     expect_identical(second$payload$data$value, 280)
 })
 
-test_that("EsgStore$new(create = FALSE)", {
-    dir <- tempfile("esg-store-")
-    EsgStore$new(dir)$close()
-
-    store <- EsgStore$new(dir, create = FALSE)
-    on.exit(store$close(), add = TRUE)
-
-    expect_true(store$is_open)
-    expect_true(file.exists(file.path(dir, "manifest.duckdb")))
-})
-
-test_that("EsgStore$new() rejects older manifests", {
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    store$close()
-
-    manifest <- file.path(dir, "manifest.duckdb")
-    conn <- ddb_connect(manifest, read_only = FALSE)
-    on.exit(
-        if (!is.null(conn) && ddb_is_valid(conn)) {
-            ddb_disconnect(conn, shutdown = TRUE)
-        },
-        add = TRUE
-    )
-    ddb_exec(
-        conn,
-        "UPDATE store_meta SET value = '2.6.0' WHERE key = 'schema_version'"
-    )
-    ddb_disconnect(conn, shutdown = TRUE)
-    conn <- NULL
-
-    expect_error(
-        EsgStore$new(dir, create = FALSE),
-        "store_reset"
-    )
-})
-
 test_that("store_reset() preserves an old store and creates the current schema", {
     dir <- tempfile("esg-store-reset-")
     store <- EsgStore$new(dir)

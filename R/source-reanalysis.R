@@ -96,27 +96,6 @@ ShiftReanalysisSpec <- S7::new_class(
 )
 # }}}
 
-# Return the registered reanalysis products without exposing credentials or
-# provider transport details to method code.
-# reanalysis__registry {{{
-reanalysis__registry <- function() {
-    list(
-        era5 = list(
-            provider = "copernicus",
-            products = c("single_levels", "land"),
-            available = TRUE,
-            replacement = NULL
-        ),
-        era6 = list(
-            provider = "copernicus",
-            products = "single_levels",
-            available = FALSE,
-            replacement = NULL
-        )
-    )
-}
-# }}}
-
 # Construct one validated reanalysis source specification for a public
 # provider-specific wrapper.
 # reanalysis__spec {{{
@@ -129,19 +108,10 @@ reanalysis__spec <- function(
     access = "auto",
     options = list()
 ) {
-    checkmate::assert_string(dataset, min.chars = 1L)
     years <- sort(unique(as.integer(years)))
     if (!length(years) || anyNA(years) || any(years < 1800L | years > 2300L)) {
         cli::cli_abort("`years` must contain valid calendar years.")
     }
-    checkmate::assert_string(product, min.chars = 1L)
-    checkmate::assert_character(
-        variables,
-        any.missing = FALSE,
-        min.len = 1L,
-        unique = TRUE,
-        null.ok = TRUE
-    )
     if (!is.null(frequency)) {
         frequency_names <- names(frequency)
         frequency <- as.character(unlist(frequency, use.names = TRUE))

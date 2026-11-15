@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Remove unused internal CLI helpers and registry replacement options, and
+  consolidate recipe and reanalysis specification validation in S7. (#329)
+
 * Propagate download-task read errors through Store status reports instead of
   treating them as empty task lists, and simplify derived workflow status fields. (#329)
 

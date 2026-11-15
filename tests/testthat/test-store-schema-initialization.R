@@ -59,7 +59,7 @@ test_that("reopening still rejects changed or missing schema versions", {
     on.exit(unlink(path, recursive = TRUE), add = TRUE)
     store <- EsgStore$new(path)
     store$close()
-    for (version in c("older", "newer", NA_character_)) {
+    for (version in c("2.6.0", "newer", NA_character_)) {
         conn <- ddb_connect(file.path(path, "manifest.duckdb"))
         ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
         if (!is.na(version)) {
@@ -76,7 +76,7 @@ test_that("reopening still rejects changed or missing schema versions", {
         message <- if (is.na(version)) {
             "Store schema version .*missing"
         } else {
-            "Store schema version"
+            "store_reset"
         }
         expect_error(EsgStore$new(path, create = FALSE), message)
         conn <- ddb_connect(file.path(path, "manifest.duckdb"))

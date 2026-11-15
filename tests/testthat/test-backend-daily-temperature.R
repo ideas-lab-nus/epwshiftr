@@ -155,30 +155,6 @@ test_that("daily temperature backend is registered with a daily reference contra
     )
 })
 
-test_that("daily temperature CLI options retain their numeric types", {
-    options <- cli_shift__recipe_options(
-        list(window_days = "15", tolerance = "0.000001"),
-        "daily_temperature"
-    )
-
-    expect_identical(options$window_days, 15L)
-    expect_identical(options$tolerance, 1e-6)
-    expect_error(
-        cli_shift__recipe_options(
-            list(window_days = "not-a-number"),
-            "daily_temperature"
-        ),
-        "window_days must be an odd integer"
-    )
-    expect_error(
-        cli_shift__recipe_options(
-            list(tolerance = "-1"),
-            "daily_temperature"
-        ),
-        "tolerance must be a non-negative number"
-    )
-})
-
 test_that("daily temperature backend closes full-year mean and extrema targets", {
     context <- daily_backend_test__context(include_extrema = TRUE)
     baseline <- context$epw$clone()

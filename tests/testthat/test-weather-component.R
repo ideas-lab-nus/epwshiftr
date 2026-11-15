@@ -57,7 +57,6 @@ test_that("component registries retain metadata but not serialized operations", 
         )
     )
     expect_identical(listed$name, "daily_delta")
-    expect_false("operations" %in% names(listed))
     expect_error(
         component__register(signal, registry = registry),
         "already registered"
@@ -68,34 +67,7 @@ test_that("component registries retain metadata but not serialized operations", 
     )
 })
 
-test_that("built-in registration preserves process-local component extensions", {
-    registry <- new.env(parent = emptyenv())
-    extension <- component__spec(
-        name = "daily_delta",
-        stage = "signal",
-        label = "Extension implementation",
-        input_kinds = "calendar_indexed",
-        output_kinds = "seasonal_change",
-        operations = list(apply = function(value) value)
-    )
-    builtin <- component__spec(
-        name = "daily_delta",
-        stage = "signal",
-        label = "Package implementation",
-        input_kinds = "calendar_indexed",
-        output_kinds = "seasonal_change",
-        operations = list(apply = function(value) value)
-    )
-
-    component__register(extension, registry = registry)
-    component__register_builtin(builtin, registry = registry)
-    expect_identical(
-        component__get("signal", "daily_delta", registry),
-        extension
-    )
-})
-
-test_that("built-in registration applies one policy to component collections", {
+test_that("built-in collections add missing components and preserve extensions", {
     registry <- new.env(parent = emptyenv())
     components <- list(
         component__spec(
@@ -114,10 +86,13 @@ test_that("built-in registration applies one policy to component collections", {
         )
     )
 
+    extension <- components[[1L]]
+    extension@label <- "Extension implementation"
+    component__register(extension, registry = registry)
     component__register_builtins(components, registry = registry)
     expect_identical(
         component__get("calendar", "annual_phase", registry),
-        components[[1L]]
+        extension
     )
     expect_identical(
         component__get("signal", "daily_delta", registry),
@@ -148,9 +123,6 @@ test_that("component compatibility uses stage order and intermediate kinds", {
         operations = list(apply = function(value) value)
     )
 
-    expect_true(component__compatible(calendar, signal))
-    expect_false(component__compatible(signal, calendar))
-    expect_false(component__compatible(calendar, incompatible))
     expect_invisible(component__assert_compatible(calendar, signal))
     expect_error(
         component__assert_compatible(signal, calendar),

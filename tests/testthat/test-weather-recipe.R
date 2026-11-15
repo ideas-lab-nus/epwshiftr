@@ -135,10 +135,7 @@ test_that("recipe registry rejects duplicate and incompatible definitions", {
     registry <- new.env(parent = emptyenv())
     daily <- epw_morph_recipe_spec("epwshiftr_daily_power")
 
-    expect_identical(
-        recipe__register(daily, registry = registry),
-        daily
-    )
+    recipe__register(daily, registry = registry)
     expect_identical(
         recipe__get(
             "epwshiftr_daily_power",
@@ -307,14 +304,11 @@ test_that("recipe input roles validate before backend execution", {
         weather_template = template,
         model_future = future
     )
-    expect_true(any(grepl(
-        "required role `model_historical` is missing",
-        recipe__input_errors(faithful, without_historical)
-    )))
-    expect_identical(
-        recipe__input_errors(enhanced, without_historical),
-        character()
+    expect_error(
+        recipe__validate_inputs(faithful, without_historical),
+        "required role `model_historical` is missing"
     )
+    expect_invisible(recipe__validate_inputs(enhanced, without_historical))
     complete <- weather__new_inputs(
         weather_template = template,
         model_historical = historical,
@@ -331,8 +325,8 @@ test_that("recipe input roles validate before backend execution", {
             monthly_variables
         )
     )
-    expect_match(
-        recipe__input_errors(faithful, wrong_frequency),
+    expect_error(
+        recipe__validate_inputs(faithful, wrong_frequency),
         "frequencies `day` do not satisfy `mon`"
     )
 

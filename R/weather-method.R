@@ -613,18 +613,13 @@ method__default_specs <- function() {
 # method__register {{{
 method__register <- function(
     spec,
-    overwrite = FALSE,
     registry = WEATHER_METHOD_REGISTRY
 ) {
     if (!S7::S7_inherits(spec, WeatherMethodSpec)) {
         cli::cli_abort("{.arg spec} must be a WeatherMethodSpec object.")
     }
-    checkmate::assert_flag(overwrite)
     checkmate::assert_environment(registry)
-    if (
-        exists(spec@name, envir = registry, inherits = FALSE) &&
-            !isTRUE(overwrite)
-    ) {
+    if (exists(spec@name, envir = registry, inherits = FALSE)) {
         cli::cli_abort(
             "Future-weather method {.val {spec@name}} is already registered."
         )
@@ -634,8 +629,7 @@ method__register <- function(
 }
 # }}}
 
-# Populate the built-in method catalog once while preserving explicit
-# process-local replacements.
+# Populate the built-in method catalog once while preserving existing entries.
 # method__register_defaults {{{
 method__register_defaults <- function() {
     registered <- ls(envir = WEATHER_METHOD_REGISTRY, all.names = FALSE)
@@ -670,7 +664,6 @@ method__get <- function(
     if (identical(registry, WEATHER_METHOD_REGISTRY)) {
         method__register_defaults()
     }
-    name <- tolower(name)
     if (!exists(name, envir = registry, inherits = FALSE)) {
         cli::cli_abort("Unknown future-weather method: {.val {name}}.")
     }

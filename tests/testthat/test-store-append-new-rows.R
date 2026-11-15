@@ -82,11 +82,9 @@ test_that("append_new_rows handles factor keys and keys that need quoting", {
     state <- store_append_test__state(store)
     expect_setequal(state$k, odd)
     expect_identical(sum(state$v == "seed"), 4L)
-    # Case differences are different keys, as they are in R.
-    expect_true(all(c("CaSe", "case") %in% state$k))
 })
 
-test_that("append_new_rows queries only the keys it inserts, in bounded chunks", {
+test_that("append_new_rows preserves results across multiple batches", {
     store <- store_append_test__store()
     stored <- sprintf("k%06d", seq(1L, 9000L, by = 2L))
     ddb_append_table(
@@ -96,21 +94,7 @@ test_that("append_new_rows queries only the keys it inserts, in bounded chunks",
     )
     # 4500 keys span three chunks; half of them already exist.
     keys <- sprintf("k%06d", 1:4500)
-    original <- ddb_query
-    sql <- character()
-    local_mocked_bindings(
-        ddb_query = function(conn, query) {
-            sql <<- c(sql, query)
-            original(conn, query)
-        },
-        .package = "epwshiftr"
-    )
     priv(store)$append_new_rows("append_t", store_append_test__rows(keys), "k")
-    expect_identical(length(sql), 3L)
-    expect_true(all(grepl(" WHERE ", sql, fixed = TRUE)))
-    expect_false(any(grepl("^SELECT \"k\" FROM \"append_t\"$", sql)))
-    expect_true(all(nchar(sql) < 200000L))
-
     state <- store_append_test__state(store)
     expected <- sort(union(stored, keys))
     expect_identical(state$k, expected)

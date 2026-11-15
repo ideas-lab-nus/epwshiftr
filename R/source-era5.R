@@ -409,7 +409,7 @@ shift_era6 <- function(
     access = c("auto", "arco", "cds"),
     ...
 ) {
-    checkmate::assert_choice(product, reanalysis__registry()$era6$products)
+    checkmate::assert_choice(product, "single_levels")
     options <- list(...)
     unknown <- setdiff(names(options), c("timeout", "poll_interval"))
     if (length(unknown)) {
@@ -419,7 +419,7 @@ shift_era6 <- function(
     }
     # Construct and validate the future provider-neutral contract before the
     # availability error so the eventual ERA6 implementation can keep this API.
-    candidate <- reanalysis__spec(
+    reanalysis__spec(
         dataset = "era6",
         years = years,
         product = product,
@@ -428,7 +428,6 @@ shift_era6 <- function(
         access = match.arg(access),
         options = options
     )
-    invisible(candidate)
     cli::cli_abort(
         c(
             "ERA6 is registered but is not yet available through a stable public data endpoint.",
