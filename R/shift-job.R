@@ -584,25 +584,25 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
             download_context$downloader$cancel(
                 session_id = download_context$session_id
             )
-            shift_job__run_update(
+            shift_job__publish_result(
                 download_store,
                 run@ids$run_id,
-                status = "stopping",
-                last_error = "Cancelled by user."
-            )
-            shift_job__run_event(
-                download_store,
-                run@ids$run_id,
-                "download",
-                "stopping",
-                "Background download cancellation requested.",
-                details = list(
-                    step_id = download_context$step$step_id[[1L]],
-                    session_id = download_context$session_id,
-                    downloader_job_id = downloader_job_id,
-                    force = force
+                run = list(
+                    status = "stopping",
+                    last_error = "Cancelled by user."
                 ),
-                step_id = download_context$step$step_id[[1L]]
+                event = list(
+                    stage = "download",
+                    status = "stopping",
+                    message = "Background download cancellation requested.",
+                    details = list(
+                        step_id = download_context$step$step_id[[1L]],
+                        session_id = download_context$session_id,
+                        downloader_job_id = downloader_job_id,
+                        force = force
+                    ),
+                    step_id = download_context$step$step_id[[1L]]
+                )
             )
             shift_job__reconcile_background_download(
                 download_store,
@@ -618,19 +618,19 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
         # state that no worker could ever acknowledge.
         run_store <- shift_store(run)
         on.exit(try(run_store$close(), silent = TRUE), add = TRUE)
-        shift_job__run_finish(
+        shift_job__publish_result(
             run_store,
             run@ids$run_id,
-            "cancelled",
-            current_stage = run@meta$run$current_stage[[1L]],
-            last_error = "Cancelled by user while waiting for the next stage."
-        )
-        shift_job__run_event(
-            run_store,
-            run@ids$run_id,
-            run@meta$run$current_stage[[1L]],
-            "cancelled",
-            "Waiting shift run cancelled by user."
+            run = list(
+                status = "cancelled",
+                current_stage = run@meta$run$current_stage[[1L]],
+                last_error = "Cancelled by user while waiting for the next stage."
+            ),
+            event = list(
+                stage = run@meta$run$current_stage[[1L]],
+                status = "cancelled",
+                message = "Waiting shift run cancelled by user."
+            )
         )
         return(shift_job__run_handle(run_store, run@ids$run_id))
     }
@@ -701,45 +701,27 @@ shift_cancel <- function(x, store = NULL, force = FALSE) {
     } else {
         "stopping"
     }
-    shift_job__job_update(
-        run_store,
-        job$job_id[[1L]],
-        status = job_status,
-        cancel_requested_at = now,
-        completed_at = if (identical(job_status, "cancelled")) {
-            now
-        } else {
-            job$completed_at
-        },
-        exit_code = if (identical(job_status, "cancelled")) {
-            130L
-        } else {
-            job$exit_code
-        },
-        last_error = "Cancelled by user."
-    )
-    if (identical(job_status, "cancelled")) {
-        shift_job__run_finish(
-            run_store,
-            run@ids$run_id,
-            status = job_status,
-            last_error = "Cancelled by user."
-        )
-    } else {
-        shift_job__run_update(
-            run_store,
-            run@ids$run_id,
-            status = job_status,
-            last_error = "Cancelled by user."
-        )
-    }
-    shift_job__run_event(
+    shift_job__publish_result(
         run_store,
         run@ids$run_id,
-        run@meta$run$current_stage[[1L]],
-        job_status,
-        "Cancellation requested by user.",
-        details = list(job_id = job$job_id[[1L]], force = force, pid = pid)
+        run = list(status = job_status, last_error = "Cancelled by user."),
+        event = list(
+            stage = run@meta$run$current_stage[[1L]],
+            status = job_status,
+            message = "Cancellation requested by user.",
+            details = list(job_id = job$job_id[[1L]], force = force, pid = pid)
+        ),
+        job = list(
+            job_id = job$job_id[[1L]],
+            status = job_status,
+            cancel_requested_at = now,
+            exit_code = if (identical(job_status, "cancelled")) {
+                130L
+            } else {
+                job$exit_code
+            },
+            last_error = "Cancelled by user."
+        )
     )
     if (isTRUE(force) && !is.na(pid)) {
         downloader__pid_kill(pid)
@@ -916,56 +898,117 @@ shift_job__reconcile_background_download <- function(store, run_id) {
     )
     last_error <- if (done) NA_character_ else message
 
+    shift_job__publish_result(
+        store,
+        run_id,
+        run = list(
+            status = run_status,
+            current_stage = "download",
+            last_error = last_error
+        ),
+        event = list(
+            stage = "download",
+            status = run_status,
+            message = message,
+            details = c(details, list(outcome = step_status)),
+            step_id = step_id
+        ),
+        step = if (!step_completed) {
+            list(
+                step_id = step_id,
+                status = step_status,
+                output_stage = if (done) context$stage,
+                last_error = last_error
+            )
+        },
+        expected_step = context$step
+    )
+    invisible(context)
+}
+# }}}
+
+# Publish one workflow result as correlated run, event and optional step/job
+# records. The lists use the existing row helpers' fields; this module owns
+# terminal timestamps, the transaction and the single post-commit snapshot.
+# shift_job__publish_result {{{
+shift_job__publish_result <- function(
+    store,
+    run_id,
+    run,
+    event,
+    step = NULL,
+    job = NULL,
+    expected_step = NULL
+) {
     private <- morpher__private_store(store)
     private$with_store_lock({
-        # Recheck after taking the lock so a second observer cannot publish an
-        # already acknowledged result or overwrite a newer step.
-        latest <- shift_job__latest_step(store, run_id)
-        if (
-            !identical(latest$step_id, step_id) ||
-                !identical(latest$status, context$step$status) ||
-                (step_completed &&
-                    !shift_job__unpublished_download(store, run_id, latest))
-        ) {
-            return(invisible(context))
+        # Background download observers may have read the same result before
+        # taking the lock. Preserve its original completed step when repairing
+        # an older interrupted publication, and publish that result only once.
+        if (!is.null(expected_step)) {
+            latest <- shift_job__latest_step(store, run_id)
+            if (
+                !identical(latest$step_id, expected_step$step_id) ||
+                    !identical(latest$status, expected_step$status) ||
+                    (identical(expected_step$status, "completed") &&
+                        !shift_job__unpublished_download(store, run_id, latest))
+            ) {
+                return(invisible(FALSE))
+            }
         }
         conn <- private$conn
         ddb_exec(conn, "BEGIN TRANSACTION")
         committed <- FALSE
         tryCatch(
             {
-                if (!step_completed) {
-                    shift_job__step_finish(
-                        store,
-                        step_id,
-                        step_status,
-                        output_stage = if (done) context$stage,
-                        last_error = last_error,
-                        snapshot = FALSE
+                if (!is.null(step)) {
+                    if (identical(step$status, "running")) {
+                        step$output_stage_json <- shift_persist__spec_json(
+                            shift_persist__stage_ref(step$output_stage)
+                        )
+                        step$output_stage <- NULL
+                        step$completed_at <- as.POSIXct(NA, tz = "UTC")
+                        do.call(
+                            shift_job__step_update,
+                            c(list(store = store, snapshot = FALSE), step)
+                        )
+                    } else {
+                        do.call(
+                            shift_job__step_finish,
+                            c(list(store = store, snapshot = FALSE), step)
+                        )
+                    }
+                }
+                update_run <- if (
+                    run$status %in%
+                        c("completed", "partial", "failed", "cancelled")
+                ) {
+                    shift_job__run_finish
+                } else {
+                    shift_job__run_update
+                }
+                do.call(
+                    update_run,
+                    c(
+                        list(store = store, run_id = run_id, snapshot = FALSE),
+                        run
+                    )
+                )
+                if (!is.null(job)) {
+                    if (job$status %in% c("cancelled", "stale")) {
+                        job$completed_at <- store__now()
+                    }
+                    do.call(
+                        shift_job__job_update,
+                        c(list(store = store, .snapshot = FALSE), job)
                     )
                 }
-                update_run <- if (done) {
-                    shift_job__run_update
-                } else {
-                    shift_job__run_finish
-                }
-                update_run(
-                    store,
-                    run_id,
-                    status = run_status,
-                    current_stage = "download",
-                    last_error = last_error,
-                    snapshot = FALSE
-                )
-                shift_job__run_event(
-                    store,
-                    run_id,
-                    "download",
-                    run_status,
-                    message,
-                    details = c(details, list(outcome = step_status)),
-                    snapshot = FALSE,
-                    step_id = step_id
+                do.call(
+                    shift_job__run_event,
+                    c(
+                        list(store = store, run_id = run_id, snapshot = FALSE),
+                        event
+                    )
                 )
                 ddb_exec(conn, "COMMIT")
                 committed <- TRUE
@@ -973,9 +1016,9 @@ shift_job__reconcile_background_download <- function(store, run_id) {
             finally = if (!committed) ddb_exec(conn, "ROLLBACK")
         )
     })
-    # Publish only committed state, even when the mutable sidecar cannot be written.
+    # The mutable sidecar must never expose a partially committed result.
     shift_job__live_snapshot(store, run_id, urgent = TRUE)
-    invisible(context)
+    invisible(TRUE)
 }
 # }}}
 
@@ -1288,60 +1331,30 @@ shift_job__reconcile_run_job <- function(store, run_id, startup_grace = 60) {
     )
     if (isTRUE(cancelled)) {
         reason <- "Background worker stopped after cancellation was requested."
-        shift_job__job_update(
-            store,
-            job$job_id[[1L]],
-            status = "cancelled",
-            completed_at = now,
-            exit_code = 130L,
-            last_error = reason
-        )
-        shift_job__run_finish(
-            store,
-            run_id,
-            status = "cancelled",
-            last_error = reason
-        )
-        shift_job__run_event(
-            store,
-            run_id,
-            "worker",
-            "cancelled",
-            reason,
-            details = list(
-                job_id = job$job_id[[1L]],
-                pid = pid,
-                outcome = "cancelled"
-            )
-        )
-    } else {
-        shift_job__job_update(
-            store,
-            job$job_id[[1L]],
-            status = "stale",
-            completed_at = now,
-            exit_code = 1L,
-            last_error = reason
-        )
-        shift_job__run_finish(
-            store,
-            run_id,
-            status = "failed",
-            last_error = reason
-        )
-        shift_job__run_event(
-            store,
-            run_id,
-            "worker",
-            "failed",
-            reason,
-            details = list(
-                job_id = job$job_id[[1L]],
-                pid = pid,
-                outcome = "stale"
-            )
-        )
     }
+    status <- if (cancelled) "cancelled" else "failed"
+    job_status <- if (cancelled) "cancelled" else "stale"
+    shift_job__publish_result(
+        store,
+        run_id,
+        run = list(status = status, last_error = reason),
+        event = list(
+            stage = "worker",
+            status = status,
+            message = reason,
+            details = list(
+                job_id = job$job_id[[1L]],
+                pid = pid,
+                outcome = job_status
+            )
+        ),
+        job = list(
+            job_id = job$job_id[[1L]],
+            status = job_status,
+            exit_code = if (cancelled) 130L else 1L,
+            last_error = reason
+        )
+    )
     invisible(shift_job__latest_job(store, run_id))
 }
 # }}}

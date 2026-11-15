@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Publish related Shift workflow result records in one transaction before updating
+  the live snapshot, preserving distinct step, run and execution-attempt states.
+
 * Share Store extraction recovery between ordinary and pooled readers, retaining
   HTTP fallback, resumable transfer sessions and both remote and local failures,
   including failures while publishing recovered payloads to the shared cache. (#330)
