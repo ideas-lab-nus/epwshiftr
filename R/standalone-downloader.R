@@ -382,11 +382,10 @@ downloader__local_pid_absent <- function(pid, hostname) {
 }
 # }}}
 
-# A valid local owner outlives any age threshold. Only a positively observed
-# absent PID permits immediate recovery; permission/status errors remain locked.
-# The former stale_after argument is retained for existing callers.
+# Reclaim only after confirming that the lock owner's PID is absent locally.
+# Permission or status errors leave the lock held.
 # downloader__manifest_lock_stale {{{
-downloader__manifest_lock_stale <- function(lock_dir, stale_after) {
+downloader__manifest_lock_stale <- function(lock_dir) {
     if (!dir.exists(lock_dir)) {
         return(FALSE)
     }
@@ -399,13 +398,13 @@ downloader__manifest_lock_stale <- function(lock_dir, stale_after) {
 # A second waiter must never remove a lock installed by the first waiter. Keep
 # the old ownership record for diagnosis; never touch climate/download payloads.
 # downloader__manifest_reclaim_lock {{{
-downloader__manifest_reclaim_lock <- function(lock_dir, stale_after) {
+downloader__manifest_reclaim_lock <- function(lock_dir) {
     guard <- paste0(lock_dir, ".reclaim")
     if (!dir.create(guard, showWarnings = FALSE)) {
         return(FALSE)
     }
     on.exit(unlink(guard, recursive = TRUE), add = TRUE)
-    if (!downloader__manifest_lock_stale(lock_dir, stale_after)) {
+    if (!downloader__manifest_lock_stale(lock_dir)) {
         return(FALSE)
     }
     archived <- tempfile(
@@ -418,14 +417,9 @@ downloader__manifest_reclaim_lock <- function(lock_dir, stale_after) {
 
 # Download-local manifest acquire lock; kept here so the module can be copied alone.
 # downloader__manifest_acquire_lock {{{
-downloader__manifest_acquire_lock <- function(
-    path,
-    timeout = 30,
-    stale_after = 24 * 3600
-) {
+downloader__manifest_acquire_lock <- function(path, timeout = 30) {
     lock_dir <- downloader__manifest_lock_path(path)
     checkmate::assert_count(timeout, positive = FALSE)
-    checkmate::assert_count(stale_after, positive = TRUE)
     started <- Sys.time()
 
     repeat {
@@ -492,8 +486,8 @@ downloader__manifest_acquire_lock <- function(
         }
 
         if (
-            downloader__manifest_lock_stale(lock_dir, stale_after) &&
-                downloader__manifest_reclaim_lock(lock_dir, stale_after)
+            downloader__manifest_lock_stale(lock_dir) &&
+                downloader__manifest_reclaim_lock(lock_dir)
         ) {
             next
         }
@@ -511,17 +505,8 @@ downloader__manifest_acquire_lock <- function(
 
 # Download-local manifest with lock; kept here so the module can be copied alone.
 # downloader__manifest_with_lock {{{
-downloader__manifest_with_lock <- function(
-    path,
-    expr,
-    timeout = 30,
-    stale_after = 24 * 3600
-) {
-    release <- downloader__manifest_acquire_lock(
-        path,
-        timeout = timeout,
-        stale_after = stale_after
-    )
+downloader__manifest_with_lock <- function(path, expr, timeout = 30) {
+    release <- downloader__manifest_acquire_lock(path, timeout = timeout)
     on.exit(release(), add = TRUE)
     force(expr)
 }
@@ -889,7 +874,7 @@ downloader__sql_in <- function(conn, column, values) {
 }
 # }}}
 
-# Validate persisted configuration locally so copying the module needs no schema file.
+# Validate the top-level fields decoded from a persisted configuration row.
 # downloader__config_validate {{{
 downloader__config_validate <- function(config, name = "downloader config") {
     checkmate::assert_list(config, names = "unique", .var.name = name)
@@ -934,98 +919,7 @@ downloader__config_validate <- function(config, name = "downloader config") {
     if (!is.null(config$connect_timeout)) {
         checkmate::assert_count(config$connect_timeout, positive = TRUE)
     }
-    # Policies retain the same persisted field contract without a package schema file.
-    for (field in c("node_policy", "transfer_policy", "resource_policy")) {
-        if (!field %in% names(config)) {
-            next
-        }
-        policy <- config[[field]]
-        defaults <- switch(
-            field,
-            node_policy = DOWNLOADER_NODE_POLICY_DEFAULT,
-            transfer_policy = DOWNLOADER_TRANSFER_POLICY_DEFAULT,
-            resource_policy = DOWNLOADER_RESOURCE_POLICY_DEFAULT
-        )
-        checkmate::assert_list(policy, names = "unique")
-        checkmate::assert_names(names(policy), must.include = names(defaults))
-        if (field == "node_policy") {
-            for (key in names(defaults)) {
-                checkmate::assert_count(policy[[key]], positive = TRUE)
-            }
-        } else if (field == "transfer_policy") {
-            for (key in c(
-                "chunk_size",
-                "bandwidth_limit",
-                "low_speed_limit",
-                "low_speed_time"
-            )) {
-                if (!is.null(policy[[key]])) {
-                    checkmate::assert_count(policy[[key]], positive = TRUE)
-                }
-            }
-            for (key in c(
-                "piece_size",
-                "piece_concurrency",
-                "max_sources",
-                "range_probe_timeout"
-            )) {
-                checkmate::assert_count(policy[[key]], positive = TRUE)
-            }
-            checkmate::assert_choice(
-                policy$range_mode,
-                c("off", "single", "multi", "auto")
-            )
-            checkmate::assert_flag(policy$require_checksum_for_multisource)
-        } else {
-            if (!is.null(policy$host_concurrency)) {
-                checkmate::assert_count(
-                    policy$host_concurrency,
-                    positive = TRUE
-                )
-            }
-            checkmate::assert_flag(policy$disk_preflight)
-            checkmate::assert_number(
-                policy$min_free_space,
-                lower = 0,
-                finite = TRUE
-            )
-        }
-    }
     invisible(config)
-}
-# }}}
-
-# downloader__config_defaults {{{
-downloader__config_defaults <- function(config) {
-    if (!"ssl_verifypeer" %in% names(config)) {
-        config$ssl_verifypeer <- TRUE
-    }
-    if (!"proxy" %in% names(config)) {
-        config$proxy <- NULL
-    }
-    if (!"connect_timeout" %in% names(config)) {
-        config$connect_timeout <- NULL
-    }
-    if (!"useragent" %in% names(config)) {
-        config$useragent <- NULL
-    }
-    if (!"node_policy" %in% names(config)) {
-        config$node_policy <- DOWNLOADER_NODE_POLICY_DEFAULT
-    }
-    if (!"transfer_policy" %in% names(config)) {
-        config$transfer_policy <- DOWNLOADER_TRANSFER_POLICY_DEFAULT
-    }
-    if (!"resource_policy" %in% names(config)) {
-        config$resource_policy <- DOWNLOADER_RESOURCE_POLICY_DEFAULT
-    }
-    config$node_policy <- downloader__node_policy_defaults(config$node_policy)
-    config$transfer_policy <- downloader__transfer_policy_defaults(
-        config$transfer_policy
-    )
-    config$resource_policy <- downloader__resource_policy_defaults(
-        config$resource_policy
-    )
-    config
 }
 # }}}
 
@@ -1075,47 +969,39 @@ downloader__transfer_policy_defaults <- function(policy = NULL) {
             policy[name] <- list(defaults[[name]])
         }
     }
-    policy["chunk_size"] <- list(downloader__nullable_count(
-        policy$chunk_size,
-        name = "transfer_policy$chunk_size"
-    ))
-    policy["bandwidth_limit"] <- list(downloader__nullable_count(
-        policy$bandwidth_limit,
-        name = "transfer_policy$bandwidth_limit"
-    ))
-    policy["low_speed_limit"] <- list(downloader__nullable_count(
-        policy$low_speed_limit,
-        name = "transfer_policy$low_speed_limit"
-    ))
-    policy["low_speed_time"] <- list(downloader__nullable_count(
-        policy$low_speed_time,
-        name = "transfer_policy$low_speed_time"
-    ))
+    # The nullable limits remain present as named NULLs across manifest writes.
+    for (field in c(
+        "chunk_size",
+        "bandwidth_limit",
+        "low_speed_limit",
+        "low_speed_time"
+    )) {
+        policy[field] <- list(downloader__nullable_count(
+            policy[[field]],
+            name = paste0("transfer_policy$", field)
+        ))
+    }
     policy$range_mode <- match.arg(
         downloader__one_chr(policy$range_mode),
         c("off", "single", "multi", "auto")
     )
-    policy["piece_size"] <- list(downloader__nullable_count(
-        policy$piece_size,
-        name = "transfer_policy$piece_size"
-    ))
-    policy["piece_concurrency"] <- list(downloader__nullable_count(
-        policy$piece_concurrency,
-        name = "transfer_policy$piece_concurrency"
-    ))
-    policy["max_sources"] <- list(downloader__nullable_count(
-        policy$max_sources,
-        name = "transfer_policy$max_sources"
-    ))
+    # These controls always receive a positive integer, including when an
+    # older row leaves a field unset and the default is filled above.
+    for (field in c(
+        "piece_size",
+        "piece_concurrency",
+        "max_sources",
+        "range_probe_timeout"
+    )) {
+        value <- policy[[field]]
+        checkmate::assert_count(
+            value,
+            positive = TRUE,
+            .var.name = paste0("transfer_policy$", field)
+        )
+        policy[[field]] <- as.integer(value)
+    }
     checkmate::assert_flag(policy$require_checksum_for_multisource)
-    policy["range_probe_timeout"] <- list(downloader__nullable_count(
-        policy$range_probe_timeout,
-        name = "transfer_policy$range_probe_timeout"
-    ))
-    policy$piece_size <- as.integer(policy$piece_size)
-    policy$piece_concurrency <- as.integer(policy$piece_concurrency)
-    policy$max_sources <- as.integer(policy$max_sources)
-    policy$range_probe_timeout <- as.integer(policy$range_probe_timeout)
     policy
 }
 # }}}
@@ -1187,10 +1073,9 @@ downloader__config_null_if_na <- function(
 }
 # }}}
 
+# Encode the configuration already validated by the Downloader constructor.
 # downloader__config_flatten {{{
 downloader__config_flatten <- function(config) {
-    config <- downloader__config_defaults(config)
-    downloader__config_validate(config)
     downloader__df(
         config_id = "default",
         schema_version = DOWNLOADER_SCHEMA_VERSION,
@@ -1333,7 +1218,15 @@ downloader__config_unflatten <- function(row, manifest = NULL) {
             min_free_space = as.numeric(row$resource_min_free_space[[1L]])
         )
     )
-    config <- downloader__config_defaults(config)
+    # Normalize each decoded policy once. The same functions validate
+    # constructor arguments after any caller overrides have been applied.
+    config$node_policy <- downloader__node_policy_defaults(config$node_policy)
+    config$transfer_policy <- downloader__transfer_policy_defaults(
+        config$transfer_policy
+    )
+    config$resource_policy <- downloader__resource_policy_defaults(
+        config$resource_policy
+    )
     downloader__config_validate(config)
     config
 }

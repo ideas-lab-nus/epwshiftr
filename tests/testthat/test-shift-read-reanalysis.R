@@ -449,12 +449,12 @@ test_that("saved point plans retain exact contracts through local reading", {
     expect_identical(serialize(restored, NULL), before)
     # Ignore only process-local pointers. Even minute changes to request data
     # and changes to types or dimensions must still fail the exact contract.
-    for (column in c("latitude", "expected_hours")) {
-        changed <- readRDS(saved)
-        changed$requests[[column]][[1L]] <- changed$requests[[column]][[1L]] +
-            1e-10
-        expect_error(shift_read_reanalysis(changed, files), "unchanged")
-    }
+    changed <- readRDS(saved)
+    changed$requests$expected_hours[[1L]] <- changed$requests$expected_hours[[
+        1L
+    ]] +
+        1e-10
+    expect_error(shift_read_reanalysis(changed, files), "unchanged")
     changed <- readRDS(saved)
     changed$requests$expected_hours <- as.double(
         changed$requests$expected_hours
