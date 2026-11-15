@@ -41,31 +41,7 @@
 #' @export
 # shift_read_reanalysis {{{
 shift_read_reanalysis <- function(plan, files) {
-    if (!is.list(plan) || !identical(plan$schema_version, 1L)) {
-        cli::cli_abort("Supply an unchanged reanalysis plan.")
-    }
-    # Reconstruct the public plan rather than trusting editable request counts,
-    # dates or hashes. This also validates its supported product and coordinates.
-    canonical <- shift_plan_reanalysis(
-        shift_era5(
-            plan$source$years,
-            variables = plan$variables$variable_id,
-            product = plan$source$product,
-            frequency = plan$source$frequency,
-            access = plan$source$access
-        ),
-        lapply(seq_len(nrow(plan$sites)), function(i) {
-            shift_site(
-                plan$sites$site_id[[i]],
-                lat = plan$sites$latitude[[i]],
-                lon = plan$sites$longitude[[i]]
-            )
-        }),
-        dates = plan$source$dates
-    )
-    if (!reanalysis_plan__identical(plan, canonical)) {
-        cli::cli_abort("Supply an unchanged reanalysis plan.")
-    }
+    reanalysis_plan__validate(plan)
     checkmate::assert_character(files, min.len = 1L, any.missing = FALSE)
     if (
         is.null(names(files)) ||

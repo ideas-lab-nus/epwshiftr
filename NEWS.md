@@ -1,5 +1,7 @@
 # epwshiftr (development version)
 
+* Use a shared saved-plan validator for ERA5 downloads and offline readback.
+
 * Publish a finished background download's step, run, and event in one Store
   transaction, recover interrupted publications, and write one live snapshot. (#326)
 

@@ -300,6 +300,38 @@ reanalysis_plan__dates <- function(dates, ranges) {
     as.Date(sort(unique(as.numeric(dates))), origin = "1970-01-01")
 }
 
+# Rebuild saved plans through their original planner before opening files or
+# starting a transfer. Compare the full plan so editable request counts,
+# dates, or hashes cannot replace the planner's credential-free contract.
+# reanalysis_plan__validate {{{
+reanalysis_plan__validate <- function(plan) {
+    if (!is.list(plan) || !identical(plan$schema_version, 1L)) {
+        cli::cli_abort("Supply an unchanged reanalysis plan.")
+    }
+    canonical <- shift_plan_reanalysis(
+        shift_era5(
+            plan$source$years,
+            variables = plan$variables$variable_id,
+            product = plan$source$product,
+            frequency = plan$source$frequency,
+            access = plan$source$access
+        ),
+        lapply(seq_len(nrow(plan$sites)), function(i) {
+            shift_site(
+                plan$sites$site_id[[i]],
+                lat = plan$sites$latitude[[i]],
+                lon = plan$sites$longitude[[i]]
+            )
+        }),
+        dates = plan$source$dates
+    )
+    if (!reanalysis_plan__identical(plan, canonical)) {
+        cli::cli_abort("Supply an unchanged reanalysis plan.")
+    }
+    invisible(NULL)
+}
+# }}}
+
 # Compare every plan value and type exactly while excluding data.table's
 # process-local allocation pointer, which cannot survive an RDS round trip.
 # Work on copies so validating a caller's saved plan never modifies its tables.
