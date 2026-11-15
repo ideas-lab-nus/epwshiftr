@@ -31,6 +31,12 @@ test_that("regional reads preserve values across long time axes and site groups"
     # Exercise different spatial shapes with actual local NetCDF reads.
     for (size in c(1L, 2L, 4L, 5L)) {
         actual <- dataset__read_regions(dataset, "tas", sites[seq_len(size)])
+        # Bound actual request volume without requiring a particular partition.
+        slices <- attr(actual, "read_slices")
+        expect_true(all(
+            slices$time_count * slices$lat_count * slices$lon_count <=
+                DATASET_REQUEST_MAX_VALUES
+        ))
         for (site in seq_len(size)) {
             expected <- values[, sites$lat[[site]] + 1L, sites$lon[[site]] + 1L]
             expect_identical(
