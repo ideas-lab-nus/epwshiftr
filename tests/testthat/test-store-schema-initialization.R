@@ -254,20 +254,20 @@ test_that("a failing schema statement keeps earlier declarations", {
     local_mocked_bindings(
         ddb_exec = function(conn, sql) {
             if (grepl("CREATE TABLE IF NOT EXISTS extraction_plan", sql)) {
-                # Run only the declarations ahead of the failing one, then fail.
-                parts <- strsplit(sql, ";\n", fixed = TRUE)[[1L]]
-                stop_at <- grep("IF NOT EXISTS extraction_plan", parts)[[1L]]
-                original(
-                    conn,
-                    paste(parts[seq_len(stop_at - 1L)], collapse = ";\n")
+                # Inject only the cause; DuckDB executes the whole batch and
+                # determines which earlier declarations survive the failure.
+                sql <- sub(
+                    "CREATE TABLE IF NOT EXISTS extraction_plan ",
+                    "CREATE TABLE IF NOT EXISTS extraction_plan (id schema_test_unknown_type); CREATE TABLE IF NOT EXISTS extraction_plan ",
+                    sql,
+                    fixed = TRUE
                 )
-                stop("controlled schema failure")
             }
             original(conn, sql)
         },
         .package = "epwshiftr"
     )
-    expect_error(EsgStore$new(path), "controlled schema failure")
+    expect_error(EsgStore$new(path), "schema_test_unknown_type")
     conn <- ddb_connect(file.path(path, "manifest.duckdb"))
     on.exit(ddb_disconnect(conn), add = TRUE)
     tables <- ddb_list_tables(conn)

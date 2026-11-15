@@ -65,6 +65,20 @@ test_that("component registries retain metadata but not serialized operations", 
         component__register(signal, registry = registry),
         "already registered"
     )
+    replacement <- signal
+    replacement@label <- "Replacement implementation"
+    expect_identical(
+        component__register(
+            replacement,
+            on_conflict = "replace",
+            registry = registry
+        ),
+        replacement
+    )
+    expect_identical(
+        component__get("signal", "daily_delta", registry),
+        replacement
+    )
 })
 
 test_that("built-in registration preserves process-local component extensions", {
@@ -118,6 +132,14 @@ test_that("built-in registration applies one policy to component collections", {
 
     expect_invisible(
         component__register_builtins(components, registry = registry)
+    )
+    expect_invisible(component__register_builtins(
+        components,
+        registry = registry
+    ))
+    expect_error(
+        component__register_builtins(list(NULL), registry = registry),
+        "WeatherComponentSpec"
     )
     expect_identical(
         component__get("calendar", "annual_phase", registry),
@@ -327,6 +349,39 @@ test_that("component specs reject missing or stage-inappropriate operations", {
             operations = list(apply = function(value) value)
         ),
         "Unknown `output` operation"
+    )
+})
+
+# S7 validates both initial construction and later property changes; descriptor
+# normalization remains responsible for canonical input/output metadata.
+test_that("component construction and mutation share invariant validation", {
+    requirement <- component__input_requirement(
+        "model_future",
+        frequencies = "day"
+    )
+    args <- list(
+        name = "shared_validation",
+        stage = "signal",
+        required_inputs = list(model_future = requirement),
+        input_kinds = c(input = "calendar_indexed"),
+        output_kinds = "corrected_series",
+        operations = list(apply = identity)
+    )
+    spec <- do.call(component__spec, args)
+    expect_identical(spec@input_kinds, "calendar_indexed")
+    invalid <- args
+    invalid$label <- ""
+    expect_error(do.call(component__spec, invalid), "label")
+    expect_error(spec@label <- "", "label")
+    invalid <- args
+    invalid$optional_inputs <- args$required_inputs
+    expect_error(
+        do.call(component__spec, invalid),
+        "both required and optional"
+    )
+    expect_error(
+        spec@optional_inputs <- args$required_inputs,
+        "both required and optional"
     )
 })
 

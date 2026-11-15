@@ -2093,10 +2093,8 @@ EsgStore <- R6::R6Class(
 
             links <- private$read_table("esg_query_file")
             files <- private$read_table("esg_file")
-            tasks <- tryCatch(
-                data.table::as.data.table(downloader$tasks()),
-                error = function(e) data.table::data.table()
-            )
+            # A failed manifest read is not evidence that there are no tasks.
+            tasks <- data.table::as.data.table(downloader$tasks())
             private$summarise_query_status(queries, links, files, tasks)
         },
         # }}}
@@ -2250,69 +2248,30 @@ EsgStore <- R6::R6Class(
                     sort = FALSE
                 )
             }
-            if (
-                "bytes_total" %in%
-                    names(status) &&
-                    "bytes_done" %in% names(status)
-            ) {
-                status[,
-                    bytes_missing := pmax(
-                        0,
-                        suppressWarnings(as.numeric(bytes_total)) -
-                            suppressWarnings(as.numeric(bytes_done))
-                    )
-                ]
-            } else {
-                status[, bytes_missing := NA_real_]
-            }
-            retry_cols <- intersect(
-                c("download_error", "download_cancelled"),
-                names(status)
+            # query_status() owns these numeric columns, including zero counts
+            # when no tasks exist. Only update/session metadata is optional.
+            data.table::set(
+                status,
+                j = "bytes_missing",
+                value = pmax(0, status$bytes_total - status$bytes_done)
             )
-            if (length(retry_cols)) {
-                retry_values <- as.data.frame(lapply(retry_cols, function(col) {
-                    suppressWarnings(as.numeric(status[[col]]))
-                }))
-                status[,
-                    download_retryable := rowSums(retry_values, na.rm = TRUE)
-                ]
-            } else {
-                status[, download_retryable := 0L]
-            }
-            incomplete_cols <- intersect(
-                c(
-                    "download_queued",
-                    "download_downloading",
-                    "download_error",
-                    "download_cancelled"
-                ),
-                names(status)
+            data.table::set(
+                status,
+                j = "download_retryable",
+                value = rowSums(status[,
+                    c("download_error", "download_cancelled"),
+                    with = FALSE
+                ])
             )
-            if (length(incomplete_cols)) {
-                incomplete_values <- as.data.frame(lapply(
-                    incomplete_cols,
-                    function(col) suppressWarnings(as.numeric(status[[col]]))
-                ))
-                status[,
-                    download_incomplete := rowSums(
-                        incomplete_values,
-                        na.rm = TRUE
-                    ) >
-                        0L
-                ]
-            } else {
-                status[, download_incomplete := FALSE]
-            }
-            if (
-                "file_current" %in%
-                    names(status) &&
-                    "local_available" %in% names(status)
-            ) {
-                status[
-                    local_available < file_current,
-                    download_incomplete := TRUE
-                ]
-            }
+            data.table::set(
+                status,
+                j = "download_incomplete",
+                value = status$download_retryable +
+                    status$download_queued +
+                    status$download_downloading >
+                    0 |
+                    status$local_available < status$file_current
+            )
             if ("download_session_id" %in% names(status)) {
                 status[, last_download_session_id := download_session_id]
             } else {
@@ -6327,10 +6286,8 @@ EsgStore <- R6::R6Class(
         # workflow_downloads
         # workflow_downloads {{{
         workflow_downloads = function(query_id, downloader) {
-            tasks <- tryCatch(
-                data.table::as.data.table(downloader$tasks()),
-                error = function(e) data.table::data.table()
-            )
+            # A failed manifest read is not evidence that there are no tasks.
+            tasks <- data.table::as.data.table(downloader$tasks())
             if (!nrow(tasks)) {
                 return(tasks)
             }

@@ -208,34 +208,27 @@ method__spec <- function(
     references,
     version = 1L
 ) {
-    checkmate::assert_string(name, pattern = "^[a-z][a-z0-9_]*$")
+    # S7 owns the final object invariants. Check version before coercion so a
+    # fractional input cannot be truncated into a valid definition version.
     checkmate::assert_count(version, positive = TRUE)
-    checkmate::assert_string(label, min.chars = 1L)
-    checkmate::assert_choice(domain, WEATHER_METHOD_DOMAINS)
-    checkmate::assert_choice(
-        implementation,
-        WEATHER_METHOD_IMPLEMENTATIONS
-    )
+    # Construction additionally requires a resolvable implementation key;
+    # this is stricter than the S7 record's non-empty descriptor constraint.
     checkmate::assert_string(
         implementation_key,
         pattern = "^[a-z][a-z0-9_]*$"
     )
     frequencies <- weather__descriptor_values(frequencies, "frequencies")
     input_roles <- weather__descriptor_values(input_roles, "input_roles")
-    checkmate::assert_subset(input_roles, WEATHER_INPUT_ROLES)
     variable_sets <- component__variable_sets(variable_sets)
     output_variables <- weather__descriptor_values(
         output_variables,
         "output_variables"
     )
-    checkmate::assert_choice(output_role, WEATHER_INPUT_ROLES)
     checkmate::assert_list(parameters, names = "unique")
     stochastic_variables <- weather__descriptor_values(
         stochastic_variables,
         "stochastic_variables"
     )
-    checkmate::assert_subset(stochastic_variables, output_variables)
-    checkmate::assert_string(evidence, min.chars = 1L)
     references <- weather__descriptor_values(references, "references")
 
     WeatherMethodSpec(

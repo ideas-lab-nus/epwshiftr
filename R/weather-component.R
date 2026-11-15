@@ -399,9 +399,8 @@ component__spec <- function(
     operations,
     metadata = list()
 ) {
-    checkmate::assert_string(name, pattern = "^[a-z][a-z0-9_]*$")
-    checkmate::assert_choice(stage, WEATHER_COMPONENT_STAGES)
-    checkmate::assert_string(label, min.chars = 1L)
+    # The S7 validator owns object invariants on construction and mutation.
+    # Normalize descriptors here, retaining checks needed before conversion.
     required_inputs <- component__requirements(
         required_inputs,
         "required_inputs"
@@ -410,18 +409,9 @@ component__spec <- function(
         optional_inputs,
         "optional_inputs"
     )
-    overlap <- intersect(names(required_inputs), names(optional_inputs))
-    if (length(overlap)) {
-        cli::cli_abort(
-            "Input role(s) cannot be both required and optional: {.val {overlap}}."
-        )
-    }
     input_kinds <- weather__descriptor_values(input_kinds, "input_kinds")
     output_kinds <- weather__descriptor_values(output_kinds, "output_kinds")
     scopes <- weather__descriptor_values(scopes, "scopes")
-    checkmate::assert_subset(scopes, WEATHER_COMPONENT_SCOPES)
-    checkmate::assert_flag(stochastic)
-    checkmate::assert_list(operations, names = "unique")
     checkmate::assert_list(metadata, names = "unique")
 
     WeatherComponentSpec(
@@ -450,12 +440,12 @@ component__registry_key <- function(stage, name) {
 }
 # }}}
 
-# Register one executable component while keeping serialized recipes free from
-# process-specific function objects.
+# Register one executable component with an explicit conflict policy. Validation,
+# key selection and mutation stay together for extensions and built-in defaults.
 # component__register {{{
 component__register <- function(
     component,
-    overwrite = FALSE,
+    on_conflict = c("error", "replace", "keep"),
     registry = WEATHER_COMPONENT_REGISTRY
 ) {
     if (!S7::S7_inherits(component, WeatherComponentSpec)) {
@@ -463,16 +453,19 @@ component__register <- function(
             "{.arg component} must be a WeatherComponentSpec object."
         )
     }
-    checkmate::assert_flag(overwrite)
+    on_conflict <- match.arg(on_conflict)
     checkmate::assert_environment(registry)
-    key <- component__registry_key(component@stage, component@name)
-    if (
-        exists(key, envir = registry, inherits = FALSE) &&
-            !isTRUE(overwrite)
-    ) {
-        cli::cli_abort(
-            "Weather component {.val {key}} is already registered."
-        )
+    # The validated S7 object already owns the stage and name constraints.
+    key <- paste(component@stage, component@name, sep = "::")
+    if (exists(key, envir = registry, inherits = FALSE)) {
+        if (on_conflict == "keep") {
+            return(invisible(get(key, envir = registry, inherits = FALSE)))
+        }
+        if (on_conflict == "error") {
+            cli::cli_abort(
+                "Weather component {.val {key}} is already registered."
+            )
+        }
     }
     assign(key, component, envir = registry)
     invisible(component)
@@ -486,20 +479,7 @@ component__register_builtin <- function(
     component,
     registry = WEATHER_COMPONENT_REGISTRY
 ) {
-    if (!S7::S7_inherits(component, WeatherComponentSpec)) {
-        cli::cli_abort(
-            "{.arg component} must be a WeatherComponentSpec object."
-        )
-    }
-    checkmate::assert_environment(registry)
-    key <- component__registry_key(component@stage, component@name)
-
-    # Package-load registration is idempotent and must preserve an extension
-    # installed earlier in the current R process.
-    if (exists(key, envir = registry, inherits = FALSE)) {
-        return(invisible(get(key, envir = registry, inherits = FALSE)))
-    }
-    component__register(component, registry = registry)
+    component__register(component, on_conflict = "keep", registry = registry)
 }
 # }}}
 
@@ -513,11 +493,6 @@ component__register_builtins <- function(
     checkmate::assert_list(components)
     checkmate::assert_environment(registry)
     for (component in components) {
-        if (!S7::S7_inherits(component, WeatherComponentSpec)) {
-            cli::cli_abort(
-                "Every {.arg components} entry must be a WeatherComponentSpec object."
-            )
-        }
         component__register_builtin(component, registry = registry)
     }
     invisible(NULL)

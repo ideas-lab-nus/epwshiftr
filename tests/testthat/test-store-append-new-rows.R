@@ -20,51 +20,27 @@ store_append_test__rows <- function(keys, v = "new") {
     )
 }
 
-# The previous implementation, kept as an oracle: read every key, filter in R.
-store_append_test__oracle <- function(conn, table, rows, key) {
-    current <- ddb_query(
-        conn,
-        sprintf(
-            "SELECT %s FROM %s",
-            ddb_ident(conn, key),
-            ddb_ident(conn, table)
-        )
-    )[[key]]
-    rows <- rows[!rows[[key]] %in% current, , drop = FALSE]
-    if (nrow(rows)) {
-        ddb_append_table(conn, table, rows)
-    }
-    invisible(NULL)
-}
-
+# Read all persisted fields in key order to check insertion outcomes.
 store_append_test__state <- function(store) {
     out <- ddb_query(priv(store)$conn, "SELECT k, v, n FROM append_t")
     out[order(out$k), , drop = FALSE]
 }
 
-test_that("append_new_rows skips stored keys and matches the earlier behavior", {
-    new <- store_append_test__store()
-    old <- store_append_test__store()
+test_that("append_new_rows preserves stored values and inserts only new keys", {
+    store <- store_append_test__store()
     seed <- store_append_test__rows(c("a", "b", "c"), v = "seed")
-    for (s in list(new, old)) {
-        ddb_append_table(priv(s)$conn, "append_t", seed)
-    }
+    ddb_append_table(priv(store)$conn, "append_t", seed)
     batch <- store_append_test__rows(c("b", "d", "e", "a"), v = "batch")
-    priv(new)$append_new_rows("append_t", batch, "k")
-    store_append_test__oracle(priv(old)$conn, "append_t", batch, "k")
-    expect_identical(
-        store_append_test__state(new),
-        store_append_test__state(old)
-    )
-    state <- store_append_test__state(new)
+    priv(store)$append_new_rows("append_t", batch, "k")
+    state <- store_append_test__state(store)
     expect_identical(state$k, c("a", "b", "c", "d", "e"))
-    # Stored rows keep their values; only d and e were inserted.
     expect_identical(state$v, c("seed", "seed", "seed", "batch", "batch"))
+    expect_identical(state$n, c(1L, 2L, 3L, 2L, 3L))
 
-    # Nothing to add, an empty batch and an empty table are all no-ops.
-    priv(new)$append_new_rows("append_t", batch, "k")
-    priv(new)$append_new_rows("append_t", batch[0, ], "k")
-    expect_identical(nrow(store_append_test__state(new)), 5L)
+    # Replaying the batch or submitting no rows must preserve every field.
+    priv(store)$append_new_rows("append_t", batch, "k")
+    priv(store)$append_new_rows("append_t", batch[0, ], "k")
+    expect_identical(store_append_test__state(store), state)
     empty <- store_append_test__store()
     priv(empty)$append_new_rows(
         "append_t",
@@ -74,29 +50,14 @@ test_that("append_new_rows skips stored keys and matches the earlier behavior", 
     expect_identical(store_append_test__state(empty)$k, "first")
 })
 
-test_that("append_new_rows keeps its failure behavior for bad keys", {
-    new <- store_append_test__store()
-    old <- store_append_test__store()
-    # A repeated key inside one batch violates the primary key either way.
+test_that("append_new_rows rejects bad keys without partial insertion", {
+    store <- store_append_test__store()
     dup <- store_append_test__rows(c("x", "x"))
-    expect_error(priv(new)$append_new_rows("append_t", dup, "k"))
-    expect_error(store_append_test__oracle(
-        priv(old)$conn,
-        "append_t",
-        dup,
-        "k"
-    ))
-    # A missing key cannot match a stored key, so the row is attempted and the
-    # primary key rejects it, as before.
+    expect_error(priv(store)$append_new_rows("append_t", dup, "k"))
+    expect_identical(nrow(store_append_test__state(store)), 0L)
     missing <- store_append_test__rows(c("y", NA))
-    expect_error(priv(new)$append_new_rows("append_t", missing, "k"))
-    expect_error(
-        store_append_test__oracle(priv(old)$conn, "append_t", missing, "k")
-    )
-    expect_identical(
-        store_append_test__state(new),
-        store_append_test__state(old)
-    )
+    expect_error(priv(store)$append_new_rows("append_t", missing, "k"))
+    expect_identical(nrow(store_append_test__state(store)), 0L)
 })
 
 test_that("append_new_rows handles factor keys and keys that need quoting", {
