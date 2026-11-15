@@ -1594,10 +1594,7 @@ EsgStore <- R6::R6Class(
                 )
                 previews[[i]] <- private$preview_query_update(
                     row = rows[i],
-                    files = files,
-                    fields = fields,
-                    all = all,
-                    limit = limit
+                    files = files
                 )
             }
 
@@ -1801,10 +1798,7 @@ EsgStore <- R6::R6Class(
             )
             preview <- private$preview_query_update(
                 row = row,
-                files = files,
-                fields = fields,
-                all = all,
-                limit = limit
+                files = files
             )
 
             node_stats <- if (!is.null(downloader)) {
@@ -2093,10 +2087,8 @@ EsgStore <- R6::R6Class(
 
             links <- private$read_table("esg_query_file")
             files <- private$read_table("esg_file")
-            tasks <- tryCatch(
-                data.table::as.data.table(downloader$tasks()),
-                error = function(e) data.table::data.table()
-            )
+            # A failed manifest read is not evidence that there are no tasks.
+            tasks <- data.table::as.data.table(downloader$tasks())
             private$summarise_query_status(queries, links, files, tasks)
         },
         # }}}
@@ -2250,69 +2242,30 @@ EsgStore <- R6::R6Class(
                     sort = FALSE
                 )
             }
-            if (
-                "bytes_total" %in%
-                    names(status) &&
-                    "bytes_done" %in% names(status)
-            ) {
-                status[,
-                    bytes_missing := pmax(
-                        0,
-                        suppressWarnings(as.numeric(bytes_total)) -
-                            suppressWarnings(as.numeric(bytes_done))
-                    )
-                ]
-            } else {
-                status[, bytes_missing := NA_real_]
-            }
-            retry_cols <- intersect(
-                c("download_error", "download_cancelled"),
-                names(status)
+            # query_status() owns these numeric columns, including zero counts
+            # when no tasks exist. Only update/session metadata is optional.
+            data.table::set(
+                status,
+                j = "bytes_missing",
+                value = pmax(0, status$bytes_total - status$bytes_done)
             )
-            if (length(retry_cols)) {
-                retry_values <- as.data.frame(lapply(retry_cols, function(col) {
-                    suppressWarnings(as.numeric(status[[col]]))
-                }))
-                status[,
-                    download_retryable := rowSums(retry_values, na.rm = TRUE)
-                ]
-            } else {
-                status[, download_retryable := 0L]
-            }
-            incomplete_cols <- intersect(
-                c(
-                    "download_queued",
-                    "download_downloading",
-                    "download_error",
-                    "download_cancelled"
-                ),
-                names(status)
+            data.table::set(
+                status,
+                j = "download_retryable",
+                value = rowSums(status[,
+                    c("download_error", "download_cancelled"),
+                    with = FALSE
+                ])
             )
-            if (length(incomplete_cols)) {
-                incomplete_values <- as.data.frame(lapply(
-                    incomplete_cols,
-                    function(col) suppressWarnings(as.numeric(status[[col]]))
-                ))
-                status[,
-                    download_incomplete := rowSums(
-                        incomplete_values,
-                        na.rm = TRUE
-                    ) >
-                        0L
-                ]
-            } else {
-                status[, download_incomplete := FALSE]
-            }
-            if (
-                "file_current" %in%
-                    names(status) &&
-                    "local_available" %in% names(status)
-            ) {
-                status[
-                    local_available < file_current,
-                    download_incomplete := TRUE
-                ]
-            }
+            data.table::set(
+                status,
+                j = "download_incomplete",
+                value = status$download_retryable +
+                    status$download_queued +
+                    status$download_downloading >
+                    0 |
+                    status$local_available < status$file_current
+            )
             if ("download_session_id" %in% names(status)) {
                 status[, last_download_session_id := download_session_id]
             } else {
@@ -2826,7 +2779,6 @@ EsgStore <- R6::R6Class(
         # add_files {{{
         add_files = function(files, label = NULL) {
             checkmate::assert_string(label, null.ok = TRUE)
-            private$check_open()
 
             private$with_store_lock({
                 result_type <- store__result_type(files)
@@ -3812,7 +3764,7 @@ EsgStore <- R6::R6Class(
         #' @return For `export_plans()`, receipt path, SHA256 and named query JSON paths.
         #'   For `import_plans()`, original plan IDs and reuse flags.
         export_plans = function(plan_id, path) {
-            store_exchange__export_plans(self, private, plan_id, path)
+            store_exchange__export_plans(private, plan_id, path)
         },
         # import_plans
         #' @description
@@ -3825,7 +3777,6 @@ EsgStore <- R6::R6Class(
         #'   JSON controls, keyed by query ID. Each control is checked by SHA256.
         import_plans = function(path, checksum, query_paths) {
             store_exchange__import_plans(
-                self,
                 private,
                 path,
                 checksum,
@@ -6328,10 +6279,8 @@ EsgStore <- R6::R6Class(
         # workflow_downloads
         # workflow_downloads {{{
         workflow_downloads = function(query_id, downloader) {
-            tasks <- tryCatch(
-                data.table::as.data.table(downloader$tasks()),
-                error = function(e) data.table::data.table()
-            )
+            # A failed manifest read is not evidence that there are no tasks.
+            tasks <- data.table::as.data.table(downloader$tasks())
             if (!nrow(tasks)) {
                 return(tasks)
             }
@@ -6394,13 +6343,9 @@ EsgStore <- R6::R6Class(
                 existing_links[["query_id"]] == wanted_query_id
             ]
             existing_files <- private$read_table("esg_file")
-            if (nrow(existing_links) && nrow(existing_files)) {
-                existing_files <- existing_files[
-                    existing_files[["file_key"]] %in% existing_links$file_key
-                ]
-            } else {
-                existing_files <- existing_files[0]
-            }
+            existing_files <- existing_files[
+                existing_files[["file_key"]] %in% existing_links$file_key
+            ]
             file_rows <- private$file_rows(dt, now)
             update_id <- store__hash(
                 query_id,
@@ -6478,13 +6423,7 @@ EsgStore <- R6::R6Class(
         # }}}
         # preview_query_update
         # preview_query_update {{{
-        preview_query_update = function(
-            row,
-            files,
-            fields = "*",
-            all = TRUE,
-            limit = FALSE
-        ) {
+        preview_query_update = function(row, files) {
             store__result_type(files)
             dt <- store__file_table(files)
             now <- store__now()
@@ -6495,13 +6434,9 @@ EsgStore <- R6::R6Class(
                 existing_links[["query_id"]] == wanted_query_id
             ]
             existing_files <- private$read_table("esg_file")
-            if (nrow(existing_links) && nrow(existing_files)) {
-                existing_files <- existing_files[
-                    existing_files[["file_key"]] %in% existing_links$file_key
-                ]
-            } else {
-                existing_files <- existing_files[0]
-            }
+            existing_files <- existing_files[
+                existing_files[["file_key"]] %in% existing_links$file_key
+            ]
             file_rows <- private$file_rows(dt, now)
             update_id <- store__hash(
                 "preview",
@@ -6531,32 +6466,19 @@ EsgStore <- R6::R6Class(
         # query_update_preview_summary {{{
         query_update_preview_summary = function(row, changes) {
             count_type <- function(type) {
-                if (!nrow(changes)) {
-                    return(0L)
-                }
                 as.integer(sum(changes$change_type == type, na.rm = TRUE))
             }
             count_flag <- function(column) {
-                if (!nrow(changes) || !column %in% names(changes)) {
-                    return(0L)
-                }
                 as.integer(sum(changes[[column]] %in% TRUE, na.rm = TRUE))
             }
             sum_size <- function(rows) {
-                if (!nrow(rows) || !"current_size" %in% names(rows)) {
-                    return(0)
-                }
                 sum(
                     suppressWarnings(as.numeric(rows$current_size)),
                     na.rm = TRUE
                 )
             }
 
-            active <- if (nrow(changes)) {
-                changes[changes[["current_status"]] == "current"]
-            } else {
-                changes
-            }
+            active <- changes[changes[["current_status"]] == "current"]
             data.table::data.table(
                 query_id = row$query_id[[1L]],
                 label = store__chr1(row$label[[1L]]),
@@ -7913,10 +7835,7 @@ EsgStore <- R6::R6Class(
             if (is.na(file_key) || !nzchar(file_key)) {
                 return(list(done = FALSE, message = "missing file_key"))
             }
-            private$clear_file_local_reference(
-                file_key,
-                artifact_id = store__chr1(action$artifact_id[[1L]])
-            )
+            private$clear_file_local_reference(file_key)
             list(done = TRUE, message = "cleared missing local reference")
         },
         # }}}
@@ -8013,10 +7932,7 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # clear_file_local_reference {{{
-        clear_file_local_reference = function(
-            file_key,
-            artifact_id = NA_character_
-        ) {
+        clear_file_local_reference = function(file_key) {
             for (table in c("file_catalog", "esg_file")) {
                 rows <- private$read_table(table)
                 rows <- rows[rows[["file_key"]] == file_key]
@@ -8301,14 +8217,11 @@ EsgStore <- R6::R6Class(
             cutoff = NULL
         ) {
             files <- data.table::as.data.table(files)
-            if (!nrow(files)) {
-                return(private$cleanup_empty(scope))
-            }
             if (!is.null(cutoff) && "mtime" %in% names(files)) {
                 files <- files[mtime <= cutoff]
             }
             if (!nrow(files)) {
-                return(private$cleanup_empty(scope))
+                return(private$cleanup_empty())
             }
             deleted <- rep(FALSE, nrow(files))
             if (!isTRUE(dry_run)) {
@@ -8333,7 +8246,7 @@ EsgStore <- R6::R6Class(
         cleanup_orphan_records = function(orphans, dry_run = TRUE) {
             orphans <- data.table::as.data.table(orphans)
             if (!nrow(orphans)) {
-                return(private$cleanup_empty("orphan_records"))
+                return(private$cleanup_empty())
             }
             removed <- rep(FALSE, nrow(orphans))
             deleted <- rep(FALSE, nrow(orphans))
@@ -8375,7 +8288,7 @@ EsgStore <- R6::R6Class(
         cleanup_missing_records = function(records, dry_run = TRUE) {
             records <- data.table::as.data.table(records)
             if (!nrow(records)) {
-                return(private$cleanup_empty("missing_records"))
+                return(private$cleanup_empty())
             }
             removed <- rep(FALSE, nrow(records))
             if (!isTRUE(dry_run)) {
@@ -8437,7 +8350,7 @@ EsgStore <- R6::R6Class(
         # }}}
 
         # cleanup_empty {{{
-        cleanup_empty = function(scope_name) {
+        cleanup_empty = function() {
             data.table::data.table(
                 scope = character(),
                 action = character(),
@@ -8449,7 +8362,7 @@ EsgStore <- R6::R6Class(
                 deleted = logical(),
                 record_removed = logical(),
                 dry_run = logical()
-            )[0]
+            )
         },
         # }}}
         # orphaned_files
@@ -8785,204 +8698,48 @@ EsgStore <- R6::R6Class(
             reporter = NULL,
             resolved = NULL
         ) {
-            # Keep the complete service and fallback sequence inside the cache
-            # generator so concurrent method children wait for one source read.
-            source_error <- if (inherits(resolved, "error")) resolved else NULL
-            if (
-                !is.null(source_error) &&
-                    (!inherits(source_error, "epwshiftr_store_access_error") ||
-                        !identical(source_error$service, "OPeNDAP") ||
-                        identical(fallback, "error"))
-            ) {
-                stop(source_error)
-            }
-            generate <- function() {
-                opened <- private$open_plan_dataset(
+            if (is.null(resolved) || inherits(resolved, "error")) {
+                source <- new.env(parent = emptyenv())
+                source$opened <- NULL
+                source$target <- store__chr1(file$url_opendap)
+                source$service <- "OPeNDAP"
+                source$remote_error <- resolved
+                local <- store__chr1(file$local_path)
+                if (!is.na(local) && nzchar(local)) {
+                    local <- store_abs_path(local, root = private$store_path)
+                    if (file.exists(local)) {
+                        source$target <- local
+                        source$service <- "local"
+                    }
+                }
+                on.exit(
+                    if (!is.null(source$opened)) source$opened$dataset$close(),
+                    add = TRUE
+                )
+                # Keep the Store-owned downloader and reporter in the owner;
+                # the shared reader only decides when this recovery is needed.
+                download <- if (identical(fallback, "auto")) {
+                    function() {
+                        list(
+                            path = private$download_plan_file(
+                                file,
+                                overwrite = overwrite,
+                                reporter = reporter
+                            )
+                        )
+                    }
+                }
+                resolved <- store__read_source(
+                    plan,
                     file,
-                    fallback = fallback,
-                    overwrite = overwrite,
-                    reporter = reporter,
-                    remote_error = source_error
+                    source,
+                    download = download,
+                    reporter = reporter
                 )
-                ds <- opened$dataset
-                on.exit(if (isTRUE(ds$is_open)) ds$close(), add = TRUE)
-                recovery_error <- opened$remote_error
-
-                payload <- tryCatch(
-                    private$read_extract_dataset(
-                        ds,
-                        plan,
-                        file,
-                        opened,
-                        reporter = reporter
-                    ),
-                    error = identity
-                )
-                remote_error <- if (
-                    inherits(
-                        payload,
-                        "epwshiftr_store_access_error"
-                    ) &&
-                        identical(opened$access_method, "OPeNDAP")
-                ) {
-                    payload
-                } else {
-                    NULL
+                if (!is.null(source$opened)) {
+                    source$opened$dataset$close()
+                    source$opened <- NULL
                 }
-                if (
-                    !is.null(remote_error) &&
-                        identical(opened$access_method, "OPeNDAP") &&
-                        identical(fallback, "auto")
-                ) {
-                    recovery_error <- remote_error
-                    store__report_access_failure(
-                        reporter,
-                        file,
-                        remote_error,
-                        attempt = 1L
-                    )
-                    if (isTRUE(ds$is_open)) {
-                        ds$close()
-                    }
-
-                    download_started <- proc.time()[["elapsed"]]
-                    local_path <- tryCatch(
-                        private$download_plan_file(
-                            file,
-                            overwrite = overwrite,
-                            reporter = reporter
-                        ),
-                        error = function(error) {
-                            store__access_error(
-                                error,
-                                phase = "download",
-                                service = "HTTPServer",
-                                target = store__chr1(file$url_download),
-                                started_at = download_started
-                            )
-                        }
-                    )
-                    if (
-                        inherits(
-                            local_path,
-                            "epwshiftr_store_access_error"
-                        )
-                    ) {
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_path,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            remote_error,
-                            local_path
-                        ))
-                    }
-
-                    local_open <- tryCatch(
-                        private$open_dataset(
-                            local_path,
-                            service = "HTTPServer"
-                        ),
-                        error = identity
-                    )
-                    if (inherits(local_open, "error")) {
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_open,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            remote_error,
-                            local_open
-                        ))
-                    }
-                    opened <- local_open
-                    ds <- opened$dataset
-                    payload <- tryCatch(
-                        private$read_extract_dataset(
-                            ds,
-                            plan,
-                            file,
-                            opened,
-                            reporter = reporter
-                        ),
-                        error = identity
-                    )
-                    if (inherits(payload, "error")) {
-                        local_error <- if (
-                            inherits(
-                                payload,
-                                "epwshiftr_store_access_error"
-                            )
-                        ) {
-                            payload
-                        } else {
-                            store__access_error(
-                                payload,
-                                phase = "read",
-                                service = "HTTPServer",
-                                target = local_path,
-                                started_at = proc.time()[["elapsed"]]
-                            )
-                        }
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_error,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            remote_error,
-                            local_error
-                        ))
-                    }
-                } else if (inherits(payload, "error")) {
-                    if (!is.null(recovery_error)) {
-                        local_error <- if (
-                            inherits(
-                                payload,
-                                "epwshiftr_store_access_error"
-                            )
-                        ) {
-                            payload
-                        } else {
-                            store__access_error(
-                                payload,
-                                phase = "read",
-                                service = opened$access_method,
-                                target = opened$target,
-                                started_at = proc.time()[["elapsed"]]
-                            )
-                        }
-                        store__report_access_failure(
-                            reporter,
-                            file,
-                            local_error,
-                            attempt = 2L,
-                            outcome = "failed"
-                        )
-                        stop(store__fallback_error(
-                            recovery_error,
-                            local_error
-                        ))
-                    }
-                    stop(payload)
-                }
-
-                list(
-                    payload = payload,
-                    opened = opened,
-                    recovery_error = recovery_error
-                )
-            }
-            if (is.null(resolved) || !is.null(source_error)) {
-                resolved <- store__extract_cache_resolve(plan, file, generate)
             }
             payload <- resolved$payload
             opened <- resolved$opened
@@ -9043,18 +8800,6 @@ EsgStore <- R6::R6Class(
             )
         },
         # }}}
-        # read_extract_dataset
-        # read_extract_dataset {{{
-        read_extract_dataset = function(
-            ds,
-            plan,
-            file,
-            opened,
-            reporter = NULL
-        ) {
-            store__read_extract_dataset(ds, plan, file, opened, reporter)
-        },
-        # }}}
         # persist_extract_payload
         # Commit one successfully read payload exactly once. Keeping this after
         # the recovery boundary prevents a failed OPeNDAP attempt from creating
@@ -9098,8 +8843,7 @@ EsgStore <- R6::R6Class(
                             results = results,
                             grid_sources = private$decorate_extract_grid_sources(
                                 payload$grid_sources,
-                                plan,
-                                file
+                                plan
                             )
                         )
                     } else {
@@ -9171,123 +8915,6 @@ EsgStore <- R6::R6Class(
             ddb_exec(private$conn, "COMMIT")
             committed <- TRUE
             updated
-        },
-        # }}}
-        # open_dataset
-        # Construct and open one EsgDataset inside a single classified phase so
-        # constructor failures and NetCDF open failures follow the same recovery
-        # path and retain the exact service and target in diagnostics.
-        # open_dataset {{{
-        open_dataset = function(target, service) {
-            store__open_dataset(target, service)
-        },
-        # }}}
-        # open_plan_dataset
-        # open_plan_dataset {{{
-        open_plan_dataset = function(
-            file,
-            fallback = "auto",
-            overwrite = FALSE,
-            reporter = NULL,
-            remote_error = NULL
-        ) {
-            local <- store__chr1(file$local_path)
-            if (!is.na(local) && nzchar(local)) {
-                local <- store_abs_path(local, root = private$store_path)
-                if (file.exists(local)) {
-                    return(private$open_dataset(local, service = "local"))
-                }
-            }
-            opendap <- store__chr1(file$url_opendap)
-            if (!is.null(remote_error)) {
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    remote_error,
-                    attempt = 1L
-                )
-            }
-            if (is.null(remote_error) && !is.na(opendap) && nzchar(opendap)) {
-                opened <- tryCatch(
-                    private$open_dataset(opendap, service = "OPeNDAP"),
-                    error = identity
-                )
-                if (!inherits(opened, "error")) {
-                    if (file.exists(opendap)) {
-                        opened$access_method <- "local"
-                    }
-                    return(opened)
-                }
-                remote_error <- opened
-                if (identical(fallback, "error")) {
-                    stop(remote_error)
-                }
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    remote_error,
-                    attempt = 1L
-                )
-            }
-
-            if (identical(fallback, "error")) {
-                stop(
-                    "OPeNDAP is not available for this file record.",
-                    call. = FALSE
-                )
-            }
-
-            download_started <- proc.time()[["elapsed"]]
-            local_path <- tryCatch(
-                private$download_plan_file(
-                    file,
-                    overwrite = overwrite,
-                    reporter = reporter
-                ),
-                error = function(error) {
-                    store__access_error(
-                        error,
-                        phase = "download",
-                        service = "HTTPServer",
-                        target = store__chr1(file$url_download),
-                        started_at = download_started
-                    )
-                }
-            )
-            if (inherits(local_path, "epwshiftr_store_access_error")) {
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    local_path,
-                    attempt = if (is.null(remote_error)) 1L else 2L,
-                    outcome = "failed"
-                )
-                if (!is.null(remote_error)) {
-                    stop(store__fallback_error(remote_error, local_path))
-                }
-                stop(local_path)
-            }
-            local_open <- tryCatch(
-                private$open_dataset(local_path, service = "HTTPServer"),
-                error = identity
-            )
-            if (inherits(local_open, "error")) {
-                store__report_access_failure(
-                    reporter,
-                    file,
-                    local_open,
-                    attempt = if (is.null(remote_error)) 1L else 2L,
-                    outcome = "failed"
-                )
-                if (!is.null(remote_error)) {
-                    stop(store__fallback_error(remote_error, local_open))
-                }
-                stop(local_open)
-            }
-            if (!is.null(remote_error)) {
-                local_open$remote_error <- remote_error
-            }
-            local_open
         },
         # }}}
         # download_plan_file
@@ -9474,7 +9101,7 @@ EsgStore <- R6::R6Class(
         # decorate_extract_grid_sources
         # Persists one static set of method-specific source grid cells per plan.
         # decorate_extract_grid_sources {{{
-        decorate_extract_grid_sources = function(sources, plan, file) {
+        decorate_extract_grid_sources = function(sources, plan) {
             if (is.null(sources)) {
                 return(data.table::data.table())
             }
@@ -9853,12 +9480,12 @@ store__hash_piece <- function(x) {
 
 # store__chr1 {{{
 store__chr1 <- function(x) {
-    if (is.null(x) || !length(x)) {
+    if (!length(x)) {
         return(NA_character_)
     }
 
     value <- x[[1L]]
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NA_character_)
     }
 
@@ -9879,7 +9506,7 @@ store__chr <- function(x) {
 
 # store__flag {{{
 store__flag <- function(x) {
-    if (is.null(x) || !length(x) || is.na(x[[1L]])) {
+    if (!length(x) || is.na(x[[1L]])) {
         return(FALSE)
     }
 

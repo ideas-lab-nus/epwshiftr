@@ -172,7 +172,6 @@ store_exchange__decode <- function(columns, template) {
 store_exchange__export <- function(store, private, plan_id, path) {
     checkmate::assert_character(plan_id, any.missing = FALSE, unique = TRUE)
     checkmate::assert_string(path, min.chars = 1L)
-    private$check_open()
     private$with_store_lock({
         plans <- store_exchange__rows(
             private$conn,
@@ -216,7 +215,7 @@ store_exchange__export <- function(store, private, plan_id, path) {
         done <- plans$plan_id[plans$status == "done"]
         empty <- plans$plan_id[plans$status == "empty"]
         if (
-            !setequal(unique(results$plan_id), done) ||
+            !setequal(results$plan_id, done) ||
                 any(grid$plan_id %in% empty) ||
                 !all(artifacts$kind == "extract") ||
                 !all(artifacts$status == "available") ||
@@ -397,14 +396,12 @@ store_exchange__import <- function(
             "size"
         )
         store_exchange__identity(files, local_files, file_columns, "file_key")
+        done_plan_ids <- plans$plan_id[plans$status == "done"]
         if (
-            !setequal(unique(plans$file_key), files$file_key) ||
+            !setequal(plans$file_key, files$file_key) ||
                 !all(plans$status %in% c("done", "empty")) ||
-                !setequal(
-                    unique(results$plan_id),
-                    plans$plan_id[plans$status == "done"]
-                ) ||
-                !setequal(unique(results$artifact_id), artifacts$artifact_id) ||
+                !setequal(results$plan_id, done_plan_ids) ||
+                !setequal(results$artifact_id, artifacts$artifact_id) ||
                 anyDuplicated(artifacts$artifact_id) ||
                 !all(artifacts$kind == "extract") ||
                 !all(artifacts$status == "available") ||
@@ -488,32 +485,30 @@ store_exchange__import <- function(
                 )
             }
         }
-        # Result and grid identities must refer only to this exact set of plans.
-        for (table in list(results, data$extraction_grid_source)) {
-            if (nrow(table)) {
-                expected <- plans[match(table$plan_id, plans$plan_id)]
-                if (
-                    anyNA(expected$plan_id) ||
-                        !all(
-                            table$plan_id %in%
-                                plans$plan_id[plans$status == "done"]
-                        ) ||
-                        !identical(table$file_key, expected$file_key) ||
-                        !identical(table$query_id, expected$query_id) ||
-                        ("variable_id" %in%
-                            names(table) &&
-                            !identical(
-                                table$variable_id,
-                                expected$variable_id
-                            )) ||
-                        ("method" %in%
-                            names(table) &&
-                            !identical(table$method, expected$method))
-                ) {
-                    cli::cli_abort(
-                        "Extraction result or grid lineage is inconsistent."
-                    )
-                }
+        # Exact result coverage above already restricts results to done plans.
+        # Grid sources are optional, but every supplied row must belong to one.
+        grid_sources <- data$extraction_grid_source
+        if (!all(grid_sources$plan_id %in% done_plan_ids)) {
+            cli::cli_abort("Extraction result or grid lineage is inconsistent.")
+        }
+        for (table in list(results, grid_sources)) {
+            expected <- plans[match(table$plan_id, plans$plan_id)]
+            if (
+                !identical(table$file_key, expected$file_key) ||
+                    !identical(table$query_id, expected$query_id) ||
+                    ("variable_id" %in%
+                        names(table) &&
+                        !identical(
+                            table$variable_id,
+                            expected$variable_id
+                        )) ||
+                    ("method" %in%
+                        names(table) &&
+                        !identical(table$method, expected$method))
+            ) {
+                cli::cli_abort(
+                    "Extraction result or grid lineage is inconsistent."
+                )
             }
         }
         reused <- local$plan_id[local$status %in% c("done", "empty")]
@@ -643,7 +638,7 @@ store_exchange__import <- function(
 
 # Export executable plan metadata separately from completed result receipts. The
 # original IDs and typed manifest values survive lossy catalogue JSON formatting.
-store_exchange__export_plans <- function(store, private, plan_id, path) {
+store_exchange__export_plans <- function(private, plan_id, path) {
     checkmate::assert_character(
         plan_id,
         min.len = 1L,
@@ -651,7 +646,6 @@ store_exchange__export_plans <- function(store, private, plan_id, path) {
         unique = TRUE
     )
     checkmate::assert_string(path, min.chars = 1L)
-    private$check_open()
     private$with_store_lock({
         plans <- store_exchange__rows(
             private$conn,
@@ -785,12 +779,10 @@ store_exchange__validate_plans <- function(plans, files, queries, links) {
             anyDuplicated(queries$query_id) ||
             anyDuplicated(links$link_id) ||
             !all(plans$status %in% c("pending", "failed")) ||
-            !setequal(unique(plans$file_key), files$file_key) ||
-            !setequal(unique(plans$query_id), queries$query_id) ||
-            !all(files$query_id %in% queries$query_id) ||
-            !all(links$file_key %in% files$file_key) ||
+            !setequal(plans$file_key, files$file_key) ||
+            !setequal(plans$query_id, queries$query_id) ||
             !all(links$query_id %in% queries$query_id) ||
-            !setequal(unique(links$file_key), files$file_key) ||
+            !setequal(links$file_key, files$file_key) ||
             anyNA(plans$time_start) ||
             anyNA(plans$time_stop) ||
             any(plans$time_start > plans$time_stop) ||
@@ -837,7 +829,6 @@ store_exchange__validate_plans <- function(plans, files, queries, links) {
 # writer. Existing rows, retry history and completed outputs are never replaced.
 # Only small query JSON controls are copied; no native nc or Parquet is copied.
 store_exchange__import_plans <- function(
-    store,
     private,
     path,
     checksum,

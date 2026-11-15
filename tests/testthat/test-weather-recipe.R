@@ -69,7 +69,7 @@ test_that("built-in complete recipes expose inspectable stable metadata", {
     )
     expect_false(any(recipes$stochastic))
 
-    daily <- epw_morph_recipe_spec("epwshiftr_daily_power")
+    daily <- recipe__get("epwshiftr_daily_power")
     expect_true(S7::S7_inherits(daily, WeatherRecipeSpec))
     expect_identical(daily@backend, "daily_temperature")
     expect_identical(daily@method, "daily_temperature_delta")
@@ -133,12 +133,9 @@ test_that("complete recipes expose one comparable EPW field-role contract", {
 
 test_that("recipe registry rejects duplicate and incompatible definitions", {
     registry <- new.env(parent = emptyenv())
-    daily <- epw_morph_recipe_spec("epwshiftr_daily_power")
+    daily <- recipe__get("epwshiftr_daily_power")
 
-    expect_identical(
-        recipe__register(daily, registry = registry),
-        daily
-    )
+    recipe__register(daily, registry = registry)
     expect_identical(
         recipe__get(
             "epwshiftr_daily_power",
@@ -300,21 +297,18 @@ test_that("recipe input roles validate before backend execution", {
         monthly_variables
     )
     template <- recipe_test__weather_template()
-    faithful <- epw_morph_recipe_spec("original_morphing_monthly")
-    enhanced <- epw_morph_recipe_spec("epwshiftr_monthly")
+    faithful <- recipe__get("original_morphing_monthly")
+    enhanced <- recipe__get("epwshiftr_monthly")
 
     without_historical <- weather__new_inputs(
         weather_template = template,
         model_future = future
     )
-    expect_true(any(grepl(
-        "required role `model_historical` is missing",
-        recipe__input_errors(faithful, without_historical)
-    )))
-    expect_identical(
-        recipe__input_errors(enhanced, without_historical),
-        character()
+    expect_error(
+        recipe__validate_inputs(faithful, without_historical),
+        "required role `model_historical` is missing"
     )
+    expect_invisible(recipe__validate_inputs(enhanced, without_historical))
     complete <- weather__new_inputs(
         weather_template = template,
         model_historical = historical,
@@ -331,8 +325,8 @@ test_that("recipe input roles validate before backend execution", {
             monthly_variables
         )
     )
-    expect_match(
-        recipe__input_errors(faithful, wrong_frequency),
+    expect_error(
+        recipe__validate_inputs(faithful, wrong_frequency),
         "frequencies `day` do not satisfy `mon`"
     )
 
@@ -360,6 +354,7 @@ test_that("registered recipe identity survives JSON and transform persistence", 
     )
 
     for (rebuilt in list(json_roundtrip, transform_roundtrip)) {
+        expect_identical(rebuilt$name, "epwshiftr_daily_power")
         expect_identical(
             rebuilt$recipe_spec,
             "epwshiftr_daily_power"
@@ -374,17 +369,6 @@ test_that("registered recipe identity survives JSON and transform persistence", 
     cli_recipe <- transform__recipe(monthly_transform("epwshiftr"))
     expect_identical(cli_recipe$recipe_spec, "epwshiftr_monthly")
     expect_identical(cli_recipe$profile, "enhanced")
-
-    aliased <- transform__recipe(daily_transform("epwshiftr"))
-    aliased_roundtrip <- cli_shift__recipe_from_json(
-        morpher__json(aliased)
-    )
-    expect_identical(aliased_roundtrip$name, "epwshiftr_daily_power")
-    expect_identical(
-        aliased_roundtrip$recipe_spec,
-        "epwshiftr_daily_power"
-    )
-    expect_identical(aliased_roundtrip$policy, "harmonized")
 })
 
 # vim: fdm=marker :

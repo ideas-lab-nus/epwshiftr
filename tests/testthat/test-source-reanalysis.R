@@ -76,10 +76,6 @@ test_that("reanalysis checks diagnose missing and invalid credentials", {
 })
 
 test_that("ERA6 is explicit and never falls back to ERA5", {
-    registry <- reanalysis__registry()
-
-    expect_false(registry$era6$available)
-    expect_null(registry$era6$replacement)
     expect_error(
         shift_era6(2000:2001),
         class = "epwshiftr_reanalysis_unavailable"

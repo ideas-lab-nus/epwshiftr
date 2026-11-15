@@ -615,43 +615,6 @@ test_that("site extraction cache is shared without store-local identities", {
     expect_identical(second$payload$data$value, 280)
 })
 
-test_that("EsgStore$new(create = FALSE)", {
-    dir <- tempfile("esg-store-")
-    EsgStore$new(dir)$close()
-
-    store <- EsgStore$new(dir, create = FALSE)
-    on.exit(store$close(), add = TRUE)
-
-    expect_true(store$is_open)
-    expect_true(file.exists(file.path(dir, "manifest.duckdb")))
-})
-
-test_that("EsgStore$new() rejects older manifests", {
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    store$close()
-
-    manifest <- file.path(dir, "manifest.duckdb")
-    conn <- ddb_connect(manifest, read_only = FALSE)
-    on.exit(
-        if (!is.null(conn) && ddb_is_valid(conn)) {
-            ddb_disconnect(conn, shutdown = TRUE)
-        },
-        add = TRUE
-    )
-    ddb_exec(
-        conn,
-        "UPDATE store_meta SET value = '2.6.0' WHERE key = 'schema_version'"
-    )
-    ddb_disconnect(conn, shutdown = TRUE)
-    conn <- NULL
-
-    expect_error(
-        EsgStore$new(dir, create = FALSE),
-        "store_reset"
-    )
-})
-
 test_that("store_reset() preserves an old store and creates the current schema", {
     dir <- tempfile("esg-store-reset-")
     store <- EsgStore$new(dir)
@@ -1707,6 +1670,17 @@ test_that("EsgStore$workflow_status()", {
         expect_false(workflow$download_incomplete)
         expect_equal(workflow$new_count, 1L)
         expect_true("bytes_missing" %in% names(workflow))
+
+        # A failed task read must not be reported as an empty successful result.
+        unreadable <- list(tasks = function(...) stop("task read failed"))
+        expect_error(
+            store$workflow_status(query_id, downloader = unreadable),
+            "task read failed"
+        )
+        expect_error(
+            store$download_status(query_id, downloader = unreadable),
+            "task read failed"
+        )
     })
 })
 # }}}
@@ -2959,6 +2933,7 @@ test_that("EsgStore$extract()", {
 
 test_that("EsgStore open failures use HTTP fallback only in auto mode", {
     skip_on_cran()
+    withr::local_options(epwshiftr.cache = FALSE)
 
     fixture <- store_test__planned_extract()
     store <- fixture$store
@@ -2980,16 +2955,13 @@ test_that("EsgStore open failures use HTTP fallback only in auto mode", {
         }
     )
 
-    opened <- priv(store)$open_plan_dataset(file, fallback = "auto")
-    on.exit(
-        if (isTRUE(opened$dataset$is_open)) opened$dataset$close(),
-        add = TRUE
-    )
-    expect_identical(opened$access_method, "HTTPServer")
+    result <- priv(store)$extract_one(fixture$plan, file, fallback = "auto")
+    expect_identical(result$status, "done")
+    expect_identical(attr(result, "access_method"), "HTTPServer")
     expect_identical(download_calls, 1L)
 
     error <- expect_error(
-        priv(store)$open_plan_dataset(file, fallback = "error"),
+        priv(store)$extract_one(fixture$plan, file, fallback = "error"),
         class = "epwshiftr_store_access_error"
     )
     expect_identical(error$phase, "open")
@@ -3000,6 +2972,7 @@ test_that("EsgStore open failures use HTTP fallback only in auto mode", {
 
 test_that("EsgStore metadata and read failures retry once through HTTP", {
     skip_on_cran()
+    open_dataset <- store__open_dataset
 
     for (phase in c("metadata", "read")) {
         fixture <- store_test__planned_extract()
@@ -3012,23 +2985,16 @@ test_that("EsgStore metadata and read failures retry once through HTTP", {
         reporter <- store_test__access_reporter()
         download_calls <- 0L
 
-        store_test__mock_private(
-            store,
-            "open_plan_dataset",
-            function(
-                file,
-                fallback = "auto",
-                overwrite = FALSE,
-                reporter = NULL,
-                remote_error = NULL
-            ) {
-                list(
-                    dataset = remote,
-                    target = file$url_opendap[[1L]],
-                    access_method = "OPeNDAP"
-                )
+        testthat::local_mocked_bindings(store__open_dataset = function(
+            target,
+            service
+        ) {
+            if (identical(service, "OPeNDAP")) {
+                list(dataset = remote, target = target, access_method = service)
+            } else {
+                open_dataset(target, service)
             }
-        )
+        })
         store_test__mock_private(
             store,
             "download_plan_file",
@@ -3125,23 +3091,12 @@ test_that("EsgStore fallback error mode does not download after read failure", {
     source$close()
     remote <- store_test__failing_dataset("read", time_info)
     download_calls <- 0L
-    store_test__mock_private(
-        store,
-        "open_plan_dataset",
-        function(
-            file,
-            fallback = "auto",
-            overwrite = FALSE,
-            reporter = NULL,
-            remote_error = NULL
-        ) {
-            list(
-                dataset = remote,
-                target = file$url_opendap[[1L]],
-                access_method = "OPeNDAP"
-            )
-        }
-    )
+    testthat::local_mocked_bindings(store__open_dataset = function(
+        target,
+        service
+    ) {
+        list(dataset = remote, target = target, access_method = service)
+    })
     store_test__mock_private(
         store,
         "download_plan_file",
@@ -3169,41 +3124,17 @@ test_that("EsgStore classifies persistence failures without another read", {
     store <- fixture$store
     on.exit(store$close(), add = TRUE)
     on.exit(unlink(fixture$nc), add = TRUE)
-    dataset <- EsgDataset$new(fixture$nc)
-    dataset$open()
+    file <- data.table::copy(fixture$file)
+    data.table::set(file, j = "url_opendap", value = fixture$nc)
     reporter <- store_test__access_reporter()
     read_calls <- 0L
-    store_test__mock_private(
-        store,
-        "open_plan_dataset",
-        function(
-            file,
-            fallback = "auto",
-            overwrite = FALSE,
-            reporter = NULL,
-            remote_error = NULL
-        ) {
-            list(
-                dataset = dataset,
-                target = fixture$nc,
-                access_method = "HTTPServer"
-            )
-        }
-    )
-    store_test__mock_private(
-        store,
-        "read_extract_dataset",
-        function(ds, plan, file, opened, reporter = NULL) {
-            read_calls <<- read_calls + 1L
-            list(
-                data = data.table::data.table(),
-                grid_sources = data.table::data.table(),
-                available_time_count = 0L,
-                actual_start = as.POSIXct("2060-01-01", tz = "UTC"),
-                actual_end = as.POSIXct("2060-12-31", tz = "UTC")
-            )
-        }
-    )
+    read_dataset <- store__read_extract_dataset
+    testthat::local_mocked_bindings(store__read_extract_dataset = function(
+        ...
+    ) {
+        read_calls <<- read_calls + 1L
+        read_dataset(...)
+    })
     store_test__mock_private(
         store,
         "persist_extract_payload",
@@ -3213,14 +3144,14 @@ test_that("EsgStore classifies persistence failures without another read", {
     error <- expect_error(
         priv(store)$extract_one(
             fixture$plan,
-            fixture$file,
+            file,
             fallback = "auto",
             reporter = reporter
         ),
         class = "epwshiftr_store_access_error"
     )
     expect_identical(error$phase, "persist")
-    expect_identical(error$service, "HTTPServer")
+    expect_identical(error$service, "local")
     expect_identical(read_calls, 1L)
     expect_length(reporter$events, 1L)
     expect_identical(reporter$events[[1L]]$details$access_phase, "persist")

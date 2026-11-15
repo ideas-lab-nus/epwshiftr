@@ -88,7 +88,7 @@ WeatherMethodSpec <- S7::new_class(
         }
         for (property in c("label", "implementation_key", "evidence")) {
             value <- S7::prop(self, property)
-            if (length(value) != 1L || is.na(value) || !nzchar(value)) {
+            if (!checkmate::test_string(value, min.chars = 1L)) {
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
@@ -162,7 +162,7 @@ WeatherMethodSpec <- S7::new_class(
         ) {
             return("`parameters` must be a uniquely named list.")
         }
-        if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
+        if (!checkmate::test_flag(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
         if (
@@ -208,34 +208,27 @@ method__spec <- function(
     references,
     version = 1L
 ) {
-    checkmate::assert_string(name, pattern = "^[a-z][a-z0-9_]*$")
+    # S7 owns the final object invariants. Check version before coercion so a
+    # fractional input cannot be truncated into a valid definition version.
     checkmate::assert_count(version, positive = TRUE)
-    checkmate::assert_string(label, min.chars = 1L)
-    checkmate::assert_choice(domain, WEATHER_METHOD_DOMAINS)
-    checkmate::assert_choice(
-        implementation,
-        WEATHER_METHOD_IMPLEMENTATIONS
-    )
+    # Construction additionally requires a resolvable implementation key;
+    # this is stricter than the S7 record's non-empty descriptor constraint.
     checkmate::assert_string(
         implementation_key,
         pattern = "^[a-z][a-z0-9_]*$"
     )
     frequencies <- weather__descriptor_values(frequencies, "frequencies")
     input_roles <- weather__descriptor_values(input_roles, "input_roles")
-    checkmate::assert_subset(input_roles, WEATHER_INPUT_ROLES)
     variable_sets <- component__variable_sets(variable_sets)
     output_variables <- weather__descriptor_values(
         output_variables,
         "output_variables"
     )
-    checkmate::assert_choice(output_role, WEATHER_INPUT_ROLES)
     checkmate::assert_list(parameters, names = "unique")
     stochastic_variables <- weather__descriptor_values(
         stochastic_variables,
         "stochastic_variables"
     )
-    checkmate::assert_subset(stochastic_variables, output_variables)
-    checkmate::assert_string(evidence, min.chars = 1L)
     references <- weather__descriptor_values(references, "references")
 
     WeatherMethodSpec(
@@ -620,18 +613,13 @@ method__default_specs <- function() {
 # method__register {{{
 method__register <- function(
     spec,
-    overwrite = FALSE,
     registry = WEATHER_METHOD_REGISTRY
 ) {
     if (!S7::S7_inherits(spec, WeatherMethodSpec)) {
         cli::cli_abort("{.arg spec} must be a WeatherMethodSpec object.")
     }
-    checkmate::assert_flag(overwrite)
     checkmate::assert_environment(registry)
-    if (
-        exists(spec@name, envir = registry, inherits = FALSE) &&
-            !isTRUE(overwrite)
-    ) {
+    if (exists(spec@name, envir = registry, inherits = FALSE)) {
         cli::cli_abort(
             "Future-weather method {.val {spec@name}} is already registered."
         )
@@ -641,8 +629,7 @@ method__register <- function(
 }
 # }}}
 
-# Populate the built-in method catalog once while preserving explicit
-# process-local replacements.
+# Populate the built-in method catalog once while preserving existing entries.
 # method__register_defaults {{{
 method__register_defaults <- function() {
     registered <- ls(envir = WEATHER_METHOD_REGISTRY, all.names = FALSE)
@@ -677,7 +664,6 @@ method__get <- function(
     if (identical(registry, WEATHER_METHOD_REGISTRY)) {
         method__register_defaults()
     }
-    name <- tolower(name)
     if (!exists(name, envir = registry, inherits = FALSE)) {
         cli::cli_abort("Unknown future-weather method: {.val {name}}.")
     }
@@ -691,63 +677,6 @@ method__get <- function(
         }
     }
     spec
-}
-# }}}
-
-# Flatten method capabilities for user inspection without exposing executable
-# component or backend objects.
-# method__list {{{
-method__list <- function(registry = WEATHER_METHOD_REGISTRY) {
-    checkmate::assert_environment(registry)
-    if (identical(registry, WEATHER_METHOD_REGISTRY)) {
-        method__register_defaults()
-    }
-    names <- sort(ls(envir = registry, all.names = FALSE))
-    data.table::rbindlist(
-        lapply(names, function(name) {
-            spec <- get(name, envir = registry, inherits = FALSE)
-            data.table::data.table(
-                name = spec@name,
-                version = spec@version,
-                label = spec@label,
-                domain = spec@domain,
-                implementation = spec@implementation,
-                implementation_key = spec@implementation_key,
-                frequencies = list(spec@frequencies),
-                input_roles = list(spec@input_roles),
-                variable_sets = list(spec@variable_sets),
-                variables = list(unique(unlist(
-                    spec@variable_sets,
-                    use.names = FALSE
-                ))),
-                output_variables = list(spec@output_variables),
-                output_role = spec@output_role,
-                parameters = list(spec@parameters),
-                stochastic = spec@stochastic,
-                stochastic_variables = list(spec@stochastic_variables),
-                evidence = spec@evidence,
-                references = list(spec@references)
-            )
-        }),
-        use.names = TRUE,
-        fill = TRUE
-    )
-}
-# }}}
-
-# Return internal method records used to validate the transform registry.
-#' @noRd
-# epw_morph_methods {{{
-epw_morph_methods <- function() {
-    method__list()
-}
-# }}}
-
-# Return one internal scientific method contract by its registered key.
-#' @noRd
-# epw_morph_method_spec {{{
-epw_morph_method_spec <- function(name) {
-    method__get(name)
 }
 # }}}
 

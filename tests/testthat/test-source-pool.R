@@ -55,15 +55,19 @@ test_that("a deadline retires the real reader before source reuse", {
     old <- ps::ps_handle(pool$status()[[1L]]$pid)
     failed <- NULL
     result <- NULL
+    # This reader needs only base functions; keep the pool and test state out
+    # of its request so the deadline measures the worker's actual task.
+    read <- function(job) {
+        Sys.sleep(job$wait)
+        Sys.getpid()
+    }
+    environment(read) <- baseenv()
     ticket <- pool$submit(
         list(
             list(source_key = "a", wait = 5),
             list(source_key = "a", wait = .01)
         ),
-        function(job) {
-            Sys.sleep(job$wait)
-            Sys.getpid()
-        },
+        read,
         function(job, value) {
             result <<- value
         },

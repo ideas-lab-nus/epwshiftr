@@ -1919,14 +1919,6 @@ EsgDataset <- R6::R6Class(
                 )
             }
 
-            if (!length(pieces)) {
-                empty <- private$empty_region_data_table()
-                attr(
-                    empty,
-                    "grid_sources"
-                ) <- private$empty_grid_sources_data_table()
-                return(if (isTRUE(rbind)) empty else list())
-            }
             if (!isTRUE(rbind)) {
                 return(pieces)
             }
@@ -2056,7 +2048,7 @@ EsgDataset <- R6::R6Class(
         # time_filter {{{
         time_filter = function() {
             ctx <- private$context$time_filter
-            if (is.null(ctx) || !length(ctx)) {
+            if (!length(ctx)) {
                 return(NULL)
             }
 
@@ -2306,8 +2298,6 @@ EsgDataset <- R6::R6Class(
             progress = FALSE,
             progress_label = "Opening dataset files"
         ) {
-            checkmate::assert_flag(progress)
-
             progress_id <- dataset__progress_bar(
                 progress,
                 progress_label,
@@ -2402,12 +2392,6 @@ EsgDataset <- R6::R6Class(
             handler_args = list(),
             timeout = NULL
         ) {
-            checkmate::assert_string(operation, min.chars = 1L)
-            checkmate::assert_function(handler)
-            if (!is.list(handler_args)) {
-                stop("`handler_args` must be a list.")
-            }
-
             if (
                 !is.null(private$async_task) &&
                     identical(private$async_state, "running")
@@ -2483,17 +2467,13 @@ EsgDataset <- R6::R6Class(
             task
         },
         # }}}
-        # collect_async_task
+        # Collect a task created by start_async_operation and clear its slot.
         # collect_async_task {{{
-        collect_async_task = function(task = private$async_task, clear = TRUE) {
-            if (is.null(task)) {
-                stop("No async task is registered for this dataset.")
-            }
-
+        collect_async_task = function(task) {
             on.exit(
                 {
                     private$async_state <- task$status
-                    if (isTRUE(clear) && identical(private$async_task, task)) {
+                    if (identical(private$async_task, task)) {
                         private$async_task <- NULL
                     }
                 },
@@ -2503,16 +2483,17 @@ EsgDataset <- R6::R6Class(
             task$collect(progress_callback = private$progress_callback)
         },
         # }}}
-        # cancel_async_task
+        # Closing a dataset cancels and clears its current task, when present.
         # cancel_async_task {{{
-        cancel_async_task = function(task = private$async_task, clear = TRUE) {
+        cancel_async_task = function() {
+            task <- private$async_task
             if (is.null(task)) {
                 return(FALSE)
             }
 
             requested <- task$cancel()
             private$async_state <- task$status
-            if (isTRUE(clear) && identical(private$async_task, task)) {
+            if (identical(private$async_task, task)) {
                 private$async_task <- NULL
             }
             requested
@@ -2710,91 +2691,6 @@ EsgDataset <- R6::R6Class(
             lon
         },
         # }}}
-        # lon_to_360
-        # Delegate to the shared spatial selector used by climate adapters.
-        # lon_to_360 {{{
-        lon_to_360 = function(lon) {
-            spatial__lon_to_360(lon)
-        },
-        # }}}
-        # make_region_grid_coords
-        # Delegate to the shared spatial selector used by climate adapters.
-        # make_region_grid_coords {{{
-        make_region_grid_coords = function(grid_lat, grid_lon) {
-            spatial__make_region_grid_coords(grid_lat, grid_lon)
-        },
-        # }}}
-        # select_nearest_grid_sources
-        # Delegate to the shared spatial selector used by climate adapters.
-        # select_nearest_grid_sources {{{
-        select_nearest_grid_sources = function(
-            coords,
-            method,
-            lat,
-            target_lon
-        ) {
-            spatial__select_nearest_grid_sources(
-                coords,
-                method,
-                lat,
-                target_lon
-            )
-        },
-        # }}}
-        # find_lat_bounds
-        # Delegate to the shared spatial selector used by climate adapters.
-        # find_lat_bounds {{{
-        find_lat_bounds = function(grid_lat, lat) {
-            spatial__find_lat_bounds(grid_lat, lat)
-        },
-        # }}}
-        # find_lon_bounds
-        # Delegate to the shared spatial selector used by climate adapters.
-        # find_lon_bounds {{{
-        find_lon_bounds = function(grid_lon, target_lon) {
-            spatial__find_lon_bounds(grid_lon, target_lon)
-        },
-        # }}}
-        # select_cell_grid_sources
-        # Delegate to the shared spatial selector used by climate adapters.
-        # select_cell_grid_sources {{{
-        select_cell_grid_sources = function(
-            grid_lat,
-            grid_lon,
-            lat,
-            target_lon,
-            method
-        ) {
-            spatial__select_cell_grid_sources(
-                grid_lat,
-                grid_lon,
-                lat,
-                target_lon,
-                method
-            )
-        },
-        # }}}
-        # region_grid_sources
-        # Delegate to the shared spatial selector used by climate adapters.
-        # region_grid_sources {{{
-        region_grid_sources = function(
-            method,
-            grid_lat,
-            grid_lon,
-            lat,
-            target_lon,
-            coords = NULL
-        ) {
-            spatial__region_grid_sources(
-                method,
-                grid_lat,
-                grid_lon,
-                lat,
-                target_lon,
-                coords
-            )
-        },
-        # }}}
         # read_region_one
         # read_region_one {{{
         read_region_one = function(
@@ -2891,7 +2787,7 @@ EsgDataset <- R6::R6Class(
             grid_lon <- as.vector(grid$lon)
             target_lon <- private$normalize_lon_for_grid(lon, grid_lon)
 
-            sources <- private$region_grid_sources(
+            sources <- spatial__region_grid_sources(
                 method,
                 grid_lat,
                 grid_lon,
@@ -3355,7 +3251,7 @@ dataset__set_context <- function(dataset, context = NULL) {
     if (!"context" %in% names(private)) {
         return(invisible(dataset))
     }
-    if (is.null(context) || !length(context)) {
+    if (!length(context)) {
         private$context <- list()
     } else if (is.list(context)) {
         private$context <- context

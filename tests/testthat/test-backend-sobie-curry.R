@@ -131,7 +131,7 @@ test_that("Sobie-Curry recipe registers its published daily contract", {
     expect_true("sobie_curry_daily" %in% epw_morph_recipes()[["name"]])
     backend <- epw_morph_backend("sobie_curry_daily")
     recipe <- epw_morph_recipe("sobie_curry_daily")
-    spec <- epw_morph_recipe_spec("sobie_curry_daily")
+    spec <- recipe__get("sobie_curry_daily")
 
     expect_true(backend$requires_reference)
     expect_identical(recipe$policy, "paper_faithful")

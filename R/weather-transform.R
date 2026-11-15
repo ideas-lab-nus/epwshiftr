@@ -15,10 +15,6 @@ WEATHER_TRANSFORM_EVIDENCE <- c(
     "experimental"
 )
 
-# Cache only successful validation of the package's immutable built-in mapping;
-# direct validator calls remain available to tests and registry maintenance.
-WEATHER_TRANSFORM_REGISTRY_STATE <- new.env(parent = emptyenv())
-
 # WeatherTransformSpec is the reusable public method boundary. It deliberately
 # contains no site, climate, reference period, model identity, or output path.
 # WeatherTransformSpec {{{
@@ -88,7 +84,7 @@ WeatherTransformSpec <- S7::new_class(
             "status"
         )) {
             value <- S7::prop(self, property)
-            if (length(value) != 1L || is.na(value) || !nzchar(value)) {
+            if (!checkmate::test_string(value, min.chars = 1L)) {
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
@@ -274,7 +270,7 @@ WeatherTransformSpec <- S7::new_class(
                 }
             }
         }
-        if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
+        if (!checkmate::test_flag(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
         if (
@@ -303,8 +299,8 @@ WeatherTransformSpec <- S7::new_class(
 )
 # }}}
 
-# Declare every public selection tuple in one place. Internal recipe keys stay
-# stable while concise method keys and scientific scale remain user-facing.
+# Declare the fixed built-in selections; recipe definitions own method identity.
+# Public constructors validate caller choices against this mapping.
 # transform__records {{{
 transform__records <- function() {
     reconstruction_labels <- c(
@@ -324,7 +320,6 @@ transform__records <- function() {
             scale = "monthly",
             method = "original_morphing",
             recipe = "original_morphing_monthly",
-            method_definition = "original_morphing_monthly",
             reconstructions = "original_morphing_field_equations",
             default_reconstruction = "original_morphing_field_equations",
             statistical_grouping = "calendar_month"
@@ -333,7 +328,6 @@ transform__records <- function() {
             scale = "monthly",
             method = "epwshiftr",
             recipe = "epwshiftr_monthly",
-            method_definition = "epwshiftr_monthly",
             reconstructions = "enhanced_field_equations",
             default_reconstruction = "enhanced_field_equations",
             statistical_grouping = "calendar_month"
@@ -342,7 +336,6 @@ transform__records <- function() {
             scale = "monthly",
             method = "bws_btws",
             recipe = "bws_btws_monthly",
-            method_definition = "bws_btws_monthly",
             reconstructions = "bws_btws_weather",
             default_reconstruction = "bws_btws_weather",
             statistical_grouping = "calendar_month"
@@ -354,7 +347,6 @@ transform__records <- function() {
                 power = "epwshiftr_daily_power",
                 btws = "epwshiftr_daily_btws"
             ),
-            method_definition = "daily_temperature_delta",
             reconstructions = c("power", "btws"),
             default_reconstruction = "power",
             statistical_grouping = "circular_daily_climatology"
@@ -363,7 +355,6 @@ transform__records <- function() {
             scale = "daily",
             method = "ek",
             recipe = "ek_daily_factors",
-            method_definition = "ek_daily_factors",
             reconstructions = "ek_hourly_transform",
             default_reconstruction = "ek_hourly_transform",
             statistical_grouping = "calendar_neutral_day"
@@ -372,7 +363,6 @@ transform__records <- function() {
             scale = "daily",
             method = "qm_morphing",
             recipe = "quantile_mapping_morphing_daily",
-            method_definition = "quantile_mapping_morphing_daily",
             reconstructions = "daily_additive_application",
             default_reconstruction = "daily_additive_application",
             statistical_grouping = "calendar_month_distribution"
@@ -381,7 +371,6 @@ transform__records <- function() {
             scale = "daily",
             method = "sobie_curry",
             recipe = "sobie_curry_daily",
-            method_definition = "sobie_curry_daily",
             reconstructions = "sobie_curry_field_transforms",
             default_reconstruction = "sobie_curry_field_transforms",
             statistical_grouping = "circular_daily_window"
@@ -390,7 +379,6 @@ transform__records <- function() {
             scale = "daily",
             method = "linear_scaling",
             recipe = "linear_scaling_daily_temperature",
-            method_definition = "linear_scaling_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "calendar_month"
@@ -399,7 +387,6 @@ transform__records <- function() {
             scale = "daily",
             method = "delta_change",
             recipe = "delta_change_daily_temperature",
-            method_definition = "delta_change_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "calendar_month"
@@ -408,7 +395,6 @@ transform__records <- function() {
             scale = "daily",
             method = "qm",
             recipe = "quantile_mapping_daily_temperature",
-            method_definition = "quantile_mapping_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "circular_daily_window"
@@ -417,7 +403,6 @@ transform__records <- function() {
             scale = "daily",
             method = "qdm",
             recipe = "quantile_delta_mapping_daily_temperature",
-            method_definition = "quantile_delta_mapping_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "circular_daily_window"
@@ -426,7 +411,6 @@ transform__records <- function() {
             scale = "daily",
             method = "sdm",
             recipe = "scaled_distribution_mapping_daily_temperature",
-            method_definition = "scaled_distribution_mapping_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "calendar_month"
@@ -435,7 +419,6 @@ transform__records <- function() {
             scale = "daily",
             method = "cdf_t",
             recipe = "cdf_transform_daily_temperature",
-            method_definition = "cdf_transform_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "calendar_month"
@@ -444,7 +427,6 @@ transform__records <- function() {
             scale = "daily",
             method = "edcdfm",
             recipe = "equidistant_cdf_matching_daily_temperature",
-            method_definition = "equidistant_cdf_matching_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "calendar_month"
@@ -453,7 +435,6 @@ transform__records <- function() {
             scale = "daily",
             method = "isimip3basd",
             recipe = "isimip3basd_daily_temperature",
-            method_definition = "isimip3basd_daily",
             reconstructions = "daily_temperature_projection",
             default_reconstruction = "daily_temperature_projection",
             statistical_grouping = "circular_daily_window"
@@ -462,7 +443,6 @@ transform__records <- function() {
             scale = "hourly",
             method = "kernel_qdm",
             recipe = "hourly_kernel_qdm",
-            method_definition = "kernel_quantile_delta_mapping_hourly",
             reconstructions = "direct_model_hourly_mapping",
             default_reconstruction = "direct_model_hourly_mapping",
             statistical_grouping = "centered_three_month_window"
@@ -470,203 +450,12 @@ transform__records <- function() {
     )
     # Attach user-facing labels in the same registry that owns the selectable
     # reconstruction keys, so printing never exposes implementation-style IDs.
-    records <- lapply(records, function(record) {
+    lapply(records, function(record) {
         keys <- record$reconstructions
         labels <- unname(reconstruction_labels[keys])
         record$reconstruction_labels <- stats::setNames(labels, keys)
         record
     })
-    if (!isTRUE(WEATHER_TRANSFORM_REGISTRY_STATE$validated)) {
-        transform__validate_records(records)
-        WEATHER_TRANSFORM_REGISTRY_STATE$validated <- TRUE
-    }
-    records
-}
-# }}}
-
-# Validate the complete public-to-internal mapping as one graph before any
-# constructor or discovery call uses it. This catches drift between method,
-# recipe, backend, component, and input-role registries at package runtime.
-# transform__validate_records {{{
-transform__validate_records <- function(records) {
-    checkmate::assert_list(records, min.len = 1L)
-    required_fields <- c(
-        "scale",
-        "method",
-        "recipe",
-        "method_definition",
-        "reconstructions",
-        "reconstruction_labels",
-        "default_reconstruction",
-        "statistical_grouping"
-    )
-    method_keys <- character()
-    tuples <- character()
-    recipe_names <- character()
-    method_definitions <- character()
-
-    for (index in seq_along(records)) {
-        record <- records[[index]]
-        checkmate::assert_list(record, names = "unique")
-        missing <- setdiff(required_fields, names(record))
-        if (length(missing)) {
-            cli::cli_abort(
-                "Weather transform record {index} is missing field(s): {.val {missing}}."
-            )
-        }
-        checkmate::assert_choice(record$scale, WEATHER_TRANSFORM_SCALES)
-        checkmate::assert_string(
-            record$method,
-            pattern = "^[a-z][a-z0-9_]*$"
-        )
-        checkmate::assert_string(
-            record$method_definition,
-            pattern = "^[a-z][a-z0-9_]*$"
-        )
-        checkmate::assert_character(
-            record$reconstructions,
-            min.len = 1L,
-            any.missing = FALSE,
-            unique = TRUE
-        )
-        checkmate::assert_choice(
-            record$default_reconstruction,
-            record$reconstructions
-        )
-        checkmate::assert_character(
-            record$reconstruction_labels,
-            min.len = 1L,
-            any.missing = FALSE,
-            unique = TRUE,
-            names = "unique"
-        )
-        if (
-            !identical(
-                names(record$reconstruction_labels),
-                record$reconstructions
-            )
-        ) {
-            cli::cli_abort(
-                "Weather transformation {.val {record$method}} must label every reconstruction."
-            )
-        }
-        checkmate::assert_string(
-            record$statistical_grouping,
-            pattern = "^[a-z][a-z0-9_]*$"
-        )
-
-        # One method record owns all of its reconstruction choices. Splitting
-        # them across records would make transform__record() resolve only the
-        # first record even when the individual selection tuples are unique.
-        method_keys <- c(
-            method_keys,
-            paste(record$scale, record$method, sep = "/")
-        )
-
-        recipes <- as.character(record$recipe)
-        if (length(recipes) != length(record$reconstructions)) {
-            cli::cli_abort(
-                "Weather transformation {.val {record$method}} must map each reconstruction to one recipe."
-            )
-        }
-        if (
-            length(recipes) > 1L &&
-                !identical(names(record$recipe), record$reconstructions)
-        ) {
-            cli::cli_abort(
-                "Weather transformation {.val {record$method}} must name recipes by reconstruction."
-            )
-        }
-
-        tuples <- c(
-            tuples,
-            paste(
-                record$scale,
-                record$method,
-                record$reconstructions,
-                sep = "/"
-            )
-        )
-        recipe_names <- c(recipe_names, unname(recipes))
-        method_definitions <- c(
-            method_definitions,
-            rep(record$method_definition, length(recipes))
-        )
-    }
-
-    if (anyDuplicated(method_keys)) {
-        cli::cli_abort(
-            "Weather transform registry contains duplicate scale/method records."
-        )
-    }
-    if (anyDuplicated(tuples)) {
-        cli::cli_abort(
-            "Weather transform registry contains duplicate public selection tuples."
-        )
-    }
-    if (
-        anyDuplicated(recipe_names) ||
-            !setequal(recipe_names, WEATHER_RECIPE_DEFAULTS)
-    ) {
-        cli::cli_abort(
-            paste(
-                "Every built-in canonical recipe must be reachable through",
-                "exactly one public weather transformation."
-            )
-        )
-    }
-
-    for (recipe_index in seq_along(recipe_names)) {
-        recipe_name <- recipe_names[[recipe_index]]
-        recipe <- recipe__get(recipe_name)
-        expected_method <- method_definitions[[recipe_index]]
-        if (!identical(recipe@method, expected_method)) {
-            cli::cli_abort(
-                "Recipe method identity disagrees for {.val {recipe_name}}."
-            )
-        }
-        method <- method__get(recipe@method)
-        recipe_roles <- setdiff(
-            c(names(recipe@required_inputs), names(recipe@optional_inputs)),
-            "weather_template"
-        )
-        if (!setequal(method@input_roles, recipe_roles)) {
-            cli::cli_abort(
-                "Method and recipe input roles disagree for {.val {recipe_name}}."
-            )
-        }
-
-        if (identical(method@implementation, "backend")) {
-            if (!identical(method@implementation_key, recipe@backend)) {
-                cli::cli_abort(
-                    "Method and backend identity disagree for {.val {recipe_name}}."
-                )
-            }
-            epw_morph_backend(recipe@backend)
-            next
-        }
-
-        if (
-            !identical(
-                recipe@components$signal,
-                method@implementation_key
-            )
-        ) {
-            cli::cli_abort(
-                "Method and signal component identity disagree for {.val {recipe_name}}."
-            )
-        }
-        components <- lapply(WEATHER_COMPONENT_STAGES, function(stage) {
-            component__get(stage, recipe@components[[stage]])
-        })
-        for (component_index in seq_len(length(components) - 1L)) {
-            component__assert_compatible(
-                components[[component_index]],
-                components[[component_index + 1L]]
-            )
-        }
-    }
-    invisible(TRUE)
 }
 # }}}
 
@@ -827,12 +616,6 @@ transform__signal_options <- function(recipe_spec, method, options) {
         method@output_variables,
         if (isTRUE(include_longwave)) "rlds"
     )
-    unknown <- setdiff(names(options), variables)
-    if (length(unknown)) {
-        cli::cli_abort(
-            "Unknown transformation variable option(s): {.val {unknown}}."
-        )
-    }
     signal_settings <- transform__validated_signal_settings(
         method,
         variables,
@@ -1048,7 +831,7 @@ transform__from_recipe <- function(record, recipe) {
         character()
     }
     source_references <- recipe_spec@source$references
-    if (is.null(source_references) || !length(source_references)) {
+    if (!length(source_references)) {
         source_references <- method_spec@references
     }
     WeatherTransformSpec(
@@ -1102,7 +885,6 @@ transform__from_recipe_object <- function(recipe) {
     } else {
         recipe_spec@name
     }
-    matches <- list()
     for (record in transform__records()) {
         recipe_names <- unname(record$recipe)
         index <- match(recipe_name, recipe_names)
@@ -1115,15 +897,12 @@ transform__from_recipe_object <- function(recipe) {
         record$reconstruction_label <- unname(
             record$reconstruction_labels[[selected_reconstruction]]
         )
-        matches[[length(matches) + 1L]] <- record
+        return(transform__from_recipe(record, recipe))
     }
-    if (length(matches) != 1L) {
-        cli::cli_abort(c(
-            "Stored recipe {.val {recipe_name}} does not resolve to one current weather transformation.",
-            "i" = "Create a new run with a transform returned by a scale-specific constructor."
-        ))
-    }
-    transform__from_recipe(matches[[1L]], recipe)
+    cli::cli_abort(c(
+        "Stored recipe {.val {recipe_name}} does not resolve to one current weather transformation.",
+        "i" = "Create a new run with a transform returned by a scale-specific constructor."
+    ))
 }
 # }}}
 
@@ -1162,25 +941,11 @@ transform__recipe <- function(transform) {
 }
 # }}}
 
-# Convert one role requirement to the data-only form persisted with a transform.
-# transform__input_requirement_value {{{
-transform__input_requirement_value <- function(requirement) {
-    list(
-        role = requirement@role,
-        representations = requirement@representations,
-        frequencies = requirement@frequencies,
-        variable_frequencies = requirement@variable_frequencies,
-        calendars = requirement@calendars,
-        variable_sets = requirement@variable_sets
-    )
-}
-# }}}
-
 # Convert role contracts into data-only records that remain readable in a
 # persisted plan and comparable after a JSON round trip.
 # transform__input_contract_value {{{
 transform__input_contract_value <- function(contract) {
-    lapply(contract, transform__input_requirement_value)
+    lapply(contract, component__input_requirement_record)
 }
 # }}}
 
@@ -1214,7 +979,7 @@ transform__persistence_snapshot <- function(transform) {
 # arrays to vectors or equal-width alternatives to matrices.
 # transform__variable_sets_from_value {{{
 transform__variable_sets_from_value <- function(variable_sets) {
-    if (is.null(variable_sets) || !length(variable_sets)) {
+    if (!length(variable_sets)) {
         return(list())
     }
     if (is.matrix(variable_sets)) {
@@ -1235,7 +1000,7 @@ transform__variable_sets_from_value <- function(variable_sets) {
 # before comparing it with the current registry definition.
 # transform__input_contract_from_value {{{
 transform__input_contract_from_value <- function(contract) {
-    if (is.null(contract) || !length(contract)) {
+    if (!length(contract)) {
         return(list())
     }
     lapply(contract, function(requirement) {
@@ -1634,20 +1399,11 @@ hourly_transform <- function(method, reconstruction = NULL, ...) {
 weather_transforms <- function() {
     rows <- lapply(transform__records(), function(record) {
         lapply(record$reconstructions, function(reconstruction) {
-            selected <- transform__record(
+            transform <- transform__new(
                 record$scale,
                 record$method,
                 if (length(record$reconstructions) > 1L) {
                     reconstruction
-                } else {
-                    NULL
-                }
-            )
-            transform <- transform__new(
-                selected$scale,
-                selected$method,
-                if (length(record$reconstructions) > 1L) {
-                    selected$reconstruction
                 } else {
                     NULL
                 }

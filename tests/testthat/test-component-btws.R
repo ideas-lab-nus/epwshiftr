@@ -90,7 +90,7 @@ test_that("BTWS component and composite recipe expose strict contracts", {
 
     backend <- epw_morph_backend("daily_temperature_btws")
     recipe <- epw_morph_recipe("epwshiftr_daily_btws")
-    spec <- epw_morph_recipe_spec("epwshiftr_daily_btws")
+    spec <- recipe__get("epwshiftr_daily_btws")
 
     expect_true(backend$requires_reference)
     expect_equal(

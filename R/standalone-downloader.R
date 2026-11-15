@@ -298,6 +298,19 @@ downloader__manifest_lock_metadata <- function(lock_dir) {
 }
 # }}}
 
+# Check the identity fields shared by manifest locks and workflow jobs before
+# using them as evidence in a local process lookup.
+# downloader__owner_identity_valid {{{
+downloader__owner_identity_valid <- function(pid, hostname) {
+    # Check integrality explicitly: checkmate 2.0.0 rejects double PIDs with
+    # zero tolerance even when their value is an exact integer.
+    is.numeric(pid) &&
+        checkmate::test_count(pid, positive = TRUE) &&
+        pid == trunc(pid) &&
+        checkmate::test_string(hostname, min.chars = 1L)
+}
+# }}}
+
 # Read only ownership records whose host and PID can be validated.
 # downloader__manifest_lock_owner {{{
 downloader__manifest_lock_owner <- function(lock_dir) {
@@ -309,16 +322,7 @@ downloader__manifest_lock_owner <- function(lock_dir) {
     )
     if (
         !is.list(owner) ||
-            length(owner$pid) != 1L ||
-            !is.numeric(owner$pid) ||
-            is.na(owner$pid) ||
-            owner$pid <= 0 ||
-            owner$pid > .Machine$integer.max ||
-            owner$pid != as.integer(owner$pid) ||
-            !is.character(owner$hostname) ||
-            length(owner$hostname) != 1L ||
-            is.na(owner$hostname) ||
-            !nzchar(owner$hostname)
+            !downloader__owner_identity_valid(owner$pid, owner$hostname)
     ) {
         return(NULL)
     }
@@ -331,19 +335,9 @@ downloader__manifest_lock_owner <- function(lock_dir) {
 # downloader__local_pid_absent {{{
 downloader__local_pid_absent <- function(pid, hostname) {
     if (
-        length(pid) != 1L ||
-            !is.numeric(pid) ||
-            is.na(pid) ||
-            pid <= 0 ||
-            pid > .Machine$integer.max ||
-            pid != as.integer(pid) ||
-            !is.character(hostname) ||
-            length(hostname) != 1L ||
-            is.na(hostname)
+        !downloader__owner_identity_valid(pid, hostname) ||
+            !identical(hostname, unname(Sys.info()[["nodename"]]))
     ) {
-        return(FALSE)
-    }
-    if (!identical(hostname, unname(Sys.info()[["nodename"]]))) {
         return(FALSE)
     }
     if (pid == Sys.getpid()) {
@@ -704,7 +698,7 @@ downloader__hash <- function(...) {
     values <- vapply(
         list(...),
         function(x) {
-            if (is.null(x) || length(x) == 0L || all(is.na(x))) {
+            if (!length(x) || all(is.na(x))) {
                 return("")
             }
             paste(as.character(x), collapse = "\r")
@@ -783,38 +777,13 @@ downloader__pid_kill <- function(pid) {
 }
 # }}}
 
-# downloader__bool {{{
-downloader__bool <- function(x) {
-    isTRUE(x)
-}
-# }}}
-
 # downloader__one_chr {{{
 downloader__one_chr <- function(x) {
-    if (is.null(x) || length(x) == 0L) {
+    if (!length(x)) {
         return(NA_character_)
     }
     out <- as.character(x[[1L]])
     if (is.na(out) || !nzchar(out)) NA_character_ else out
-}
-# }}}
-
-# downloader__absolute_path {{{
-downloader__absolute_path <- function(path) {
-    grepl("^(/|[A-Za-z]:[/\\\\])", path)
-}
-# }}}
-
-# downloader__resolve_path {{{
-downloader__resolve_path <- function(path, base = getwd()) {
-    if (is.null(path) || is.na(path) || !nzchar(path)) {
-        return(NULL)
-    }
-    path <- path.expand(path)
-    if (!downloader__absolute_path(path)) {
-        path <- file.path(base, path)
-    }
-    normalizePath(path, mustWork = FALSE, winslash = "/")
 }
 # }}}
 
@@ -931,7 +900,7 @@ downloader__node_policy_defaults <- function(policy = NULL) {
     checkmate::assert_list(policy, names = "unique")
     defaults <- DOWNLOADER_NODE_POLICY_DEFAULT
     for (name in names(defaults)) {
-        if (!name %in% names(policy) || is.null(policy[[name]])) {
+        if (is.null(policy[[name]])) {
             policy[[name]] <- defaults[[name]]
         }
     }
@@ -948,11 +917,11 @@ downloader__node_policy_defaults <- function(policy = NULL) {
 # }}}
 
 # downloader__nullable_count {{{
-downloader__nullable_count <- function(value, positive = TRUE, name = "value") {
+downloader__nullable_count <- function(value, name = "value") {
     if (is.null(value)) {
         return(NULL)
     }
-    checkmate::assert_count(value, positive = positive, .var.name = name)
+    checkmate::assert_count(value, positive = TRUE, .var.name = name)
     as.numeric(value)
 }
 # }}}
@@ -965,7 +934,7 @@ downloader__transfer_policy_defaults <- function(policy = NULL) {
     checkmate::assert_list(policy, names = "unique")
     defaults <- DOWNLOADER_TRANSFER_POLICY_DEFAULT
     for (name in names(defaults)) {
-        if (!name %in% names(policy) || is.null(policy[[name]])) {
+        if (is.null(policy[[name]])) {
             policy[name] <- list(defaults[[name]])
         }
     }
@@ -1014,7 +983,7 @@ downloader__resource_policy_defaults <- function(policy = NULL) {
     checkmate::assert_list(policy, names = "unique")
     defaults <- DOWNLOADER_RESOURCE_POLICY_DEFAULT
     for (name in names(defaults)) {
-        if (!name %in% names(policy) || is.null(policy[[name]])) {
+        if (is.null(policy[[name]])) {
             policy[name] <- list(defaults[[name]])
         }
     }
@@ -1031,7 +1000,7 @@ downloader__resource_policy_defaults <- function(policy = NULL) {
 
 # downloader__config_optional_integer {{{
 downloader__config_optional_integer <- function(value) {
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NA_integer_)
     }
     as.integer(value[[1L]])
@@ -1040,17 +1009,10 @@ downloader__config_optional_integer <- function(value) {
 
 # downloader__config_optional_number {{{
 downloader__config_optional_number <- function(value) {
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NA_real_)
     }
     as.numeric(value[[1L]])
-}
-# }}}
-
-# downloader__config_optional_character {{{
-downloader__config_optional_character <- function(value) {
-    value <- downloader__one_chr(value)
-    if (is.na(value)) NA_character_ else value
 }
 # }}}
 
@@ -1060,7 +1022,7 @@ downloader__config_null_if_na <- function(
     type = c("character", "integer", "double", "logical")
 ) {
     type <- match.arg(type)
-    if (is.null(value) || !length(value) || is.na(value[[1L]])) {
+    if (!length(value) || is.na(value[[1L]])) {
         return(NULL)
     }
     switch(
@@ -1084,11 +1046,11 @@ downloader__config_flatten <- function(config) {
         retries = as.integer(config$retries),
         timeout = as.integer(config$timeout),
         ssl_verifypeer = isTRUE(config$ssl_verifypeer),
-        proxy = downloader__config_optional_character(config$proxy),
+        proxy = downloader__one_chr(config$proxy),
         connect_timeout = downloader__config_optional_integer(
             config$connect_timeout
         ),
-        useragent = downloader__config_optional_character(config$useragent),
+        useragent = downloader__one_chr(config$useragent),
         cleanup = isTRUE(config$cleanup),
         n_workers = as.integer(config$n_workers),
         node_cooldown_after_failures = as.integer(
@@ -1404,12 +1366,6 @@ downloader__resume_supported <- function(
 }
 # }}}
 
-# downloader__format_byte {{{
-downloader__format_byte <- function(x) {
-    format(as.numeric(x), scientific = FALSE, trim = TRUE)
-}
-# }}}
-
 # downloader__header_value {{{
 downloader__header_value <- function(headers, name) {
     text <- downloader__headers_text(headers)
@@ -1576,7 +1532,7 @@ downloader__worker_dependencies <- function() {
 
     # Read one usable scalar string from worker input or return a missing value.
     one_chr <- function(x) {
-        if (is.null(x) || !length(x)) {
+        if (!length(x)) {
             return(NA_character_)
         }
         value <- as.character(x[[1L]])
@@ -1585,7 +1541,7 @@ downloader__worker_dependencies <- function() {
 
     # Normalize optional numeric transfer settings inside an isolated process.
     normalize_count <- function(x) {
-        if (is.null(x) || length(x) == 0L || is.na(x)) {
+        if (!length(x) || is.na(x)) {
             return(NULL)
         }
         as.numeric(x)
@@ -3025,7 +2981,6 @@ Downloader <- R6::R6Class(
                         url,
                         filename,
                         subdir,
-                        progress,
                         overwrite,
                         checksum,
                         checksum_type,
@@ -5807,11 +5762,6 @@ Downloader <- R6::R6Class(
                     return(invisible(job))
                 }
                 now <- downloader__now()
-                job$status <- status
-                job$completed_at <- now
-                job$heartbeat_at <- now
-                job$exit_code <- as.integer(exit_code)
-                job$error <- downloader__one_chr(error)
                 private$update_job_progress(job_id)
                 job <- private$select_jobs(job_id = job_id)
                 job$status <- status
@@ -5829,17 +5779,6 @@ Downloader <- R6::R6Class(
                 )
                 job
             })
-        },
-        # }}}
-
-        # job_stop_requested {{{
-        job_stop_requested = function(job_id) {
-            controls <- private$select_controls(
-                target_type = "job",
-                target_id = job_id,
-                status = "queued"
-            )
-            any(controls$command %in% "stop")
         },
         # }}}
 
@@ -6345,7 +6284,7 @@ Downloader <- R6::R6Class(
                     return(default)
                 }
                 value <- task[[column]][[1L]]
-                if (is.null(value) || !length(value) || is.na(value)) {
+                if (!length(value) || is.na(value)) {
                     return(default)
                 }
                 value
@@ -8781,7 +8720,6 @@ Downloader <- R6::R6Class(
             url,
             filename,
             subdir,
-            progress,
             overwrite,
             checksum,
             checksum_type,
@@ -8812,10 +8750,7 @@ Downloader <- R6::R6Class(
             task <- DownloadTask$new(url, filename)
             private$async_tasks[[task_id]] <- task
 
-            # Start mirai download
-            if (!requireNamespace("mirai", quietly = TRUE)) {
-                stop("mirai package required for async downloads")
-            }
+            # Pool setup owns dependency checks and runs once per submission.
             private$ensure_mirai_daemons()
 
             # Capture self parameters for mirai
@@ -8832,8 +8767,6 @@ Downloader <- R6::R6Class(
                 transfer_policy = private$transfer_policy_config,
                 resource_policy = private$resource_policy_config
             )
-
-            private$ensure_mirai_daemons()
 
             task$mirai_obj <- mirai::mirai(
                 {

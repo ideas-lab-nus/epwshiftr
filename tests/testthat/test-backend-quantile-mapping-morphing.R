@@ -103,7 +103,7 @@ test_that("Quantile-mapping morphing recipe registers all four required input ro
         "quantile_mapping_morphing_daily" %in% epw_morph_recipes()[["name"]]
     )
     recipe <- epw_morph_recipe("quantile_mapping_morphing_daily")
-    spec <- epw_morph_recipe_spec("quantile_mapping_morphing_daily")
+    spec <- recipe__get("quantile_mapping_morphing_daily")
 
     expect_identical(recipe$policy, "paper_faithful")
     expect_identical(
