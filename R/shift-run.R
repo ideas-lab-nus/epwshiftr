@@ -1880,9 +1880,9 @@ shift_run__extract_plans_task <- function(
             fields = "*"
         )
     )
-    spec <- list(
-        site = shift_persist__site_ref(site),
-        periods = split(as.integer(periods$year), periods$period),
+    spec <- shift_persist__extract_spec(list(
+        site = site,
+        periods = periods,
         variables = unique(plans$variable_id),
         time = c(time_start, time_stop),
         filters = list(),
@@ -1890,7 +1890,7 @@ shift_run__extract_plans_task <- function(
         fallback = fallback,
         overwrite = overwrite,
         resume = resume
-    )
+    ))
     shift_run__task_execute(
         "extract",
         files,

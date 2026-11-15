@@ -3,6 +3,10 @@
 * Publish related Shift workflow result records in one transaction before updating
   the live snapshot, preserving distinct step, run and execution-attempt states. (#331)
 
+* Keep extraction and morphing task serialization beside their resume decoding,
+  reuse execution arguments when saving tasks, and check resumability once before
+  changing run state. (#332)
+
 * Share Store extraction recovery between ordinary and pooled readers, retaining
   HTTP fallback, resumable transfer sessions and both remote and local failures,
   including failures while publishing recovered payloads to the shared cache. (#330)

@@ -641,19 +641,19 @@ shift_download <- S7::new_generic(
         reporter <- shift_run__current_reporter()
         if (is.null(reporter)) {
             options <- list(...)
+            args <- list(
+                run = run,
+                background = background,
+                resume = resume,
+                overwrite = overwrite,
+                session_label = session_label
+            )
             reconstructible <- is.null(downloader)
             return(shift_run__task_execute(
                 "download",
                 x,
                 ui = ui,
-                spec = list(
-                    run = run,
-                    background = background,
-                    resume = resume,
-                    overwrite = overwrite,
-                    session_label = session_label,
-                    options = options
-                ),
+                spec = c(args, list(options = options)),
                 resumable = reconstructible,
                 nonresumable_reason = if (reconstructible) {
                     NULL
@@ -666,15 +666,8 @@ shift_download <- S7::new_generic(
                         do.call(
                             shift_download,
                             c(
-                                list(
-                                    x = x,
-                                    downloader = downloader,
-                                    run = run,
-                                    background = background,
-                                    resume = resume,
-                                    overwrite = overwrite,
-                                    session_label = session_label
-                                ),
+                                list(x = x, downloader = downloader),
+                                args,
                                 options
                             )
                         )
@@ -712,40 +705,26 @@ shift_extract <- S7::new_generic(
     ) {
         reporter <- shift_run__current_reporter()
         if (is.null(reporter)) {
+            args <- list(
+                site = site,
+                periods = periods,
+                variables = variables,
+                time = time,
+                filters = filters,
+                method = method,
+                fallback = fallback,
+                overwrite = overwrite,
+                resume = resume
+            )
             return(shift_run__task_execute(
                 "extract",
                 x,
                 ui = ui,
-                spec = list(
-                    site = shift_persist__site_ref(site),
-                    periods = if (is.null(periods)) {
-                        NULL
-                    } else {
-                        split(as.integer(periods$year), periods$period)
-                    },
-                    variables = variables,
-                    time = time,
-                    filters = filters,
-                    method = method,
-                    fallback = fallback,
-                    overwrite = overwrite,
-                    resume = resume
-                ),
+                spec = shift_persist__extract_spec(args),
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
-                        shift_extract(
-                            x,
-                            site = site,
-                            periods = periods,
-                            variables = variables,
-                            time = time,
-                            filters = filters,
-                            method = method,
-                            fallback = fallback,
-                            overwrite = overwrite,
-                            resume = resume
-                        )
+                        do.call(shift_extract, c(list(x = x), args))
                     )
                 }
             ))
@@ -790,33 +769,24 @@ shift_morph <- S7::new_generic(
                 reference,
                 observed_reference
             )
-            baseline_path <- if (shift_spec__is_epw_path(baseline)) {
-                baseline
-            } else {
-                NULL
-            }
-            reconstructible <- is.null(baseline) || !is.null(baseline_path)
+            args <- list(
+                baseline = baseline,
+                transform = transform,
+                reference = reference,
+                observed_reference = observed_reference,
+                strict = strict,
+                complete_only = complete_only,
+                by = by,
+                overwrite = overwrite,
+                resume = resume
+            )
+            spec <- shift_persist__morph_spec(args)
+            reconstructible <- is.null(baseline) || !is.null(spec$baseline)
             return(shift_run__task_execute(
                 "morph",
                 x,
                 ui = ui,
-                spec = list(
-                    baseline = baseline_path,
-                    transform = transform__spec_value(transform),
-                    reference = shift_persist__reference_spec_value(
-                        reference,
-                        role = "model_historical"
-                    ),
-                    observed_reference = shift_persist__reference_spec_value(
-                        observed_reference,
-                        role = "observed_reference"
-                    ),
-                    strict = strict,
-                    complete_only = complete_only,
-                    by = by,
-                    overwrite = overwrite,
-                    resume = resume
-                ),
+                spec = spec,
                 resumable = reconstructible,
                 nonresumable_reason = if (reconstructible) {
                     NULL
@@ -826,18 +796,7 @@ shift_morph <- S7::new_generic(
                 code = function(reporter, task_store) {
                     shift_run__with_reporter(
                         reporter,
-                        shift_morph(
-                            x,
-                            baseline = baseline,
-                            transform = transform,
-                            reference = reference,
-                            observed_reference = observed_reference,
-                            strict = strict,
-                            complete_only = complete_only,
-                            by = by,
-                            overwrite = overwrite,
-                            resume = resume
-                        )
+                        do.call(shift_morph, c(list(x = x), args))
                     )
                 }
             ))
