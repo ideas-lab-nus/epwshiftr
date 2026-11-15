@@ -244,7 +244,9 @@ store__read_source <- function(
             recovery_error = source$remote_error
         )
     }
-    store__extract_cache_resolve(plan, file, function() {
+    # Keep native recovery inside the cache lock, but combine failures after
+    # cache publication as well so a write error retains the remote cause.
+    generate <- function() {
         # A newly available local file takes precedence over an earlier worker
         # failure. A retained HTTP session instead resumes without another DAP read.
         if (identical(source$service, "local")) {
@@ -318,13 +320,19 @@ store__read_source <- function(
                     attempt = if (is.null(source$remote_error)) 1L else 2L,
                     outcome = "failed"
                 )
-                if (!is.null(source$remote_error)) {
-                    stop(store__fallback_error(source$remote_error, error))
-                }
                 stop(error)
             }
         )
-    })
+    }
+    tryCatch(
+        store__extract_cache_resolve(plan, file, generate),
+        error = function(error) {
+            if (!is.null(source$remote_error)) {
+                stop(store__fallback_error(source$remote_error, error))
+            }
+            stop(error)
+        }
+    )
 }
 # }}}
 
