@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Publish a finished background download's step, run, and event in one Store
+  transaction, recover interrupted publications, and write one live snapshot. (#326)
+
 * Share exact CMIP6 File coverage and required-partition matching between
   single-case resolution and batch discovery, and report missing baseline years. (#325)
 
