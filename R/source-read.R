@@ -2,33 +2,14 @@
 # Payload publication is shared; plan status and Parquet persistence stay with
 # the process that owns the manifest.
 # store__read_job {{{
-store__read_job <- function(job, source) {
+store__read_job <- function(job, source, download = NULL) {
     tryCatch(
         {
-            resolved <- store__extract_cache_resolve(
+            resolved <- store__read_source(
                 job$plan,
                 job$file,
-                function() {
-                    if (is.null(source$opened)) {
-                        source$opened <- store__open_dataset(
-                            job$file$url_opendap[[1L]],
-                            "OPeNDAP"
-                        )
-                    }
-                    opened <- source$opened
-                    payload <- store__read_extract_dataset(
-                        opened$dataset,
-                        job$plan,
-                        job$file,
-                        opened
-                    )
-                    opened$dataset <- NULL
-                    list(
-                        payload = payload,
-                        opened = opened,
-                        recovery_error = NULL
-                    )
-                }
+                source,
+                download = download
             )
             # Transfer a cache reference instead of copying weather arrays through
             # IPC. The caller loads and persists one site's payload at a time.
@@ -214,6 +195,147 @@ store__read_extract_dataset <- function(
 }
 # }}}
 
+# Resolve one native payload under the shared cache lock. The source retains its
+# open handle across plans; only the download action differs between Store-owned
+# recovery and a persistent reader's independent transfer manifest. The source
+# carries the selected target/service, an optional earlier remote failure, and
+# whether an existing HTTP session must resume before the first native read.
+# store__read_source {{{
+store__read_source <- function(
+    plan,
+    file,
+    source,
+    download = NULL,
+    reporter = NULL
+) {
+    remote_error <- source$remote_error
+    if (
+        !is.null(remote_error) &&
+            (!inherits(remote_error, "epwshiftr_store_access_error") ||
+                !identical(remote_error$service, "OPeNDAP") ||
+                is.null(download))
+    ) {
+        stop(remote_error)
+    }
+    # Read through the same CF implementation for both access methods. Handles
+    # remain owned by source and never travel with a cached or worker payload.
+    read <- function() {
+        if (is.null(source$opened)) {
+            source$opened <- store__open_dataset(source$target, source$service)
+            if (
+                identical(source$service, "OPeNDAP") &&
+                    file.exists(source$target)
+            ) {
+                source$opened$access_method <- "local"
+            }
+        }
+        opened <- source$opened
+        payload <- store__read_extract_dataset(
+            opened$dataset,
+            plan,
+            file,
+            opened,
+            reporter
+        )
+        opened$dataset <- NULL
+        list(
+            payload = payload,
+            opened = opened,
+            recovery_error = source$remote_error
+        )
+    }
+    # Keep native recovery inside the cache lock, but combine failures after
+    # cache publication as well so a write error retains the remote cause.
+    generate <- function() {
+        # A newly available local file takes precedence over an earlier worker
+        # failure. A retained HTTP session instead resumes without another DAP read.
+        if (identical(source$service, "local")) {
+            source$remote_error <- NULL
+        }
+        if (is.null(source$remote_error) && !isTRUE(source$resume_http)) {
+            if (!is.na(source$target) && nzchar(source$target)) {
+                result <- tryCatch(read(), error = identity)
+                if (!inherits(result, "error")) {
+                    return(result)
+                }
+                if (
+                    !inherits(result, "epwshiftr_store_access_error") ||
+                        !identical(result$service, "OPeNDAP") ||
+                        is.null(download)
+                ) {
+                    stop(result)
+                }
+                source$remote_error <- result
+            } else if (is.null(download)) {
+                stop(
+                    "OPeNDAP is not available for this file record.",
+                    call. = FALSE
+                )
+            }
+        }
+        tryCatch(
+            {
+                if (
+                    is.null(source$opened) ||
+                        !identical(source$opened$access_method, "HTTPServer")
+                ) {
+                    if (!is.null(source$remote_error)) {
+                        store__report_access_failure(
+                            reporter,
+                            file,
+                            source$remote_error,
+                            attempt = 1L
+                        )
+                    }
+                    if (!is.null(source$opened)) {
+                        source$opened$dataset$close()
+                        source$opened <- NULL
+                    }
+                    started <- proc.time()[["elapsed"]]
+                    local <- tryCatch(
+                        download(),
+                        error = function(error) {
+                            stop(store__access_error(
+                                error,
+                                "download",
+                                "HTTPServer",
+                                store__chr1(file$url_download),
+                                started
+                            ))
+                        }
+                    )
+                    source$opened <- store__open_dataset(
+                        local$path,
+                        "HTTPServer"
+                    )
+                    source$download_manifest <- local$manifest
+                }
+                read()
+            },
+            error = function(error) {
+                store__report_access_failure(
+                    reporter,
+                    file,
+                    error,
+                    attempt = if (is.null(source$remote_error)) 1L else 2L,
+                    outcome = "failed"
+                )
+                stop(error)
+            }
+        )
+    }
+    tryCatch(
+        store__extract_cache_resolve(plan, file, generate),
+        error = function(error) {
+            if (!is.null(source$remote_error)) {
+                stop(store__fallback_error(source$remote_error, error))
+            }
+            stop(error)
+        }
+    )
+}
+# }}}
+
 # Keep at most the requested number of source tasks in flight. Workers own
 # native handles only; collect() runs in the caller and may commit to its store.
 # Stop dispatching on a fatal task error, drain already running work, and keep
@@ -375,85 +497,41 @@ source__apply <- function(
 store__read_task <- function(job) {
     source <- new.env(parent = emptyenv())
     source$opened <- NULL
+    source$target <- store__chr1(job$file$url_opendap)
+    source$service <- "OPeNDAP"
+    # A retained transfer resumes its exact session and partial bytes before
+    # any fresh remote request. The shared reader owns subsequent recovery.
+    source$resume_http <- !is.null(job$http) && file.exists(job$http$manifest)
+    download <- if (!is.null(job$http)) {
+        function() store__pool_http_download(job)
+    }
     on.exit(
         if (!is.null(source$opened)) source$opened$dataset$close(),
         add = TRUE
     )
     results <- vector("list", nrow(job$plans))
     failure <- NULL
-    download_manifest <- NULL
-    # A retained transfer is already on the HTTP recovery path. Resume its
-    # exact session before repeating an OPeNDAP request that previously failed.
-    if (!is.null(job$http) && file.exists(job$http$manifest)) {
-        local <- tryCatch(store__pool_http_download(job), error = identity)
-        if (inherits(local, "error")) {
-            return(list(results = rep(list(local), nrow(job$plans))))
-        }
-        source$opened <- store__open_dataset(local$path, "HTTPServer")
-        download_manifest <- local$manifest
-    }
     for (index in seq_len(nrow(job$plans))) {
         if (is.null(failure)) {
             results[[index]] <- store__read_job(
                 list(plan = job$plans[index], file = job$file),
-                source
+                source,
+                download = download
             )
-            if (inherits(results[[index]], "error")) failure <- results[[index]]
+            # A failed source need not be reopened for every remaining city.
+            # Once HTTP is open, each unresolved plan still gets its local read.
+            if (
+                inherits(results[[index]], "error") &&
+                    (is.null(source$opened) ||
+                        !identical(source$opened$access_method, "HTTPServer"))
+            ) {
+                failure <- results[[index]]
+            }
         } else {
             results[[index]] <- failure
         }
     }
-    if (
-        !is.null(job$http) &&
-            inherits(failure, "epwshiftr_store_access_error") &&
-            identical(failure$service, "OPeNDAP")
-    ) {
-        remote_error <- failure
-        if (!is.null(source$opened)) {
-            source$opened$dataset$close()
-            source$opened <- NULL
-        }
-        recovered <- tryCatch(
-            {
-                local <- store__pool_http_download(job)
-                source$opened <- store__open_dataset(local$path, "HTTPServer")
-                local
-            },
-            error = identity
-        )
-        if (inherits(recovered, "error")) {
-            recovered <- store__fallback_error(remote_error, recovered)
-            for (index in seq_along(results)) {
-                if (inherits(results[[index]], "error")) {
-                    results[[index]] <- recovered
-                }
-            }
-        } else {
-            download_manifest <- recovered$manifest
-            # Successful earlier city payloads stay untouched. Only unresolved
-            # plans are retried through the identical native CF reader.
-            for (index in seq_along(results)) {
-                if (inherits(results[[index]], "error")) {
-                    results[[index]] <- store__read_job(
-                        list(plan = job$plans[index], file = job$file),
-                        source
-                    )
-                    # Preserve both failures just as for download/open errors.
-                    # A successful payload retains the recovered remote error for
-                    # later publication diagnostics.
-                    if (inherits(results[[index]], "error")) {
-                        results[[index]] <- store__fallback_error(
-                            remote_error,
-                            results[[index]]
-                        )
-                    } else {
-                        results[[index]]$recovery_error <- remote_error
-                    }
-                }
-            }
-        }
-    }
-    list(results = results, download_manifest = download_manifest)
+    list(results = results, download_manifest = source$download_manifest)
 }
 # }}}
 
@@ -503,81 +581,67 @@ store__pool_download_config <- function(file, directory, timeout) {
 # deadline. This runs synchronously inside the reserved reader, with no nested
 # reader pool and no access to the extraction manifest connection.
 store__pool_http_download <- function(job) {
-    started <- proc.time()[["elapsed"]]
-    tryCatch(
-        {
-            config <- job$http
-            dir.create(config$dest, recursive = TRUE, showWarnings = FALSE)
-            release <- manifest_acquire_lock(
-                file.path(config$dest, "source-transfer"),
-                timeout = 5
-            )
-            on.exit(release(), add = TRUE)
-            downloader <- do.call(Downloader$new, config)
-            on.exit(priv(downloader)$disconnect_manifest(), add = TRUE)
-            plan <- store__download_plan_rows(job$file)
-            # Match the ordinary extraction fallback's supported checksum policy.
-            checksum_type <- tolower(plan$checksum_type)
-            unsupported <- is.na(checksum_type) |
-                !checksum_type %in% c("md5", "sha256")
-            data.table::set(
-                plan,
-                j = "checksum_type",
-                value = data.table::fifelse(
-                    unsupported,
-                    "sha256",
-                    checksum_type
-                )
-            )
-            data.table::set(
-                plan,
-                i = which(unsupported),
-                j = "checksum",
-                value = NA_character_
-            )
-            tasks <- downloader$tasks()
-            if (!nrow(tasks)) {
-                session <- downloader$enqueue(
-                    plan,
-                    session_label = "source-pool-http-fallback"
-                )
-            } else {
-                stopifnot(
-                    nrow(tasks) == 1L,
-                    tasks$logical_file_id[[1L]] == plan$logical_file_id[[1L]]
-                )
-                session <- tasks$session_id[[1L]]
-            }
-            tasks <- downloader$resume(
-                session_id = session,
-                progress = FALSE,
-                overwrite = FALSE,
-                resume = TRUE
-            )
-            stopifnot(nrow(tasks) == 1L)
-            if (!tasks$status[[1L]] %in% c("done", "skipped")) {
-                stop(
-                    paste(
-                        "HTTPServer download failed:",
-                        tasks$last_error[[1L]]
-                    ),
-                    call. = FALSE
-                )
-            }
-            verified <- downloader$verify(session_id = session)
-            stopifnot(nrow(verified) == 1L, isTRUE(verified$checksum_ok[[1L]]))
-            list(path = tasks$target_path[[1L]], manifest = config$manifest)
-        },
-        error = function(error) {
-            stop(store__access_error(
-                error,
-                "download",
-                "HTTPServer",
-                store__chr1(job$file$url_download),
-                started
-            ))
-        }
+    config <- job$http
+    dir.create(config$dest, recursive = TRUE, showWarnings = FALSE)
+    release <- manifest_acquire_lock(
+        file.path(config$dest, "source-transfer"),
+        timeout = 5
     )
+    on.exit(release(), add = TRUE)
+    downloader <- do.call(Downloader$new, config)
+    on.exit(priv(downloader)$disconnect_manifest(), add = TRUE)
+    plan <- store__download_plan_rows(job$file)
+    # Match the ordinary extraction fallback's supported checksum policy.
+    checksum_type <- tolower(plan$checksum_type)
+    unsupported <- is.na(checksum_type) |
+        !checksum_type %in% c("md5", "sha256")
+    data.table::set(
+        plan,
+        j = "checksum_type",
+        value = data.table::fifelse(
+            unsupported,
+            "sha256",
+            checksum_type
+        )
+    )
+    data.table::set(
+        plan,
+        i = which(unsupported),
+        j = "checksum",
+        value = NA_character_
+    )
+    tasks <- downloader$tasks()
+    if (!nrow(tasks)) {
+        session <- downloader$enqueue(
+            plan,
+            session_label = "source-pool-http-fallback"
+        )
+    } else {
+        stopifnot(
+            nrow(tasks) == 1L,
+            tasks$logical_file_id[[1L]] == plan$logical_file_id[[1L]]
+        )
+        session <- tasks$session_id[[1L]]
+    }
+    tasks <- downloader$resume(
+        session_id = session,
+        progress = FALSE,
+        overwrite = FALSE,
+        resume = TRUE
+    )
+    stopifnot(nrow(tasks) == 1L)
+    if (!tasks$status[[1L]] %in% c("done", "skipped")) {
+        stop(
+            paste(
+                "HTTPServer download failed:",
+                tasks$last_error[[1L]]
+            ),
+            call. = FALSE
+        )
+    }
+    verified <- downloader$verify(session_id = session)
+    stopifnot(nrow(verified) == 1L, isTRUE(verified$checksum_ok[[1L]]))
+    list(path = tasks$target_path[[1L]], manifest = config$manifest)
 }
 
 # Import store-owned downloads normally. An external shared cache instead gets

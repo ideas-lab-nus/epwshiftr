@@ -157,6 +157,36 @@ test_that("native worker payloads preserve actual CF bounds and site results", {
     cache <- tempfile("source-cache-")
     withr::local_options(epwshiftr.cache = TRUE, epwshiftr.dir_cache = cache)
     on.exit(unlink(cache, recursive = TRUE), add = TRUE)
+    # HTTP recovery can read valid native data yet fail to publish the cache.
+    # Reuse these files to retain both causes and release the recovered handle.
+    local({
+        job <- jobs[[1L]]
+        job$file <- data.table::copy(job$file)
+        invalid <- withr::local_tempfile(fileext = ".nc")
+        writeBin(charToRaw("invalid NetCDF"), invalid)
+        data.table::set(job$file, j = "url_opendap", value = invalid)
+        job$http <- list(manifest = tempfile())
+        open_dataset <- store__open_dataset
+        opened <- NULL
+        local_mocked_bindings(
+            store__pool_http_download = function(job) list(path = paths[[1L]]),
+            store__extract_cache_write = function(...) {
+                stop("cache write failed")
+            },
+            store__open_dataset = function(target, service) {
+                opened <<- open_dataset(target, service)
+                opened
+            }
+        )
+        errors <- vapply(
+            store__read_task(job)$results,
+            conditionMessage,
+            character(1L)
+        )
+        expect_true(all(grepl("OPeNDAP open failed", errors, fixed = TRUE)))
+        expect_true(all(grepl("cache write failed", errors, fixed = TRUE)))
+        expect_false(opened$dataset$is_open)
+    })
     source__apply(jobs, store__read_task, function(job, value) {
         for (site in seq_along(value$results)) {
             resolved <- value$results[[site]]
