@@ -234,6 +234,9 @@ source_pool_test__progress_read <- function(job) {
         if (job$mode == "stall") {
             Sys.sleep(job$seconds)
         }
+        if (!is.null(job$release) && file.exists(job$release)) {
+            break
+        }
         if (as.double(Sys.time()) >= end) {
             break
         }
@@ -243,27 +246,62 @@ source_pool_test__progress_read <- function(job) {
 }
 environment(source_pool_test__progress_read) <- baseenv()
 
-# Bound the test independently of the reader's deliberately smaller deadline.
-source_pool_test__progress_drain <- function(pool, ticket) {
-    end <- as.double(Sys.time()) + 10
-    while (ticket$status == "pending") {
-        pool$poll()
-        stopifnot(as.double(Sys.time()) < end)
+# Bound synchronization with the real worker using the parent's elapsed clock.
+source_pool_test__progress_wait <- function(ready) {
+    end <- proc.time()[["elapsed"]] + 10
+    while (!ready()) {
+        stopifnot(proc.time()[["elapsed"]] < end)
         Sys.sleep(.01)
     }
+}
+
+# Drain on the real clock for the tests that retire an unresponsive reader.
+source_pool_test__progress_drain <- function(pool, ticket) {
+    source_pool_test__progress_wait(function() {
+        pool$poll()
+        ticket$status != "pending"
+    })
+}
+
+# Set the poll's elapsed time independently of worker scheduling. Keep the
+# clock moving within the poll so worker retirement still has bounded waits.
+source_pool_test__progress_poll_at <- function(pool, elapsed) {
+    owner <- environment(pool$poll)
+    clock <- owner$clock
+    start <- clock()
+    owner$clock <- function() elapsed + (clock() - start)
+    on.exit(owner$clock <- clock, add = TRUE)
+    pool$poll()
 }
 
 test_that("growing HTTP transfers outlive the native deadline", {
     pool <- source_pool(1L, timeout = .2, download_timeout = 3)
     withr::defer(pool$close(force = TRUE))
-    job <- source_pool_test__progress_job("grow")
+    job <- source_pool_test__progress_job("grow", seconds = 20)
+    job$release <- file.path(job$http$dest, "release")
     collected <- FALSE
     ticket <- pool$submit(
         list(job),
         source_pool_test__progress_read,
         function(job, value) collected <<- value
     )
-    source_pool_test__progress_drain(pool, ticket)
+    source_pool_test__progress_poll_at(pool, 0)
+    source_pool_test__progress_wait(function() source__transfer_size(job) > 1)
+    source_pool_test__progress_poll_at(pool, .1)
+    bytes <- source__transfer_size(job)
+    source_pool_test__progress_wait(function() {
+        source__transfer_size(job) > bytes
+    })
+    # Sample real new bytes at a time when the prior sample alone would have
+    # expired. Release the live reader only after the coordinator accepts them.
+    active <- source_pool_test__progress_poll_at(pool, .45)[[1L]]
+    expect_identical(ticket$status, "pending")
+    expect_gt(active$elapsed_seconds, .2)
+    stopifnot(file.create(job$release))
+    source_pool_test__progress_wait(function() {
+        source_pool_test__progress_poll_at(pool, .45)
+        ticket$status != "pending"
+    })
     expect_identical(ticket$status, "done")
     expect_true(collected)
     expect_gt(file.info(file.path(job$http$temp, "generated.part"))$size, 1)

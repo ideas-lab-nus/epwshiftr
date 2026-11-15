@@ -110,17 +110,20 @@ test_that("live snapshot payload matches per-table reads and checks the store on
     )
 
     original <- ddb_is_valid
+    snapshot_conn <- priv(store)$conn
     checks <- 0L
     local_mocked_bindings(
         ddb_is_valid = function(conn) {
-            checks <<- checks + 1L
+            # Collection of another Store can check its connection here.
+            if (identical(conn, snapshot_conn)) {
+                checks <<- checks + 1L
+            }
             original(conn)
         },
         .package = "epwshiftr"
     )
     shift_job__live_snapshot_write(store, run_id)
-    # One lifecycle check for the snapshot plus one inside each ddb_query call
-    # made by DuckDB itself is outside this package's wrappers.
+    # The snapshot checks its Store once through the package wrapper.
     expect_identical(checks, 1L)
 })
 
