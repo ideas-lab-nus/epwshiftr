@@ -333,7 +333,9 @@ test_that("missing bytes and changed plan or file identity never partially impor
     expect_equal(nrow(owner$query("SELECT * FROM extraction_result")), 0L)
 })
 
-test_that("transaction failure restores every destination table", {
+# A receipt with multiple plans must commit as a unit, including on retry.
+# Replaying it should keep every row and the original Parquet bytes unchanged.
+test_that("import rolls back a failed receipt commit and reuses its retry", {
     local_cache_mode("off")
     f <- exchange_test__fixture()
     on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
@@ -343,22 +345,54 @@ test_that("transaction failure restores every destination table", {
     source$extract(ids)
     receipt <- source$export_extracts(ids, file.path(f$root, "receipt.json"))
     before <- exchange_test__snapshot(owner)
-    original <- ddb_append_table
-    local_mocked_bindings(ddb_append_table = function(conn, table, ...) {
-        if (table == "extraction_grid_source") {
-            stop("injected registration failure")
-        }
-        original(conn, table, ...)
-    })
+    bytes <- vapply(
+        receipt$artifact_paths,
+        store_hash_file,
+        character(1L),
+        "sha256"
+    )
+    fault <- exchange_test__fail_publication_commit(owner, ids)
+
     expect_error(
         owner$import_extracts(
             receipt$path,
             receipt$checksum,
             receipt$artifact_paths
         ),
-        "injected registration failure"
+        "injected publication commit failure"
     )
+    expect_identical(fault$staged$status, rep("done", length(ids)))
+    expect_equal(fault$staged$results, length(ids))
+    expect_equal(fault$staged$artifacts, length(ids))
+    expect_gt(fault$staged$grid_sources, 0L)
     expect_identical(exchange_test__snapshot(owner), before)
+
+    imported <- owner$import_extracts(
+        receipt$path,
+        receipt$checksum,
+        receipt$artifact_paths
+    )
+    expect_false(any(imported$reused))
+    ready <- exchange_test__snapshot(owner)
+    expect_equal(nrow(ready$extraction_result), length(ids))
+    expect_equal(sum(ready$artifact$kind == "extract"), length(ids))
+    expect_equal(nrow(ready$extraction_grid_source), fault$staged$grid_sources)
+    duplicate <- owner$import_extracts(
+        receipt$path,
+        receipt$checksum,
+        receipt$artifact_paths
+    )
+    expect_true(all(duplicate$reused))
+    expect_identical(exchange_test__snapshot(owner), ready)
+    expect_identical(
+        vapply(
+            receipt$artifact_paths,
+            store_hash_file,
+            character(1L),
+            "sha256"
+        ),
+        bytes
+    )
 })
 
 test_that("receipt type reconstruction preserves exact doubles and nulls", {

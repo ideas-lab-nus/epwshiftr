@@ -67,4 +67,43 @@ exchange_test__snapshot <- function(store) {
     )
 }
 
+# Fail the owning connection's first commit and observe the rows staged inside
+# the transaction so a failure before registration cannot satisfy the test.
+exchange_test__fail_publication_commit <- function(
+    store,
+    plan_ids,
+    env = parent.frame()
+) {
+    original <- ddb_exec
+    write_conn <- priv(store)$conn
+    fault <- new.env(parent = emptyenv())
+    fault$armed <- TRUE
+    fault$staged <- NULL
+    testthat::local_mocked_bindings(
+        .env = env,
+        ddb_exec = function(conn, sql) {
+            if (
+                fault$armed &&
+                    identical(conn, write_conn) &&
+                    identical(sql, "COMMIT")
+            ) {
+                fault$armed <- FALSE
+                state <- exchange_test__snapshot(store)
+                status <- state$extraction_plan[
+                    match(plan_ids, state$extraction_plan$plan_id)
+                ]$status
+                fault$staged <- list(
+                    status = status,
+                    results = nrow(state$extraction_result),
+                    grid_sources = nrow(state$extraction_grid_source),
+                    artifacts = sum(state$artifact$kind == "extract")
+                )
+                stop("injected publication commit failure", call. = FALSE)
+            }
+            original(conn, sql)
+        }
+    )
+    fault
+}
+
 # vim: fdm=marker :

@@ -9072,11 +9072,56 @@ EsgStore <- R6::R6Class(
             # class. Materialize a private data.table copy before attaching
             # store-specific plan, query, and site identities.
             dt <- data.table::as.data.table(data.table::copy(payload$data))
-            grid_sources <- payload$grid_sources
-            available_time_count <- payload$available_time_count
-            # Publish this plan's manifest changes together. Parquet files are
-            # still atomically renamed first; a failed manifest commit leaves
-            # their evidence intact for the existing conflict/recovery checks.
+            has_data <- nrow(dt) > 0L
+            result <- private$publish_extract(
+                plan,
+                status = if (has_data) "done" else "empty",
+                available_time_count = payload$available_time_count,
+                replace_results = has_data,
+                prepare = {
+                    private$update_file_actual_time(
+                        file,
+                        payload$actual_start,
+                        payload$actual_end
+                    )
+                    if (has_data) {
+                        private$decorate_extract(dt, plan, file)
+                        # Keep Parquet on disk after rollback for the existing
+                        # explicit overwrite/conflict recovery path.
+                        results <- private$write_extract_partitions(
+                            dt,
+                            plan,
+                            file,
+                            overwrite = overwrite
+                        )
+                        list(
+                            results = results,
+                            grid_sources = private$decorate_extract_grid_sources(
+                                payload$grid_sources,
+                                plan,
+                                file
+                            )
+                        )
+                    } else {
+                        list()
+                    }
+                }
+            )[[1L]]
+            attr(result, "access_method") <- opened$access_method
+            result
+        },
+        # }}}}
+        # With the caller holding the Store lock, prepare and register artifacts
+        # in the same transaction as result rows, grid lineage and plan state.
+        # Each outcome is aligned to its local plan so retry history stays local.
+        # publish_extract {{{
+        publish_extract = function(
+            plans,
+            status,
+            available_time_count,
+            prepare,
+            replace_results = FALSE
+        ) {
             ddb_exec(private$conn, "BEGIN TRANSACTION")
             committed <- FALSE
             on.exit(
@@ -9087,67 +9132,45 @@ EsgStore <- R6::R6Class(
                 },
                 add = TRUE
             )
-            private$update_file_actual_time(
-                file,
-                payload$actual_start,
-                payload$actual_end
-            )
-            if (!nrow(dt)) {
-                result <- private$mark_plan_status(
-                    plan,
-                    status = "empty",
-                    available_time_count = available_time_count,
-                    last_error = NA_character_
+            prepared <- force(prepare)
+            if (replace_results) {
+                private$delete_by_key(
+                    "extraction_result",
+                    "plan_id",
+                    plans$plan_id
                 )
-                ddb_exec(private$conn, "COMMIT")
-                committed <- TRUE
-                attr(result, "access_method") <- opened$access_method
-                return(result)
+                private$delete_by_key(
+                    "extraction_grid_source",
+                    "plan_id",
+                    plans$plan_id
+                )
             }
-
-            private$decorate_extract(dt, plan, file)
-            results <- private$write_extract_partitions(
-                dt,
-                plan,
-                file,
-                overwrite = overwrite
-            )
-            grid_sources <- private$decorate_extract_grid_sources(
-                grid_sources,
-                plan,
-                file
-            )
-            private$delete_by_key(
-                "extraction_result",
-                "plan_id",
-                plan$plan_id
-            )
-            private$delete_by_key(
-                "extraction_grid_source",
-                "plan_id",
-                plan$plan_id
-            )
-            if (nrow(results)) {
-                ddb_append_table(private$conn, "extraction_result", results)
+            if (NROW(prepared$results)) {
+                ddb_append_table(
+                    private$conn,
+                    "extraction_result",
+                    prepared$results
+                )
             }
-            if (nrow(grid_sources)) {
+            if (NROW(prepared$grid_sources)) {
                 ddb_append_table(
                     private$conn,
                     "extraction_grid_source",
-                    grid_sources
+                    prepared$grid_sources
                 )
             }
 
-            result <- private$mark_plan_status(
-                plan,
-                status = "done",
-                available_time_count = available_time_count,
-                last_error = NA_character_
-            )
+            updated <- lapply(seq_len(nrow(plans)), function(i) {
+                private$mark_plan_status(
+                    plans[i],
+                    status = status[[i]],
+                    available_time_count = available_time_count[[i]],
+                    last_error = NA_character_
+                )
+            })
             ddb_exec(private$conn, "COMMIT")
             committed <- TRUE
-            attr(result, "access_method") <- opened$access_method
-            result
+            updated
         },
         # }}}
         # open_dataset
