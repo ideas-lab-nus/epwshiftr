@@ -88,7 +88,7 @@ WeatherMethodSpec <- S7::new_class(
         }
         for (property in c("label", "implementation_key", "evidence")) {
             value <- S7::prop(self, property)
-            if (length(value) != 1L || is.na(value) || !nzchar(value)) {
+            if (!checkmate::test_string(value, min.chars = 1L)) {
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
@@ -162,7 +162,7 @@ WeatherMethodSpec <- S7::new_class(
         ) {
             return("`parameters` must be a uniquely named list.")
         }
-        if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
+        if (!checkmate::test_flag(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
         if (

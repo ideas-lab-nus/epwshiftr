@@ -319,11 +319,7 @@ WeatherComponentSpec <- S7::new_class(
         ) {
             return("`stage` must identify one future-weather component stage.")
         }
-        if (
-            length(self@label) != 1L ||
-                is.na(self@label) ||
-                !nzchar(self@label)
-        ) {
+        if (!checkmate::test_string(self@label, min.chars = 1L)) {
             return("`label` must be one non-empty string.")
         }
         overlap <- intersect(
@@ -353,7 +349,7 @@ WeatherComponentSpec <- S7::new_class(
         if (!all(self@scopes %in% WEATHER_COMPONENT_SCOPES)) {
             return("`scopes` contains an unknown component scope.")
         }
-        if (length(self@stochastic) != 1L || is.na(self@stochastic)) {
+        if (!checkmate::test_flag(self@stochastic)) {
             return("`stochastic` must be one non-missing logical value.")
         }
         if (

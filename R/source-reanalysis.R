@@ -35,7 +35,7 @@ ShiftReanalysisSpec <- S7::new_class(
     validator = function(self) {
         for (property in c("provider", "dataset", "product", "access")) {
             value <- S7::prop(self, property)
-            if (length(value) != 1L || is.na(value) || !nzchar(value)) {
+            if (!checkmate::test_string(value, min.chars = 1L)) {
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }

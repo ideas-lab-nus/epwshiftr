@@ -381,7 +381,7 @@ epwshiftr_cli_required_single_id <- function(parsed, option) {
 # epwshiftr_cli_number {{{
 epwshiftr_cli_number <- function(value, name) {
     out <- suppressWarnings(as.numeric(value))
-    if (length(out) != 1L || is.na(out) || !is.finite(out)) {
+    if (!checkmate::test_number(out, finite = TRUE)) {
         epwshiftr_cli_usage_abort(sprintf("%s must be a finite number.", name))
     }
     out
@@ -890,7 +890,7 @@ epwshiftr_cli_config_number <- function(value, default = NULL) {
         return(default)
     }
     out <- suppressWarnings(as.numeric(value))
-    if (length(out) != 1L || is.na(out) || !is.finite(out)) {
+    if (!checkmate::test_number(out, finite = TRUE)) {
         epwshiftr_cli_usage_abort("Expected a finite numeric value.")
     }
     out

@@ -1953,6 +1953,22 @@ morpher__apply_enhanced_stretch <- function(data, var) {
 }
 # }}}
 
+# Resolve the stretch limit shared by the two enhanced morphing paths.
+# An invalid option disables the limit, and classed non-numeric values such as
+# Date must not become thresholds even if their underlying storage is numeric.
+# morpher__enhanced_alpha_threshold {{{
+morpher__enhanced_alpha_threshold <- function() {
+    threshold <- getOption("epwshiftr.threshold_alpha", 3)
+    if (
+        is.numeric(threshold) &&
+            checkmate::test_number(threshold, lower = 0, finite = TRUE)
+    ) {
+        return(threshold)
+    }
+    Inf
+}
+# }}}
+
 # Enhanced absolute-target morphing uses mean daily extrema for the EPW DTR.
 # For combined temperature, alpha = (R_future - R_epw) / R_epw; invalid or
 # nearly flat EPW ranges are represented explicitly as shift fallbacks.
@@ -2039,15 +2055,7 @@ original_morphing__from_monthly_enhanced <- function(
         ]
     }
 
-    threshold <- getOption("epwshiftr.threshold_alpha", 3)
-    if (
-        !is.numeric(threshold) ||
-            length(threshold) != 1L ||
-            !is.finite(threshold) ||
-            threshold < 0
-    ) {
-        threshold <- Inf
-    }
+    threshold <- morpher__enhanced_alpha_threshold()
     too_large <- abs(data_mean$alpha_target) > threshold
     data_mean[
         too_large,
@@ -2630,15 +2638,7 @@ original_morphing__from_monthly_change_enhanced <- function(
         ]
     }
 
-    threshold <- getOption("epwshiftr.threshold_alpha", 3)
-    if (
-        !is.numeric(threshold) ||
-            length(threshold) != 1L ||
-            !is.finite(threshold) ||
-            threshold < 0
-    ) {
-        threshold <- Inf
-    }
+    threshold <- morpher__enhanced_alpha_threshold()
     too_large <- abs(data_mean$alpha_target) > threshold
     data_mean[
         too_large,
