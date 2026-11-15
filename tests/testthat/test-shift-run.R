@@ -65,6 +65,12 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         periods = epw_morph_periods(`2060s` = 2060L),
         time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
     )
+    # Reopen both tasks through their persisted arguments, using the same real
+    # climate fixture and the existing downstream result assertions.
+    climate_resumed <- shift_resume(
+        shift_cancel(climate_resumed),
+        ui = shift_ui("none")
+    )
     dl <- shift_download(files, run = FALSE, probe = FALSE)
     climate_after_download <- shift_extract(
         dl,
@@ -79,6 +85,7 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
         reference = climate,
         strict = FALSE
     )
+    morphed <- shift_resume(shift_cancel(morphed), ui = shift_ui("none"))
     epws <- shift_epw_write(morphed, dir = "shift-epw")
 
     expect_true(S7::S7_inherits(files, ShiftFiles))
@@ -104,6 +111,10 @@ test_that("shift_* stages run through extract, relaxed morph, and EPW output", {
     expect_equal(shift_status(shift_run_get(epws)), "waiting")
     expect_equal(shift_status(climate), "extracted")
     expect_equal(shift_status(climate_resumed), "extracted")
+    expect_identical(
+        shift_ids(climate_resumed)$plan_id,
+        shift_ids(climate)$plan_id
+    )
     expect_equal(shift_status(climate_after_download), "extracted")
     expect_true(length(shift_ids(climate)$plan_id) >= 1L)
     expect_true(length(shift_ids(climate_after_download)$plan_id) >= 1L)

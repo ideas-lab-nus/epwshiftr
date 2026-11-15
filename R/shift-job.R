@@ -8,25 +8,8 @@ NULL
 # intentionally absent from the persisted step hash.
 # shift_job__resume_generic_task {{{
 shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
-    if (!isTRUE(step$resumable[[1L]])) {
-        reason <- store__chr1(step$nonresumable_reason[[1L]])
-        cli::cli_abort(c(
-            "Shift step {.val {step$step_id[[1L]]}} cannot be resumed across sessions.",
-            "x" = if (is.na(reason)) {
-                "Its original input is session-local."
-            } else {
-                reason
-            }
-        ))
-    }
-    if (
-        is.na(step$input_stage_json[[1L]]) ||
-            !nzchar(step$input_stage_json[[1L]])
-    ) {
-        cli::cli_abort(
-            "Shift step {.val {step$step_id[[1L]]}} has no reconstructible input stage."
-        )
-    }
+    # The public resume path checks resumability and the saved input before
+    # changing run state; this executor only restores that accepted request.
     input_ref <- jsonlite::fromJSON(
         step$input_stage_json[[1L]],
         simplifyVector = FALSE
@@ -101,45 +84,11 @@ shift_job__resume_generic_task <- function(run, step, ui, background = FALSE) {
         ),
         extract = list(
             what = shift_extract,
-            args = list(
-                input,
-                site = shift_persist__site_from_ref(spec$site),
-                periods = shift_spec__periods_from_input(spec$periods),
-                variables = if (is.null(spec$variables)) {
-                    NULL
-                } else {
-                    as.character(spec$variables)
-                },
-                time = spec$time,
-                filters = shift_stage__coalesce(spec$filters, list()),
-                method = as.character(spec$method),
-                fallback = as.character(spec$fallback),
-                overwrite = isTRUE(spec$overwrite),
-                resume = TRUE,
-                ui = ui
-            )
+            args = c(list(input, ui = ui), shift_persist__extract_args(spec))
         ),
         morph = list(
             what = shift_morph,
-            args = list(
-                input,
-                baseline = if (is.null(spec$baseline)) {
-                    NULL
-                } else {
-                    as.character(spec$baseline)
-                },
-                transform = transform__from_spec(spec$transform),
-                reference = shift_persist__reference_from_spec(spec$reference),
-                observed_reference = shift_persist__reference_from_spec(
-                    spec$observed_reference
-                ),
-                strict = isTRUE(spec$strict),
-                complete_only = isTRUE(spec$complete_only),
-                by = as.character(spec$by),
-                overwrite = isTRUE(spec$overwrite),
-                resume = TRUE,
-                ui = ui
-            )
+            args = c(list(input, ui = ui), shift_persist__morph_args(spec))
         ),
         write_epw = list(
             what = shift_epw_write,
