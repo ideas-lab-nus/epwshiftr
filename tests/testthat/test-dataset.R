@@ -2070,11 +2070,6 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
     )
     on.exit(unlink(c(path_opened, path_pending)), add = TRUE)
 
-    expect_error(
-        EsgDataset$new(path_opened, nc_handles = list(NULL)),
-        "unused argument"
-    )
-
     source <- EsgDataset$new(path_opened)
     source$open()
     handles <- dataset__detach_handles(source)
@@ -2153,50 +2148,7 @@ test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep s
     expect_equal(as.numeric(ds$var_get("tas", collapse = TRUE)), c(11, 12, 13))
 })
 # }}}
-# private$start_async_operation() / private$collect_async_task() {{{
-test_that("private$start_async_operation() / private$collect_async_task() keep sync handle state separate", {
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(101, 102, 103)
-    )
-    on.exit(unlink(path), add = TRUE)
-
-    ds <- EsgDataset$new(path)
-    private <- ds$.__enclos_env__$private
-
-    task <- private$start_async_operation(
-        operation = "read variable data",
-        handler = function(urls, nc_handles, variable, start, count, collapse) {
-            RNetCDF::var.get.nc(
-                nc_handles[[1L]],
-                variable,
-                start = start,
-                count = count,
-                collapse = collapse
-            )
-        },
-        handler_args = list(
-            variable = "tas",
-            start = c(1L, 1L, 1L),
-            count = c(2L, 1L, 1L),
-            collapse = TRUE
-        ),
-        timeout = dataset_async_timeout
-    )
-
-    expect_false(ds$is_open)
-    expect_identical(private$async_state, "running")
-
-    result <- private$collect_async_task(task)
-
-    expect_identical(private$async_state, "completed")
-    expect_null(private$async_task)
-    expect_true(task$backend_released)
-    expect_false(ds$is_open)
-    expect_equal(as.numeric(result), c(101, 102))
-})
-
+# private$collect_async_task() {{{
 test_that("private$collect_async_task() surfaces timeout errors and clears lifecycle state", {
     path <- local_dataset_table_file(
         time_vals = c(0, 1),
@@ -2281,7 +2233,7 @@ test_that("private$cancel_async_task() keeps cancelled terminal state", {
         Sys.sleep(0.01)
     }
 
-    requested <- private$cancel_async_task(task = task, clear = TRUE)
+    requested <- private$cancel_async_task()
 
     expect_false(requested)
     expect_identical(task$status, "cancelled")

@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Remove unused Dataset task-retention options and repeated internal checks;
+  propagate workflow inspection query failures instead of returning empty records. (#329)
+
 * Remove unused downloader helpers and internal catalog wrappers; consolidate
   original-morphing options and simplify receipt and input-contract checks.
   Remove self-validation of the fixed transform catalog and repeated catalog

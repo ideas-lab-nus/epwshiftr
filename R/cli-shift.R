@@ -987,28 +987,22 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
     if (length(morph_id) != 1L) {
         epwshiftr_cli_usage_abort("Exactly one morph ID is required.")
     }
-    row <- shift_stage__query_maybe(
-        store,
-        sprintf(
-            paste(
-                "SELECT p.*, s.path, s.site_id, s.label",
-                "FROM epw_morph_plan p",
-                "LEFT JOIN epw_source s ON p.epw_id = s.epw_id",
-                "WHERE p.morph_id IN (%s)"
-            ),
-            shift_stage__query_ids(morph_id)
-        )
-    )
+    row <- store$query(sprintf(
+        paste(
+            "SELECT p.*, s.path, s.site_id, s.label",
+            "FROM epw_morph_plan p",
+            "LEFT JOIN epw_source s ON p.epw_id = s.epw_id",
+            "WHERE p.morph_id IN (%s)"
+        ),
+        shift_stage__query_ids(morph_id)
+    ))
     if (!nrow(row) || is.na(row$path[[1L]]) || !nzchar(row$path[[1L]])) {
         cli::cli_abort("Could not reconstruct morph ID {.val {morph_id}}.")
     }
-    summary <- shift_stage__query_maybe(
-        store,
-        sprintf(
-            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
-            shift_stage__sql_string(row$summary_id[[1L]])
-        )
-    )
+    summary <- store$query(sprintf(
+        "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+        shift_stage__sql_string(row$summary_id[[1L]])
+    ))
     if (!nrow(summary)) {
         cli::cli_abort("Morph ID {.val {morph_id}} has no climate summary.")
     }
@@ -1052,13 +1046,10 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
         !is.na(row$reference_summary_id[[1L]]) &&
             nzchar(row$reference_summary_id[[1L]])
     ) {
-        reference <- shift_stage__query_maybe(
-            store,
-            sprintf(
-                "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
-                shift_stage__sql_string(row$reference_summary_id[[1L]])
-            )
-        )
+        reference <- store$query(sprintf(
+            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+            shift_stage__sql_string(row$reference_summary_id[[1L]])
+        ))
         if (nrow(reference)) {
             reference_plan_id <- morpher__summary_plan_ids(store, reference)
             if (!length(reference_plan_id)) {
@@ -1088,13 +1079,10 @@ epwshiftr_cli_morphed_stage_from_morph_id <- function(store, morph_id) {
             !is.na(row$observed_summary_id[[1L]]) &&
             nzchar(row$observed_summary_id[[1L]])
     ) {
-        observed <- shift_stage__query_maybe(
-            store,
-            sprintf(
-                "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
-                shift_stage__sql_string(row$observed_summary_id[[1L]])
-            )
-        )
+        observed <- store$query(sprintf(
+            "SELECT * FROM epw_climate_summary WHERE summary_id = %s",
+            shift_stage__sql_string(row$observed_summary_id[[1L]])
+        ))
         if (nrow(observed)) {
             observed_plan_id <- morpher__summary_plan_ids(store, observed)
             if (!length(observed_plan_id)) {

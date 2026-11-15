@@ -440,12 +440,6 @@ shift_stage__sql_string <- function(x) {
 }
 # }}}
 
-# shift_stage__query_maybe {{{
-shift_stage__query_maybe <- function(store, sql) {
-    tryCatch(store$query(sql), error = function(e) data.table::data.table())
-}
-# }}}
-
 # shift_stage__query_ids {{{
 shift_stage__query_ids <- function(ids) {
     ids <- ids[!is.na(ids) & nzchar(ids)]

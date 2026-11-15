@@ -2298,8 +2298,6 @@ EsgDataset <- R6::R6Class(
             progress = FALSE,
             progress_label = "Opening dataset files"
         ) {
-            checkmate::assert_flag(progress)
-
             progress_id <- dataset__progress_bar(
                 progress,
                 progress_label,
@@ -2394,12 +2392,6 @@ EsgDataset <- R6::R6Class(
             handler_args = list(),
             timeout = NULL
         ) {
-            checkmate::assert_string(operation, min.chars = 1L)
-            checkmate::assert_function(handler)
-            if (!is.list(handler_args)) {
-                stop("`handler_args` must be a list.")
-            }
-
             if (
                 !is.null(private$async_task) &&
                     identical(private$async_state, "running")
@@ -2475,17 +2467,13 @@ EsgDataset <- R6::R6Class(
             task
         },
         # }}}
-        # collect_async_task
+        # Collect a task created by start_async_operation and clear its slot.
         # collect_async_task {{{
-        collect_async_task = function(task = private$async_task, clear = TRUE) {
-            if (is.null(task)) {
-                stop("No async task is registered for this dataset.")
-            }
-
+        collect_async_task = function(task) {
             on.exit(
                 {
                     private$async_state <- task$status
-                    if (isTRUE(clear) && identical(private$async_task, task)) {
+                    if (identical(private$async_task, task)) {
                         private$async_task <- NULL
                     }
                 },
@@ -2495,16 +2483,17 @@ EsgDataset <- R6::R6Class(
             task$collect(progress_callback = private$progress_callback)
         },
         # }}}
-        # cancel_async_task
+        # Closing a dataset cancels and clears its current task, when present.
         # cancel_async_task {{{
-        cancel_async_task = function(task = private$async_task, clear = TRUE) {
+        cancel_async_task = function() {
+            task <- private$async_task
             if (is.null(task)) {
                 return(FALSE)
             }
 
             requested <- task$cancel()
             private$async_state <- task$status
-            if (isTRUE(clear) && identical(private$async_task, task)) {
+            if (identical(private$async_task, task)) {
                 private$async_task <- NULL
             }
             requested

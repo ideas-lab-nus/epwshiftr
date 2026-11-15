@@ -4,6 +4,15 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
+test_that("catalog reads distinguish empty results from a closed Store", {
+    store <- EsgStore$new(tempfile("inspection-store-"))
+    on.exit(store$close(), add = TRUE)
+    expect_equal(nrow(shift_inspect__file_catalog(store, "absent")), 0L)
+
+    store$close()
+    expect_error(shift_inspect__file_catalog(store, "absent"), "closed")
+})
+
 test_that("artifact row reader preserves order, metadata, and global limits", {
     root <- tempfile("shift-artifact-reader-")
     dir.create(root)
