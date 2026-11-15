@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Remove the unused manifest lock age argument and consolidate download
+  policy validation while preserving older configurations and explicit `NULL` limits. (#328)
+
 * Use a shared saved-plan validator for ERA5 downloads and offline readback. (#327)
 
 * Publish a finished background download's step, run, and event in one Store
