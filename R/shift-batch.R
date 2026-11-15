@@ -668,7 +668,8 @@ shift_batch__available_alternative <- function(
     store,
     ui,
     read_candidates,
-    coverage_cache = NULL
+    coverage_cache = NULL,
+    record = NULL
 ) {
     frequency <- shift_spec__transform_cmip6_frequencies(
         transform,
@@ -758,6 +759,7 @@ shift_batch__available_alternative <- function(
                                 )
                             ) {
                                 args$cache <- coverage_cache
+                                args$record <- record
                             }
                             do.call(coverage, args)
                         }),
@@ -837,6 +839,7 @@ shift_batch__discover_candidates <- function(
     # Reuse exact File requests and their coverage reductions across methods.
     # The cache exists only for this discovery call, never across stores/runs.
     coverage_cache <- new.env(parent = emptyenv())
+    rejected_coverage <- list()
     by_transform <- lapply(names(transforms), function(transform_key) {
         transform <- transforms[[transform_key]]
         method_ui <- ui
@@ -877,7 +880,17 @@ shift_batch__discover_candidates <- function(
                     read_candidates = function(node) {
                         read_candidates(transform_key, index, node)
                     },
-                    coverage_cache = coverage_cache
+                    coverage_cache = coverage_cache,
+                    record = function(diagnostic) {
+                        # Keep the first concrete File rejection in discovery
+                        # order while allowing the other alternatives to run.
+                        if (
+                            length(diagnostic$missing) &&
+                                is.null(rejected_coverage[[transform_key]])
+                        ) {
+                            rejected_coverage[[transform_key]] <<- diagnostic
+                        }
+                    }
                 )
                 if (nrow(result)) {
                     result[, `:=`(
@@ -927,8 +940,20 @@ shift_batch__discover_candidates <- function(
     names(by_transform) <- names(transforms)
     empty <- names(by_transform)[!vapply(by_transform, nrow, integer(1L))]
     if (length(empty)) {
+        evidence <- rejected_coverage[intersect(
+            empty,
+            names(rejected_coverage)
+        )]
+        missing <- unique(unlist(
+            lapply(evidence, `[[`, "missing"),
+            use.names = FALSE
+        ))
         cli::cli_abort(
-            "No complete CMIP6 identity satisfies weather method(s) {.val {empty}}."
+            c(
+                "No complete CMIP6 identity satisfies weather method(s) {.val {empty}}.",
+                if (length(missing)) c("x" = utils::head(missing, 3L))
+            ),
+            coverage = evidence
         )
     }
     common <- Reduce(intersect, lapply(by_transform, `[[`, "identity"))

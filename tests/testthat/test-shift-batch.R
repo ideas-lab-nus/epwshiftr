@@ -817,6 +817,179 @@ test_that("File coverage applies the same year kernel to historical reference", 
     expect_identical(covered$source_id, c("Model-A", "Model-C"))
 })
 
+# Both roles have enough years, but a shared display grid cannot hide a
+# different grid in the required monthly partition.
+test_that("historical File pairing checks all required grids", {
+    frequency <- c(tas = "day", pr = "mon")
+    candidates <- test_cmip6_availability(
+        variables = names(frequency),
+        scenarios = "ssp585",
+        member = "r1i1p1f1",
+        frequency = frequency,
+        index_node = "https://example.org",
+        source = "Model-A"
+    )
+    future <- data.table::data.table(
+        source_id = "Model-A",
+        experiment_id = "ssp585",
+        variant_label = "r1i1p1f1",
+        variable_id = names(frequency),
+        frequency = unname(frequency),
+        table_id = c("day", "Amon"),
+        grid_label = c("gn", "gr"),
+        datetime_start = "2050-01-01T00:00:00Z",
+        datetime_end = "2050-12-31T23:59:59Z"
+    )
+    historical <- data.table::copy(future)
+    data.table::set(historical, j = "experiment_id", value = "historical")
+    data.table::set(
+        historical,
+        j = "datetime_start",
+        value = "1995-01-01T00:00:00Z"
+    )
+    data.table::set(
+        historical,
+        j = "datetime_end",
+        value = "2014-12-31T23:59:59Z"
+    )
+    data.table::set(historical, j = "grid_label", value = "gn")
+    testthat::local_mocked_bindings(
+        shift_resolve__cmip6_coverage_catalog = function(request, ...) {
+            if (identical(request@meta$experiment, "historical")) {
+                historical
+            } else {
+                future
+            }
+        },
+        .package = "epwshiftr"
+    )
+    # Run the same batch coverage check before and after aligning the grid.
+    cover <- function() {
+        shift_resolve__cmip6_period_coverage(
+            candidates = candidates,
+            climate = shift_cmip6(scenarios = "ssp585"),
+            transform = daily_transform("isimip3basd"),
+            variables = names(frequency),
+            frequency = frequency,
+            periods = shift_spec__periods_from_years(2050L),
+            reference = historical_reference(1995:2014),
+            node = "https://example.org",
+            store = tempfile(),
+            ui = shift_ui(progress = "none")
+        )
+    }
+
+    expect_equal(nrow(cover()), 0L)
+    data.table::set(historical, i = 2L, j = "grid_label", value = "gr")
+    expect_identical(cover()$source_file_count, 4L)
+})
+
+# Use the same File records for direct resolution and for the offline ESGF
+# fixture behind batch discovery. The Dataset summaries cannot reveal 2007.
+test_that("single-case and batch CMIP6 evidence identify an interior historical gap", {
+    root <- withr::local_tempdir()
+    transform <- daily_transform("isimip3basd")
+    climate <- shift_cmip6(
+        "EC-Earth3",
+        "ssp585",
+        member = "r1i1p1f1",
+        grid = "gr",
+        index_nodes = "https://example.org"
+    )
+    periods <- epw_morph_periods(future = 2060L)
+    reference <- historical_reference(1995:2014)
+    observed <- shift_era5(1995:2014)
+    site <- shift_site(epw = get_cache_epw())
+    plan <- shift_plan(
+        shift_spec__request_from_cmip6(climate, periods, transform),
+        site = site,
+        periods = periods,
+        transform = transform,
+        reference = reference,
+        observed_reference = observed,
+        store = file.path(root, "single")
+    )
+    plan@meta$climate <- climate
+    files <- data.table::rbindlist(lapply(seq_len(3L), function(i) {
+        docs <- esgf_test__file_docs(
+            c("future.nc", "historical-first.nc", "historical-last.nc")[[i]],
+            datetime_start = c("2060", "1995", "2008")[[i]],
+            datetime_end = paste0(
+                c("2060", "2006", "2014")[[i]],
+                "-12-31T23:59:59Z"
+            )
+        )
+        data.table::set(
+            docs,
+            j = "datetime_start",
+            value = paste0(docs$datetime_start, "-01-01T00:00:00Z")
+        )
+        if (i > 1L) {
+            data.table::set(docs, j = "experiment_id", value = "historical")
+            data.table::set(docs, j = "activity_id", value = "CMIP")
+        }
+        docs
+    }))
+    datasets <- unique(files[,
+        c(
+            "source_id",
+            "experiment_id",
+            "activity_id",
+            "variable_id",
+            "variant_label",
+            "grid_label",
+            "table_id",
+            "frequency",
+            "data_node"
+        ),
+        with = FALSE
+    ])
+    data.table::set(datasets, j = "id", value = datasets$experiment_id)
+    data.table::set(datasets, j = "instance_id", value = datasets$id)
+    testthat::local_mocked_bindings(
+        query__collect = function(index_node, params, ...) {
+            type <- query_param__value(params$type())
+            docs <- if (identical(type, "Dataset")) datasets else files
+            experiments <- shift_test__param_value(params, "experiment_id")
+            if (length(experiments)) {
+                docs <- docs[docs$experiment_id %in% experiments]
+            }
+            response <- esgf_test__response(docs)
+            list(
+                response = response,
+                docs = response$response$docs,
+                parameter = params
+            )
+        },
+        .package = "epwshiftr"
+    )
+
+    single <- expect_error(
+        shift_resolve__resolve_cmip6_selection(
+            plan,
+            files[experiment_id == "ssp585"],
+            files[experiment_id == "historical"]
+        ),
+        class = "epwshiftr_shift_resolution_incomplete"
+    )
+    batch <- expect_error(shift_epw_future(
+        sites = site,
+        climate = climate,
+        periods = periods,
+        transform = transform,
+        reference = reference,
+        observed_reference = observed,
+        dir = file.path(root, "outputs"),
+        store = file.path(root, "batch"),
+        dry_run = TRUE,
+        ui = shift_ui(progress = "none")
+    ))
+    expect_identical(single$resolution$reason, "reference_incomplete")
+    expect_match(conditionMessage(single), "missing years 2007", fixed = TRUE)
+    expect_match(conditionMessage(batch), "missing years 2007", fixed = TRUE)
+    expect_identical(batch$coverage[[1L]]$missing, single$resolution$missing)
+})
+
 # Model the handoff while an existing receipt is temporarily absent: the
 # reader must acquire the publication lock before deciding that it is missing.
 test_that("batch receipt reads wait for publication before checking existence", {
