@@ -2,7 +2,7 @@
 
 * Keep extraction and morphing task serialization beside their resume decoding,
   reuse execution arguments when saving tasks, and check resumability once before
-  changing run state.
+  changing run state. (#332)
 
 * Share Store extraction recovery between ordinary and pooled readers, retaining
   HTTP fallback, resumable transfer sessions and both remote and local failures,
