@@ -1,5 +1,8 @@
 # epwshiftr (development version)
 
+* Share exact CMIP6 File coverage and required-partition matching between
+  single-case resolution and batch discovery, and report missing baseline years.
+
 * Use a shared Store transaction for extraction and receipt import to publish
   artifacts, results, grid sources, and plan status together. (#324)
 

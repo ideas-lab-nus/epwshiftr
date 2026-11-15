@@ -167,19 +167,17 @@ shift_resolve__cmip6_partitions <- function(value) {
 }
 # }}}
 
-# Test one variable at one table/grid against every requested year for a single
-# experiment. File ranges are expanded rather than inferred from min/max so a
-# gap in the middle cannot satisfy the contract.
-# shift_resolve__cmip6_input_complete {{{
-shift_resolve__cmip6_input_complete <- function(
+# Return the File years for one exact input partition. NULL records an absent
+# partition, while an empty integer vector means File rows had no usable years.
+# shift_resolve__cmip6_input_years {{{
+shift_resolve__cmip6_input_years <- function(
     catalog,
     identity,
     experiment,
     variable,
     frequency,
     table,
-    grid,
-    years
+    grid
 ) {
     # ESGF providers may return convenience columns named `variable` and
     # `grid`. Local aliases prevent data.table from resolving those columns
@@ -200,8 +198,84 @@ shift_resolve__cmip6_input_complete <- function(
             shift_resolve__catalog_match(table_id, wanted_table) &
             shift_resolve__catalog_match(grid_label, wanted_grid)
     ]
-    nrow(files) > 0L &&
-        !length(setdiff(years, shift_resolve__catalog_years(files)))
+    if (nrow(files)) shift_resolve__catalog_years(files) else NULL
+}
+# }}}}
+
+# Optional inputs follow the same exact partition and year checks as required
+# inputs, but do not report gaps or disqualify the candidate.
+# shift_resolve__cmip6_input_complete {{{
+shift_resolve__cmip6_input_complete <- function(
+    catalog,
+    identity,
+    experiment,
+    variable,
+    frequency,
+    table,
+    grid,
+    years
+) {
+    covered <- shift_resolve__cmip6_input_years(
+        catalog,
+        identity,
+        experiment,
+        variable,
+        frequency,
+        table,
+        grid
+    )
+    !is.null(covered) && !length(setdiff(years, covered))
+}
+# }}}}
+
+# Keep the variable and exact missing years for each experiment in a required
+# alternative. The candidate is eligible only if every experiment has no gaps.
+# shift_resolve__cmip6_alternative_missing {{{
+shift_resolve__cmip6_alternative_missing <- function(
+    catalog,
+    identity,
+    experiments,
+    alternative,
+    frequency,
+    table,
+    grid,
+    years
+) {
+    lapply(experiments, function(experiment) {
+        gaps <- vapply(
+            alternative,
+            function(input) {
+                partition <- shift_resolve__cmip6_partition_id(
+                    frequency[[input]],
+                    table[[input]]
+                )
+                covered <- shift_resolve__cmip6_input_years(
+                    catalog,
+                    identity,
+                    experiment,
+                    input,
+                    frequency[[input]],
+                    table[[input]],
+                    grid[[partition]]
+                )
+                missing <- setdiff(years, covered)
+                if (length(missing)) {
+                    return(paste(
+                        input,
+                        "missing years",
+                        shift_print__format_years(missing)
+                    ))
+                }
+                if (is.null(covered)) {
+                    paste(input, "has no files")
+                } else {
+                    NA_character_
+                }
+            },
+            character(1L)
+        )
+        gaps[!is.na(gaps)]
+    })
 }
 # }}}
 
@@ -391,37 +465,24 @@ shift_resolve__cmip6_candidates <- function(
             for (canonical in names(requirements)) {
                 alternatives <- requirements[[canonical]]
                 matched <- NULL
-                for (alternative in alternatives) {
-                    input_ok <- vapply(
+                attempts <- vector("list", length(alternatives))
+                for (i in seq_along(alternatives)) {
+                    alternative <- alternatives[[i]]
+                    gaps <- shift_resolve__cmip6_alternative_missing(
+                        catalog,
+                        identity,
                         experiments,
-                        function(experiment) {
-                            all(vapply(
-                                alternative,
-                                function(input) {
-                                    partition_id <- shift_resolve__cmip6_partition_id(
-                                        frequency_map[[input]],
-                                        table_map[[input]]
-                                    )
-                                    shift_resolve__cmip6_input_complete(
-                                        catalog,
-                                        identity,
-                                        experiment,
-                                        input,
-                                        frequency_map[[input]],
-                                        table_map[[input]],
-                                        grid_map[[partition_id]],
-                                        years
-                                    )
-                                },
-                                logical(1L)
-                            ))
-                        },
-                        logical(1L)
+                        alternative,
+                        frequency_map,
+                        table_map,
+                        grid_map,
+                        years
                     )
-                    if (all(input_ok)) {
+                    if (!any(lengths(gaps))) {
                         matched <- as.character(alternative)
                         break
                     }
+                    attempts[[i]] <- gaps
                 }
                 if (is.null(matched)) {
                     labels <- vapply(
@@ -430,14 +491,27 @@ shift_resolve__cmip6_candidates <- function(
                         character(1L),
                         collapse = "+"
                     )
-                    for (experiment in experiments) {
+                    for (i in seq_along(experiments)) {
+                        details <- unique(unlist(
+                            lapply(attempts, `[[`, i),
+                            use.names = FALSE
+                        ))
                         missing <- c(
                             missing,
                             sprintf(
-                                "%s/%s: requires %s",
-                                experiment,
+                                "%s/%s: requires %s%s",
+                                experiments[[i]],
                                 canonical,
-                                paste(labels, collapse = " or ")
+                                paste(labels, collapse = " or "),
+                                if (length(details)) {
+                                    paste0(
+                                        " (",
+                                        paste(details, collapse = ", "),
+                                        ")"
+                                    )
+                                } else {
+                                    ""
+                                }
                             )
                         )
                     }
@@ -696,6 +770,47 @@ shift_resolve__cmip6_candidates <- function(
 }
 # }}}
 
+# Match the same model, member, frequency, required partitions and variable
+# route for both roles. A display grid alone cannot identify mixed partitions.
+CMIP6_REQUIRED_PAIR_COLUMNS <- c(
+    "source_id",
+    "variant_label",
+    "frequency",
+    "required_partition_key",
+    "requirement_key"
+)
+
+# Carry only the reference fields each caller needs on complete pairs. Model
+# ranking and optional-input selection remain the callers' responsibilities.
+# shift_resolve__cmip6_complete_pairs {{{
+shift_resolve__cmip6_complete_pairs <- function(
+    future,
+    reference,
+    reference_fields = character()
+) {
+    keys <- CMIP6_REQUIRED_PAIR_COLUMNS
+    historical <- reference[
+        complete %in% TRUE,
+        c(keys, unname(reference_fields)),
+        with = FALSE
+    ]
+    if (length(reference_fields)) {
+        data.table::setnames(
+            historical,
+            unname(reference_fields),
+            names(reference_fields)
+        )
+    }
+    merge(
+        future[complete %in% TRUE],
+        historical,
+        by = keys,
+        all = FALSE,
+        sort = FALSE
+    )
+}
+# }}}}
+
 # Build the File query shared by batch discovery and high-level CMIP6
 # resolution when exact future or historical year coverage must be verified.
 # shift_resolve__cmip6_coverage_request {{{
@@ -882,9 +997,10 @@ shift_resolve__cmip6_coverage_candidates <- function(
         table = table,
         requirements = stats::setNames(as.list(meta$variables), meta$variables)
     )
-    candidates <- candidates[complete %in% TRUE]
-    counts <- vapply(
-        seq_len(nrow(candidates)),
+    eligible <- which(candidates$complete %in% TRUE)
+    counts <- rep(NA_integer_, nrow(candidates))
+    counts[eligible] <- vapply(
+        eligible,
         function(index) {
             shift_resolve__cmip6_candidate_file_count(
                 catalog,
@@ -919,7 +1035,8 @@ shift_resolve__cmip6_period_coverage <- function(
     node,
     store,
     ui,
-    cache = NULL
+    cache = NULL,
+    record = NULL
 ) {
     candidates <- data.table::as.data.table(data.table::copy(candidates))
     if (!nrow(candidates)) {
@@ -966,17 +1083,10 @@ shift_resolve__cmip6_period_coverage <- function(
             ui,
             cache
         )
-        group_keys <- paste(
-            future$source_id,
-            future$variant_label,
-            future$grid_label,
-            sep = "\r"
-        )
-
-        if (
-            S7::S7_inherits(reference, ShiftReferenceSpec) &&
-                identical(reference@mode, "historical")
-        ) {
+        reference_required <- S7::S7_inherits(reference, ShiftReferenceSpec) &&
+            identical(reference@mode, "historical")
+        historical <- NULL
+        if (reference_required) {
             historical_request <- shift_resolve__cmip6_coverage_request(
                 climate,
                 transform,
@@ -1004,35 +1114,21 @@ shift_resolve__cmip6_period_coverage <- function(
                 ui,
                 cache
             )
-            historical_keys <- paste(
-                historical$source_id,
-                historical$variant_label,
-                historical$grid_label,
-                sep = "\r"
-            )
-            group_keys <- intersect(group_keys, historical_keys)
-            historical_counts <- historical[,
-                .(
-                    historical_file_count = if (.N) {
-                        min(source_file_count)
-                    } else {
-                        NA_integer_
-                    }
-                ),
-                by = .(source_id, variant_label, grid_label)
-            ]
-            future <- merge(
+            eligible <- shift_resolve__cmip6_complete_pairs(
                 future,
-                historical_counts,
-                by = c("source_id", "variant_label", "grid_label"),
-                all.x = TRUE,
-                sort = FALSE
+                historical,
+                reference_fields = c(
+                    historical_file_count = "source_file_count"
+                )
             )
-            future[,
-                source_file_count := .SD[["source_file_count"]] +
-                    .SD[["historical_file_count"]],
-                .SDcols = c("source_file_count", "historical_file_count")
-            ]
+            data.table::set(
+                eligible,
+                j = "source_file_count",
+                value = eligible$source_file_count +
+                    eligible$historical_file_count
+            )
+        } else {
+            eligible <- future[complete %in% TRUE]
         }
         row_keys <- paste(
             rows$source_id,
@@ -1040,11 +1136,9 @@ shift_resolve__cmip6_period_coverage <- function(
             rows$grid_label,
             sep = "\r"
         )
-        # Retain completion on the exact table-mapping group. A valid daily
-        # candidate must not make an Amon candidate with the same model/member/
-        # grid identity appear complete.
-        complete_rows[candidate_rows] <- row_keys %in% group_keys
-        counts <- future[,
+        # Batch ranking keeps its model/member/display-grid keys, but costs
+        # come only from complete File partitions within this exact mapping.
+        counts <- eligible[,
             .(
                 source_file_count = if (.N) {
                     min(source_file_count)
@@ -1060,9 +1154,17 @@ shift_resolve__cmip6_period_coverage <- function(
             counts$grid_label,
             sep = "\r"
         )
-        source_file_count[candidate_rows] <- counts$source_file_count[
-            match(row_keys, count_keys)
-        ]
+        matched <- match(row_keys, count_keys)
+        complete_rows[candidate_rows] <- !is.na(matched)
+        source_file_count[candidate_rows] <- counts$source_file_count[matched]
+        if (!is.null(record) && all(is.na(matched))) {
+            record(shift_resolve__cmip6_resolution_diagnostic(
+                future,
+                reference = historical,
+                models = unique(rows$source_id),
+                reference_required = reference_required
+            ))
+        }
     }
 
     candidates <- candidates[complete_rows]
@@ -1289,13 +1391,7 @@ shift_resolve__cmip6_resolution_diagnostic <- function(
     models,
     reference_required = FALSE
 ) {
-    identity <- c(
-        "source_id",
-        "variant_label",
-        "frequency",
-        "required_partition_key",
-        "requirement_key"
-    )
+    identity <- CMIP6_REQUIRED_PAIR_COLUMNS
     display <- c("grid_label", "table_id")
     future <- data.table::as.data.table(data.table::copy(future))
     for (name in setdiff(
@@ -1589,13 +1685,7 @@ shift_resolve__cmip6_paired_alternatives <- function(
             recursive = FALSE
         )
     }
-    identity <- c(
-        "source_id",
-        "variant_label",
-        "frequency",
-        "required_partition_key",
-        "requirement_key"
-    )
+    identity <- CMIP6_REQUIRED_PAIR_COLUMNS
     pairs <- vector("list", length(sets))
     candidates <- vector("list", length(sets))
     alternative_inputs <- unique(unlist(
@@ -1650,13 +1740,10 @@ shift_resolve__cmip6_paired_alternatives <- function(
             requirements = sets[[i]],
             grid = grid
         )
-        common <- merge(
-            selected_future[complete %in% TRUE, identity, with = FALSE],
-            selected_reference[complete %in% TRUE, identity, with = FALSE],
-            by = identity,
-            all = FALSE,
-            sort = FALSE
-        )
+        common <- shift_resolve__cmip6_complete_pairs(
+            selected_future,
+            selected_reference
+        )[, identity, with = FALSE]
         data.table::set(
             common,
             j = "alternative_rank",
@@ -1986,29 +2073,10 @@ shift_resolve__resolve_cmip6_selection <- function(
         if (!diagnostic$shared_complete_candidates) {
             shift_resolve__abort_cmip6_resolution(diagnostic)
         }
-        identity <- c(
-            "source_id",
-            "variant_label",
-            "frequency",
-            "required_partition_key",
-            "requirement_key"
-        )
-        historical <- historical_candidates[
-            complete %in% TRUE,
-            c(identity, "partitions_json"),
-            with = FALSE
-        ]
-        data.table::setnames(
-            historical,
-            "partitions_json",
-            "reference_partitions_json"
-        )
-        future <- merge(
-            future[complete %in% TRUE],
-            historical,
-            by = identity,
-            all = FALSE,
-            sort = FALSE
+        future <- shift_resolve__cmip6_complete_pairs(
+            future,
+            historical_candidates,
+            reference_fields = c(reference_partitions_json = "partitions_json")
         )
         if (nrow(future)) {
             for (i in seq_len(nrow(future))) {
