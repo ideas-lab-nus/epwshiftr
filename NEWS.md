@@ -1,10 +1,10 @@
 # epwshiftr (development version)
 
 * Propagate download-task read errors through Store status reports instead of
-  treating them as empty task lists, and simplify derived workflow status fields.
+  treating them as empty task lists, and simplify derived workflow status fields. (#329)
 
 * Centralize weather component registration policies and specification
-  validation while retaining normalization and scientific input constraints.
+  validation while retaining normalization and scientific input constraints. (#329)
 
 * Simplify regional reads and Store receipt checks, and share run diagnostics,
   manifest owner validation, and weather input requirement records. (#329)
