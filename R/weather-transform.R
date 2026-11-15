@@ -1162,25 +1162,11 @@ transform__recipe <- function(transform) {
 }
 # }}}
 
-# Convert one role requirement to the data-only form persisted with a transform.
-# transform__input_requirement_value {{{
-transform__input_requirement_value <- function(requirement) {
-    list(
-        role = requirement@role,
-        representations = requirement@representations,
-        frequencies = requirement@frequencies,
-        variable_frequencies = requirement@variable_frequencies,
-        calendars = requirement@calendars,
-        variable_sets = requirement@variable_sets
-    )
-}
-# }}}
-
 # Convert role contracts into data-only records that remain readable in a
 # persisted plan and comparable after a JSON round trip.
 # transform__input_contract_value {{{
 transform__input_contract_value <- function(contract) {
-    lapply(contract, transform__input_requirement_value)
+    lapply(contract, component__input_requirement_record)
 }
 # }}}
 

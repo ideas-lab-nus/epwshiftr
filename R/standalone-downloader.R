@@ -298,6 +298,23 @@ downloader__manifest_lock_metadata <- function(lock_dir) {
 }
 # }}}
 
+# Check the identity fields shared by manifest locks and workflow jobs before
+# using them as evidence in a local process lookup.
+# downloader__owner_identity_valid {{{
+downloader__owner_identity_valid <- function(pid, hostname) {
+    length(pid) == 1L &&
+        is.numeric(pid) &&
+        !is.na(pid) &&
+        pid > 0 &&
+        pid <= .Machine$integer.max &&
+        pid == as.integer(pid) &&
+        is.character(hostname) &&
+        length(hostname) == 1L &&
+        !is.na(hostname) &&
+        nzchar(hostname)
+}
+# }}}
+
 # Read only ownership records whose host and PID can be validated.
 # downloader__manifest_lock_owner {{{
 downloader__manifest_lock_owner <- function(lock_dir) {
@@ -309,16 +326,7 @@ downloader__manifest_lock_owner <- function(lock_dir) {
     )
     if (
         !is.list(owner) ||
-            length(owner$pid) != 1L ||
-            !is.numeric(owner$pid) ||
-            is.na(owner$pid) ||
-            owner$pid <= 0 ||
-            owner$pid > .Machine$integer.max ||
-            owner$pid != as.integer(owner$pid) ||
-            !is.character(owner$hostname) ||
-            length(owner$hostname) != 1L ||
-            is.na(owner$hostname) ||
-            !nzchar(owner$hostname)
+            !downloader__owner_identity_valid(owner$pid, owner$hostname)
     ) {
         return(NULL)
     }
@@ -331,19 +339,9 @@ downloader__manifest_lock_owner <- function(lock_dir) {
 # downloader__local_pid_absent {{{
 downloader__local_pid_absent <- function(pid, hostname) {
     if (
-        length(pid) != 1L ||
-            !is.numeric(pid) ||
-            is.na(pid) ||
-            pid <= 0 ||
-            pid > .Machine$integer.max ||
-            pid != as.integer(pid) ||
-            !is.character(hostname) ||
-            length(hostname) != 1L ||
-            is.na(hostname)
+        !downloader__owner_identity_valid(pid, hostname) ||
+            !identical(hostname, unname(Sys.info()[["nodename"]]))
     ) {
-        return(FALSE)
-    }
-    if (!identical(hostname, unname(Sys.info()[["nodename"]]))) {
         return(FALSE)
     }
     if (pid == Sys.getpid()) {

@@ -189,7 +189,7 @@ test_that("background live sidecars carry transient reporter state without event
     )
 })
 
-test_that("successful-run scientific diagnostics survive refresh", {
+test_that("durable and live run reads agree on recorded diagnostics", {
     store_path <- tempfile("shift-scientific-diagnostic-store-")
     plan <- shift_epw_future(
         sites = shift_site(epw = get_cache_epw()),
@@ -218,7 +218,7 @@ test_that("successful-run scientific diagnostics survive refresh", {
 
     shift_job__run_diagnostics_record(store, run_id, diagnostic)
     shift_job__run_diagnostics_record(store, run_id, diagnostic)
-    refreshed <- shift_job__run_handle(store, run_id)
+    refreshed <- shift_run_get(run_id, store = store)
     actual <- shift_diagnostics(refreshed, refresh = FALSE)
 
     expect_equal(nrow(actual), 1L)
@@ -229,6 +229,23 @@ test_that("successful-run scientific diagnostics survive refresh", {
         nrow(refreshed@meta$events[status == "diagnostic"]),
         1L
     )
+
+    shift_job__run_event(store, run_id, "extract", "running", "Working")
+    shift_job__run_event(store, run_id, "extract", "failed", "Read failed")
+    durable <- shift_diagnostics(
+        shift_run_get(run_id, store = store),
+        refresh = FALSE
+    )
+    expect_identical(durable$code, c("dry_baseline_precip", "shift_run_error"))
+
+    # Force the public reader down its lock fallback using a real live snapshot.
+    shift_job__live_snapshot(store, run_id, urgent = TRUE)
+    local_mocked_bindings(shift_store = function(...) {
+        stop("IO Error: Could not set lock on file 'manifest.duckdb'.")
+    })
+    live <- shift_run_get(run_id, store = store_path)
+    expect_true(live@meta$live)
+    expect_identical(shift_diagnostics(live, refresh = FALSE), durable)
 })
 
 test_that("background runs register live jobs before launching workers", {

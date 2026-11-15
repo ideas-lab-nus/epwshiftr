@@ -1919,14 +1919,6 @@ EsgDataset <- R6::R6Class(
                 )
             }
 
-            if (!length(pieces)) {
-                empty <- private$empty_region_data_table()
-                attr(
-                    empty,
-                    "grid_sources"
-                ) <- private$empty_grid_sources_data_table()
-                return(if (isTRUE(rbind)) empty else list())
-            }
             if (!isTRUE(rbind)) {
                 return(pieces)
             }

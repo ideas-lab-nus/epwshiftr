@@ -582,9 +582,6 @@ dataset__read_regions <- function(
             call. = FALSE
         )
     }
-    if (!length(pieces)) {
-        return(dataset__empty_regions())
-    }
     output <- data.table::rbindlist(pieces, use.names = TRUE, fill = TRUE)
     attr(output, "grid_sources") <- data.table::rbindlist(
         lapply(

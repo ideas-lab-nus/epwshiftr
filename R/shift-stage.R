@@ -22,12 +22,6 @@ SHIFT_DIAGNOSTIC_COLUMNS <- c(
     "action"
 )
 
-# shift_stage__diagnostic_columns {{{
-shift_stage__diagnostic_columns <- function() {
-    SHIFT_DIAGNOSTIC_COLUMNS
-}
-# }}}
-
 # shift_stage__diagnostics_empty {{{
 shift_stage__diagnostics_empty <- function() {
     out <- stats::setNames(

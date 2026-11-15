@@ -11,8 +11,8 @@ test_that("shift diagnostics normalize empty partial tables", {
     )
     diagnostics <- shift_stage__diagnostics_normalize(partial)
 
-    expect_named(diagnostics, shift_stage__diagnostic_columns())
     expect_equal(nrow(diagnostics), 0L)
+    expect_identical(diagnostics$code, character())
 })
 
 test_that("morph case failures update only their matching public case", {

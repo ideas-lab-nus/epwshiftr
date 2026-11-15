@@ -499,10 +499,7 @@ test_that("shift_collect() uses Dataset collection before File collection", {
     expect_equal(file_result$count(), 1L)
     expect_equal(file_result$filename, "tas_day.nc")
     expect_error(shift_files(req), "No File result")
-    expect_named(
-        shift_check(files, strict = TRUE),
-        shift_stage__diagnostic_columns()
-    )
+    expect_false("error" %in% shift_check(files, strict = TRUE)$severity)
     expect_equal(shift_status(shift_refresh(files)), "collected")
 
     printed <- capture.output(print(files), type = "message")

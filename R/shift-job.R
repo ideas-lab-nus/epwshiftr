@@ -2019,6 +2019,26 @@ shift_job__run_event_diagnostic <- function(event, run_id, store_path) {
 }
 # }}}
 
+# Interpret the same run events from either DuckDB or the live JSON snapshot.
+# The binder already supplies the typed empty diagnostics when no event qualifies.
+# shift_job__run_diagnostics {{{
+shift_job__run_diagnostics <- function(events, run_id, store_path) {
+    diagnostic_events <- events[
+        status %in% c("failed", "error", "diagnostic")
+    ]
+    do.call(
+        shift_stage__bind_diagnostics,
+        lapply(seq_len(nrow(diagnostic_events)), function(i) {
+            shift_job__run_event_diagnostic(
+                diagnostic_events[i],
+                run_id,
+                store_path
+            )
+        })
+    )
+}
+# }}}
+
 # Materialize a lightweight ShiftRun handle from persisted tables.
 # shift_job__run_handle {{{
 shift_job__run_handle <- function(
@@ -2062,26 +2082,6 @@ shift_job__run_handle <- function(
         wanted_run_id
     )
     steps <- steps[order(steps[["ordinal"]])]
-    diagnostic_events <- events[
-        status %in% c("failed", "error", "diagnostic")
-    ]
-    diagnostics <- if (!nrow(diagnostic_events)) {
-        shift_stage__diagnostics_empty()
-    } else {
-        do.call(
-            shift_stage__bind_diagnostics,
-            lapply(
-                seq_len(nrow(diagnostic_events)),
-                function(i) {
-                    shift_job__run_event_diagnostic(
-                        diagnostic_events[i],
-                        run_id,
-                        store$path
-                    )
-                }
-            )
-        )
-    }
     shift_stage__new(
         ShiftRun,
         "run",
@@ -2101,7 +2101,7 @@ shift_job__run_handle <- function(
             output_stage = output_stage,
             plan = plan
         ),
-        diagnostics = diagnostics
+        diagnostics = shift_job__run_diagnostics(events, run_id, store$path)
     )
 }
 # }}}
@@ -2383,26 +2383,6 @@ shift_job__live_run_get <- function(run_id, store_path) {
         })
         data.table::set(cases, j = "years", value = years)
     }
-    diagnostic_events <- events[
-        status %in% c("failed", "error", "diagnostic")
-    ]
-    diagnostics <- if (!nrow(diagnostic_events)) {
-        shift_stage__diagnostics_empty()
-    } else {
-        do.call(
-            shift_stage__bind_diagnostics,
-            lapply(
-                seq_len(nrow(diagnostic_events)),
-                function(i) {
-                    shift_job__run_event_diagnostic(
-                        diagnostic_events[i],
-                        run_id,
-                        store_path
-                    )
-                }
-            )
-        )
-    }
     shift_stage__new(
         ShiftRun,
         "run",
@@ -2423,7 +2403,7 @@ shift_job__live_run_get <- function(run_id, store_path) {
             ui_state = ui_state,
             live = TRUE
         ),
-        diagnostics = diagnostics
+        diagnostics = shift_job__run_diagnostics(events, run_id, store_path)
     )
 }
 # }}}

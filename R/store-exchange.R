@@ -172,7 +172,6 @@ store_exchange__decode <- function(columns, template) {
 store_exchange__export <- function(store, private, plan_id, path) {
     checkmate::assert_character(plan_id, any.missing = FALSE, unique = TRUE)
     checkmate::assert_string(path, min.chars = 1L)
-    private$check_open()
     private$with_store_lock({
         plans <- store_exchange__rows(
             private$conn,
@@ -397,13 +396,11 @@ store_exchange__import <- function(
             "size"
         )
         store_exchange__identity(files, local_files, file_columns, "file_key")
+        done_plan_ids <- plans$plan_id[plans$status == "done"]
         if (
             !setequal(unique(plans$file_key), files$file_key) ||
                 !all(plans$status %in% c("done", "empty")) ||
-                !setequal(
-                    unique(results$plan_id),
-                    plans$plan_id[plans$status == "done"]
-                ) ||
+                !setequal(results$plan_id, done_plan_ids) ||
                 !setequal(unique(results$artifact_id), artifacts$artifact_id) ||
                 anyDuplicated(artifacts$artifact_id) ||
                 !all(artifacts$kind == "extract") ||
@@ -488,17 +485,17 @@ store_exchange__import <- function(
                 )
             }
         }
-        # Result and grid identities must refer only to this exact set of plans.
-        for (table in list(results, data$extraction_grid_source)) {
+        # Exact result coverage above already restricts results to done plans.
+        # Grid sources are optional, but every supplied row must belong to one.
+        grid_sources <- data$extraction_grid_source
+        if (!all(grid_sources$plan_id %in% done_plan_ids)) {
+            cli::cli_abort("Extraction result or grid lineage is inconsistent.")
+        }
+        for (table in list(results, grid_sources)) {
             if (nrow(table)) {
                 expected <- plans[match(table$plan_id, plans$plan_id)]
                 if (
-                    anyNA(expected$plan_id) ||
-                        !all(
-                            table$plan_id %in%
-                                plans$plan_id[plans$status == "done"]
-                        ) ||
-                        !identical(table$file_key, expected$file_key) ||
+                    !identical(table$file_key, expected$file_key) ||
                         !identical(table$query_id, expected$query_id) ||
                         ("variable_id" %in%
                             names(table) &&
@@ -651,7 +648,6 @@ store_exchange__export_plans <- function(store, private, plan_id, path) {
         unique = TRUE
     )
     checkmate::assert_string(path, min.chars = 1L)
-    private$check_open()
     private$with_store_lock({
         plans <- store_exchange__rows(
             private$conn,
@@ -788,7 +784,6 @@ store_exchange__validate_plans <- function(plans, files, queries, links) {
             !setequal(unique(plans$file_key), files$file_key) ||
             !setequal(unique(plans$query_id), queries$query_id) ||
             !all(files$query_id %in% queries$query_id) ||
-            !all(links$file_key %in% files$file_key) ||
             !all(links$query_id %in% queries$query_id) ||
             !setequal(unique(links$file_key), files$file_key) ||
             anyNA(plans$time_start) ||

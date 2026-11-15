@@ -83,9 +83,19 @@ test_that("reopening still rejects changed or missing schema versions", {
         }
         ddb_exec(conn, "DROP TABLE IF EXISTS shift_run_event")
         ddb_disconnect(conn)
-        expect_error(EsgStore$new(path, create = FALSE), "Store schema version")
+        message <- if (is.na(version)) {
+            "Store schema version .*missing"
+        } else {
+            "Store schema version"
+        }
+        expect_error(EsgStore$new(path, create = FALSE), message)
         conn <- ddb_connect(file.path(path, "manifest.duckdb"))
         expect_false("shift_run_event" %in% ddb_list_tables(conn))
+        stored <- ddb_query(
+            conn,
+            "SELECT value FROM store_meta WHERE key = 'schema_version'"
+        )
+        expect_identical(stored$value, version[!is.na(version)])
         ddb_disconnect(conn)
     }
 })
@@ -232,31 +242,6 @@ test_that("opening a store reads the schema version at most once", {
             "SELECT updated_at FROM store_meta WHERE key = 'schema_version'"
         )$updated_at,
         stamp
-    )
-})
-
-# A manifest that has tables but lost its version row is still rejected rather
-# than silently stamped with the current version.
-test_that("a manifest with tables but no version row is rejected", {
-    path <- tempfile("store-schema-noversion-")
-    on.exit(unlink(path, recursive = TRUE), add = TRUE)
-    store <- EsgStore$new(path)
-    store$close()
-    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
-    ddb_exec(conn, "DELETE FROM store_meta WHERE key = 'schema_version'")
-    ddb_disconnect(conn)
-    expect_error(
-        EsgStore$new(path, create = FALSE),
-        "Store schema version .*missing"
-    )
-    conn <- ddb_connect(file.path(path, "manifest.duckdb"))
-    on.exit(ddb_disconnect(conn), add = TRUE)
-    expect_identical(
-        nrow(ddb_query(
-            conn,
-            "SELECT * FROM store_meta WHERE key = 'schema_version'"
-        )),
-        0L
     )
 })
 

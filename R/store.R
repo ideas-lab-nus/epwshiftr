@@ -2826,7 +2826,6 @@ EsgStore <- R6::R6Class(
         # add_files {{{
         add_files = function(files, label = NULL) {
             checkmate::assert_string(label, null.ok = TRUE)
-            private$check_open()
 
             private$with_store_lock({
                 result_type <- store__result_type(files)

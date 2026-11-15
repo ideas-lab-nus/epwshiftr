@@ -262,6 +262,21 @@ component__requirements <- function(requirements, name) {
 }
 # }}}
 
+# Convert one role requirement into a function-free record suitable for
+# catalog displays and persisted workflow contracts.
+# component__input_requirement_record {{{
+component__input_requirement_record <- function(requirement) {
+    list(
+        role = requirement@role,
+        representations = requirement@representations,
+        frequencies = requirement@frequencies,
+        variable_frequencies = requirement@variable_frequencies,
+        calendars = requirement@calendars,
+        variable_sets = requirement@variable_sets
+    )
+}
+# }}}
+
 # WeatherComponentSpec describes one executable implementation independently
 # of any complete future-weather recipe.
 # WeatherComponentSpec {{{

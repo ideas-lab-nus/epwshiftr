@@ -1361,6 +1361,15 @@ test_that("EsgDataset$read_region() retains native clock schema for empty result
     expect_equal(nrow(empty), 0L)
     expect_true(all(CF_TIME_COORDINATE_COLUMNS %in% names(empty)))
     expect_identical(empty$cf_second_of_day, numeric())
+    pieces <- ds$read_region(
+        "tas",
+        lon = 103.98,
+        lat = 1.37,
+        time = c("2061-01-01", "2061-01-02"),
+        rbind = FALSE
+    )
+    expect_length(pieces, 1L)
+    expect_identical(pieces[[1L]], empty)
 })
 
 test_that("EsgDataset$read_region() reuses recorded result time filters by default", {

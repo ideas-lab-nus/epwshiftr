@@ -2811,6 +2811,7 @@ test_that('simultaneous orphan recovery preserves mutual exclusion', {
         paste0('downloader__manifest_lock_', names),
         'downloader__manifest_reclaim_lock',
         'downloader__manifest_acquire_lock',
+        'downloader__owner_identity_valid',
         'downloader__local_pid_absent'
     )
     env <- new.env(parent = baseenv())

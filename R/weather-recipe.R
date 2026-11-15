@@ -1427,21 +1427,6 @@ recipe__get <- function(
 }
 # }}}
 
-# Convert one role requirement into a function-free record suitable for
-# listings, JSON diagnostics, and user inspection.
-# recipe__requirement_record {{{
-recipe__requirement_record <- function(requirement) {
-    list(
-        role = requirement@role,
-        representations = requirement@representations,
-        frequencies = requirement@frequencies,
-        variable_frequencies = requirement@variable_frequencies,
-        calendars = requirement@calendars,
-        variable_sets = requirement@variable_sets
-    )
-}
-# }}}
-
 # Return inspectable catalog metadata without exposing backend runners or
 # component functions.
 # recipe__list {{{
@@ -1501,11 +1486,11 @@ recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
                 source = list(spec@source),
                 required_inputs = list(lapply(
                     spec@required_inputs,
-                    recipe__requirement_record
+                    component__input_requirement_record
                 )),
                 optional_inputs = list(lapply(
                     spec@optional_inputs,
-                    recipe__requirement_record
+                    component__input_requirement_record
                 )),
                 components = list(spec@components),
                 diagnostics = list(spec@diagnostics),

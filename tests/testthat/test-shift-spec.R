@@ -43,7 +43,7 @@ test_that("shift_request() and shift_site() create inspectable S7 stages", {
     expect_equal(site_from_epw@lat, 1.37)
     expect_true(inherits(site_from_external_epw@epw, "EpwFile"))
     expect_equal(site_from_external_epw@id, "486980")
-    expect_named(shift_diagnostics(req), shift_stage__diagnostic_columns())
+    expect_equal(nrow(shift_diagnostics(req)), 0L)
     expect_equal(data.table::as.data.table(req)$variables, "tas,hurs")
     expect_true(data.table::as.data.table(site)$has_epw)
 })
