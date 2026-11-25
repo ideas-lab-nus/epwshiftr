@@ -76,12 +76,13 @@ source_recovery__compatible <- function(request, owner) {
         }
     }
     # A stable catalogue key and endpoint cannot override contradictory content
-    # expectations saved for that resource's earlier acquisition.
+    # expectations saved for that resource's earlier acquisition. Different
+    # algorithms must instead be resolved against saved byte evidence.
     if (
         known(request$checksum) &&
             known(owner$checksum) &&
-            (!identical(request$checksum_type, owner$checksum_type) ||
-                !identical(request$checksum, owner$checksum))
+            identical(request$checksum_type, owner$checksum_type) &&
+            !identical(request$checksum, owner$checksum)
     ) {
         return(FALSE)
     }
@@ -882,6 +883,69 @@ source_recovery__error <- function(reason, context) {
 }
 # }}}
 
+# Check the current publisher constraint against content evidence already bound
+# to the saved acquisition. An algorithm absent from saved proof needs intact
+# native bytes; checking it never changes historical publisher verification.
+# source_recovery__current_content {{{
+source_recovery__current_content <- function(wanted, proof, context) {
+    if (is.na(wanted$checksum)) {
+        return(invisible(TRUE))
+    }
+    sha256 <- store__chr1(proof$sha256)
+    if (identical(wanted$checksum_type, "sha256") && !is.na(sha256)) {
+        if (!identical(wanted$checksum, sha256)) {
+            source_recovery__error(
+                "source conflict with current publisher checksum",
+                context
+            )
+        }
+        return(invisible(TRUE))
+    }
+    if (
+        isTRUE(proof$publisher_verified) &&
+            identical(wanted$checksum_type, proof$checksum_type) &&
+            identical(wanted$checksum, proof$checksum)
+    ) {
+        return(invisible(TRUE))
+    }
+    path <- store__chr1(proof$path)
+    if (
+        !is.na(sha256) &&
+            !is.na(path) &&
+            file.exists(path) &&
+            !is.null(proof$bytes) &&
+            !is.na(proof$bytes)
+    ) {
+        # A changed native file cannot validate the old extraction's values.
+        if (
+            as.double(file.info(path)$size) != as.double(proof$bytes) ||
+                !identical(checksum_file(path), sha256)
+        ) {
+            source_recovery__error(
+                "source_changed: retained native content differs",
+                context
+            )
+        }
+        if (
+            !identical(
+                tolower(checksum_file(path, wanted$checksum_type)),
+                wanted$checksum
+            )
+        ) {
+            source_recovery__error(
+                "source conflict with current publisher checksum",
+                context
+            )
+        }
+        return(invisible(TRUE))
+    }
+    source_recovery__error(
+        "insufficient evidence for current publisher checksum",
+        context
+    )
+}
+# }}}
+
 # Validate an immutable acquisition snapshot without requiring its native file
 # or remote node to remain available. Artifact/cache integrity is checked by
 # its caller, independently of the publisher content verification recorded here.
@@ -915,10 +979,11 @@ source_recovery__check <- function(lineage, file, context) {
         }
         # Publisher-qualified complete files can predate any GET. Leave their
         # unknown producer URL absent; GET-based proof still needs its actual URL.
+        # The per-request descriptor may change when these bytes serve another
+        # valid request. The owner retains the original publisher expectation.
         publisher <- isTRUE(receipt$checksum_verified) &&
-            !is.na(wanted$checksum) &&
-            identical(wanted$checksum_type, selected$checksum_type) &&
-            identical(wanted$checksum, selected$checksum)
+            !is.na(owner$checksum) &&
+            owner$checksum_type %in% c("sha256", "md5")
         required <- c("task_id", "session_id", "local_sha256")
         if (!publisher) {
             required <- c(required, "source_url")
@@ -952,6 +1017,18 @@ source_recovery__check <- function(lineage, file, context) {
                 context
             )
         }
+        source_recovery__current_content(
+            wanted,
+            list(
+                publisher_verified = publisher,
+                checksum_type = owner$checksum_type,
+                checksum = owner$checksum,
+                sha256 = receipt$local_sha256,
+                bytes = receipt$bytes,
+                path = receipt$path
+            ),
+            context
+        )
     } else if (!is.null(lineage$native_sha256)) {
         if (is.null(lineage$native_bytes) || is.na(lineage$native_bytes)) {
             source_recovery__error(
@@ -961,6 +1038,27 @@ source_recovery__check <- function(lineage, file, context) {
         }
     } else if (!identical(lineage$access_method, "OPeNDAP")) {
         source_recovery__error("insufficient acquisition evidence", context)
+    }
+    # Native/OPeNDAP selection keeps its original acquisition semantics. A new
+    # content constraint needs additional byte evidence; unchanged catalogue
+    # expectations do not require fetching whole files for subset readers.
+    changed_content <- !is.na(wanted$checksum) &&
+        (is.na(saved$checksum) ||
+            !identical(wanted$checksum_type, saved$checksum_type) ||
+            !identical(wanted$checksum, saved$checksum))
+    if (is.null(receipt) && changed_content) {
+        source_recovery__current_content(
+            wanted,
+            list(
+                publisher_verified = FALSE,
+                checksum_type = saved$checksum_type,
+                checksum = saved$checksum,
+                sha256 = lineage$native_sha256,
+                bytes = lineage$native_bytes,
+                path = lineage$target
+            ),
+            context
+        )
     }
     # DAP reads without publisher content identity retain the actual endpoint;
     # a current catalogue label cannot turn another endpoint into a replica.

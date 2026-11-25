@@ -117,7 +117,7 @@ test_that("shift_extract() fallback policy is available from collected files", {
     store <- shift_store(files)
     withr::defer(store$close())
     artifact <- store$query(
-        "SELECT metadata_json FROM artifact WHERE kind = 'extract'"
+        "SELECT metadata_json FROM artifact WHERE kind = 'extract' ORDER BY artifact_id"
     )
     receipt <- jsonlite::fromJSON(
         artifact$metadata_json,
@@ -126,6 +126,54 @@ test_that("shift_extract() fallback policy is available from collected files", {
     expect_true(receipt$checksum_verified)
     expect_null(receipt$source_url)
     expect_identical(receipt$local_sha256, checksum_file(nc))
+    # Removing the current expectation cannot erase the original verified
+    # publisher fact, even when no GET ever supplied these qualified bytes.
+    file_key <- store$query("SELECT file_key FROM file_catalog")$file_key
+    data.table::set(docs, j = "checksum", value = NA_character_)
+    data.table::set(docs, j = "checksum_type", value = NA_character_)
+    missing_query <- store$add_files(esgf_test__file_result(docs))
+    expect_identical(
+        store$query("SELECT file_key FROM file_catalog")$file_key,
+        file_key
+    )
+    original_plans <- store$query(
+        "SELECT plan_id FROM extraction_result"
+    )$plan_id
+    next_plan <- store$plan_region(
+        missing_query,
+        104.5,
+        1.5,
+        c("2060-01-02", "2060-01-03 23:59:59")
+    )
+    fresh <- store$extract(plan_id = next_plan$plan_id, fallback = "error")
+    expect_identical(fresh$status, "done", info = fresh$last_error)
+    if (identical(fresh$status, "done")) {
+        metadata <- store$query(paste0(
+            "SELECT a.metadata_json FROM artifact a JOIN extraction_result r USING(artifact_id) WHERE r.plan_id = '",
+            next_plan$plan_id,
+            "'"
+        ))
+        historical <- jsonlite::fromJSON(
+            metadata$metadata_json,
+            simplifyVector = FALSE
+        )$source_lineage$receipt
+        expect_true(historical$checksum_verified)
+        expect_null(historical$source_url)
+        expect_identical(historical$owner$checksum, receipt$owner$checksum)
+        expect_null(historical$request$checksum)
+    }
+    artifact <- store$query(
+        "SELECT metadata_json FROM artifact WHERE kind = 'extract' ORDER BY artifact_id"
+    )
+    unlink(target)
+    result <- store$extract(plan_id = original_plans)
+    expect_identical(result$status, "done", info = result$last_error)
+    expect_identical(
+        store$query(
+            "SELECT metadata_json FROM artifact WHERE kind = 'extract' ORDER BY artifact_id"
+        ),
+        artifact
+    )
 })
 
 # vim: fdm=marker :
