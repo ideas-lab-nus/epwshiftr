@@ -30,6 +30,14 @@ priv <- function(x) {
 }
 # }}}
 
+# `priv<-` {{{
+`priv<-` <- function(x, value) {
+    checkmate::assert_r6(x)
+    x$.__enclos_env__[["private"]] <- value
+    invisible(x)
+}
+# }}}
+
 # verbose {{{
 verbose <- function(...) {
     if (!getOption("epwshiftr.verbose", FALSE)) {
