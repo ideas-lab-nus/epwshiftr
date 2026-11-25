@@ -174,25 +174,18 @@ test_that("Store shared cache reuse checks the saved source before opening", {
     )
     root <- withr::local_tempdir()
     path <- file.path(root, "source.nc")
-    other <- file.path(root, "other.nc")
     write_local_cmip6_netcdf_fixture(path, 2060L)
-    file.copy(path, other)
-    nc <- RNetCDF::open.nc(other, write = TRUE)
-    RNetCDF::var.put.nc(nc, "tas", RNetCDF::var.get.nc(nc, "tas") + 7)
-    RNetCDF::close.nc(nc)
-    servers <- lapply(c(path, other), function(p) {
-        webfakes::new_app_process(
-            recovery_test__app(readBin(p, "raw", n = file.info(p)$size))
-        )
-    })
-    withr::defer(lapply(servers, function(s) s$stop()))
+    server <- webfakes::new_app_process(recovery_test__app(
+        readBin(path, "raw", n = file.info(path)$size)
+    ))
+    withr::defer(server$stop())
     stores <- lapply(1:2, function(i) {
         EsgStore$new(file.path(root, paste0("store", i)))
     })
     withr::defer(lapply(stores, function(s) s$close()))
-    plans <- lapply(1:2, function(i) {
-        q <- stores[[i]]$add_files(recovery_test__files(path, servers[[i]]))
-        stores[[i]]$plan_region(q, 104, 1.37, c("2060-01-01", "2060-01-03"))
+    plans <- lapply(stores, function(store) {
+        q <- store$add_files(recovery_test__files(path, server))
+        store$plan_region(q, 104, 1.37, c("2060-01-01", "2060-01-03"))
     })
     expect_identical(
         stores[[1L]]$extract(plan_id = plans[[1L]]$plan_id)$status,
@@ -205,6 +198,22 @@ test_that("Store shared cache reuse checks the saved source before opening", {
         full.names = TRUE
     )
     expect_length(cached, 1L)
+    # Keep the requested source identity unchanged. A self-consistent cache
+    # digest cannot authorize a lineage descriptor claiming another endpoint.
+    payload <- readRDS(cached)
+    payload$source_lineage$request$endpoint <- server$url("/foreign.nc")
+    saveRDS(payload, cached, version = 3L, compress = FALSE)
+    jsonlite::write_json(
+        list(
+            sha256 = checksum_file(cached),
+            source_lineage = payload$source_lineage
+        ),
+        paste0(cached, ".json"),
+        auto_unbox = TRUE,
+        na = "null",
+        null = "null",
+        digits = NA
+    )
     before <- checksum_file(cached)
     failed <- stores[[2L]]$extract(plan_id = plans[[2L]]$plan_id)
     expect_identical(failed$status, "failed")
@@ -218,9 +227,8 @@ test_that("Store shared cache reuse checks the saved source before opening", {
         "done"
     )
     expect_equal(
-        recovery_test__values(stores[[2L]]) -
-            recovery_test__values(stores[[1L]]),
-        rep(7, 2L)
+        recovery_test__values(stores[[2L]]),
+        recovery_test__values(stores[[1L]])
     )
     expect_true(file.exists(paste0(cached, ".retained-", before)))
 })

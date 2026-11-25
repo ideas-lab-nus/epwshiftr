@@ -84,7 +84,14 @@ store__schema_executor <- function(conn, tables) {
 # Wrap one access failure with the exact service, phase, target, duration, and
 # original condition needed by workflow diagnostics and final plan errors.
 # store__access_error {{{
-store__access_error <- function(error, phase, service, target, started_at) {
+store__access_error <- function(
+    error,
+    phase,
+    service,
+    target,
+    started_at,
+    source_url = NULL
+) {
     elapsed <- proc.time()[["elapsed"]] - started_at
     message <- sprintf(
         "%s %s failed for %s after %.3f seconds: %s",
@@ -94,11 +101,18 @@ store__access_error <- function(error, phase, service, target, started_at) {
         elapsed,
         conditionMessage(error)
     )
+    # Replica selection can make the byte producer differ from the catalogue
+    # endpoint. Keep that actual URL alongside the unchanged local read target.
+    source_url <- store__chr1(source_url)
+    if (!is.na(source_url)) {
+        message <- paste(message, sprintf("HTTP producer: %s", source_url))
+    }
     structure(
         list(
             message = message,
             call = NULL,
             parent = error,
+            source_url = source_url,
             phase = phase,
             service = service,
             target = target,
@@ -186,40 +200,11 @@ store__report_access_failure <- function(
 # store__extract_cache_path {{{
 store__extract_cache_path <- function(plan, file) {
     file <- data.table::as.data.table(file)
-    source_fields <- intersect(
-        c(
-            "checksum",
-            "checksum_type",
-            "size",
-            "version",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "frequency",
-            "table_id",
-            "variable_id",
-            "grid_label"
-        ),
-        names(file)
-    )
-    source <- as.list(file[1L, source_fields, with = FALSE])
-    checksum <- store__chr1(file[["checksum"]])
-    version <- store__chr1(file[["version"]])
-    if (
-        (is.na(checksum) || !nzchar(checksum)) &&
-            (is.na(version) || !nzchar(version))
-    ) {
-        # Generic records without immutable content/version metadata retain
-        # service URLs in the key so a provider replacement cannot reuse stale
-        # bytes under a weak logical identity.
-        source$service_urls <- c(
-            store__chr1(file[["url_opendap"]]),
-            store__chr1(file[["url_download"]])
-        )
-    }
+    # Cache ownership follows the same descriptor as reader exclusion and HTTP
+    # recovery. A version label without publisher proof cannot merge endpoints.
+    source <- source_recovery__key(source_recovery__describe(file))
     key <- store__hash(
-        "site-extraction-v1",
-        store__logical_file_id(file)[[1L]],
+        "site-extraction-v2",
         source,
         list(
             variable_id = plan$variable_id[[1L]],

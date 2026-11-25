@@ -191,7 +191,8 @@ store__read_extract_dataset <- function(
                 phase = "read",
                 service = opened$access_method,
                 target = opened$target,
-                started_at = read_started
+                started_at = read_started,
+                source_url = opened$download_receipt$source_url
             ))
         }
     )
