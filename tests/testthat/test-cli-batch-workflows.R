@@ -540,7 +540,7 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
             algo = "sha256"
         )
     )
-    calls <- cli_shift_test_mock_collect(docs)
+    calls <- shift_test__mock_collect(docs)
     config_path <- tempfile(fileext = ".json")
     cli_shift_test_config(config_path)
     config <- epwshiftr_cli_read_shift_config(config_path)

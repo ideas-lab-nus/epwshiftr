@@ -430,7 +430,7 @@ test_that("multi-site batches execute locally and reuse each site's outputs", {
             character(1L)
         )
     )
-    calls <- cli_shift_test_mock_collect(docs)
+    calls <- shift_test__mock_collect(docs)
     sites <- list(
         shift_site("A", lon = 103.98, lat = 1.37, epw = get_cache_epw()),
         shift_site("B", lon = 104.4, lat = 2, epw = get_cache_epw())

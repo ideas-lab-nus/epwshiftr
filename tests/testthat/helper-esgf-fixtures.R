@@ -11,12 +11,6 @@ fixture_json <- function(...) {
 }
 # }}}
 
-# read_fixture_json {{{
-read_fixture_json <- function(...) {
-    readLines(fixture_path(...), warn = FALSE)
-}
-# }}}
-
 # Build the canonical Solr response envelope shared by query, Store, CLI, and
 # staged-workflow tests while allowing time-sensitive tests to supply a timestamp.
 # esgf_test__response {{{

@@ -3,7 +3,7 @@
 test_that("batch recovery retries one failed selection for all existing runs", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    cli_shift_test_mock_collect(fixture$docs[fixture$docs$variable_id != "tas"])
+    shift_test__mock_collect(fixture$docs[fixture$docs$variable_id != "tas"])
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     batch@meta$children <- lapply(batch@meta$children, function(child) {
         shift_batch__run_child(shift_run(child, ui = shift_ui("none")))
@@ -16,7 +16,7 @@ test_that("batch recovery retries one failed selection for all existing runs", {
     old_specs <- lapply(batch@meta$children, function(child) {
         child@meta$run$spec_json
     })
-    retry <- cli_shift_test_mock_collect(fixture$docs)
+    retry <- shift_test__mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(batch)
     expect_equal(sum(retry$types == "File"), 2L)
     expect_equal(nrow(batch@meta$shared_plan$acquisitions), 6L)
@@ -51,7 +51,7 @@ test_that("batch recovery retries one failed selection for all existing runs", {
 test_that("prefetch excludes completed and active consumers", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    cli_shift_test_mock_collect(fixture$docs)
+    shift_test__mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     seen <- character()
     local_mocked_bindings(
@@ -76,7 +76,7 @@ test_that("prefetch excludes completed and active consumers", {
 test_that("shared failures retain ownership and do not stop other files", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    cli_shift_test_mock_collect(fixture$docs)
+    shift_test__mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     seen <- character()
     first <- batch@meta$shared_plan$acquisitions$acquisition_id[[1L]]
@@ -132,7 +132,7 @@ test_that("only dependent children are blocked after shared reading", {
 test_that("warm shared caches need no worker or payload deserialization", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    cli_shift_test_mock_collect(fixture$docs)
+    shift_test__mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     shift_batch_window__prefetch(batch)
     unlink(list.files(fixture$root, pattern = "[.]nc$", full.names = TRUE))
@@ -167,7 +167,7 @@ test_that("cache receipts detect changed bytes before shared reuse", {
 test_that("partial resume keeps window identity without completed cache reads", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    cli_shift_test_mock_collect(fixture$docs)
+    shift_test__mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     shift_batch_window__prefetch(batch)
     paths <- unlist(lapply(

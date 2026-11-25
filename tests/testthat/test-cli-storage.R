@@ -11,7 +11,11 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
         track = TRUE
     )
 
-    file_docs <- cli_test_file_docs()
+    file_docs <- esgf_test__file_docs(
+        "cli-file.nc",
+        opendap_url = "https://example.org/dods/cli-file.nc.html",
+        download_url = "https://example.org/fileServer/cli-file.nc"
+    )
     testthat::local_mocked_bindings(
         query__collect = function(
             index_node,
@@ -23,7 +27,7 @@ test_that("epwshiftr_cli_storage() / epwshiftr_cli_esgf() dispatch storage and E
             dict_check = FALSE,
             progress_callback = NULL
         ) {
-            response <- cli_test_response(file_docs)
+            response <- esgf_test__response(file_docs)
             params$fields(c(
                 query_param__value(params$fields()),
                 required_fields

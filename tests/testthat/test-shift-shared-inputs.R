@@ -1,7 +1,7 @@
 test_that("actual optional inputs are resolved once and pinned across cities", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    calls <- cli_shift_test_mock_collect(fixture$docs)
+    calls <- shift_test__mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     # Two roles each collect Dataset + File exactly once, independent of cities.
     expect_equal(sum(calls$types == "File"), 2L)
@@ -100,7 +100,7 @@ test_that("actual optional inputs are resolved once and pinned across cities", {
 test_that("optional partitions require matching future and historical inputs", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    calls <- cli_shift_test_mock_collect(fixture$docs[
+    calls <- shift_test__mock_collect(fixture$docs[
         !(fixture$docs$experiment_id == "historical" &
             fixture$docs$variable_id == "tasmin")
     ])
@@ -128,7 +128,7 @@ test_that("optional partitions require matching future and historical inputs", {
 test_that("shared source matching respects the selected snapshot per method", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    cli_shift_test_mock_collect(fixture$docs)
+    shift_test__mock_collect(fixture$docs)
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
     children <- batch@meta$children
     consumers <- shift_batch_plan__consumers(children, batch@meta$manifest)
@@ -213,7 +213,7 @@ test_that("optional identity mismatches do not change required model eligibility
 test_that("shared resolution failures preserve child diagnostics and explicit retry", {
     skip_on_cran()
     fixture <- shared_inputs_test__fixture()
-    calls <- cli_shift_test_mock_collect(fixture$docs[
+    calls <- shift_test__mock_collect(fixture$docs[
         fixture$docs$variable_id != "tas"
     ])
     batch <- shift_batch_plan__resolve_inputs(fixture$batch)
@@ -233,7 +233,7 @@ test_that("shared resolution failures preserve child diagnostics and explicit re
     expect_equal(length(calls$types), count)
     # A later explicit attempt can resolve corrected data; it must not be
     # permanently pinned to the first attempt's failure.
-    retry <- cli_shift_test_mock_collect(fixture$docs)
+    retry <- shift_test__mock_collect(fixture$docs)
     testthat::local_mocked_bindings(
         shift_job__latest_job = function(...) {
             data.table::data.table(attempt = 2L)

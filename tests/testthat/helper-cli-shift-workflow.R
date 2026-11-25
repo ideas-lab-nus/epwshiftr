@@ -1,46 +1,25 @@
+# Thin alias kept while test-shift-discovery-ui.R still references this name.
 # cli_shift_test_mock_collect {{{
 cli_shift_test_mock_collect <- function(
     file_docs,
     calls = new.env(parent = emptyenv())
 ) {
-    calls$types <- character()
-    testthat::local_mocked_bindings(
-        query__collect = function(
-            index_node,
-            params,
-            required_fields = NULL,
-            all = FALSE,
-            limit = TRUE,
-            constraints = TRUE,
-            dict_check = FALSE,
-            progress_callback = NULL
-        ) {
-            type <- query_param__value(params$type())
-            docs <- if (identical(type, "Dataset")) {
-                esgf_test__dataset_docs(
-                    unique(file_docs$variable_id),
-                    unique(file_docs$frequency)
-                )
-            } else {
-                file_docs
-            }
-            fields <- query_param__value(params$fields())
-            if (is.null(fields) || identical(fields, "*")) {
-                fields <- names(docs)
-            }
-            params$fields(unique(c(fields, required_fields)))
-            response <- esgf_test__response(docs)
-            calls$types <- c(calls$types, type)
-            list(
-                response = response,
-                docs = response$response$docs,
-                parameter = params
-            )
-        },
-        .package = "epwshiftr",
-        .env = parent.frame()
+    shift_test__mock_collect(file_docs, calls = calls, env = parent.frame())
+}
+# }}}
+
+# cli_test_store {{{
+cli_test_store <- function(label = "cli query", track = TRUE) {
+    dir <- tempfile("esg-store-")
+    store <- EsgStore$new(dir)
+    query_id <- store$add_query(
+        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
+            "tas"
+        )$limit(1L),
+        label = label,
+        track = track
     )
-    calls
+    list(dir = dir, store = store, query_id = query_id)
 }
 # }}}
 

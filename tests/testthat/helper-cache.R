@@ -85,19 +85,55 @@ read_test_parquet <- function(path) {
 }
 # }}}
 
-# get_cache_parquet {{{
-get_cache_parquet <- function(reset = FALSE) {
-    # The Parquet writer constructs its own rows. Rebuilding NetCDF here would
-    # repeat setup.R's preparation and replace files another reader may hold.
-    dir <- test_data_dir()
-    path <- file.path(dir, "EC-Earth3.ssp585.tas.parquet")
-
-    if (reset && file.exists(path)) {
-        unlink(path)
-    }
-    write_local_morph_tas_fixture(path)
-
-    normalizePath(path)
+# Build a dependency-free stand-in for the public eplusr Epw protocol so input
+# compatibility can be tested without declaring eplusr in Suggests.
+# test_external_epw {{{
+test_external_epw <- function(path) {
+    generator <- R6::R6Class(
+        "Epw",
+        public = list(
+            source_path = NULL,
+            initialize = function(path) {
+                self$source_path <- normalizePath(
+                    path,
+                    winslash = "/",
+                    mustWork = TRUE
+                )
+            },
+            path = function() {
+                self$source_path
+            },
+            location = function() {
+                epw_file_read(self$source_path)$location()
+            },
+            save = function(path, overwrite = FALSE) {
+                if (file.exists(path) && !isTRUE(overwrite)) {
+                    stop("Target exists.")
+                }
+                dir.create(
+                    dirname(path),
+                    recursive = TRUE,
+                    showWarnings = FALSE
+                )
+                if (
+                    !isTRUE(file.copy(
+                        self$source_path,
+                        path,
+                        overwrite = overwrite
+                    ))
+                ) {
+                    stop("Failed to save fake Epw.")
+                }
+                self$source_path <- normalizePath(
+                    path,
+                    winslash = "/",
+                    mustWork = TRUE
+                )
+                invisible(self$source_path)
+            }
+        )
+    )
+    generator$new(path)
 }
 # }}}
 

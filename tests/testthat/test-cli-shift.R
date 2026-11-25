@@ -673,7 +673,7 @@ test_that("shift CLI executes and inspects one persisted workflow run", {
         j = "checksum",
         value = vapply(nc[docs$variable_id], checksum_file, character(1L))
     )
-    calls <- cli_shift_test_mock_collect(docs)
+    calls <- shift_test__mock_collect(docs)
 
     store <- tempfile("esg-store-")
     config <- tempfile(fileext = ".json")
