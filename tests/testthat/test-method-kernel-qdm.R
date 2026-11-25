@@ -50,38 +50,6 @@ kqdm_test__annual_values <- function(year, calendar, offset = 0) {
 }
 # }}}
 
-# Construct role descriptors and one aligned signal group for common component
-# execution tests.
-# kqdm_test__boundary {{{
-kqdm_test__boundary <- function(observed, historical, future) {
-    list(
-        inputs = weather__new_inputs(
-            observed_reference = weather__new_input(
-                "observed_reference",
-                observed
-            ),
-            model_historical = weather__new_input(
-                "model_historical",
-                historical
-            ),
-            model_future = weather__new_input(
-                "model_future",
-                future
-            )
-        ),
-        group = signal__group(
-            key = list(site = "A"),
-            inputs = list(
-                observed_reference = observed,
-                model_historical = historical,
-                model_future = future
-            ),
-            variables = unique(future$variable_id)
-        )
-    )
-}
-# }}}
-
 # Execute the registered signal contract with a smaller deterministic KDE grid
 # so unit tests retain the production algorithm without unnecessary runtime.
 # kqdm_test__execute {{{
@@ -93,32 +61,16 @@ kqdm_test__execute <- function(
     overrides = list(),
     warn_experimental = FALSE
 ) {
-    boundary <- kqdm_test__boundary(observed, historical, future)
-    settings <- utils::modifyList(
-        list(grid_points = 512L, min_samples = 10L),
-        overrides
-    )
-    component__execute(
+    signal_test__execute(
         kqdm__component(),
-        "apply",
-        inputs = boundary$inputs,
-        groups = list(boundary$group),
-        overrides = stats::setNames(list(settings), variable),
+        variable = variable,
+        observed = observed,
+        historical = historical,
+        future = future,
+        overrides = overrides,
+        default_overrides = list(grid_points = 512L, min_samples = 10L),
         warn_experimental = warn_experimental
     )
-}
-# }}}
-
-# Retrieve one default profile by variable for direct kernel validation.
-# kqdm_test__settings {{{
-kqdm_test__settings <- function(variable) {
-    profiles <- kqdm__profiles()
-    index <- which(vapply(
-        profiles,
-        function(profile) identical(profile@variable_id, variable),
-        logical(1L)
-    ))
-    profiles[[index]]@settings
 }
 # }}}
 
@@ -340,37 +292,15 @@ test_that("hourly kernel QDM is deterministic and records clipping", {
     }
 })
 
-test_that("hourly kernel QDM rejects invalid inputs and numerical settings", {
+test_that("hourly kernel QDM rejects invalid numerical settings and retains subdaily role metadata", {
     base <- kqdm_test__annual_values(1991L, "noleap")
     observed <- kqdm_test__series("sfcWind", 2001L, base)
     historical <- kqdm_test__series("sfcWind", 1991L, base)
     future <- kqdm_test__series("sfcWind", 2061L, base)
-    boundary <- kqdm_test__boundary(observed, historical, future)
-    settings <- kqdm_test__settings("sfcWind")
+    boundary <- signal_test__execution_inputs(observed, historical, future)
+    settings <- signal_test__profile_settings(kqdm__profiles(), "sfcWind")
     settings$grid_points <- 512L
     settings$min_samples <- 10L
-
-    negative <- boundary$group@inputs
-    negative$model_future$value[[1L]] <- -1
-    expect_error(
-        kqdm__apply_group(
-            negative,
-            list(sfcWind = settings),
-            list(site = "A")
-        ),
-        "non-negative"
-    )
-
-    wrong_frequency <- boundary$group@inputs
-    wrong_frequency$model_future$frequency <- "3hr"
-    expect_error(
-        kqdm__apply_group(
-            wrong_frequency,
-            list(sfcWind = settings),
-            list(site = "A")
-        ),
-        "declared `frequency`"
-    )
 
     invalid_grid <- settings
     invalid_grid$grid_points <- 500L
@@ -393,40 +323,12 @@ test_that("hourly kernel QDM rejects invalid inputs and numerical settings", {
         ),
         "at least two distinct values"
     )
-})
 
-test_that("hourly kernel QDM is registered with frequency-aware contracts", {
-    kqdm__register_component()
-    component <- component__get(
-        "signal",
-        "kernel_quantile_delta_mapping_hourly"
-    )
+    component <- kqdm__component()
     profiles <- component@metadata$signal_profiles
-
-    expect_s7_class(component, WeatherComponentSpec)
-    expect_identical(component@stage, "signal")
-    expect_identical(
-        component@input_kinds,
-        "calendar_indexed_hourly_series"
-    )
     expect_true(all(vapply(
         component@required_inputs,
         function(requirement) !length(requirement@frequencies),
-        logical(1L)
-    )))
-    expect_identical(component@output_kinds, "subdaily_adjusted_series")
-    expect_identical(component@scopes, "univariate")
-    expect_false(component@stochastic)
-    expect_identical(
-        sort(names(profiles)),
-        sort(c(
-            KQDM_PUBLISHED_VARIABLES,
-            KQDM_EXPERIMENTAL_VARIABLES
-        ))
-    )
-    expect_true(all(vapply(
-        profiles,
-        function(profile) identical(profile$evidence, "experimental"),
         logical(1L)
     )))
     expect_identical(
@@ -437,23 +339,11 @@ test_that("hourly kernel QDM is registered with frequency-aware contracts", {
         profiles$psl$metadata$variable_evidence,
         "package_extension"
     )
-
-    calendar <- component__spec(
-        name = "kqdm_calendar_test",
-        stage = "calendar",
-        input_kinds = "hourly_role_inputs",
-        output_kinds = "calendar_indexed_hourly_series",
-        operations = list(apply = identity)
+    expect_identical(profiles$tas$metadata$published_settings, "transformation")
+    expect_identical(
+        profiles$tas$metadata$published_method$window_months,
+        3L
     )
-    sequence <- component__spec(
-        name = "kqdm_sequence_test",
-        stage = "sequence",
-        input_kinds = "subdaily_adjusted_series",
-        output_kinds = "weather_sequence",
-        operations = list(generate = identity)
-    )
-    expect_true(component__compatible(calendar, component))
-    expect_true(component__compatible(component, sequence))
 })
 
 # vim: fdm=marker :

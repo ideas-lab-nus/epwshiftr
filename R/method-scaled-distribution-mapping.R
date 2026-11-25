@@ -19,9 +19,10 @@ SDM_PR_DRY_THRESHOLD <- 0.1 / 86400
 SDM_PUBLISHED_VARIABLES <- c("pr", "tas")
 SDM_EXPERIMENTAL_VARIABLES <- c("tasmin", "tasmax")
 
-# Construct one complete SDM settings record. Calendar-month grouping and the
-# 30-year window with a 10-year retained block are the published temporal
-# policy; edge truncation is required for arbitrary requested model periods.
+# Construct one complete SDM settings record. Calendar-month grouping,
+# truncated edge windows, wet-day retention, zero-location Gamma MLE, and
+# linear normalized-rank interpolation are fixed published conventions recorded
+# in component metadata and result provenance.
 # sdm__default_settings {{{
 sdm__default_settings <- function(
     bounds,
@@ -38,19 +39,14 @@ sdm__default_settings <- function(
         mapping_type = mapping_type,
         distribution = distribution,
         detrending = detrending,
-        seasonal_grouping = "calendar_month",
         future_window_years = 30L,
         output_block_years = 10L,
-        edge_policy = "truncate",
         min_samples = 10L,
         cdf_epsilon = cdf_epsilon,
         bounds = bounds,
         dry_threshold = dry_threshold,
-        wet_day_increase_policy = "retain_future_count",
-        gamma_fit_method = "maximum_likelihood_zero_location",
         gamma_fit_tolerance = 1e-10,
-        gamma_fit_max_iterations = 1000L,
-        rank_interpolation = "linear_normalized_rank"
+        gamma_fit_max_iterations = 1000L
     )
 }
 # }}}
@@ -59,6 +55,13 @@ sdm__default_settings <- function(
 # the SDM publication.
 # sdm__profiles {{{
 sdm__profiles <- function() {
+    normal_settings <- sdm__default_settings(
+        c(-Inf, Inf),
+        "absolute",
+        "normal",
+        "linear",
+        cdf_epsilon = 1e-4
+    )
     settings <- list(
         pr = sdm__default_settings(
             c(0, Inf),
@@ -68,48 +71,33 @@ sdm__profiles <- function() {
             SDM_PR_DRY_THRESHOLD,
             1e-7
         ),
-        tas = sdm__default_settings(
-            c(-Inf, Inf),
-            "absolute",
-            "normal",
-            "linear",
-            cdf_epsilon = 1e-4
-        ),
-        tasmin = sdm__default_settings(
-            c(-Inf, Inf),
-            "absolute",
-            "normal",
-            "linear",
-            cdf_epsilon = 1e-4
-        ),
-        tasmax = sdm__default_settings(
-            c(-Inf, Inf),
-            "absolute",
-            "normal",
-            "linear",
-            cdf_epsilon = 1e-4
-        )
+        tas = normal_settings,
+        tasmin = normal_settings,
+        tasmax = normal_settings
     )
-    variables <- c(SDM_PUBLISHED_VARIABLES, SDM_EXPERIMENTAL_VARIABLES)
-    lapply(variables, function(variable) {
-        published <- variable %in% SDM_PUBLISHED_VARIABLES
-        signal__variable_profile(
-            variable,
-            settings = settings[[variable]],
-            evidence = if (published) "published" else "experimental",
-            references = if (published) SDM_REFERENCES else character(),
-            metadata = list(
-                method = "scaled_distribution_mapping",
-                output_role = "model_future",
+    signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = SDM_PUBLISHED_VARIABLES,
+        references = SDM_REFERENCES,
+        method = "scaled_distribution_mapping",
+        output_role = "model_future",
+        evidence_mode = "by_variable",
+        metadata_fn = function(variable, published) {
+            list(
                 default_source = if (published) {
                     "method_literature"
                 } else {
                     "package_implementation"
                 },
-                temporal_policy_source = "method_literature"
+                temporal_policy_source = "method_literature",
+                seasonal_grouping = "calendar_month",
+                edge_policy = "truncate",
+                wet_day_increase_policy = "retain_future_count",
+                gamma_fit_method = "maximum_likelihood_zero_location",
+                rank_interpolation = "linear_normalized_rank"
             )
-        )
-    })
+        }
+    )
 }
 # }}}
 
@@ -121,19 +109,14 @@ sdm__settings <- function(settings) {
         "mapping_type",
         "distribution",
         "detrending",
-        "seasonal_grouping",
         "future_window_years",
         "output_block_years",
-        "edge_policy",
         "min_samples",
         "cdf_epsilon",
         "bounds",
         "dry_threshold",
-        "wet_day_increase_policy",
-        "gamma_fit_method",
         "gamma_fit_tolerance",
-        "gamma_fit_max_iterations",
-        "rank_interpolation"
+        "gamma_fit_max_iterations"
     )
     resolved <- signal__resolve_settings(
         settings,
@@ -143,26 +126,6 @@ sdm__settings <- function(settings) {
     checkmate::assert_choice(resolved$mapping_type, c("absolute", "relative"))
     checkmate::assert_choice(resolved$distribution, c("normal", "gamma"))
     checkmate::assert_choice(resolved$detrending, c("linear", "none"))
-    if (
-        !identical(resolved$seasonal_grouping, "calendar_month") ||
-            !identical(resolved$edge_policy, "truncate") ||
-            !identical(
-                resolved$wet_day_increase_policy,
-                "retain_future_count"
-            ) ||
-            !identical(
-                resolved$gamma_fit_method,
-                "maximum_likelihood_zero_location"
-            ) ||
-            !identical(
-                resolved$rank_interpolation,
-                "linear_normalized_rank"
-            )
-    ) {
-        cli::cli_abort(
-            "Scaled Distribution Mapping currently requires calendar-month grouping, truncated edge windows, no invented wet days, zero-location Gamma maximum likelihood, and linear normalized-rank interpolation."
-        )
-    }
     if (
         identical(resolved$mapping_type, "absolute") &&
             (!identical(resolved$distribution, "normal") ||
@@ -181,41 +144,18 @@ sdm__settings <- function(settings) {
             "Relative Scaled Distribution Mapping requires a Gamma distribution without detrending."
         )
     }
-    resolved$future_window_years <- signal__integer_setting(
-        resolved$future_window_years,
-        "future_window_years",
-        lower = 1L
-    )
-    resolved$output_block_years <- signal__integer_setting(
-        resolved$output_block_years,
-        "output_block_years",
-        lower = 1L
-    )
-    if (
-        resolved$output_block_years > resolved$future_window_years ||
-            (resolved$future_window_years -
-                resolved$output_block_years) %%
-                2L !=
-                0L
-    ) {
-        cli::cli_abort(
-            "`future_window_years` must exceed `output_block_years` by an even, non-negative number of years."
-        )
-    }
+    resolved <- signal__validate_future_block_window(resolved)
     resolved$min_samples <- signal__integer_setting(
         resolved$min_samples,
         "min_samples",
         lower = 2L
     )
-    checkmate::assert_number(
+    resolved$cdf_epsilon <- signal__positive_number(
         resolved$cdf_epsilon,
-        lower = 0,
+        "cdf_epsilon",
         upper = 0.5,
-        finite = TRUE
+        strict_upper = TRUE
     )
-    if (resolved$cdf_epsilon <= 0 || resolved$cdf_epsilon >= 0.5) {
-        cli::cli_abort("`cdf_epsilon` must lie strictly between zero and 0.5.")
-    }
     signal__ordered_bounds(
         resolved$bounds,
         "Scaled Distribution Mapping bounds must be ordered from lower to upper."
@@ -233,77 +173,16 @@ sdm__settings <- function(settings) {
             "Relative Scaled Distribution Mapping requires a positive `dry_threshold`."
         )
     }
-    checkmate::assert_number(
+    resolved$gamma_fit_tolerance <- signal__positive_number(
         resolved$gamma_fit_tolerance,
-        lower = 0,
-        finite = TRUE
+        "gamma_fit_tolerance"
     )
-    if (resolved$gamma_fit_tolerance <= 0) {
-        cli::cli_abort("`gamma_fit_tolerance` must be positive.")
-    }
     resolved$gamma_fit_max_iterations <- signal__integer_setting(
         resolved$gamma_fit_max_iterations,
         "gamma_fit_max_iterations",
         lower = 1L
     )
     resolved
-}
-# }}}
-
-# Validate the three role-addressable daily inputs while preserving their
-# independent native CF calendars.
-# sdm__inputs {{{
-sdm__inputs <- function(inputs, variable, mapping_type) {
-    roles <- c(
-        "observed_reference",
-        "model_historical",
-        "model_future"
-    )
-    if (!identical(sort(names(inputs)), sort(roles))) {
-        cli::cli_abort(
-            "Scaled Distribution Mapping requires observed, historical-model, and future-model role payloads."
-        )
-    }
-    series <- lapply(roles, function(role) {
-        bias__daily_table(inputs[[role]], role)
-    })
-    names(series) <- roles
-    for (role in roles) {
-        role_variables <- unique(series[[role]][["variable_id"]])
-        if (!identical(role_variables, variable)) {
-            cli::cli_abort(
-                "Scaled Distribution Mapping role {.val {role}} must contain only variable {.val {variable}}."
-            )
-        }
-        if (length(unique(series[[role]][["cf_calendar"]])) != 1L) {
-            cli::cli_abort(
-                "Scaled Distribution Mapping role {.val {role}} must contain one native calendar per signal group."
-            )
-        }
-    }
-    units <- vapply(
-        series,
-        function(data) unique(data[["units"]]),
-        character(1L)
-    )
-    if (length(unique(units)) != 1L) {
-        cli::cli_abort(
-            "Scaled Distribution Mapping inputs for {.val {variable}} must use identical units."
-        )
-    }
-    if (
-        identical(mapping_type, "relative") &&
-            any(vapply(
-                series,
-                function(data) any(data[["value"]] < 0),
-                logical(1L)
-            ))
-    ) {
-        cli::cli_abort(
-            "Relative Scaled Distribution Mapping requires non-negative input values."
-        )
-    }
-    series
 }
 # }}}
 
@@ -349,24 +228,6 @@ sdm__detrend <- function(values, time) {
             as.numeric(fit$coefficients),
             c("intercept", "slope")
         )
-    )
-}
-# }}}
-
-# Partition the available projected years into disjoint retained blocks and a
-# surrounding fitting window. The published 30/10 policy therefore becomes
-# 10 years before + 10 retained years + 10 years after where data exist.
-# sdm__future_blocks {{{
-sdm__future_blocks <- function(
-    year,
-    future_window_years,
-    output_block_years
-) {
-    signal__future_blocks(
-        year,
-        future_window_years,
-        output_block_years,
-        "Scaled Distribution Mapping"
     )
 }
 # }}}
@@ -829,49 +690,26 @@ sdm__adjust_values <- function(series, resolved) {
     observed <- series$observed_reference
     historical <- series$model_historical
     future <- series$model_future
-    blocks <- sdm__future_blocks(
-        future[["cf_year"]],
-        resolved$future_window_years,
-        resolved$output_block_years
-    )
-    adjusted <- rep.int(NA_real_, nrow(future))
-    records <- list()
-    record_index <- 0L
 
-    for (block in blocks) {
-        output_year <- future[["cf_year"]] %in% block$output_years
-        months <- sort(unique(future[["cf_month"]][output_year]))
-        for (month in months) {
-            observed_rows <- observed[["cf_month"]] == month
-            historical_rows <- historical[["cf_month"]] == month
-            future_rows <- future[["cf_month"]] == month &
-                future[["cf_year"]] %in% block$window_years
-            output_rows <- which(
-                future[["cf_month"]] == month & output_year
-            )
+    run <- signal__run_monthly_blocks(
+        series = series,
+        future_window_years = resolved$future_window_years,
+        output_block_years = resolved$output_block_years,
+        min_samples = resolved$min_samples,
+        bounds = resolved$bounds,
+        method_label = "Scaled Distribution Mapping",
+        apply_window = function(
+            month,
+            block,
+            observed_rows,
+            historical_rows,
+            future_rows,
+            output_rows
+        ) {
             observed_window <- observed[observed_rows, , drop = FALSE]
-            historical_window <- historical[
-                historical_rows,
-                ,
-                drop = FALSE
-            ]
+            historical_window <- historical[historical_rows, , drop = FALSE]
             future_window <- future[future_rows, , drop = FALSE]
-            sample_counts <- c(
-                observed = nrow(observed_window),
-                historical = nrow(historical_window),
-                future = nrow(future_window)
-            )
-            if (any(sample_counts < resolved$min_samples)) {
-                cli::cli_abort(
-                    "Scaled Distribution Mapping month {month} and output years {min(block$output_years)}-{max(block$output_years)} have fewer than {resolved$min_samples} observed, historical, or future values."
-                )
-            }
-            transformed <- if (
-                identical(
-                    resolved$mapping_type,
-                    "absolute"
-                )
-            ) {
+            transformed <- if (identical(resolved$mapping_type, "absolute")) {
                 sdm__absolute_window(
                     observed_window,
                     historical_window,
@@ -886,76 +724,25 @@ sdm__adjust_values <- function(series, resolved) {
                     resolved
                 )
             }
-            future_window_rows <- which(future_rows)
-            output_positions <- match(output_rows, future_window_rows)
-            adjusted[output_rows] <- transformed$value[output_positions]
-            record_index <- record_index + 1L
-            records[[record_index]] <- sdm__window_record(
-                month,
-                block,
-                observed_window,
-                historical_window,
-                future_window,
-                output_rows,
-                transformed
+            list(
+                value = transformed$value,
+                record = sdm__window_record(
+                    month,
+                    block,
+                    observed_window,
+                    historical_window,
+                    future_window,
+                    output_rows,
+                    transformed
+                )
             )
         }
-    }
-    if (anyNA(adjusted)) {
-        cli::cli_abort(
-            "Scaled Distribution Mapping did not assign every future-model daily row exactly once."
-        )
-    }
-    bounded_result <- signal__bound_values(adjusted, resolved$bounds)
-    bounded <- bounded_result$value
-    clipped <- bounded_result$clipped
-    observed_samples <- vapply(
-        records,
-        `[[`,
-        numeric(1L),
-        "observed_samples"
     )
-    historical_samples <- vapply(
-        records,
-        `[[`,
-        numeric(1L),
-        "historical_samples"
-    )
-    future_samples <- vapply(
-        records,
-        `[[`,
-        numeric(1L),
-        "future_samples"
-    )
-    diagnostics <- list(
-        window_count = length(records),
-        observed_window_samples = c(
-            minimum = min(observed_samples),
-            median = stats::median(observed_samples),
-            maximum = max(observed_samples)
-        ),
-        historical_window_samples = c(
-            minimum = min(historical_samples),
-            median = stats::median(historical_samples),
-            maximum = max(historical_samples)
-        ),
-        future_window_samples = c(
-            minimum = min(future_samples),
-            median = stats::median(future_samples),
-            maximum = max(future_samples)
-        ),
-        truncated_edge_windows = sum(vapply(
-            records,
-            function(record) {
-                isTRUE(record$truncated_left) ||
-                    isTRUE(record$truncated_right)
-            },
-            logical(1L)
-        )),
-        clipped_values = clipped,
-        windows = records
-    )
+
+    diagnostics <- run$diagnostics
     if (identical(resolved$mapping_type, "relative")) {
+        bounded <- run$value
+        records <- diagnostics$windows
         diagnostics$precipitation <- list(
             dry_threshold = resolved$dry_threshold,
             input_dry_values = c(
@@ -969,25 +756,20 @@ sdm__adjust_values <- function(series, resolved) {
                     future$value < resolved$dry_threshold
                 )
             ),
-            output_dry_values = sum(
-                bounded == 0
-            ),
+            output_dry_values = sum(bounded == 0),
             output_positive_below_threshold_values = sum(
-                bounded > 0 &
-                    bounded < resolved$dry_threshold
+                bounded > 0 & bounded < resolved$dry_threshold
             ),
             wet_day_increase_not_supported_windows = sum(vapply(
                 records,
                 function(record) {
-                    isTRUE(
-                        record$expected_wet_days$increase_not_supported
-                    )
+                    isTRUE(record$expected_wet_days$increase_not_supported)
                 },
                 logical(1L)
             ))
         )
     }
-    list(value = bounded, diagnostics = diagnostics)
+    list(value = run$value, diagnostics = diagnostics)
 }
 # }}}
 
@@ -997,7 +779,18 @@ sdm__adjust_values <- function(series, resolved) {
 sdm__apply_group <- function(inputs, settings, key) {
     resolved <- sdm__settings(settings)
     variable <- names(settings)[[1L]]
-    series <- sdm__inputs(inputs, variable, resolved$mapping_type)
+    is_relative <- identical(resolved$mapping_type, "relative")
+    series <- signal__validate_three_role_inputs(
+        inputs,
+        variable = variable,
+        method = "Scaled Distribution Mapping",
+        min_value = if (is_relative) 0 else -Inf,
+        min_value_message = if (is_relative) {
+            "Relative Scaled Distribution Mapping requires non-negative input values."
+        } else {
+            NULL
+        }
+    )
     mapped <- sdm__adjust_values(series, resolved)
     future <- series$model_future
     future[["value"]] <- mapped$value
@@ -1016,7 +809,7 @@ sdm__apply_group <- function(inputs, settings, key) {
                 seasonal_grouping = "calendar_month",
                 future_window_years = resolved$future_window_years,
                 output_block_years = resolved$output_block_years,
-                edge_policy = resolved$edge_policy,
+                edge_policy = "truncate",
                 source = if (
                     resolved$future_window_years == 30L &&
                         resolved$output_block_years == 10L
@@ -1026,22 +819,13 @@ sdm__apply_group <- function(inputs, settings, key) {
                     "user_override"
                 }
             ),
+            method_conventions = list(
+                wet_day_increase_policy = "retain_future_count",
+                gamma_fit_method = "maximum_likelihood_zero_location",
+                rank_interpolation = "linear_normalized_rank"
+            ),
             diagnostics = mapped$diagnostics
         )
-    )
-}
-# }}}
-
-# Return one explicit diagnostic string when SDM violates the package-native
-# future-model output contract.
-# sdm__validate_result {{{
-sdm__validate_result <- function(value, inputs, key) {
-    signal__validate_adjusted_result(
-        value,
-        DailyAdjustedSeries,
-        "DailyAdjustedSeries",
-        "model_future",
-        "Scaled Distribution Mapping"
     )
 }
 # }}}
@@ -1050,32 +834,27 @@ sdm__validate_result <- function(value, inputs, key) {
 # evidence-aware variable alternatives.
 # sdm__component {{{
 sdm__component <- function() {
-    alternatives <- as.list(c(
-        SDM_PUBLISHED_VARIABLES,
-        SDM_EXPERIMENTAL_VARIABLES
-    ))
-    requirements <- signal__three_role_requirements(
-        alternatives,
-        frequencies = "day"
-    )
-    signal__component(
+    signal__three_role_component(
         name = "scaled_distribution_mapping_daily",
         label = "Daily Scaled Distribution Mapping",
-        required_inputs = requirements,
-        input_kinds = "calendar_indexed_daily_series",
-        output_kinds = "daily_adjusted_series",
-        scopes = "univariate",
-        stochastic = FALSE,
+        variables = c(
+            SDM_PUBLISHED_VARIABLES,
+            SDM_EXPERIMENTAL_VARIABLES
+        ),
         profiles = sdm__profiles(),
         apply_group = sdm__apply_group,
-        operations = list(
-            validate_options = sdm__settings,
-            validate_result = sdm__validate_result
-        ),
+        validate_options = sdm__settings,
+        method_label = "Scaled Distribution Mapping",
+        output_role = "model_future",
         metadata = list(
             method_family = "parametric_distribution_mapping",
             reference_implementation = "wegener-center/pyCAT",
-            temporal_policy = "calendar_month_30_year_window_10_year_block"
+            temporal_policy = "calendar_month_30_year_window_10_year_block",
+            seasonal_grouping = "calendar_month",
+            edge_policy = "truncate",
+            wet_day_increase_policy = "retain_future_count",
+            gamma_fit_method = "maximum_likelihood_zero_location",
+            rank_interpolation = "linear_normalized_rank"
         )
     )
 }

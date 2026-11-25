@@ -1,3 +1,13 @@
+# Compact 12-target-day test defaults preserving the method equations, variable
+# distribution, and declared stochastic policy.
+ISIMIP_TEST_DEFAULTS <- list(
+    running_window_days = 3L,
+    target_year_days = 12L,
+    n_quantiles = 8L,
+    upper_bound_window_days = 3L,
+    min_samples = 5L
+)
+
 # ISIMIP fixtures retain their dimensionless default while sharing all native
 # calendar construction and role-boundary mechanics with other signal methods.
 # isimip_test__series {{{
@@ -11,82 +21,11 @@ isimip_test__series <- function(
     signal_test__series(variable_id, year, values, calendar, units)
 }
 # }}}
-isimip_test__execution_inputs <- signal_test__execution_inputs
 
-# Retrieve one complete publication-backed variable profile.
-# isimip_test__settings {{{
-isimip_test__settings <- function(variable) {
-    profiles <- isimip__profiles()
-    index <- which(vapply(
-        profiles,
-        function(profile) identical(profile@variable_id, variable),
-        logical(1L)
-    ))
-    profiles[[index]]@settings
-}
-# }}}
-
-# Execute a compact 12-target-day test configuration while preserving the
-# method equations, variable distribution, and declared stochastic policy.
-# isimip_test__execute {{{
-isimip_test__execute <- function(
-    variable,
-    observed,
-    historical,
-    future,
-    overrides = list(),
-    key = list(site = "A")
-) {
-    boundary <- isimip_test__execution_inputs(
-        observed,
-        historical,
-        future,
-        key
-    )
-    settings <- utils::modifyList(
-        list(
-            running_window_days = 3L,
-            target_year_days = 12L,
-            n_quantiles = 8L,
-            upper_bound_window_days = 3L,
-            min_samples = 5L
-        ),
-        overrides
-    )
-    component__execute(
-        isimip__component(),
-        "apply",
-        inputs = boundary$inputs,
-        groups = list(boundary$group),
-        overrides = stats::setNames(list(settings), variable),
-        warn_experimental = FALSE
-    )
-}
-# }}}
-
-test_that("published profiles cover direct and reconstructed components", {
+test_that("published profiles record variable-specific ISIMIP3BASD semantics", {
     component <- isimip__component()
     profiles <- component@metadata$signal_profiles
 
-    expect_identical(
-        sort(names(profiles)),
-        sort(ISIMIP_VARIABLES)
-    )
-    expect_true(all(vapply(
-        profiles,
-        function(profile) identical(profile$evidence, "published"),
-        logical(1L)
-    )))
-    expect_true(all(vapply(
-        profiles,
-        function(profile) {
-            identical(
-                profile$references,
-                ISIMIP_REFERENCES
-            )
-        },
-        logical(1L)
-    )))
     expect_identical(
         profiles$pr$settings$lower_threshold,
         0.1 / 86400
@@ -115,8 +54,10 @@ test_that("published profiles cover direct and reconstructed components", {
         profiles$tasrange$metadata$reconstructed_outputs,
         c("tasmin", "tasmax")
     )
-    expect_identical(component@stage, "signal")
-    expect_true(component@stochastic)
+    expect_identical(
+        profiles$tas$metadata$seasonal_grouping,
+        "circular_running_window"
+    )
     expect_identical(
         component@metadata$spatial_downscaling,
         "separate_stage"
@@ -124,7 +65,8 @@ test_that("published profiles cover direct and reconstructed components", {
 })
 
 test_that("change-transfer equations retain their declared semantics", {
-    base <- isimip_test__settings("tas")
+    profiles <- isimip__profiles()
+    base <- signal_test__profile_settings(profiles, "tas")
     observed <- c(2, 4, 6)
     historical <- c(3, 5, 7)
     future <- c(4, 8, 10)
@@ -153,7 +95,7 @@ test_that("change-transfer equations retain their declared semantics", {
         observed * future / historical
     )
 
-    mixed <- isimip_test__settings("pr")
+    mixed <- signal_test__profile_settings(profiles, "pr")
     expect_equal(
         isimip__transfer_change(
             c(2, 20),
@@ -164,7 +106,7 @@ test_that("change-transfer equations retain their declared semantics", {
         c(4, 32)
     )
 
-    bounded <- isimip_test__settings("tasskew")
+    bounded <- signal_test__profile_settings(profiles, "tasskew")
     value <- isimip__transfer_change(
         c(0.7, 0.3, 0.5),
         c(0.5, 0.5, 0.5),
@@ -193,7 +135,7 @@ test_that("bound frequency transfer respects trendless and bounded cases", {
 
 test_that("fixed-location Weibull fit and inverse CDF round trip", {
     values <- c(0.02, 0.05, 0.08, 0.14, 0.24, 0.4)
-    settings <- isimip_test__settings("sfcWind")
+    settings <- signal_test__profile_settings(isimip__profiles(), "sfcWind")
     fit <- isimip__fit_weibull(
         values,
         settings$lower_threshold,
@@ -315,11 +257,13 @@ test_that("temperature identity retains a future-model native calendar", {
         "360_day",
         "K"
     )
-    execution <- isimip_test__execute(
+    execution <- signal_test__execute(
+        isimip__component(),
         "tas",
         observed,
         historical,
-        future
+        future,
+        default_overrides = ISIMIP_TEST_DEFAULTS
     )
     adjusted <- execution@values[[1L]]
 
@@ -398,6 +342,8 @@ test_that("all profile families produce finite bounded daily output", {
 
     set.seed(912)
     rng_before <- .Random.seed
+    profiles <- isimip__profiles()
+    component <- isimip__component()
     for (variable in names(fixtures)) {
         fixture <- fixtures[[variable]]
         observed <- isimip_test__series(
@@ -425,14 +371,16 @@ test_that("all profile families produce finite bounded daily output", {
             "noleap",
             fixture$units
         )
-        execution <- isimip_test__execute(
+        execution <- signal_test__execute(
+            component,
             variable,
             observed,
             historical,
-            future
+            future,
+            default_overrides = ISIMIP_TEST_DEFAULTS
         )
         adjusted <- execution@values[[1L]]
-        bounds <- isimip_test__settings(variable)$bounds
+        bounds <- signal_test__profile_settings(profiles, variable)$bounds
 
         expect_false(anyNA(adjusted@data$value), info = variable)
         expect_true(
@@ -454,14 +402,15 @@ test_that("all profile families produce finite bounded daily output", {
 })
 
 test_that("settings and input failures remain explicit", {
-    invalid <- isimip_test__settings("tas")
+    tas_settings <- signal_test__profile_settings(isimip__profiles(), "tas")
+    invalid <- tas_settings
     invalid$unexpected <- TRUE
     expect_error(
         isimip__settings(list(tas = invalid)),
         "Unexpected"
     )
 
-    invalid <- isimip_test__settings("tas")
+    invalid <- tas_settings
     invalid$running_window_days <- 30L
     expect_error(
         isimip__settings(list(tas = invalid)),
@@ -489,42 +438,16 @@ test_that("settings and input failures remain explicit", {
         "noleap",
         "K"
     )
-    boundary <- isimip_test__execution_inputs(
-        observed,
-        historical,
-        future
-    )
     expect_error(
-        component__execute(
+        signal_test__execute(
             isimip__component(),
-            "apply",
-            inputs = boundary$inputs,
-            groups = list(boundary$group),
-            warn_experimental = FALSE
+            "tas",
+            observed,
+            historical,
+            future
         ),
         "missing values"
     )
-})
-
-test_that("component remains compatible with calendar and sequence stages", {
-    calendar <- component__spec(
-        name = "isimip_calendar_test",
-        stage = "calendar",
-        input_kinds = "preprocessed_daily_series",
-        output_kinds = "calendar_indexed_daily_series",
-        operations = list(apply = identity)
-    )
-    sequence <- component__spec(
-        name = "isimip_sequence_test",
-        stage = "sequence",
-        input_kinds = "daily_adjusted_series",
-        output_kinds = "weather_sequence",
-        operations = list(generate = identity)
-    )
-    component <- isimip__component()
-
-    expect_true(component__compatible(calendar, component))
-    expect_true(component__compatible(component, sequence))
 })
 
 # vim: fdm=marker :

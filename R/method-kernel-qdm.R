@@ -20,8 +20,9 @@ KQDM_PUBLISHED_VARIABLES <- c(
 )
 KQDM_EXPERIMENTAL_VARIABLES <- c("psl", "rlds")
 
-# Construct the complete settings schema while keeping the paper's method
-# choices separate from numerical KDE defaults selected by this package.
+# Construct the complete tunable settings schema while keeping fixed published
+# conventions (centered three-month window and kernel-density CDF) in component
+# metadata and result provenance.
 # kqdm__default_settings {{{
 kqdm__default_settings <- function(
     transformation = c("additive", "multiplicative"),
@@ -30,9 +31,6 @@ kqdm__default_settings <- function(
     transformation <- match.arg(transformation)
     list(
         transformation = transformation,
-        window_months = 3L,
-        window_alignment = "centered",
-        cdf_method = "kernel_density",
         kernel = "gaussian",
         bandwidth_method = "nrd0",
         bandwidth_adjust = 1,
@@ -61,30 +59,28 @@ kqdm__profiles <- function() {
         psl = list("additive", c(0, Inf)),
         rlds = list("multiplicative", c(0, Inf))
     )
-    lapply(names(specifications), function(variable) {
-        specification <- specifications[[variable]]
-        published_variable <- variable %in% KQDM_PUBLISHED_VARIABLES
-        signal__variable_profile(
-            variable,
-            settings = kqdm__default_settings(
-                specification[[1L]],
-                specification[[2L]]
-            ),
-            evidence = "experimental",
-            references = KQDM_REFERENCES,
-            metadata = list(
-                method = "kernel_quantile_delta_mapping",
-                output_role = "model_future",
-                variable_evidence = if (published_variable) {
+    settings <- lapply(specifications, function(specification) {
+        kqdm__default_settings(specification[[1L]], specification[[2L]])
+    })
+    signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = KQDM_PUBLISHED_VARIABLES,
+        references = KQDM_REFERENCES,
+        method = "kernel_quantile_delta_mapping",
+        output_role = "model_future",
+        evidence_mode = "all_experimental",
+        metadata_fn = function(variable, published) {
+            list(
+                variable_evidence = if (published) {
                     "method_literature"
                 } else {
                     "package_extension"
                 },
-                published_settings = c(
-                    "transformation",
-                    "window_months",
-                    "window_alignment",
-                    "cdf_method"
+                published_settings = "transformation",
+                published_method = list(
+                    cdf_method = "kernel_density",
+                    window_months = 3L,
+                    window_alignment = "centered"
                 ),
                 package_selected_settings = c(
                     "kernel",
@@ -98,8 +94,8 @@ kqdm__profiles <- function() {
                     "zero_denominator_policy"
                 )
             )
-        )
-    })
+        }
+    )
 }
 # }}}
 
@@ -109,9 +105,6 @@ kqdm__profiles <- function() {
 kqdm__settings <- function(settings) {
     expected <- c(
         "transformation",
-        "window_months",
-        "window_alignment",
-        "cdf_method",
         "kernel",
         "bandwidth_method",
         "bandwidth_adjust",
@@ -131,25 +124,6 @@ kqdm__settings <- function(settings) {
         resolved$transformation,
         c("additive", "multiplicative")
     )
-    resolved$window_months <- signal__integer_setting(
-        resolved$window_months,
-        "window_months",
-        lower = 1L,
-        upper = 12L
-    )
-    if (
-        !identical(resolved$window_months, 3L) ||
-            !identical(resolved$window_alignment, "centered")
-    ) {
-        cli::cli_abort(
-            "Kernel-density Quantile Delta Mapping currently requires the published centered three-month window."
-        )
-    }
-    if (!identical(resolved$cdf_method, "kernel_density")) {
-        cli::cli_abort(
-            "Kernel-density Quantile Delta Mapping requires `cdf_method = \"kernel_density\"`."
-        )
-    }
     checkmate::assert_choice(
         resolved$kernel,
         c(
@@ -166,22 +140,17 @@ kqdm__settings <- function(settings) {
         resolved$bandwidth_method,
         c("nrd0", "nrd", "ucv", "bcv", "SJ-ste", "SJ-dpi")
     )
-    checkmate::assert_number(
+    resolved$bandwidth_adjust <- signal__positive_number(
         resolved$bandwidth_adjust,
-        lower = 0,
-        finite = TRUE
+        "bandwidth_adjust"
     )
-    if (resolved$bandwidth_adjust <= 0) {
-        cli::cli_abort("`bandwidth_adjust` must be positive.")
-    }
     resolved$grid_points <- signal__integer_setting(
         resolved$grid_points,
         "grid_points",
         lower = 128L
     )
-    grid_points <- resolved$grid_points
     if (
-        abs(log2(grid_points) - round(log2(grid_points))) >
+        abs(log2(resolved$grid_points) - round(log2(resolved$grid_points))) >
             sqrt(.Machine$double.eps)
     ) {
         cli::cli_abort("`grid_points` must be a power of two.")
@@ -208,71 +177,7 @@ kqdm__settings <- function(settings) {
         resolved$zero_denominator_policy,
         c("zero_future_else_error", "error")
     )
-
-    resolved$grid_points <- grid_points
     resolved
-}
-# }}}
-
-# Validate the three role-addressable hourly inputs without coercing any native
-# CF calendar to Gregorian dates or discarding the time-of-day coordinate.
-# kqdm__inputs {{{
-kqdm__inputs <- function(inputs, variable, transformation) {
-    roles <- c(
-        "observed_reference",
-        "model_historical",
-        "model_future"
-    )
-    if (!identical(sort(names(inputs)), sort(roles))) {
-        cli::cli_abort(
-            "Kernel-density Quantile Delta Mapping requires observed, historical-model, and future-model role payloads."
-        )
-    }
-    series <- lapply(roles, function(role) {
-        bias__subdaily_table(
-            inputs[[role]],
-            frequency = "hour",
-            time_step_seconds = 3600,
-            name = role
-        )
-    })
-    names(series) <- roles
-    for (role in roles) {
-        role_variables <- unique(series[[role]][["variable_id"]])
-        if (!identical(role_variables, variable)) {
-            cli::cli_abort(
-                "Kernel-density Quantile Delta Mapping role {.val {role}} must contain only variable {.val {variable}}."
-            )
-        }
-        if (length(unique(series[[role]][["cf_calendar"]])) != 1L) {
-            cli::cli_abort(
-                "Kernel-density Quantile Delta Mapping role {.val {role}} must contain one native calendar per signal group."
-            )
-        }
-    }
-    units <- vapply(
-        series,
-        function(data) unique(data[["units"]]),
-        character(1L)
-    )
-    if (length(unique(units)) != 1L) {
-        cli::cli_abort(
-            "Kernel-density Quantile Delta Mapping inputs for {.val {variable}} must use identical units."
-        )
-    }
-    if (
-        identical(transformation, "multiplicative") &&
-            any(vapply(
-                series,
-                function(data) any(data[["value"]] < 0),
-                logical(1L)
-            ))
-    ) {
-        cli::cli_abort(
-            "Multiplicative kernel-density Quantile Delta Mapping requires non-negative input values."
-        )
-    }
-    series
 }
 # }}}
 
@@ -659,10 +564,19 @@ kqdm__adjust_values <- function(series, resolved) {
 kqdm__apply_group <- function(inputs, settings, key) {
     resolved <- kqdm__settings(settings)
     variable <- names(settings)[[1L]]
-    series <- kqdm__inputs(
+    is_multiplicative <- identical(resolved$transformation, "multiplicative")
+    series <- signal__validate_three_role_inputs(
         inputs,
-        variable,
-        resolved$transformation
+        variable = variable,
+        method = "Kernel-density Quantile Delta Mapping",
+        frequency = "hour",
+        time_step_seconds = 3600,
+        min_value = if (is_multiplicative) 0 else -Inf,
+        min_value_message = if (is_multiplicative) {
+            "Multiplicative kernel-density Quantile Delta Mapping requires non-negative input values."
+        } else {
+            NULL
+        }
     )
     mapped <- kqdm__adjust_values(series, resolved)
     future <- series$model_future
@@ -700,51 +614,33 @@ kqdm__apply_group <- function(inputs, settings, key) {
 }
 # }}}
 
-# Return an explicit diagnostic if a kernel violates the future-model hourly
-# output contract expected by downstream sequence components.
-# kqdm__validate_result {{{
-kqdm__validate_result <- function(value, inputs, key) {
-    signal__validate_adjusted_result(
-        value,
-        SubdailyAdjustedSeries,
-        "SubdailyAdjustedSeries",
-        "model_future",
-        "Kernel-density Quantile Delta Mapping",
-        frequency = "hour",
-        time_step_seconds = 3600,
-        temporal_message = paste0(
-            "Kernel-density Quantile Delta Mapping output must retain the ",
-            "hourly frequency and 3600-second timestep."
-        )
-    )
-}
-# }}}
-
 # Construct the reusable hourly signal with explicit role, variable, frequency,
 # intermediate-kind, and output-contract declarations.
 # kqdm__component {{{
 kqdm__component <- function() {
-    alternatives <- as.list(c(
-        KQDM_PUBLISHED_VARIABLES,
-        KQDM_EXPERIMENTAL_VARIABLES
-    ))
     # Source roles may begin at three- or six-hour resolution because a
     # preprocessing stage produces the hourly intermediate consumed here. The
     # input kind and group kernel enforce the actual hourly boundary.
-    requirements <- signal__three_role_requirements(alternatives)
-    signal__component(
+    signal__three_role_component(
         name = "kernel_quantile_delta_mapping_hourly",
         label = "Hourly kernel-density Quantile Delta Mapping",
-        required_inputs = requirements,
-        input_kinds = "calendar_indexed_hourly_series",
-        output_kinds = "subdaily_adjusted_series",
-        scopes = "univariate",
-        stochastic = FALSE,
+        variables = c(
+            KQDM_PUBLISHED_VARIABLES,
+            KQDM_EXPERIMENTAL_VARIABLES
+        ),
         profiles = kqdm__profiles(),
         apply_group = kqdm__apply_group,
-        operations = list(
-            validate_options = kqdm__settings,
-            validate_result = kqdm__validate_result
+        validate_options = kqdm__settings,
+        method_label = "Kernel-density Quantile Delta Mapping",
+        output_role = "model_future",
+        frequency = "hour",
+        time_step_seconds = 3600,
+        require_frequencies = character(),
+        input_kinds = "calendar_indexed_hourly_series",
+        output_kinds = "subdaily_adjusted_series",
+        temporal_message = paste0(
+            "Kernel-density Quantile Delta Mapping output must retain the ",
+            "hourly frequency and 3600-second timestep."
         ),
         metadata = list(
             method_family = "bias_adjustment",
@@ -755,6 +651,8 @@ kqdm__component <- function() {
             published_method = list(
                 cdf = "kernel_density",
                 window = "centered_three_months",
+                window_months = 3L,
+                window_alignment = "centered",
                 additive_variables = c("tas", "ps"),
                 multiplicative_variables = c(
                     "hurs",

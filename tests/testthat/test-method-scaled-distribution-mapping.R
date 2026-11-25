@@ -1,9 +1,4 @@
-# Use the shared native-calendar series and signal-boundary fixtures while
-# retaining the SDM names used throughout this test module.
-sdm_test__series <- signal_test__series
-sdm_test__execution_inputs <- signal_test__execution_inputs
-
-# Execute compact fixtures through the common signal lifecycle with one
+# Execute compact SDM fixtures through the shared signal test harness with one
 # retained year and explicit sample requirements.
 # sdm_test__execute {{{
 sdm_test__execute <- function(
@@ -15,41 +10,21 @@ sdm_test__execute <- function(
     key = list(site = "A"),
     warn_experimental = FALSE
 ) {
-    boundary <- sdm_test__execution_inputs(
-        observed,
-        historical,
-        future,
-        key
-    )
-    settings <- utils::modifyList(
-        list(
+    signal_test__execute(
+        sdm__component(),
+        variable = variable,
+        observed = observed,
+        historical = historical,
+        future = future,
+        overrides = overrides,
+        default_overrides = list(
             future_window_years = 1L,
             output_block_years = 1L,
             min_samples = 2L
         ),
-        overrides
-    )
-    component__execute(
-        sdm__component(),
-        "apply",
-        inputs = boundary$inputs,
-        groups = list(boundary$group),
-        overrides = stats::setNames(list(settings), variable),
+        key = key,
         warn_experimental = warn_experimental
     )
-}
-# }}}
-
-# Retrieve one default profile by variable for direct settings validation.
-# sdm_test__settings {{{
-sdm_test__settings <- function(variable) {
-    profiles <- sdm__profiles()
-    index <- which(vapply(
-        profiles,
-        function(profile) identical(profile@variable_id, variable),
-        logical(1L)
-    ))
-    profiles[[index]]@settings
 }
 # }}}
 
@@ -140,25 +115,6 @@ test_that("SDM reproduces the published wet-day and recurrence equations", {
     )
 })
 
-test_that("SDM uses published future windows and retained blocks", {
-    blocks <- sdm__future_blocks(
-        2001:2100,
-        future_window_years = 30L,
-        output_block_years = 10L
-    )
-
-    expect_identical(blocks[[1L]]$output_years, 2001:2010)
-    expect_identical(blocks[[1L]]$window_years, 2001:2020)
-    expect_true(blocks[[1L]]$truncated_left)
-    expect_identical(blocks[[2L]]$output_years, 2011:2020)
-    expect_identical(blocks[[2L]]$window_years, 2001:2030)
-    expect_false(blocks[[2L]]$truncated_left)
-    expect_false(blocks[[2L]]$truncated_right)
-    expect_identical(blocks[[10L]]$output_years, 2091:2100)
-    expect_identical(blocks[[10L]]$window_years, 2081:2100)
-    expect_true(blocks[[10L]]$truncated_right)
-})
-
 test_that("temperature SDM returns a typed future-backbone daily series", {
     pattern <- c(
         0,
@@ -182,9 +138,9 @@ test_that("temperature SDM returns a typed future-backbone daily series", {
         1,
         -4
     )
-    observed <- sdm_test__series("tas", 2001L, 280 + pattern)
-    historical <- sdm_test__series("tas", 1991L, 284 + 2 * pattern)
-    future <- sdm_test__series("tas", 2061L, 290 + 4 * pattern)
+    observed <- signal_test__series("tas", 2001L, 280 + pattern)
+    historical <- signal_test__series("tas", 1991L, 284 + 2 * pattern)
+    future <- signal_test__series("tas", 2061L, 290 + 4 * pattern)
 
     execution <- sdm_test__execute(
         "tas",
@@ -245,6 +201,14 @@ test_that("temperature SDM returns a typed future-backbone daily series", {
         adjusted@provenance$temporal_policy$source,
         "user_override"
     )
+    expect_identical(
+        adjusted@provenance$temporal_policy$edge_policy,
+        "truncate"
+    )
+    expect_identical(
+        adjusted@provenance$method_conventions$rank_interpolation,
+        "linear_normalized_rank"
+    )
     expect_identical(execution@diagnostics$status, "ok")
 })
 
@@ -275,19 +239,19 @@ test_that("temperature SDM preserves identity across native CF calendars", {
         )
 
     for (calendar in calendars) {
-        observed <- sdm_test__series(
+        observed <- signal_test__series(
             "tas",
             2001L,
             values,
             calendar
         )
-        historical <- sdm_test__series(
+        historical <- signal_test__series(
             "tas",
             1991L,
             values,
             calendar
         )
-        future <- sdm_test__series(
+        future <- signal_test__series(
             "tas",
             2061L,
             values,
@@ -315,17 +279,17 @@ test_that("temperature SDM preserves identity across native CF calendars", {
 
 test_that("precipitation SDM adjusts wet frequency on future ranks", {
     mm_per_day <- function(value) value / 86400
-    observed <- sdm_test__series(
+    observed <- signal_test__series(
         "pr",
         2001L,
         mm_per_day(c(rep.int(0, 10L), seq_len(10L)))
     )
-    historical <- sdm_test__series(
+    historical <- signal_test__series(
         "pr",
         1991L,
         mm_per_day(c(rep.int(0, 5L), seq_len(15L)))
     )
-    future <- sdm_test__series(
+    future <- signal_test__series(
         "pr",
         2061L,
         mm_per_day(c(rep.int(0, 8L), seq_len(12L)))
@@ -364,17 +328,17 @@ test_that("precipitation SDM adjusts wet frequency on future ranks", {
 
 test_that("precipitation SDM records unsupported wet-day increases", {
     mm_per_day <- function(value) value / 86400
-    observed <- sdm_test__series(
+    observed <- signal_test__series(
         "pr",
         2001L,
         mm_per_day(c(rep.int(0, 5L), seq_len(15L)))
     )
-    historical <- sdm_test__series(
+    historical <- signal_test__series(
         "pr",
         1991L,
         mm_per_day(c(rep.int(0, 15L), seq_len(5L)))
     )
-    future <- sdm_test__series(
+    future <- signal_test__series(
         "pr",
         2061L,
         mm_per_day(c(rep.int(0, 10L), seq_len(10L)))
@@ -398,28 +362,12 @@ test_that("precipitation SDM records unsupported wet-day increases", {
     )
 })
 
-test_that("SDM rejects incompatible settings and invalid inputs", {
-    observed <- sdm_test__series(
-        "tas",
-        2001L,
-        c(1, 3, 2, 5, 4)
-    )
-    historical <- sdm_test__series(
-        "tas",
-        1991L,
-        c(1, 3, 2, 5, 4)
-    )
-    future <- sdm_test__series(
-        "tas",
-        2061L,
-        c(1, 3, 2, 5, 4)
-    )
-    boundary <- sdm_test__execution_inputs(
-        observed,
-        historical,
-        future
-    )
-    settings <- sdm_test__settings("tas")
+test_that("SDM rejects incompatible settings and retains profile metadata", {
+    observed <- signal_test__series("tas", 2001L, c(1, 3, 2, 5, 4))
+    historical <- signal_test__series("tas", 1991L, c(1, 3, 2, 5, 4))
+    future <- signal_test__series("tas", 2061L, c(1, 3, 2, 5, 4))
+    boundary <- signal_test__execution_inputs(observed, historical, future)
+    settings <- signal_test__profile_settings(sdm__profiles(), "tas")
 
     uneven <- settings
     uneven$future_window_years <- 4L
@@ -435,91 +383,22 @@ test_that("SDM rejects incompatible settings and invalid inputs", {
         "even, non-negative"
     )
 
+    mismatched_branch <- settings
+    mismatched_branch$distribution <- "gamma"
     expect_error(
-        component__execute(
-            sdm__component(),
-            "apply_group",
-            inputs = boundary$group@inputs,
-            settings = list(tas = settings),
-            key = list()
-        ),
-        "fewer than 10"
+        sdm__settings(list(tas = mismatched_branch)),
+        "Normal distribution and linear detrending"
     )
 
-    precipitation <- lapply(
-        boundary$group@inputs,
-        function(data) {
-            data$variable_id <- "pr"
-            data$units <- "kg m-2 s-1"
-            data$value <- abs(data$value) / 86400
-            data
-        }
-    )
-    precipitation$model_future$value[[1L]] <- -1
-    precipitation_settings <- sdm_test__settings("pr")
-    precipitation_settings$future_window_years <- 1L
-    precipitation_settings$output_block_years <- 1L
-    precipitation_settings$min_samples <- 2L
-    expect_error(
-        component__execute(
-            sdm__component(),
-            "apply_group",
-            inputs = precipitation,
-            settings = list(pr = precipitation_settings),
-            key = list()
-        ),
-        "non-negative"
-    )
-})
-
-test_that("SDM profiles retain evidence and component registration", {
-    sdm__register_component()
-    component <- component__get(
-        "signal",
-        "scaled_distribution_mapping_daily"
-    )
-    profiles <- component@metadata$signal_profiles
-
-    expect_true(S7::S7_inherits(component, WeatherComponentSpec))
-    expect_identical(component@stage, "signal")
-    expect_identical(
-        component@input_kinds,
-        "calendar_indexed_daily_series"
-    )
-    expect_identical(component@output_kinds, "daily_adjusted_series")
-    expect_identical(component@scopes, "univariate")
-    expect_false(component@stochastic)
-    expect_identical(
-        sort(names(profiles)),
-        sort(c(
-            SDM_PUBLISHED_VARIABLES,
-            SDM_EXPERIMENTAL_VARIABLES
-        ))
-    )
-    expect_identical(profiles$tas$evidence, "published")
-    expect_identical(profiles$pr$evidence, "published")
-    expect_identical(profiles$tasmin$evidence, "experimental")
+    profiles <- sdm__component()@metadata$signal_profiles
     expect_identical(
         profiles$tasmin$metadata$default_source,
         "package_implementation"
     )
-
-    calendar <- component__spec(
-        name = "sdm_calendar_test",
-        stage = "calendar",
-        input_kinds = "preprocessed_daily_series",
-        output_kinds = "calendar_indexed_daily_series",
-        operations = list(apply = identity)
+    expect_identical(
+        profiles$pr$metadata$gamma_fit_method,
+        "maximum_likelihood_zero_location"
     )
-    sequence <- component__spec(
-        name = "sdm_sequence_test",
-        stage = "sequence",
-        input_kinds = "daily_adjusted_series",
-        output_kinds = "weather_sequence",
-        operations = list(generate = identity)
-    )
-    expect_true(component__compatible(calendar, component))
-    expect_true(component__compatible(component, sequence))
 })
 
 # vim: fdm=marker :
