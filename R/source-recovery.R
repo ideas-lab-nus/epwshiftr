@@ -75,6 +75,16 @@ source_recovery__compatible <- function(request, owner) {
             return(FALSE)
         }
     }
+    # A stable catalogue key and endpoint cannot override contradictory content
+    # expectations saved for that resource's earlier acquisition.
+    if (
+        known(request$checksum) &&
+            known(owner$checksum) &&
+            (!identical(request$checksum_type, owner$checksum_type) ||
+                !identical(request$checksum, owner$checksum))
+    ) {
+        return(FALSE)
+    }
     same_resource <- identical(request$file_key, owner$file_key) &&
         identical(request$endpoint, owner$endpoint)
     if (same_resource) {
@@ -148,7 +158,12 @@ source_recovery__legacy_owner <- function(task, request) {
 # Legacy tasks with no receipt are adopted only from their original record and
 # endpoint; DRS names or matching directory names alone never grant ownership.
 # source_recovery__select {{{
-source_recovery__select <- function(downloader, request, file) {
+source_recovery__select <- function(
+    downloader,
+    request,
+    file,
+    overwrite = FALSE
+) {
     tasks <- data.table::as.data.table(downloader$tasks())
     if (!nrow(tasks)) {
         return(NULL)
@@ -230,6 +245,16 @@ source_recovery__select <- function(downloader, request, file) {
             original <- source_recovery__legacy_owner(task, request)
             if (!source_recovery__compatible(request, original)) next
         }
+        # Legacy complete targets without a byte-producing receipt cannot be
+        # certified by hashing them for the first time during adoption.
+        if (
+            is.na(request$checksum) &&
+                file.exists(task$target_path[[1L]]) &&
+                (is.na(store__chr1(task$transfer_sha256)) ||
+                    !isTRUE(task$transfer_complete[[1L]]))
+        ) {
+            next
+        }
         expected <- store__chr1(task$checksum)
         algorithm <- tolower(store__chr1(task$checksum_type))
         if (
@@ -241,6 +266,27 @@ source_recovery__select <- function(downloader, request, file) {
         }
         if (is.na(request$checksum) && !is.na(expected)) {
             next
+        }
+        # Explicit recomputation may replace an invalid local candidate only
+        # through a fresh task/target; its old final bytes and evidence survive.
+        target <- task$target_path[[1L]]
+        if (isTRUE(overwrite) && file.exists(target)) {
+            saved_hash <- store__chr1(task$transfer_sha256)
+            intact <- if (!is.na(saved_hash)) {
+                identical(checksum_file(target), saved_hash) &&
+                    identical(
+                        as.double(file.info(target)$size),
+                        as.double(task$transfer_bytes[[1L]])
+                    )
+            } else if (!is.na(request$checksum)) {
+                identical(
+                    tolower(checksum_file(target, request$checksum_type)),
+                    request$checksum
+                )
+            } else {
+                FALSE
+            }
+            if (!isTRUE(intact)) next
         }
         return(list(task = task, owner = original))
     }
@@ -296,7 +342,12 @@ source_recovery__download <- function(
         }
         args$manifest <- manifest
         downloader <- do.call(Downloader$new, args)
-        selected <- source_recovery__select(downloader, request, file)
+        selected <- source_recovery__select(
+            downloader,
+            request,
+            file,
+            overwrite
+        )
         if (is.null(selected) && !create) {
             return(NULL)
         }
@@ -423,7 +474,11 @@ source_recovery__download <- function(
             manifest = store_normalize_path(manifest),
             session_id = task$session_id[[1L]],
             task_id = task$task_id[[1L]],
-            source_url = store__chr1(tasks$selected_url),
+            source_url = if (!is.na(store__chr1(tasks$transfer_request_url))) {
+                store__chr1(tasks$transfer_request_url)
+            } else {
+                store__chr1(tasks$selected_url)
+            },
             final_url = store__chr1(tasks$transfer_final_url),
             path = store_normalize_path(path),
             bytes = bytes,
@@ -516,10 +571,17 @@ source_recovery__register <- function(store, file, receipt) {
         local_sha256 = receipt$local_sha256,
         verification_method = receipt$verification_method
     )
+    # Address immutable source facts, excluding mutable task scheduling fields.
     reference_path <- file.path(
         root,
         "sources",
-        paste0("pool-download-", store__hash(request$file_key), ".json")
+        paste0(
+            "pool-download-",
+            store__hash(request$file_key),
+            "-",
+            store__hash(reference),
+            ".json"
+        )
     )
     previous <- if (file.exists(reference_path)) {
         jsonlite::read_json(reference_path)
@@ -562,7 +624,7 @@ source_recovery__register <- function(store, file, receipt) {
         source_url = receipt$source_url,
         metadata = list(
             external_download_reference = !inside,
-            source_receipt = TRUE
+            source_receipt = receipt
         )
     )
     if (inside) {
@@ -578,7 +640,7 @@ source_recovery__register <- function(store, file, receipt) {
             checksum_type = "sha256",
             metadata = list(
                 filename = request$filename,
-                source_receipt = reference_path
+                source_receipt = receipt
             )
         )
         row <- data.table::copy(file)
@@ -596,6 +658,364 @@ source_recovery__register <- function(store, file, receipt) {
         )
     }
     invisible(reference)
+}
+# }}}
+
+# Capture acquisition evidence before a payload can cross IPC or be published.
+# A native local read is a new acquisition; downloaded bytes retain their exact
+# task receipt rather than acquiring a fresh certificate from their pathname.
+# source_recovery__attach {{{
+source_recovery__attach <- function(value, file) {
+    if (!is.null(value$payload$source_lineage)) {
+        return(value)
+    }
+    opened <- value$opened
+    receipt <- opened$download_receipt
+    if (!is.null(receipt)) {
+        receipt <- source_recovery__receipt_for(file, receipt)
+    }
+    # The exact transfer receipt already contains its native byte digest.
+    local <- is.null(receipt) &&
+        !is.null(opened$target) &&
+        file.exists(opened$target)
+    value$payload$source_lineage <- list(
+        schema = "epwshiftr-source-lineage-v1",
+        request = source_recovery__describe(file),
+        access_method = opened$access_method,
+        target = opened$target,
+        receipt = receipt,
+        native_sha256 = if (local) checksum_file(opened$target) else NULL,
+        native_bytes = if (local) {
+            as.double(file.info(opened$target)$size)
+        } else {
+            NULL
+        }
+    )
+    value
+}
+# }}}
+
+# JSON nulls are absence, with the same scalar contract as catalogue columns.
+# source_recovery__normalize {{{
+source_recovery__normalize <- function(request) {
+    if (!is.list(request)) {
+        return(NULL)
+    }
+    request$identity <- lapply(request$identity, store__chr1)
+    for (name in c(
+        "file_key",
+        "endpoint",
+        "filename",
+        "checksum_type",
+        "checksum"
+    )) {
+        request[[name]] <- store__chr1(request[[name]])
+    }
+    request
+}
+# }}}
+
+# Fail only the touched request, retaining the artifact and identifying whether
+# evidence is absent, contradicts ownership, or no longer matches saved bytes.
+# source_recovery__error {{{
+source_recovery__error <- function(reason, context) {
+    cli::cli_abort(
+        paste0(
+            reason,
+            ": ",
+            context,
+            ". Recompute this extraction with overwrite = TRUE after checking its source."
+        ),
+        class = "epwshiftr_source_lineage_error"
+    )
+}
+# }}}
+
+# Validate an immutable acquisition snapshot without requiring its native file
+# or remote node to remain available. Artifact/cache integrity is checked by
+# its caller, independently of the publisher content verification recorded here.
+# source_recovery__check {{{
+source_recovery__check <- function(lineage, file, context) {
+    if (
+        !is.list(lineage) ||
+            !identical(lineage$schema, "epwshiftr-source-lineage-v1") ||
+            is.null(lineage$request) ||
+            is.null(lineage$access_method) ||
+            is.null(lineage$target)
+    ) {
+        source_recovery__error("insufficient source lineage", context)
+    }
+    wanted <- source_recovery__describe(file)
+    saved <- source_recovery__normalize(lineage$request)
+    if (!source_recovery__compatible(wanted, saved)) {
+        source_recovery__error("source conflict in saved lineage", context)
+    }
+    receipt <- lineage$receipt
+    if (!is.null(receipt)) {
+        owner <- source_recovery__normalize(receipt$owner)
+        selected <- source_recovery__normalize(receipt$request)
+        if (
+            is.null(owner) ||
+                is.null(selected) ||
+                !source_recovery__compatible(wanted, owner) ||
+                !source_recovery__compatible(wanted, selected)
+        ) {
+            source_recovery__error("source conflict in saved receipt", context)
+        }
+        known <- function(x) !is.na(store__chr1(x))
+        if (
+            !all(vapply(
+                receipt[c(
+                    "task_id",
+                    "session_id",
+                    "source_url",
+                    "local_sha256"
+                )],
+                known,
+                logical(1L)
+            )) ||
+                is.null(receipt$bytes) ||
+                is.na(receipt$bytes)
+        ) {
+            source_recovery__error(
+                "insufficient source receipt evidence",
+                context
+            )
+        }
+        # A locally computed hash alone cannot certify a legacy final file.
+        # New GET checkpoints and verified publisher checksums are byte-linked.
+        transfer <- receipt$task
+        publisher <- isTRUE(receipt$checksum_verified) &&
+            !is.na(wanted$checksum) &&
+            identical(wanted$checksum_type, selected$checksum_type) &&
+            identical(wanted$checksum, selected$checksum)
+        bound <- isTRUE(transfer$transfer_complete) &&
+            identical(
+                store__chr1(transfer$transfer_sha256),
+                receipt$local_sha256
+            ) &&
+            identical(
+                as.double(transfer$transfer_bytes),
+                as.double(receipt$bytes)
+            )
+        if (!publisher && !bound) {
+            source_recovery__error(
+                "insufficient saved producer evidence",
+                context
+            )
+        }
+    } else if (!is.null(lineage$native_sha256)) {
+        if (is.null(lineage$native_bytes) || is.na(lineage$native_bytes)) {
+            source_recovery__error(
+                "insufficient native source evidence",
+                context
+            )
+        }
+    } else if (!identical(lineage$access_method, "OPeNDAP")) {
+        source_recovery__error("insufficient acquisition evidence", context)
+    }
+    # DAP reads without publisher content identity retain the actual endpoint;
+    # a current catalogue label cannot turn another endpoint into a replica.
+    if (
+        identical(lineage$access_method, "OPeNDAP") &&
+            is.na(wanted$checksum) &&
+            !identical(
+                store__chr1(lineage$target),
+                store__chr1(file$url_opendap)
+            )
+    ) {
+        source_recovery__error("source conflict in OPeNDAP endpoint", context)
+    }
+    invisible(lineage)
+}
+# }}}
+
+# Compare retained artifact bytes against their original saved digest and size.
+# Never recompute an edited artifact into a replacement certificate on readback.
+# source_recovery__artifact_check {{{
+source_recovery__artifact_check <- function(artifact, path, context) {
+    if (
+        nrow(artifact) != 1L ||
+            is.na(store__chr1(artifact$checksum)) ||
+            !store__chr1(artifact$checksum_type) %in% c("md5", "sha256") ||
+            is.na(artifact$size[[1L]])
+    ) {
+        source_recovery__error(
+            "insufficient artifact integrity evidence",
+            context
+        )
+    }
+    if (
+        !file.exists(path) ||
+            file.info(path)$size != artifact$size[[1L]] ||
+            !identical(
+                tolower(checksum_file(path, artifact$checksum_type[[1L]])),
+                tolower(artifact$checksum[[1L]])
+            )
+    ) {
+        source_recovery__error(
+            "source_changed: retained artifact bytes differ",
+            context
+        )
+    }
+    invisible(TRUE)
+}
+# }}}
+
+# Add a contextual extraction gate while leaving generic subset-cache utilities
+# usable for metadata and native windows. Explicit replacement preserves a copy
+# of both the rejected cache and its old sidecar before generating new values.
+# source_recovery__cache_read {{{
+source_recovery__cache_read <- function(path, file, overwrite = FALSE) {
+    if (!file.exists(path)) {
+        return(NULL)
+    }
+    checked <- tryCatch(
+        {
+            sidecar <- paste0(path, ".json")
+            integrity <- if (file.exists(sidecar)) {
+                tryCatch(jsonlite::read_json(sidecar), error = function(e) NULL)
+            } else {
+                NULL
+            }
+            if (!is.list(integrity) || is.na(store__chr1(integrity$sha256))) {
+                source_recovery__error(
+                    "insufficient cache integrity evidence",
+                    path
+                )
+            }
+            payload <- store__extract_cache_read(path)
+            if (is.null(payload)) {
+                source_recovery__error(
+                    "source_changed: invalid extraction cache",
+                    path
+                )
+            }
+            source_recovery__check(payload$source_lineage, file, path)
+            payload
+        },
+        error = identity
+    )
+    if (!inherits(checked, "error")) {
+        return(checked)
+    }
+    if (!isTRUE(overwrite)) {
+        stop(checked)
+    }
+    retained <- paste0(path, ".retained-", checksum_file(path))
+    if (!file.exists(retained)) {
+        file.copy(path, retained)
+    }
+    sidecar <- paste0(path, ".json")
+    if (file.exists(sidecar) && !file.exists(paste0(retained, ".json"))) {
+        file.copy(sidecar, paste0(retained, ".json"))
+    }
+    NULL
+}
+# }}}
+
+# A catalogued local path is a retained acquisition, not a new unverified read.
+# Old records can be recovered with saved publisher content proof; absence of
+# both a receipt and that proof requires recomputation, preserving the file.
+# source_recovery__local_open {{{
+source_recovery__local_open <- function(store, file, path) {
+    artifacts <- store$query("SELECT * FROM artifact")
+    artifact <- artifacts[
+        artifacts$artifact_id %in% file$local_artifact_id,
+        ,
+        drop = FALSE
+    ]
+    context <- paste("file", store__chr1(file$file_key), "local source", path)
+    source_recovery__artifact_check(artifact, path, context)
+    if (
+        !identical(artifact$file_key[[1L]], store__chr1(file$file_key)) ||
+            !identical(
+                store_abs_path(artifact$relative_path[[1L]], store$path),
+                path
+            )
+    ) {
+        source_recovery__error(
+            "source conflict in local artifact association",
+            context
+        )
+    }
+    metadata <- tryCatch(
+        jsonlite::fromJSON(
+            artifact$metadata_json[[1L]],
+            simplifyVector = FALSE
+        ),
+        error = function(e) NULL
+    )
+    receipt <- metadata$source_receipt
+    if (!is.list(receipt)) {
+        receipt <- NULL
+    }
+    if (is.null(receipt)) {
+        request <- source_recovery__describe(file)
+        saved_endpoint <- store__chr1(artifact$source_url)
+        if (
+            is.na(request$checksum) &&
+                !is.na(saved_endpoint) &&
+                !identical(saved_endpoint, request$endpoint)
+        ) {
+            source_recovery__error(
+                "source conflict in local source endpoint",
+                context
+            )
+        }
+        if (
+            is.na(request$checksum) ||
+                !identical(
+                    tolower(checksum_file(path, request$checksum_type)),
+                    request$checksum
+                ) ||
+                !identical(store__chr1(artifact$source_url), request$endpoint)
+        ) {
+            source_recovery__error("insufficient local source lineage", context)
+        }
+    } else {
+        lineage <- list(
+            schema = "epwshiftr-source-lineage-v1",
+            request = receipt$request,
+            receipt = receipt,
+            access_method = "HTTPServer",
+            target = receipt$path
+        )
+        source_recovery__check(lineage, file, context)
+        if (
+            !identical(checksum_file(path), receipt$local_sha256) ||
+                file.info(path)$size != receipt$bytes
+        ) {
+            source_recovery__error(
+                "source_changed: native receipt bytes differ",
+                context
+            )
+        }
+    }
+    opened <- store__open_dataset(path, "local")
+    opened$download_receipt <- receipt
+    opened
+}
+# }}}
+
+# Read the small sidecar at shared-prefetch gates without deserializing values.
+# This is extraction-specific; arbitrary generic cache receipts stay valid.
+# source_recovery__cache_available {{{
+source_recovery__cache_available <- function(path, file) {
+    if (!store__extract_cache_available(path)) {
+        return(FALSE)
+    }
+    record <- tryCatch(
+        jsonlite::read_json(paste0(path, ".json"), simplifyVector = TRUE),
+        error = function(e) NULL
+    )
+    tryCatch(
+        {
+            source_recovery__check(record$source_lineage, file, path)
+            TRUE
+        },
+        error = function(e) FALSE
+    )
 }
 # }}}
 

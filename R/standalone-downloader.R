@@ -5340,7 +5340,9 @@ Downloader <- R6::R6Class(
         #' @param task_id Optional task ID vector.
         #'
         #' @return A data frame of completed task records with a
-        #'        `checksum_ok` column.
+        #'        `checksum_ok` and `integrity_evidence` columns. The latter distinguishes
+        #'        publisher checksums, saved byte-producing transfers, and missing
+        #'        historical evidence.
         # verify {{{
         verify = function(session_id = NULL, task_id = NULL) {
             private$require_manifest()
@@ -5419,6 +5421,25 @@ Downloader <- R6::R6Class(
                         !tasks$checksum_ok
                     ] <- failed$last_error
                 }
+                # Classify the original evidence separately from the permissive
+                # generic checksum result when no publisher hash was supplied.
+                tasks <- private$decorate_task_status(tasks)
+                tasks$integrity_evidence <- vapply(
+                    seq_len(nrow(tasks)),
+                    function(i) {
+                        if (!is.na(downloader__one_chr(tasks$checksum[[i]]))) {
+                            "publisher_checksum"
+                        } else if (
+                            isTRUE(tasks$transfer_complete[[i]]) &&
+                                !is.na(tasks$transfer_sha256[[i]])
+                        ) {
+                            "saved_transfer"
+                        } else {
+                            "missing"
+                        }
+                    },
+                    character(1L)
+                )
                 tasks
             })
         },

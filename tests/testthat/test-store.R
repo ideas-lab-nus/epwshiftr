@@ -4617,7 +4617,7 @@ test_that("HTTP fallback resumes one retained session after a reader deadline", 
     expect_length(references, 1L)
     expect_match(
         basename(references[[1L]]),
-        "^pool-download-[a-f0-9]{64}[.]json$"
+        "^pool-download-[a-f0-9]{64}-[a-f0-9]{64}[.]json$"
     )
     reference <- jsonlite::read_json(references[[1L]])
     expect_true(reference$checksum_verified_by_reader)

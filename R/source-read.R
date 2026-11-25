@@ -28,7 +28,8 @@ store__read_job <- function(job, source) {
                         opened = opened,
                         recovery_error = NULL
                     )
-                }
+                },
+                overwrite = isTRUE(job$overwrite)
             )
             # Transfer a cache reference instead of copying weather arrays through
             # IPC. The caller loads and persists one site's payload at a time.
@@ -397,6 +398,7 @@ store__read_task <- function(job) {
             return(list(results = rep(list(local), nrow(job$plans))))
         }
         source$opened <- store__open_dataset(local$path, "HTTPServer")
+        source$opened$download_receipt <- local$receipt
         download_manifest <- local$manifest
         download_receipt <- local$receipt
     }
@@ -405,6 +407,7 @@ store__read_task <- function(job) {
             results[[index]] <- store__read_job(
                 list(
                     plan = job$plans[index],
+                    overwrite = job$overwrite,
                     file = if (is.null(job$files)) {
                         job$file
                     } else {
@@ -432,6 +435,7 @@ store__read_task <- function(job) {
             {
                 local <- store__pool_http_download(job)
                 source$opened <- store__open_dataset(local$path, "HTTPServer")
+                source$opened$download_receipt <- local$receipt
                 local
             },
             error = identity
@@ -453,6 +457,7 @@ store__read_task <- function(job) {
                     results[[index]] <- store__read_job(
                         list(
                             plan = job$plans[index],
+                            overwrite = job$overwrite,
                             file = if (is.null(job$files)) {
                                 job$file
                             } else {

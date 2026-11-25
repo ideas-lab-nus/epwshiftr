@@ -306,8 +306,15 @@ store__extract_cache_write <- function(path, payload) {
         cli::cli_abort("Could not publish the shared extraction cache entry.")
     }
     store_write_json_atomic(
-        list(sha256 = checksum_file(path)),
-        paste0(path, ".json")
+        list(
+            sha256 = checksum_file(path),
+            source_lineage = payload$source_lineage
+        ),
+        paste0(path, ".json"),
+        auto_unbox = TRUE,
+        null = "null",
+        na = "null",
+        digits = NA
     )
     invisible(path)
 }
@@ -317,10 +324,15 @@ store__extract_cache_write <- function(path, payload) {
 # all remote/local fallback behavior; this wrapper stores only successful,
 # fully-read payloads and identifies reuse without copying store-specific IDs.
 # store__extract_cache_resolve {{{
-store__extract_cache_resolve <- function(plan, file, generate) {
+store__extract_cache_resolve <- function(
+    plan,
+    file,
+    generate,
+    overwrite = FALSE
+) {
     checkmate::assert_function(generate)
     if (identical(cache__mode(), "off")) {
-        value <- generate()
+        value <- source_recovery__attach(generate(), file)
         value$cache_reused <- FALSE
         return(value)
     }
@@ -329,7 +341,7 @@ store__extract_cache_resolve <- function(plan, file, generate) {
     manifest_with_lock(
         path,
         {
-            payload <- store__extract_cache_read(path)
+            payload <- source_recovery__cache_read(path, file, overwrite)
             if (!is.null(payload)) {
                 return(list(
                     payload = payload,
@@ -346,7 +358,7 @@ store__extract_cache_resolve <- function(plan, file, generate) {
                     "Shared extraction cache is missing in offline mode."
                 )
             }
-            value <- generate()
+            value <- source_recovery__attach(generate(), file)
             store__extract_cache_write(path, value$payload)
             value$cache_reused <- FALSE
             value
@@ -3576,11 +3588,20 @@ EsgStore <- R6::R6Class(
                 plan <- plans[i]
                 resumed_outputs[i] <- list(
                     if (!overwrite && resume) {
-                        private$resume_extract_plan(plan)
+                        tryCatch(
+                            private$resume_extract_plan(plan),
+                            error = identity
+                        )
                     } else {
                         NULL
                     }
                 )
+                if (inherits(resumed_outputs[[i]], "error")) {
+                    error <- resumed_outputs[[i]]
+                    resumed_outputs[i] <- list(NULL)
+                    process(i, error)
+                    next
+                }
                 if (!is.null(resumed_outputs[[i]]) || is.na(file_rows[[i]])) {
                     process(i)
                     next
@@ -3594,26 +3615,21 @@ EsgStore <- R6::R6Class(
                         local,
                         root = private$store_path
                     ))
-                if (!is.null(pool) && has_local) {
-                    file <- data.table::copy(file)
-                    data.table::set(
-                        file,
-                        j = "url_opendap",
-                        value = store_abs_path(
-                            local,
-                            root = private$store_path
-                        )
-                    )
-                }
                 cached <- if (!identical(cache__mode(), "off")) {
-                    store__extract_cache_read(store__extract_cache_path(
-                        plan,
-                        file
-                    ))
+                    tryCatch(
+                        source_recovery__cache_read(
+                            store__extract_cache_path(plan, file),
+                            file,
+                            overwrite
+                        ),
+                        error = identity
+                    )
                 } else {
                     NULL
                 }
-                if (!is.null(cached)) {
+                if (inherits(cached, "error")) {
+                    process(i, cached)
+                } else if (!is.null(cached)) {
                     process(
                         i,
                         list(
@@ -3627,10 +3643,10 @@ EsgStore <- R6::R6Class(
                         )
                     )
                 } else if (
-                    (is.null(pool) &&
-                        (has_local ||
-                            is.na(endpoint) ||
-                            !grepl("^https?://", endpoint))) ||
+                    has_local ||
+                        (is.null(pool) &&
+                            (is.na(endpoint) ||
+                                !grepl("^https?://", endpoint))) ||
                         identical(cache__mode(), "offline")
                 ) {
                     process(i)
@@ -3681,7 +3697,8 @@ EsgStore <- R6::R6Class(
                             function(job) job$plan
                         )),
                         files = lapply(jobs[rows], function(job) job$file),
-                        file = jobs[[rows[[1L]]]]$file
+                        file = jobs[[rows[[1L]]]]$file,
+                        overwrite = overwrite
                     )
                 })
             }
@@ -3719,8 +3736,9 @@ EsgStore <- R6::R6Class(
                         failures[[row]] <<- resolved
                     } else {
                         if (!is.null(resolved$cache_path)) {
-                            resolved$payload <- store__extract_cache_read(
-                                resolved$cache_path
+                            resolved$payload <- source_recovery__cache_read(
+                                resolved$cache_path,
+                                job$files[[index]]
                             )
                             if (is.null(resolved$payload)) {
                                 cli::cli_abort(
@@ -8790,6 +8808,68 @@ EsgStore <- R6::R6Class(
             if (!all(file.exists(paths))) {
                 return(NULL)
             }
+            # Check only this requested plan, using the artifact snapshot that
+            # committed with its result rather than current catalogue labels.
+            artifacts <- data.table::as.data.table(ddb_read_table(
+                private$conn,
+                "artifact"
+            ))
+            files <- data.table::as.data.table(ddb_read_table(
+                private$conn,
+                "file_catalog"
+            ))
+            file <- files[files[["file_key"]] == plan$file_key[[1L]]]
+            context <- paste(
+                "plan",
+                target_plan_id,
+                "file",
+                plan$file_key[[1L]]
+            )
+            if (nrow(file) != 1L) {
+                source_recovery__error(
+                    "insufficient catalogue lineage",
+                    context
+                )
+            }
+            for (index in seq_len(nrow(results))) {
+                artifact <- artifacts[
+                    artifacts[["artifact_id"]] == results$artifact_id[[index]]
+                ]
+                location <- paste(
+                    context,
+                    "artifact",
+                    results$artifact_id[[index]],
+                    paths[[index]]
+                )
+                source_recovery__artifact_check(
+                    artifact,
+                    paths[[index]],
+                    location
+                )
+                if (
+                    !identical(artifact$file_key[[1L]], plan$file_key[[1L]]) ||
+                        !identical(
+                            store_abs_path(
+                                artifact$relative_path[[1L]],
+                                private$store_path
+                            ),
+                            paths[[index]]
+                        )
+                ) {
+                    source_recovery__error(
+                        "source conflict in artifact association",
+                        location
+                    )
+                }
+                metadata <- tryCatch(
+                    jsonlite::fromJSON(
+                        artifact$metadata_json[[1L]],
+                        simplifyVector = FALSE
+                    ),
+                    error = function(e) NULL
+                )
+                source_recovery__check(metadata$source_lineage, file, location)
+            }
             plan
         },
         # }}}
@@ -8920,6 +9000,10 @@ EsgStore <- R6::R6Class(
                         ))
                     }
                     opened <- local_open
+                    opened$download_receipt <- attr(
+                        local_path,
+                        "source_receipt"
+                    )
                     ds <- opened$dataset
                     payload <- tryCatch(
                         private$read_extract_dataset(
@@ -9000,7 +9084,12 @@ EsgStore <- R6::R6Class(
                 )
             }
             if (is.null(resolved) || !is.null(source_error)) {
-                resolved <- store__extract_cache_resolve(plan, file, generate)
+                resolved <- store__extract_cache_resolve(
+                    plan,
+                    file,
+                    generate,
+                    overwrite
+                )
             }
             payload <- resolved$payload
             opened <- resolved$opened
@@ -9085,6 +9174,11 @@ EsgStore <- R6::R6Class(
             opened,
             overwrite = FALSE
         ) {
+            source_recovery__check(
+                payload$source_lineage,
+                file,
+                paste("plan", plan$plan_id[[1L]])
+            )
             # A payload restored from the shared RDS cache is guaranteed to be
             # a data frame, but it need not retain data.table's by-reference
             # class. Materialize a private data.table copy before attaching
@@ -9110,7 +9204,8 @@ EsgStore <- R6::R6Class(
                             dt,
                             plan,
                             file,
-                            overwrite = overwrite
+                            overwrite = overwrite,
+                            source_lineage = payload$source_lineage
                         )
                         list(
                             results = results,
@@ -9213,7 +9308,16 @@ EsgStore <- R6::R6Class(
             if (!is.na(local) && nzchar(local)) {
                 local <- store_abs_path(local, root = private$store_path)
                 if (file.exists(local)) {
-                    return(private$open_dataset(local, service = "local"))
+                    opened <- tryCatch(
+                        source_recovery__local_open(self, file, local),
+                        error = identity
+                    )
+                    if (!inherits(opened, "error")) {
+                        return(opened)
+                    }
+                    if (!isTRUE(overwrite)) stop(opened)
+                    # Leave the rejected native file in place. The source
+                    # selector can reacquire into a fresh independent target.
                 }
             }
             opendap <- store__chr1(file$url_opendap)
@@ -9302,6 +9406,7 @@ EsgStore <- R6::R6Class(
                 }
                 stop(local_open)
             }
+            local_open$download_receipt <- attr(local_path, "source_receipt")
             if (!is.null(remote_error)) {
                 local_open$remote_error <- remote_error
             }
@@ -9334,7 +9439,9 @@ EsgStore <- R6::R6Class(
                 reporter = reporter
             )
             source_recovery__register(self, file, recovered$receipt)
-            recovered$path
+            path <- recovered$path
+            attr(path, "source_receipt") <- recovered$receipt
+            path
         },
         # }}}
         # decorate_extract
@@ -9489,7 +9596,8 @@ EsgStore <- R6::R6Class(
             plan,
             file,
             overwrite = FALSE,
-            project = "CMIP6"
+            project = "CMIP6",
+            source_lineage = NULL
         ) {
             # The same durable extraction representation is shared by ESGF
             # projections and provider-normalized reanalysis observations.
@@ -9526,6 +9634,7 @@ EsgStore <- R6::R6Class(
                     metadata = list(
                         plan_id = plan$plan_id[[1L]],
                         year = as.integer(target_year),
+                        source_lineage = source_lineage,
                         # Derived-variable rows carry their scientific lineage
                         # in both the Parquet data and artifact manifest. Raw
                         # extraction chunks simply record null provenance.

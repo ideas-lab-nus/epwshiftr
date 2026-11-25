@@ -464,12 +464,22 @@ shift_batch_window__seed_consumer <- function(
         time_start = requested[[1L]],
         time_stop = requested[[2L]]
     )
+    payload <- source_recovery__attach(
+        list(
+            payload = payload,
+            opened = list(
+                access_method = "OPeNDAP",
+                target = acquisition$url_opendap[[1L]]
+            )
+        ),
+        acquisition
+    )$payload
     path <- store__extract_cache_path(plan, acquisition)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     manifest_with_lock(
         path,
         {
-            if (is.null(store__extract_cache_read(path))) {
+            if (is.null(source_recovery__cache_read(path, acquisition))) {
                 store__extract_cache_write(path, payload)
             }
         },
@@ -593,7 +603,12 @@ shift_batch_window__prefetch_acquisition <- function(
     consumers <- consumers[keep]
     cache_paths <- cache_paths[keep]
     cached <- if (is.null(cached)) {
-        vapply(cache_paths, store__extract_cache_available, logical(1L))
+        vapply(
+            cache_paths,
+            source_recovery__cache_available,
+            logical(1L),
+            file = acquisition
+        )
     } else {
         cached[keep]
     }
@@ -939,8 +954,9 @@ shift_batch_window__prefetch <- function(batch, reporter = NULL) {
         unique_paths <- unique(paths[needed])
         available <- vapply(
             unique_paths,
-            store__extract_cache_available,
-            logical(1L)
+            source_recovery__cache_available,
+            logical(1L),
+            file = acquisition
         )
         position <- match(paths, unique_paths)
         cached <- rep(TRUE, length(paths))
