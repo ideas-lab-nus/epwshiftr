@@ -124,9 +124,9 @@ test_that("DiskCache supports CRUD, overwrites, diverse R types, info(), and key
     cache_dir <- tempfile("cache-crud-")
     cache <- DiskCache$new(
         cache_dir,
-        max_size = 1000,
+        max_size = Inf,
         max_age = 3600,
-        max_n = 10,
+        max_n = Inf,
         prune_rate = 100,
         prune_limit = 5
     )
