@@ -836,30 +836,4 @@ morpher__frequency_diagnostic <- function(
 }
 # }}}
 
-# morpher__recipe_method_overrides {{{
-morpher__recipe_method_overrides <- function(recipe) {
-    if (!inherits(recipe, "epw_morph_recipe")) {
-        cli::cli_abort("`recipe` must be created by {.fn epw_morph_recipe}.")
-    }
-    backend <- epw_morph_backend(recipe$backend)
-    methods <- recipe$methods
-    if (is.null(methods)) {
-        return(NULL)
-    }
-    defaults <- if (
-        recipe$backend %in% c("original_morphing", "original_morphing_absolute")
-    ) {
-        original_morphing__profile_methods(backend, recipe$profile)
-    } else {
-        backend$methods()
-    }
-    overrides <- methods[
-        names(methods) %in%
-            names(defaults) &
-            methods != defaults[names(methods)]
-    ]
-    if (!length(overrides)) NULL else overrides
-}
-# }}}
-
 # vim: fdm=marker :

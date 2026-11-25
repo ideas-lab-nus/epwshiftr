@@ -641,15 +641,6 @@ DOWNLOADER_JOB_STATUS <- c(
     "stopping",
     "stale"
 )
-DOWNLOADER_DAEMON_STATUS <- c(
-    "starting",
-    "running",
-    "stopping",
-    "stopped",
-    "error",
-    "stale"
-)
-DOWNLOADER_CONTROL_STATUS <- c("queued", "handled", "error")
 DOWNLOADER_PROGRESS_INTERVAL <- 1
 DOWNLOADER_JOB_LEASE_SECONDS <- 60
 DOWNLOADER_NODE_POLICY_DEFAULT <- list(

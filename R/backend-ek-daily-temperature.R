@@ -296,27 +296,6 @@ ek__daily_temperature_factors <- function(
 }
 # }}}
 
-# Build daily Ek factors directly from two normalized daily temperature sources.
-# ek__daily_temperature_targets {{{
-ek__daily_temperature_targets <- function(
-    future,
-    historical,
-    tolerance = 1e-8
-) {
-    ek__daily_temperature_factors(
-        ek__daily_temperature_climatology(
-            future,
-            "future climate"
-        ),
-        ek__daily_temperature_climatology(
-            historical,
-            "historical climate"
-        ),
-        tolerance
-    )
-}
-# }}}
-
 # Normalize role-addressable inputs and preserve Ek's lack of a smoothing
 # setting before any calendar or climate-signal calculation occurs.
 # ek__preprocess_apply {{{

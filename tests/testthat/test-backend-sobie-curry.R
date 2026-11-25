@@ -360,7 +360,12 @@ test_that("Sobie-Curry harmonized closure reports both physical bounds", {
         atmospheric_pressure = c(100000, 100000),
         specific_humidity_delta = c(0.02, -0.02)
     )
-    humidity <- sobie__harmonized_humidity(hourly)
+    target <- sobie__specific_humidity_target(hourly)
+    humidity <- epwphys__close_specific_humidity(
+        hourly$temperature_projected,
+        hourly$pressure_projected,
+        target$target_specific_humidity
+    )
 
     expect_identical(
         humidity$status,

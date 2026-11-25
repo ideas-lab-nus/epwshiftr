@@ -119,12 +119,14 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    docs <- epw_morpher_test_file_docs(
+    docs <- esgf_test__file_docs(
         path = basename(nc),
         opendap_url = nc,
-        download_url = nc
+        download_url = nc,
+        datetime_start = "2061-01-01T00:00:00Z",
+        datetime_end = "2061-12-31T23:59:59Z"
     )
-    query_id <- store$add_files(epw_morpher_test_result(docs))
+    query_id <- store$add_files(esgf_test__file_result(docs))
     plan <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -182,13 +184,15 @@ test_that("EpwMorpher persists, resumes, and writes every sequence year", {
     )
     epw_morph_register_backend(backend_name, backend, overwrite = TRUE)
 
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = epw_morph_recipe(backend_name),
         label = "sequence-test"
     )
+    private <- priv(morpher)
+    private$transform <- NULL
+    private$recipe <- epw_morph_recipe(backend_name)
     climate <- morpher$summarise_climate(
         plan$plan_id,
         epw_morph_periods(future = 2061L),

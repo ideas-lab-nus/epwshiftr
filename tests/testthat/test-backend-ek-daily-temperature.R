@@ -179,13 +179,19 @@ test_that("Ek calendar adapter maps 360-day years without smoothing", {
         temperature_shift = 2,
         dtr_ratio = 1.25
     )
-    targets <- ek__daily_temperature_targets(
-        temperature__daily_climate(
-            future,
+    targets <- ek__daily_temperature_factors(
+        ek__daily_temperature_climatology(
+            temperature__daily_climate(
+                future,
+                "future climate"
+            ),
             "future climate"
         ),
-        temperature__daily_climate(
-            historical,
+        ek__daily_temperature_climatology(
+            temperature__daily_climate(
+                historical,
+                "historical climate"
+            ),
             "historical climate"
         )
     )

@@ -2,13 +2,6 @@
 NULL
 
 # EPW morphing execution context
-# morpher__units_label {{{
-morpher__units_label <- function(x) {
-    out <- attr(x, "epw_unit", exact = TRUE)
-    if (length(out) != 1L || is.na(out) || !nzchar(out)) NA_character_ else out
-}
-# }}}
-
 # morpher__drop_units {{{
 morpher__drop_units <- function(x) {
     as.numeric(x)
@@ -1225,14 +1218,6 @@ morpher__engine_output <- function(
         ),
         class = "epw_morph_result"
     )
-}
-# }}}
-
-# morpher__result_as_morphed {{{
-morpher__result_as_morphed <- function(result) {
-    out <- c(list(epw = result$epw), result$parts)
-    class(out) <- "epw_cmip6_morphed"
-    out
 }
 # }}}
 

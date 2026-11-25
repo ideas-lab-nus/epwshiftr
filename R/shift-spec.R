@@ -155,22 +155,6 @@ shift_spec__periods_from_years <- function(
 }
 # }}}
 
-# Resolve recipe strings early so later workflow stages can rely on a recipe
-# object and its required variable set.
-# shift_spec__recipe_value {{{
-shift_spec__recipe_value <- function(recipe) {
-    if (inherits(recipe, "epw_morph_recipe")) {
-        return(recipe)
-    }
-    if (is.character(recipe) && length(recipe) == 1L) {
-        return(epw_morph_recipe(recipe))
-    }
-    cli::cli_abort(
-        "`recipe` must be a recipe name or an {.cls epw_morph_recipe} object."
-    )
-}
-# }}}
-
 # Let high-level APIs accept named variable sets while leaving explicit CMIP
 # variable IDs untouched.
 # shift_spec__variables_value {{{
@@ -317,31 +301,6 @@ shift_spec__expected_cases <- function(request, periods) {
         )
     )
     cases[]
-}
-# }}}
-
-# Record the durable baseline EPW identity used for run hashing and resume.
-# shift_spec__epw_identity {{{
-shift_spec__epw_identity <- function(epw) {
-    if (shift_spec__is_epw_path(epw)) {
-        path <- normalizePath(path.expand(epw), winslash = "/", mustWork = TRUE)
-        return(list(
-            path = path,
-            checksum = store_hash_file(path, "sha256"),
-            checksum_type = "sha256"
-        ))
-    }
-    if (shift_spec__is_epw_object(epw)) {
-        path <- epw_file_coerce(epw)$path()
-        return(list(
-            path = path,
-            checksum = store_hash_file(path, "sha256"),
-            checksum_type = "sha256"
-        ))
-    }
-    cli::cli_abort(
-        "`epw` must be an EPW file path or an object inheriting from {.cls Epw} or {.cls EpwFile}."
-    )
 }
 # }}}
 

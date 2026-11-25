@@ -1244,12 +1244,4 @@ is.solr_date <- function(x) {
 }
 # }}}
 
-#' @keywords internal
-#' @noRd
-# as.character.SolrDate {{{
-as.character.SolrDate <- function(x, ...) {
-    format(x, ...)
-}
-# }}}
-
 # vim: fdm=marker :

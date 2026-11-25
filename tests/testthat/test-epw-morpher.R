@@ -1,3 +1,25 @@
+# Construct a morpher from an internal recipe for legacy-backend tests.
+# epw_morpher_test__from_recipe {{{
+epw_morpher_test__from_recipe <- function(
+    store,
+    epw,
+    recipe,
+    site_id = NULL,
+    label = NULL
+) {
+    object <- epw_morpher(
+        store = store,
+        epw = epw,
+        site_id = site_id,
+        label = label
+    )
+    private <- priv(object)
+    private$transform <- NULL
+    private$recipe <- recipe
+    object
+}
+# }}}
+
 test_that("get_cache_epw() prepares a stable local EPW fixture", {
     dir <- withr::local_tempdir()
     withr::local_envvar(EPWSHIFTR_CHECK_CACHE = dir)
@@ -129,12 +151,13 @@ test_that("EpwMorpher$preflight() accepts overlapping climate periods", {
 
     store <- EsgStore$new(tempfile("overlapping-preflight-store-"))
     on.exit(store$close(), add = TRUE)
-    docs <- epw_morpher_test_file_docs(
+    docs <- esgf_test__file_docs(
         path = basename(nc),
         opendap_url = nc,
-        download_url = nc
+        download_url = nc,
+        datetime_end = "2061-12-31T23:59:59Z"
     )
-    query_id <- store$add_files(epw_morpher_test_result(docs))
+    query_id <- store$add_files(esgf_test__file_result(docs))
     extraction <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -146,7 +169,7 @@ test_that("EpwMorpher$preflight() accepts overlapping climate periods", {
         store$extract(plan_id = extraction$plan_id)$status == "done"
     ))
 
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher_test__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -212,11 +235,11 @@ test_that("legacy fragmented mean summaries use valid record weights", {
 test_that("factor planning reads legacy record-weighted mean fragments", {
     store <- EsgStore$new(tempfile("weighted-factor-store-"))
     on.exit(store$close(), add = TRUE)
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
-        recipe = suppressWarnings(epw_morph_recipe("original_morphing"))
+        transform = monthly_transform("original_morphing")
     )
     climate <- data.table::data.table(
         source_id = "Model-A",
@@ -288,7 +311,7 @@ test_that("baseline summaries and preflight preserve EPW missing-value evidence"
 
     store <- EsgStore$new(tempfile("missing-epw-store-"))
     on.exit(store$close(), add = TRUE)
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher_test__from_recipe(
         store = store,
         epw = path,
         site_id = "SIN",
@@ -365,7 +388,7 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
     on.exit(store$close(), add = TRUE)
     docs <- data.table::rbindlist(
         lapply(names(nc), function(experiment) {
-            rows <- epw_morpher_test_file_docs(
+            rows <- esgf_test__file_docs(
                 path = basename(nc[[experiment]]),
                 opendap_url = nc[[experiment]],
                 download_url = nc[[experiment]]
@@ -378,7 +401,7 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
         }),
         fill = TRUE
     )
-    query_id <- store$add_files(epw_morpher_test_result(docs))
+    query_id <- store$add_files(esgf_test__file_result(docs))
     extraction <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -390,7 +413,7 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
         store$extract(plan_id = extraction$plan_id)$status == "done"
     ))
 
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher_test__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -492,12 +515,13 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    docs <- epw_morpher_test_file_docs(
+    docs <- esgf_test__file_docs(
         path = basename(nc),
         opendap_url = nc,
-        download_url = nc
+        download_url = nc,
+        datetime_end = "2061-12-31T23:59:59Z"
     )
-    query_id <- store$add_files(epw_morpher_test_result(docs))
+    query_id <- store$add_files(esgf_test__file_result(docs))
     plan <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -507,7 +531,7 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
     )
     expect_equal(store$extract(plan_id = plan$plan_id)$status, "done")
 
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher_test__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -543,12 +567,12 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     store <- EsgStore$new(dir)
     on.exit(store$close(), add = TRUE)
 
-    docs <- epw_morpher_test_file_docs(
+    docs <- esgf_test__file_docs(
         path = basename(nc),
         opendap_url = nc,
         download_url = nc
     )
-    query_id <- store$add_files(epw_morpher_test_result(docs))
+    query_id <- store$add_files(esgf_test__file_result(docs))
     plan <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -561,7 +585,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
 
     external_epw <- test_external_epw(get_cache_epw())
     original_external_path <- external_epw$path()
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher_test__from_recipe(
         store = store,
         epw = external_epw,
         site_id = "SIN",
@@ -715,17 +739,18 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
 
     docs <- data.table::rbindlist(
         lapply(variables, function(variable_id) {
-            epw_morpher_test_file_docs(
+            esgf_test__file_docs(
                 path = basename(nc[[variable_id]]),
                 opendap_url = nc[[variable_id]],
                 download_url = nc[[variable_id]],
                 variable_id = variable_id,
-                frequency = "mon"
+                frequency = "mon",
+                table_id = "Amon"
             )
         }),
         fill = TRUE
     )
-    query_id <- store$add_files(epw_morpher_test_result(as.data.frame(docs)))
+    query_id <- store$add_files(esgf_test__file_result(as.data.frame(docs)))
     plan <- store$plan_region(
         query_id = query_id,
         lon = 103.98,
@@ -740,7 +765,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_equal(nrow(processed), length(variables))
     expect_true(all(processed$status == "done"))
 
-    morpher <- morpher__from_recipe(
+    morpher <- epw_morpher_test__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -886,7 +911,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     )
     expect_equal(resumed_results$result_id, results$result_id)
 
-    override_morpher <- morpher__from_recipe(
+    override_morpher <- epw_morpher_test__from_recipe(
         store = store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -1025,7 +1050,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     workflow_dir <- tempfile("esg-store-workflow-")
     workflow_store <- EsgStore$new(workflow_dir)
     on.exit(workflow_store$close(), add = TRUE)
-    workflow_query_id <- workflow_store$add_files(epw_morpher_test_result(as.data.frame(
+    workflow_query_id <- workflow_store$add_files(esgf_test__file_result(as.data.frame(
         docs
     )))
     workflow_plan <- workflow_store$plan_region(
@@ -1040,7 +1065,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         plan_id = workflow_plan$plan_id
     )
     expect_true(all(workflow_processed$status == "done"))
-    workflow_morpher <- morpher__from_recipe(
+    workflow_morpher <- epw_morpher_test__from_recipe(
         store = workflow_store,
         epw = get_cache_epw(),
         site_id = "SIN",
@@ -1130,15 +1155,16 @@ test_that("repeated runtime warnings do not block EPW output or resume", {
             variable_id = variable,
             frequency = "mon"
         )
-        epw_morpher_test_file_docs(
+        esgf_test__file_docs(
             basename(path),
-            path,
-            path,
+            opendap_url = path,
+            download_url = path,
             variable_id = variable,
-            frequency = "mon"
+            frequency = "mon",
+            table_id = "Amon"
         )
     })
-    query_id <- store$add_files(epw_morpher_test_result(
+    query_id <- store$add_files(esgf_test__file_result(
         as.data.frame(data.table::rbindlist(docs, fill = TRUE))
     ))
     plan <- store$plan_region(
@@ -1244,6 +1270,41 @@ test_that("repeated runtime warnings do not block EPW output or resume", {
         morpher$process_data(result$plan$morph_id)[[1L]]$parts,
         actual$parts
     )
+})
+
+test_that("morpher calendar columns prefer CF identity with legacy fallback", {
+    climate <- data.table::data.table(
+        time = as.POSIXct(
+            c("2060-12-25 12:00:00", "2060-12-26 12:00:00"),
+            tz = "UTC"
+        ),
+        year = c(2060L, 2062L),
+        cf_year = c(2061L, NA_integer_),
+        cf_month = c(1L, NA_integer_),
+        cf_day = c(1L, NA_integer_)
+    )
+
+    resolved <- morpher__resolve_calendar_columns(
+        climate,
+        month = TRUE,
+        day = TRUE
+    )
+
+    expect_identical(resolved$year, c(2061L, 2062L))
+    expect_identical(resolved$month, c(1L, 12L))
+    expect_identical(resolved$day, c(1L, 26L))
+
+    legacy <- data.table::data.table(
+        time = as.POSIXct("2061-02-03 12:00:00", tz = "UTC")
+    )
+    legacy <- morpher__resolve_calendar_columns(
+        legacy,
+        month = TRUE,
+        day = TRUE
+    )
+    expect_identical(legacy$year, 2061L)
+    expect_identical(legacy$month, 2L)
+    expect_identical(legacy$day, 3L)
 })
 
 # vim: fdm=marker :

@@ -1,14 +1,3 @@
-test_that("vmsg() respects epwshiftr.verbose", {
-    withr::with_options(
-        list("epwshiftr.verbose" = FALSE),
-        expect_silent(vmsg("a"))
-    )
-    withr::with_options(
-        list("epwshiftr.verbose" = TRUE),
-        expect_message(vmsg("a"), "a")
-    )
-})
-
 test_that("now()", {
     expect_s3_class(now(), "POSIXct")
     expect_equal(attr(now(), "tzone"), "UTC")
@@ -386,11 +375,16 @@ test_that(".onLoad() preserves explicit directory options", {
     expect_false(dir.exists(cache))
 })
 
-test_that("store_cmip6_index_path() / store_rel_path() / store_abs_path() keep paths inside the store", {
+test_that("store_rel_path() / store_abs_path() keep paths inside the store", {
     root <- tempfile("epwshiftr-store-")
     withr::local_options(list(epwshiftr.dir_store = root))
 
-    path <- store_cmip6_index_path(strrep("a", 64L))
+    path <- store_path(
+        "queries",
+        "cmip6-index",
+        sprintf("%s.csv", strrep("a", 64L)),
+        root = store_dir(init = TRUE)
+    )
     expect_identical(
         store_rel_path(path),
         sprintf("queries/cmip6-index/%s.csv", strrep("a", 64L))

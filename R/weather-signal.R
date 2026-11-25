@@ -5,10 +5,6 @@ NULL
 # experimental defaults introduced by an implementation.
 SIGNAL_PROFILE_EVIDENCE <- c("published", "experimental")
 
-# Signal execution either aborts at the first failed group or returns the
-# failure explicitly alongside successful group results.
-SIGNAL_ERROR_POLICIES <- c("abort", "collect")
-
 # Return the only successful signal-group payload shared by sequence-preserving
 # methods, while allowing each method to retain its own diagnostic identity.
 # signal__single_value {{{

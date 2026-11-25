@@ -880,15 +880,6 @@ epwphys__inconsistency_state <- function(weather) {
 }
 # }}}
 
-# Count humidity inconsistencies through the shared row-level diagnostic so
-# existing callers retain the established scalar correction contract.
-# epwphys__humidity_inconsistent {{{
-epwphys__humidity_inconsistent <- function(weather) {
-    state <- epwphys__inconsistency_state(weather)
-    as.integer(sum(state$humidity))
-}
-# }}}
-
 # Convert eastward and northward wind components to scalar speed and the
 # meteorological direction from which the wind originates.
 # epwphys__wind_from_components {{{

@@ -120,7 +120,6 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         )
 
     transform <- monthly_transform("original_morphing")
-    recipe <- transform__recipe(transform)
     collect_count_before_baseline <- length(calls$collect_times)
     baseline_reference <- shift_morph(
         climate,
@@ -131,10 +130,10 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     expect_true(S7::S7_inherits(baseline_reference, ShiftMorphed))
     expect_null(baseline_reference@meta$reference)
     expect_equal(length(calls$collect_times), collect_count_before_baseline)
-    morpher <- morpher__from_recipe(
-        epw = get_cache_epw(),
+    morpher <- epw_morpher(
         store = shift_store(climate),
-        recipe = recipe
+        epw = get_cache_epw(),
+        transform = transform
     )
     missing_reference <- morpher$preflight(
         plan_id = shift_ids(climate)$plan_id,

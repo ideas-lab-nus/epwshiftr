@@ -352,40 +352,6 @@ daily__temperature_target_changes <- function(
 }
 # }}}
 
-# Build calendar-neutral daily temperature changes from matching future and
-# historical climatologies. Missing extrema retain the mean delta explicitly.
-# daily__temperature_targets {{{
-daily__temperature_targets <- function(
-    future,
-    historical,
-    by = character(),
-    window_days = 31L,
-    target_year_days = 365L
-) {
-    checkmate::assert_character(by, any.missing = FALSE, unique = TRUE)
-    future <- daily__temperature_source(future, "future", by)
-    historical <- daily__temperature_source(historical, "historical", by)
-
-    future_climatology <- daily__temperature_climatology(
-        future,
-        by,
-        window_days,
-        target_year_days
-    )
-    historical_climatology <- daily__temperature_climatology(
-        historical,
-        by,
-        window_days,
-        target_year_days
-    )
-    daily__temperature_target_changes(
-        future_climatology,
-        historical_climatology,
-        by
-    )
-}
-# }}}
-
 # Construct a monotone normalized shape with fixed zero/one endpoints and the
 # requested mean. A power family retains all ordering and extrema positions.
 # daily__temperature_shape {{{

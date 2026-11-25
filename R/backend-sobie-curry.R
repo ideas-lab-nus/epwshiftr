@@ -831,32 +831,6 @@ sobie__specific_humidity_target <- function(hourly) {
 }
 # }}}
 
-# Close the method-defined Sobie-Curry HUSS target through the shared physical
-# kernel while retaining the established helper result used by diagnostics.
-# sobie__harmonized_humidity {{{
-sobie__harmonized_humidity <- function(hourly) {
-    target <- sobie__specific_humidity_target(hourly)
-    humidity <- epwphys__close_specific_humidity(
-        hourly[["temperature_projected"]],
-        hourly[["pressure_projected"]],
-        target$target_specific_humidity
-    )
-    c(
-        humidity[c(
-            "relative_humidity",
-            "dew_point_temperature"
-        )],
-        list(
-            baseline_specific_humidity = target$baseline_specific_humidity,
-            target_specific_humidity = humidity$target_specific_humidity,
-            specific_humidity = humidity$specific_humidity,
-            saturation_specific_humidity = humidity$saturation_specific_humidity,
-            status = humidity$status
-        )
-    )
-}
-# }}}
-
 # Select the paper-faithful independent thermodynamic transforms or the
 # harmonized HUSS-state closure without changing the preceding Sobie-Curry
 # climate signal, sequence, or hourly temperature stages.

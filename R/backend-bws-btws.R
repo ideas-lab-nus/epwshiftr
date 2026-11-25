@@ -500,24 +500,6 @@ bws_btws__daily_temperature_targets <- function(monthly) {
 }
 # }}}
 
-# Build both BWS monthly signals and expanded BTWS targets from normalized
-# monthly sources. This pure entry point keeps tests independent of pipelines.
-# bws_btws__monthly_targets {{{
-bws_btws__monthly_targets <- function(future, historical) {
-    monthly <- bws_btws__monthly_changes(
-        bws_btws__monthly_climatology(future, "future climate"),
-        bws_btws__monthly_climatology(
-            historical,
-            "historical climate"
-        )
-    )
-    list(
-        monthly = monthly,
-        temperature = bws_btws__daily_temperature_targets(monthly)
-    )
-}
-# }}}
-
 # Normalize the role-addressable EPW and monthly CMIP6 inputs without
 # introducing temporal smoothing that does not belong to BWS or BTWS.
 # bws_btws__preprocess_apply {{{

@@ -55,8 +55,8 @@ sdm_test__settings <- function(variable) {
 
 test_that("parametric distribution helpers fit and invert supported families", {
     normal_values <- c(-2, -1, 0, 1, 2)
-    normal <- distribution__fit(normal_values, "normal")
-    gamma <- distribution__fit(c(0.5, 1, 2, 3, 5, 8), "gamma")
+    normal <- distribution__fit_normal(normal_values)
+    gamma <- distribution__fit_gamma(c(0.5, 1, 2, 3, 5, 8))
     probabilities <- c(0.1, 0.5, 0.9)
 
     expect_identical(normal$family, "normal")

@@ -32,33 +32,6 @@ epw_morpher <- function(
 }
 # }}}
 
-# Construct an internal morpher from an executable recipe for backend and
-# component tests that intentionally exercise non-public registry extensions.
-# morpher__from_recipe {{{
-morpher__from_recipe <- function(
-    store,
-    epw,
-    recipe,
-    site_id = NULL,
-    label = NULL
-) {
-    if (!inherits(recipe, "epw_morph_recipe")) {
-        cli::cli_abort("{.arg recipe} must be an internal EPW morph recipe.")
-    }
-    object <- EpwMorpher$new(
-        store = store,
-        epw = epw,
-        site_id = site_id,
-        transform = monthly_transform("original_morphing"),
-        label = label
-    )
-    private <- priv(object)
-    private$transform <- NULL
-    private$recipe <- recipe
-    object
-}
-# }}}
-
 # morpher__now {{{
 morpher__now <- function() {
     as.POSIXct(Sys.time(), tz = "UTC")
@@ -239,12 +212,6 @@ morpher__delete_case_diagnostics <- function(store, morph_id, case_id) {
         )
     }
     invisible(NULL)
-}
-# }}}
-
-# morpher__case_columns {{{
-morpher__case_columns <- function() {
-    c("source_id", "experiment_id", "variant_label", "period")
 }
 # }}}
 
@@ -457,15 +424,6 @@ morpher__stat_rows <- function(dt) {
     rows[, plan_id := NA_character_]
     data.table::setcolorder(rows, c("plan_id", setdiff(names(rows), "plan_id")))
     rows[]
-}
-# }}}
-
-# morpher__field_units {{{
-morpher__field_units <- function(data, fields) {
-    stats::setNames(
-        lapply(fields, function(field) morpher__units_label(data[[field]])),
-        fields
-    )
 }
 # }}}
 

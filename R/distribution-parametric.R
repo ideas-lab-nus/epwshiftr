@@ -167,27 +167,6 @@ distribution__fit_gamma <- function(
 }
 # }}}
 
-# Dispatch the two published SDM distribution families through one
-# method-neutral fitting boundary.
-# distribution__fit {{{
-distribution__fit <- function(
-    values,
-    family,
-    tolerance = 1e-10,
-    max_iterations = 1000L
-) {
-    checkmate::assert_choice(family, c("normal", "gamma"))
-    if (identical(family, "normal")) {
-        return(distribution__fit_normal(values))
-    }
-    distribution__fit_gamma(
-        values,
-        tolerance = tolerance,
-        max_iterations = max_iterations
-    )
-}
-# }}}
-
 # Evaluate the CDF of one validated Normal, Gamma, or Weibull distribution,
 # including an optional fixed location for either positive-family fit.
 # distribution__cdf {{{

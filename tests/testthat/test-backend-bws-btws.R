@@ -149,10 +149,13 @@ test_that("BWS/BTWS monthly sources produce 12 month-constant target sets", {
         cloud_scale = cloud_scale
     )
 
-    targets <- bws_btws__monthly_targets(future, historical)
-    temperature <- targets$temperature
+    monthly <- bws_btws__monthly_changes(
+        bws_btws__monthly_climatology(future, "future climate"),
+        bws_btws__monthly_climatology(historical, "historical climate")
+    )
+    temperature <- bws_btws__daily_temperature_targets(monthly)
 
-    expect_identical(nrow(targets$monthly), 12L)
+    expect_identical(nrow(monthly), 12L)
     expect_identical(nrow(temperature), 365L)
     expect_identical(sort(unique(temperature$month)), seq_len(12L))
     expect_true(all(temperature$dtr_status == "adjusted"))
@@ -180,12 +183,12 @@ test_that("BWS/BTWS monthly sources produce 12 month-constant target sets", {
         temperature[, data.table::uniqueN(mean_delta), by = "month"]$V1 == 1L
     ))
     expect_equal(
-        targets$monthly$rsds_delta,
+        monthly$rsds_delta,
         radiation_shift,
         tolerance = 1e-12
     )
     expect_equal(
-        targets$monthly$clt_scale,
+        monthly$clt_scale,
         cloud_scale,
         tolerance = 1e-12
     )
