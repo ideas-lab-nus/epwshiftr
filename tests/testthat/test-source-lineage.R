@@ -607,6 +607,18 @@ test_that("legacy local source records distinguish missing and conflicting evide
             },
             metadata = list()
         )
+        if (fault == "missing") {
+            # A historical artifact is genuinely unproven only after its
+            # independent transport checkpoint is absent too. Keep native bytes.
+            downloader <- store$downloader()
+            tasks <- downloader$tasks()
+            proof <- file.path(
+                downloader$config$temp,
+                paste0(tasks$task_id, ".transfer.json")
+            )
+            priv(downloader)$disconnect_manifest()
+            unlink(proof)
+        }
         next_plan <- store$plan_region(
             q,
             104.5,

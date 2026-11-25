@@ -52,8 +52,10 @@ test_that("shift_extract() fallback policy is available from collected files", {
         include_opendap = FALSE
     )
     docs$size <- file.info(nc)$size
-    docs$checksum <- NA_character_
-    docs$checksum_type <- NA_character_
+    # This queued target has no GET receipt: only the fixture publisher's
+    # expected content hash can authorize reusing the manually placed bytes.
+    data.table::set(docs, j = "checksum", value = checksum_file(nc))
+    data.table::set(docs, j = "checksum_type", value = "SHA256")
 
     calls <- new.env(parent = emptyenv())
     calls$values <- character()
@@ -106,8 +108,24 @@ test_that("shift_extract() fallback policy is available from collected files", {
         time = time,
         fallback = "auto"
     )
-    expect_equal(shift_status(local_fallback), "extracted")
+    expect_equal(
+        shift_status(local_fallback),
+        "extracted",
+        info = paste(shift_diagnostics(local_fallback)$message, collapse = "\n")
+    )
     expect_true(all(shift_coverage(local_fallback)$complete))
+    store <- shift_store(files)
+    withr::defer(store$close())
+    artifact <- store$query(
+        "SELECT metadata_json FROM artifact WHERE kind = 'extract'"
+    )
+    receipt <- jsonlite::fromJSON(
+        artifact$metadata_json,
+        simplifyVector = FALSE
+    )$source_lineage$receipt
+    expect_true(receipt$checksum_verified)
+    expect_null(receipt$source_url)
+    expect_identical(receipt$local_sha256, checksum_file(nc))
 })
 
 # vim: fdm=marker :

@@ -194,6 +194,11 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
     if (!"dataset_id" %in% names(catalog)) {
         data.table::set(catalog, j = "dataset_id", value = NA_character_)
     }
+    # Acquisition rows must retain the same source descriptor as child Stores.
+    # Catalogues without a separate title identify the file by its filename.
+    if (!"title" %in% names(catalog)) {
+        data.table::set(catalog, j = "title", value = catalog$filename)
+    }
     keys <- c(
         "source_id",
         "experiment_id",
@@ -210,6 +215,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
             input_key,
             "file_key",
             "filename",
+            "title",
             "master_id",
             "dataset_id",
             "version",
@@ -346,6 +352,7 @@ shift_batch_plan__shared_plan <- function(catalog, consumers) {
         "logical_file_id",
         "file_key",
         "filename",
+        "title",
         "master_id",
         "dataset_id",
         "source_id",

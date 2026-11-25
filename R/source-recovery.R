@@ -162,9 +162,16 @@ source_recovery__select <- function(
     downloader,
     request,
     file,
-    overwrite = FALSE
+    overwrite = FALSE,
+    target = NULL
 ) {
     tasks <- data.table::as.data.table(downloader$tasks())
+    # A registered local artifact can only adopt the task that produced its
+    # exact physical path; another eligible task cannot relabel those bytes.
+    if (!is.null(target) && nrow(tasks)) {
+        paths <- vapply(tasks$target_path, store_normalize_path, character(1L))
+        tasks <- tasks[paths == store_normalize_path(target)]
+    }
     if (!nrow(tasks)) {
         return(NULL)
     }
@@ -294,6 +301,158 @@ source_recovery__select <- function(
 }
 # }}}
 
+# Hold the source lifecycle lock from Downloader construction through disconnect.
+# Network recovery and offline adoption share exclusion and connection lifetime.
+# source_recovery__with_downloader {{{
+source_recovery__with_downloader <- function(manifest, config, read) {
+    dir.create(dirname(manifest), recursive = TRUE, showWarnings = FALSE)
+    release <- manifest_acquire_lock(
+        file.path(dirname(manifest), "source-transfer"),
+        timeout = 5
+    )
+    downloader <- NULL
+    on.exit(
+        {
+            if (!is.null(downloader)) {
+                priv(downloader)$disconnect_manifest()
+            }
+            release()
+        },
+        add = TRUE
+    )
+    args <- if (file.exists(manifest)) {
+        config[setdiff(names(config), c("dest", "temp"))]
+    } else {
+        config
+    }
+    args$manifest <- manifest
+    downloader <- do.call(Downloader$new, args)
+    read(downloader)
+}
+# }}}
+
+# Build the same exact receipt from a completed actual task in either workflow.
+# A local SHA remains separate from publisher verification; the caller validates
+# the saved task's producer checkpoint before treating the receipt as reusable.
+# source_recovery__task_receipt {{{
+source_recovery__task_receipt <- function(file, task, manifest, path, owner) {
+    task <- as.data.frame(task)
+    request <- source_recovery__describe(file)
+    local_sha256 <- checksum_file(path)
+    publisher_verified <- !is.na(request$checksum) &&
+        identical(
+            tolower(
+                if (request$checksum_type == "sha256") {
+                    local_sha256
+                } else {
+                    checksum_file(path, request$checksum_type)
+                }
+            ),
+            request$checksum
+        )
+    if (!is.na(request$checksum) && !publisher_verified) {
+        stop(
+            "HTTPServer publisher checksum verification failed.",
+            call. = FALSE
+        )
+    }
+    list(
+        schema = "epwshiftr-source-receipt-v1",
+        request = request,
+        owner = owner,
+        manifest = store_normalize_path(manifest),
+        session_id = store__chr1(task$session_id),
+        task_id = store__chr1(task$task_id),
+        source_url = store__chr1(task$selected_url),
+        final_url = store__chr1(task$transfer_final_url),
+        path = store_normalize_path(path),
+        bytes = as.double(file.info(path)$size),
+        local_sha256 = local_sha256,
+        checksum_verified = publisher_verified,
+        verification_method = if (publisher_verified) {
+            "publisher-checksum"
+        } else {
+            "local-sha256"
+        },
+        task = as.list(task[1L, , drop = FALSE])
+    )
+}
+# }}}
+
+# Recover saved producer proof for generic Store downloads without any network
+# access. Filename-only legacy artifacts remain insufficient when their exact
+# Downloader task has no completed GET checkpoint or publisher content proof.
+# source_recovery__downloaded_receipt {{{
+source_recovery__downloaded_receipt <- function(
+    store,
+    file,
+    path,
+    metadata,
+    context
+) {
+    manifest <- store__chr1(metadata$download_manifest)
+    if (is.na(manifest)) {
+        manifest <- file.path(
+            store$path,
+            "downloads",
+            "_downloader",
+            "manifest.duckdb"
+        )
+    }
+    if (!file.exists(manifest)) {
+        return(NULL)
+    }
+    request <- source_recovery__describe(file)
+    source_recovery__with_downloader(
+        manifest,
+        list(),
+        function(downloader) {
+            selected <- source_recovery__select(
+                downloader,
+                request,
+                file,
+                target = path
+            )
+            if (
+                is.null(selected) ||
+                    !selected$task$status[[1L]] %in% c("done", "skipped")
+            ) {
+                return(NULL)
+            }
+            task <- selected$task
+            for (field in c("session_id", "task_id")) {
+                saved <- store__chr1(metadata[[paste0("download_", field)]])
+                if (
+                    !is.na(saved) &&
+                        !identical(saved, store__chr1(task[[field]]))
+                ) {
+                    return(NULL)
+                }
+            }
+            receipt <- source_recovery__task_receipt(
+                file,
+                task,
+                manifest,
+                path,
+                selected$owner
+            )
+            source_recovery__check(
+                list(
+                    schema = "epwshiftr-source-lineage-v1",
+                    request = receipt$request,
+                    receipt = receipt,
+                    access_method = "HTTPServer",
+                    target = receipt$path
+                ),
+                file,
+                context
+            )
+            receipt
+        }
+    )
+}
+# }}}
+
 # Recover one exact task under a lock held from construction through connection
 # close. The outer source lock is separate from Downloader's reentrant operation
 # lock, so internal manifest writes retain their existing lock contract.
@@ -318,199 +477,172 @@ source_recovery__download <- function(
     # Each candidate is inspected and executed under its own lifetime lock;
     # returning NULL preserves ineligible history before trying another location.
     recover <- function(manifest, create) {
-        dir.create(dirname(manifest), recursive = TRUE, showWarnings = FALSE)
-        release <- manifest_acquire_lock(
-            file.path(dirname(manifest), "source-transfer"),
-            timeout = 5
-        )
-        # LIFO cleanup is explicit: the DuckDB connection must close before the
-        # lifecycle lock permits a replacement reader to construct Downloader.
-        downloader <- NULL
-        on.exit(
-            {
-                if (!is.null(downloader)) {
-                    priv(downloader)$disconnect_manifest()
-                }
-                release()
-            },
-            add = TRUE
-        )
-        args <- if (file.exists(manifest)) {
-            config[setdiff(names(config), c("dest", "temp"))]
-        } else {
-            config
-        }
-        args$manifest <- manifest
-        downloader <- do.call(Downloader$new, args)
-        selected <- source_recovery__select(
-            downloader,
-            request,
-            file,
-            overwrite
-        )
-        if (is.null(selected) && !create) {
-            return(NULL)
-        }
-        if (is.null(selected)) {
-            plan <- store__download_plan_rows(file)
-            data.table::set(plan, j = "checksum", value = request$checksum)
-            data.table::set(
-                plan,
-                j = "checksum_type",
-                value = if (is.na(request$checksum_type)) {
-                    "sha256"
-                } else {
-                    request$checksum_type
-                }
-            )
-            # Both session and destination distinguish a fresh request from
-            # unrelated or unverifiable retained data, including orphan finals.
-            generation <- basename(tempfile("recovery-"))
-            data.table::set(
-                plan,
-                j = "subdir",
-                value = file.path(
-                    "source-recovery",
-                    source_recovery__key(request),
-                    generation
+        source_recovery__with_downloader(
+            manifest,
+            config,
+            function(downloader) {
+                selected <- source_recovery__select(
+                    downloader,
+                    request,
+                    file,
+                    overwrite
                 )
-            )
-            session <- downloader$enqueue(
-                plan,
-                session_label = "source-http-fallback"
-            )
-            task <- data.table::as.data.table(downloader$tasks(
-                session_id = session
-            ))
-            selected <- list(task = task, owner = request)
-        }
-        task <- selected$task
-        stopifnot(nrow(task) == 1L)
-        owner_path <- source_recovery__owner_path(manifest, task$task_id[[1L]])
-        if (!file.exists(owner_path)) {
-            dir.create(
-                dirname(owner_path),
-                recursive = TRUE,
-                showWarnings = FALSE
-            )
-            store_write_json_atomic(
-                list(
-                    schema = "epwshiftr-source-owner-v1",
-                    request = selected$owner,
+                if (is.null(selected) && !create) {
+                    return(NULL)
+                }
+                if (is.null(selected)) {
+                    plan <- store__download_plan_rows(file)
+                    data.table::set(
+                        plan,
+                        j = "checksum",
+                        value = request$checksum
+                    )
+                    data.table::set(
+                        plan,
+                        j = "checksum_type",
+                        value = if (is.na(request$checksum_type)) {
+                            "sha256"
+                        } else {
+                            request$checksum_type
+                        }
+                    )
+                    # Both session and destination distinguish a fresh request from
+                    # unrelated or unverifiable retained data, including orphan finals.
+                    generation <- basename(tempfile("recovery-"))
+                    data.table::set(
+                        plan,
+                        j = "subdir",
+                        value = file.path(
+                            "source-recovery",
+                            source_recovery__key(request),
+                            generation
+                        )
+                    )
+                    session <- downloader$enqueue(
+                        plan,
+                        session_label = "source-http-fallback"
+                    )
+                    task <- data.table::as.data.table(downloader$tasks(
+                        session_id = session
+                    ))
+                    selected <- list(task = task, owner = request)
+                }
+                task <- selected$task
+                stopifnot(nrow(task) == 1L)
+                owner_path <- source_recovery__owner_path(
+                    manifest,
+                    task$task_id[[1L]]
+                )
+                if (!file.exists(owner_path)) {
+                    dir.create(
+                        dirname(owner_path),
+                        recursive = TRUE,
+                        showWarnings = FALSE
+                    )
+                    store_write_json_atomic(
+                        list(
+                            schema = "epwshiftr-source-owner-v1",
+                            request = selected$owner,
+                            session_id = task$session_id[[1L]],
+                            task_id = task$task_id[[1L]]
+                        ),
+                        owner_path,
+                        auto_unbox = TRUE,
+                        na = "null",
+                        null = "null"
+                    )
+                }
+                # Workflow callbacks remain an adapter concern; execution still uses the
+                # existing synchronous transport and only this selected task.
+                unbind <- if (!is.null(reporter)) {
+                    shift_run__download_reporter_bind(
+                        downloader,
+                        reporter,
+                        role = "HTTP fallback",
+                        variables = 1L,
+                        nested = TRUE
+                    )
+                } else {
+                    NULL
+                }
+                if (!is.null(unbind)) {
+                    on.exit(unbind(), add = TRUE)
+                }
+                # The selected legacy manifest may use a different saved temp directory.
+                # Announce only this exact transfer to the pool, without opening its
+                # locked DuckDB manifest or exposing unrelated historical task growth.
+                progress_path <- attr(config, "source_progress", exact = TRUE)
+                if (!is.null(progress_path)) {
+                    store_write_json_atomic(
+                        list(
+                            schema = "epwshiftr-source-progress-v1",
+                            manifest = downloader$manifest,
+                            temp = downloader$config$temp,
+                            task_id = task$task_id[[1L]],
+                            target_path = task$target_path[[1L]]
+                        ),
+                        progress_path,
+                        auto_unbox = TRUE,
+                        na = "null",
+                        null = "null"
+                    )
+                }
+                tasks <- downloader$resume(
+                    session_id = task$session_id[[1L]],
+                    task_id = task$task_id[[1L]],
+                    progress = is.null(reporter) &&
+                        isTRUE(attr(config, "progress")),
+                    overwrite = overwrite,
+                    resume = TRUE
+                )
+                stopifnot(
+                    nrow(tasks) == 1L,
+                    identical(tasks$task_id, task$task_id)
+                )
+                if (!tasks$status[[1L]] %in% c("done", "skipped")) {
+                    stop(
+                        paste(
+                            "HTTPServer download failed:",
+                            tasks$last_error[[1L]]
+                        ),
+                        call. = FALSE
+                    )
+                }
+                verified <- downloader$verify(
                     session_id = task$session_id[[1L]],
                     task_id = task$task_id[[1L]]
-                ),
-                owner_path,
-                auto_unbox = TRUE,
-                na = "null",
-                null = "null"
-            )
-        }
-        # Workflow callbacks remain an adapter concern; execution still uses the
-        # existing synchronous transport and only this selected task.
-        unbind <- if (!is.null(reporter)) {
-            shift_run__download_reporter_bind(
-                downloader,
-                reporter,
-                role = "HTTP fallback",
-                variables = 1L,
-                nested = TRUE
-            )
-        } else {
-            NULL
-        }
-        if (!is.null(unbind)) {
-            on.exit(unbind(), add = TRUE)
-        }
-        # The selected legacy manifest may use a different saved temp directory.
-        # Announce only this exact transfer to the pool, without opening its
-        # locked DuckDB manifest or exposing unrelated historical task growth.
-        progress_path <- attr(config, "source_progress", exact = TRUE)
-        if (!is.null(progress_path)) {
-            store_write_json_atomic(
-                list(
-                    schema = "epwshiftr-source-progress-v1",
-                    manifest = downloader$manifest,
-                    temp = downloader$config$temp,
-                    task_id = task$task_id[[1L]],
-                    target_path = task$target_path[[1L]]
-                ),
-                progress_path,
-                auto_unbox = TRUE,
-                na = "null",
-                null = "null"
-            )
-        }
-        tasks <- downloader$resume(
-            session_id = task$session_id[[1L]],
-            task_id = task$task_id[[1L]],
-            progress = is.null(reporter) && isTRUE(attr(config, "progress")),
-            overwrite = overwrite,
-            resume = TRUE
+                )
+                if (
+                    nrow(verified) != 1L || !isTRUE(verified$checksum_ok[[1L]])
+                ) {
+                    stop(
+                        "HTTPServer publisher checksum verification failed.",
+                        call. = FALSE
+                    )
+                }
+                path <- tasks$target_path[[1L]]
+                bytes <- as.double(file.info(path)$size)
+                expected_size <- suppressWarnings(as.double(file$size[[1L]]))
+                if (
+                    length(expected_size) == 1L &&
+                        !is.na(expected_size) &&
+                        bytes != expected_size
+                ) {
+                    stop(
+                        "HTTPServer source length verification failed.",
+                        call. = FALSE
+                    )
+                }
+                receipt <- source_recovery__task_receipt(
+                    file,
+                    tasks,
+                    manifest,
+                    path,
+                    selected$owner
+                )
+                list(path = path, manifest = manifest, receipt = receipt)
+            }
         )
-        stopifnot(nrow(tasks) == 1L, identical(tasks$task_id, task$task_id))
-        if (!tasks$status[[1L]] %in% c("done", "skipped")) {
-            stop(
-                paste("HTTPServer download failed:", tasks$last_error[[1L]]),
-                call. = FALSE
-            )
-        }
-        verified <- downloader$verify(
-            session_id = task$session_id[[1L]],
-            task_id = task$task_id[[1L]]
-        )
-        if (nrow(verified) != 1L || !isTRUE(verified$checksum_ok[[1L]])) {
-            stop(
-                "HTTPServer publisher checksum verification failed.",
-                call. = FALSE
-            )
-        }
-        path <- tasks$target_path[[1L]]
-        bytes <- as.double(file.info(path)$size)
-        expected_size <- suppressWarnings(as.double(file$size[[1L]]))
-        if (
-            length(expected_size) == 1L &&
-                !is.na(expected_size) &&
-                bytes != expected_size
-        ) {
-            stop("HTTPServer source length verification failed.", call. = FALSE)
-        }
-        publisher_verified <- !is.na(request$checksum) &&
-            identical(
-                tolower(checksum_file(path, request$checksum_type)),
-                request$checksum
-            )
-        if (!is.na(request$checksum) && !publisher_verified) {
-            stop(
-                "HTTPServer publisher checksum verification failed.",
-                call. = FALSE
-            )
-        }
-        receipt <- list(
-            schema = "epwshiftr-source-receipt-v1",
-            request = request,
-            owner = selected$owner,
-            manifest = store_normalize_path(manifest),
-            session_id = task$session_id[[1L]],
-            task_id = task$task_id[[1L]],
-            source_url = if (!is.na(store__chr1(tasks$transfer_request_url))) {
-                store__chr1(tasks$transfer_request_url)
-            } else {
-                store__chr1(tasks$selected_url)
-            },
-            final_url = store__chr1(tasks$transfer_final_url),
-            path = store_normalize_path(path),
-            bytes = bytes,
-            local_sha256 = checksum_file(path),
-            checksum_verified = publisher_verified,
-            verification_method = if (publisher_verified) {
-                "publisher-checksum"
-            } else {
-                "local-sha256"
-            },
-            task = as.list(tasks[1L, , drop = FALSE])
-        )
-        list(path = path, manifest = manifest, receipt = receipt)
     }
     for (manifest in manifests) {
         result <- recover(
@@ -781,18 +913,19 @@ source_recovery__check <- function(lineage, file, context) {
         ) {
             source_recovery__error("source conflict in saved receipt", context)
         }
+        # Publisher-qualified complete files can predate any GET. Leave their
+        # unknown producer URL absent; GET-based proof still needs its actual URL.
+        publisher <- isTRUE(receipt$checksum_verified) &&
+            !is.na(wanted$checksum) &&
+            identical(wanted$checksum_type, selected$checksum_type) &&
+            identical(wanted$checksum, selected$checksum)
+        required <- c("task_id", "session_id", "local_sha256")
+        if (!publisher) {
+            required <- c(required, "source_url")
+        }
         known <- function(x) !is.na(store__chr1(x))
         if (
-            !all(vapply(
-                receipt[c(
-                    "task_id",
-                    "session_id",
-                    "source_url",
-                    "local_sha256"
-                )],
-                known,
-                logical(1L)
-            )) ||
+            !all(vapply(receipt[required], known, logical(1L))) ||
                 is.null(receipt$bytes) ||
                 is.na(receipt$bytes)
         ) {
@@ -804,10 +937,6 @@ source_recovery__check <- function(lineage, file, context) {
         # A locally computed hash alone cannot certify a legacy final file.
         # New GET checkpoints and verified publisher checksums are byte-linked.
         transfer <- receipt$task
-        publisher <- isTRUE(receipt$checksum_verified) &&
-            !is.na(wanted$checksum) &&
-            identical(wanted$checksum_type, selected$checksum_type) &&
-            identical(wanted$checksum, selected$checksum)
         bound <- isTRUE(transfer$transfer_complete) &&
             identical(
                 store__chr1(transfer$transfer_sha256),
@@ -965,23 +1094,34 @@ source_recovery__local_open <- function(store, file, path) {
         ),
         error = function(e) NULL
     )
+    # An available checkpoint cannot override contradictory artifact ownership.
+    # Missing artifact metadata can still be reconstructed from that checkpoint.
+    request <- source_recovery__describe(file)
+    saved_endpoint <- store__chr1(artifact$source_url)
+    if (
+        is.na(request$checksum) &&
+            !is.na(saved_endpoint) &&
+            !identical(saved_endpoint, request$endpoint)
+    ) {
+        source_recovery__error(
+            "source conflict in local source endpoint",
+            context
+        )
+    }
     receipt <- metadata$source_receipt
     if (!is.list(receipt)) {
         receipt <- NULL
     }
     if (is.null(receipt)) {
-        request <- source_recovery__describe(file)
-        saved_endpoint <- store__chr1(artifact$source_url)
-        if (
-            is.na(request$checksum) &&
-                !is.na(saved_endpoint) &&
-                !identical(saved_endpoint, request$endpoint)
-        ) {
-            source_recovery__error(
-                "source conflict in local source endpoint",
-                context
-            )
-        }
+        receipt <- source_recovery__downloaded_receipt(
+            store,
+            file,
+            path,
+            metadata,
+            context
+        )
+    }
+    if (is.null(receipt)) {
         if (
             is.na(request$checksum) ||
                 !identical(

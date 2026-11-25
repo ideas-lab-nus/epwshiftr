@@ -3130,6 +3130,8 @@ EsgStore <- R6::R6Class(
                     if (is.na(checksum)) {
                         checksum <- NULL
                     }
+                    # Preserve the exact transport locator for later offline
+                    # adoption of its saved producer checkpoint.
                     artifact_id <- self$register_artifact(
                         kind = "netcdf",
                         path = local_path,
@@ -3141,7 +3143,12 @@ EsgStore <- R6::R6Class(
                         file_key = file_key,
                         source_url = store__chr1(task$selected_url[[1L]]),
                         metadata = list(
-                            filename = store__chr1(task$filename[[1L]])
+                            filename = store__chr1(task$filename[[1L]]),
+                            download_manifest = store_normalize_path(
+                                downloader$manifest
+                            ),
+                            download_session_id = store__chr1(task$session_id),
+                            download_task_id = store__chr1(task$task_id)
                         )
                     )
                     row$local_path <- store_rel_path(
