@@ -1,58 +1,9 @@
-# Use the shared native-calendar series and signal-boundary fixtures while
-# retaining the Quantile Mapping names used throughout this test module.
-qm_test__series <- signal_test__series
-qm_test__execution_inputs <- signal_test__execution_inputs
-
-# Execute one variable through the common signal lifecycle while replacing the
-# default seasonal window with a full-cycle window for compact test fixtures.
-# qm_test__execute {{{
-qm_test__execute <- function(
-    variable,
-    observed,
-    historical,
-    future,
-    overrides = list(),
-    key = list(site = "A"),
-    warn_experimental = FALSE
-) {
-    boundary <- qm_test__execution_inputs(
-        observed,
-        historical,
-        future,
-        key
-    )
-    settings <- utils::modifyList(
-        list(
-            seasonal_window_days = 365L,
-            target_year_days = 365L,
-            min_samples = 2L
-        ),
-        overrides
-    )
-    component__execute(
-        qm__component(),
-        "apply",
-        inputs = boundary$inputs,
-        groups = list(boundary$group),
-        overrides = stats::setNames(list(settings), variable),
-        warn_experimental = warn_experimental
-    )
-}
-# }}}
-
-# Retrieve one default settings record without relying on profile construction
-# order in tests that call the single-group kernel directly.
-# qm_test__settings {{{
-qm_test__settings <- function(variable) {
-    profiles <- qm__profiles()
-    index <- which(vapply(
-        profiles,
-        function(profile) identical(profile@variable_id, variable),
-        logical(1L)
-    ))
-    profiles[[index]]@settings
-}
-# }}}
+# Full-cycle compact window overrides shared by unit fixtures.
+qm_test__defaults <- list(
+    seasonal_window_days = 365L,
+    target_year_days = 365L,
+    min_samples = 2L
+)
 
 test_that("empirical CDF conventions make ties and tails explicit", {
     anchors <- quantile__cdf_anchors(c(1, 1, 2, 4))
@@ -79,27 +30,29 @@ test_that("empirical CDF conventions make ties and tails explicit", {
 })
 
 test_that("Quantile Mapping returns a typed future-backbone daily series", {
-    observed <- qm_test__series(
+    observed <- signal_test__series(
         "tas",
         2001L,
         c(10, 20, 30, 40)
     )
-    historical <- qm_test__series(
+    historical <- signal_test__series(
         "tas",
         1991L,
         c(0, 10, 20, 30)
     )
-    future <- qm_test__series(
+    future <- signal_test__series(
         "tas",
         2061L,
         c(5, 15, -10, 40)
     )
 
-    execution <- qm_test__execute(
+    execution <- signal_test__execute(
+        qm__component(),
         "tas",
         observed,
         historical,
-        future
+        future,
+        default_overrides = qm_test__defaults
     )
     adjusted <- execution@values[[1L]]
 
@@ -113,6 +66,12 @@ test_that("Quantile Mapping returns a typed future-backbone daily series", {
     expect_identical(adjusted@output_role, "model_future")
     expect_identical(adjusted@transformation, "quantile_mapping")
     expect_identical(adjusted@provenance$output_backbone, "model_future")
+    expect_identical(adjusted@provenance$mapping_type, "nonparametric")
+    expect_identical(adjusted@provenance$detrending, "none")
+    expect_identical(
+        adjusted@provenance$empirical_conventions$cdf,
+        "linear_interpolation"
+    )
     expect_identical(
         adjusted@provenance$diagnostics$lower_tail_values,
         1L
@@ -129,29 +88,31 @@ test_that("Quantile Mapping preserves identity across native CF calendars", {
     values <- c(2, 2, 4, 7, 9)
 
     for (calendar in calendars) {
-        observed <- qm_test__series(
+        observed <- signal_test__series(
             "tas",
             2000L,
             values,
             calendar
         )
-        historical <- qm_test__series(
+        historical <- signal_test__series(
             "tas",
             1990L,
             values,
             calendar
         )
-        future <- qm_test__series(
+        future <- signal_test__series(
             "tas",
             2060L,
             values,
             calendar
         )
-        execution <- qm_test__execute(
+        execution <- signal_test__execute(
+            qm__component(),
             "tas",
             observed,
             historical,
-            future
+            future,
+            default_overrides = qm_test__defaults
         )
 
         expect_equal(
@@ -168,27 +129,27 @@ test_that("Quantile Mapping preserves identity across native CF calendars", {
 })
 
 test_that("circular windows bridge the annual-phase boundary", {
-    observed <- qm_test__series(
+    observed <- signal_test__series(
         "tas",
         2001L,
         seq_len(365L) + 10
     )
-    historical <- qm_test__series(
+    historical <- signal_test__series(
         "tas",
         1991L,
         seq_len(365L)
     )
-    future <- qm_test__series(
+    future <- signal_test__series(
         "tas",
         2061L,
         seq_len(365L)
     )
-    boundary <- qm_test__execution_inputs(
+    boundary <- signal_test__execution_inputs(
         observed,
         historical,
         future
     )
-    settings <- qm_test__settings("tas")
+    settings <- signal_test__profile_settings(qm__profiles(), "tas")
     settings$seasonal_window_days <- 3L
     settings$min_samples <- 3L
 
@@ -208,15 +169,17 @@ test_that("circular windows bridge the annual-phase boundary", {
 })
 
 test_that("bounds clip mapped values and are retained in diagnostics", {
-    observed <- qm_test__series("hurs", 2001L, c(-10, 25, 75, 120))
-    historical <- qm_test__series("hurs", 1991L, c(0, 1, 2, 3))
-    future <- qm_test__series("hurs", 2061L, c(0, 1, 2, 3))
+    observed <- signal_test__series("hurs", 2001L, c(-10, 25, 75, 120))
+    historical <- signal_test__series("hurs", 1991L, c(0, 1, 2, 3))
+    future <- signal_test__series("hurs", 2061L, c(0, 1, 2, 3))
 
-    execution <- qm_test__execute(
+    execution <- signal_test__execute(
+        qm__component(),
         "hurs",
         observed,
         historical,
-        future
+        future,
+        default_overrides = qm_test__defaults
     )
     adjusted <- execution@values[[1L]]
 
@@ -226,21 +189,25 @@ test_that("bounds clip mapped values and are retained in diagnostics", {
         2L
     )
     expect_identical(adjusted@settings$bounds, c(0, 100))
+    expect_identical(
+        execution@profiles$hurs$metadata$default_source,
+        "package_implementation"
+    )
 })
 
 test_that("precipitation hurdle mapping has deterministic dry-day control", {
     count <- 40L
-    observed <- qm_test__series(
+    observed <- signal_test__series(
         "pr",
         2001L,
         c(rep.int(0, 8L), seq_len(32L))
     )
-    historical <- qm_test__series(
+    historical <- signal_test__series(
         "pr",
         1991L,
         c(rep.int(0, 20L), seq_len(20L))
     )
-    future <- qm_test__series(
+    future <- signal_test__series(
         "pr",
         2061L,
         rep.int(0, count)
@@ -248,26 +215,32 @@ test_that("precipitation hurdle mapping has deterministic dry-day control", {
     set.seed(2026)
     seed_before <- .Random.seed
 
-    first <- qm_test__execute(
+    first <- signal_test__execute(
+        qm__component(),
         "pr",
         observed,
         historical,
         future,
-        overrides = list(dry_threshold = 0, random_seed = 99L)
+        overrides = list(dry_threshold = 0, random_seed = 99L),
+        default_overrides = qm_test__defaults
     )
-    second <- qm_test__execute(
+    second <- signal_test__execute(
+        qm__component(),
         "pr",
         observed,
         historical,
         future,
-        overrides = list(dry_threshold = 0, random_seed = 99L)
+        overrides = list(dry_threshold = 0, random_seed = 99L),
+        default_overrides = qm_test__defaults
     )
-    different <- qm_test__execute(
+    different <- signal_test__execute(
+        qm__component(),
         "pr",
         observed,
         historical,
         future,
-        overrides = list(dry_threshold = 0, random_seed = 100L)
+        overrides = list(dry_threshold = 0, random_seed = 100L),
+        default_overrides = qm_test__defaults
     )
 
     first_values <- first@values[[1L]]@data$value
@@ -279,7 +252,7 @@ test_that("precipitation hurdle mapping has deterministic dry-day control", {
     ))
     expect_true(any(first_values == 0))
     expect_true(any(first_values > 0))
-    precipitation <- (first@values[[1L]]@provenance$diagnostics$precipitation)
+    precipitation <- first@values[[1L]]@provenance$diagnostics$precipitation
     expect_identical(precipitation$input_dry_values, count)
     expect_identical(precipitation$randomized_dry_values, count)
     expect_true(precipitation$output_dry_values < count)
@@ -290,29 +263,16 @@ test_that("precipitation hurdle mapping has deterministic dry-day control", {
     )
 })
 
-test_that("Quantile Mapping rejects unsupported or insufficient inputs", {
-    observed <- qm_test__series("tas", 2001L, c(1, 2, 3, 4))
-    historical <- qm_test__series("tas", 1991L, c(1, 2, 3, 4))
-    future <- qm_test__series("tas", 2061L, c(1, 2, 3, 4))
-    boundary <- qm_test__execution_inputs(
+test_that("Quantile Mapping rejects insufficient circular-window samples", {
+    observed <- signal_test__series("tas", 2001L, c(1, 2, 3, 4))
+    historical <- signal_test__series("tas", 1991L, c(1, 2, 3, 4))
+    future <- signal_test__series("tas", 2061L, c(1, 2, 3, 4))
+    boundary <- signal_test__execution_inputs(
         observed,
         historical,
         future
     )
-    settings <- qm_test__settings("tas")
-
-    unsupported <- settings
-    unsupported$cdf_method <- "step_function"
-    expect_error(
-        component__execute(
-            qm__component(),
-            "apply_group",
-            inputs = boundary$group@inputs,
-            settings = list(tas = unsupported),
-            key = list()
-        ),
-        "requires linear empirical CDF"
-    )
+    settings <- signal_test__profile_settings(qm__profiles(), "tas")
 
     expect_error(
         component__execute(
@@ -324,100 +284,6 @@ test_that("Quantile Mapping rejects unsupported or insufficient inputs", {
         ),
         "fewer than 10"
     )
-
-    incompatible_units <- boundary$group@inputs
-    incompatible_units$model_future$units <- "degC"
-    expect_error(
-        component__execute(
-            qm__component(),
-            "apply_group",
-            inputs = incompatible_units,
-            settings = list(
-                tas = utils::modifyList(
-                    settings,
-                    list(
-                        seasonal_window_days = 365L,
-                        min_samples = 2L
-                    )
-                )
-            ),
-            key = list()
-        ),
-        "identical units"
-    )
-
-    precipitation <- lapply(
-        boundary$group@inputs,
-        function(data) {
-            data$variable_id <- "pr"
-            data$units <- "kg m-2 s-1"
-            data
-        }
-    )
-    precipitation$model_future$value[[1L]] <- -1
-    pr_settings <- qm_test__settings("pr")
-    expect_error(
-        component__execute(
-            qm__component(),
-            "apply_group",
-            inputs = precipitation,
-            settings = list(
-                pr = utils::modifyList(
-                    pr_settings,
-                    list(
-                        seasonal_window_days = 365L,
-                        min_samples = 2L
-                    )
-                )
-            ),
-            key = list()
-        ),
-        "non-negative"
-    )
-})
-
-test_that("Quantile Mapping profiles retain evidence and registration", {
-    qm__register_component()
-    component <- component__get("signal", "quantile_mapping_daily")
-    profiles <- component@metadata$signal_profiles
-
-    expect_true(S7::S7_inherits(component, WeatherComponentSpec))
-    expect_identical(component@stage, "signal")
-    expect_identical(
-        component@input_kinds,
-        "calendar_indexed_daily_series"
-    )
-    expect_identical(component@output_kinds, "daily_adjusted_series")
-    expect_identical(component@scopes, "univariate")
-    expect_true(component@stochastic)
-    expect_identical(
-        sort(names(profiles)),
-        sort(c(QM_PUBLISHED_VARIABLES, QM_EXPERIMENTAL_VARIABLES))
-    )
-    expect_identical(profiles$tas$evidence, "published")
-    expect_identical(profiles$pr$evidence, "published")
-    expect_identical(profiles$hurs$evidence, "experimental")
-    expect_identical(
-        profiles$hurs$metadata$default_source,
-        "package_implementation"
-    )
-
-    calendar <- component__spec(
-        name = "qm_calendar_test",
-        stage = "calendar",
-        input_kinds = "preprocessed_daily_series",
-        output_kinds = "calendar_indexed_daily_series",
-        operations = list(apply = identity)
-    )
-    sequence <- component__spec(
-        name = "qm_sequence_test",
-        stage = "sequence",
-        input_kinds = "daily_adjusted_series",
-        output_kinds = "weather_sequence",
-        operations = list(generate = identity)
-    )
-    expect_true(component__compatible(calendar, component))
-    expect_true(component__compatible(component, sequence))
 })
 
 # vim: fdm=marker :
