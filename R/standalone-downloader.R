@@ -2021,12 +2021,36 @@ downloader__worker_dependencies <- function() {
     # actual response identity used by ordinary downloads before any body write.
     piece_guard <- function(handle, url, row, tmp, bind_evidence) {
         state <- NULL
+        full_response <- NULL
         received <- 0
         validate <- function(response) {
             if (!is.null(state)) {
                 return(invisible(NULL))
             }
             evidence <- transfer_response(response, url)
+            # A complete response cannot enter a piece writer. Capture its
+            # actual identity and let the caller retire the entire batch before
+            # opening the shared zero-based stream.
+            if (evidence$status == 200L) {
+                evidence$size <- suppressWarnings(as.numeric(
+                    evidence$content_length
+                ))
+                if (
+                    !is.na(evidence$content_encoding) &&
+                        tolower(evidence$content_encoding) != "identity"
+                ) {
+                    stop(
+                        "HTTP piece GET has incompatible content encoding.",
+                        call. = FALSE
+                    )
+                }
+                bind_evidence(evidence)
+                full_response <<- evidence
+                stop(
+                    "HTTP piece GET returned a complete response; restart required.",
+                    call. = FALSE
+                )
+            }
             text <- evidence$content_range
             parts <- if (!is.na(text)) {
                 regmatches(
@@ -2098,9 +2122,16 @@ downloader__worker_dependencies <- function() {
                     call. = FALSE
                 )
             }
+            # Each chunk is flushed before completion. Checkpoint its exact
+            # retained bytes before the caller closes and seals the piece.
+            state$bytes <<- received
+            state$sha256 <<- checksum_file(tmp, "sha256")
+            transfer_write(tmp, state)
             invisible(NULL)
         }
-        list(accept = accept, finish = finish)
+        list(accept = accept, finish = finish, full_response = function() {
+            full_response
+        })
     }
 
     # A sidecar belongs to one generation of retained bytes. Atomic replacement
@@ -2205,7 +2236,8 @@ downloader__worker_dependencies <- function() {
         transfer_policy,
         checksum = NULL,
         resume = TRUE,
-        on_progress = function(bytes) NULL
+        on_progress = function(bytes) NULL,
+        representation = NULL
     ) {
         http <- grepl("^https?://", url, ignore.case = TRUE)
         checksum <- null_if_empty(checksum)
@@ -2465,6 +2497,37 @@ downloader__worker_dependencies <- function() {
                     }
                 }
             }
+            # Segmented recovery carries the original actual-GET anchors into
+            # this common byte path. They constrain a fresh GET even though no
+            # earlier piece is appended to the new file.
+            if (!is.null(representation)) {
+                if (is.finite(total) && total != representation$size) {
+                    changed(
+                        "HTTP total length changed during complete-response recovery."
+                    )
+                }
+                if (is.null(checksum)) {
+                    for (anchor in representation$anchors) {
+                        if (
+                            !identical(anchor$request_url, url) ||
+                                !identical(anchor$final_url, final_url) ||
+                                is.null(null_if_empty(anchor$validator_kind)) ||
+                                !identical(
+                                    anchor$validator_kind,
+                                    validator_kind
+                                ) ||
+                                !identical(
+                                    anchor$validator_value,
+                                    validator_value
+                                )
+                        ) {
+                            changed(
+                                "HTTP validator or resource changed during complete-response recovery."
+                            )
+                        }
+                    }
+                }
+            }
             # A full response to Range always starts a fresh generation. Save
             # the former bytes before publishing the replacement's metadata.
             if (http && start_byte > 0 && status == 200L) {
@@ -2474,6 +2537,11 @@ downloader__worker_dependencies <- function() {
                 transfer_preserve(tmp_part)
                 write_start <<- 0
                 prior <<- NULL
+            }
+            # The full-200 decision resets write_start. A chunked replacement
+            # must therefore use the entire anchored total, not the old suffix.
+            if (!is.null(representation) && !is.finite(expected)) {
+                expected <<- representation$size - write_start
             }
             if (is.null(prior)) {
                 if (file.exists(tmp_part) && write_start == 0) {
@@ -2499,7 +2567,11 @@ downloader__worker_dependencies <- function() {
             state$path <<- tmp_part
             state$complete <<- FALSE
             state$checksum_verified <<- FALSE
-            state$replaces_prior <<- http && start_byte > 0 && status == 200L
+            state$replaces_prior <<- !is.null(representation) ||
+                (http && start_byte > 0 && status == 200L)
+            if (!is.null(representation)) {
+                state$range_fallback <<- representation
+            }
             # A resumed GET describes its suffix. Keep the original producer's
             # identity and record a differing replica response separately; only
             # the expected publisher checksum may certify that mixed transfer.
@@ -2839,7 +2911,9 @@ downloader__worker_segmented_download <- function(
     evidence_by_resource <- list()
     # Bind every contributing GET to the fixed representation before writing.
     bind_evidence <- function(evidence) {
-        if (evidence$size != sum(pieces$byte_count)) {
+        if (
+            is.finite(evidence$size) && evidence$size != sum(pieces$byte_count)
+        ) {
             stop(
                 "source_changed: Actual HTTP piece total differs from the planned representation.",
                 call. = FALSE
@@ -2871,7 +2945,9 @@ downloader__worker_segmented_download <- function(
                             previous$validator_value,
                             evidence$validator_value
                         ) ||
-                        previous$size != evidence$size)
+                        (is.finite(previous$size) &&
+                            is.finite(evidence$size) &&
+                            previous$size != evidence$size))
             ) {
                 stop(
                     "source_changed: HTTP range pieces describe different representations.",
@@ -2879,7 +2955,9 @@ downloader__worker_segmented_download <- function(
                 )
             }
         }
-        evidence_by_resource[[key]] <<- evidence
+        if (is.null(previous)) {
+            evidence_by_resource[[key]] <<- evidence
+        }
         invisible(NULL)
     }
     # A saved length alone cannot authorize reuse of an earlier HTTP piece.
@@ -3121,7 +3199,8 @@ downloader__worker_segmented_download <- function(
                                         "HTTP Range request returned status %s or unexpected byte count.",
                                         response$status_code
                                     )
-                                }
+                                },
+                                full_response = guard$full_response()
                             )
                         }
                     },
@@ -3135,7 +3214,8 @@ downloader__worker_segmented_download <- function(
                                 guard_error
                             } else {
                                 as.character(error)
-                            }
+                            },
+                            full_response = guard$full_response()
                         )
                     },
                     pool = pool
@@ -3189,6 +3269,131 @@ downloader__worker_segmented_download <- function(
             }
         }
         out
+    }
+
+    # Whole-file replacement begins only after download_http_batch has returned,
+    # cancelled its handles and closed its writers. Persist the original anchors
+    # separately from the new bytes so a later process can repeat this recovery.
+    recover_full_response <- function(response = NULL) {
+        tmp_part <- file.path(temp, paste0(tmp_id, ".part"))
+        saved <- worker_dependencies$transfer_read(tmp_part)
+        representation <- saved$range_fallback
+        if (is.null(representation)) {
+            representation <- list(
+                size = sum(pieces$byte_count),
+                anchors = evidence_by_resource,
+                response = response
+            )
+            if (file.exists(tmp_part) || !is.null(saved)) {
+                worker_dependencies$transfer_preserve(tmp_part)
+            }
+            worker_dependencies$transfer_write(
+                tmp_part,
+                list(
+                    generation = basename(tempfile("transfer-")),
+                    bytes = 0,
+                    sha256 = NA_character_,
+                    complete = FALSE,
+                    checksum_verified = FALSE,
+                    range_fallback = representation
+                )
+            )
+        }
+        # Only known active piece paths move; retained history is never deleted
+        # by the ordinary task-piece cleanup after a successful replacement.
+        for (i in seq_len(nrow(pieces))) {
+            path <- pieces$path[[i]]
+            suffix <- paste0(".retained-", basename(tempfile()))
+            for (active in c(
+                path,
+                paste0(path, ".part"),
+                paste0(path, ".transfer.json")
+            )) {
+                if (
+                    file.exists(active) &&
+                        !file.rename(active, paste0(active, suffix))
+                ) {
+                    stop(
+                        "Cannot preserve the previous HTTP range piece.",
+                        call. = FALSE
+                    )
+                }
+            }
+            pieces$status[[i]] <<- "pending"
+            pieces$bytes_done[[i]] <<- 0
+        }
+        if (file.exists(tmp_done)) {
+            if (
+                !file.rename(
+                    tmp_done,
+                    paste0(tmp_done, ".retained-", basename(tempfile()))
+                )
+            ) {
+                stop(
+                    "Cannot preserve the previous complete response.",
+                    call. = FALSE
+                )
+            }
+            worker_dependencies$transfer_preserve(tmp_part)
+        }
+        url <- representation$response$request_url
+        error <- tryCatch(
+            {
+                worker_dependencies$transfer_stream(
+                    url = url,
+                    tmp_part = tmp_part,
+                    tmp_done = tmp_done,
+                    timeout = timeout,
+                    start_byte = 0,
+                    connect_timeout = connect_timeout,
+                    ssl_verifypeer = ssl_verifypeer,
+                    proxy = proxy,
+                    useragent = useragent,
+                    transfer_policy = transfer_policy,
+                    checksum = checksum,
+                    resume = TRUE,
+                    representation = representation
+                )
+                if (!verify_checksum(tmp_done, checksum, checksum_type)) {
+                    stop(
+                        "source_changed: Replacement content does not match the fixed publisher checksum.",
+                        call. = FALSE
+                    )
+                }
+                NULL
+            },
+            error = function(e) conditionMessage(e)
+        )
+        if (!is.null(error)) {
+            return(list(
+                ok = FALSE,
+                error = error,
+                pieces = pieces,
+                mode_used = mode_used
+            ))
+        }
+        path <- worker_dependencies$finalize(tmp_done, target_path)
+        worker_dependencies$transfer_seal(
+            tmp_part,
+            path,
+            checksum,
+            checksum_type
+        )
+        list(
+            ok = TRUE,
+            path = path,
+            selected_url = url,
+            used_candidate_id = candidates$candidate_id[candidates$url == url],
+            pieces = pieces,
+            mode_used = mode_used
+        )
+    }
+    saved_transfer <- worker_dependencies$transfer_read(file.path(
+        temp,
+        paste0(tmp_id, ".part")
+    ))
+    if (!is.null(saved_transfer$range_fallback)) {
+        return(recover_full_response())
     }
 
     while (any(!pieces$status %in% "done")) {
@@ -3310,6 +3515,37 @@ downloader__worker_segmented_download <- function(
                 }
                 results[[http_rows[[k]]]] <- result
             }
+        }
+        # A competing response can prove a change while another asks to restart
+        # from zero. Preserve that contradiction instead of letting the restart
+        # mask it after the entire batch has retired.
+        contradictions <- which(vapply(
+            results,
+            function(result) {
+                !isTRUE(result$ok) &&
+                    isTRUE(grepl("^source_changed:", one_chr(result$error)))
+            },
+            logical(1L)
+        ))
+        if (length(contradictions)) {
+            return(list(
+                ok = FALSE,
+                error = results[[contradictions[[1L]]]]$error,
+                pieces = pieces,
+                mode_used = mode_used
+            ))
+        }
+        complete_responses <- which(vapply(
+            results,
+            function(result) {
+                !is.null(result$full_response)
+            },
+            logical(1L)
+        ))
+        if (length(complete_responses)) {
+            return(recover_full_response(
+                results[[complete_responses[[1L]]]]$full_response
+            ))
         }
         for (pos in seq_along(batch_idx)) {
             idx <- batch_idx[[pos]]

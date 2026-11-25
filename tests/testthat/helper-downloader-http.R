@@ -633,4 +633,95 @@ downloader_transport__piece_app <- function(mode = "valid") {
 }
 environment(downloader_transport__piece_app) <- baseenv()
 
+# A node can advertise exact ranges during negotiation while ignoring bounded
+# GETs. Its public request log distinguishes discarded pieces from the fresh
+# whole-file GET used after all piece writers have retired.
+downloader_fallback__app <- function(mode = "full") {
+    app <- webfakes::new_app()
+    app$locals$bytes <- as.raw(rep(0:255, 32))
+    app$locals$mode <- mode
+    app$locals$phase <- if (
+        mode %in% c("full", "interrupt", "interrupt-full", "batch-change")
+    ) {
+        "full"
+    } else {
+        "partial"
+    }
+    app$locals$full_count <- 0L
+    app$locals$bounded_count <- 0L
+    app$locals$requests <- list()
+    app$all("/data", function(req, res, locals) {
+        range <- req$get_header("Range")
+        if (is.null(range)) {
+            range <- ""
+        }
+        locals$requests[[length(locals$requests) + 1L]] <- list(range = range)
+        res$set_header("ETag", '"Actual-A"')
+        if (range == "bytes=0-0") {
+            return(res$set_status(206L)$set_header(
+                "Content-Range",
+                "bytes 0-0/8192"
+            )$send(locals$bytes[1L]))
+        }
+        if (range != "" && !grepl("^bytes=[0-9]+-$", range)) {
+            locals$bounded_count <- locals$bounded_count + 1L
+            if (locals$mode == "batch-change" && locals$bounded_count > 1L) {
+                res$set_header("ETag", '"Actual-B"')
+            }
+        }
+        if (locals$phase == "partial") {
+            if (range == "bytes=0-2047") {
+                return(res$set_status(206L)$set_header(
+                    "Content-Range",
+                    "bytes 0-2047/8192"
+                )$send(locals$bytes[1:2048]))
+            }
+            return(res$set_status(503L)$send("temporarily unavailable"))
+        }
+        if (locals$mode == "range416" && range != "") {
+            return(res$set_status(416L)$set_header(
+                "Content-Range",
+                "bytes */8192"
+            )$send(raw()))
+        }
+        if (locals$mode %in% c("interrupt", "interrupt-full") && range == "") {
+            locals$full_count <- locals$full_count + 1L
+            if (locals$full_count == 1L) {
+                res$set_header("Content-Length", 8192L)
+                res$send_chunk(locals$bytes[1:1024])
+                return(invisible(NULL))
+            }
+        }
+        if (
+            locals$mode == "interrupt-full" && grepl("^bytes=[0-9]+-$", range)
+        ) {
+            res$send_chunk(locals$bytes)
+            return(invisible(NULL))
+        }
+        if (grepl("^bytes=[0-9]+-$", range)) {
+            start <- as.numeric(sub("-$", "", sub("^bytes=", "", range)))
+            return(res$set_status(206L)$set_header(
+                "Content-Range",
+                sprintf("bytes %.0f-8191/8192", start)
+            )$send(locals$bytes[(start + 1L):8192L]))
+        }
+        if (locals$mode %in% c("changed", "checksum-change")) {
+            res$set_header("ETag", '"Actual-B"')
+        }
+        if (locals$mode == "checksum-change") {
+            return(res$send(as.raw(rep(255:0, 32))))
+        }
+        res$send(locals$bytes)
+    })
+    app$get("/advance", function(req, res, locals) {
+        locals$phase <- "full"
+        res$send("ready")
+    })
+    app$get("/requests", function(req, res, locals) {
+        res$send_json(locals$requests)
+    })
+    app
+}
+environment(downloader_fallback__app) <- baseenv()
+
 # vim: fdm=marker :
