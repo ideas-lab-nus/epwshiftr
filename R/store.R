@@ -3680,6 +3680,7 @@ EsgStore <- R6::R6Class(
                             jobs[rows],
                             function(job) job$plan
                         )),
+                        files = lapply(jobs[rows], function(job) job$file),
                         file = jobs[[rows[[1L]]]]$file
                     )
                 })
@@ -3688,11 +3689,28 @@ EsgStore <- R6::R6Class(
                 # Register verified native downloads only in the manifest owner;
                 # readers never receive or write this store's DuckDB connection.
                 if (!is.null(value$download_manifest)) {
-                    stopifnot(identical(
-                        value$download_manifest,
-                        job$http$manifest
-                    ))
-                    store__sync_pool_download(self, value$download_manifest)
+                    # One verified native read may serve distinct replica
+                    # catalogue rows; register only those exact requests.
+                    files <- job$files
+                    if (is.null(files)) {
+                        files <- list(job$file)
+                    }
+                    keys <- vapply(
+                        files,
+                        function(file) store__chr1(file$file_key),
+                        character(1L)
+                    )
+                    for (file in files[!duplicated(keys)]) {
+                        store__sync_pool_download(
+                            self,
+                            value$download_manifest,
+                            source_recovery__receipt_for(
+                                file,
+                                value$download_receipt
+                            ),
+                            file
+                        )
+                    }
                 }
                 for (index in seq_along(job$indices)) {
                     row <- job$indices[[index]]
@@ -9297,111 +9315,26 @@ EsgStore <- R6::R6Class(
             overwrite = FALSE,
             reporter = NULL
         ) {
-            download <- store__chr1(file$url_download)
-            if (is.na(download) || !nzchar(download)) {
-                stop(
-                    "HTTPServer download URL is not available for this file record.",
-                    call. = FALSE
-                )
-            }
-
-            checksum <- store__chr1(file$checksum)
-            checksum_type <- tolower(store__chr1(file$checksum_type))
-            if (
-                is.na(checksum_type) || !checksum_type %in% c("md5", "sha256")
-            ) {
-                checksum <- NULL
-                checksum_type <- "sha256"
-            }
-            if (is.null(checksum) || is.na(checksum)) {
-                checksum <- NULL
-            }
-
-            downloader <- self$downloader(n_workers = 0L)
-            filename <- store__chr1(file$filename[[1L]])
-            if (is.na(filename)) {
-                filename <- basename(sub("\\?.*$", "", download))
-            }
-            logical_parts <- c(
-                store__chr1(file$tracking_id[[1L]]),
-                if (is.null(checksum)) NA_character_ else checksum,
-                filename,
-                store__chr1(file$file_key[[1L]])
-            )
-            logical_parts <- logical_parts[
-                !is.na(logical_parts) & nzchar(logical_parts)
-            ]
-            logical_file_id <- paste(logical_parts, collapse = ":")
-            if (!nzchar(logical_file_id)) {
-                logical_file_id <- file$file_key[[1L]]
-            }
-            plan <- data.table::data.table(
-                logical_file_id = logical_file_id,
-                file_key = file$file_key[[1L]],
-                esgf_id = file$esgf_id[[1L]],
-                dataset_id = file$dataset_id[[1L]],
-                filename = filename,
-                subdir = NA_character_,
-                checksum = if (is.null(checksum)) NA_character_ else checksum,
-                checksum_type = checksum_type,
-                size = suppressWarnings(as.numeric(file$size[[1L]])),
-                url = download,
-                service = "HTTPServer",
-                # The selected HTTP service can come from a different replica
-                # than the catalog's OPeNDAP record.
-                data_node = shift_stage__coalesce(
-                    query_result__url_host(download),
-                    file$data_node[[1L]]
+            config <- list(
+                dest = private$download_dir,
+                temp = private$tmp_download_dir,
+                manifest = file.path(
+                    private$download_dir,
+                    "_downloader",
+                    "manifest.duckdb"
                 ),
-                priority = 1L,
-                probe_latency = NA_real_,
-                probe_throughput = NA_real_
+                n_workers = 0L,
+                cleanup = FALSE
             )
-            plan <- private$apply_download_layout(plan, file)
-            session_id <- downloader$enqueue(
-                plan,
-                session_label = sprintf("extract:%s", file$file_key[[1L]])
+            attr(config, "progress") <- TRUE
+            recovered <- source_recovery__download(
+                file,
+                config,
+                overwrite = overwrite,
+                reporter = reporter
             )
-            unbind <- if (
-                !is.null(reporter) &&
-                    exists(
-                        "shift_run__download_reporter_bind",
-                        mode = "function"
-                    )
-            ) {
-                shift_run__download_reporter_bind(
-                    downloader,
-                    reporter,
-                    role = "HTTP fallback",
-                    variables = 1L,
-                    nested = TRUE
-                )
-            } else {
-                NULL
-            }
-            if (!is.null(unbind)) {
-                on.exit(unbind(), add = TRUE)
-            }
-            tasks <- downloader$run(
-                session_id = session_id,
-                # A workflow reporter is the sole Console owner. Native bars are
-                # retained only for standalone low-level extraction calls.
-                progress = is.null(reporter),
-                overwrite = overwrite
-            )
-            failed <- tasks[
-                !tasks[["status"]] %in% c("done", "skipped"),
-                ,
-                drop = FALSE
-            ]
-            if (nrow(failed)) {
-                stop(
-                    "HTTPServer download failed for this file record.",
-                    call. = FALSE
-                )
-            }
-            self$sync_downloads(downloader)
-            tasks$target_path[[1L]]
+            source_recovery__register(self, file, recovered$receipt)
+            recovered$path
         },
         # }}}
         # decorate_extract

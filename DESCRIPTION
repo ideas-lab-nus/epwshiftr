@@ -179,6 +179,7 @@ Collate:
     'shift-ui-state.R'
     'shift-ui-view.R'
     'source-pool.R'
+    'source-recovery.R'
     'source-read.R'
     'standalone-cache.R'
     'standalone-downloader.R'

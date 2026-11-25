@@ -4047,6 +4047,8 @@ test_that("plan source mapping groups replicas by physical identity", {
         "table_id",
         "variable_id",
         "title",
+        "filename",
+        "frequency",
         "version",
         "tracking_id",
         "checksum_type",
