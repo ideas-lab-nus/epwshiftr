@@ -52,54 +52,15 @@ sobie__backend_options <- function(options = NULL) {
 }
 # }}}
 
-# Convert one required CMIP variable to the SI representation used by the
-# thermodynamic derivations while rejecting duplicate, conflicting timestamps.
+# Extract one unit-normalized CMIP variable while rejecting duplicate,
+# conflicting timestamps before wide alignment.
 # sobie__variable_rows {{{
 sobie__variable_rows <- function(data, variable_id) {
     target_variable <- variable_id
-    rows <- data.table::as.data.table(data.table::copy(data))[
-        variable_id == target_variable
-    ]
-    if (!nrow(rows)) {
-        cli::cli_abort(
-            "Sobie-Curry climate input lacks required variable {.val {variable_id}}."
-        )
-    }
-
-    value <- switch(
-        variable_id,
-        tas = morpher__humidity_input_si(
-            rows[["value"]],
-            rows[["units"]],
-            "tas"
-        ),
-        tasmin = morpher__humidity_input_si(
-            rows[["value"]],
-            rows[["units"]],
-            "tas"
-        ),
-        tasmax = morpher__humidity_input_si(
-            rows[["value"]],
-            rows[["units"]],
-            "tas"
-        ),
-        huss = morpher__humidity_input_si(
-            rows[["value"]],
-            rows[["units"]],
-            "huss"
-        ),
-        ps = morpher__humidity_input_si(
-            rows[["value"]],
-            rows[["units"]],
-            "ps"
-        )
-    )
-    data.table::set(rows, j = ".sobie_value", value = value)
+    rows <- data[variable_id == target_variable]
     key <- c("time", "annual_phase")
     conflicts <- rows[,
-        .(
-            values = data.table::uniqueN(.SD[[".sobie_value"]])
-        ),
+        .(values = data.table::uniqueN(.SD[["value"]])),
         by = key
     ]
     if (any(conflicts[["values"]] > 1L)) {
@@ -108,8 +69,8 @@ sobie__variable_rows <- function(data, variable_id) {
         )
     }
     rows <- rows[!duplicated(rows, by = key)]
-    out <- rows[, c(key, ".sobie_value"), with = FALSE]
-    data.table::setnames(out, ".sobie_value", variable_id)
+    out <- rows[, c(key, "value"), with = FALSE]
+    data.table::setnames(out, "value", variable_id)
     out[]
 }
 # }}}
@@ -118,39 +79,33 @@ sobie__variable_rows <- function(data, variable_id) {
 # from aligned tas, huss, and surface pressure before factor estimation.
 # sobie__climate {{{
 sobie__climate <- function(data, name) {
-    checkmate::assert_data_frame(data)
-    checkmate::assert_string(name, min.chars = 1L)
-    required_columns <- c(
-        "variable_id",
-        "time",
-        "annual_phase",
-        "value",
-        "units",
-        "frequency"
+    variables <- c("tas", "tasmin", "tasmax", "huss", "ps")
+    normalized <- weather__normalize_climate_units(
+        data,
+        name = name,
+        expected_frequency = "day",
+        target_units = c(
+            tas = "K",
+            tasmin = "K",
+            tasmax = "K",
+            huss = "1",
+            ps = "Pa"
+        ),
+        required_cols = c(
+            "variable_id",
+            "time",
+            "annual_phase",
+            "value",
+            "units",
+            "frequency"
+        ),
+        required_variables = variables
     )
-    missing <- setdiff(required_columns, names(data))
-    if (length(missing)) {
-        cli::cli_abort(
-            "{.arg {name}} is missing Sobie-Curry column{?s}: {.val {missing}}."
-        )
-    }
-
-    frequencies <- unique(tolower(as.character(data[["frequency"]])))
-    frequencies <- frequencies[
-        !is.na(frequencies) & nzchar(frequencies)
-    ]
-    if (!identical(frequencies, "day")) {
-        shown <- if (length(frequencies)) frequencies else "<missing>"
-        cli::cli_abort(
-            "{.arg {name}} must use CMIP frequency {.val day}; found {.val {shown}}."
-        )
-    }
     daily__check_phase(
-        data[["annual_phase"]],
+        normalized[["annual_phase"]],
         sprintf("%s[['annual_phase']]", name)
     )
 
-    variables <- c("tas", "tasmin", "tasmax", "huss", "ps")
     wide <- Reduce(
         function(left, right) {
             merge(
@@ -162,7 +117,7 @@ sobie__climate <- function(data, name) {
             )
         },
         lapply(variables, function(variable_id) {
-            sobie__variable_rows(data, variable_id)
+            sobie__variable_rows(normalized, variable_id)
         })
     )
     incomplete <- !stats::complete.cases(wide[, variables, with = FALSE])
@@ -525,75 +480,6 @@ sobie__signal_factors <- function(
 }
 # }}}
 
-# Normalize the three role-addressable sources and construct the complete EPW
-# template shared by the subsequent Sobie-Curry component stages.
-# sobie__preprocess_apply {{{
-sobie__preprocess_apply <- function(inputs, context, options) {
-    morpher__validate_context(context)
-    options <- sobie__backend_options(options)
-    future <- weather__get_input(inputs, "model_future")
-    historical <- weather__get_input(inputs, "model_historical")
-    template <- weather__get_input(inputs, "weather_template")
-    baseline <- temperature__epw_template(template@source)
-    baseline$options <- options
-    list(
-        baseline = baseline,
-        future = sobie__climate(future@source, "future climate"),
-        historical = sobie__climate(
-            historical@source,
-            "historical climate"
-        ),
-        options = options
-    )
-}
-# }}}
-
-# Map both model periods to the shared circular 365-day grid before the signal
-# kernel is allowed to inspect their values.
-# sobie__calendar_apply {{{
-sobie__calendar_apply <- function(data, inputs, context, options) {
-    future <- sobie__daily_statistics_set(data$future)
-    historical <- sobie__daily_statistics_set(data$historical)
-    data$baseline$smoothing_windows <- sobie__smoothing_windows(
-        data$options$window_days
-    )
-    list(signal__group(
-        inputs = list(
-            weather_template = data$baseline,
-            model_historical = historical,
-            model_future = future
-        ),
-        variables = c("tas", "tasmin", "tasmax", "huss", "ps")
-    ))
-}
-# }}}
-
-# Execute only the factor equations; calendar mapping and hourly EPW
-# interpretation are deliberately outside this signal-stage kernel.
-# sobie__signal_apply_group {{{
-sobie__signal_apply_group <- function(inputs, settings, key) {
-    list(
-        baseline = inputs$weather_template,
-        factors = sobie__signal_factors(
-            inputs$model_future,
-            inputs$model_historical,
-            inputs$weather_template$smoothing_windows,
-            inputs$weather_template$options$tolerance
-        )
-    )
-}
-# }}}
-
-# Preserve the baseline CWEC/EPW sequence exactly, as the published method
-# changes hourly values but does not synthesize a new event sequence.
-# sobie__sequence_generate {{{
-sobie__sequence_generate <- function(data, inputs, context, options) {
-    value <- signal__single_value(data, "Sobie-Curry")
-    value$options <- sobie__backend_options(options)
-    value
-}
-# }}}
-
 # Resolve an EPW daily-range denominator with a traceable identity fallback for
 # a flat baseline day, where the published temperature equation is undefined.
 # sobie__temperature_alpha {{{
@@ -614,7 +500,7 @@ sobie__temperature_alpha <- function(dtr_delta, baseline_dtr, tolerance) {
 # Apply equations (1)-(6) independently to each preserved EPW day. Temperature
 # and dew-point anomaly changes are centered on their own baseline daily means.
 # sobie__hourly_reconstruct {{{
-sobie__hourly_reconstruct <- function(data, inputs, context, options) {
+sobie__hourly_reconstruct <- function(data) {
     baseline <- data$baseline
     factors <- data.table::copy(data$factors)
     tolerance <- data$options$tolerance
@@ -835,7 +721,7 @@ sobie__specific_humidity_target <- function(hourly) {
 # harmonized HUSS-state closure without changing the preceding Sobie-Curry
 # climate signal, sequence, or hourly temperature stages.
 # sobie__physics_apply {{{
-sobie__physics_apply <- function(data, inputs, context, options) {
+sobie__physics_apply <- function(data, context) {
     baseline <- data$baseline
     hourly <- data$hourly
     factors <- data$factors
@@ -1023,177 +909,49 @@ sobie__physics_apply <- function(data, inputs, context, options) {
 }
 # }}}
 
-# Assemble a complete backend result while retaining factor rows, actual
-# settings, and the source-formula interpretation for user inspection.
-# sobie__output_write {{{
-sobie__output_write <- function(
-    data,
-    inputs,
-    context,
-    options,
-    stages
-) {
-    epw_morph_result(
-        context,
-        epw = data$epw,
-        data = data$weather,
-        parts = list(
-            factors = data$factors,
-            settings = data$settings
-        ),
-        diagnostics = data$diagnostics,
-        factors = data$factors
+# Execute the Sobie-Curry daily thermodynamic workflow directly on a canonical
+# morphing context and return a standard epw_morph_result.
+# sobie__run {{{
+sobie__run <- function(context, backend = NULL) {
+    morpher__validate_context(context)
+    options <- sobie__backend_options(context$recipe$options)
+    inputs <- context$inputs
+    baseline <- temperature__epw_template(
+        weather__get_input(inputs, "weather_template")@source
     )
-}
-# }}}
-
-# Build seven method-neutral component specifications while retaining the
-# Sobie-Curry publication identity in profiles and the complete recipe.
-# sobie__component_specs {{{
-sobie__component_specs <- function() {
-    template <- component__input_requirement(
-        "weather_template",
-        representations = "epw",
-        frequencies = "hour",
-        calendars = "gregorian"
-    )
-    climate <- component__input_requirement(
-        "model_historical",
-        representations = "series",
-        frequencies = "day",
-        variable_sets = c("tas", "tasmin", "tasmax", "huss", "ps")
-    )
-    future <- component__input_requirement(
-        "model_future",
-        representations = "series",
-        frequencies = "day",
-        variable_sets = c("tas", "tasmin", "tasmax", "huss", "ps")
-    )
-    complete_inputs <- list(
-        weather_template = template,
-        model_historical = climate,
-        model_future = future
-    )
-    reference <- "https://doi.org/10.1016/j.dib.2025.111667"
-    profiles <- lapply(
-        c("tas", "tasmin", "tasmax", "huss", "ps"),
-        function(variable_id) {
-            signal__variable_profile(
-                variable_id,
-                evidence = "published",
-                references = reference,
-                metadata = list(
-                    method = "Sobie and Curry (2025)",
-                    published_window_days = 21L,
-                    dew_point_equation_interpretation = "sigma_future / sigma_historical - 1"
-                )
-            )
-        }
-    )
-
-    list(
-        preprocess = component__spec(
-            name = "daily_thermodynamic_inputs",
-            stage = "preprocess",
-            label = "Daily thermodynamic input normalization",
-            required_inputs = complete_inputs,
-            input_kinds = "role_inputs",
-            output_kinds = "daily_thermodynamic_preprocessed",
-            scopes = "multivariate",
-            operations = list(apply = sobie__preprocess_apply)
-        ),
-        calendar = component__spec(
-            name = "circular_thermodynamic_climatology",
-            stage = "calendar",
-            label = "Circular thermodynamic climatology",
-            required_inputs = complete_inputs,
-            input_kinds = "daily_thermodynamic_preprocessed",
-            output_kinds = "daily_thermodynamic_calendar_statistics",
-            scopes = "multivariate",
-            operations = list(apply = sobie__calendar_apply)
-        ),
-        signal = signal__component(
-            name = "daily_thermodynamic_change_factors",
-            label = "Daily thermodynamic change factors",
-            required_inputs = complete_inputs,
-            input_kinds = "daily_thermodynamic_calendar_statistics",
-            output_kinds = "daily_thermodynamic_factors",
-            scopes = "multivariate",
-            profiles = profiles,
-            apply_group = sobie__signal_apply_group
-        ),
-        sequence = component__spec(
-            name = "preserve_thermodynamic_epw_sequence",
-            stage = "sequence",
-            label = "Preserve baseline thermodynamic EPW sequence",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_thermodynamic_factors",
-            output_kinds = "daily_thermodynamic_sequence",
-            scopes = "multivariate",
-            operations = list(generate = sobie__sequence_generate)
-        ),
-        hourly = component__spec(
-            name = "daily_thermodynamic_transform",
-            stage = "hourly",
-            label = "Daily thermodynamic mean/anomaly transformation",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_thermodynamic_sequence",
-            output_kinds = "daily_thermodynamic_hourly_weather",
-            scopes = "multivariate",
-            operations = list(reconstruct = sobie__hourly_reconstruct)
-        ),
-        physics = component__spec(
-            name = "daily_thermodynamic_closure",
-            stage = "physics",
-            label = "Selectable daily thermodynamic closure",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_thermodynamic_hourly_weather",
-            output_kinds = "daily_thermodynamic_weather",
-            scopes = "multivariate",
-            operations = list(apply = sobie__physics_apply),
-            metadata = list(
-                physical_policies = c(
-                    "independent_thermodynamic_fields",
-                    "specific_humidity_delta"
-                )
-            )
-        ),
-        output = component__spec(
-            name = "daily_thermodynamic_epw_result",
-            stage = "output",
-            label = "Daily thermodynamic EPW result",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_thermodynamic_weather",
-            output_kinds = "epw_morph_result",
-            scopes = "multivariate",
-            operations = list(write = sobie__output_write)
+    future <- sobie__daily_statistics_set(
+        sobie__climate(
+            weather__get_input(inputs, "model_future")@source,
+            "future climate"
         )
     )
-}
-# }}}
-
-# Register the built-in Sobie-Curry components once without replacing an
-# extension that has already claimed the same stable registry identifier.
-# sobie__register_components {{{
-sobie__register_components <- function() {
-    component__register_builtins(sobie__component_specs())
-}
-# }}}
-
-# Return the stable seven-stage pipeline persisted by the registered
-# `sobie_curry_daily` complete-recipe definition.
-# sobie__pipeline {{{
-sobie__pipeline <- function() {
-    sobie__register_components()
-    pipeline__spec(list(
-        preprocess = "daily_thermodynamic_inputs",
-        calendar = "circular_thermodynamic_climatology",
-        signal = "daily_thermodynamic_change_factors",
-        sequence = "preserve_thermodynamic_epw_sequence",
-        hourly = "daily_thermodynamic_transform",
-        physics = "daily_thermodynamic_closure",
-        output = "daily_thermodynamic_epw_result"
-    ))
+    historical <- sobie__daily_statistics_set(
+        sobie__climate(
+            weather__get_input(inputs, "model_historical")@source,
+            "historical climate"
+        )
+    )
+    factors <- sobie__signal_factors(
+        future,
+        historical,
+        sobie__smoothing_windows(options$window_days),
+        options$tolerance
+    )
+    hourly <- sobie__hourly_reconstruct(
+        list(baseline = baseline, factors = factors, options = options)
+    )
+    closed <- sobie__physics_apply(hourly, context = context)
+    epw_morph_result(
+        context,
+        epw = closed$epw,
+        data = closed$weather,
+        parts = list(
+            factors = closed$factors,
+            settings = closed$settings
+        ),
+        diagnostics = closed$diagnostics,
+        factors = closed$factors
+    )
 }
 # }}}
 

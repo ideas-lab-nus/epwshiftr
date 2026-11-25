@@ -137,50 +137,246 @@ temperature__to_celsius <- function(value, units) {
 }
 # }}}
 
-# Convert extracted daily temperature rows to degrees Celsius and reject inputs
-# that cannot satisfy the shared daily-frequency temperature contract.
-# temperature__daily_climate {{{
-temperature__daily_climate <- function(data, name) {
+# Validate required columns, CMIP frequency, required variables, and units on a
+# daily or monthly climate source, converting each variable to its target unit.
+# weather__normalize_climate_units {{{
+weather__normalize_climate_units <- function(
+    data,
+    name,
+    expected_frequency,
+    target_units,
+    required_cols = c("variable_id", "value", "units", "frequency"),
+    required_variables = character(),
+    single_unit = FALSE
+) {
     checkmate::assert_data_frame(data)
     checkmate::assert_string(name, min.chars = 1L)
-    required <- c("variable_id", "annual_phase", "value", "units", "frequency")
-    missing <- setdiff(required, names(data))
+    checkmate::assert_string(expected_frequency, min.chars = 1L)
+    checkmate::assert_character(
+        target_units,
+        min.len = 1L,
+        any.missing = FALSE,
+        names = "unique"
+    )
+    checkmate::assert_character(
+        required_cols,
+        min.len = 1L,
+        any.missing = FALSE
+    )
+    checkmate::assert_character(required_variables, any.missing = FALSE)
+    checkmate::assert_flag(single_unit)
+
+    missing <- setdiff(required_cols, names(data))
     if (length(missing)) {
         cli::cli_abort(
-            "{.arg {name}} is missing daily temperature column{?s}: {.val {missing}}."
+            "{.arg {name}} is missing climate column{?s}: {.val {missing}}."
         )
     }
 
     frequencies <- unique(tolower(as.character(data[["frequency"]])))
-    frequencies <- frequencies[
-        !is.na(frequencies) & nzchar(frequencies)
-    ]
-    if (!identical(frequencies, "day")) {
+    frequencies <- frequencies[!is.na(frequencies) & nzchar(frequencies)]
+    if (!identical(frequencies, tolower(expected_frequency))) {
         shown <- if (length(frequencies)) frequencies else "<missing>"
         cli::cli_abort(
-            "{.arg {name}} must use CMIP frequency {.val day}; found {.val {shown}}."
+            "{.arg {name}} must use CMIP frequency {.val {expected_frequency}}; found {.val {shown}}."
         )
     }
 
-    keep <- data[["variable_id"]] %in% c("tas", "tasmin", "tasmax")
-    out <- data.table::as.data.table(data.table::copy(data))[keep]
+    variables <- names(target_units)
+    out <- data.table::as.data.table(data.table::copy(data))[
+        variable_id %in% variables
+    ]
+    present <- unique(as.character(out[["variable_id"]]))
+    missing_variables <- setdiff(required_variables, present)
+    if (length(missing_variables)) {
+        cli::cli_abort(
+            "{.arg {name}} is missing required variable{?s}: {.val {missing_variables}}."
+        )
+    }
     if (!nrow(out)) {
         cli::cli_abort(
-            "{.arg {name}} does not contain daily temperature variables."
+            "{.arg {name}} does not contain required climate variables."
         )
     }
 
-    units <- vapply(out[["units"]], morpher__unit_alias, character(1L))
-    unknown <- unique(units[is.na(units) | !units %in% c("K", "degC")])
-    if (length(unknown)) {
-        cli::cli_abort(
-            "{.arg {name}} contains unsupported temperature unit(s): {.val {unknown}}."
+    data.table::set(out, j = "value", value = as.numeric(out[["value"]]))
+    data.table::set(out, j = "units", value = as.character(out[["units"]]))
+    for (variable in intersect(variables, present)) {
+        rows <- which(out[["variable_id"]] == variable)
+        aliases <- vapply(
+            out[["units"]][rows],
+            morpher__unit_alias,
+            character(1L)
+        )
+        unique_aliases <- unique(aliases)
+        if (
+            isTRUE(single_unit) &&
+                (length(unique_aliases) != 1L || anyNA(unique_aliases))
+        ) {
+            cli::cli_abort(
+                "{.arg {name}} variable {.val {variable}} must use one supported unit."
+            )
+        }
+        if (anyNA(unique_aliases)) {
+            cli::cli_abort(
+                "{.arg {name}} variable {.val {variable}} contains an unsupported unit."
+            )
+        }
+        target <- target_units[[variable]]
+        values <- as.numeric(out[["value"]][rows])
+        for (unit in unique_aliases) {
+            idx <- which(aliases == unit)
+            if (
+                identical(variable, "huss") &&
+                    unit %in% c("1", "kg/kg") &&
+                    target %in% c("1", "kg/kg")
+            ) {
+                next
+            }
+            converted <- morpher__convert_value_checked(
+                values[idx],
+                unit,
+                target
+            )
+            if (!isTRUE(converted$ok)) {
+                cli::cli_abort(converted$message)
+            }
+            values[idx] <- converted$value
+        }
+        data.table::set(out, i = rows, j = "value", value = values)
+        data.table::set(
+            out,
+            i = rows,
+            j = "units",
+            value = rep.int(target, length(rows))
         )
     }
-    value <- temperature__to_celsius(out[["value"]], units)
-    data.table::set(out, j = "value", value = value)
-    data.table::set(out, j = "units", value = rep.int("degC", nrow(out)))
     out[]
+}
+# }}}
+
+# Convert extracted daily temperature rows to degrees Celsius and reject inputs
+# that cannot satisfy the shared daily-frequency temperature contract.
+# temperature__daily_climate {{{
+temperature__daily_climate <- function(data, name) {
+    weather__normalize_climate_units(
+        data,
+        name = name,
+        expected_frequency = "day",
+        target_units = c(tas = "degC", tasmin = "degC", tasmax = "degC"),
+        required_cols = c(
+            "variable_id",
+            "annual_phase",
+            "value",
+            "units",
+            "frequency"
+        )
+    )
+}
+# }}}
+
+# Apply either paper-faithful humidity preservation or shared specific-humidity
+# closure to a projected temperature series, attaching method-prefixed columns
+# and policy diagnostics shared by temperature-only methods.
+# temperature__policy_physics_apply {{{
+temperature__policy_physics_apply <- function(
+    baseline,
+    temperature,
+    policy_recipe,
+    adapter,
+    prefix,
+    label,
+    hourly_cols,
+    inconsistent_code,
+    inconsistent_message,
+    extra_diagnostics = list()
+) {
+    policy <- policy_recipe$policy
+    checkmate::assert_choice(policy, c("paper_faithful", "harmonized"))
+    physical <- epwphys__apply_temperature(
+        template = baseline$weather,
+        temperature = temperature,
+        policy = epwphys__recipe_policy(policy_recipe),
+        adapter = adapter
+    )
+    weather <- data.table::copy(physical@weather)
+    moisture <- physical@state$humidity
+
+    diagnostic_values <- hourly_cols
+    if (identical(policy, "harmonized")) {
+        harmonized_cols <- list(
+            moisture$baseline_specific_humidity,
+            moisture$specific_humidity,
+            moisture$status
+        )
+        names(harmonized_cols) <- paste0(
+            prefix,
+            "_",
+            c(
+                "baseline_specific_humidity",
+                "specific_humidity",
+                "humidity_closure_status"
+            )
+        )
+        diagnostic_values <- c(diagnostic_values, harmonized_cols)
+    }
+    data.table::set(
+        weather,
+        j = names(diagnostic_values),
+        value = diagnostic_values
+    )
+
+    diagnostics <- extra_diagnostics
+    if (identical(policy, "paper_faithful")) {
+        invalid <- physical@corrections$humidity_inconsistent
+        if (invalid > 0L) {
+            diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
+                stage = "runtime",
+                severity = "warning",
+                code = inconsistent_code,
+                message = sprintf(inconsistent_message, invalid),
+                epw_field = paste(
+                    "dry_bulb_temperature,dew_point_temperature,",
+                    "relative_humidity",
+                    sep = ""
+                ),
+                action = paste(
+                    "Treat this as paper-faithful temperature-only",
+                    "output or select the harmonized policy."
+                )
+            )
+        }
+    } else {
+        clipped <- physical@corrections$humidity_saturation_clipped
+        if (clipped > 0L) {
+            diagnostics[[length(diagnostics) + 1L]] <- morpher__diagnostic(
+                stage = "runtime",
+                severity = "info",
+                code = paste0(prefix, "_humidity_saturation_clipped"),
+                message = sprintf(
+                    "%s harmonized closure clipped %d hourly moisture state(s) to saturation.",
+                    label,
+                    clipped
+                ),
+                epw_field = "dew_point_temperature,relative_humidity",
+                action = sprintf(
+                    "Inspect %s_humidity_closure_status.",
+                    prefix
+                )
+            )
+        }
+    }
+
+    list(
+        epw = baseline$epw,
+        weather = weather,
+        diagnostics = morpher__bind_diagnostics(diagnostics),
+        physical_policy = if (identical(policy, "paper_faithful")) {
+            "preserve_baseline_humidity_fields"
+        } else {
+            "specific_humidity_closure"
+        }
+    )
 }
 # }}}
 

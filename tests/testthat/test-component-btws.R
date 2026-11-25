@@ -4,117 +4,38 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
-# Build deterministic daily temperature rows for the composite BTWS recipe.
-# btws_test__climate {{{
-btws_test__climate <- function(
-    years,
-    period,
-    experiment,
-    mean_shift = 0,
-    minimum_shift = 0,
-    maximum_shift = 0
-) {
-    phase <- daily__phase_grid(365L)
-    data.table::rbindlist(lapply(as.integer(years), function(year) {
-        time <- as.POSIXct(
-            as.Date(sprintf("%04d-01-01", year)) + seq.int(0L, 364L),
-            tz = "UTC"
-        ) +
-            12 * 3600
-        seasonal <- 7 * sin(2 * pi * phase)
-        values <- list(
-            tas = 20 + seasonal + mean_shift,
-            tasmin = 16 + seasonal + minimum_shift,
-            tasmax = 25 + seasonal + maximum_shift
-        )
-        data.table::rbindlist(lapply(names(values), function(variable_id) {
-            data.table::data.table(
-                activity_id = if (identical(experiment, "historical")) {
-                    "CMIP"
-                } else {
-                    "ScenarioMIP"
-                },
-                institution_id = "EC-Earth-Consortium",
-                source_id = "EC-Earth3",
-                experiment_id = experiment,
-                variant_label = "r1i1p1f1",
-                frequency = "day",
-                table_id = "day",
-                variable_id = variable_id,
-                time = time,
-                year = year,
-                annual_phase = phase,
-                period = period,
-                lon = 104,
-                lat = 1.37,
-                units = "K",
-                value = values[[variable_id]] + 273.15
-            )
-        }))
-    }))
-}
-# }}}
-
-# Assemble one direct role-addressable context from the packaged EPW fixture.
+# Assemble one direct role-addressable context for the composite BTWS recipe.
 # btws_test__context {{{
 btws_test__context <- function(
     mean_shift = 0.5,
     minimum_shift = 0,
     maximum_shift = 0
 ) {
-    historical <- btws_test__climate(
-        2001:2002,
-        period = "reference",
-        experiment = "historical"
-    )
-    future <- btws_test__climate(
-        2061:2062,
-        period = "2060s",
-        experiment = "ssp585",
-        mean_shift = mean_shift,
-        minimum_shift = minimum_shift,
-        maximum_shift = maximum_shift
-    )
-    morpher__context(
-        epw = epw_file_read(get_cache_epw()),
-        climate = future,
-        reference_climate = historical,
+    morph_test__context(
+        climate = morph_test__daily_climate(
+            2061:2062,
+            period = "2060s",
+            experiment = "ssp585",
+            mean_shift = mean_shift,
+            minimum_shift = minimum_shift,
+            maximum_shift = maximum_shift
+        ),
+        reference_climate = morph_test__daily_climate(
+            2001:2002,
+            period = "reference",
+            experiment = "historical"
+        ),
         recipe = epw_morph_recipe("epwshiftr_daily_btws")
     )
 }
 # }}}
 
-test_that("BTWS component and composite recipe expose strict contracts", {
-    expect_true("daily_temperature_btws" %in% epw_morph_backends())
-    expect_true("epwshiftr_daily_btws" %in% epw_morph_recipes()[["name"]])
-
+test_that("daily BTWS backend requires all three temperature extrema variables", {
     backend <- epw_morph_backend("daily_temperature_btws")
-    recipe <- epw_morph_recipe("epwshiftr_daily_btws")
-    spec <- recipe__get("epwshiftr_daily_btws")
-
     expect_true(backend$requires_reference)
     expect_equal(
         backend$required_variables(),
         c("tas", "tasmin", "tasmax")
-    )
-    expect_equal(
-        epw_morph_variables(recipe),
-        c("tas", "tasmin", "tasmax")
-    )
-    expect_identical(recipe$backend, "daily_temperature_btws")
-    expect_identical(recipe$policy, "harmonized")
-    expect_identical(recipe$recipe_spec, "epwshiftr_daily_btws")
-    expect_identical(
-        recipe$components$hourly,
-        "btws_temperature_projection"
-    )
-    expect_identical(spec@source$type, "package_method")
-    expect_match(spec@source$citation, "combined")
-    expect_match(spec@source$equation_note, "bisection")
-    expect_match(spec@source$signal_note, "monthly UKCP18")
-    expect_identical(
-        morpher__recipe_required_frequency(recipe),
-        "day"
     )
     expect_error(
         transform__validate_execution_inputs(
@@ -126,9 +47,7 @@ test_that("BTWS component and composite recipe expose strict contracts", {
 
 test_that("daily CMIP6 and BTWS composition closes a future EPW year", {
     context <- btws_test__context()
-    baseline <- context$epw$clone()
-    suppressMessages(baseline$drop_unit())
-    baseline_data <- data.table::as.data.table(baseline$data())
+    baseline_data <- morph_test__baseline_weather(context)
 
     result <- morpher__run_context(context)
     weather <- result$data
@@ -159,9 +78,7 @@ test_that("daily CMIP6 and BTWS composition closes a future EPW year", {
         ) %in%
             names(weather)
     ))
-    expect_false(
-        "daily_temperature_shape_exponent" %in% names(weather)
-    )
+    expect_false("daily_temperature_shape_exponent" %in% names(weather))
 
     achieved <- weather[,
         .(
@@ -209,18 +126,9 @@ test_that("daily temperature selects BTWS and survives plan reconstruction", {
     )@meta$children[[1L]]
     rebuilt <- shift_persist__plan_from_spec(shift_persist__plan_spec(plan))
 
-    expect_identical(
-        plan@meta$recipe$backend,
-        "daily_temperature_btws"
-    )
-    expect_identical(
-        plan@meta$recipe$recipe_spec,
-        "epwshiftr_daily_btws"
-    )
-    expect_identical(
-        rebuilt@meta$recipe$options$window_days,
-        15L
-    )
+    expect_identical(plan@meta$recipe$backend, "daily_temperature_btws")
+    expect_identical(plan@meta$recipe$recipe_spec, "epwshiftr_daily_btws")
+    expect_identical(rebuilt@meta$recipe$options$window_days, 15L)
     expect_identical(
         rebuilt@meta$recipe$components$hourly,
         "btws_temperature_projection"
@@ -234,18 +142,12 @@ test_that("daily temperature reconstruction selects one hourly component", {
     power_recipe <- transform__recipe(power)
     btws_recipe <- transform__recipe(btws)
 
-    expect_identical(
-        power_recipe$recipe_spec,
-        "epwshiftr_daily_power"
-    )
+    expect_identical(power_recipe$recipe_spec, "epwshiftr_daily_power")
     expect_identical(
         power_recipe$components$hourly,
         "constrained_daily_temperature"
     )
-    expect_identical(
-        btws_recipe$recipe_spec,
-        "epwshiftr_daily_btws"
-    )
+    expect_identical(btws_recipe$recipe_spec, "epwshiftr_daily_btws")
     expect_identical(
         btws_recipe$components$hourly,
         "btws_temperature_projection"

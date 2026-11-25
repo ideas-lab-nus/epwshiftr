@@ -149,25 +149,9 @@ daily__temperature_signal_apply_group <- function(
 }
 # }}}
 
-# Apply the constrained 24-hour projection to the preserved EPW sequence and
-# retain hourly and daily closure values for the later physics stage.
-# daily__temperature_hourly_reconstruct {{{
-daily__temperature_hourly_reconstruct <- function(
-    data,
-    inputs,
-    context,
-    options
-) {
-    temperature__hourly_result(
-        data,
-        options,
-        daily__project_temperature
-    )
-}
-# }}}
-
-# Build only the components that implement the daily signal and POWER hourly
-# projection. Shared sequence, physics, and output components live separately.
+# Build the components that implement the daily temperature signal. Shared
+# sequence, hourly POWER, physics, and output components live in
+# component-temperature-epw.R.
 # daily__temperature_component_specs {{{
 daily__temperature_component_specs <- function() {
     template <- component__input_requirement(
@@ -235,21 +219,6 @@ daily__temperature_component_specs <- function() {
                 )
             )),
             apply_group = daily__temperature_signal_apply_group
-        ),
-        hourly = component__spec(
-            name = "constrained_daily_temperature",
-            stage = "hourly",
-            label = "Constrained 24-hour temperature reconstruction",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_temperature_sequence",
-            output_kinds = "hourly_temperature_projected",
-            scopes = "multivariate",
-            operations = list(
-                reconstruct = daily__temperature_hourly_reconstruct
-            ),
-            metadata = list(
-                reconstruction = "constrained_daily_temperature"
-            )
         )
     )
 }

@@ -102,82 +102,21 @@ bws_btws__inputs <- function() {
 # climatology aggregation. This keeps source adaptation separate from BWS/BTWS.
 # bws_btws__monthly_climate {{{
 bws_btws__monthly_climate <- function(data, name) {
-    checkmate::assert_data_frame(data)
-    checkmate::assert_string(name, min.chars = 1L)
-    required <- c(
-        "variable_id",
-        "value",
-        "units",
-        "frequency"
-    )
-    missing <- setdiff(required, names(data))
-    if (length(missing)) {
-        cli::cli_abort(
-            "{.arg {name}} is missing BWS/BTWS climate column{?s}: {.val {missing}}."
-        )
-    }
-    frequency <- unique(tolower(as.character(data[["frequency"]])))
-    frequency <- frequency[!is.na(frequency) & nzchar(frequency)]
-    if (!identical(frequency, "mon")) {
-        shown <- if (length(frequency)) frequency else "<missing>"
-        cli::cli_abort(
-            "{.arg {name}} must use CMIP frequency {.val mon}; found {.val {shown}}."
-        )
-    }
-
     variables <- c("tas", "tasmin", "tasmax", "rsds", "clt")
-    out <- data.table::as.data.table(data.table::copy(data))[
-        variable_id %in% variables
-    ]
-    present <- unique(as.character(out[["variable_id"]]))
-    missing_variables <- setdiff(variables, present)
-    if (length(missing_variables)) {
-        cli::cli_abort(
-            "{.arg {name}} is missing required variable{?s}: {.val {missing_variables}}."
-        )
-    }
-
-    targets <- c(
-        tas = "degC",
-        tasmin = "degC",
-        tasmax = "degC",
-        rsds = "W/m^2",
-        clt = "%"
+    weather__normalize_climate_units(
+        data,
+        name = name,
+        expected_frequency = "mon",
+        target_units = c(
+            tas = "degC",
+            tasmin = "degC",
+            tasmax = "degC",
+            rsds = "W/m^2",
+            clt = "%"
+        ),
+        required_variables = variables,
+        single_unit = TRUE
     )
-    for (variable in variables) {
-        rows <- which(out[["variable_id"]] == variable)
-        aliases <- unique(vapply(
-            out[["units"]][rows],
-            morpher__unit_alias,
-            character(1L)
-        ))
-        if (length(aliases) != 1L || is.na(aliases)) {
-            cli::cli_abort(
-                "{.arg {name}} variable {.val {variable}} must use one supported unit."
-            )
-        }
-        converted <- morpher__convert_value_checked(
-            out[["value"]][rows],
-            aliases,
-            targets[[variable]]
-        )
-        if (!isTRUE(converted$ok)) {
-            cli::cli_abort(converted$message)
-        }
-        data.table::set(
-            out,
-            i = rows,
-            j = "value",
-            value = converted$value
-        )
-        data.table::set(
-            out,
-            i = rows,
-            j = "units",
-            value = targets[[variable]]
-        )
-    }
-    out[]
 }
 # }}}
 
@@ -500,73 +439,322 @@ bws_btws__daily_temperature_targets <- function(monthly) {
 }
 # }}}
 
-# Normalize the role-addressable EPW and monthly CMIP6 inputs without
-# introducing temporal smoothing that does not belong to BWS or BTWS.
-# bws_btws__preprocess_apply {{{
-bws_btws__preprocess_apply <- function(
-    inputs,
-    context,
-    options
-) {
-    morpher__validate_context(context)
-    options <- bws_btws__options(options)
-    future <- weather__get_input(inputs, "model_future")
-    historical <- weather__get_input(inputs, "model_historical")
-    template <- weather__get_input(inputs, "weather_template")
-    list(
-        baseline = temperature__epw_template(template@source),
-        future = bws_btws__monthly_climate(future@source, "future climate"),
-        historical = bws_btws__monthly_climate(
-            historical@source,
-            "historical climate"
-        ),
-        options = options
-    )
+# Convert every adjusted BWS monthly target into a method-level diagnostic with
+# the climate means, EPW baseline, requested target, applied target, and exact
+# attainable interval needed to reproduce the decision.
+# bws_btws_epw__target_diagnostics {{{
+bws_btws_epw__target_diagnostics <- function(factors, context) {
+    factors <- data.table::as.data.table(data.table::copy(factors))
+    adjustment <- factors[["target_adjustment"]]
+    adjusted <- factors[!is.na(adjustment) & adjustment != "none"]
+    if (!nrow(adjusted)) {
+        return(morpher__empty_diagnostics())
+    }
+    case <- data.table::as.data.table(context$case)
+    case_value <- function(name) {
+        if (name %in% names(case)) {
+            store__chr1(case[[name]][[1L]])
+        } else {
+            NA_character_
+        }
+    }
+    source_id <- case_value("source_id")
+    experiment_id <- case_value("experiment_id")
+    variant_label <- case_value("variant_label")
+    period <- case_value("period")
+
+    rows <- vector("list", nrow(adjusted))
+    for (i in seq_len(nrow(adjusted))) {
+        row <- adjusted[i]
+        rows[[i]] <- morpher__diagnostic(
+            stage = "runtime",
+            severity = "warning",
+            code = "bws_target_adjusted",
+            message = sprintf(
+                paste(
+                    "BWS adjusted %s month %d for %s/%s/%s/%s",
+                    "from %.8g to %.8g",
+                    "within the attainable interval [%.8g, %.8g]",
+                    "(%s); GCM historical mean %.8g, GCM future mean %.8g,",
+                    "and baseline EPW mean %.8g."
+                ),
+                row$variable_id[[1L]],
+                row$month[[1L]],
+                source_id,
+                experiment_id,
+                variant_label,
+                period,
+                row$requested_target_mean[[1L]],
+                row$target_mean[[1L]],
+                row$attainable_lower[[1L]],
+                row$attainable_upper[[1L]],
+                row$target_adjustment[[1L]],
+                row$model_historical_mean[[1L]],
+                row$model_future_mean[[1L]],
+                row$baseline_mean[[1L]]
+            ),
+            variable_id = row$variable_id[[1L]],
+            epw_field = if (identical(row$variable_id[[1L]], "clt")) {
+                "total_sky_cover"
+            } else {
+                "global_horizontal_radiation"
+            },
+            period = period,
+            month = row$month[[1L]],
+            action = paste(
+                "Inspect bws_factors for the requested and applied targets;",
+                "the Historical-to-Scenario signal is retained unchanged."
+            )
+        )
+    }
+    morpher__bind_diagnostics(rows)
 }
 # }}}
 
-# Interpret each model's native calendar before the signal kernel so the kernel
-# receives only aligned monthly statistics and cannot infer Gregorian dates.
-# bws_btws__calendar_apply {{{
-bws_btws__calendar_apply <- function(
-    data,
-    inputs,
-    context,
-    options
-) {
+# Apply BTWS to dry-bulb temperature and BWS to the two published bounded
+# variables while retaining baseline hourly ordering for physical closure.
+# bws_btws_epw__hourly_reconstruct {{{
+bws_btws_epw__hourly_reconstruct <- function(data, options = NULL) {
+    options <- bws_btws__options(options)
+    temperature <- temperature__hourly_result(
+        data,
+        options,
+        btws__project_temperature
+    )
+    baseline <- temperature$baseline
+    weather <- baseline$weather
+    required <- c(
+        "year",
+        "month",
+        "day",
+        "hour",
+        "global_horizontal_radiation",
+        "diffuse_horizontal_radiation",
+        "total_sky_cover",
+        "opaque_sky_cover"
+    )
+    missing <- setdiff(required, names(weather))
+    if (length(missing)) {
+        cli::cli_abort(
+            "Baseline EPW is missing BWS/BTWS weather field{?s}: {.val {missing}}."
+        )
+    }
+    bounded <- data.table::as.data.table(
+        data.table::copy(data$monthly_bws_targets)
+    )
+    if (
+        nrow(bounded) != 12L ||
+            !identical(sort(as.integer(bounded[["month"]])), seq_len(12L))
+    ) {
+        cli::cli_abort("BWS targets must contain all 12 months.")
+    }
+    data.table::setorderv(bounded, "month")
+
+    month <- as.integer(weather[["month"]])
+    baseline_ghi <- as.numeric(weather[["global_horizontal_radiation"]])
+    baseline_cover <- as.numeric(weather[["total_sky_cover"]])
+    if (
+        any(!is.finite(baseline_ghi) | baseline_ghi < 0) ||
+            any(
+                !is.finite(baseline_cover) |
+                    baseline_cover < 0 |
+                    baseline_cover > 10
+            )
+    ) {
+        cli::cli_abort(
+            "Baseline EPW radiation and total sky cover must contain finite values within the BWS bounds."
+        )
+    }
+    ghi_mean <- vapply(
+        seq_len(12L),
+        function(calendar_month) {
+            mean(baseline_ghi[month == calendar_month])
+        },
+        numeric(1L)
+    )
+    ghi_upper <- vapply(
+        seq_len(12L),
+        function(calendar_month) {
+            max(baseline_ghi[month == calendar_month])
+        },
+        numeric(1L)
+    )
+    cover_mean <- vapply(
+        seq_len(12L),
+        function(calendar_month) {
+            mean(baseline_cover[month == calendar_month])
+        },
+        numeric(1L)
+    )
+
+    radiation <- bws__project_monthly(
+        baseline_ghi,
+        month,
+        target_mean = ghi_mean + bounded[["rsds_delta"]],
+        upper = ghi_upper,
+        variable_id = "rsds",
+        tolerance = options$tolerance
+    )
+    cloud <- bws__project_monthly(
+        baseline_cover,
+        month,
+        target_mean = cover_mean * (1 + bounded[["clt_scale"]]),
+        upper = rep.int(10, 12L),
+        variable_id = "clt",
+        integer = TRUE,
+        tolerance = options$tolerance
+    )
+    opaque <- epwphys__opaque_sky_cover(
+        cloud$value,
+        weather[["total_sky_cover"]],
+        weather[["opaque_sky_cover"]]
+    )
+    diffuse <- radiation__preserved_diffuse(weather, radiation$value)
+    loc <- morpher__epw_location(baseline$epw)
+    geometry <- solar__epw_interval_geometry(
+        weather,
+        latitude = loc$latitude,
+        longitude = loc$longitude,
+        timezone = loc$timezone
+    )
+
+    bws_factors <- data.table::rbindlist(
+        list(radiation$factors, cloud$factors),
+        use.names = TRUE,
+        fill = TRUE
+    )
+    bounded_row <- match(bws_factors[["month"]], bounded[["month"]])
+    radiation_row <- bws_factors[["variable_id"]] == "rsds"
+    data.table::set(
+        bws_factors,
+        j = "model_rsds_delta",
+        value = bounded[["rsds_delta"]][bounded_row]
+    )
+    data.table::set(
+        bws_factors,
+        j = "model_clt_scale",
+        value = bounded[["clt_scale"]][bounded_row]
+    )
+    data.table::set(
+        bws_factors,
+        j = "model_future_mean",
+        value = ifelse(
+            radiation_row,
+            bounded[["future_rsds_mean"]][bounded_row],
+            bounded[["future_clt_mean"]][bounded_row]
+        )
+    )
+    data.table::set(
+        bws_factors,
+        j = "model_historical_mean",
+        value = ifelse(
+            radiation_row,
+            bounded[["historical_rsds_mean"]][bounded_row],
+            bounded[["historical_clt_mean"]][bounded_row]
+        )
+    )
+    temperature$bws_projection <- list(
+        global_horizontal = radiation$value,
+        diffuse_horizontal = diffuse,
+        total_sky_cover = as.integer(cloud$value),
+        opaque_sky_cover = as.integer(opaque),
+        geometry = geometry
+    )
+    temperature$method_parts <- c(
+        temperature$method_parts,
+        list(bws_factors = bws_factors[])
+    )
+    temperature
+}
+# }}}
+
+# Apply all BWS/BTWS candidates in one call to the common physical layer so
+# humidity and shortwave closure see the same final temperature and radiation.
+# bws_btws_epw__physics_apply {{{
+bws_btws_epw__physics_apply <- function(data, context) {
+    bounded <- data$bws_projection
+    physical <- epwphys__apply(
+        EpwPhysicalRequest(
+            template = data$baseline$weather,
+            fields = list(
+                dry_bulb_temperature = data$hourly[["temperature_projected"]],
+                total_sky_cover = bounded$total_sky_cover,
+                opaque_sky_cover = bounded$opaque_sky_cover
+            ),
+            shortwave = list(
+                global_horizontal = bounded$global_horizontal,
+                diffuse_horizontal = bounded$diffuse_horizontal
+            ),
+            geometry = bounded$geometry,
+            provenance = list(adapter = "bws_btws_weather")
+        ),
+        epwphys__policy("bws_btws_weather")
+    )
+    result <- temperature__physics_payload(data, physical)
+    result$diagnostics <- morpher__bind_diagnostics(
+        result$diagnostics,
+        bws_btws_epw__target_diagnostics(
+            data$method_parts$bws_factors,
+            context
+        )
+    )
+
+    radiation_corrections <- sum(c(
+        physical@corrections$radiation_night_values_zeroed,
+        physical@corrections$radiation_negative_global_clipped,
+        physical@corrections$radiation_negative_diffuse_clipped,
+        physical@corrections$radiation_diffuse_above_global_clipped,
+        physical@corrections$radiation_excess_beam_reallocated
+    ))
+    if (radiation_corrections > 0L) {
+        diagnostic <- morpher__diagnostic(
+            stage = "runtime",
+            severity = "info",
+            code = "bws_btws_shortwave_closed",
+            message = sprintf(
+                "BWS/BTWS shortwave physical closure adjusted %d candidate state(s).",
+                radiation_corrections
+            ),
+            variable_id = "rsds",
+            epw_field = "global_horizontal_radiation",
+            action = "Inspect the physical-policy corrections and bws_factors."
+        )
+        result$diagnostics <- morpher__bind_diagnostics(
+            result$diagnostics,
+            diagnostic
+        )
+    }
+    result
+}
+# }}}
+
+# Execute the complete calendar-month BWS/BTWS workflow directly on a canonical
+# morphing context and return a standard epw_morph_result.
+# bws_btws__run {{{
+bws_btws__run <- function(context, backend = NULL) {
+    morpher__validate_context(context)
+    options <- bws_btws__options(context$recipe$options)
+    inputs <- context$inputs
+    baseline <- temperature__epw_template(
+        weather__get_input(inputs, "weather_template")@source
+    )
     future <- bws_btws__monthly_climatology(
-        data$future,
+        bws_btws__monthly_climate(
+            weather__get_input(inputs, "model_future")@source,
+            "future climate"
+        ),
         "future climate"
     )
     historical <- bws_btws__monthly_climatology(
-        data$historical,
+        bws_btws__monthly_climate(
+            weather__get_input(inputs, "model_historical")@source,
+            "historical climate"
+        ),
         "historical climate"
     )
-    list(signal__group(
-        inputs = list(
-            weather_template = data$baseline,
-            model_historical = historical,
-            model_future = future
-        ),
-        variables = c("tas", "tasmin", "tasmax", "rsds", "clt")
-    ))
-}
-# }}}
-
-# Calculate the complete monthly signal and emit both the BTWS daily
-# temperature targets and the monthly BWS radiation/cloud targets.
-# bws_btws__signal_apply_group {{{
-bws_btws__signal_apply_group <- function(
-    inputs,
-    settings,
-    key
-) {
-    monthly <- bws_btws__monthly_changes(
-        inputs$model_future,
-        inputs$model_historical
-    )
-    list(
-        baseline = inputs$weather_template,
+    monthly <- bws_btws__monthly_changes(future, historical)
+    signal_data <- list(
+        baseline = baseline,
         targets = bws_btws__daily_temperature_targets(monthly),
         monthly_bws_targets = monthly[,
             c(
@@ -581,97 +769,15 @@ bws_btws__signal_apply_group <- function(
             with = FALSE
         ]
     )
-}
-# }}}
-
-# Define the BWS/BTWS monthly input, native-calendar, and joint signal stages.
-# bws_btws__component_specs {{{
-bws_btws__component_specs <- function() {
-    complete_inputs <- bws_btws__inputs()
-    reference <- "https://doi.org/10.1177/01436244231218861"
-    profiles <- lapply(
-        c("tas", "tasmin", "tasmax", "rsds", "clt"),
-        function(variable) {
-            signal__variable_profile(
-                variable,
-                evidence = "published",
-                references = reference,
-                metadata = list(
-                    statistic = switch(
-                        variable,
-                        tas = "monthly_mean_temperature",
-                        tasmin = "monthly_average_daily_minimum",
-                        tasmax = "monthly_average_daily_maximum",
-                        rsds = "monthly_mean_shortwave_absolute_change",
-                        clt = "monthly_mean_cloud_fractional_change"
-                    )
-                )
-            )
-        }
+    hourly <- bws_btws_epw__hourly_reconstruct(signal_data, options = options)
+    closed <- bws_btws_epw__physics_apply(hourly, context = context)
+    temperature__output_write(
+        closed,
+        inputs = inputs,
+        context = context,
+        options = options,
+        stages = list()
     )
-
-    list(
-        preprocess = component__spec(
-            name = "bws_btws_monthly_inputs",
-            stage = "preprocess",
-            label = "BWS/BTWS monthly CMIP6 input normalization",
-            required_inputs = complete_inputs,
-            input_kinds = "role_inputs",
-            output_kinds = "bws_btws_monthly_preprocessed",
-            scopes = "multivariate",
-            operations = list(
-                apply = bws_btws__preprocess_apply
-            )
-        ),
-        calendar = component__spec(
-            name = "bws_btws_monthly_climatology",
-            stage = "calendar",
-            label = "Native-calendar BWS/BTWS monthly climatology",
-            required_inputs = complete_inputs,
-            input_kinds = "bws_btws_monthly_preprocessed",
-            output_kinds = "calendar_indexed_bws_btws_climate",
-            scopes = "multivariate",
-            operations = list(
-                apply = bws_btws__calendar_apply
-            )
-        ),
-        signal = signal__component(
-            name = "bws_btws_monthly_changes",
-            label = "BWS/BTWS monthly temperature, radiation, and cloud changes",
-            required_inputs = complete_inputs,
-            input_kinds = "calendar_indexed_bws_btws_climate",
-            output_kinds = "bws_btws_weather_targets",
-            scopes = "multivariate",
-            profiles = profiles,
-            apply_group = bws_btws__signal_apply_group
-        )
-    )
-}
-# }}}
-
-# Register the BWS/BTWS stages once while preserving process-local extensions.
-# bws_btws__register_components {{{
-bws_btws__register_components <- function() {
-    component__register_builtins(bws_btws__component_specs())
-}
-# }}}
-
-# Compose BWS/BTWS monthly signals with shared EPW sequencing, their combined
-# BTWS/BWS hourly adapter, unified physical closure, and common result writer.
-# bws_btws__pipeline {{{
-bws_btws__pipeline <- function() {
-    temperature__register_components()
-    bws_btws_epw__register_components()
-    bws_btws__register_components()
-    pipeline__spec(list(
-        preprocess = "bws_btws_monthly_inputs",
-        calendar = "bws_btws_monthly_climatology",
-        signal = "bws_btws_monthly_changes",
-        sequence = "bws_btws_preserve_epw_sequence",
-        hourly = "bws_btws_hourly_projection",
-        physics = "bws_btws_physical_closure",
-        output = "bws_btws_epw_result"
-    ))
 }
 # }}}
 

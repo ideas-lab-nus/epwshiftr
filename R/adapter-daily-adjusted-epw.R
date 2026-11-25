@@ -208,7 +208,8 @@ daily_adjustment__temperature_targets <- function(
 # }}}
 
 # Adapt a successful method result to the established daily temperature
-# sequence contract while preserving the method's output role and provenance.
+# sequence contract while carrying adjusted-series provenance via method_parts
+# so shared hourly, physics, and output components can be reused directly.
 # daily_adjustment__sequence_generate {{{
 daily_adjustment__sequence_generate <- function(
     data,
@@ -227,75 +228,16 @@ daily_adjustment__sequence_generate <- function(
             baseline,
             options$climatology_window_days
         ),
-        adjusted = adjusted
+        method_parts = list(
+            adjusted_series = adjusted@data,
+            adjusted_series_metadata = list(
+                output_role = adjusted@output_role,
+                transformation = adjusted@transformation,
+                settings = adjusted@settings,
+                provenance = adjusted@provenance
+            )
+        )
     )
-}
-# }}}
-
-# Reuse the common POWER reconstruction while carrying the adjusted-series
-# record forward for the final result provenance.
-# daily_adjustment__hourly_reconstruct {{{
-daily_adjustment__hourly_reconstruct <- function(
-    data,
-    inputs,
-    context,
-    options
-) {
-    reconstructed <- temperature__hourly_result(
-        data,
-        options,
-        daily__project_temperature
-    )
-    reconstructed$adjusted <- data$adjusted
-    reconstructed
-}
-# }}}
-
-# Reuse the unified specific-humidity policy and retain the selected method's
-# adjusted series after the physical stage.
-# daily_adjustment__physics_apply {{{
-daily_adjustment__physics_apply <- function(
-    data,
-    inputs,
-    context,
-    options
-) {
-    physical <- temperature__physics_apply(
-        data,
-        inputs,
-        context,
-        options
-    )
-    physical$adjusted <- data$adjusted
-    physical
-}
-# }}}
-
-# Assemble a standard representative-year result and expose the original
-# adjusted daily values with their method-owned metadata.
-# daily_adjustment__output_write {{{
-daily_adjustment__output_write <- function(
-    data,
-    inputs,
-    context,
-    options,
-    stages
-) {
-    result <- temperature__output_write(
-        data,
-        inputs,
-        context,
-        options,
-        stages
-    )
-    result$parts$adjusted_series <- data$adjusted@data
-    result$parts$adjusted_series_metadata <- list(
-        output_role = data$adjusted@output_role,
-        transformation = data$adjusted@transformation,
-        settings = data$adjusted@settings,
-        provenance = data$adjusted@provenance
-    )
-    result
 }
 # }}}
 
@@ -355,46 +297,6 @@ daily_adjustment__component_specs <- function() {
                 variable_id = "tas",
                 output_contract = "daily_temperature_sequence"
             )
-        ),
-        hourly = component__spec(
-            name = "daily_adjusted_temperature_projection",
-            stage = "hourly",
-            label = "Adjusted daily temperature projection",
-            required_inputs = list(weather_template = template),
-            input_kinds = "daily_temperature_sequence",
-            output_kinds = "hourly_temperature_projected",
-            scopes = "univariate",
-            operations = list(
-                reconstruct = daily_adjustment__hourly_reconstruct
-            ),
-            metadata = list(
-                reconstruction = "constrained_daily_temperature",
-                output_contract = "hourly_temperature_projected"
-            )
-        ),
-        physics = component__spec(
-            name = "daily_adjusted_specific_humidity_closure",
-            stage = "physics",
-            label = "Adjusted temperature specific-humidity closure",
-            required_inputs = list(weather_template = template),
-            input_kinds = "hourly_temperature_projected",
-            output_kinds = "hourly_weather_closed",
-            scopes = "univariate",
-            operations = list(apply = daily_adjustment__physics_apply),
-            metadata = list(
-                physical_policies = "preserve_specific_humidity"
-            )
-        ),
-        output = component__spec(
-            name = "daily_adjusted_temperature_epw_result",
-            stage = "output",
-            label = "Adjusted daily temperature EPW result",
-            required_inputs = list(weather_template = template),
-            input_kinds = "hourly_weather_closed",
-            output_kinds = "epw_morph_result",
-            scopes = "univariate",
-            operations = list(write = daily_adjustment__output_write),
-            metadata = list(target_calendar = "epw_365_day")
         )
     )
 }
@@ -425,9 +327,9 @@ daily_adjustment__pipeline <- function(method) {
         calendar = "daily_adjustment_calendar_grouping",
         signal = component,
         sequence = "daily_adjusted_temperature_sequence",
-        hourly = "daily_adjusted_temperature_projection",
-        physics = "daily_adjusted_specific_humidity_closure",
-        output = "daily_adjusted_temperature_epw_result"
+        hourly = "constrained_daily_temperature",
+        physics = "specific_humidity_closure",
+        output = "daily_temperature_epw_result"
     ))
 }
 # }}}
