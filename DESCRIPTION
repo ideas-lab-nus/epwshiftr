@@ -114,7 +114,6 @@ Collate:
     'cmip6-availability.R'
     'cmip6-eligibility.R'
     'component-btws.R'
-    'component-bws-btws.R'
     'component-hourly-calendar-grouping.R'
     'data-node.R'
     'spatial-grid.R'
@@ -182,7 +181,6 @@ Collate:
     'source-read.R'
     'standalone-cache.R'
     'standalone-downloader.R'
-    'weather-method.R'
     'zzz.R'
 Config/testthat/edition: 3
 Config/Needs/website: r-lib/asciicast, r-lib/pkgload

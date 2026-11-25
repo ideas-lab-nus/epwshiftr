@@ -225,6 +225,41 @@ morpher__requirement_match <- function(available, alternatives) {
 }
 # }}}
 
+# Option resolvers for non-Belcher built-in backends. Closures defer symbol
+# lookup until runtime so backend files can be collated after this file.
+EPW_MORPH_BACKEND_OPTION_RESOLVERS <- c(
+    list(
+        daily_temperature = function(options) {
+            daily__temperature_backend_options(options)
+        },
+        daily_temperature_btws = function(options) {
+            daily__temperature_backend_options(options)
+        },
+        bws_btws_monthly = function(options) {
+            bws_btws__options(options)
+        },
+        ek_daily_temperature = function(options) {
+            ek__daily_temperature_options(options)
+        },
+        quantile_mapping_morphing = function(options) {
+            quantile_mapping_morphing__temperature_options(options)
+        },
+        sobie_curry_daily = function(options) {
+            sobie__backend_options(options)
+        },
+        hourly_kernel_qdm = function(options) {
+            hourly_kqdm__options(options)
+        }
+    ),
+    stats::setNames(
+        rep(
+            list(function(options) daily_adjustment__options(options)),
+            length(DAILY_ADJUSTMENT_BACKENDS)
+        ),
+        unname(DAILY_ADJUSTMENT_BACKENDS)
+    )
+)
+
 # Construct the internal executable recipe selected by a public transform.
 #' @noRd
 # epw_morph_recipe {{{
@@ -306,20 +341,7 @@ epw_morph_recipe <- function(
 
     is_belcher <- backend %in%
         c("original_morphing", "original_morphing_absolute")
-    is_daily_temperature <- backend %in%
-        c(
-            "daily_temperature",
-            "daily_temperature_btws"
-        )
-    is_bws_btws <- identical(backend, "bws_btws_monthly")
-    is_ek_temperature <- identical(backend, "ek_daily_temperature")
-    is_quantile_mapping_morphing <- identical(
-        backend,
-        "quantile_mapping_morphing"
-    )
-    is_sobie_curry <- identical(backend, "sobie_curry_daily")
     is_hourly_kernel_qdm <- identical(backend, "hourly_kernel_qdm")
-    is_daily_adjustment <- backend %in% unname(DAILY_ADJUSTMENT_BACKENDS)
     if (is_belcher) {
         if (is.null(profile)) {
             profile <- "enhanced"
@@ -344,70 +366,17 @@ epw_morph_recipe <- function(
             methods <- base_methods
         }
         options <- original_morphing__resolve_options(profile, options)
-    } else if (is_daily_temperature) {
-        if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort(
-                "Daily temperature recipes only support {.val default} profile metadata."
-            )
-        }
-        profile <- "default"
-        options <- daily__temperature_backend_options(options)
-    } else if (is_bws_btws) {
-        if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort(
-                "BWS+BTWS monthly recipes only support {.val default} profile metadata."
-            )
-        }
-        profile <- "default"
-        options <- bws_btws__options(options)
-    } else if (is_ek_temperature) {
-        if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort(
-                "Ek daily temperature recipes only support {.val default} profile metadata."
-            )
-        }
-        profile <- "default"
-        options <- ek__daily_temperature_options(options)
-    } else if (is_quantile_mapping_morphing) {
-        if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort(
-                "Quantile-mapping morphing recipes only support {.val default} profile metadata."
-            )
-        }
-        profile <- "default"
-        options <- quantile_mapping_morphing__temperature_options(options)
-    } else if (is_sobie_curry) {
-        if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort(
-                "Sobie-Curry recipes only support {.val default} profile metadata."
-            )
-        }
-        profile <- "default"
-        options <- sobie__backend_options(options)
-    } else if (is_hourly_kernel_qdm) {
-        if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort(
-                "Hourly kernel QDM recipes only support {.val default} profile metadata."
-            )
-        }
-        profile <- "default"
-        options <- hourly_kqdm__options(options)
-    } else if (is_daily_adjustment) {
-        if (!is.null(profile) && !identical(profile, "default")) {
-            cli::cli_abort(
-                "Daily adjustment recipes only support {.val default} profile metadata."
-            )
-        }
-        profile <- "default"
-        options <- daily_adjustment__options(options)
     } else {
         if (!is.null(profile) && !identical(profile, "default")) {
             cli::cli_abort(
-                "Custom EPW morphing backends only support {.val default} profile metadata."
+                "EPW morphing backend {.val {backend}} only supports {.val default} profile metadata."
             )
         }
         profile <- "default"
-        if (is.null(options)) {
+        resolver <- EPW_MORPH_BACKEND_OPTION_RESOLVERS[[backend]]
+        if (!is.null(resolver)) {
+            options <- resolver(options)
+        } else if (is.null(options)) {
             options <- list()
         } else if (!is.list(options)) {
             cli::cli_abort("Custom backend `options` must be a named list.")
@@ -539,11 +508,13 @@ morpher__recipe_time_padding_seconds <- function(recipe) {
         names(TEMPORAL_SOURCE_STEPS)
     )
     if (
-        !preprocess %in%
-            c(
-                "hourly_weather_interpolation",
-                "hourly_kernel_qdm_input_preparation"
-            ) ||
+        !is.character(preprocess) ||
+            length(preprocess) != 1L ||
+            !preprocess %in%
+                c(
+                    "hourly_weather_interpolation",
+                    "hourly_kernel_qdm_input_preparation"
+                ) ||
             !length(source_frequencies)
     ) {
         return(0)

@@ -20,6 +20,86 @@ WEATHER_INPUT_REPRESENTATIONS <- c(
     "external"
 )
 
+# Validate a character vector of unique, non-missing, non-empty strings inside
+# S7 validators without repeating the same loop across specification classes.
+# weather__check_unique_strings {{{
+weather__check_unique_strings <- function(
+    value,
+    name,
+    non_empty = FALSE,
+    item = "values"
+) {
+    if (
+        !is.character(value) ||
+            (isTRUE(non_empty) && !length(value)) ||
+            anyNA(value) ||
+            any(!nzchar(value)) ||
+            anyDuplicated(value)
+    ) {
+        return(sprintf(
+            "`%s` must contain unique, non-missing, non-empty %s.",
+            name,
+            item
+        ))
+    }
+    NULL
+}
+# }}}
+
+# Validate a uniquely named list inside S7 validators.
+# weather__check_named_list {{{
+weather__check_named_list <- function(
+    value,
+    name,
+    allow_empty = TRUE,
+    message = sprintf("`%s` must be uniquely named.", name)
+) {
+    if (isTRUE(allow_empty) && !length(value)) {
+        return(NULL)
+    }
+    nms <- names(value)
+    if (is.null(nms) || any(!nzchar(nms)) || anyDuplicated(nms)) {
+        return(message)
+    }
+    NULL
+}
+# }}}
+
+# Validate a variable-to-frequencies mapping shared by WeatherInput and
+# WeatherInputRequirement.
+# weather__check_variable_frequencies {{{
+weather__check_variable_frequencies <- function(mapping) {
+    if (!length(mapping)) {
+        return(NULL)
+    }
+    err <- weather__check_named_list(
+        mapping,
+        "variable_frequencies",
+        message = "`variable_frequencies` must be uniquely named by variable ID."
+    )
+    if (!is.null(err)) {
+        return(err)
+    }
+    valid <- vapply(
+        mapping,
+        function(value) {
+            is.null(weather__check_unique_strings(
+                value,
+                "variable_frequencies",
+                non_empty = TRUE
+            ))
+        },
+        logical(1L)
+    )
+    if (!all(valid)) {
+        return(
+            "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
+        )
+    }
+    NULL
+}
+# }}}
+
 # WeatherInput keeps the semantic role separate from source metadata so a
 # component never has to infer whether "reference" means observations or a
 # historical model run.
@@ -90,43 +170,15 @@ WeatherInput <- S7::new_class(
             )
         }
         for (property in c("variables", "frequencies", "calendars")) {
-            value <- S7::prop(self, property)
-            if (anyNA(value) || any(!nzchar(value)) || anyDuplicated(value)) {
-                return(sprintf(
-                    "`%s` must contain unique, non-missing, non-empty values.",
-                    property
-                ))
-            }
-        }
-        if (length(self@variable_frequencies)) {
-            mapping <- self@variable_frequencies
-            if (
-                is.null(names(mapping)) ||
-                    any(!nzchar(names(mapping))) ||
-                    anyDuplicated(names(mapping))
-            ) {
-                return(
-                    "`variable_frequencies` must be uniquely named by variable ID."
-                )
-            }
-            valid <- vapply(
-                mapping,
-                function(value) {
-                    is.character(value) &&
-                        length(value) &&
-                        !anyNA(value) &&
-                        all(nzchar(value)) &&
-                        !anyDuplicated(value)
-                },
-                logical(1L)
+            err <- weather__check_unique_strings(
+                S7::prop(self, property),
+                property
             )
-            if (!all(valid)) {
-                return(
-                    "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
-                )
+            if (!is.null(err)) {
+                return(err)
             }
         }
-        NULL
+        weather__check_variable_frequencies(self@variable_frequencies)
     }
     # }}}
 )

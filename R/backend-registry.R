@@ -499,7 +499,7 @@ morpher__default_backend_specs <- function() {
             method_choices = c("btws", "bws"),
             rules = EPW_MORPH_BWS_BTWS_RULES,
             requires_reference = TRUE,
-            pipeline = bws_btws__pipeline()
+            runner = bws_btws__run
         ),
         ek_daily_temperature = EpwMorphBackend$new(
             name = "ek_daily_temperature",
@@ -508,7 +508,7 @@ morpher__default_backend_specs <- function() {
             method_choices = "daily_mean_dtr",
             rules = EPW_MORPH_EK_DAILY_TEMPERATURE_RULES,
             requires_reference = TRUE,
-            pipeline = ek__pipeline()
+            runner = ek__run
         ),
         quantile_mapping_morphing = EpwMorphBackend$new(
             name = "quantile_mapping_morphing",
@@ -517,7 +517,7 @@ morpher__default_backend_specs <- function() {
             method_choices = "percentile_additive",
             rules = EPW_MORPH_QUANTILE_MAPPING_TEMPERATURE_RULES,
             requires_reference = TRUE,
-            pipeline = quantile_mapping_morphing__pipeline()
+            runner = quantile_mapping_morphing__run
         ),
         sobie_curry_daily = EpwMorphBackend$new(
             name = "sobie_curry_daily",
@@ -526,7 +526,7 @@ morpher__default_backend_specs <- function() {
             method_choices = unname(EPW_MORPH_SOBIE_CURRY_METHODS),
             rules = EPW_MORPH_SOBIE_CURRY_RULES,
             requires_reference = TRUE,
-            pipeline = sobie__pipeline()
+            runner = sobie__run
         ),
         hourly_kernel_qdm = EpwMorphBackend$new(
             name = "hourly_kernel_qdm",

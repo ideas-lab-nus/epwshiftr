@@ -91,17 +91,13 @@ WeatherInputRequirement <- S7::new_class(
         ) {
             return("`role` must identify one future-weather input role.")
         }
-        for (property in c(
-            "representations",
-            "frequencies",
-            "calendars"
-        )) {
-            value <- S7::prop(self, property)
-            if (anyNA(value) || any(!nzchar(value)) || anyDuplicated(value)) {
-                return(sprintf(
-                    "`%s` must contain unique, non-missing, non-empty values.",
-                    property
-                ))
+        for (property in c("representations", "frequencies", "calendars")) {
+            err <- weather__check_unique_strings(
+                S7::prop(self, property),
+                property
+            )
+            if (!is.null(err)) {
+                return(err)
             }
         }
         if (!all(self@representations %in% WEATHER_INPUT_REPRESENTATIONS)) {
@@ -109,41 +105,17 @@ WeatherInputRequirement <- S7::new_class(
                 "`representations` contains an unknown input representation."
             )
         }
-        if (length(self@variable_frequencies)) {
-            mapping <- self@variable_frequencies
-            if (
-                is.null(names(mapping)) ||
-                    any(!nzchar(names(mapping))) ||
-                    anyDuplicated(names(mapping))
-            ) {
-                return(
-                    "`variable_frequencies` must be uniquely named by variable ID."
-                )
-            }
-            valid <- vapply(
-                mapping,
-                function(value) {
-                    is.character(value) &&
-                        length(value) &&
-                        !anyNA(value) &&
-                        all(nzchar(value)) &&
-                        !anyDuplicated(value)
-                },
-                logical(1L)
-            )
-            if (!all(valid)) {
-                return(
-                    "Every `variable_frequencies` entry must contain unique, non-empty frequencies."
-                )
-            }
+        err <- weather__check_variable_frequencies(self@variable_frequencies)
+        if (!is.null(err)) {
+            return(err)
         }
         for (variable_set in self@variable_sets) {
             if (
-                !is.character(variable_set) ||
-                    !length(variable_set) ||
-                    anyNA(variable_set) ||
-                    any(!nzchar(variable_set)) ||
-                    anyDuplicated(variable_set)
+                !is.null(weather__check_unique_strings(
+                    variable_set,
+                    "variable_sets",
+                    non_empty = TRUE
+                ))
             ) {
                 return(paste(
                     "Every `variable_sets` entry must contain unique,",
@@ -155,6 +127,70 @@ WeatherInputRequirement <- S7::new_class(
     }
     # }}}
 )
+# }}}
+
+# Shared requirement for the hourly Gregorian EPW template input.
+# weather__epw_template_requirement {{{
+weather__epw_template_requirement <- function() {
+    component__input_requirement(
+        "weather_template",
+        representations = "epw",
+        frequencies = "hour",
+        calendars = "gregorian"
+    )
+}
+# }}}
+
+# Validate required and optional role-requirement lists shared by component,
+# recipe, and transform S7 specifications.
+# weather__check_role_requirements {{{
+weather__check_role_requirements <- function(
+    required_inputs,
+    optional_inputs,
+    require_required = FALSE
+) {
+    contracts <- list(
+        required_inputs = required_inputs,
+        optional_inputs = optional_inputs
+    )
+    for (contract_name in names(contracts)) {
+        contract <- contracts[[contract_name]]
+        err <- weather__check_named_list(
+            contract,
+            contract_name,
+            allow_empty = !(isTRUE(require_required) &&
+                identical(contract_name, "required_inputs")),
+            message = sprintf(
+                "`%s` must be a uniquely named role contract.",
+                contract_name
+            )
+        )
+        if (!is.null(err)) {
+            return(err)
+        }
+        for (role in names(contract)) {
+            requirement <- contract[[role]]
+            if (
+                !S7::S7_inherits(requirement, WeatherInputRequirement) ||
+                    !identical(requirement@role, role)
+            ) {
+                return(sprintf(
+                    "`%s` role `%s` must contain a matching WeatherInputRequirement.",
+                    contract_name,
+                    role
+                ))
+            }
+        }
+    }
+    overlap <- intersect(names(required_inputs), names(optional_inputs))
+    if (length(overlap)) {
+        return(sprintf(
+            "Input role(s) cannot be both required and optional: %s.",
+            paste(overlap, collapse = ", ")
+        ))
+    }
+    NULL
+}
 # }}}
 
 # Normalize alternative variable requirements once. One character vector is
@@ -312,28 +348,21 @@ WeatherComponentSpec <- S7::new_class(
         if (!checkmate::test_string(self@label, min.chars = 1L)) {
             return("`label` must be one non-empty string.")
         }
-        overlap <- intersect(
-            names(self@required_inputs),
-            names(self@optional_inputs)
+        err <- weather__check_role_requirements(
+            self@required_inputs,
+            self@optional_inputs
         )
-        if (length(overlap)) {
-            return(sprintf(
-                "Input role(s) cannot be both required and optional: %s.",
-                paste(overlap, collapse = ", ")
-            ))
+        if (!is.null(err)) {
+            return(err)
         }
         for (property in c("input_kinds", "output_kinds", "scopes")) {
-            value <- S7::prop(self, property)
-            if (
-                !length(value) ||
-                    anyNA(value) ||
-                    any(!nzchar(value)) ||
-                    anyDuplicated(value)
-            ) {
-                return(sprintf(
-                    "`%s` must contain unique, non-missing, non-empty values.",
-                    property
-                ))
+            err <- weather__check_unique_strings(
+                S7::prop(self, property),
+                property,
+                non_empty = TRUE
+            )
+            if (!is.null(err)) {
+                return(err)
             }
         }
         if (!all(self@scopes %in% WEATHER_COMPONENT_SCOPES)) {
@@ -343,9 +372,11 @@ WeatherComponentSpec <- S7::new_class(
             return("`stochastic` must be one non-missing logical value.")
         }
         if (
-            is.null(names(self@operations)) ||
-                any(!nzchar(names(self@operations))) ||
-                anyDuplicated(names(self@operations)) ||
+            !is.null(weather__check_named_list(
+                self@operations,
+                "operations",
+                allow_empty = FALSE
+            )) ||
                 !all(vapply(self@operations, is.function, logical(1L)))
         ) {
             return("`operations` must be a uniquely named list of functions.")

@@ -13,7 +13,7 @@ WEATHER_RECIPE_OUTPUT_TYPES <- c(
     "multi_year"
 )
 
-# Existing monolithic backends remain explicit adapters while componentized
+# Direct monolithic backends remain explicit adapters while componentized
 # methods can be checked against the executable seven-stage registry.
 WEATHER_RECIPE_IMPLEMENTATIONS <- c("backend", "pipeline")
 
@@ -56,6 +56,8 @@ WeatherRecipeSpec <- S7::new_class(
         version = S7::new_property(S7::class_integer),
         label = S7::new_property(S7::class_character),
         method = S7::new_property(S7::class_character),
+        method_version = S7::new_property(S7::class_integer, default = 1L),
+        signal_component = S7::new_property(S7::class_any, default = NULL),
         backend = S7::new_property(S7::class_character),
         implementation = S7::new_property(S7::class_character),
         source = S7::new_property(S7::class_list),
@@ -72,7 +74,7 @@ WeatherRecipeSpec <- S7::new_class(
             S7::class_character,
             default = character()
         ),
-        components = S7::new_property(S7::class_list),
+        components = S7::new_property(S7::class_list, default = list()),
         policy_profiles = S7::new_property(S7::class_character),
         physical_policies = S7::new_property(S7::class_character),
         default_policy = S7::new_property(S7::class_character),
@@ -97,12 +99,22 @@ WeatherRecipeSpec <- S7::new_class(
         ) {
             return("`name` must be one lower snake_case recipe identifier.")
         }
+        for (property in c("version", "method_version")) {
+            value <- S7::prop(self, property)
+            if (length(value) != 1L || is.na(value) || value < 1L) {
+                return(sprintf("`%s` must be one positive integer.", property))
+            }
+        }
         if (
-            length(self@version) != 1L ||
-                is.na(self@version) ||
-                self@version < 1L
+            !is.null(self@signal_component) &&
+                (!is.character(self@signal_component) ||
+                    length(self@signal_component) != 1L ||
+                    is.na(self@signal_component) ||
+                    !grepl("^[a-z][a-z0-9_]*$", self@signal_component))
         ) {
-            return("`version` must be one positive integer.")
+            return(
+                "`signal_component` must be NULL or one lower snake_case component name."
+            )
         }
         for (property in c(
             "label",
@@ -113,8 +125,12 @@ WeatherRecipeSpec <- S7::new_class(
             "output_type",
             "status"
         )) {
-            value <- S7::prop(self, property)
-            if (!checkmate::test_string(value, min.chars = 1L)) {
+            if (
+                !checkmate::test_string(
+                    S7::prop(self, property),
+                    min.chars = 1L
+                )
+            ) {
                 return(sprintf("`%s` must be one non-empty string.", property))
             }
         }
@@ -128,41 +144,46 @@ WeatherRecipeSpec <- S7::new_class(
         if (
             length(self@target_calendar) > 1L ||
                 anyNA(self@target_calendar) ||
-                any(
-                    !grepl(
-                        "^[a-z][a-z0-9_]*$",
-                        self@target_calendar
-                    )
-                )
+                any(!grepl("^[a-z][a-z0-9_]*$", self@target_calendar))
         ) {
             return(
                 "`target_calendar` must be empty or one lower snake_case identifier."
             )
         }
-        if (!identical(names(self@components), WEATHER_COMPONENT_STAGES)) {
-            return(
-                "`components` must name every ordered future-weather stage."
+        if (identical(self@implementation, "backend")) {
+            if (length(self@components)) {
+                return(
+                    "`components` must be empty for `backend` implementations."
+                )
+            }
+        } else {
+            if (!identical(names(self@components), WEATHER_COMPONENT_STAGES)) {
+                return(
+                    "`components` must name every ordered future-weather stage."
+                )
+            }
+            valid_components <- vapply(
+                self@components,
+                function(component) {
+                    is.character(component) &&
+                        length(component) == 1L &&
+                        !is.na(component) &&
+                        grepl("^[a-z][a-z0-9_]*$", component)
+                },
+                logical(1L)
             )
-        }
-        valid_components <- vapply(
-            self@components,
-            function(component) {
-                is.character(component) &&
-                    length(component) == 1L &&
-                    !is.na(component) &&
-                    grepl("^[a-z][a-z0-9_]*$", component)
-            },
-            logical(1L)
-        )
-        if (!all(valid_components)) {
-            return(
-                "Every recipe component must be one lower snake_case name."
-            )
+            if (!all(valid_components)) {
+                return(
+                    "Every recipe component must be one lower snake_case name."
+                )
+            }
         }
         if (
-            is.null(names(self@policy_profiles)) ||
-                any(!nzchar(names(self@policy_profiles))) ||
-                anyDuplicated(names(self@policy_profiles)) ||
+            !is.null(weather__check_named_list(
+                self@policy_profiles,
+                "policy_profiles",
+                allow_empty = FALSE
+            )) ||
                 anyNA(self@policy_profiles) ||
                 any(!nzchar(self@policy_profiles))
         ) {
@@ -170,12 +191,7 @@ WeatherRecipeSpec <- S7::new_class(
                 "`policy_profiles` must be a uniquely named, non-empty character vector."
             )
         }
-        if (
-            !all(
-                names(self@policy_profiles) %in%
-                    WEATHER_RECIPE_POLICIES
-            )
-        ) {
+        if (!all(names(self@policy_profiles) %in% WEATHER_RECIPE_POLICIES)) {
             return("`policy_profiles` contains an unknown execution policy.")
         }
         if (!self@default_policy %in% names(self@policy_profiles)) {
@@ -206,9 +222,11 @@ WeatherRecipeSpec <- S7::new_class(
             return("`status` contains an unknown recipe status.")
         }
         if (
-            is.null(names(self@source)) ||
-                any(!nzchar(names(self@source))) ||
-                anyDuplicated(names(self@source)) ||
+            !is.null(weather__check_named_list(
+                self@source,
+                "source",
+                allow_empty = FALSE
+            )) ||
                 !all(c("type", "citation") %in% names(self@source))
         ) {
             return(
@@ -229,54 +247,20 @@ WeatherRecipeSpec <- S7::new_class(
                 ))
             }
         }
-        for (requirements in list(
+        err <- weather__check_role_requirements(
             self@required_inputs,
             self@optional_inputs
-        )) {
-            if (
-                length(requirements) &&
-                    (is.null(names(requirements)) ||
-                        any(!nzchar(names(requirements))) ||
-                        anyDuplicated(names(requirements)))
-            ) {
-                return("Recipe input requirements must be uniquely role-named.")
-            }
-            for (role in names(requirements)) {
-                requirement <- requirements[[role]]
-                if (
-                    !S7::S7_inherits(
-                        requirement,
-                        WeatherInputRequirement
-                    ) ||
-                        !identical(requirement@role, role)
-                ) {
-                    return(sprintf(
-                        "Recipe input `%s` must contain a matching WeatherInputRequirement.",
-                        role
-                    ))
-                }
-            }
-        }
-        overlap <- intersect(
-            names(self@required_inputs),
-            names(self@optional_inputs)
         )
-        if (length(overlap)) {
-            return(
-                "An input role cannot be both required and optional."
-            )
+        if (!is.null(err)) {
+            return(err)
         }
         for (property in c("diagnostics", "provenance")) {
-            value <- S7::prop(self, property)
-            if (
-                anyNA(value) ||
-                    any(!nzchar(value)) ||
-                    anyDuplicated(value)
-            ) {
-                return(sprintf(
-                    "`%s` must contain unique, non-empty identifiers.",
-                    property
-                ))
+            err <- weather__check_unique_strings(
+                S7::prop(self, property),
+                property
+            )
+            if (!is.null(err)) {
+                return(err)
             }
         }
         NULL
@@ -299,7 +283,7 @@ recipe__spec <- function(
     optional_inputs = list(),
     calendar_policy,
     target_calendar = character(),
-    components,
+    components = list(),
     policy_profiles,
     physical_policies,
     default_policy,
@@ -308,13 +292,19 @@ recipe__spec <- function(
     diagnostics = character(),
     provenance = character(),
     status = "experimental",
-    version = 1L
+    version = 1L,
+    method_version = 1L,
+    signal_component = NULL
 ) {
-    # S7 owns the final invariants; retain checks before coercion or
-    # stage selection, plus stricter executable identifier requirements.
     checkmate::assert_count(version, positive = TRUE)
+    checkmate::assert_count(method_version, positive = TRUE)
     checkmate::assert_string(method, pattern = "^[a-z][a-z0-9_]*$")
     checkmate::assert_string(backend, pattern = "^[a-z][a-z0-9_]*$")
+    checkmate::assert_string(
+        signal_component,
+        pattern = "^[a-z][a-z0-9_]*$",
+        null.ok = TRUE
+    )
     checkmate::assert_list(source, names = "unique")
     source <- lapply(source, function(value) {
         checkmate::assert_character(value, any.missing = FALSE)
@@ -332,38 +322,36 @@ recipe__spec <- function(
         calendar_policy,
         pattern = "^[a-z][a-z0-9_]*$"
     )
-    if (is.character(components) && !is.null(names(components))) {
-        components <- as.list(components)
+    if (identical(implementation, "pipeline")) {
+        if (is.character(components) && !is.null(names(components))) {
+            components <- as.list(components)
+        }
+        checkmate::assert_list(components, names = "unique")
+        missing_stages <- setdiff(WEATHER_COMPONENT_STAGES, names(components))
+        unknown_stages <- setdiff(names(components), WEATHER_COMPONENT_STAGES)
+        if (length(missing_stages) || length(unknown_stages)) {
+            cli::cli_abort(c(
+                "A pipeline recipe must identify all seven future-weather stages.",
+                "x" = if (length(missing_stages)) {
+                    "Missing stage(s): {.val {missing_stages}}."
+                },
+                "x" = if (length(unknown_stages)) {
+                    "Unknown stage(s): {.val {unknown_stages}}."
+                }
+            ))
+        }
+        components <- components[WEATHER_COMPONENT_STAGES]
+    } else {
+        checkmate::assert_list(components)
     }
-    checkmate::assert_list(components, names = "unique")
-    missing_stages <- setdiff(WEATHER_COMPONENT_STAGES, names(components))
-    unknown_stages <- setdiff(names(components), WEATHER_COMPONENT_STAGES)
-    if (length(missing_stages) || length(unknown_stages)) {
-        cli::cli_abort(c(
-            "A recipe must identify all seven future-weather stages.",
-            "x" = if (length(missing_stages)) {
-                "Missing stage(s): {.val {missing_stages}}."
-            },
-            "x" = if (length(unknown_stages)) {
-                "Unknown stage(s): {.val {unknown_stages}}."
-            }
-        ))
-    }
-    components <- components[WEATHER_COMPONENT_STAGES]
-    diagnostics <- weather__descriptor_values(
-        diagnostics,
-        "diagnostics"
-    )
-    provenance <- weather__descriptor_values(
-        provenance,
-        "provenance"
-    )
 
     WeatherRecipeSpec(
         name = name,
         version = as.integer(version),
         label = label,
         method = method,
+        method_version = as.integer(method_version),
+        signal_component = signal_component,
         backend = backend,
         implementation = implementation,
         source = source,
@@ -377,39 +365,57 @@ recipe__spec <- function(
         default_policy = default_policy,
         output_type = output_type,
         stochastic = stochastic,
-        diagnostics = diagnostics,
-        provenance = provenance,
+        diagnostics = weather__descriptor_values(diagnostics, "diagnostics"),
+        provenance = weather__descriptor_values(provenance, "provenance"),
         status = status
     )
 }
 # }}}
 
-# Return the stable conceptual stages used by the two existing monthly
-# backends. They remain backend adapters until their monolithic runner is split.
-# recipe__monthly_components {{{
-recipe__monthly_components <- function(enhanced = FALSE) {
-    checkmate::assert_flag(enhanced)
-    list(
-        preprocess = "monthly_climate_summary",
-        calendar = "gregorian_months",
-        signal = if (enhanced) {
-            "epwshiftr_change_factors"
-        } else {
-            "original_morphing_change_factors"
-        },
-        sequence = "preserve_epw_sequence",
-        hourly = if (enhanced) {
-            "epwshiftr_monthly_transform"
-        } else {
-            "original_morphing_monthly_transform"
-        },
-        physics = if (enhanced) {
-            "enhanced_weather_closure"
-        } else {
-            "legacy_epw_field_closure"
-        },
-        output = "epw_result"
+# Ensure all active signal and pipeline components referenced by built-in
+# recipes are registered in the process-local component registry.
+# recipe__register_components {{{
+recipe__register_components <- function() {
+    bias__register_linear_scaling_component()
+    bias__register_delta_change_component()
+    qm__register_component()
+    qdm__register_component()
+    kqdm__register_component()
+    sdm__register_component()
+    cdft__register_component()
+    edcdf__register_component()
+    isimip__register_component()
+    daily__register_temperature_components()
+    btws__register_hourly_component()
+    daily_adjustment__register_components()
+    hourly_kqdm__register_components()
+    invisible(NULL)
+}
+# }}}
+
+# Build a standard weather_template + climate-role requirement list concisely.
+# recipe__role_inputs {{{
+recipe__role_inputs <- function(
+    frequencies,
+    variable_sets,
+    roles = c("model_historical", "model_future"),
+    calendars = character(),
+    variable_frequencies = list()
+) {
+    role_reqs <- stats::setNames(
+        lapply(roles, function(role) {
+            component__input_requirement(
+                role,
+                representations = "series",
+                frequencies = frequencies,
+                variable_frequencies = variable_frequencies,
+                calendars = calendars,
+                variable_sets = variable_sets
+            )
+        }),
+        roles
     )
+    c(list(weather_template = weather__epw_template_requirement()), role_reqs)
 }
 # }}}
 
@@ -419,104 +425,51 @@ recipe__monthly_components <- function(enhanced = FALSE) {
 # recipe__monthly_inputs {{{
 recipe__monthly_inputs <- function(enhanced = FALSE) {
     checkmate::assert_flag(enhanced)
-    common <- c(
-        "tas",
-        "psl",
-        "rlds",
-        "rsds",
-        "sfcWind",
-        "clt",
-        "pr"
-    )
+    common <- c("tas", "psl", "rlds", "rsds", "sfcWind", "clt", "pr")
     if (!enhanced) {
         common <- c("tas", "tasmax", "tasmin", setdiff(common, "tas"))
     }
     variables <- if (enhanced) {
-        list(
-            c(common, "hurs"),
-            c(common, "huss", "ps")
-        )
+        list(c(common, "hurs"), c(common, "huss", "ps"))
     } else {
         c(common, "hurs")
     }
-    list(
-        weather_template = component__input_requirement(
-            "weather_template",
-            representations = "epw",
-            frequencies = "hour",
-            calendars = "gregorian"
-        ),
-        model_historical = component__input_requirement(
-            "model_historical",
-            representations = "series",
-            frequencies = "mon",
-            variable_sets = variables
-        ),
-        model_future = component__input_requirement(
-            "model_future",
-            representations = "series",
-            frequencies = "mon",
-            variable_sets = variables
-        )
-    )
+    recipe__role_inputs("mon", variables)
 }
 # }}}
 
-# Declare the shared temperature input contract once so all eight daily
-# adjustment recipes receive the same semantic roles and frequencies.
-# recipe__daily_adjustment_inputs {{{
-recipe__daily_adjustment_inputs <- function() {
-    c(
-        list(
-            weather_template = component__input_requirement(
-                "weather_template",
-                representations = "epw",
-                frequencies = "hour",
-                calendars = "gregorian"
-            )
-        ),
+# Build complete temperature recipes from registered daily signal components.
+# Only the signal component and backend identifier vary; the EPW adapter stays fixed.
+# recipe__daily_adjustment_specs {{{
+recipe__daily_adjustment_specs <- function() {
+    inputs <- c(
+        list(weather_template = weather__epw_template_requirement()),
         signal__three_role_requirements(
             "tas",
             frequencies = "day",
             calendars = CF_TIME_CALENDARS
         )
     )
-}
-# }}}
-
-# Build complete temperature recipes from method records. Only the signal
-# component and backend identifier vary; the reusable EPW adapter stays fixed.
-# recipe__daily_adjustment_specs {{{
-recipe__daily_adjustment_specs <- function() {
-    inputs <- recipe__daily_adjustment_inputs()
     specs <- lapply(names(DAILY_ADJUSTMENT_METHOD_COMPONENTS), function(key) {
         method_name <- DAILY_ADJUSTMENT_METHOD_COMPONENTS[[key]]
-        method <- method__get(method_name)
-        signal <- component__get("signal", method@implementation_key)
+        signal <- component__get("signal", method_name)
         profile <- signal@metadata$signal_profiles$tas
         pipeline <- daily_adjustment__pipeline(key)
-        # The published signal kernel is combined with epwshiftr's common
-        # daily-to-hourly EPW adapter, so the complete transform is an adapted
-        # publication even when the signal itself is published unchanged.
-        transform_evidence <- if (
-            identical(
-                profile$evidence,
-                "experimental"
-            )
-        ) {
+        transform_evidence <- if (identical(profile$evidence, "experimental")) {
             "experimental"
         } else {
             "adapted_publication"
         }
         recipe__spec(
             name = paste0(method_name, "_temperature"),
-            label = paste(method@label, "temperature EPW"),
-            method = method@name,
+            label = paste(signal@label, "temperature EPW"),
+            method = method_name,
+            signal_component = method_name,
             backend = DAILY_ADJUSTMENT_BACKENDS[[key]],
             implementation = "pipeline",
             source = list(
                 type = transform_evidence,
-                citation = method@label,
+                citation = signal@label,
                 signal_evidence = profile$evidence,
                 references = profile$references
             ),
@@ -524,12 +477,10 @@ recipe__daily_adjustment_specs <- function() {
             calendar_policy = "cf_annual_phase_365",
             components = pipeline__records(pipeline),
             policy_profiles = c(harmonized = "default"),
-            physical_policies = c(
-                harmonized = "preserve_specific_humidity"
-            ),
+            physical_policies = c(harmonized = "preserve_specific_humidity"),
             default_policy = "harmonized",
             output_type = "representative_year",
-            stochastic = "tas" %in% method@stochastic_variables,
+            stochastic = FALSE,
             diagnostics = c(
                 "daily_target_closure",
                 "humidity_closure",
@@ -556,107 +507,29 @@ recipe__daily_adjustment_specs <- function() {
 # component functions in their definitions.
 # recipe__default_specs {{{
 recipe__default_specs <- function() {
+    recipe__register_components()
     faithful_inputs <- recipe__monthly_inputs(enhanced = FALSE)
     enhanced_inputs <- recipe__monthly_inputs(enhanced = TRUE)
     daily_pipeline <- daily__temperature_pipeline()
     daily_btws_pipeline <- daily__temperature_pipeline("btws")
-    bws_btws_pipeline <- bws_btws__pipeline()
-    ek_pipeline <- ek__pipeline()
-    quantile_mapping_pipeline <- quantile_mapping_morphing__pipeline()
-    sobie_pipeline <- sobie__pipeline()
     hourly_kqdm_pipeline <- hourly_kqdm__pipeline()
-    daily_inputs <- list(
-        weather_template = component__input_requirement(
-            "weather_template",
-            representations = "epw",
-            frequencies = "hour",
-            calendars = "gregorian"
+    hourly_kqdm_inputs <- c(
+        list(
+            weather_template = weather__epw_template_requirement(),
+            observed_reference = component__input_requirement(
+                "observed_reference",
+                representations = "series",
+                frequencies = "hour",
+                calendars = CF_TIME_CALENDARS,
+                variable_sets = EPW_MORPH_HOURLY_KQDM_VARIABLES
+            )
         ),
-        model_historical = component__input_requirement(
-            "model_historical",
-            representations = "series",
-            frequencies = "day",
-            variable_sets = "tas"
-        ),
-        model_future = component__input_requirement(
-            "model_future",
-            representations = "series",
-            frequencies = "day",
-            variable_sets = "tas"
-        )
-    )
-    daily_btws_inputs <- list(
-        weather_template = daily_inputs$weather_template,
-        model_historical = component__input_requirement(
-            "model_historical",
-            representations = "series",
-            frequencies = "day",
-            variable_sets = c("tas", "tasmin", "tasmax")
-        ),
-        model_future = component__input_requirement(
-            "model_future",
-            representations = "series",
-            frequencies = "day",
-            variable_sets = c("tas", "tasmin", "tasmax")
-        )
-    )
-    bws_btws_inputs <- bws_btws__inputs()
-    ek_inputs <- ek__daily_temperature_inputs()
-    quantile_mapping_inputs <- quantile_mapping_morphing__temperature_inputs()
-    sobie_inputs <- list(
-        weather_template = component__input_requirement(
-            "weather_template",
-            representations = "epw",
-            frequencies = "hour",
-            calendars = "gregorian"
-        ),
-        model_historical = component__input_requirement(
-            "model_historical",
-            representations = "series",
-            frequencies = "day",
-            variable_sets = c("tas", "tasmin", "tasmax", "huss", "ps")
-        ),
-        model_future = component__input_requirement(
-            "model_future",
-            representations = "series",
-            frequencies = "day",
-            variable_sets = c("tas", "tasmin", "tasmax", "huss", "ps")
-        )
-    )
-    hourly_kqdm_inputs <- list(
-        weather_template = component__input_requirement(
-            "weather_template",
-            representations = "epw",
-            frequencies = "hour",
-            calendars = "gregorian"
-        ),
-        observed_reference = component__input_requirement(
-            "observed_reference",
-            representations = "series",
-            frequencies = "hour",
-            calendars = CF_TIME_CALENDARS,
-            variable_sets = EPW_MORPH_HOURLY_KQDM_VARIABLES
-        ),
-        model_historical = component__input_requirement(
-            "model_historical",
-            representations = "series",
+        recipe__role_inputs(
             frequencies = unique(unname(HOURLY_KQDM_MODEL_FREQUENCIES)),
-            variable_frequencies = as.list(
-                HOURLY_KQDM_MODEL_FREQUENCIES
-            ),
+            variable_sets = EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES,
             calendars = CF_TIME_CALENDARS,
-            variable_sets = EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
-        ),
-        model_future = component__input_requirement(
-            "model_future",
-            representations = "series",
-            frequencies = unique(unname(HOURLY_KQDM_MODEL_FREQUENCIES)),
-            variable_frequencies = as.list(
-                HOURLY_KQDM_MODEL_FREQUENCIES
-            ),
-            calendars = CF_TIME_CALENDARS,
-            variable_sets = EPW_MORPH_HOURLY_KQDM_MODEL_VARIABLES
-        )
+            variable_frequencies = as.list(HOURLY_KQDM_MODEL_FREQUENCIES)
+        )[c("model_historical", "model_future")]
     )
 
     builtins <- list(
@@ -664,6 +537,7 @@ recipe__default_specs <- function() {
             name = "original_morphing_monthly",
             label = "Original monthly morphing",
             method = "original_morphing_monthly",
+            method_version = 2L,
             backend = "original_morphing",
             implementation = "backend",
             source = list(
@@ -684,21 +558,16 @@ recipe__default_specs <- function() {
             required_inputs = faithful_inputs,
             calendar_policy = "monthly_gregorian",
             target_calendar = "epw_365_day",
-            components = recipe__monthly_components(),
             policy_profiles = c(paper_faithful = "legacy"),
             physical_policies = c(
                 paper_faithful = "legacy_independent_fields"
             ),
             default_policy = "paper_faithful",
-            diagnostics = c(
-                "monthly_target_closure",
-                "physical_bounds"
-            ),
+            diagnostics = c("monthly_target_closure", "physical_bounds"),
             provenance = c(
                 "source_method",
                 "backend_profile",
-                "input_periods",
-                "component_names"
+                "input_periods"
             ),
             status = "production",
             version = 2L
@@ -707,6 +576,7 @@ recipe__default_specs <- function() {
             name = "epwshiftr_monthly",
             label = "Enhanced epwshiftr monthly morphing",
             method = "epwshiftr_monthly",
+            method_version = 3L,
             backend = "original_morphing",
             implementation = "backend",
             source = list(
@@ -730,11 +600,8 @@ recipe__default_specs <- function() {
             optional_inputs = enhanced_inputs["model_historical"],
             calendar_policy = "monthly_gregorian",
             target_calendar = "epw_365_day",
-            components = recipe__monthly_components(enhanced = TRUE),
             policy_profiles = c(harmonized = "enhanced"),
-            physical_policies = c(
-                harmonized = "monthly_harmonized"
-            ),
+            physical_policies = c(harmonized = "monthly_harmonized"),
             default_policy = "harmonized",
             diagnostics = c(
                 "monthly_target_closure",
@@ -746,7 +613,6 @@ recipe__default_specs <- function() {
                 "source_method",
                 "backend_profile",
                 "input_periods",
-                "component_names",
                 "physical_policies"
             ),
             status = "production",
@@ -756,6 +622,7 @@ recipe__default_specs <- function() {
             name = "epwshiftr_daily_power",
             label = "Daily power-constrained temperature projection",
             method = "daily_temperature_delta",
+            signal_component = "daily_temperature_delta",
             backend = "daily_temperature",
             implementation = "pipeline",
             source = list(
@@ -769,13 +636,11 @@ recipe__default_specs <- function() {
                     "https://github.com/ideas-lab-nus/epwshiftr/pull/141"
                 )
             ),
-            required_inputs = daily_inputs,
+            required_inputs = recipe__role_inputs("day", "tas"),
             calendar_policy = "cf_annual_phase_365",
             components = pipeline__records(daily_pipeline),
             policy_profiles = c(harmonized = "default"),
-            physical_policies = c(
-                harmonized = "preserve_specific_humidity"
-            ),
+            physical_policies = c(harmonized = "preserve_specific_humidity"),
             default_policy = "harmonized",
             diagnostics = c(
                 "daily_target_closure",
@@ -798,6 +663,7 @@ recipe__default_specs <- function() {
             name = "epwshiftr_daily_btws",
             label = "Daily CMIP6 signal with BTWS projection",
             method = "daily_temperature_delta",
+            signal_component = "daily_temperature_delta",
             backend = "daily_temperature_btws",
             implementation = "pipeline",
             source = list(
@@ -823,13 +689,14 @@ recipe__default_specs <- function() {
                     "targets to the published hourly reconstruction component."
                 )
             ),
-            required_inputs = daily_btws_inputs,
+            required_inputs = recipe__role_inputs(
+                "day",
+                c("tas", "tasmin", "tasmax")
+            ),
             calendar_policy = "cf_annual_phase_365",
             components = pipeline__records(daily_btws_pipeline),
             policy_profiles = c(harmonized = "default"),
-            physical_policies = c(
-                harmonized = "preserve_specific_humidity"
-            ),
+            physical_policies = c(harmonized = "preserve_specific_humidity"),
             default_policy = "harmonized",
             diagnostics = c(
                 "daily_target_closure",
@@ -855,7 +722,7 @@ recipe__default_specs <- function() {
             label = "BWS and BTWS monthly weather morphing",
             method = "bws_btws_monthly",
             backend = "bws_btws_monthly",
-            implementation = "pipeline",
+            implementation = "backend",
             source = list(
                 type = "adapted_publication",
                 citation = paste(
@@ -894,13 +761,14 @@ recipe__default_specs <- function() {
                     "direct radiation after all method candidates are formed."
                 )
             ),
-            required_inputs = bws_btws_inputs,
-            calendar_policy = "cf_calendar_month_to_epw_365",
-            components = pipeline__records(bws_btws_pipeline),
-            policy_profiles = c(harmonized = "default"),
-            physical_policies = c(
-                harmonized = "bws_btws_weather"
+            required_inputs = recipe__role_inputs(
+                "mon",
+                c("tas", "tasmin", "tasmax", "rsds", "clt")
             ),
+            calendar_policy = "cf_calendar_month_to_epw_365",
+            target_calendar = "epw_365_day",
+            policy_profiles = c(harmonized = "default"),
+            physical_policies = c(harmonized = "bws_btws_weather"),
             default_policy = "harmonized",
             diagnostics = c(
                 "monthly_temperature_radiation_cloud_changes",
@@ -917,7 +785,6 @@ recipe__default_specs <- function() {
                 "source_method",
                 "input_periods",
                 "calendar_mapping",
-                "component_names",
                 "equation_interpretation",
                 "adaptation_boundary",
                 "physical_policies"
@@ -929,7 +796,7 @@ recipe__default_specs <- function() {
             label = "Ek daily temperature change factors",
             method = "ek_daily_factors",
             backend = "ek_daily_temperature",
-            implementation = "pipeline",
+            implementation = "backend",
             source = list(
                 type = "reconstructed_publication",
                 citation = paste(
@@ -960,10 +827,9 @@ recipe__default_specs <- function() {
                     "Table 2, so unsupported variables are not invented."
                 )
             ),
-            required_inputs = ek_inputs,
+            required_inputs = recipe__role_inputs("day", c("tasmin", "tasmax")),
             calendar_policy = "cf_yearly_linear_to_epw_365",
             target_calendar = "epw_365_day",
-            components = pipeline__records(ek_pipeline),
             policy_profiles = c(
                 paper_faithful = "default",
                 harmonized = "default"
@@ -984,7 +850,6 @@ recipe__default_specs <- function() {
                 "source_method",
                 "input_periods",
                 "calendar_mapping",
-                "component_names",
                 "equation_interpretation",
                 "unsupported_variables",
                 "physical_policy"
@@ -996,7 +861,7 @@ recipe__default_specs <- function() {
             label = "Quantile-mapping morphing for daily temperature",
             method = "quantile_mapping_morphing_daily",
             backend = "quantile_mapping_morphing",
-            implementation = "pipeline",
+            implementation = "backend",
             source = list(
                 type = "published",
                 citation = paste(
@@ -1024,10 +889,13 @@ recipe__default_specs <- function() {
                     "linear factor interpolation, and endpoint clamping."
                 )
             ),
-            required_inputs = quantile_mapping_inputs,
+            required_inputs = recipe__role_inputs(
+                "day",
+                "tas",
+                roles = SIGNAL_THREE_INPUT_ROLES
+            ),
             calendar_policy = "native_calendar_month_distributions",
             target_calendar = "epw_365_day",
-            components = pipeline__records(quantile_mapping_pipeline),
             policy_profiles = c(
                 paper_faithful = "default",
                 harmonized = "default"
@@ -1047,7 +915,6 @@ recipe__default_specs <- function() {
                 "source_method",
                 "input_periods",
                 "monthly_calendar_grouping",
-                "component_names",
                 "empirical_cdf_conventions",
                 "smoothing",
                 "physical_policy"
@@ -1060,6 +927,7 @@ recipe__default_specs <- function() {
             name = "hourly_kernel_qdm",
             label = "Hourly kernel QDM multi-year future weather",
             method = "kernel_quantile_delta_mapping_hourly",
+            signal_component = "kernel_quantile_delta_mapping_hourly",
             backend = "hourly_kernel_qdm",
             implementation = "pipeline",
             source = list(
@@ -1083,9 +951,7 @@ recipe__default_specs <- function() {
             calendar_policy = "native_cf_hourly_to_epw_365",
             components = pipeline__records(hourly_kqdm_pipeline),
             policy_profiles = c(harmonized = "default"),
-            physical_policies = c(
-                harmonized = "absolute_model_fields"
-            ),
+            physical_policies = c(harmonized = "absolute_model_fields"),
             default_policy = "harmonized",
             output_type = "multi_year",
             diagnostics = c(
@@ -1115,7 +981,7 @@ recipe__default_specs <- function() {
             label = "Sobie-Curry daily morphing",
             method = "sobie_curry_daily",
             backend = "sobie_curry_daily",
-            implementation = "pipeline",
+            implementation = "backend",
             source = list(
                 type = "published",
                 citation = paste(
@@ -1130,10 +996,12 @@ recipe__default_specs <- function() {
                     "consistent with the paper's difference wording."
                 )
             ),
-            required_inputs = sobie_inputs,
+            required_inputs = recipe__role_inputs(
+                "day",
+                c("tas", "tasmin", "tasmax", "huss", "ps")
+            ),
             calendar_policy = "cf_annual_phase_365",
             target_calendar = "epw_365_day",
-            components = pipeline__records(sobie_pipeline),
             policy_profiles = c(
                 paper_faithful = "default",
                 harmonized = "default"
@@ -1155,7 +1023,6 @@ recipe__default_specs <- function() {
                 "backend_profile",
                 "input_periods",
                 "calendar_mapping",
-                "component_names",
                 "equation_interpretation",
                 "physical_policy"
             ),
@@ -1183,10 +1050,7 @@ recipe__target_calendar <- function(spec) {
     if (is.null(target_calendar)) {
         return(character())
     }
-    checkmate::assert_string(
-        target_calendar,
-        pattern = "^[a-z][a-z0-9_]*$"
-    )
+    checkmate::assert_string(target_calendar, pattern = "^[a-z][a-z0-9_]*$")
     target_calendar
 }
 # }}}
@@ -1196,27 +1060,27 @@ recipe__target_calendar <- function(spec) {
 # recipe__validate_registration {{{
 recipe__validate_registration <- function(spec) {
     if (!S7::S7_inherits(spec, WeatherRecipeSpec)) {
-        cli::cli_abort(
-            "{.arg spec} must be a WeatherRecipeSpec object."
-        )
+        cli::cli_abort("{.arg spec} must be a WeatherRecipeSpec object.")
     }
-    method__get(spec@method)
+    if (!is.null(spec@signal_component)) {
+        component__get("signal", spec@signal_component)
+    }
     backend <- epw_morph_backend(spec@backend)
-    profiles <- unname(spec@policy_profiles)
-    if (
+    allowed_profiles <- if (
         spec@backend %in% c("original_morphing", "original_morphing_absolute")
     ) {
-        invalid <- setdiff(profiles, EPW_MORPH_ORIGINAL_PROFILES)
+        EPW_MORPH_ORIGINAL_PROFILES
     } else {
-        invalid <- setdiff(profiles, "default")
+        "default"
     }
+    invalid <- setdiff(unname(spec@policy_profiles), allowed_profiles)
     if (length(invalid)) {
         cli::cli_abort(
             "Recipe {.val {spec@name}} uses unsupported backend profile(s): {.val {invalid}}."
         )
     }
+    pipeline <- backend$component_pipeline()
     if (identical(spec@implementation, "pipeline")) {
-        pipeline <- backend$component_pipeline()
         if (is.null(pipeline)) {
             cli::cli_abort(
                 "Recipe {.val {spec@name}} declares a component pipeline but backend {.val {spec@backend}} does not provide one."
@@ -1236,6 +1100,10 @@ recipe__validate_registration <- function(spec) {
                 components[[index + 1L]]
             )
         }
+    } else if (!is.null(pipeline)) {
+        cli::cli_abort(
+            "Recipe {.val {spec@name}} uses implementation `backend` but backend {.val {spec@backend}} provides a component pipeline."
+        )
     }
     invisible(spec)
 }
@@ -1263,22 +1131,13 @@ recipe__register <- function(
 # Populate the built-in catalog once while retaining existing process-local entries.
 # recipe__register_defaults {{{
 recipe__register_defaults <- function() {
-    registered <- ls(
-        envir = WEATHER_RECIPE_REGISTRY,
-        all.names = FALSE
-    )
+    registered <- ls(envir = WEATHER_RECIPE_REGISTRY, all.names = FALSE)
     if (all(WEATHER_RECIPE_DEFAULTS %in% registered)) {
         return(invisible(NULL))
     }
     specs <- recipe__default_specs()
     for (name in names(specs)) {
-        if (
-            !exists(
-                name,
-                envir = WEATHER_RECIPE_REGISTRY,
-                inherits = FALSE
-            )
-        ) {
+        if (!exists(name, envir = WEATHER_RECIPE_REGISTRY, inherits = FALSE)) {
             recipe__register(specs[[name]])
         }
     }
@@ -1300,9 +1159,7 @@ recipe__get <- function(
         recipe__register_defaults()
     }
     if (!exists(name, envir = registry, inherits = FALSE)) {
-        cli::cli_abort(
-            "Unknown future-weather recipe: {.val {name}}."
-        )
+        cli::cli_abort("Unknown future-weather recipe: {.val {name}}.")
     }
     spec <- get(name, envir = registry, inherits = FALSE)
     if (!is.null(version)) {
@@ -1326,69 +1183,52 @@ recipe__list <- function(registry = WEATHER_RECIPE_REGISTRY) {
         recipe__register_defaults()
     }
     names <- sort(ls(envir = registry, all.names = FALSE))
-    if (!length(names)) {
-        return(data.table::data.table(
-            name = character(),
-            version = integer(),
-            label = character(),
-            method = character(),
-            backend = character(),
-            implementation = character(),
-            default_policy = character(),
-            policies = list(),
-            physical_policies = list(),
-            calendar_policy = character(),
-            target_calendar = character(),
-            output_type = character(),
-            stochastic = logical(),
-            status = character(),
-            source = list(),
-            required_inputs = list(),
-            optional_inputs = list(),
-            components = list(),
-            diagnostics = list(),
-            provenance = list()
-        ))
-    }
-    data.table::rbindlist(
-        lapply(names, function(name) {
-            spec <- get(name, envir = registry, inherits = FALSE)
-            target_calendar <- recipe__target_calendar(spec)
-            data.table::data.table(
-                name = spec@name,
-                version = spec@version,
-                label = spec@label,
-                method = spec@method,
-                backend = spec@backend,
-                implementation = spec@implementation,
-                default_policy = spec@default_policy,
-                policies = list(names(spec@policy_profiles)),
-                physical_policies = list(spec@physical_policies),
-                calendar_policy = spec@calendar_policy,
-                target_calendar = if (length(target_calendar)) {
-                    target_calendar
-                } else {
-                    NA_character_
-                },
-                output_type = spec@output_type,
-                stochastic = spec@stochastic,
-                status = spec@status,
-                source = list(spec@source),
-                required_inputs = list(lapply(
-                    spec@required_inputs,
-                    component__input_requirement_record
-                )),
-                optional_inputs = list(lapply(
-                    spec@optional_inputs,
-                    component__input_requirement_record
-                )),
-                components = list(spec@components),
-                diagnostics = list(spec@diagnostics),
-                provenance = list(spec@provenance)
-            )
+    specs <- lapply(names, get, envir = registry, inherits = FALSE)
+    target_calendars <- vapply(
+        specs,
+        function(spec) {
+            cal <- recipe__target_calendar(spec)
+            if (length(cal)) cal else NA_character_
+        },
+        character(1L)
+    )
+    data.table::data.table(
+        name = vapply(specs, function(s) s@name, character(1L)),
+        version = vapply(specs, function(s) s@version, integer(1L)),
+        label = vapply(specs, function(s) s@label, character(1L)),
+        method = vapply(specs, function(s) s@method, character(1L)),
+        backend = vapply(specs, function(s) s@backend, character(1L)),
+        implementation = vapply(
+            specs,
+            function(s) s@implementation,
+            character(1L)
+        ),
+        default_policy = vapply(
+            specs,
+            function(s) s@default_policy,
+            character(1L)
+        ),
+        policies = lapply(specs, function(s) names(s@policy_profiles)),
+        physical_policies = lapply(specs, function(s) s@physical_policies),
+        calendar_policy = vapply(
+            specs,
+            function(s) s@calendar_policy,
+            character(1L)
+        ),
+        target_calendar = target_calendars,
+        output_type = vapply(specs, function(s) s@output_type, character(1L)),
+        stochastic = vapply(specs, function(s) s@stochastic, logical(1L)),
+        status = vapply(specs, function(s) s@status, character(1L)),
+        source = lapply(specs, function(s) s@source),
+        required_inputs = lapply(specs, function(s) {
+            lapply(s@required_inputs, component__input_requirement_record)
         }),
-        use.names = TRUE,
-        fill = TRUE
+        optional_inputs = lapply(specs, function(s) {
+            lapply(s@optional_inputs, component__input_requirement_record)
+        }),
+        components = lapply(specs, function(s) s@components),
+        diagnostics = lapply(specs, function(s) s@diagnostics),
+        provenance = lapply(specs, function(s) s@provenance)
     )
 }
 # }}}
@@ -1400,13 +1240,7 @@ recipe__resolve <- function(name, policy = NULL, version = NULL) {
     checkmate::assert_string(name, min.chars = 1L)
     recipe__register_defaults()
     key <- tolower(name)
-    if (
-        !exists(
-            key,
-            envir = WEATHER_RECIPE_REGISTRY,
-            inherits = FALSE
-        )
-    ) {
+    if (!exists(key, envir = WEATHER_RECIPE_REGISTRY, inherits = FALSE)) {
         return(NULL)
     }
     spec <- recipe__get(key, version = version)
@@ -1430,17 +1264,17 @@ recipe__frequency_choices <- function(
     roles = c("model_historical", "model_future")
 ) {
     if (!S7::S7_inherits(spec, WeatherRecipeSpec)) {
-        cli::cli_abort(
-            "{.arg spec} must be a WeatherRecipeSpec object."
-        )
+        cli::cli_abort("{.arg spec} must be a WeatherRecipeSpec object.")
     }
     checkmate::assert_subset(roles, WEATHER_INPUT_ROLES)
     requirements <- c(spec@required_inputs, spec@optional_inputs)
-    choices <- lapply(
-        intersect(roles, names(requirements)),
-        function(role) requirements[[role]]@frequencies
+    choices <- Filter(
+        length,
+        lapply(
+            intersect(roles, names(requirements)),
+            function(role) requirements[[role]]@frequencies
+        )
     )
-    choices <- Filter(length, choices)
     if (!length(choices)) {
         return(NULL)
     }
@@ -1462,9 +1296,7 @@ recipe__variable_frequencies <- function(
     roles = c("model_historical", "model_future")
 ) {
     if (!S7::S7_inherits(spec, WeatherRecipeSpec)) {
-        cli::cli_abort(
-            "{.arg spec} must be a WeatherRecipeSpec object."
-        )
+        cli::cli_abort("{.arg spec} must be a WeatherRecipeSpec object.")
     }
     checkmate::assert_subset(roles, WEATHER_INPUT_ROLES)
     requirements <- c(spec@required_inputs, spec@optional_inputs)
@@ -1488,8 +1320,6 @@ recipe__validate_inputs <- function(
     required_inputs = spec@required_inputs,
     optional_inputs = spec@optional_inputs
 ) {
-    # Option-resolved contracts keep runtime validation consistent with the
-    # variables selected during discovery, extraction, and transform setup.
     errors <- weather__input_requirement_errors(
         required_inputs,
         optional_inputs,

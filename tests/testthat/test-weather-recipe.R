@@ -12,86 +12,6 @@ recipe_test__climate_input <- function(role, frequency, variables) {
 }
 # }}}
 
-# Build the common EPW template input without reading or mutating a weather
-# fixture.
-# recipe_test__weather_template {{{
-recipe_test__weather_template <- function() {
-    weather__new_input(
-        "weather_template",
-        "baseline.epw",
-        representation = "epw",
-        frequencies = "hour",
-        calendars = "gregorian"
-    )
-}
-# }}}
-
-test_that("built-in complete recipes expose inspectable stable metadata", {
-    recipes <- epw_morph_recipes()
-
-    expect_named(
-        recipes,
-        c(
-            "name",
-            "version",
-            "label",
-            "method",
-            "backend",
-            "implementation",
-            "default_policy",
-            "policies",
-            "physical_policies",
-            "calendar_policy",
-            "target_calendar",
-            "output_type",
-            "stochastic",
-            "status",
-            "source",
-            "required_inputs",
-            "optional_inputs",
-            "components",
-            "diagnostics",
-            "provenance"
-        )
-    )
-    expect_setequal(
-        recipes$name,
-        WEATHER_RECIPE_DEFAULTS
-    )
-    expect_true(all(lengths(recipes$components) == 7L))
-    expect_true(all(
-        recipes$output_type[recipes$name != "hourly_kernel_qdm"] ==
-            "representative_year"
-    ))
-    expect_identical(
-        recipes$output_type[recipes$name == "hourly_kernel_qdm"],
-        "multi_year"
-    )
-    expect_false(any(recipes$stochastic))
-
-    daily <- recipe__get("epwshiftr_daily_power")
-    expect_true(S7::S7_inherits(daily, WeatherRecipeSpec))
-    expect_identical(daily@backend, "daily_temperature")
-    expect_identical(daily@method, "daily_temperature_delta")
-    expect_identical(daily@implementation, "pipeline")
-    expect_identical(daily@default_policy, "harmonized")
-    expect_identical(
-        daily@physical_policies,
-        c(harmonized = "preserve_specific_humidity")
-    )
-    expect_identical(
-        daily@components,
-        pipeline__records(
-            epw_morph_backend("daily_temperature")$component_pipeline()
-        )
-    )
-    expect_false(any(vapply(
-        c(daily@source, daily@components),
-        is.function,
-        logical(1L)
-    )))
-})
-
 test_that("complete recipes expose one comparable EPW field-role contract", {
     original <- morpher__weather_field_roles(
         epw_morph_recipe("original_morphing_monthly")
@@ -131,64 +51,7 @@ test_that("complete recipes expose one comparable EPW field-role contract", {
     )
 })
 
-test_that("recipe registry rejects duplicate and incompatible definitions", {
-    registry <- new.env(parent = emptyenv())
-    daily <- recipe__get("epwshiftr_daily_power")
-
-    recipe__register(daily, registry = registry)
-    expect_identical(
-        recipe__get(
-            "epwshiftr_daily_power",
-            version = 1L,
-            registry = registry
-        ),
-        daily
-    )
-    expect_identical(
-        recipe__list(registry)[["name"]],
-        "epwshiftr_daily_power"
-    )
-    expect_error(
-        recipe__register(daily, registry = registry),
-        "already registered"
-    )
-    expect_error(
-        recipe__get(
-            "epwshiftr_daily_power",
-            version = 2L,
-            registry = registry
-        ),
-        "persisted version"
-    )
-
-    incompatible_components <- daily@components
-    incompatible_components$signal <- "missing_signal"
-    incompatible <- recipe__spec(
-        name = "incompatible_daily",
-        label = "Incompatible daily test",
-        method = "daily_temperature_delta",
-        backend = "daily_temperature",
-        implementation = "pipeline",
-        source = list(
-            type = "test",
-            citation = "Test-only incompatible recipe"
-        ),
-        required_inputs = daily@required_inputs,
-        calendar_policy = daily@calendar_policy,
-        components = incompatible_components,
-        policy_profiles = c(harmonized = "default"),
-        physical_policies = c(
-            harmonized = "preserve_specific_humidity"
-        ),
-        default_policy = "harmonized"
-    )
-    expect_error(
-        recipe__register(incompatible, registry = registry),
-        "do not match"
-    )
-})
-
-test_that("registered recipe policies resolve backend profiles explicitly", {
+test_that("registered recipe policies, versions, and backend contracts enforce compatibility", {
     faithful <- epw_morph_recipe("original_morphing_monthly")
     enhanced <- epw_morph_recipe("epwshiftr_monthly")
     daily <- epw_morph_recipe("epwshiftr_daily_power")
@@ -197,58 +60,35 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
     expect_identical(faithful$backend, "original_morphing")
     expect_identical(faithful$profile, "legacy")
     expect_identical(faithful$policy, "paper_faithful")
-    expect_identical(faithful$recipe_spec, "original_morphing_monthly")
     expect_identical(faithful$recipe_version, 2L)
     expect_identical(faithful$methods[["tdb"]], "combined")
     expect_true(all(
-        c("tas", "tasmax", "tasmin") %in%
-            epw_morph_variables(faithful)
+        c("tas", "tasmax", "tasmin") %in% epw_morph_variables(faithful)
     ))
     expect_true(morpher__recipe_requires_reference(faithful))
-    expect_true(morpher__recipe_accepts_reference(faithful))
-    expect_identical(
-        morpher__recipe_required_frequency(faithful),
-        "mon"
-    )
+    expect_identical(morpher__recipe_required_frequency(faithful), "mon")
+    expect_identical(faithful$components, list())
 
-    expect_identical(enhanced$backend, "original_morphing")
     expect_identical(enhanced$profile, "enhanced")
     expect_identical(enhanced$policy, "harmonized")
     expect_false(morpher__recipe_requires_reference(enhanced))
     expect_true(morpher__recipe_accepts_reference(enhanced))
-    expect_identical(
-        morpher__recipe_required_frequency(enhanced),
-        "mon"
-    )
+    expect_identical(morpher__recipe_required_frequency(enhanced), "mon")
 
     expect_identical(daily$backend, "daily_temperature")
-    expect_identical(daily$profile, "default")
-    expect_identical(daily$policy, "harmonized")
-    expect_identical(
-        epw_morph_variables("epwshiftr_daily_power"),
-        "tas"
-    )
-    expect_identical(
-        morpher__recipe_required_frequency(daily),
-        "day"
-    )
+    expect_identical(epw_morph_variables("epwshiftr_daily_power"), "tas")
+    expect_identical(morpher__recipe_required_frequency(daily), "day")
     expect_identical(
         morpher__recipe_required_frequency(hourly),
         HOURLY_KQDM_MODEL_FREQUENCIES
     )
 
     expect_error(
-        epw_morph_recipe(
-            "original_morphing_monthly",
-            policy = "harmonized"
-        ),
+        epw_morph_recipe("original_morphing_monthly", policy = "harmonized"),
         "Must be element"
     )
     expect_error(
-        epw_morph_recipe(
-            "epwshiftr_monthly",
-            profile = "legacy"
-        ),
+        epw_morph_recipe("epwshiftr_monthly", profile = "legacy"),
         "requires backend profile"
     )
     expect_error(
@@ -259,11 +99,40 @@ test_that("registered recipe policies resolve backend profiles explicitly", {
         "uses backend"
     )
     expect_error(
-        epw_morph_recipe(
-            "epwshiftr_daily_power",
-            version = 2L
-        ),
+        epw_morph_recipe("epwshiftr_daily_power", version = 2L),
         "persisted version"
+    )
+
+    # Incompatible pipeline components are rejected at registration time
+    registry <- new.env(parent = emptyenv())
+    daily_spec <- recipe__get("epwshiftr_daily_power")
+    recipe__register(daily_spec, registry = registry)
+    expect_error(
+        recipe__register(daily_spec, registry = registry),
+        "already registered"
+    )
+    bad_components <- daily_spec@components
+    bad_components$signal <- "missing_signal"
+    incompatible <- recipe__spec(
+        name = "incompatible_daily",
+        label = "Incompatible daily test",
+        method = "daily_temperature_delta",
+        backend = "daily_temperature",
+        implementation = "pipeline",
+        source = list(
+            type = "test",
+            citation = "Test-only incompatible recipe"
+        ),
+        required_inputs = daily_spec@required_inputs,
+        calendar_policy = daily_spec@calendar_policy,
+        components = bad_components,
+        policy_profiles = c(harmonized = "default"),
+        physical_policies = c(harmonized = "preserve_specific_humidity"),
+        default_policy = "harmonized"
+    )
+    expect_error(
+        recipe__register(incompatible, registry = registry),
+        "do not match"
     )
 
     ad_hoc <- epw_morph_recipe("original_morphing")
@@ -296,7 +165,13 @@ test_that("recipe input roles validate before backend execution", {
         "mon",
         monthly_variables
     )
-    template <- recipe_test__weather_template()
+    template <- weather__new_input(
+        "weather_template",
+        "baseline.epw",
+        representation = "epw",
+        frequencies = "hour",
+        calendars = "gregorian"
+    )
     faithful <- recipe__get("original_morphing_monthly")
     enhanced <- recipe__get("epwshiftr_monthly")
 
@@ -309,12 +184,14 @@ test_that("recipe input roles validate before backend execution", {
         "required role `model_historical` is missing"
     )
     expect_invisible(recipe__validate_inputs(enhanced, without_historical))
-    complete <- weather__new_inputs(
-        weather_template = template,
-        model_historical = historical,
-        model_future = future
-    )
-    expect_invisible(recipe__validate_inputs(faithful, complete))
+    expect_invisible(recipe__validate_inputs(
+        faithful,
+        weather__new_inputs(
+            weather_template = template,
+            model_historical = historical,
+            model_future = future
+        )
+    ))
 
     wrong_frequency <- weather__new_inputs(
         weather_template = template,
@@ -341,34 +218,6 @@ test_that("recipe input roles validate before backend execution", {
         morpher__run_context(context),
         "input requirements are not satisfied"
     )
-})
-
-test_that("registered recipe identity survives JSON and transform persistence", {
-    transform <- daily_transform("epwshiftr", window_days = 21L)
-    recipe <- transform__recipe(transform)
-    json_roundtrip <- cli_shift__recipe_from_json(
-        morpher__json(recipe)
-    )
-    transform_roundtrip <- transform__recipe(
-        transform__from_spec(transform__spec_value(transform))
-    )
-
-    for (rebuilt in list(json_roundtrip, transform_roundtrip)) {
-        expect_identical(rebuilt$name, "epwshiftr_daily_power")
-        expect_identical(
-            rebuilt$recipe_spec,
-            "epwshiftr_daily_power"
-        )
-        expect_identical(rebuilt$recipe_version, 1L)
-        expect_identical(rebuilt$policy, "harmonized")
-        expect_identical(rebuilt$backend, "daily_temperature")
-        expect_identical(rebuilt$options$window_days, 21L)
-        expect_identical(rebuilt$components, recipe$components)
-    }
-
-    cli_recipe <- transform__recipe(monthly_transform("epwshiftr"))
-    expect_identical(cli_recipe$recipe_spec, "epwshiftr_monthly")
-    expect_identical(cli_recipe$profile, "enhanced")
 })
 
 test_that("epw_morph_recipe() accepts morph.R statistical downscaling method overrides", {

@@ -142,7 +142,12 @@ test_that("transform options validate schemas, reject unknown settings, and roun
     )
     expect_named(
         qdm@options$signal_overrides$tas,
-        names(method__get("quantile_delta_mapping_daily")@parameters$tas)
+        names(
+            component__get(
+                "signal",
+                "quantile_delta_mapping_daily"
+            )@metadata$signal_profiles$tas$settings
+        )
     )
     expect_identical(linear@options$climatology_window_days, 15L)
     expect_equal(linear@options$signal_overrides$tas$zero_tolerance, 0.01)
@@ -387,6 +392,63 @@ test_that("reference roles and required vs optional source frequencies remain di
         hourly@optional_variable_frequencies$model_future,
         c("tasmin", "tasmax")
     )
+})
+
+test_that("all built-in recipes, backends, and policy profiles satisfy registration contracts", {
+    recipes <- epw_morph_recipes()
+    expect_setequal(recipes$name, WEATHER_RECIPE_DEFAULTS)
+    expect_true(all(EPW_MORPH_BACKEND_DEFAULTS %in% epw_morph_backends()))
+
+    expected_backend_recipes <- c(
+        "original_morphing_monthly",
+        "epwshiftr_monthly",
+        "bws_btws_monthly",
+        "ek_daily_factors",
+        "quantile_mapping_morphing_daily",
+        "sobie_curry_daily"
+    )
+    expect_identical(
+        recipe__get("original_morphing_monthly")@method_version,
+        2L
+    )
+    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 3L)
+
+    for (name in WEATHER_RECIPE_DEFAULTS) {
+        spec <- recipe__get(name)
+        backend <- epw_morph_backend(spec@backend)
+        expect_true(S7::S7_inherits(spec, WeatherRecipeSpec))
+        expect_true(inherits(backend, "EpwMorphBackend"))
+        expect_identical(length(recipe__target_calendar(spec)), 1L)
+        expect_true(spec@default_policy %in% names(spec@policy_profiles))
+        expect_identical(
+            names(spec@physical_policies),
+            names(spec@policy_profiles)
+        )
+        if (name %in% expected_backend_recipes) {
+            expect_identical(spec@implementation, "backend")
+            expect_identical(spec@components, list())
+            expect_null(backend$component_pipeline())
+        } else {
+            expect_identical(spec@implementation, "pipeline")
+            expect_identical(names(spec@components), WEATHER_COMPONENT_STAGES)
+            expect_identical(
+                spec@components,
+                pipeline__records(backend$component_pipeline())
+            )
+        }
+        for (policy in names(spec@policy_profiles)) {
+            resolved <- epw_morph_recipe(name, policy = policy)
+            expect_identical(resolved$policy, policy)
+            expect_identical(
+                resolved$profile,
+                unname(spec@policy_profiles[[policy]])
+            )
+            expect_identical(
+                epwphys__recipe_policy(resolved)@name,
+                unname(spec@physical_policies[[policy]])
+            )
+        }
+    }
 })
 
 # vim: fdm=marker :
