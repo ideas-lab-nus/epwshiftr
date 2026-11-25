@@ -471,4 +471,166 @@ subset_test__dap_app <- function(
 }
 environment(subset_test__dap_app) <- baseenv()
 
+# An isolated server gives HEAD and GET deliberately different validators and
+# terminates the first actual response after a known valid prefix.
+downloader_transport__app <- function(mode = "strong") {
+    app <- webfakes::new_app()
+    app$locals$bytes <- as.raw(rep(0:255, 32))
+    app$locals$requests <- list()
+    app$locals$mode <- mode
+    app$get("/requests", function(req, res, locals) {
+        res$send_json(locals$requests, auto_unbox = TRUE)
+    })
+    app$head("/:name", function(req, res) {
+        res$set_header("ETag", '"HEAD-only"')$send(raw())
+    })
+    app$get("/:name", function(req, res, locals) {
+        header <- function(name) {
+            value <- req$get_header(name)
+            if (is.null(value)) "" else value
+        }
+        range <- header("Range")
+        locals$requests[[length(locals$requests) + 1L]] <- list(
+            range = range,
+            if_range = header("If-Range")
+        )
+        start <- if (nzchar(range)) {
+            as.numeric(gsub("[^0-9]", "", range))
+        } else {
+            0
+        }
+        if (locals$mode == "changed" && length(locals$requests) > 1L) {
+            res$set_header("ETag", '"Actual-GET-B"')
+            return(res$send(as.raw((as.integer(locals$bytes) + 1L) %% 256L)))
+        }
+        if (
+            locals$mode == "weak" ||
+                (locals$mode == "kill" && length(locals$requests) == 1L)
+        ) {
+            res$set_header("ETag", 'W/"Actual-GET-A"')
+        } else if (locals$mode %in% c("lm-strong", "lm-recent")) {
+            res$set_header("Last-Modified", "Wed, 25 Nov 2026 00:00:00 GMT")
+            res$set_header(
+                "Date",
+                if (locals$mode == "lm-strong") {
+                    "Wed, 25 Nov 2026 00:02:00 GMT"
+                } else {
+                    "Wed, 25 Nov 2026 00:00:30 GMT"
+                }
+            )
+        } else if (locals$mode == "kill") {
+            res$set_header("ETag", '"Actual-GET-B"')
+            locals$bytes <- as.raw(
+                (as.integer(as.raw(rep(0:255, 32))) + 1L) %% 256L
+            )
+        } else if (locals$mode != "missing") {
+            res$set_header(
+                "ETag",
+                if (
+                    locals$mode == "validator" && length(locals$requests) > 1L
+                ) {
+                    '"Actual-GET-B"'
+                } else {
+                    '"Actual-GET-A"'
+                }
+            )
+        }
+        total <- length(locals$bytes)
+        if (locals$mode == "complete") {
+            return(res$set_status(416L)$set_header(
+                "Content-Range",
+                sprintf("bytes */%d", total)
+            )$send(raw()))
+        }
+        later <- length(locals$requests) > 1L
+        if (later && locals$mode == "ignore") {
+            return(res$send(locals$bytes))
+        }
+        if (later && locals$mode == "range416") {
+            return(res$set_status(416L)$set_header(
+                "Content-Range",
+                sprintf("bytes */%d", total)
+            )$send(raw()))
+        }
+        if (later && locals$mode == "encoding") {
+            res$set_header("Content-Encoding", "gzip")
+        }
+        reported <- if (later && locals$mode == "offset") start + 1L else start
+        if (later && locals$mode == "total") {
+            total <- total + 1L
+        }
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf("bytes %.0f-%d/%d", reported, total - 1L, total)
+        )
+        if (locals$mode == "kill" && length(locals$requests) == 2L) {
+            res$send_chunk(locals$bytes[1:2048])
+            Sys.sleep(3)
+            res$send_chunk(locals$bytes[2049:8192])
+            return(invisible(NULL))
+        }
+        if (length(locals$requests) == 1L) {
+            res$send_chunk(locals$bytes[1:1024])
+            return(invisible(NULL))
+        }
+        if (later && locals$mode == "long") {
+            res$send_chunk(c(locals$bytes[(start + 1):total], as.raw(0)))
+            return(invisible(NULL))
+        }
+        res$send(locals$bytes[(start + 1):min(total, length(locals$bytes))])
+    })
+    app
+}
+environment(downloader_transport__app) <- baseenv()
+
+# This fixture honors bounded ranges and gives its one-byte precheck a different
+# ETag, allowing tests to distinguish negotiation from retained-byte evidence.
+downloader_transport__piece_app <- function(mode = "valid") {
+    app <- webfakes::new_app()
+    app$locals$bytes <- as.raw(rep(0:255, 32))
+    app$locals$mode <- mode
+    app$locals$count <- 0L
+    app$all("/data", function(req, res, locals) {
+        range <- req$get_header("Range")
+        if (is.null(range)) {
+            return(res$send(locals$bytes))
+        }
+        bounds <- as.numeric(strsplit(
+            sub("^bytes=", "", range),
+            "-",
+            fixed = TRUE
+        )[[1L]])
+        start <- bounds[[1L]]
+        end <- bounds[[2L]]
+        check <- start == 0 && end == 0
+        if (!check) {
+            locals$count <- locals$count + 1L
+        }
+        etag <- if (check) {
+            '"Precheck-Only"'
+        } else if (locals$mode == "changed-validator" && locals$count > 1L) {
+            '"Actual-Pieces-B"'
+        } else {
+            '"Actual-Pieces-A"'
+        }
+        res$set_header("ETag", etag)
+        reported <- if (!check && locals$mode == "wrong-offset") {
+            start + 1L
+        } else {
+            start
+        }
+        res$set_status(206L)$set_header(
+            "Content-Range",
+            sprintf(
+                "bytes %.0f-%.0f/%d",
+                reported,
+                end + reported - start,
+                length(locals$bytes)
+            )
+        )$send(locals$bytes[(start + 1L):(end + 1L)])
+    })
+    app
+}
+environment(downloader_transport__piece_app) <- baseenv()
+
 # vim: fdm=marker :

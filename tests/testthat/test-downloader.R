@@ -703,6 +703,13 @@ test_that("serialized downloader worker dependencies support both worker algorit
             "headers_text",
             "resume_supported",
             "resume_guard",
+            "transfer_response",
+            "piece_guard",
+            "transfer_preserve",
+            "transfer_read",
+            "transfer_write",
+            "transfer_seal",
+            "transfer_stream",
             "copy_file_range",
             "merge_piece_files",
             "target_path",
@@ -1570,10 +1577,7 @@ test_that("Downloader$run() falls back across candidate URLs", {
     )
 
     session_id <- dl$enqueue(plan, session_label = "fallback")
-    expect_warning(
-        tasks <- dl$run(session_id = session_id, progress = FALSE),
-        "Failed to open|Download failed|HTTP"
-    )
+    tasks <- dl$run(session_id = session_id, progress = FALSE)
     expect_equal(tasks$status, "done")
     expect_identical(tasks$selected_url, plan$url[[2L]])
     nodes <- dl$data_nodes()
@@ -2268,10 +2272,10 @@ test_that("Downloader$download() handles HTTP errors", {
 
     url <- server$url("/files/missing.bin")
 
-    expect_warning(expect_error(
+    expect_error(
         dl$download(url, filename = "nonexistent.nc", progress = FALSE),
         "Failed to download"
-    ))
+    )
 
     unlink(temp_dir, recursive = TRUE)
 })
@@ -2642,13 +2646,30 @@ test_that("ordinary HTTP resume validates GETs and retries at the written offset
     for (mode in c("ignore", "wrong")) {
         partial <- file.path(temp, paste0(mode, ".part"))
         writeBin(prefix, partial)
-        expect_error(suppressWarnings(downloader$download(
-            server$url(paste0("/", mode)),
-            filename = paste0(mode, ".bin"),
-            progress = FALSE,
-            .tmp_id = mode
-        )))
-        expect_identical(readBin(partial, "raw", n = 8192L), prefix)
+        attempt <- function() {
+            downloader$download(
+                server$url(paste0("/", mode)),
+                filename = paste0(mode, ".bin"),
+                progress = FALSE,
+                .tmp_id = mode,
+                checksum = checksum_bytes(app$locals$bytes, "md5"),
+                checksum_type = "md5"
+            )
+        }
+        if (mode == "ignore") {
+            path <- attempt()
+            expect_identical(readBin(path, "raw", n = 8192L), app$locals$bytes)
+            retained <- list.files(
+                temp,
+                "^ignore[.]part[.]retained-",
+                full.names = TRUE
+            )
+            expect_length(retained, 1L)
+            expect_identical(readBin(retained, "raw", n = 8192L), prefix)
+        } else {
+            expect_error(suppressWarnings(attempt()), "Content-Range")
+            expect_identical(readBin(partial, "raw", n = 8192L), prefix)
+        }
     }
     # Check the real server response at a large offset without allocating a
     # multi-gigabyte file in the test filesystem.
