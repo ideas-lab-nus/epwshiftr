@@ -5339,10 +5339,15 @@ Downloader <- R6::R6Class(
         #' @param session_id Optional session ID.
         #' @param task_id Optional task ID vector.
         #'
-        #' @return A data frame of completed task records with a
-        #'        `checksum_ok` and `integrity_evidence` columns. The latter distinguishes
-        #'        publisher checksums, saved byte-producing transfers, and missing
-        #'        historical evidence.
+        #' @return A data frame of completed task records with `checksum_ok` and
+        #'        `integrity_evidence` columns. Read both together with task status:
+        #'        `"publisher_checksum"` identifies a supplied expected checksum,
+        #'        `"saved_transfer"` identifies complete saved byte-producing transfer
+        #'        evidence without a publisher checksum, and `"missing"` identifies
+        #'        absent historical evidence. Generic `checksum_ok` can be `TRUE` on
+        #'        file existence alone when neither evidence type is available. A local
+        #'        hash does not establish publisher checksum verification or authorize
+        #'        Store source adoption by itself.
         # verify {{{
         verify = function(session_id = NULL, task_id = NULL) {
             private$require_manifest()

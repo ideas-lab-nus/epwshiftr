@@ -3353,6 +3353,15 @@ EsgStore <- R6::R6Class(
         #' consumed directly without starting workers. Speedup depends on the
         #' number of independent tasks and the remote service.
         #'
+        #' Ordinary and pooled extraction share source ownership and recovery checks.
+        #' Complete outputs and extraction caches require matching saved acquisition
+        #' lineage and local integrity evidence, which can support offline reuse.
+        #' Missing evidence, source conflicts, and changed bytes identify the affected
+        #' result without replacing its original source receipt. After checking the
+        #' requested source, use `overwrite = TRUE` to recompute rejected results.
+        #' Download byte continuation is qualified separately from output `resume`;
+        #' saved transfer settings and existing pool limits are preserved.
+        #'
         #' @param plan_id Optional plan IDs to run.
         #' @param status Plan statuses to run when `plan_id` is `NULL`.
         #'        Default: `c("pending", "failed")`.

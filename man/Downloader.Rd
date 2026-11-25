@@ -23,7 +23,7 @@ the host package; ordinary downloads do not require epwshiftr to be loaded.
 \examples{
 
 ## ------------------------------------------------
-## Method `Downloader$new`
+## Method `Downloader$new()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -37,7 +37,7 @@ dl <- Downloader$new(
 }
 
 ## ------------------------------------------------
-## Method `Downloader$download`
+## Method `Downloader$download()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -60,7 +60,7 @@ results <- dl$wait_for_tasks(task_ids)
 }
 
 ## ------------------------------------------------
-## Method `Downloader$cleanup_tmp`
+## Method `Downloader$cleanup_tmp()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -69,7 +69,7 @@ n_removed <- downloader$cleanup_tmp(all = TRUE)
 }
 
 ## ------------------------------------------------
-## Method `Downloader$get_tasks`
+## Method `Downloader$get_tasks()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -77,7 +77,7 @@ tasks <- downloader$get_tasks()
 }
 
 ## ------------------------------------------------
-## Method `Downloader$get_task_status`
+## Method `Downloader$get_task_status()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -86,7 +86,7 @@ status <- dl$get_task_status(task_id)
 }
 
 ## ------------------------------------------------
-## Method `Downloader$wait_for_tasks`
+## Method `Downloader$wait_for_tasks()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -96,7 +96,7 @@ results <- dl$wait_for_tasks()
 }
 
 ## ------------------------------------------------
-## Method `Downloader$cancel_task`
+## Method `Downloader$cancel_task()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -106,7 +106,7 @@ dl$cancel_task(task_id)
 }
 
 ## ------------------------------------------------
-## Method `Downloader$list_incomplete`
+## Method `Downloader$list_incomplete()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -114,7 +114,7 @@ incomplete <- downloader$list_incomplete()
 }
 
 ## ------------------------------------------------
-## Method `Downloader$verify_checksum`
+## Method `Downloader$verify_checksum()`
 ## ------------------------------------------------
 
 \dontrun{
@@ -125,81 +125,82 @@ valid <- downloader$verify_checksum("data.nc", "abc123", "sha256")
 Hongyuan Jia
 }
 \section{Active bindings}{
-\if{html}{\out{<div class="r6-active-bindings">}}
-\describe{
-\item{\code{data_dir}}{The final data directory}
+  \if{html}{\out{<div class="r6-active-bindings">}}
+  \describe{
+    \item{\code{data_dir}}{The final data directory}
 
-\item{\code{tmp_dir}}{The temporary files directory}
+    \item{\code{tmp_dir}}{The temporary files directory}
 
-\item{\code{max_retries}}{Maximum number of retry attempts}
+    \item{\code{max_retries}}{Maximum number of retry attempts}
 
-\item{\code{timeout}}{Download timeout in seconds}
+    \item{\code{timeout}}{Download timeout in seconds}
 
-\item{\code{network_policy}}{Network options passed to libcurl.}
+    \item{\code{network_policy}}{Network options passed to libcurl.}
 
-\item{\code{node_policy}}{Data-node cooldown and ranking policy.}
+    \item{\code{node_policy}}{Data-node cooldown and ranking policy.}
 
-\item{\code{transfer_policy}}{Curl transfer policy.}
+    \item{\code{transfer_policy}}{Curl transfer policy.}
 
-\item{\code{resource_policy}}{Local resource and scheduling policy.}
+    \item{\code{resource_policy}}{Local resource and scheduling policy.}
 
-\item{\code{n_workers}}{Number of parallel workers}
+    \item{\code{n_workers}}{Number of parallel workers}
 
-\item{\code{manifest}}{Persistent download manifest path, or \code{NULL}.}
+    \item{\code{manifest}}{Persistent download manifest path, or \code{NULL}.}
 
-\item{\code{config}}{Current downloader configuration as a named list. When
+    \item{\code{config}}{Current downloader configuration as a named list. When
 \code{manifest} is set, the configuration is stored in the
 manifest's \code{download_config} table.}
-}
-\if{html}{\out{</div>}}
+  }
+  \if{html}{\out{</div>}}
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-Downloader-new}{\code{Downloader$new()}}
-\item \href{#method-Downloader-download}{\code{Downloader$download()}}
-\item \href{#method-Downloader-enqueue}{\code{Downloader$enqueue()}}
-\item \href{#method-Downloader-preflight}{\code{Downloader$preflight()}}
-\item \href{#method-Downloader-run}{\code{Downloader$run()}}
-\item \href{#method-Downloader-start}{\code{Downloader$start()}}
-\item \href{#method-Downloader-jobs}{\code{Downloader$jobs()}}
-\item \href{#method-Downloader-job_status}{\code{Downloader$job_status()}}
-\item \href{#method-Downloader-job_logs}{\code{Downloader$job_logs()}}
-\item \href{#method-Downloader-stop_job}{\code{Downloader$stop_job()}}
-\item \href{#method-Downloader-daemon_start}{\code{Downloader$daemon_start()}}
-\item \href{#method-Downloader-daemon_status}{\code{Downloader$daemon_status()}}
-\item \href{#method-Downloader-daemon_stop}{\code{Downloader$daemon_stop()}}
-\item \href{#method-Downloader-sessions}{\code{Downloader$sessions()}}
-\item \href{#method-Downloader-tasks}{\code{Downloader$tasks()}}
-\item \href{#method-Downloader-status}{\code{Downloader$status()}}
-\item \href{#method-Downloader-events}{\code{Downloader$events()}}
-\item \href{#method-Downloader-on}{\code{Downloader$on()}}
-\item \href{#method-Downloader-off}{\code{Downloader$off()}}
-\item \href{#method-Downloader-data_nodes}{\code{Downloader$data_nodes()}}
-\item \href{#method-Downloader-reset_data_nodes}{\code{Downloader$reset_data_nodes()}}
-\item \href{#method-Downloader-record_probes}{\code{Downloader$record_probes()}}
-\item \href{#method-Downloader-retry}{\code{Downloader$retry()}}
-\item \href{#method-Downloader-cancel}{\code{Downloader$cancel()}}
-\item \href{#method-Downloader-resume}{\code{Downloader$resume()}}
-\item \href{#method-Downloader-verify}{\code{Downloader$verify()}}
-\item \href{#method-Downloader-cleanup_tmp}{\code{Downloader$cleanup_tmp()}}
-\item \href{#method-Downloader-get_tasks}{\code{Downloader$get_tasks()}}
-\item \href{#method-Downloader-get_task_status}{\code{Downloader$get_task_status()}}
-\item \href{#method-Downloader-wait_for_tasks}{\code{Downloader$wait_for_tasks()}}
-\item \href{#method-Downloader-cancel_task}{\code{Downloader$cancel_task()}}
-\item \href{#method-Downloader-list_incomplete}{\code{Downloader$list_incomplete()}}
-\item \href{#method-Downloader-verify_checksum}{\code{Downloader$verify_checksum()}}
-\item \href{#method-Downloader-print}{\code{Downloader$print()}}
-\item \href{#method-Downloader-clone}{\code{Downloader$clone()}}
-}
+  \itemize{
+    \item \href{#method-Downloader-initialize}{\code{Downloader$new()}}
+    \item \href{#method-Downloader-download}{\code{Downloader$download()}}
+    \item \href{#method-Downloader-enqueue}{\code{Downloader$enqueue()}}
+    \item \href{#method-Downloader-preflight}{\code{Downloader$preflight()}}
+    \item \href{#method-Downloader-run}{\code{Downloader$run()}}
+    \item \href{#method-Downloader-start}{\code{Downloader$start()}}
+    \item \href{#method-Downloader-jobs}{\code{Downloader$jobs()}}
+    \item \href{#method-Downloader-job_status}{\code{Downloader$job_status()}}
+    \item \href{#method-Downloader-job_logs}{\code{Downloader$job_logs()}}
+    \item \href{#method-Downloader-stop_job}{\code{Downloader$stop_job()}}
+    \item \href{#method-Downloader-daemon_start}{\code{Downloader$daemon_start()}}
+    \item \href{#method-Downloader-daemon_status}{\code{Downloader$daemon_status()}}
+    \item \href{#method-Downloader-daemon_stop}{\code{Downloader$daemon_stop()}}
+    \item \href{#method-Downloader-sessions}{\code{Downloader$sessions()}}
+    \item \href{#method-Downloader-tasks}{\code{Downloader$tasks()}}
+    \item \href{#method-Downloader-status}{\code{Downloader$status()}}
+    \item \href{#method-Downloader-events}{\code{Downloader$events()}}
+    \item \href{#method-Downloader-on}{\code{Downloader$on()}}
+    \item \href{#method-Downloader-off}{\code{Downloader$off()}}
+    \item \href{#method-Downloader-data_nodes}{\code{Downloader$data_nodes()}}
+    \item \href{#method-Downloader-reset_data_nodes}{\code{Downloader$reset_data_nodes()}}
+    \item \href{#method-Downloader-record_probes}{\code{Downloader$record_probes()}}
+    \item \href{#method-Downloader-retry}{\code{Downloader$retry()}}
+    \item \href{#method-Downloader-cancel}{\code{Downloader$cancel()}}
+    \item \href{#method-Downloader-resume}{\code{Downloader$resume()}}
+    \item \href{#method-Downloader-verify}{\code{Downloader$verify()}}
+    \item \href{#method-Downloader-cleanup_tmp}{\code{Downloader$cleanup_tmp()}}
+    \item \href{#method-Downloader-get_tasks}{\code{Downloader$get_tasks()}}
+    \item \href{#method-Downloader-get_task_status}{\code{Downloader$get_task_status()}}
+    \item \href{#method-Downloader-wait_for_tasks}{\code{Downloader$wait_for_tasks()}}
+    \item \href{#method-Downloader-cancel_task}{\code{Downloader$cancel_task()}}
+    \item \href{#method-Downloader-list_incomplete}{\code{Downloader$list_incomplete()}}
+    \item \href{#method-Downloader-verify_checksum}{\code{Downloader$verify_checksum()}}
+    \item \href{#method-Downloader-print}{\code{Downloader$print()}}
+    \item \href{#method-Downloader-clone}{\code{Downloader$clone()}}
+  }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Downloader-new"></a>}}
-\if{latex}{\out{\hypertarget{method-Downloader-new}{}}}
-\subsection{Method \code{new()}}{
-Create a new Downloader object
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$new(
+\if{html}{\out{<a id="method-Downloader-initialize"></a>}}
+\if{latex}{\out{\hypertarget{method-Downloader-initialize}{}}}
+\subsection{\code{Downloader$new()}}{
+  Create a new Downloader object
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$new(
   dest = NULL,
   temp = NULL,
   retries = 3L,
@@ -214,48 +215,37 @@ Create a new Downloader object
   transfer_policy = NULL,
   resource_policy = NULL,
   manifest = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{dest}}{A string specifying the directory for final
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{dest}}{A string specifying the directory for final
 downloaded files. If \code{NULL}, uses a temporary directory. Default: \code{NULL}.}
-
-\item{\code{temp}}{A string specifying the directory for temporary files
+      \item{\code{temp}}{A string specifying the directory for temporary files
 (.part, .done). If \code{NULL}, uses \code{dest/.tmp}. Should ideally
 be on the same filesystem as \code{dest} for atomic rename
 operations. Default: \code{NULL}.}
-
-\item{\code{retries}}{A positive integer specifying the maximum number of
+      \item{\code{retries}}{A positive integer specifying the maximum number of
 retry attempts for failed downloads. Default: \code{3L}.}
-
-\item{\code{timeout}}{A positive integer specifying the timeout in seconds for
+      \item{\code{timeout}}{A positive integer specifying the timeout in seconds for
 each download. Default: \code{3600L} (1 hour).}
-
-\item{\code{ssl_verifypeer}}{Whether to verify HTTPS certificates. Default:
+      \item{\code{ssl_verifypeer}}{Whether to verify HTTPS certificates. Default:
 \code{TRUE}.}
-
-\item{\code{proxy}}{Optional proxy URL passed to libcurl. Default: \code{NULL}.}
-
-\item{\code{connect_timeout}}{Optional connection timeout in seconds passed
+      \item{\code{proxy}}{Optional proxy URL passed to libcurl. Default: \code{NULL}.}
+      \item{\code{connect_timeout}}{Optional connection timeout in seconds passed
 to libcurl. Default: \code{NULL}.}
-
-\item{\code{useragent}}{Optional HTTP user agent passed to libcurl.
+      \item{\code{useragent}}{Optional HTTP user agent passed to libcurl.
 Default: \code{NULL}.}
-
-\item{\code{cleanup}}{A logical value specifying whether to automatically clean up failed temporary
+      \item{\code{cleanup}}{A logical value specifying whether to automatically clean up failed temporary
 files. Default: \code{TRUE}.}
-
-\item{\code{n_workers}}{A non-negative integer specifying the number of parallel workers
+      \item{\code{n_workers}}{A non-negative integer specifying the number of parallel workers
 for async downloads. If \code{0}, async downloads will fallback to synchronous mode.
 Default: \code{4L}.}
-
-\item{\code{node_policy}}{A list controlling historical data-node cooldown
+      \item{\code{node_policy}}{A list controlling historical data-node cooldown
 and ranking. Missing fields use conservative defaults.}
-
-\item{\code{transfer_policy}}{A list controlling curl transfer options and
+      \item{\code{transfer_policy}}{A list controlling curl transfer options and
 optional experimental Range-piece downloads. Supported curl
 fields are \code{chunk_size}, \code{bandwidth_limit}, \code{low_speed_limit},
 and \code{low_speed_time}. Range fields are \code{range_mode}
@@ -264,24 +254,21 @@ and \code{low_speed_time}. Range fields are \code{range_mode}
 \code{require_checksum_for_multisource}, and \code{range_probe_timeout}.
 The default \code{range_mode = "off"} keeps the existing streaming
 download behavior.}
-
-\item{\code{resource_policy}}{A list controlling local resource checks and
+      \item{\code{resource_policy}}{A list controlling local resource checks and
 scheduling. Supported fields are \code{host_concurrency},
 \code{disk_preflight}, and \code{min_free_space}.}
-
-\item{\code{manifest}}{Optional DuckDB manifest path for persistent
+      \item{\code{manifest}}{Optional DuckDB manifest path for persistent
 sessions, tasks, candidate URLs, and events. If \code{NULL}, only
 the single-file shortcut API is available. Default: \code{NULL}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-An \code{Downloader} object.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-dl <- Downloader$new()
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    An \code{Downloader} object.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{dl <- Downloader$new()
 dl <- Downloader$new(dest = "~/data")
 dl <- Downloader$new(
     dest = "~/data",
@@ -289,19 +276,18 @@ dl <- Downloader$new(
     n_workers = 8
 )
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-download"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-download}{}}}
-\subsection{Method \code{download()}}{
-Download a single file with state management and resume support
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$download(
+\subsection{\code{Downloader$download()}}{
+  Download a single file with state management and resume support
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$download(
   url,
   filename = NULL,
   subdir = NULL,
@@ -312,48 +298,38 @@ Download a single file with state management and resume support
   resume = TRUE,
   block = TRUE,
   .tmp_id = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{url}}{A string specifying the URL to download from.}
-
-\item{\code{filename}}{A string specifying the filename for the downloaded file. If \code{NULL}, uses
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{url}}{A string specifying the URL to download from.}
+      \item{\code{filename}}{A string specifying the filename for the downloaded file. If \code{NULL}, uses
 filename from URL. Default: \code{NULL}.}
-
-\item{\code{subdir}}{A string specifying the subdirectory within \code{dest} to save file.
+      \item{\code{subdir}}{A string specifying the subdirectory within \code{dest} to save file.
 Default: \code{NULL} (save directly in \code{dest}).}
-
-\item{\code{progress}}{A logical value specifying whether to show progress bar. Default: \code{TRUE}.}
-
-\item{\code{overwrite}}{A logical value specifying whether to overwrite existing file. Default: \code{FALSE}.}
-
-\item{\code{checksum}}{A string specifying the expected checksum for verification. If provided,
+      \item{\code{progress}}{A logical value specifying whether to show progress bar. Default: \code{TRUE}.}
+      \item{\code{overwrite}}{A logical value specifying whether to overwrite existing file. Default: \code{FALSE}.}
+      \item{\code{checksum}}{A string specifying the expected checksum for verification. If provided,
 enables incremental checksum calculation. Default: \code{NULL}.}
-
-\item{\code{checksum_type}}{A string specifying the checksum type ("sha256" or "md5"). Default: \code{"sha256"}.}
-
-\item{\code{resume}}{A logical value specifying whether to resume interrupted downloads.
+      \item{\code{checksum_type}}{A string specifying the checksum type ("sha256" or "md5"). Default: \code{"sha256"}.}
+      \item{\code{resume}}{A logical value specifying whether to resume interrupted downloads.
 Default: \code{TRUE}.}
-
-\item{\code{block}}{A logical value specifying whether to block until download completes.
+      \item{\code{block}}{A logical value specifying whether to block until download completes.
 If \code{FALSE}, downloads asynchronously in background. Default: \code{TRUE}.}
-
-\item{\code{.tmp_id}}{Internal temporary file ID used by persistent
+      \item{\code{.tmp_id}}{Internal temporary file ID used by persistent
 download tasks. Default: \code{NULL}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-If \code{block = TRUE}, returns the path to the downloaded file.
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    If \code{block = TRUE}, returns the path to the downloaded file.
 If \code{block = FALSE}, returns a task ID for tracking the download.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-# Blocking download
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{# Blocking download
 path <- dl$download(url = "https://example.com/data.nc")
 
 # Async download
@@ -370,798 +346,805 @@ task_ids <- sapply(urls, function(url) {
 })
 results <- dl$wait_for_tasks(task_ids)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-enqueue"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-enqueue}{}}}
-\subsection{Method \code{enqueue()}}{
-Add a download plan to the persistent manifest.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$enqueue(plan, session_label = NULL)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{plan}}{A data frame with at least \code{logical_file_id}, \code{filename},
+\subsection{\code{Downloader$enqueue()}}{
+  Add a download plan to the persistent manifest.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$enqueue(plan, session_label = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan}}{A data frame with at least \code{logical_file_id}, \code{filename},
 and \code{url} columns.}
+      \item{\code{session_label}}{Optional label for this download session.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The created session ID.
+  }
+}
 
-\item{\code{session_label}}{Optional label for this download session.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The created session ID.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-preflight"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-preflight}{}}}
-\subsection{Method \code{preflight()}}{
-Check local resource requirements before downloading.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$preflight(
+\subsection{\code{Downloader$preflight()}}{
+  Check local resource requirements before downloading.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$preflight(
   plan = NULL,
   session_id = NULL,
   task_id = NULL,
   overwrite = FALSE
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{plan}}{Optional download plan. If supplied, preflight is
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan}}{Optional download plan. If supplied, preflight is
 calculated without writing to the persistent manifest.}
-
-\item{\code{session_id}}{Optional persistent session ID.}
-
-\item{\code{task_id}}{Optional persistent task ID vector.}
-
-\item{\code{overwrite}}{Whether existing final files would be overwritten.
+      \item{\code{session_id}}{Optional persistent session ID.}
+      \item{\code{task_id}}{Optional persistent task ID vector.}
+      \item{\code{overwrite}}{Whether existing final files would be overwritten.
 Default: \code{FALSE}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A one-row data frame with byte and disk-space summary.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A one-row data frame with byte and disk-space summary.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-run"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-run}{}}}
-\subsection{Method \code{run()}}{
-Run queued persistent download tasks.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$run(
+\subsection{\code{Downloader$run()}}{
+  Run queued persistent download tasks.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$run(
   session_id = NULL,
   task_id = NULL,
   block = TRUE,
   progress = TRUE,
   overwrite = FALSE,
   resume = TRUE
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-
-\item{\code{block}}{Whether to block until completion. If \code{FALSE}, creates
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+      \item{\code{block}}{Whether to block until completion. If \code{FALSE}, creates
 a detached background job via \verb{$start()}.}
-
-\item{\code{progress}}{Whether to show per-file progress.}
-
-\item{\code{overwrite}}{Whether to overwrite existing final files.}
-
-\item{\code{resume}}{Whether to resume \code{.part} files.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-If \code{block = TRUE}, a data frame of selected task records
+      \item{\code{progress}}{Whether to show per-file progress.}
+      \item{\code{overwrite}}{Whether to overwrite existing final files.}
+      \item{\code{resume}}{Whether to resume \code{.part} files.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    If \code{block = TRUE}, a data frame of selected task records
 after the run. If \code{block = FALSE}, a one-row background job
 record.
+  }
 }
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-start"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-start}{}}}
-\subsection{Method \code{start()}}{
-Start a persistent download session in the background.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$start(
+\subsection{\code{Downloader$start()}}{
+  Start a persistent download session in the background.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$start(
   session_id = NULL,
   task_id = NULL,
   overwrite = FALSE,
   resume = TRUE,
   mode = c("process", "daemon"),
   store_path = NULL
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-
-\item{\code{overwrite}}{Whether to overwrite existing final files.}
-
-\item{\code{resume}}{Whether to resume \code{.part} files.}
-
-\item{\code{mode}}{Background execution mode. \code{"process"} starts a detached
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+      \item{\code{overwrite}}{Whether to overwrite existing final files.}
+      \item{\code{resume}}{Whether to resume \code{.part} files.}
+      \item{\code{mode}}{Background execution mode. \code{"process"} starts a detached
 \code{Rscript}; \code{"daemon"} submits the job to a running downloader
 daemon.}
+      \item{\code{store_path}}{Optional \link{EsgStore} path to sync after completion.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A one-row data frame describing the background job.
+  }
+}
 
-\item{\code{store_path}}{Optional \link{EsgStore} path to sync after completion.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A one-row data frame describing the background job.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-jobs"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-jobs}{}}}
-\subsection{Method \code{jobs()}}{
-List downloader background jobs.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$jobs(status = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$jobs()}}{
+  List downloader background jobs.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$jobs(status = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{status}}{Optional job status filter.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{status}}{Optional job status filter.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-job_status"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-job_status}{}}}
-\subsection{Method \code{job_status()}}{
-Return downloader background job status.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$job_status(job_id = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$job_status()}}{
+  Return downloader background job status.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$job_status(job_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{job_id}}{Optional job ID filter.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{job_id}}{Optional job ID filter.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-job_logs"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-job_logs}{}}}
-\subsection{Method \code{job_logs()}}{
-Return downloader background job log lines.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$job_logs(job_id, tail = 100L)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$job_logs()}}{
+  Return downloader background job log lines.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$job_logs(job_id, tail = 100L)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{job_id}}{Job ID.}
+      \item{\code{tail}}{Number of trailing lines to return.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{job_id}}{Job ID.}
-
-\item{\code{tail}}{Number of trailing lines to return.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-stop_job"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-stop_job}{}}}
-\subsection{Method \code{stop_job()}}{
-Request cancellation of a background downloader job.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$stop_job(job_id, force = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$stop_job()}}{
+  Request cancellation of a background downloader job.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$stop_job(job_id, force = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{job_id}}{Job ID.}
+      \item{\code{force}}{Whether to kill the recorded process immediately.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{job_id}}{Job ID.}
-
-\item{\code{force}}{Whether to kill the recorded process immediately.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-daemon_start"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-daemon_start}{}}}
-\subsection{Method \code{daemon_start()}}{
-Start a persistent downloader daemon.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$daemon_start(port = NULL, heartbeat_interval = 5)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{port}}{Optional localhost TCP port. If \code{NULL}, a random high
+\subsection{\code{Downloader$daemon_start()}}{
+  Start a persistent downloader daemon.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$daemon_start(port = NULL, heartbeat_interval = 5)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{port}}{Optional localhost TCP port. If \code{NULL}, a random high
 port is chosen.}
+      \item{\code{heartbeat_interval}}{Seconds between daemon heartbeat checks.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A one-row data frame describing the daemon.
+  }
+}
 
-\item{\code{heartbeat_interval}}{Seconds between daemon heartbeat checks.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A one-row data frame describing the daemon.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-daemon_status"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-daemon_status}{}}}
-\subsection{Method \code{daemon_status()}}{
-Return downloader daemon status records.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$daemon_status()}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$daemon_status()}}{
+  Return downloader daemon status records.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$daemon_status()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-daemon_stop"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-daemon_stop}{}}}
-\subsection{Method \code{daemon_stop()}}{
-Request the running downloader daemon to stop.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$daemon_stop(force = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$daemon_stop()}}{
+  Request the running downloader daemon to stop.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$daemon_stop(force = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{force}}{Whether to kill the daemon process immediately.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{force}}{Whether to kill the daemon process immediately.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-sessions"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-sessions}{}}}
-\subsection{Method \code{sessions()}}{
-List persistent download sessions.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$sessions()}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$sessions()}}{
+  List persistent download sessions.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$sessions()}
+    \if{html}{\out{</div>}}
+  }
 }
 
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-tasks"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-tasks}{}}}
-\subsection{Method \code{tasks()}}{
-List persistent download tasks.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$tasks(session_id = NULL, job_id = NULL, status = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$tasks()}}{
+  List persistent download tasks.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$tasks(session_id = NULL, job_id = NULL, status = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{job_id}}{Optional background job ID.}
+      \item{\code{status}}{Optional task status filter.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{job_id}}{Optional background job ID.}
-
-\item{\code{status}}{Optional task status filter.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-status"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-status}{}}}
-\subsection{Method \code{status()}}{
-Return persistent download task status.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$status(session_id = NULL, job_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$status()}}{
+  Return persistent download task status.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$status(session_id = NULL, job_id = NULL, task_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{job_id}}{Optional background job ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame of matching task records.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{job_id}}{Optional background job ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data frame of matching task records.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-events"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-events}{}}}
-\subsection{Method \code{events()}}{
-Return persistent downloader event logs.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$events(session_id = NULL, job_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$events()}}{
+  Return persistent downloader event logs.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$events(session_id = NULL, job_id = NULL, task_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{job_id}}{Optional background job ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame of event records.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{job_id}}{Optional background job ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data frame of event records.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-on"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-on}{}}}
-\subsection{Method \code{on()}}{
-Register an in-session downloader event callback.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$on(event, fun)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$on()}}{
+  Register an in-session downloader event callback.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$on(event, fun)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{event}}{Event name.}
+      \item{\code{fun}}{Callback function called with \verb{(event, downloader)}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A callback token for \verb{$off()}.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{event}}{Event name.}
-
-\item{\code{fun}}{Callback function called with \verb{(event, downloader)}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A callback token for \verb{$off()}.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-off"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-off}{}}}
-\subsection{Method \code{off()}}{
-Remove a downloader event callback.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$off(token)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$off()}}{
+  Remove a downloader event callback.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$off(token)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{token}}{Callback token returned by \verb{$on()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    \code{TRUE} when a callback was removed.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{token}}{Callback token returned by \verb{$on()}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-\code{TRUE} when a callback was removed.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-data_nodes"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-data_nodes}{}}}
-\subsection{Method \code{data_nodes()}}{
-Return historical data node download performance.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$data_nodes(service = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$data_nodes()}}{
+  Return historical data node download performance.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$data_nodes(service = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{service}}{Optional ESGF service filter.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame of data node performance records.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{service}}{Optional ESGF service filter.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data frame of data node performance records.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-reset_data_nodes"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-reset_data_nodes}{}}}
-\subsection{Method \code{reset_data_nodes()}}{
-Reset historical data-node health records.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$reset_data_nodes(data_node = NULL, service = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$reset_data_nodes()}}{
+  Reset historical data-node health records.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$reset_data_nodes(data_node = NULL, service = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{data_node}}{Optional data-node host to reset.}
+      \item{\code{service}}{Optional ESGF service filter.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The remaining data-node records.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{data_node}}{Optional data-node host to reset.}
-
-\item{\code{service}}{Optional ESGF service filter.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The remaining data-node records.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-record_probes"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-record_probes}{}}}
-\subsection{Method \code{record_probes()}}{
-Record URL probe outcomes from a download plan into node history.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$record_probes(plan, probed = TRUE)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$record_probes()}}{
+  Record URL probe outcomes from a download plan into node history.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$record_probes(plan, probed = TRUE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{plan}}{A download plan returned by \verb{$download_plan()}.}
+      \item{\code{probed}}{Whether \code{probe = TRUE} was used to create the plan.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The current data-node records.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{plan}}{A download plan returned by \verb{$download_plan()}.}
-
-\item{\code{probed}}{Whether \code{probe = TRUE} was used to create the plan.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-The current data-node records.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-retry"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-retry}{}}}
-\subsection{Method \code{retry()}}{
-Requeue failed or cancelled persistent tasks.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$retry(
+\subsection{\code{Downloader$retry()}}{
+  Requeue failed or cancelled persistent tasks.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$retry(
   session_id = NULL,
   task_id = NULL,
   status = c("error", "cancelled")
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-
-\item{\code{status}}{Task statuses to requeue. Default:
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+      \item{\code{status}}{Task statuses to requeue. Default:
 \code{c("error", "cancelled")}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame of requeued task records.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data frame of requeued task records.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-cancel"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-cancel}{}}}
-\subsection{Method \code{cancel()}}{
-Cancel queued or in-progress persistent download tasks.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$cancel(
+\subsection{\code{Downloader$cancel()}}{
+  Cancel queued or in-progress persistent download tasks.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$cancel(
   session_id = NULL,
   task_id = NULL,
   status = c("queued", "downloading")
-)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-
-\item{\code{status}}{Task statuses to cancel. Default:
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+      \item{\code{status}}{Task statuses to cancel. Default:
 \code{c("queued", "downloading")}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame of cancelled task records.
+  }
 }
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data frame of cancelled task records.
-}
-}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-resume"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-resume}{}}}
-\subsection{Method \code{resume()}}{
-Resume queued or interrupted persistent tasks.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$resume(session_id = NULL, task_id = NULL, ...)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$resume()}}{
+  Resume queued or interrupted persistent tasks.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$resume(session_id = NULL, task_id = NULL, ...)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+      \item{\code{...}}{Additional arguments passed to \verb{$run()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame of selected task records after the run.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-
-\item{\code{...}}{Additional arguments passed to \verb{$run()}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data frame of selected task records after the run.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-verify"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-verify}{}}}
-\subsection{Method \code{verify()}}{
-Verify checksums for completed persistent tasks.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$verify(session_id = NULL, task_id = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$verify()}}{
+  Verify checksums for completed persistent tasks.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$verify(session_id = NULL, task_id = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{session_id}}{Optional session ID.}
+      \item{\code{task_id}}{Optional task ID vector.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame of completed task records with \code{checksum_ok} and
+\code{integrity_evidence} columns. Read both together with task status:
+\code{"publisher_checksum"} identifies a supplied expected checksum,
+\code{"saved_transfer"} identifies complete saved byte-producing transfer
+evidence without a publisher checksum, and \code{"missing"} identifies
+absent historical evidence. Generic \code{checksum_ok} can be \code{TRUE} on
+file existence alone when neither evidence type is available. A local
+hash does not establish publisher checksum verification or authorize
+Store source adoption by itself.
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{session_id}}{Optional session ID.}
-
-\item{\code{task_id}}{Optional task ID vector.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A data frame of completed task records with a
-\code{checksum_ok} column.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-cleanup_tmp"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-cleanup_tmp}{}}}
-\subsection{Method \code{cleanup_tmp()}}{
-Clean up temporary files (.part and .done files)
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$cleanup_tmp(all = FALSE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{all}}{If \code{TRUE}, removes all temporary files. If \code{FALSE},
+\subsection{\code{Downloader$cleanup_tmp()}}{
+  Clean up temporary files (.part and .done files)
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$cleanup_tmp(all = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{all}}{If \code{TRUE}, removes all temporary files. If \code{FALSE},
 only removes orphaned files (no corresponding final file).
 Default: \code{FALSE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-Number of files removed.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-n_removed <- downloader$cleanup_tmp()
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    Number of files removed.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{n_removed <- downloader$cleanup_tmp()
 n_removed <- downloader$cleanup_tmp(all = TRUE)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-get_tasks"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-get_tasks}{}}}
-\subsection{Method \code{get_tasks()}}{
-Get all async download tasks
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$get_tasks()}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$get_tasks()}}{
+  Get all async download tasks
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$get_tasks()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list of DownloadTask objects.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{tasks <- downloader$get_tasks()
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Returns}{
-A list of DownloadTask objects.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-tasks <- downloader$get_tasks()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-get_task_status"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-get_task_status}{}}}
-\subsection{Method \code{get_task_status()}}{
-Get status of an async download task
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$get_task_status(task_id)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{task_id}}{Task ID returned by \code{download(block = FALSE)}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list with task information including status, progress, etc.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-task_id <- dl$download(url, block = FALSE)
+\subsection{\code{Downloader$get_task_status()}}{
+  Get status of an async download task
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$get_task_status(task_id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{task_id}}{Task ID returned by \code{download(block = FALSE)}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list with task information including status, progress, etc.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{task_id <- dl$download(url, block = FALSE)
 status <- dl$get_task_status(task_id)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-wait_for_tasks"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-wait_for_tasks}{}}}
-\subsection{Method \code{wait_for_tasks()}}{
-Wait for all async download tasks to complete
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$wait_for_tasks(task_ids = NULL, progress = TRUE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{task_ids}}{Optional vector of task IDs to wait for. If \code{NULL},
+\subsection{\code{Downloader$wait_for_tasks()}}{
+  Wait for all async download tasks to complete
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$wait_for_tasks(task_ids = NULL, progress = TRUE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{task_ids}}{Optional vector of task IDs to wait for. If \code{NULL},
 waits for all tasks. Default: \code{NULL}.}
-
-\item{\code{progress}}{Whether to show progress. Default: \code{TRUE}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A list of completed task statuses.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-task1 <- dl$download(url1, block = FALSE)
+      \item{\code{progress}}{Whether to show progress. Default: \code{TRUE}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list of completed task statuses.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{task1 <- dl$download(url1, block = FALSE)
 task2 <- dl$download(url2, block = FALSE)
 results <- dl$wait_for_tasks()
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-cancel_task"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-cancel_task}{}}}
-\subsection{Method \code{cancel_task()}}{
-Cancel an async download task
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$cancel_task(task_id)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{task_id}}{Task ID returned by \code{download(block = FALSE)}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-Logical TRUE if cancellation was successful, FALSE otherwise.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-task_id <- dl$download(url, block = FALSE)
+\subsection{\code{Downloader$cancel_task()}}{
+  Cancel an async download task
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$cancel_task(task_id)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{task_id}}{Task ID returned by \code{download(block = FALSE)}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    Logical TRUE if cancellation was successful, FALSE otherwise.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{task_id <- dl$download(url, block = FALSE)
 # Cancel if needed
 dl$cancel_task(task_id)
 }
+    \if{html}{\out{</div>}}
+  }
 }
-\if{html}{\out{</div>}}
 
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-list_incomplete"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-list_incomplete}{}}}
-\subsection{Method \code{list_incomplete()}}{
-List incomplete downloads
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$list_incomplete()}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$list_incomplete()}}{
+  List incomplete downloads
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$list_incomplete()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data.frame with information about incomplete downloads.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{incomplete <- downloader$list_incomplete()
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Returns}{
-A data.frame with information about incomplete downloads.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-incomplete <- downloader$list_incomplete()
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-verify_checksum"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-verify_checksum}{}}}
-\subsection{Method \code{verify_checksum()}}{
-Verify file checksum
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$verify_checksum(file, expected, type = "sha256")}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$verify_checksum()}}{
+  Verify file checksum
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$verify_checksum(file, expected, type = "sha256")}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{file}}{Path to file to verify.}
+      \item{\code{expected}}{Expected checksum value.}
+      \item{\code{type}}{Checksum type ("md5" or "sha256"). Default: \code{"sha256"}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    \code{TRUE} if checksum matches, \code{FALSE} otherwise.
+  }
+  \subsection{Examples}{
+    \if{html}{\out{<div class="r example copy">}}
+    \preformatted{valid <- downloader$verify_checksum("data.nc", "abc123", "sha256")
+}
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{file}}{Path to file to verify.}
-
-\item{\code{expected}}{Expected checksum value.}
-
-\item{\code{type}}{Checksum type ("md5" or "sha256"). Default: \code{"sha256"}.}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-\code{TRUE} if checksum matches, \code{FALSE} otherwise.
-}
-\subsection{Examples}{
-\if{html}{\out{<div class="r example copy">}}
-\preformatted{\dontrun{
-valid <- downloader$verify_checksum("data.nc", "abc123", "sha256")
-}
-}
-\if{html}{\out{</div>}}
-
-}
-
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-print"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-print}{}}}
-\subsection{Method \code{print()}}{
-Print downloader summary
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$print()}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$print()}}{
+  Print downloader summary
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$print()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The \code{Downloader} object itself, invisibly.
+  }
 }
 
-\subsection{Returns}{
-The \code{Downloader} object itself, invisibly.
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Downloader-clone"></a>}}
 \if{latex}{\out{\hypertarget{method-Downloader-clone}{}}}
-\subsection{Method \code{clone()}}{
-The objects of this class are cloneable with this method.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Downloader$clone(deep = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{Downloader$clone()}}{
+  The objects of this class are cloneable with this method.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{Downloader$clone(deep = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{deep}}{Whether to make a deep clone.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{deep}}{Whether to make a deep clone.}
-}
-\if{html}{\out{</div>}}
-}
-}
 }

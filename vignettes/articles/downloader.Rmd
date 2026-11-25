@@ -84,7 +84,7 @@ downloader <- Downloader$new(
 
 downloader
 downloader$manifest
-#> [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//RtmpOZabcs/epwshiftr-downloader/general-downloads/manifest.duckdb"
+#> [1] "/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T//Rtmpj4lrX1/epwshiftr-downloader/general-downloads/manifest.duckdb"
 ```
 
 The manifest stores configuration, sessions, tasks, candidate URLs, transfer
@@ -108,12 +108,12 @@ single_path <- downloader$download(
 )
 
 single_path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md"
 file.info(single_path)[, c("size", "mtime")]
 #>                                                                                                                                                 size
-#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 8700
+#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 8700
 #>                                                                                                                                                               mtime
-#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 2026-09-09 10:07:15
+#> /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/single/r-lib-actions-readme.md 2026-11-25 15:49:06
 readLines(single_path, n = 6L)
 #> [1] "# GitHub Actions for the R language"
 #> [2] ""
@@ -184,9 +184,9 @@ space, and whether disk preflight would block the run.
 ``` r
 downloader$preflight(plan = small_plan)
 #>   task_count needs_download required_bytes size_unknown_count dest_free_bytes
-#> 1          3              3              0                  3    161362079744
+#> 1          3              3              0                  3    168099426304
 #>   tmp_free_bytes min_free_space dest_disk_ok tmp_disk_ok disk_ok
-#> 1   161362079744              0         TRUE        TRUE      NA
+#> 1   168099426304              0         TRUE        TRUE      NA
 #>   disk_would_block disk_preflight
 #> 1            FALSE           TRUE
 ```
@@ -203,28 +203,28 @@ session_id <- downloader$enqueue(
 
 downloader$sessions()
 #>                 session_id            label status          created_at
-#> 1 20260909-020716-1ee0db16 small-live-files queued 2026-09-09 02:07:16
+#> 1 20261125-074907-8791e260 small-live-files queued 2026-11-25 07:49:07
 #>            updated_at completed_at
-#> 1 2026-09-09 02:07:16         <NA>
+#> 1 2026-11-25 07:49:07         <NA>
 select_cols(downloader$tasks(session_id = session_id), c(
     "task_id", "logical_file_id", "filename", "status",
     "target_path", "size"
 ), n = 6L)
 #>                                                             task_id
 #>                                                              <char>
-#> 1: 06960707f0e197812a907b97e912bc65f55aad1f61c3ff87eeee01544c2997b3
-#> 2: b055288e85e8b42a88a6a9d24178696c819c5dd0129cec801d53c4e779c46e0c
-#> 3: f2cbff9035506967e6fb6d6cfa06956bdc23a59932285063bf25e16f17285216
+#> 1: 06fa773e1e9fbfbeff47a1f7d80295075b463eb8cdcda75ab4894d396a6ba357
+#> 2: 4003d58438bb17387aef52d730119755b05ca899bd22af9d25ca46bff1efb9b6
+#> 3: bae34ad1dbd4062dc58797c8194632846cea87db688a1c9215a49581a156f631
 #>               logical_file_id                         filename status
 #>                        <char>                           <char> <char>
-#> 1: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml queued
-#> 2:      r-lib-check-r-package      check-r-package-action.yaml queued
-#> 3:              r-lib-setup-r               setup-r-action.yml queued
+#> 1:              r-lib-setup-r               setup-r-action.yml queued
+#> 2: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml queued
+#> 3:      r-lib-check-r-package      check-r-package-action.yaml queued
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
 #>     size
 #>    <num>
 #> 1:    NA
@@ -244,24 +244,24 @@ select_cols(run_rows, c(
 ), n = 6L)
 #>               logical_file_id                         filename status
 #>                        <char>                           <char> <char>
-#> 1: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml   done
-#> 2:      r-lib-check-r-package      check-r-package-action.yaml   done
-#> 3:              r-lib-setup-r               setup-r-action.yml   done
+#> 1:              r-lib-setup-r               setup-r-action.yml   done
+#> 2: r-lib-setup-r-dependencies setup-r-dependencies-action.yaml   done
+#> 3:      r-lib-check-r-package      check-r-package-action.yaml   done
 #>    bytes_done
 #>         <num>
-#> 1:      16427
-#> 2:       4031
-#> 3:       4260
+#> 1:       4260
+#> 2:      16427
+#> 3:       4073
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
 #>                                                                           selected_url
 #>                                                                                 <char>
-#> 1: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
-#> 2:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
-#> 3:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
+#> 1:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
+#> 2: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 3:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
 ```
 
 # Inspect Sessions, Tasks, Events, and Files
@@ -273,9 +273,9 @@ away. It records what was queued, what completed, and which URL was selected.
 ``` r
 downloader$sessions()
 #>                 session_id            label status          created_at
-#> 1 20260909-020716-1ee0db16 small-live-files   done 2026-09-09 02:07:16
+#> 1 20261125-074907-8791e260 small-live-files   done 2026-11-25 07:49:07
 #>            updated_at        completed_at
-#> 1 2026-09-09 02:07:19 2026-09-09 02:07:19
+#> 1 2026-11-25 07:49:11 2026-11-25 07:49:11
 
 select_cols(downloader$status(session_id = session_id), c(
     "logical_file_id", "status", "bytes_done", "target_path",
@@ -283,19 +283,19 @@ select_cols(downloader$status(session_id = session_id), c(
 ), n = 10L)
 #>               logical_file_id status bytes_done
 #>                        <char> <char>      <num>
-#> 1: r-lib-setup-r-dependencies   done      16427
-#> 2:      r-lib-check-r-package   done       4031
-#> 3:              r-lib-setup-r   done       4260
+#> 1:              r-lib-setup-r   done       4260
+#> 2: r-lib-setup-r-dependencies   done      16427
+#> 3:      r-lib-check-r-package   done       4073
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
 #>                                                                           selected_url
 #>                                                                                 <char>
-#> 1: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
-#> 2:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
-#> 3:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
+#> 1:               https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
+#> 2: https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 3:      https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
 #>    last_error
 #>        <char>
 #> 1:       <NA>
@@ -318,33 +318,33 @@ select_cols(downloader$events(session_id = session_id), c(
 #>                                                                                                                                                    message
 #>                                                                                                                                                     <char>
 #> 1:                                                                                                                              Queued 3 download task(s).
-#> 2:                                                                     https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
-#> 3:                                                                          https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
-#> 4: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
-#> 5:                                                                                   https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
-#> 6:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
+#> 2:                                                                                   https://raw.githubusercontent.com/r-lib/actions/v2/setup-r/action.yml
+#> 3:                                                                     https://raw.githubusercontent.com/r-lib/actions/v2/setup-r-dependencies/action.yaml
+#> 4:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 5:                                                                          https://raw.githubusercontent.com/r-lib/actions/v2/check-r-package/action.yaml
+#> 6: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
 #> 7:                                                                                                                                                    done
-#> 8:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 8:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
 #>                                                             task_id
 #>                                                              <char>
 #> 1:                                                             <NA>
-#> 2: 06960707f0e197812a907b97e912bc65f55aad1f61c3ff87eeee01544c2997b3
-#> 3: b055288e85e8b42a88a6a9d24178696c819c5dd0129cec801d53c4e779c46e0c
-#> 4: 06960707f0e197812a907b97e912bc65f55aad1f61c3ff87eeee01544c2997b3
-#> 5: f2cbff9035506967e6fb6d6cfa06956bdc23a59932285063bf25e16f17285216
-#> 6: b055288e85e8b42a88a6a9d24178696c819c5dd0129cec801d53c4e779c46e0c
+#> 2: 06fa773e1e9fbfbeff47a1f7d80295075b463eb8cdcda75ab4894d396a6ba357
+#> 3: 4003d58438bb17387aef52d730119755b05ca899bd22af9d25ca46bff1efb9b6
+#> 4: 06fa773e1e9fbfbeff47a1f7d80295075b463eb8cdcda75ab4894d396a6ba357
+#> 5: bae34ad1dbd4062dc58797c8194632846cea87db688a1c9215a49581a156f631
+#> 6: 4003d58438bb17387aef52d730119755b05ca899bd22af9d25ca46bff1efb9b6
 #> 7:                                                             <NA>
-#> 8: f2cbff9035506967e6fb6d6cfa06956bdc23a59932285063bf25e16f17285216
+#> 8: bae34ad1dbd4062dc58797c8194632846cea87db688a1c9215a49581a156f631
 #>             created_at
 #>                 <POSc>
-#> 1: 2026-09-09 02:07:16
-#> 2: 2026-09-09 02:07:16
-#> 3: 2026-09-09 02:07:16
-#> 4: 2026-09-09 02:07:18
-#> 5: 2026-09-09 02:07:18
-#> 6: 2026-09-09 02:07:18
-#> 7: 2026-09-09 02:07:19
-#> 8: 2026-09-09 02:07:19
+#> 1: 2026-11-25 07:49:07
+#> 2: 2026-11-25 07:49:07
+#> 3: 2026-11-25 07:49:07
+#> 4: 2026-11-25 07:49:09
+#> 5: 2026-11-25 07:49:09
+#> 6: 2026-11-25 07:49:09
+#> 7: 2026-11-25 07:49:11
+#> 8: 2026-11-25 07:49:11
 
 list.files(file.path(download_root, "files"), recursive = TRUE)
 #> [1] "batch/check-r-package-action.yaml"
@@ -353,24 +353,49 @@ list.files(file.path(download_root, "files"), recursive = TRUE)
 #> [4] "single/r-lib-actions-readme.md"
 ```
 
-`verify()` checks completed files. When a task has no checksum, successful file
-existence is enough. When a checksum exists, the recorded algorithm is used.
+Task rows also expose the evidence saved by the actual byte-producing GET:
+`transfer_request_url` and `transfer_final_url`, the response's `transfer_etag`
+and `transfer_last_modified`, the accepted `transfer_validator_kind` and
+`transfer_validator_value`, and `transfer_sources` for contributing addresses.
+`transfer_bytes`, `transfer_sha256`, and `transfer_complete` describe the saved
+file generation. An eligible replica's actual producer address can differ from
+the currently requested catalogue endpoint. A selected candidate or a successful
+HEAD request alone does not establish which response produced the retained bytes.
+
+`verify()` checks completed files and returns two separate assessments. Read
+`integrity_evidence` together with `checksum_ok`, `status`, and `last_error`:
+
+- `publisher_checksum`: an expected publisher checksum was supplied; the file
+  must pass that checksum using the recorded algorithm.
+- `saved_transfer`: no publisher checksum was supplied, but a completed
+  byte-producing transfer saved a local hash and byte count for comparison.
+- `missing`: neither kind of historical evidence is available.
+
+The generic `checksum_ok` result remains permissive for a file without a
+publisher checksum or saved transfer evidence: existence can still return
+`TRUE`. That result alone does not authorize Store source adoption. A local
+hash detects changes relative to saved bytes; it does not establish publisher
+checksum verification. A matching supported publisher checksum can also
+certify a complete local file whose historical GET is unavailable; its actual
+producer address remains missing rather than being inferred from the current
+catalogue URL. Without publisher proof, Store adoption requires the original
+byte-producing transfer evidence and actual source address.
 
 
 ``` r
 select_cols(downloader$verify(session_id = session_id), c(
-    "logical_file_id", "status", "checksum_ok", "target_path"
+    "logical_file_id", "status", "checksum_ok", "integrity_evidence", "target_path"
 ), n = 10L)
-#>               logical_file_id status checksum_ok
-#>                        <char> <char>      <lgcl>
-#> 1: r-lib-setup-r-dependencies   done        TRUE
-#> 2:      r-lib-check-r-package   done        TRUE
-#> 3:              r-lib-setup-r   done        TRUE
+#>               logical_file_id status checksum_ok integrity_evidence
+#>                        <char> <char>      <lgcl>             <char>
+#> 1:              r-lib-setup-r   done        TRUE     saved_transfer
+#> 2: r-lib-setup-r-dependencies   done        TRUE     saved_transfer
+#> 3:      r-lib-check-r-package   done        TRUE     saved_transfer
 #>                                                                                                                                                target_path
 #>                                                                                                                                                     <char>
-#> 1: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
-#> 2:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
-#> 3:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpOZabcs/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 1:               /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-action.yml
+#> 2: /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/setup-r-dependencies-action.yaml
+#> 3:      /private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-downloader/general-downloads/files/batch/check-r-package-action.yaml
 
 downloader$cleanup_tmp(all = TRUE)
 #> [1] 0
@@ -386,6 +411,39 @@ downloader$retry(session_id = session_id)
 downloader$resume(session_id = session_id, progress = TRUE)
 downloader$cancel(session_id = session_id)
 ```
+
+# Recover Interrupted Transfers
+
+A matching Store source request can retain its original session, task, and
+partial-file location. Without a supported publisher checksum (`md5` or
+`sha256`), source ownership requires the same catalogue record and full HTTP
+endpoint, including its query. A different endpoint can share a task only when
+same-version source metadata and matching publisher content evidence establish
+an eligible replica. A common filename, tracking ID, or ETag across resources
+is insufficient.
+
+Byte continuation has an additional requirement: the retained bytes need the
+expected publisher checksum or a saved strong validator from their original
+GET. Strong ETags qualify on their own resource; weak ETags do not. A
+Last-Modified value is considered only without an ETag and qualifies under the
+HTTP strong-date conditions checked against that response's Date. Unsafe
+historical partials and their history are preserved while a fresh transfer
+starts from zero.
+
+Before appending a `206` response, Downloader checks the actual GET's validator,
+exact byte range, total length, Content-Length, and encoding. Retries use the
+valid bytes retained on disk. When a Range request receives a full `200`, the
+full representation starts at byte zero and must still satisfy the fixed
+content identity. This also applies to configured segmented transfers: old
+pieces cannot become a suffix of a full response. A `416` response establishes
+completion only with matching total length and complete local integrity
+evidence; a matching file size alone is insufficient.
+
+A confirmed change in source content or its required representation evidence
+returns `source_changed` and retains the old evidence. Check the original source
+before submitting a changed source request. Recovery keeps saved transfer
+settings, including range mode and piece policy, and the existing timeout,
+worker, and concurrency limits.
 
 # Background Jobs and Daemon Mode
 
@@ -422,8 +480,11 @@ builds can leave local background work behind.
 # Generate an ESGF Download Plan
 
 ESGF File results produce downloader-ready plans with service URLs, candidate
-ranking fields, file keys, sizes, checksums, and data-node metadata. This live
-example builds an ESGF plan but does not download the large NetCDF files.
+ranking fields, file keys, sizes, checksums, and data-node metadata. The
+following interactive examples build an ESGF plan without downloading the large
+NetCDF files. They are displayed without execution during precompilation because
+they require a reachable ESGF index node. The general small-file downloads and
+`verify()` example above are executed.
 
 
 ``` r
@@ -460,7 +521,6 @@ if (!esgf_files_2060$count()) {
 }
 
 esgf_files_2060$count()
-#> [1] 1
 ```
 
 
@@ -476,24 +536,6 @@ select_cols(esgf_plan, c(
     "logical_file_id", "filename", "service", "data_node",
     "size", "url", "checksum", "checksum_type"
 ), n = 10L)
-#>                                                                                                                        logical_file_id
-#>                                                                                                                                 <char>
-#> 1: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>                                                      filename    service
-#>                                                        <char>     <char>
-#> 1: tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc HTTPServer
-#>          data_node    size
-#>             <char>   <num>
-#> 1: esgf.ceda.ac.uk 8011675
-#>                                                                                                                                                                                            url
-#>                                                                                                                                                                                         <char>
-#> 1: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>                                                            checksum
-#>                                                              <char>
-#> 1: f1419fb9621b49e5bde363dd2d79c27f63d692ff3e7a2b81a5910fb5356f3294
-#>    checksum_type
-#>           <char>
-#> 1:        sha256
 ```
 
 `probe = FALSE` keeps this article fast and avoids touching candidate URLs just
@@ -533,60 +575,12 @@ preflight <- store$download_preflight(
 )
 
 preflight$summary
-#>                                                            query_id
-#>                                                              <char>
-#> 1: d31b46c91e03aa9eb71ac76be90cd1dcaebc742db41b1a3485d426a8ecb82f6c
-#>                   label file_total current_count candidate_count bytes_total
-#>                  <char>      <int>         <int>           <int>       <num>
-#> 1: tas-ssp585-2060-plan          3             3               3    24059358
-#>    local_available needs_download no_httpserver cooldown_nodes
-#>              <int>          <int>         <int>          <int>
-#> 1:               0              3             0              0
-#>    target_path_collision_count missing_layout_field_count required_bytes
-#>                          <int>                      <int>          <num>
-#> 1:                           0                          0       24059358
-#>    size_unknown_count dest_free_bytes tmp_free_bytes min_free_space disk_ok
-#>                 <int>           <num>          <num>          <num>  <lgcl>
-#> 1:                  0    161361584128   161361584128              0    TRUE
-#>    disk_would_block disk_preflight
-#>              <lgcl>         <lgcl>
-#> 1:            FALSE           TRUE
 select_cols(preflight$files, c(
     "file_key", "filename", "variable_id", "size", "local_path", "status"
 ), n = 10L)
-#>                                                                                                                               file_key
-#>                                                                                                                                 <char>
-#> 1: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 2: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#> 3: master:CMIP6.ScenarioMIP.MPI-M.MPI-ESM1-2-LR.ssp585.r1i1p1f1.Amon.tas.gn.tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
-#>                                                      filename variable_id
-#>                                                        <char>      <char>
-#> 1: tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc         tas
-#> 2: tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc         tas
-#> 3: tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc         tas
-#>       size local_path  status
-#>      <num>     <char>  <char>
-#> 1: 8025316       <NA> current
-#> 2: 8022367       <NA> current
-#> 3: 8011675       <NA> current
 select_cols(preflight$candidates, c(
     "filename", "service", "data_node", "size", "url"
 ), n = 10L)
-#>                                                      filename    service
-#>                                                        <char>     <char>
-#> 1: tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc HTTPServer
-#> 2: tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc HTTPServer
-#> 3: tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc HTTPServer
-#>          data_node    size
-#>             <char>   <num>
-#> 1: esgf.ceda.ac.uk 8025316
-#> 2: esgf.ceda.ac.uk 8022367
-#> 3: esgf.ceda.ac.uk 8011675
-#>                                                                                                                                                                                            url
-#>                                                                                                                                                                                         <char>
-#> 1: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_201501-203412.nc
-#> 2: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_203501-205412.nc
-#> 3: https://esgf.ceda.ac.uk/thredds/fileServer/esg_cmip6/CMIP6/ScenarioMIP/MPI-M/MPI-ESM1-2-LR/ssp585/r1i1p1f1/Amon/tas/gn/v20190710/tas_Amon_MPI-ESM1-2-LR_ssp585_r1i1p1f1_gn_205501-207412.nc
 ```
 
 To actually enqueue and run those ESGF downloads, use:

@@ -1,5 +1,18 @@
 # epwshiftr (development version)
 
+* Apply the same source ownership and recovery checks to ordinary and pooled
+  Store extraction. Keep weakly identified records and endpoints separate;
+  reuse same-version replicas only with matching supported publisher evidence.
+
+* Bind resumable HTTP bytes to their actual GET responses, retain unsafe old
+  partials, and safely handle full responses to Range requests. Expose saved
+  transfer evidence separately from publisher checksum verification.
+
+* Preserve immutable acquisition lineage and check requested native files,
+  extraction caches, and Parquet outputs before reuse. Support offline reuse
+  with complete saved evidence, and identify missing evidence, source conflicts,
+  or changed bytes before explicit extraction replacement.
+
 * Use a shared saved-plan validator for ERA5 downloads and offline readback. (#327)
 
 * Publish a finished background download's step, run, and event in one Store

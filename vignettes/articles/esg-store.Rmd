@@ -74,9 +74,9 @@ store_path <- file.path(workflow_root, "store")
 store <- EsgStore$new(store_path)
 
 store$path
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-esg-store/store"
 store$manifest
-#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/RtmpMQQ6xU/epwshiftr-esg-store/store/manifest.duckdb"
+#> [1] "/private/var/folders/8f/t8sk2pps6135xbp47cs8qb2r0000gn/T/Rtmpj4lrX1/epwshiftr-esg-store/store/manifest.duckdb"
 list.files(store$path, all.files = TRUE, no.. = TRUE)
 #>  [1] "dicts"               "downloads"           "extracts"
 #>  [4] "logs"                "manifest.duckdb"     "manifest.duckdb.wal"
@@ -117,30 +117,33 @@ store$query("
 #>  1:                     artifact
 #>  2:         epw_baseline_summary
 #>  3:          epw_climate_summary
-#>  4:             epw_morph_factor
-#>  5: epw_morph_observed_reference
-#>  6:               epw_morph_plan
-#>  7:             epw_morph_result
-#>  8:                   epw_output
-#>  9:                   epw_source
-#> 10:                     esg_file
-#> 11:                    esg_query
-#> 12:         esg_query_dependency
-#> 13:               esg_query_file
-#> 14:                esg_query_tag
-#> 15:             esg_query_update
-#> 16:        esg_query_update_file
-#> 17:       extraction_grid_source
-#> 18:              extraction_plan
-#> 19:            extraction_result
-#> 20:                 file_catalog
-#> 21:                    query_run
-#> 22:                    shift_run
-#> 23:               shift_run_case
-#> 24:              shift_run_event
-#> 25:                shift_run_job
-#> 26:               shift_run_step
-#> 27:                   store_meta
+#>  4:     epw_climate_summary_plan
+#>  5:               epw_morph_case
+#>  6:         epw_morph_diagnostic
+#>  7:             epw_morph_factor
+#>  8: epw_morph_observed_reference
+#>  9:               epw_morph_plan
+#> 10:             epw_morph_result
+#> 11:                   epw_output
+#> 12:                   epw_source
+#> 13:                     esg_file
+#> 14:                    esg_query
+#> 15:         esg_query_dependency
+#> 16:               esg_query_file
+#> 17:                esg_query_tag
+#> 18:             esg_query_update
+#> 19:        esg_query_update_file
+#> 20:       extraction_grid_source
+#> 21:              extraction_plan
+#> 22:            extraction_result
+#> 23:                 file_catalog
+#> 24:                    query_run
+#> 25:                    shift_run
+#> 26:               shift_run_case
+#> 27:              shift_run_event
+#> 28:                shift_run_job
+#> 29:               shift_run_step
+#> 30:                   store_meta
 #>                       table_name
 #>                           <char>
 ```
@@ -266,9 +269,9 @@ store$tag_query(query_id, c("cmip6", "future-weather", "singapore"))
 #> 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-09-10 09:36:50
-#> 2: future-weather 2026-09-10 09:36:50
-#> 3:      singapore 2026-09-10 09:36:50
+#> 1:          cmip6 2026-11-25 07:49:13
+#> 2: future-weather 2026-11-25 07:49:13
+#> 3:      singapore 2026-11-25 07:49:13
 select_cols(store$queries(), c(
     "query_id", "label", "index_node", "tracked", "created_at"
 ))
@@ -277,7 +280,7 @@ select_cols(store$queries(), c(
 #> 1: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>                    label                index_node tracked          created_at
 #>                   <char>                    <char>  <lgcl>              <POSc>
-#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-09-10 09:36:50
+#> 1: singapore-ssp585-amon https://esgf-data.dkrz.de    TRUE 2026-11-25 07:49:13
 store$query_tags(query_id)
 #>                                                              tag_id
 #>                                                              <char>
@@ -291,9 +294,9 @@ store$query_tags(query_id)
 #> 3: 5d39c15ebf854957e1b4a8e847538e490c19236ba509df5f9b4187b4cab42a91
 #>               tag          created_at
 #>            <char>              <POSc>
-#> 1:          cmip6 2026-09-10 09:36:50
-#> 2: future-weather 2026-09-10 09:36:50
-#> 3:      singapore 2026-09-10 09:36:50
+#> 1:          cmip6 2026-11-25 07:49:13
+#> 2: future-weather 2026-11-25 07:49:13
+#> 3:      singapore 2026-11-25 07:49:13
 ```
 
 The query snapshot is written under `queries/`, while the query identity and
@@ -472,7 +475,25 @@ select_cols(store$coverage(plan_id = region$plan_id), c(
 
 Use `store$extract()` when you want to execute the plan. With
 `fallback = "auto"`, extraction tries OPeNDAP first and may fall back to local
-or HTTP downloads when needed.
+or HTTP downloads when needed. This whole-file fallback belongs to Store
+extraction; native subset acquisition remains OPeNDAP-only and retains its
+requested native grid neighbourhood and time coordinates.
+
+Ordinary extraction and extraction through `source_pool()` use the same source
+ownership and recovery rules. Known model, experiment, member, table, variable,
+grid, and version fields must agree. Without a supported publisher checksum,
+a saved source keeps its catalogue record and complete HTTP endpoint. Matching
+same-version publisher content evidence can establish an eligible replica at
+another endpoint; filenames or tracking IDs alone cannot. See
+[Downloader recovery](downloader.html#recover-interrupted-transfers) for byte
+continuation and actual-GET evidence.
+
+`resume = TRUE` reuses complete extraction outputs after checking their saved
+source lineage and local integrity. It does not grant permission to append to
+an arbitrary download partial. `overwrite = TRUE` retains its output-replacement
+meaning. After checking the requested source, use it explicitly to recompute an
+affected extraction whose saved evidence or bytes were rejected. Recovery keeps
+the existing saved Downloader options and source-pool timeout and worker policy.
 
 # Inspect Artifacts and Store State
 
@@ -493,6 +514,27 @@ store$query("
 
 When you have an `artifact_id`, use `artifact_path()` to resolve the absolute
 path instead of assembling paths by hand.
+
+Extraction artifacts preserve their original acquisition lineage, including
+the selected request, actual access target, and the exact HTTP transfer receipt
+when applicable. Source receipt generations are immutable. Reading an artifact
+checks its original saved hash and byte count; it does not replace that evidence
+with a new certificate for edited bytes. Local hashes and publisher checksum
+verification remain separate facts.
+
+These checks apply to the files and plans touched by the current request,
+including registered native files, extraction caches, and completed Parquet
+outputs that could otherwise return early. Complete saved lineage and integrity
+evidence support offline reuse even when the original source file or node is
+unavailable. A complete file from `store$download_files()` can also support
+offline local extraction when its original completed task, exact target, source
+owner, and saved GET byte evidence match; the original task and transfer settings
+are retained. Old artifacts with missing evidence, conflicting source ownership,
+or changed bytes stop reuse and identify the affected plan, file, artifact, or
+path. Rejected artifacts and prior source receipts remain available for
+inspection; [troubleshooting](esgf-troubleshooting.html#store-validation)
+explains the next checks. Successful acquisition still does not establish a
+research case's scientific completeness or suitability.
 
 # Maintain Storage
 
