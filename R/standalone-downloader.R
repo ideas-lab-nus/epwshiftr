@@ -2312,19 +2312,6 @@ downloader__worker_dependencies <- function() {
         received <- 0
         write_start <- start_byte
         range_complete <- FALSE
-        # HTTP field names are case insensitive; validator values are opaque.
-        field <- function(response, name) {
-            lines <- strsplit(headers_text(response$headers), "\r?\n")[[1L]]
-            status <- grep("^HTTP/", lines)
-            if (length(status)) {
-                lines <- lines[seq.int(tail(status, 1L), length(lines))]
-            }
-            hit <- grep(paste0("^", name, ":[[:space:]]*"), tolower(lines))
-            if (!length(hit)) {
-                return(NA_character_)
-            }
-            trimws(sub("^[^:]+:", "", lines[[tail(hit, 1L)]]))
-        }
         changed <- function(message) {
             stop(paste0("source_changed: ", message), call. = FALSE)
         }
@@ -2340,8 +2327,8 @@ downloader__worker_dependencies <- function() {
             date <- evidence$date
             validator_kind <- evidence$validator_kind
             validator_value <- evidence$validator_value
-            encoding <- field(response, "content-encoding")
-            length_text <- field(response, "content-length")
+            encoding <- evidence$content_encoding
+            length_text <- evidence$content_length
             length_header <- suppressWarnings(as.numeric(length_text))
             if (http && !is.na(encoding) && tolower(encoding) != "identity") {
                 stop(
@@ -2351,7 +2338,7 @@ downloader__worker_dependencies <- function() {
             }
             total <- length_header
             if (http && status == 416L) {
-                text <- field(response, "content-range")
+                text <- evidence$content_range
                 size <- if (!is.na(text) && grepl("^bytes [*]/[0-9]+$", text)) {
                     as.numeric(sub("^bytes [*]/", "", text))
                 } else {
@@ -2426,7 +2413,7 @@ downloader__worker_dependencies <- function() {
                 )
             }
             if (http && status == 206L) {
-                text <- field(response, "content-range")
+                text <- evidence$content_range
                 parts <- if (!is.na(text)) {
                     regmatches(
                         text,
@@ -4307,21 +4294,9 @@ Downloader <- R6::R6Class(
             if (resume && status == FileStatus$Downloading) {
                 # resume from .part file
                 start_byte <- file.info(tmp_part)$size
-                resume_state <- private$prepare_resume(
-                    url,
-                    tmp_part,
-                    start_byte
-                )
-                start_byte <- resume_state$start_byte
-                if (isTRUE(resume_state$restarted)) {
-                    downloader__verbose(cli::cli_alert_warning(
-                        resume_state$message
-                    ))
-                } else {
-                    downloader__verbose(cli::cli_alert_info(
-                        "Resuming download from byte {start_byte}..."
-                    ))
-                }
+                downloader__verbose(cli::cli_alert_info(
+                    "Resuming download from byte {start_byte}..."
+                ))
             }
 
             # download with retry logic
@@ -9658,23 +9633,6 @@ Downloader <- R6::R6Class(
             private$update_task(task)
             private$log_event(session_id, task_id, "start", candidate$url[[1L]])
 
-            tmp_part <- file.path(private$temp, paste0(task_id, ".part"))
-            if (isTRUE(resume) && file.exists(tmp_part)) {
-                resume_state <- private$prepare_resume(
-                    candidate$url[[1L]],
-                    tmp_part,
-                    file.info(tmp_part, extra_cols = FALSE)$size
-                )
-                if (isTRUE(resume_state$restarted)) {
-                    private$log_event(
-                        session_id,
-                        task_id,
-                        "resume_restart",
-                        resume_state$message
-                    )
-                }
-            }
-
             task_subdir <- downloader__one_chr(task$subdir[[1L]])
             if (is.na(task_subdir)) {
                 task_subdir <- NULL
@@ -9963,23 +9921,6 @@ Downloader <- R6::R6Class(
                     candidate$url[[1L]]
                 )
 
-                tmp_part <- file.path(private$temp, paste0(task_id, ".part"))
-                if (isTRUE(resume) && file.exists(tmp_part)) {
-                    resume_state <- private$prepare_resume(
-                        candidate$url[[1L]],
-                        tmp_part,
-                        file.info(tmp_part, extra_cols = FALSE)$size
-                    )
-                    if (isTRUE(resume_state$restarted)) {
-                        private$log_event(
-                            session_id,
-                            task_id,
-                            "resume_restart",
-                            resume_state$message
-                        )
-                    }
-                }
-
                 task_subdir <- downloader__one_chr(task$subdir[[1L]])
                 if (is.na(task_subdir)) {
                     task_subdir <- NULL
@@ -10263,17 +10204,6 @@ Downloader <- R6::R6Class(
             invisible(task_id)
         },
         # }}}
-        # download_with_streaming
-        # prepare_resume {{{
-        prepare_resume = function(url, tmp_part, start_byte) {
-            list(
-                start_byte = start_byte,
-                restarted = FALSE,
-                message = NA_character_
-            )
-        },
-        # }}}
-
         # progress_total_bytes {{{
         progress_total_bytes = function(task_id) {
             if (is.null(task_id) || is.null(private$manifest_path)) {

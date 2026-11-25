@@ -569,7 +569,11 @@ store__pool_download_config <- function(file, directory, timeout) {
 store__pool_http_download <- function(job) {
     started <- proc.time()[["elapsed"]]
     tryCatch(
-        source_recovery__download(job$file, job$http),
+        source_recovery__download(
+            job$file,
+            job$http,
+            overwrite = isTRUE(job$overwrite)
+        ),
         error = function(error) {
             stop(store__access_error(
                 error,

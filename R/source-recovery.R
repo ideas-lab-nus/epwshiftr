@@ -202,19 +202,7 @@ source_recovery__select <- function(
         if (!is.null(owner)) {
             # JSON nulls represent missing source evidence, not a distinct
             # identity. Restore the descriptor's scalar missing-value contract.
-            owner$request$identity <- lapply(
-                owner$request$identity,
-                store__chr1
-            )
-            for (name in c(
-                "file_key",
-                "endpoint",
-                "filename",
-                "checksum_type",
-                "checksum"
-            )) {
-                owner$request[[name]] <- store__chr1(owner$request[[name]])
-            }
+            owner$request <- source_recovery__normalize(owner$request)
 
             if (
                 !identical(owner$task_id, task$task_id[[1L]]) ||
@@ -275,10 +263,11 @@ source_recovery__select <- function(
         if (is.na(request$checksum) && !is.na(expected)) {
             next
         }
-        # Explicit recomputation may replace an invalid local candidate only
-        # through a fresh task/target; its old final bytes and evidence survive.
+        # Reject an edited retained generation before Downloader can requeue an
+        # error task and overwrite its target. Explicit recomputation instead
+        # selects a fresh task/target, preserving old final bytes and evidence.
         target <- task$target_path[[1L]]
-        if (isTRUE(overwrite) && file.exists(target)) {
+        if (file.exists(target)) {
             saved_hash <- store__chr1(task$transfer_sha256)
             intact <- if (!is.na(saved_hash)) {
                 identical(checksum_file(target), saved_hash) &&
@@ -294,7 +283,15 @@ source_recovery__select <- function(
             } else {
                 FALSE
             }
-            if (!isTRUE(intact)) next
+            if (!isTRUE(intact)) {
+                if (isTRUE(overwrite)) {
+                    next
+                }
+                source_recovery__error(
+                    "source_changed: retained native source integrity failed",
+                    target
+                )
+            }
         }
         return(list(task = task, owner = original))
     }
