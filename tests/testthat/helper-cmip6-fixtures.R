@@ -1,5 +1,3 @@
-local_cmip6_test_years <- 2059:2061
-
 # local_cmip6_nc_file {{{
 local_cmip6_nc_file <- function(year, variable_id = "tas") {
     sprintf(

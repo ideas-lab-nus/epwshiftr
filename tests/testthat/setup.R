@@ -1,5 +1,4 @@
 get_cache_epw()
-get_cache_nc()
 
 # Extraction tests exercise the content-addressed cache added for cross-method
 # reuse. Keep those disposable entries inside the test session so package
