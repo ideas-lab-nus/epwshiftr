@@ -745,18 +745,6 @@ test_that("shift_resume reopens a stopped process's original download session", 
         curl::curl_fetch_memory(server$url("/requests"))$content
     ))
     expect_identical(requests, c("full", "full"))
-    http_acceptance__save(
-        "shift-job-uncheckpointed-tail",
-        list(
-            expected_sha256 = checksum_bytes(bytes, "sha256"),
-            tail_sha256 = checksum_bytes(prefix, "sha256"),
-            retained_sha256 = checksum_file(retained),
-            output_sha256 = checksum_file(actual$target_path),
-            session_id = sessions$session_id,
-            tasks = as.data.frame(actual),
-            requests = requests
-        )
-    )
 })
 
 # A stale checkpoint must not silently create a replacement session.
