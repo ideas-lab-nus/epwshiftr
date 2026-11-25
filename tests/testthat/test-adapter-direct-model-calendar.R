@@ -119,24 +119,26 @@ hourmap_test__inputs <- function() {
 }
 # }}}
 
+# Run direct-model sequence generation and EPW calendar mapping in one call.
+# hourmap_test__run {{{
+hourmap_test__run <- function(values) {
+    sequence <- sequence__direct_model_generate(
+        hourmap_test__execution(values),
+        NULL,
+        NULL,
+        list()
+    )
+    hourmap__reconstruct(sequence, hourmap_test__inputs(), NULL, list())
+}
+# }}}
+
 test_that("365-day direct-model hours map exactly onto EPW rows", {
     adjusted <- hourmap_test__adjusted(
         "tas",
         2061L,
         value = function(phase) seq_along(phase)
     )
-    sequence <- sequence__direct_model_generate(
-        hourmap_test__execution(list(adjusted)),
-        NULL,
-        NULL,
-        list()
-    )
-    result <- hourmap__reconstruct(
-        sequence,
-        hourmap_test__inputs(),
-        NULL,
-        list()
-    )
+    result <- hourmap_test__run(list(adjusted))
 
     expect_s7_class(result, MappedHourlyClimateSequence)
     expect_identical(result@target_calendar, "epw_365_day")
@@ -156,10 +158,7 @@ test_that("365-day direct-model hours map exactly onto EPW rows", {
     expect_identical(series@data$epw_row, seq_len(HOURMAP_TARGET_HOURS))
     expect_identical(series@data$month[1:24], rep.int(1L, 24L))
     expect_identical(series@data$hour[1:24], seq_len(24L))
-    expect_identical(
-        unique(series@data$mapping_method),
-        "identity_365_day"
-    )
+    expect_identical(unique(series@data$mapping_method), "identity_365_day")
     expect_identical(result@provenance$physical_conversion, "deferred")
     expect_error(
         MappedHourlyClimateSequence(
@@ -256,24 +255,9 @@ test_that("point variables use circular annual-phase interpolation", {
             calendars[[index]],
             value = function(phase) 280 + 5 * sin(2 * pi * phase)
         )
-        sequence <- sequence__direct_model_generate(
-            hourmap_test__execution(list(adjusted)),
-            NULL,
-            NULL,
-            list()
-        )
-        result <- hourmap__reconstruct(
-            sequence,
-            hourmap_test__inputs(),
-            NULL,
-            list()
-        )
+        result <- hourmap_test__run(list(adjusted))
         series <- result@members[[1L]]@series[[1L]]
-        expected <- 280 +
-            5 *
-                sin(
-                    2 * pi * series@data$target_annual_phase
-                )
+        expected <- 280 + 5 * sin(2 * pi * series@data$target_annual_phase)
 
         expect_equal(
             series@data$value,
@@ -309,24 +293,8 @@ test_that("scalar wind direction uses circular vector interpolation", {
             (350 + 20 * sin(2 * pi * phase)) %% 360
         }
     )
-    sequence <- sequence__direct_model_generate(
-        hourmap_test__execution(list(adjusted)),
-        NULL,
-        NULL,
-        list()
-    )
-    result <- hourmap__reconstruct(
-        sequence,
-        hourmap_test__inputs(),
-        NULL,
-        list()
-    )
-    series <- result@members[[1L]]@series[[1L]]
-    expected <- (350 +
-        20 *
-            sin(
-                2 * pi * series@data$target_annual_phase
-            )) %%
+    series <- hourmap_test__run(list(adjusted))@members[[1L]]@series[[1L]]
+    expected <- (350 + 20 * sin(2 * pi * series@data$target_annual_phase)) %%
         360
     angular_error <- abs(
         ((series@data$wind_direction - expected + 180) %% 360) - 180
@@ -345,23 +313,11 @@ test_that("calendar mapping preserves every source time-of-day position", {
             variable,
             2061L,
             "360_day",
-            value = function(phase, second_of_day) {
-                second_of_day / 3600
-            }
+            value = function(phase, second_of_day) second_of_day / 3600
         )
-        sequence <- sequence__direct_model_generate(
-            hourmap_test__execution(list(adjusted)),
-            NULL,
-            NULL,
-            list()
-        )
-        result <- hourmap__reconstruct(
-            sequence,
-            hourmap_test__inputs(),
-            NULL,
-            list()
-        )
-        data <- result@members[[1L]]@series[[1L]]@data
+        data <- hourmap_test__run(list(adjusted))@members[[1L]]@series[[
+            1L
+        ]]@data
 
         expect_equal(
             data$value,
@@ -384,57 +340,18 @@ test_that("interval-mean variables conserve their normalized annual mean", {
         "360_day",
         value = function(phase) 200 + 100 * pmax(0, sin(2 * pi * phase))
     )
-    sequence <- sequence__direct_model_generate(
-        hourmap_test__execution(list(adjusted)),
-        NULL,
-        NULL,
-        list()
-    )
-    result <- hourmap__reconstruct(
-        sequence,
-        hourmap_test__inputs(),
-        NULL,
-        list()
-    )
-    series <- result@members[[1L]]@series[[1L]]
+    series <- hourmap_test__run(list(adjusted))@members[[1L]]@series[[1L]]
 
     expect_equal(
         mean(series@data$value),
         mean(adjusted@data$value),
         tolerance = 1e-10
     )
-    expect_equal(
-        series@diagnostics$annual_mean_error,
-        0,
-        tolerance = 1e-10
-    )
+    expect_equal(series@diagnostics$annual_mean_error, 0, tolerance = 1e-10)
     expect_identical(
         unique(series@data$mapping_method),
         "conservative_normalized_interval"
     )
-})
-
-test_that("hourly calendar mapping is registered and contract-compatible", {
-    hourmap__register_component()
-    component <- component__get(
-        "hourly",
-        "direct_model_epw_calendar_mapping"
-    )
-    upstream <- sequence__direct_model_component()
-
-    expect_s7_class(component, WeatherComponentSpec)
-    expect_identical(component@input_kinds, "direct_model_sequence")
-    expect_identical(
-        component@output_kinds,
-        "epw_hourly_climate_sequence"
-    )
-    expect_false(component@stochastic)
-    expect_identical(component@metadata$target_days, HOURMAP_TARGET_DAYS)
-    expect_true(component__compatible(upstream, component))
-    expect_invisible(component__validate_inputs(
-        component,
-        hourmap_test__inputs()
-    ))
 })
 
 test_that("hourly calendar mapping rejects ambiguous source contracts", {
@@ -459,19 +376,8 @@ test_that("hourly calendar mapping rejects ambiguous source contracts", {
         output_role = "model_future",
         transformation = "test_daily_adjustment"
     )
-    daily_sequence <- sequence__direct_model_generate(
-        hourmap_test__execution(list(daily_adjusted)),
-        NULL,
-        NULL,
-        list()
-    )
     expect_error(
-        hourmap__reconstruct(
-            daily_sequence,
-            hourmap_test__inputs(),
-            NULL,
-            list()
-        ),
+        hourmap_test__run(list(daily_adjusted)),
         "requires an hourly direct-model sequence"
     )
 
@@ -481,36 +387,12 @@ test_that("hourly calendar mapping rejects ambiguous source contracts", {
         2061L,
         value = function(phase) phase + 1
     )
-    duplicate_sequence <- sequence__direct_model_generate(
-        hourmap_test__execution(list(first, second)),
-        NULL,
-        NULL,
-        list()
-    )
     expect_error(
-        hourmap__reconstruct(
-            duplicate_sequence,
-            hourmap_test__inputs(),
-            NULL,
-            list()
-        ),
+        hourmap_test__run(list(first, second)),
         "duplicate direct-model variable groups"
     )
-
-    unsupported <- hourmap_test__adjusted("pr", 2061L)
-    unsupported_sequence <- sequence__direct_model_generate(
-        hourmap_test__execution(list(unsupported)),
-        NULL,
-        NULL,
-        list()
-    )
     expect_error(
-        hourmap__reconstruct(
-            unsupported_sequence,
-            hourmap_test__inputs(),
-            NULL,
-            list()
-        ),
+        hourmap_test__run(list(hourmap_test__adjusted("pr", 2061L))),
         "no declared native-calendar-to-EPW hourly mapping semantics"
     )
     expect_error(

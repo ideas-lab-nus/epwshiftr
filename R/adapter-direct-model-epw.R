@@ -31,29 +31,25 @@ DIRECT_EPW_CONSTRUCTED_FIELDS <- c(
 # recipe or the final WeatherSequenceResult output wrapper.
 # direct_epw__member_error {{{
 direct_epw__member_error <- function(self) {
-    error <- sequence__identifier_error(
-        self@sequence_id,
-        "`sequence_id` contains unsupported characters."
+    error <- sequence__first_error(
+        sequence__validate_member_header(
+            self@sequence_id,
+            self@weather_year,
+            self@source_calendar,
+            calendar_name = "source_calendar",
+            provenance = self@provenance
+        ),
+        if (
+            !is.data.frame(self@data) || nrow(self@data) != HOURMAP_TARGET_HOURS
+        ) {
+            "`data` must contain exactly 8760 EPW weather rows."
+        },
+        if (!is.data.frame(self@diagnostics) || nrow(self@diagnostics) != 1L) {
+            "`diagnostics` must contain one row for the closed weather year."
+        }
     )
     if (!is.null(error)) {
         return(error)
-    }
-    error <- sequence__positive_year_error(self@weather_year)
-    if (!is.null(error)) {
-        return(error)
-    }
-    if (
-        length(self@source_calendar) != 1L ||
-            is.na(self@source_calendar) ||
-            !self@source_calendar %in% CF_TIME_CALENDARS
-    ) {
-        return("`source_calendar` must identify one supported CF calendar.")
-    }
-    if (
-        !is.data.frame(self@data) ||
-            nrow(self@data) != HOURMAP_TARGET_HOURS
-    ) {
-        return("`data` must contain exactly 8760 EPW weather rows.")
     }
     missing <- setdiff(EPW_FILE_COLUMNS, names(self@data))
     if (length(missing)) {
@@ -62,18 +58,10 @@ direct_epw__member_error <- function(self) {
             paste(sprintf("`%s`", missing), collapse = ", ")
         ))
     }
-    years <- unique(as.integer(self@data[["year"]]))
-    if (!identical(years, self@weather_year)) {
+    if (
+        !identical(unique(as.integer(self@data[["year"]])), self@weather_year)
+    ) {
         return("Every physically closed row must match `weather_year`.")
-    }
-    if (!is.data.frame(self@diagnostics) || nrow(self@diagnostics) != 1L) {
-        return(
-            "`diagnostics` must contain one row for the closed weather year."
-        )
-    }
-    error <- sequence__provenance_error(self@provenance)
-    if (!is.null(error)) {
-        return(error)
     }
     NULL
 }
@@ -100,56 +88,27 @@ EpwHourlyWeatherMember <- S7::new_class(
 # converts it into the package's public multi-year result contract.
 # direct_epw__sequence_error {{{
 direct_epw__sequence_error <- function(self) {
-    error <- sequence__member_class_error(
-        self@members,
-        EpwHourlyWeatherMember,
-        "`members` must contain EpwHourlyWeatherMember objects."
-    )
-    if (!is.null(error)) {
-        return(error)
-    }
-    if (!identical(self@target_calendar, "epw_365_day")) {
-        return("`target_calendar` must be `epw_365_day`.")
-    }
-    if (
-        !length(self@constructed_fields) ||
-            anyNA(self@constructed_fields) ||
-            any(!self@constructed_fields %in% EPW_FILE_COLUMNS) ||
-            anyDuplicated(self@constructed_fields)
-    ) {
-        return(
+    sequence__first_error(
+        sequence__validate_members(
+            self@members,
+            EpwHourlyWeatherMember,
+            "EpwHourlyWeatherMember",
+            "Closed EPW weather members",
+            year_label = "years",
+            provenance = self@provenance
+        ),
+        if (!identical(self@target_calendar, "epw_365_day")) {
+            "`target_calendar` must be `epw_365_day`."
+        },
+        if (
+            !length(self@constructed_fields) ||
+                anyNA(self@constructed_fields) ||
+                any(!self@constructed_fields %in% EPW_FILE_COLUMNS) ||
+                anyDuplicated(self@constructed_fields)
+        ) {
             "`constructed_fields` must contain unique supported EPW fields."
-        )
-    }
-    years <- vapply(
-        self@members,
-        function(member) member@weather_year,
-        integer(1L)
+        }
     )
-    error <- sequence__ordered_years_error(
-        years,
-        "Closed EPW weather members must use unique ascending years."
-    )
-    if (!is.null(error)) {
-        return(error)
-    }
-    sequence_ids <- vapply(
-        self@members,
-        function(member) member@sequence_id,
-        character(1L)
-    )
-    error <- sequence__shared_values_error(
-        sequence_ids,
-        "Closed EPW weather members must share one `sequence_id`."
-    )
-    if (!is.null(error)) {
-        return(error)
-    }
-    error <- sequence__provenance_error(self@provenance)
-    if (!is.null(error)) {
-        return(error)
-    }
-    NULL
 }
 # }}}
 
@@ -246,6 +205,22 @@ direct_epw__variable_contract <- function(variables, weather_year) {
 }
 # }}}
 
+DIRECT_EPW_VARIABLE_UNITS <- list(
+    tas = list(allowed = c("K", "degC"), field = "dry_bulb_temperature"),
+    ps = list(allowed = c("Pa", "hPa"), field = "atmospheric_pressure"),
+    hurs = list(allowed = "%", field = "relative_humidity"),
+    huss = list(allowed = c("1", "kg/kg"), field = NULL),
+    sfcWind = list(allowed = "m/s", field = "wind_speed"),
+    uas = list(allowed = "m/s", field = "wind_speed"),
+    vas = list(allowed = "m/s", field = "wind_speed"),
+    rsds = list(allowed = "W/m^2", field = "global_horizontal_radiation"),
+    rsdsdiff = list(allowed = "W/m^2", field = "diffuse_horizontal_radiation"),
+    rlds = list(
+        allowed = "W/m^2",
+        field = "horizontal_infrared_radiation_intensity_from_sky"
+    )
+)
+
 # Convert one mapped variable using a narrow unit schema chosen for the EPW
 # fields constructed by this component.
 # direct_epw__values {{{
@@ -256,9 +231,8 @@ direct_epw__values <- function(variables, variable) {
             "Mapped EPW climate variable {.val {variable}} is missing."
         )
     }
-    raw_units <- unique(as.character(rows[["units"]]))
     units <- unique(vapply(
-        raw_units,
+        unique(as.character(rows[["units"]])),
         morpher__unit_alias,
         character(1L)
     ))
@@ -268,39 +242,13 @@ direct_epw__values <- function(variables, variable) {
         )
     }
     unit <- units[[1L]]
-    allowed <- switch(
-        variable,
-        tas = c("K", "degC"),
-        ps = c("Pa", "hPa"),
-        hurs = "%",
-        huss = c("1", "kg/kg"),
-        sfcWind = "m/s",
-        uas = "m/s",
-        vas = "m/s",
-        rsds = "W/m^2",
-        rsdsdiff = "W/m^2",
-        rlds = "W/m^2"
-    )
-    if (is.na(unit) || !unit %in% allowed) {
+    spec <- DIRECT_EPW_VARIABLE_UNITS[[variable]]
+    if (is.na(unit) || !unit %in% spec$allowed) {
         cli::cli_abort(
-            "Mapped EPW climate variable {.val {variable}} uses unsupported unit {.val {unit}}; expected {.val {allowed}}."
+            "Mapped EPW climate variable {.val {variable}} uses unsupported unit {.val {unit}}; expected {.val {spec$allowed}}."
         )
     }
-    target_unit <- switch(
-        variable,
-        tas = epw_file_unit("dry_bulb_temperature"),
-        ps = epw_file_unit("atmospheric_pressure"),
-        hurs = epw_file_unit("relative_humidity"),
-        huss = unit,
-        sfcWind = epw_file_unit("wind_speed"),
-        uas = epw_file_unit("wind_speed"),
-        vas = epw_file_unit("wind_speed"),
-        rsds = epw_file_unit("global_horizontal_radiation"),
-        rsdsdiff = epw_file_unit("diffuse_horizontal_radiation"),
-        rlds = epw_file_unit(
-            "horizontal_infrared_radiation_intensity_from_sky"
-        )
-    )
+    target_unit <- if (is.null(spec$field)) unit else epw_file_unit(spec$field)
     converted <- morpher__convert_value_checked(
         rows[["value"]],
         unit,
@@ -317,19 +265,7 @@ direct_epw__values <- function(variables, variable) {
 # year cannot shift March-through-December EPW rows by one astronomical day.
 # direct_epw__solar_geometry {{{
 direct_epw__solar_geometry <- function(template, epw) {
-    latitude <- morpher__epw_location_numeric(
-        epw,
-        c("latitude", "lat", "N2_latitude")
-    )
-    longitude <- morpher__epw_location_numeric(
-        epw,
-        c("longitude", "lon", "N3_longitude")
-    )
-    timezone <- morpher__epw_location_numeric(
-        epw,
-        c("time_zone", "timezone", "N4_time_zone"),
-        default = 0
-    )
+    loc <- morpher__epw_location(epw)
     geometry_input <- data.table::data.table(
         year = rep.int(2001L, nrow(template)),
         month = as.integer(template[["month"]]),
@@ -338,9 +274,9 @@ direct_epw__solar_geometry <- function(template, epw) {
     )
     solar__epw_interval_geometry(
         geometry_input,
-        latitude,
-        longitude,
-        timezone
+        loc$latitude,
+        loc$longitude,
+        loc$timezone
     )
 }
 # }}}
@@ -498,17 +434,7 @@ direct_epw__apply <- function(data, inputs, context, options) {
         )
     }
     checkmate::assert_list(options, names = "unique")
-    template_input <- weather__get_input(inputs, "weather_template")
-    if (
-        !S7::S7_inherits(template_input, WeatherInput) ||
-            !identical(template_input@representation, "epw") ||
-            !inherits(template_input@source, "EpwFile")
-    ) {
-        cli::cli_abort(
-            "Role `weather_template` must contain an EPW WeatherInput."
-        )
-    }
-    epw <- template_input@source
+    epw <- sequence__epw_template_input(inputs, require_epw_file = TRUE)
     hourmap__target_grid(epw)
     # Absolute-model recipes inherit fields outside their climate contract;
     # represent missing inherited observations as NA inside the result.
@@ -553,14 +479,7 @@ direct_epw__component <- function() {
         name = "epw_hourly_physical_closure",
         stage = "physics",
         label = "EPW hourly physical closure",
-        required_inputs = list(
-            weather_template = component__input_requirement(
-                "weather_template",
-                representations = "epw",
-                frequencies = "hour",
-                calendars = "gregorian"
-            )
-        ),
+        required_inputs = sequence__epw_template_requirement(),
         input_kinds = "epw_hourly_climate_sequence",
         output_kinds = "epw_hourly_weather_sequence",
         scopes = "multivariate",

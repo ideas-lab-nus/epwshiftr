@@ -1137,58 +1137,6 @@ test_that("CMIP6 auto tables resolve and intersect Amon plus LImon partitions", 
 test_that("exact Amon and LImon partitions gate File rows and extraction plans", {
     skip_on_cran()
 
-    file_doc <- function(path, variable_id) {
-        data.frame(
-            id = sprintf("%s|dataset", basename(path)),
-            dataset_id = "dataset",
-            size = 123,
-            checksum = "abc",
-            checksum_type = "SHA256",
-            instance_id = "instance",
-            master_id = "master",
-            replica = FALSE,
-            tracking_id = "hdl:test/file",
-            title = basename(path),
-            version = 20260101L,
-            latest = TRUE,
-            retracted = FALSE,
-            deprecated = FALSE,
-            datetime_start = "2060-01-01T00:00:00Z",
-            datetime_end = "2060-12-31T23:59:59Z",
-            data_node = "example.org",
-            activity_id = "ScenarioMIP",
-            institution_id = "Test",
-            source_id = "Model-A",
-            experiment_id = "ssp585",
-            variant_label = "r1i1p1f1",
-            frequency = "mon",
-            table_id = "Amon",
-            variable_id = variable_id,
-            grid_label = "gn",
-            url = I(list(c(
-                sprintf("%s|application/netcdf|OPENDAP", path),
-                sprintf("%s|application/netcdf|HTTPServer", path)
-            ))),
-            check.names = FALSE
-        )
-    }
-    file_result <- function(docs) {
-        params <- query_param__as_store(list(
-            project = "CMIP6",
-            distrib = TRUE,
-            limit = 10L,
-            type = "File",
-            format = QUERY_PARAM__FORMAT_JSON
-        ))
-        response <- esgf_test__response(docs)
-        query_result__new(
-            EsgResultFile,
-            index_node = "https://example.org",
-            params = params,
-            result = response
-        )
-    }
-
     paths <- c(tas = tempfile(fileext = ".nc"), snd = tempfile(fileext = ".nc"))
     write_local_cmip6_netcdf_fixture(paths[["tas"]], 2060L, "tas")
     write_local_cmip6_netcdf_fixture(paths[["snd"]], 2060L, "snd")
@@ -1204,16 +1152,21 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
     docs <- data.table::rbindlist(
         lapply(seq_len(nrow(combinations)), function(i) {
             variable_id <- combinations$variable_id[[i]]
-            row <- file_doc(paths[[variable_id]], variable_id)
             suffix <- sprintf(
                 "%s-%s-%s",
                 variable_id,
                 combinations$table_id[[i]],
                 combinations$grid_label[[i]]
             )
+            row <- esgf_test__file_docs(
+                path = basename(paths[[variable_id]]),
+                opendap_url = paths[[variable_id]],
+                download_url = paths[[variable_id]],
+                variable_id = variable_id,
+                frequency = "mon",
+                table_id = combinations$table_id[[i]]
+            )
             row$source_id <- "Model-A"
-            row$frequency <- "mon"
-            row$table_id <- combinations$table_id[[i]]
             row$grid_label <- combinations$grid_label[[i]]
             row$dataset_id <- paste0("dataset-", suffix)
             row$master_id <- paste0("master-", suffix)
@@ -1228,7 +1181,7 @@ test_that("exact Amon and LImon partitions gate File rows and extraction plans",
 
     store_path <- tempfile("enhanced-partition-store-")
     store <- EsgStore$new(store_path)
-    query_id <- store$add_files(file_result(as.data.frame(docs)))
+    query_id <- store$add_files(esgf_test__file_result(as.data.frame(docs)))
     store$close()
     request <- shift_request(
         project = "CMIP6",
@@ -1766,7 +1719,16 @@ test_that("humidity and snow smoothing ignore representative source-year labels"
         strict = TRUE
     )
     results <- lapply(list(weather, mixed), function(data) {
-        temperature <- original_morphing__change_tdb(data, context, "auto")
+        temperature <- original_morphing__field(
+            data,
+            context,
+            "tas",
+            "dry_bulb_temperature",
+            "auto",
+            change_factor = TRUE,
+            max_var = "tasmax",
+            min_var = "tasmin"
+        )
         list(
             humidity = original_morphing__huss_state(
                 data,

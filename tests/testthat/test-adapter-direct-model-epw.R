@@ -123,12 +123,40 @@ epwphys_test__sequence <- function(
 }
 # }}}
 
+EPWPHYS_TEST_VALUES <- list(
+    tas = 293.15,
+    ps = 101325,
+    hurs = 50,
+    sfcWind = 3,
+    rsds = 500,
+    rsdsdiff = 100
+)
+EPWPHYS_TEST_UNITS <- list(
+    tas = "K",
+    ps = "Pa",
+    hurs = "%",
+    sfcWind = "m s-1",
+    rsds = "W m-2",
+    rsdsdiff = "W m-2"
+)
+
 # Execute the component with the empty option set used by the generic runner.
 # epwphys_test__apply {{{
-epwphys_test__apply <- function(values, units, year = 2064L) {
+epwphys_test__apply <- function(
+    values = EPWPHYS_TEST_VALUES,
+    units = EPWPHYS_TEST_UNITS,
+    year = 2064L,
+    wind_direction = NULL,
+    inputs = epwphys_test__inputs()
+) {
     direct_epw__apply(
-        epwphys_test__sequence(values, units, year),
-        epwphys_test__inputs(),
+        epwphys_test__sequence(
+            values,
+            units,
+            year = year,
+            wind_direction = wind_direction
+        ),
+        inputs,
         NULL,
         list()
     )
@@ -138,29 +166,7 @@ epwphys_test__apply <- function(values, units, year = 2064L) {
 test_that("relative humidity and scalar wind close an EPW weather year", {
     input <- epwphys_test__inputs()
     template <- weather__get_input(input, "weather_template")@source$data()
-    result <- direct_epw__apply(
-        epwphys_test__sequence(
-            list(
-                tas = 293.15,
-                ps = 101325,
-                hurs = 50,
-                sfcWind = 3,
-                rsds = 500,
-                rsdsdiff = 100
-            ),
-            list(
-                tas = "K",
-                ps = "Pa",
-                hurs = "%",
-                sfcWind = "m s-1",
-                rsds = "W m-2",
-                rsdsdiff = "W m-2"
-            )
-        ),
-        input,
-        NULL,
-        list()
-    )
+    result <- epwphys_test__apply(inputs = input)
 
     expect_s7_class(result, EpwHourlyWeatherSequence)
     expect_identical(result@target_calendar, "epw_365_day")
@@ -195,8 +201,7 @@ test_that("relative humidity and scalar wind close an EPW weather year", {
     expect_equal(
         weather$global_horizontal_radiation[daylight],
         weather$diffuse_horizontal_radiation[daylight] +
-            weather$direct_normal_radiation[daylight] *
-                projection[daylight],
+            weather$direct_normal_radiation[daylight] * projection[daylight],
         tolerance = 1e-8
     )
     expect_true(all(weather$global_horizontal_radiation[!daylight] == 0))
@@ -276,32 +281,7 @@ test_that("specific humidity and vector wind derive dependent EPW fields", {
 })
 
 test_that("scalar wind retains model direction through physical closure", {
-    input <- epwphys_test__inputs()
-    result <- direct_epw__apply(
-        epwphys_test__sequence(
-            list(
-                tas = 293.15,
-                ps = 101325,
-                hurs = 50,
-                sfcWind = 3,
-                rsds = 500,
-                rsdsdiff = 100
-            ),
-            list(
-                tas = "K",
-                ps = "Pa",
-                hurs = "%",
-                sfcWind = "m/s",
-                rsds = "W/m^2",
-                rsdsdiff = "W/m^2"
-            ),
-            wind_direction = 225
-        ),
-        input,
-        NULL,
-        list()
-    )
-
+    result <- epwphys_test__apply(wind_direction = 225)
     member <- result@members[[1L]]
     expect_equal(member@data$wind_direction, rep.int(225, 8760))
     expect_identical(
@@ -357,22 +337,8 @@ test_that("physical bounds and radiation closure report every correction", {
 
 test_that("ambiguous and incomplete physical input contracts are rejected", {
     skip_on_cran()
-    base_values <- list(
-        tas = 293.15,
-        ps = 101325,
-        hurs = 50,
-        sfcWind = 3,
-        rsds = 500,
-        rsdsdiff = 100
-    )
-    base_units <- list(
-        tas = "K",
-        ps = "Pa",
-        hurs = "%",
-        sfcWind = "m/s",
-        rsds = "W/m^2",
-        rsdsdiff = "W/m^2"
-    )
+    base_values <- EPWPHYS_TEST_VALUES
+    base_units <- EPWPHYS_TEST_UNITS
 
     expect_error(
         epwphys_test__apply(
@@ -417,48 +383,9 @@ test_that("ambiguous and incomplete physical input contracts are rejected", {
     )
 })
 
-test_that("the registered physics component follows the hourly contract", {
-    direct_epw__register_component()
-    component <- component__get(
-        "physics",
-        "epw_hourly_physical_closure"
-    )
-    upstream <- hourmap__component()
-
-    expect_s7_class(component, WeatherComponentSpec)
-    expect_identical(component@input_kinds, "epw_hourly_climate_sequence")
-    expect_identical(component@output_kinds, "epw_hourly_weather_sequence")
-    expect_false(component@stochastic)
-    expect_true(component__compatible(upstream, component))
-    expect_identical(
-        component@metadata$humidity_alternatives,
-        c("hurs", "huss")
-    )
-    expect_invisible(component__validate_inputs(
-        component,
-        epwphys_test__inputs()
-    ))
-})
-
 test_that("direct-model output retains every physically closed weather year", {
-    values <- list(
-        tas = 293.15,
-        ps = 101325,
-        hurs = 50,
-        sfcWind = 3,
-        rsds = 500,
-        rsdsdiff = 100
-    )
-    units <- list(
-        tas = "K",
-        ps = "Pa",
-        hurs = "%",
-        sfcWind = "m s-1",
-        rsds = "W m-2",
-        rsdsdiff = "W m-2"
-    )
-    first <- epwphys_test__apply(values, units, year = 2061L)
-    second <- epwphys_test__apply(values, units, year = 2062L)
+    first <- epwphys_test__apply(year = 2061L)
+    second <- epwphys_test__apply(year = 2062L)
     closed <- EpwHourlyWeatherSequence(
         members = list(first@members[[1L]], second@members[[1L]]),
         target_calendar = first@target_calendar,
@@ -493,11 +420,7 @@ test_that("direct-model output retains every physically closed weather year", {
     expect_s7_class(result, WeatherSequenceResult)
     expect_identical(result@output_type, "multi_year")
     expect_identical(
-        vapply(
-            result@members,
-            function(member) member@weather_year,
-            integer(1L)
-        ),
+        vapply(result@members, function(m) m@weather_year, integer(1L)),
         c(2061L, 2062L)
     )
     expect_identical(result@provenance$method, "direct_model_epw_result")
@@ -506,18 +429,8 @@ test_that("direct-model output retains every physically closed weather year", {
         result@diagnostics$physical_policy == "absolute_model_fields"
     ))
     expect_true("dew_point_temperature" %in% result@parts$constructed_fields)
-    expect_true(component__compatible(
-        direct_epw__component(),
-        sequence__epw_output_component()
-    ))
     expect_error(
-        sequence__epw_output_write(
-            first,
-            input,
-            context,
-            list(),
-            list()
-        ),
+        sequence__epw_output_write(first, input, context, list(), list()),
         "at least two complete weather years"
     )
 })

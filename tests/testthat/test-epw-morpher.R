@@ -20,6 +20,78 @@ epw_morpher_test__from_recipe <- function(
 }
 # }}}
 
+# Provision a temporary EsgStore populated and extracted from local CMIP6
+# NetCDF fixtures so EpwMorpher tests share one clean store-setup path.
+# morpher_test__extracted_store {{{
+morpher_test__extracted_store <- function(
+    variables = "tas",
+    year = 2060L,
+    n_years = 1L,
+    calendar = "standard",
+    frequency = "day",
+    table_id = "day",
+    time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+    datetime_end = sprintf("%d-12-31T23:59:59Z", year + n_years - 1L),
+    experiments = NULL,
+    envir = parent.frame()
+) {
+    root <- withr::local_tempdir(.local_envir = envir)
+    store <- EsgStore$new(file.path(root, "store"))
+    withr::defer(store$close(), envir = envir)
+    build_doc <- function(variable_id, experiment = NULL) {
+        suffix <- paste(c(variable_id, experiment), collapse = "-")
+        path <- file.path(root, paste0(suffix, ".nc"))
+        write_local_cmip6_netcdf_fixture(
+            path,
+            year,
+            variable_id = variable_id,
+            frequency = frequency,
+            calendar = calendar,
+            n_years = n_years
+        )
+        rows <- esgf_test__file_docs(
+            path = basename(path),
+            opendap_url = path,
+            download_url = path,
+            variable_id = variable_id,
+            frequency = frequency,
+            table_id = table_id,
+            datetime_end = datetime_end
+        )
+        if (!is.null(experiment)) {
+            rows$id <- paste0(rows$id, "-", experiment)
+            rows$instance_id <- paste0(rows$instance_id, "-", experiment)
+            rows$master_id <- paste0(rows$master_id, "-", experiment)
+            rows$experiment_id <- experiment
+        }
+        rows
+    }
+    doc_list <- if (is.null(experiments)) {
+        lapply(variables, build_doc)
+    } else {
+        unlist(
+            lapply(experiments, function(exp) {
+                lapply(variables, build_doc, experiment = exp)
+            }),
+            recursive = FALSE
+        )
+    }
+    docs <- as.data.frame(data.table::rbindlist(doc_list, fill = TRUE))
+    query_id <- store$add_files(esgf_test__file_result(docs))
+    plan <- store$plan_region(
+        query_id = query_id,
+        lon = 103.98,
+        lat = 1.37,
+        time = time,
+        site_id = "SIN",
+        variable_id = if (length(variables) > 1L) variables else NULL
+    )
+    extracted <- store$extract(plan_id = plan$plan_id)
+    expect_true(all(extracted$status == "done"))
+    list(root = root, store = store, plan = plan, docs = docs)
+}
+# }}}
+
 test_that("get_cache_epw() prepares a stable local EPW fixture", {
     dir <- withr::local_tempdir()
     withr::local_envvar(EPWSHIFTR_CHECK_CACHE = dir)
@@ -145,45 +217,22 @@ test_that("climate records expand across overlapping morphing periods", {
 })
 
 test_that("EpwMorpher$preflight() accepts overlapping climate periods", {
-    nc <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(nc, 2060L, n_years = 2L)
-    on.exit(unlink(nc), add = TRUE)
-
-    store <- EsgStore$new(tempfile("overlapping-preflight-store-"))
-    on.exit(store$close(), add = TRUE)
-    docs <- esgf_test__file_docs(
-        path = basename(nc),
-        opendap_url = nc,
-        download_url = nc,
-        datetime_end = "2061-12-31T23:59:59Z"
+    fx <- morpher_test__extracted_store(
+        n_years = 2L,
+        time = c("2060-01-01T00:00:00Z", "2061-12-31T23:59:59Z")
     )
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    extraction <- store$plan_region(
-        query_id = query_id,
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-01-01T00:00:00Z", "2061-12-31T23:59:59Z"),
-        site_id = "SIN"
-    )
-    expect_true(all(
-        store$extract(plan_id = extraction$plan_id)$status == "done"
-    ))
-
     morpher <- epw_morpher_test__from_recipe(
-        store = store,
+        store = fx$store,
         epw = get_cache_epw(),
         site_id = "SIN",
         recipe = suppressWarnings(epw_morph_recipe(
             "original_morphing_absolute"
         ))
     )
-    periods <- epw_morph_periods(
-        early = 2060:2061,
-        late = 2061L
-    )
+    periods <- epw_morph_periods(early = 2060:2061, late = 2061L)
 
     diagnostics <- morpher$preflight(
-        plan_id = extraction$plan_id,
+        plan_id = fx$plan$plan_id,
         periods = periods,
         strict = FALSE
     )
@@ -375,43 +424,9 @@ test_that("baseline summaries and preflight preserve EPW missing-value evidence"
 
 test_that("EpwMorpher isolates case failures and persists current case state", {
     skip_on_cran()
-
-    nc <- c(
-        ssp126 = tempfile(fileext = ".nc"),
-        ssp585 = tempfile(fileext = ".nc")
-    )
-    for (path in nc) {
-        write_local_cmip6_netcdf_fixture(path, 2060L)
-    }
-    on.exit(unlink(nc), add = TRUE)
-    store <- EsgStore$new(tempfile("isolated-morph-case-store-"))
-    on.exit(store$close(), add = TRUE)
-    docs <- data.table::rbindlist(
-        lapply(names(nc), function(experiment) {
-            rows <- esgf_test__file_docs(
-                path = basename(nc[[experiment]]),
-                opendap_url = nc[[experiment]],
-                download_url = nc[[experiment]]
-            )
-            rows$id <- paste0(rows$id, "-", experiment)
-            rows$instance_id <- paste0(rows$instance_id, "-", experiment)
-            rows$master_id <- paste0(rows$master_id, "-", experiment)
-            rows$experiment_id <- experiment
-            rows
-        }),
-        fill = TRUE
-    )
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    extraction <- store$plan_region(
-        query_id = query_id,
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN"
-    )
-    expect_true(all(
-        store$extract(plan_id = extraction$plan_id)$status == "done"
-    ))
+    fx <- morpher_test__extracted_store(experiments = c("ssp126", "ssp585"))
+    store <- fx$store
+    extraction <- fx$plan
 
     morpher <- epw_morpher_test__from_recipe(
         store = store,
@@ -439,12 +454,7 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
     original_run <- morpher__run_context
     testthat::local_mocked_bindings(
         morpher__run_context = function(context) {
-            if (
-                identical(
-                    context$case$experiment_id[[1L]],
-                    "ssp126"
-                )
-            ) {
+            if (identical(context$case$experiment_id[[1L]], "ssp126")) {
                 stop("synthetic method failure", call. = FALSE)
             }
             original_run(context)
@@ -463,10 +473,7 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
             "inherited_fields"
         )
     )
-    expect_identical(
-        morpher$status(plan$morph_id)$status,
-        "result_partial"
-    )
+    expect_identical(morpher$status(plan$morph_id)$status, "result_partial")
 
     cases <- morpher__read_table(store, "epw_morph_case")
     cases <- cases[cases$morph_id == plan$morph_id]
@@ -479,12 +486,9 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
         "synthetic method failure"
     )
     diagnostics <- morpher__read_table(store, "epw_morph_diagnostic")
-    target_morph_id <- plan$morph_id[[1L]]
-    diagnostic <- diagnostics[
-        diagnostics[["code"]] == "morph_case_failed"
-    ]
+    diagnostic <- diagnostics[diagnostics[["code"]] == "morph_case_failed"]
     expect_equal(nrow(diagnostic), 1L)
-    expect_identical(diagnostic$morph_id, target_morph_id)
+    expect_identical(diagnostic$morph_id, plan$morph_id[[1L]])
     expect_match(diagnostic$message, "ssp126")
     expect_match(diagnostic$message, "2060s")
 
@@ -494,45 +498,18 @@ test_that("EpwMorpher isolates case failures and persists current case state", {
         overwrite = TRUE
     )
     expect_equal(nrow(outputs), 1L)
-    expect_identical(
-        morpher$status(plan$morph_id)$status,
-        "epw_partial"
-    )
+    expect_identical(morpher$status(plan$morph_id)$status, "epw_partial")
 })
 
 
 test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", {
-    nc <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(
-        nc,
-        2060L,
+    fx <- morpher_test__extracted_store(
         calendar = "360_day",
-        n_years = 2L
+        n_years = 2L,
+        time = c("2060-12-30T00:00:00Z", "2061-01-01T23:59:59Z")
     )
-    on.exit(unlink(nc), add = TRUE)
-
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    on.exit(store$close(), add = TRUE)
-
-    docs <- esgf_test__file_docs(
-        path = basename(nc),
-        opendap_url = nc,
-        download_url = nc,
-        datetime_end = "2061-12-31T23:59:59Z"
-    )
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    plan <- store$plan_region(
-        query_id = query_id,
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-12-30T00:00:00Z", "2061-01-01T23:59:59Z"),
-        site_id = "SIN"
-    )
-    expect_equal(store$extract(plan_id = plan$plan_id)$status, "done")
-
     morpher <- epw_morpher_test__from_recipe(
-        store = store,
+        store = fx$store,
         epw = get_cache_epw(),
         site_id = "SIN",
         recipe = suppressWarnings(epw_morph_recipe(
@@ -540,7 +517,7 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
         ))
     )
     climate <- morpher$summarise_climate(
-        plan$plan_id,
+        fx$plan$plan_id,
         epw_morph_periods(`2061` = 2061L),
         strict = FALSE
     )
@@ -550,38 +527,17 @@ test_that("EpwMorpher$summarise_climate() selects 360-day CF years and months", 
     expect_true(all(climate$n_records == 1L))
     expect_true(all(climate$n_valid == 1L))
     expect_true(all(is.na(climate$plan_id)))
-    sources <- morpher__read_table(store, "epw_climate_summary_plan")
+    sources <- morpher__read_table(fx$store, "epw_climate_summary_plan")
     sources <- sources[sources$summary_id == unique(climate$summary_id)]
-    expect_identical(sources$plan_id, plan$plan_id)
+    expect_identical(sources$plan_id, fx$plan$plan_id)
 })
 
 
 test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() create relaxed future EPW outputs from store extracts", {
     skip_on_cran()
-
-    nc <- tempfile(fileext = ".nc")
-    write_local_cmip6_netcdf_fixture(nc, 2060L)
-    on.exit(unlink(nc), add = TRUE)
-
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    on.exit(store$close(), add = TRUE)
-
-    docs <- esgf_test__file_docs(
-        path = basename(nc),
-        opendap_url = nc,
-        download_url = nc
-    )
-    query_id <- store$add_files(esgf_test__file_result(docs))
-    plan <- store$plan_region(
-        query_id = query_id,
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN"
-    )
-    processed <- store$extract(plan_id = plan$plan_id)
-    expect_equal(processed$status, "done")
+    fx <- morpher_test__extracted_store()
+    store <- fx$store
+    plan <- fx$plan
 
     external_epw <- test_external_epw(get_cache_epw())
     original_external_path <- external_epw$path()
@@ -705,65 +661,22 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
     )
     expect_gt(file.size(output_path), 0)
     expect_true(inherits(epw_file_read(output_path), "EpwFile"))
-
     expect_equal(morpher$status(relaxed$morph_id)$status, "epw_written")
     expect_equal(nrow(morpher$outputs(relaxed$morph_id)), 1L)
 })
 
 test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() complete strict outputs with recommended variables", {
     skip_on_cran()
-
     variables <- epw_morph_variables("recommended")
-    nc <- stats::setNames(
-        vapply(
-            variables,
-            function(variable_id) {
-                path <- tempfile(fileext = ".nc")
-                write_local_cmip6_netcdf_fixture(
-                    path,
-                    2060L,
-                    variable_id = variable_id,
-                    frequency = "mon"
-                )
-                path
-            },
-            character(1L)
-        ),
-        variables
+    fx <- morpher_test__extracted_store(
+        variables = variables,
+        frequency = "mon",
+        table_id = "Amon",
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
     )
-    on.exit(unlink(nc), add = TRUE)
-
-    dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    on.exit(store$close(), add = TRUE)
-
-    docs <- data.table::rbindlist(
-        lapply(variables, function(variable_id) {
-            esgf_test__file_docs(
-                path = basename(nc[[variable_id]]),
-                opendap_url = nc[[variable_id]],
-                download_url = nc[[variable_id]],
-                variable_id = variable_id,
-                frequency = "mon",
-                table_id = "Amon"
-            )
-        }),
-        fill = TRUE
-    )
-    query_id <- store$add_files(esgf_test__file_result(as.data.frame(docs)))
-    plan <- store$plan_region(
-        query_id = query_id,
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
-        site_id = "SIN",
-        variable_id = variables
-    )
+    store <- fx$store
+    plan <- fx$plan
     expect_setequal(plan$variable_id, variables)
-
-    processed <- store$extract(plan_id = plan$plan_id)
-    expect_equal(nrow(processed), length(variables))
-    expect_true(all(processed$status == "done"))
 
     morpher <- epw_morpher_test__from_recipe(
         store = store,
@@ -775,16 +688,20 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         label = "singapore"
     )
     periods <- epw_morph_periods(`2060s` = 2060L)
-    preflight <- morpher$preflight(plan$plan_id, periods, strict = TRUE)
-    expect_equal(nrow(preflight), 0L)
+    expect_equal(
+        nrow(morpher$preflight(plan$plan_id, periods, strict = TRUE)),
+        0L
+    )
 
     climate <- morpher$summarise_climate(plan$plan_id, periods, strict = TRUE)
     expect_setequal(unique(climate$variable_id), variables)
-
     baseline <- morpher$summarise_baseline()
+    summary_id <- unique(climate$summary_id)
+    baseline_id <- unique(baseline$baseline_id)
+
     preview <- morpher$preview_plan(
-        summary_id = unique(climate$summary_id),
-        baseline_id = unique(baseline$baseline_id),
+        summary_id = summary_id,
+        baseline_id = baseline_id,
         strict = TRUE
     )
     expect_equal(preview$plan$status, "planned")
@@ -812,22 +729,22 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     )
     bad_strict <- morpher$preview_plan(
         summary_id = unique(bad_climate$summary_id),
-        baseline_id = unique(baseline$baseline_id),
+        baseline_id = baseline_id,
         strict = TRUE
     )
     expect_equal(bad_strict$plan$status, "blocked")
     expect_true(any(bad_strict$diagnostics$code == "unit_conversion_failed"))
     bad_relaxed <- morpher$preview_plan(
         summary_id = unique(bad_climate$summary_id),
-        baseline_id = unique(baseline$baseline_id),
+        baseline_id = baseline_id,
         strict = FALSE
     )
     expect_equal(bad_relaxed$plan$status, "planned")
     expect_true(any(bad_relaxed$diagnostics$severity == "warning"))
 
     strict <- morpher$plan(
-        summary_id = unique(climate$summary_id),
-        baseline_id = unique(baseline$baseline_id),
+        summary_id = summary_id,
+        baseline_id = baseline_id,
         strict = TRUE
     )
     expect_equal(strict$status, "planned")
@@ -842,64 +759,37 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_equal(morpher$status(strict$morph_id)$status, "result_done")
 
     result_data <- read_test_parquet(result_path)
-    epw <- epw_file_read(get_cache_epw())
-    baseline_data <- data.table::as.data.table(epw$data())
-    expect_true(all(
-        c(
-            "dry_bulb_temperature",
-            "relative_humidity",
-            "dew_point_temperature",
-            "atmospheric_pressure",
-            "global_horizontal_radiation",
-            "diffuse_horizontal_radiation",
-            "direct_normal_radiation",
-            "wind_speed",
-            "total_sky_cover",
-            "opaque_sky_cover",
-            "liquid_precip_depth",
-            "liquid_precip_rate"
-        ) %in%
-            names(result_data)
-    ))
-    expect_true(any(
-        abs(
-            result_data$dry_bulb_temperature -
-                baseline_data$dry_bulb_temperature
-        ) >
-            1e-6,
-        na.rm = TRUE
-    ))
-    expect_true(any(
-        abs(
-            result_data$dew_point_temperature -
-                baseline_data$dew_point_temperature
-        ) >
-            1e-6,
-        na.rm = TRUE
-    ))
-    expect_true(any(
-        abs(
-            result_data$diffuse_horizontal_radiation -
-                baseline_data$diffuse_horizontal_radiation
-        ) >
-            1e-6,
-        na.rm = TRUE
-    ))
-    expect_true(any(
-        abs(
-            result_data$direct_normal_radiation -
-                baseline_data$direct_normal_radiation
-        ) >
-            1e-6,
-        na.rm = TRUE
-    ))
-    expect_true(any(
-        abs(
-            result_data$liquid_precip_depth - baseline_data$liquid_precip_depth
-        ) >
-            1e-6,
-        na.rm = TRUE
-    ))
+    baseline_data <- data.table::as.data.table(epw_file_read(get_cache_epw())$data())
+    expected_fields <- c(
+        "dry_bulb_temperature",
+        "relative_humidity",
+        "dew_point_temperature",
+        "atmospheric_pressure",
+        "global_horizontal_radiation",
+        "diffuse_horizontal_radiation",
+        "direct_normal_radiation",
+        "wind_speed",
+        "total_sky_cover",
+        "opaque_sky_cover",
+        "liquid_precip_depth",
+        "liquid_precip_rate"
+    )
+    expect_true(all(expected_fields %in% names(result_data)))
+    for (field in c(
+        "dry_bulb_temperature",
+        "dew_point_temperature",
+        "diffuse_horizontal_radiation",
+        "direct_normal_radiation",
+        "liquid_precip_depth"
+    )) {
+        expect_true(
+            any(
+                abs(result_data[[field]] - baseline_data[[field]]) > 1e-6,
+                na.rm = TRUE
+            ),
+            info = field
+        )
+    }
     expect_setequal(unique(result_data$liquid_precip_rate), c(0, 1))
 
     resumed_results <- testthat::with_mocked_bindings(
@@ -923,7 +813,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     )
     override_baseline <- override_morpher$summarise_baseline()
     override <- override_morpher$plan(
-        summary_id = unique(climate$summary_id),
+        summary_id = summary_id,
         baseline_id = unique(override_baseline$baseline_id),
         strict = TRUE
     )
@@ -956,10 +846,12 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         transform = monthly_transform("epwshiftr"),
         label = "singapore-change"
     )
-    change_baseline <- change_morpher$summarise_baseline()
+    change_baseline_id <- unique(
+        change_morpher$summarise_baseline()$baseline_id
+    )
     change_missing_ref <- change_morpher$preview_plan(
-        summary_id = unique(climate$summary_id),
-        baseline_id = unique(change_baseline$baseline_id),
+        summary_id = summary_id,
+        baseline_id = change_baseline_id,
         strict = TRUE
     )
     expect_equal(change_missing_ref$plan$status, "planned")
@@ -972,20 +864,18 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         change_missing_ref$factors$baseline
     )
     baseline_reference <- change_morpher$plan(
-        summary_id = unique(climate$summary_id),
-        baseline_id = unique(change_baseline$baseline_id),
+        summary_id = summary_id,
+        baseline_id = change_baseline_id,
         strict = TRUE
     )
     baseline_reference_results <- change_morpher$run(
         baseline_reference$morph_id,
         overwrite = TRUE
     )
-    baseline_reference_data <- read_test_parquet(
-        store_abs_path(
-            baseline_reference_results$output_path,
-            root = store$path
-        )
-    )
+    baseline_reference_data <- read_test_parquet(store_abs_path(
+        baseline_reference_results$output_path,
+        root = store$path
+    ))
     expect_true(any(
         abs(
             baseline_reference_data$dry_bulb_temperature -
@@ -995,9 +885,9 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         na.rm = TRUE
     ))
     change <- change_morpher$plan(
-        summary_id = unique(climate$summary_id),
-        reference_summary_id = unique(climate$summary_id),
-        baseline_id = unique(change_baseline$baseline_id),
+        summary_id = summary_id,
+        reference_summary_id = summary_id,
+        baseline_id = change_baseline_id,
         strict = TRUE
     )
     expect_equal(change$status, "planned")
@@ -1034,7 +924,6 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     expect_true(file.exists(output_path))
     expect_gt(file.size(output_path), 0)
     expect_true(inherits(epw_file_read(output_path), "EpwFile"))
-
     expect_equal(morpher$status(strict$morph_id)$status, "epw_written")
     expect_equal(nrow(morpher$outputs(strict$morph_id)), 1L)
 
@@ -1047,26 +936,14 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     )
     expect_equal(resumed_outputs$output_id, outputs$output_id)
 
-    workflow_dir <- tempfile("esg-store-workflow-")
-    workflow_store <- EsgStore$new(workflow_dir)
-    on.exit(workflow_store$close(), add = TRUE)
-    workflow_query_id <- workflow_store$add_files(esgf_test__file_result(as.data.frame(
-        docs
-    )))
-    workflow_plan <- workflow_store$plan_region(
-        query_id = workflow_query_id,
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
-        site_id = "SIN",
-        variable_id = variables
+    workflow_fx <- morpher_test__extracted_store(
+        variables = variables,
+        frequency = "mon",
+        table_id = "Amon",
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
     )
-    workflow_processed <- workflow_store$extract(
-        plan_id = workflow_plan$plan_id
-    )
-    expect_true(all(workflow_processed$status == "done"))
     workflow_morpher <- epw_morpher_test__from_recipe(
-        store = workflow_store,
+        store = workflow_fx$store,
         epw = get_cache_epw(),
         site_id = "SIN",
         recipe = suppressWarnings(epw_morph_recipe(
@@ -1074,27 +951,25 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
         )),
         label = "singapore"
     )
+    workflow_fields <- c(
+        "preflight",
+        "climate",
+        "baseline",
+        "preview",
+        "plan",
+        "diagnostics",
+        "cases",
+        "results",
+        "outputs"
+    )
     workflow_no_epw <- workflow_morpher$workflow(
-        plan_id = workflow_plan$plan_id,
+        plan_id = workflow_fx$plan$plan_id,
         periods = periods,
         strict = TRUE,
         dir = NULL,
         overwrite = TRUE
     )
-    expect_named(
-        workflow_no_epw,
-        c(
-            "preflight",
-            "climate",
-            "baseline",
-            "preview",
-            "plan",
-            "diagnostics",
-            "cases",
-            "results",
-            "outputs"
-        )
-    )
+    expect_named(workflow_no_epw, workflow_fields)
     expect_null(workflow_no_epw$outputs)
     expect_equal(
         workflow_morpher$status(workflow_no_epw$plan$morph_id)$status,
@@ -1102,27 +977,14 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     )
 
     workflow <- workflow_morpher$workflow(
-        plan_id = workflow_plan$plan_id,
+        plan_id = workflow_fx$plan$plan_id,
         periods = periods,
         strict = TRUE,
         dir = "outputs/workflow-epw",
         separate = FALSE,
         overwrite = TRUE
     )
-    expect_named(
-        workflow,
-        c(
-            "preflight",
-            "climate",
-            "baseline",
-            "preview",
-            "plan",
-            "diagnostics",
-            "cases",
-            "results",
-            "outputs"
-        )
-    )
+    expect_named(workflow, workflow_fields)
     expect_equal(workflow$plan$status, "planned")
     expect_equal(
         workflow_morpher$status(workflow$plan$morph_id)$status,
@@ -1137,44 +999,25 @@ test_that("repeated runtime warnings do not block EPW output or resume", {
     skip_on_cran()
     local_test_cache()
     withr::local_options(epwshiftr.threshold_alpha = 0)
-    root <- withr::local_tempdir()
-    store <- EsgStore$new(file.path(root, "store"))
-    withr::defer(store$close())
+    variables <- unique(c(
+        epw_morph_variables(transform__recipe(monthly_transform("epwshiftr"))),
+        "tasmin",
+        "tasmax"
+    ))
+    fx <- morpher_test__extracted_store(
+        variables = variables,
+        frequency = "mon",
+        table_id = "Amon",
+        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
+    )
+    store <- fx$store
+    plan <- fx$plan
     morpher <- epw_morpher(
         store,
         epw = get_cache_epw(),
         site_id = "SIN",
         transform = monthly_transform("epwshiftr")
     )
-    variables <- unique(c(morpher$required_variables(), "tasmin", "tasmax"))
-    docs <- lapply(variables, function(variable) {
-        path <- file.path(root, paste0(variable, ".nc"))
-        write_local_cmip6_netcdf_fixture(
-            path,
-            2060L,
-            variable_id = variable,
-            frequency = "mon"
-        )
-        esgf_test__file_docs(
-            basename(path),
-            opendap_url = path,
-            download_url = path,
-            variable_id = variable,
-            frequency = "mon",
-            table_id = "Amon"
-        )
-    })
-    query_id <- store$add_files(esgf_test__file_result(
-        as.data.frame(data.table::rbindlist(docs, fill = TRUE))
-    ))
-    plan <- store$plan_region(
-        query_id,
-        lon = 103.98,
-        lat = 1.37,
-        site_id = "SIN",
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
-    )
-    expect_true(all(store$extract(plan_id = plan$plan_id)$status == "done"))
     # Repeat the same public workflow to check durable diagnostics on reuse.
     run <- function() {
         suppressWarnings(morpher$workflow(
@@ -1237,7 +1080,8 @@ test_that("repeated runtime warnings do not block EPW output or resume", {
         "No saved results"
     )
     store$close()
-    store <- EsgStore$new(file.path(root, "store"))
+    store <- EsgStore$new(file.path(fx$root, "store"))
+    withr::defer(store$close())
     morpher <- epw_morpher(
         store,
         get_cache_epw(),
