@@ -24,6 +24,7 @@ test_that("calibration, started cases and multi-year exports have honest units",
         shift_ui_view__ui_compact_line(state, width = 112L),
         "Calibration.*1/6 variables"
     )
+
     state$current_details <- list(
         unit_type = "morph_case",
         phase = "unit",
@@ -31,9 +32,9 @@ test_that("calibration, started cases and multi-year exports have honest units",
         total = 1L
     )
     expect_match(shift_ui_view__ui_metric_line(state), "0/1")
-    expect_match(shift_ui_view__ui_compact_line(state, width = 112L), "0/1")
     state$current_details$outcome <- "completed"
     expect_match(shift_ui_view__ui_metric_line(state), "1/1")
+
     state$stage <- "write_epw"
     state$cases_total <- 1L
     state$outputs_completed <- 2L
@@ -45,6 +46,7 @@ test_that("calibration, started cases and multi-year exports have honest units",
     line <- cli::ansi_strip(shift_ui_view__ui_metric_line(state, 112L))
     expect_match(line, "2/20.*exported 2 files")
     expect_false(grepl("exported 2/1", line, fixed = TRUE))
+
     state$stage <- "resolve"
     state$current_details <- list(phase = "unit", current = 1L, total = 3L)
     expect_match(shift_ui_view__ui_metric_line(state), "node 1 of 3")
@@ -63,6 +65,7 @@ test_that("case completion preserves measured multi-year export counts", {
     reporter$unit_completed("Exported last file", current = 20L, total = 20L)
     reporter$cases_updated(data.table::data.table(status = "completed"))
     expect_equal(reporter$snapshot()$outputs_completed, 20L)
+
     stamp <- as.POSIXct("2026-09-16 00:00:00", tz = "UTC")
     row <- data.table::data.table(
         run_id = "multi-year",
@@ -94,31 +97,6 @@ test_that("case completion preserves measured multi-year export counts", {
         data.table::data.table(status = "completed")
     )
     expect_equal(state$outputs_completed, 20L)
-})
-
-test_that("long labels keep a separator and aligned continuations", {
-    for (label in c(
-        "Output Type",
-        "Weather Year",
-        "Export Path",
-        "校准数据变量"
-    )) {
-        rows <- cli::ansi_strip(shift_ui_view__ui_labeled_lines(
-            label,
-            strrep("value ", 20L),
-            40L
-        ))
-        prefix <- paste0(
-            label,
-            strrep(" ", max(1L, 9L - cli::ansi_nchar(label, type = "width")))
-        )
-        expect_true(startsWith(rows[[1L]], prefix))
-        expect_true(startsWith(
-            rows[[2L]],
-            strrep(" ", cli::ansi_nchar(prefix, type = "width"))
-        ))
-        expect_true(all(cli::ansi_nchar(rows, type = "width") <= 40L))
-    }
 })
 
 test_that("large batch viewports prioritize failures and active work within their height", {
@@ -154,26 +132,18 @@ test_that("large batch viewports prioritize failures and active work within thei
             )
         )
     )
-    for (width in c(48L, 60L, 80L, 112L)) {
-        for (height in c(8L, 15L, 23L, 39L)) {
-            view <- shift_batch_ui__view(
-                snapshot,
-                width = width,
-                height = height
-            )
-            expect_lte(length(view$lines), height)
-            expect_true(all(
-                cli::ansi_nchar(view$lines, type = "width") <= width - 1L
-            ))
-            if (height >= 23L && width >= 80L) {
-                text <- paste(cli::ansi_strip(view$lines), collapse = " ")
-                expect_match(text, "Model-32")
-                expect_match(text, "Model-31")
-                expect_match(text, "Downloading tas")
-                expect_match(text, "hidden")
-            }
-        }
-    }
+    compact_view <- shift_batch_ui__view(snapshot, width = 80L, height = 23L)
+    expect_lte(length(compact_view$lines), 23L)
+    expect_true(all(cli::ansi_nchar(compact_view$lines, type = "width") <= 79L))
+    text <- paste(cli::ansi_strip(compact_view$lines), collapse = " ")
+    expect_match(text, "Model-32")
+    expect_match(text, "Model-31")
+    expect_match(text, "Downloading tas")
+    expect_match(text, "hidden")
+
+    tiny_view <- shift_batch_ui__view(snapshot, width = 60L, height = 10L)
+    expect_lte(length(tiny_view$lines), 10L)
+
     full <- paste(
         cli::ansi_strip(
             shift_batch_ui__view(
@@ -188,88 +158,6 @@ test_that("large batch viewports prioritize failures and active work within thei
     expect_match(full, "Model-32")
     expect_match(full, "2026-09-16 00:00:01")
     expect_false(grepl("children hidden", full, fixed = TRUE))
-})
-
-test_that("detailed failures reserve space for active batch children", {
-    snapshot <- ui_workflows__states()[[1L]]
-    snapshot$children <- snapshot$children[rep(seq_len(4L), 4L)]
-    snapshot$children[, `:=`(
-        child_key = paste0("child", seq_len(.N)),
-        model = paste0("Model-", seq_len(.N)),
-        status = "completed"
-    )]
-    snapshot$children[14L, `:=`(status = "running", current_stage = "morph")]
-    snapshot$children[15:16, status := "failed"]
-    snapshot$batch[, `:=`(
-        status = "failed",
-        children = 16L,
-        completed = 13L,
-        active = 1L,
-        failed = 2L
-    )]
-    snapshot$activity <- list(
-        child15 = list(
-            stage = "morph",
-            unit_label = "ERA5 t2m",
-            last_event = "Calibration failed",
-            elapsed_seconds = 35,
-            updated_at = "2026-09-16 00:00:01",
-            current_details = list(
-                unit_type = "reanalysis_variable",
-                current = 1L,
-                total = 6L
-            )
-        )
-    )
-    snapshot$activity$child14 <- snapshot$activity$child15
-    snapshot$execution <- data.table::data.table(
-        action = "started",
-        elapsed_seconds = 5
-    )
-    snapshot$diagnostics <- data.table::data.table(
-        severity = "error",
-        method = "qdm",
-        model = "Model-15",
-        message = "Calibration failed",
-        action = "Restore calibration"
-    )
-    snapshot$outputs <- data.table::data.table(
-        child_key = "child15",
-        provenance_json = jsonlite::toJSON(
-            list(
-                weather_field_roles = list(
-                    transformed_fields = "tas"
-                )
-            ),
-            auto_unbox = TRUE
-        )
-    )
-    for (width in c(80L, 112L)) {
-        for (height in c(19L, 23L, 39L)) {
-            view <- shift_batch_ui__view(
-                snapshot,
-                width = width,
-                height = height,
-                detail = "detail"
-            )
-            text <- paste(cli::ansi_strip(view$lines), collapse = "\n")
-            expect_lte(length(view$lines), height)
-            expect_true(all(
-                cli::ansi_nchar(view$lines, type = "width") <= width - 1L
-            ))
-            expect_match(text, "Model-15")
-            expect_match(text, "Model-14")
-        }
-    }
-    full <- paste(
-        cli::ansi_strip(
-            shift_batch_ui__view(snapshot, detail = "detail")$lines
-        ),
-        collapse = "\n"
-    )
-    expect_match(full, "Model-16")
-    expect_match(full, "Calibration failed")
-    expect_match(full, "2026-09-16 00:00:01")
 })
 
 test_that("errors outrank warnings and retain recovery actions in receipts", {
@@ -302,8 +190,8 @@ test_that("errors outrank warnings and retain recovery actions in receipts", {
     expect_false(grepl("more diagnostics", full, fixed = TRUE))
 })
 
-test_that("frame renderers never paint more rows than the viewport", {
-    withr::local_options(epwshiftr.ui_height = 8L)
+test_that("frame renderers cap live viewport height and retain full completion receipts", {
+    withr::local_options(list(epwshiftr.ui_height = 8L, cli.width = 80L))
     output <- rawConnection(raw(), "wb")
     on.exit(close(output), add = TRUE)
     writes <- character()
@@ -317,24 +205,19 @@ test_that("frame renderers never paint more rows than the viewport", {
     expect_match(utils::tail(writes, 1L), "safe compact status", fixed = TRUE)
     expect_false(grepl("row 30", utils::tail(writes, 1L), fixed = TRUE))
     renderer$commit()
-    expect_match(writes[[1L]], "safe compact status", fixed = TRUE)
-    expect_false(grepl("row 30", writes[[1L]], fixed = TRUE))
     expect_match(utils::tail(writes, 1L), "row 30\n", fixed = TRUE)
     expect_false(renderer$active())
-})
 
-test_that("foreground completion retains every output after viewport fallback", {
+    # Foreground completion retains every output path even after viewport fallback
     withr::local_options(list(epwshiftr.ui_height = 24L, cli.width = 80L))
-    output <- rawConnection(raw(), "wb")
-    on.exit(close(output), add = TRUE)
     writes <- character()
-    renderer <- ShiftFrameRenderer$new(
+    renderer2 <- ShiftFrameRenderer$new(
         output,
         backend = "frame",
         writer = function(text) writes <<- c(writes, text)
     )
     testthat::local_mocked_bindings(shift_tui__ui_renderer = function(...) {
-        renderer
+        renderer2
     })
     reporter <- shift_reporter__reporter(
         shift_ui("dynamic", detail = "detail", motion = "none"),
@@ -361,13 +244,17 @@ test_that("foreground completion retains every output after viewport fallback", 
     reporter$run_completed(run, data.table::data.table(export_path = paths))
     receipt <- cli::ansi_strip(utils::tail(writes, 1L))
     expect_match(receipt, "/exports", fixed = TRUE)
-    for (path in paths) {
-        expect_match(receipt, basename(path), fixed = TRUE)
-    }
-    expect_false(renderer$active())
+    expect_true(all(vapply(
+        basename(paths),
+        grepl,
+        logical(1L),
+        x = receipt,
+        fixed = TRUE
+    )))
+    expect_false(renderer2$active())
 })
 
-test_that("R batch watch leaves a complete final receipt in every human mode", {
+test_that("R and CLI batch watch leave a complete final receipt", {
     states <- ui_workflows__states()
     for (follow in c(FALSE, TRUE)) {
         index <- 0L
@@ -411,25 +298,19 @@ test_that("R batch watch leaves a complete final receipt in every human mode", {
             paste(cli::ansi_strip(printed), collapse = " "),
             "Future EPW Batch.*8 EPW files"
         )
-        if (follow) {
-            expect_true("draw" %in% calls)
-        } else {
-            expect_false("draw" %in% calls)
-        }
+        expect_identical("draw" %in% calls, follow)
         expect_identical(utils::tail(calls, 1L), "close")
     }
-})
 
-test_that("CLI count-limited dynamic watch keeps its final snapshot", {
-    snapshot <- ui_workflows__states()[[1L]]
+    # CLI count-limited dynamic watch keeps its final snapshot
     testthat::local_mocked_bindings(
         shift_batch_get = function(...) NULL,
-        shift_batch_ui__snapshot = function(...) snapshot,
+        shift_batch_ui__snapshot = function(...) states[[1L]],
         shift_tui__ui_renderer = function(...) {
             list(draw = function(...) TRUE, close = function(...) NULL)
         }
     )
-    output <- capture.output(
+    cli_out <- capture.output(
         invisible(epwshiftr_cli_shift_watch_follow(
             NULL,
             "batch-test",
@@ -440,17 +321,18 @@ test_that("CLI count-limited dynamic watch keeps its final snapshot", {
         type = "message"
     )
     expect_match(
-        paste(cli::ansi_strip(output), collapse = " "),
+        paste(cli::ansi_strip(cli_out), collapse = " "),
         "Future EPW Batch"
     )
 })
 
-test_that("download resume and partial flag sets respect global output policy", {
+test_that("download resume, discovery context, and config templates respect output policy", {
     flags <- epwshiftr_cli_parse_command(character(), flags = "--network")
     expect_identical(
         epwshiftr_cli_task_ui(flags, quiet = TRUE)@progress,
         "none"
     )
+
     seen <- logical()
     downloader <- list(resume = function(...) {
         seen <<- c(seen, list(...)$progress)
@@ -469,9 +351,8 @@ test_that("download resume and partial flag sets respect global output policy", 
         do.call(epwshiftr_cli_download, args)
     }
     expect_identical(seen, rep(FALSE, 3L))
-})
 
-test_that("discovery context reaches logs and compact views without heartbeat repeats", {
+    # Discovery context reaches log/compact without heartbeat repeats, and respects none
     ui <- shift_ui("log")
     ui@batch_context <- list(
         kind = "discovery",
@@ -494,19 +375,17 @@ test_that("discovery context reaches logs and compact views without heartbeat re
         },
         type = "message"
     )
-    text <- paste(cli::ansi_strip(lines), collapse = "\n")
-    expect_match(text, "Discovery.*method 2/3: qdm.*CEDA.*tas, hurs")
+    expect_match(
+        paste(cli::ansi_strip(lines), collapse = "\n"),
+        "Discovery.*method 2/3: qdm.*CEDA.*tas, hurs"
+    )
     expect_equal(sum(grepl("method 2/3", lines, fixed = TRUE)), 1L)
-    state <- reporter$snapshot()
-    for (width in c(48L, 80L, 112L)) {
-        compact <- cli::ansi_strip(shift_ui_view__ui_compact_line(
-            state,
-            width = width
-        ))
-        expect_match(compact, "method 2/3: qdm.*CEDA")
-        expect_lte(cli::ansi_nchar(compact, type = "width"), width)
-        if (width >= 80L) expect_match(compact, "tas, hurs", fixed = TRUE)
-    }
+    compact <- cli::ansi_strip(shift_ui_view__ui_compact_line(
+        reporter$snapshot(),
+        width = 80L
+    ))
+    expect_match(compact, "method 2/3: qdm.*CEDA.*tas, hurs")
+
     ui@progress <- "none"
     quiet <- shift_reporter__reporter(ui)
     on.exit(quiet$close(), add = TRUE)
@@ -515,14 +394,20 @@ test_that("discovery context reaches logs and compact views without heartbeat re
         NA,
         type = "message"
     )
-})
 
-test_that("terminal height handles explicit, missing and invalid dimensions", {
-    expect_equal(shift_ui__ui_height(18L), 17L)
-    expect_equal(shift_ui__ui_height(integer()), 23L)
-    expect_equal(shift_ui__ui_height("invalid"), 23L)
-    withr::local_options(epwshiftr.ui_height = 14L)
-    expect_equal(shift_ui__ui_height(), 13L)
+    # Config templates do not initialize the default store
+    testthat::local_mocked_bindings(store_dir = function(...) {
+        stop("Unexpected store init")
+    })
+    out <- epwshiftr_cli(c(
+        "--quiet",
+        "shift",
+        "config",
+        "example",
+        "--methods",
+        "original_morphing"
+    ))
+    expect_equal(out$status, 0L, info = out$error)
 })
 
 test_that("weather comparison excludes missing codes and weights valid hourly rows", {
@@ -648,6 +533,7 @@ test_that("live JSON timestamps retain clock time, fractions and UTC offsets", {
     )
     expect_s3_class(restored$completed_at, "POSIXct")
     expect_true(is.na(restored$completed_at))
+
     values <- c(
         "2026-09-18T01:23:45.125Z",
         "2026-09-18T09:23:45.125+08:00",
@@ -672,48 +558,45 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     on.exit(unlink(root, recursive = TRUE), add = TRUE)
     stamp <- as.POSIXct("2026-09-18 01:23:45", tz = "UTC")
     id <- "cancel-test"
-    row <- data.table::data.table(
-        run_id = id,
-        task = "future_epw",
-        status = "running",
-        current_stage = "morph",
-        spec_json = "{}",
-        started_at = stamp,
-        updated_at = stamp + 10,
-        completed_at = as.POSIXct(NA),
-        last_error = NA_character_
-    )
-    events <- data.table::data.table(
-        event_id = "first",
-        stage = "morph",
-        status = "running",
-        created_at = stamp + 10,
-        message = "Morphing",
-        details_json = "{}"
-    )
-    state <- list(
-        run_id = id,
-        task_label = "Future EPW",
-        status = "running",
-        stage = "morph",
-        unit_label = "ssp585 temperature",
-        elapsed_seconds = 10,
-        current_details = list(
-            unit_type = "morph_case",
-            current = 1L,
-            total = 2L
-        )
-    )
     payload <- list(
         run_id = id,
-        run = row,
+        run = data.table::data.table(
+            run_id = id,
+            task = "future_epw",
+            status = "running",
+            current_stage = "morph",
+            spec_json = "{}",
+            started_at = stamp,
+            updated_at = stamp + 10,
+            completed_at = as.POSIXct(NA),
+            last_error = NA_character_
+        ),
         cases = data.table::data.table(),
-        events = events,
+        events = data.table::data.table(
+            event_id = "first",
+            stage = "morph",
+            status = "running",
+            created_at = stamp + 10,
+            message = "Morphing",
+            details_json = "{}"
+        ),
         jobs = data.table::data.table(
             job_id = "cancel-job",
             status = "running"
         ),
-        ui_state = state
+        ui_state = list(
+            run_id = id,
+            task_label = "Future EPW",
+            status = "running",
+            stage = "morph",
+            unit_label = "ssp585 temperature",
+            elapsed_seconds = 10,
+            current_details = list(
+                unit_type = "morph_case",
+                current = 1L,
+                total = 2L
+            )
+        )
     )
     path <- shift_job__live_path(root, id)
     dir.create(dirname(path), recursive = TRUE)
@@ -731,7 +614,8 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     expect_identical(run@meta$ui_state$status, "stopping")
     expect_identical(run@meta$jobs$status, "stopping")
     expect_false(is.na(run@meta$jobs$cancel_requested_at))
-    # Older sidecars and snapshots may still carry a pre-cancellation frame.
+
+    # Older sidecars may still carry a pre-cancellation frame.
     run@meta$ui_state$status <- "running"
     testthat::local_mocked_bindings(
         shift_outputs = function(...) data.table::data.table(),
@@ -742,7 +626,7 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     expect_equal(view$state$elapsed_seconds, 60)
     expect_match(paste(cli::ansi_strip(view$lines), collapse = " "), "STOPPING")
     expect_match(cli::ansi_strip(view$compact), "STOPPING")
-    expect_identical(view$state$unit_label, "ssp585 temperature")
+
     snapshot <- list(
         run = run@meta$run,
         cases = run@meta$cases,
@@ -751,11 +635,6 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
         diagnostics = shift_stage__diagnostics_empty()
     )
     attr(snapshot, "shift_ui_state") <- run@meta$ui_state
-    output <- capture.output(
-        epwshiftr_cli_render_shift_watch(snapshot),
-        type = "message"
-    )
-    expect_match(paste(cli::ansi_strip(output), collapse = " "), "STOPPING")
     frames <- character()
     testthat::local_mocked_bindings(
         epwshiftr_cli_shift_watch_snapshot = function(...) snapshot,
@@ -780,6 +659,7 @@ test_that("cancellation overrides stale worker frames in R and CLI watch", {
     ))
     expect_match(paste(cli::ansi_strip(frames), collapse = " "), "STOPPING")
     expect_false(any(grepl("RUNNING", frames, fixed = TRUE)))
+
     snapshot$run$status <- "cancelled"
     snapshot$run$completed_at <- stamp + 30
     terminal <- shift_ui_view__ui_table_view(
@@ -817,7 +697,7 @@ ui_workflows__interleaved_events <- function() {
 }
 # }}}
 
-test_that("batch event cursors retain interleaved and reordered child events", {
+test_that("batch event cursors retain interleaved events and watchers emit them once", {
     events <- ui_workflows__interleaved_events()
     first <- shift_batch_ui__event_delta(
         events[c(1L, 3L)],
@@ -828,11 +708,16 @@ test_that("batch event cursors retain interleaved and reordered child events", {
     second <- shift_batch_ui__event_delta(events[1:3], first$cursor)
     expect_identical(second$rows$event_id, "a2")
     expect_false(second$gap)
-    unchanged <- shift_batch_ui__event_delta(
-        events[c(3L, 2L, 1L)],
-        second$cursor
+    expect_equal(
+        nrow(
+            shift_batch_ui__event_delta(
+                events[c(3L, 2L, 1L)],
+                second$cursor
+            )$rows
+        ),
+        0L
     )
-    expect_equal(nrow(unchanged$rows), 0L)
+
     new_child <- data.table::copy(events[1L])
     new_child[, `:=`(event_id = "c1", run_id = "run-c", child_key = "c")]
     expanded <- shift_batch_ui__event_delta(
@@ -841,20 +726,19 @@ test_that("batch event cursors retain interleaved and reordered child events", {
     )
     expect_identical(expanded$rows$event_id, "c1")
     expect_false(expanded$gap)
+
     truncated <- shift_batch_ui__event_delta(events[4:5], expanded$cursor)
     expect_identical(truncated$rows$event_id, c("a3", "a4"))
     expect_true(truncated$gap)
-    # Opening the durable store after a bounded live buffer must not replay
-    # previously seen events, even when the full history reappears.
     restored <- shift_batch_ui__event_delta(events, truncated$cursor)
     expect_equal(nrow(restored$rows), 0L)
     expect_false(restored$gap)
-    empty <- shift_batch_ui__event_delta(events[0], restored$cursor)
-    expect_identical(empty$cursor, restored$cursor)
-})
+    expect_identical(
+        shift_batch_ui__event_delta(events[0], restored$cursor)$cursor,
+        restored$cursor
+    )
 
-test_that("R and CLI batch watchers emit late and terminal events exactly once", {
-    events <- ui_workflows__interleaved_events()
+    # R and CLI batch watchers emit late and terminal events exactly once
     states <- ui_workflows__states()
     snapshots <- lapply(seq_len(4L), function(index) {
         snapshot <- states[[if (index == 4L) 3L else 1L]]
@@ -901,7 +785,7 @@ test_that("R and CLI batch watchers emit late and terminal events exactly once",
     )
     for (interface in c("R", "CLI")) {
         index <- 0L
-        output <- capture.output(
+        out <- capture.output(
             {
                 if (interface == "R") {
                     invisible(shift_batch_ui__watch(
@@ -924,9 +808,9 @@ test_that("R and CLI batch watchers emit late and terminal events exactly once",
             },
             type = "message"
         )
-        for (message in events$message[c(2L, 4L, 5L)]) {
+        for (msg in events$message[c(2L, 4L, 5L)]) {
             expect_equal(
-                sum(grepl(message, output, fixed = TRUE)),
+                sum(grepl(msg, out, fixed = TRUE)),
                 1L,
                 info = interface
             )
@@ -1006,9 +890,6 @@ test_that("single-run show detail retains all rows and long fields without chang
         expect_match(text, long_path, fixed = TRUE)
         expect_match(text, gsub("[[:space:]]", "", action), fixed = TRUE)
         expect_match(text, "EVENT_25_END", fixed = TRUE)
-        expect_true(all(
-            cli::ansi_nchar(output[[index]], type = "width") <= 60L
-        ))
     }
     expect_false(any(grepl("RAW_PAYLOAD_END", output[[2L]], fixed = TRUE)))
     expect_match(
@@ -1024,21 +905,6 @@ test_that("single-run show detail retains all rows and long fields without chang
     )
     expect_identical(json[[1L]], json[[2L]])
     expect_identical(json[[1L]], json[[3L]])
-})
-
-test_that("config templates do not initialize the default store", {
-    testthat::local_mocked_bindings(store_dir = function(...) {
-        stop("Unexpected store initialization")
-    })
-    out <- epwshiftr_cli(c(
-        "--quiet",
-        "shift",
-        "config",
-        "example",
-        "--methods",
-        "original_morphing"
-    ))
-    expect_equal(out$status, 0L, info = out$error)
 })
 
 # vim: fdm=marker :

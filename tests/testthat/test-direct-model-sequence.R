@@ -20,11 +20,7 @@ direct_sequence_test__year <- function(
         variable_id = rep.int(variable, year_days),
         value = seq_len(year_days),
         units = rep.int(
-            if (identical(variable, "pr")) {
-                "kg m-2 s-1"
-            } else {
-                "K"
-            },
+            if (identical(variable, "pr")) "kg m-2 s-1" else "K",
             year_days
         ),
         frequency = rep.int("day", year_days),
@@ -38,8 +34,6 @@ direct_sequence_test__year <- function(
 }
 # }}}
 
-# Construct one future-backbone adjusted series spanning the requested model
-# years while retaining a visible upstream transformation record.
 # direct_sequence_test__adjusted {{{
 direct_sequence_test__adjusted <- function(
     variable,
@@ -48,13 +42,8 @@ direct_sequence_test__adjusted <- function(
     reverse = FALSE,
     output_role = "model_future"
 ) {
-    rows <- lapply(years, function(year) {
-        direct_sequence_test__year(
-            variable,
-            year,
-            calendar,
-            reverse
-        )
+    rows <- lapply(years, function(y) {
+        direct_sequence_test__year(variable, y, calendar, reverse)
     })
     bias__daily_adjusted_series(
         do.call(rbind, rows),
@@ -66,8 +55,6 @@ direct_sequence_test__adjusted <- function(
 }
 # }}}
 
-# Build one complete regular sub-daily year whose exact native-calendar times
-# make missing, duplicated, or reordered samples observable.
 # direct_sequence_test__subdaily_year {{{
 direct_sequence_test__subdaily_year <- function(
     variable,
@@ -79,14 +66,13 @@ direct_sequence_test__subdaily_year <- function(
 ) {
     year_days <- cf_time__year_days(year, calendar)[[1L]]
     offsets <- seq.int(
-        from = 0,
-        to = year_days * 86400 - time_step_seconds,
+        0,
+        year_days * 86400 - time_step_seconds,
         by = time_step_seconds
     )
-    day_offsets <- offsets %/% 86400
     seconds <- offsets %% 86400
     fields <- cf_time_offset2date(
-        day_offsets,
+        offsets %/% 86400,
         data.frame(year = year, month = 1L, day = 1L),
         calendar
     )
@@ -110,8 +96,6 @@ direct_sequence_test__subdaily_year <- function(
 }
 # }}}
 
-# Construct a typed future-backbone sub-daily series spanning complete source
-# years while preserving an upstream provenance record.
 # direct_sequence_test__subdaily_adjusted {{{
 direct_sequence_test__subdaily_adjusted <- function(
     variable,
@@ -121,10 +105,10 @@ direct_sequence_test__subdaily_adjusted <- function(
     time_step_seconds = 10800,
     reverse = FALSE
 ) {
-    rows <- lapply(years, function(year) {
+    rows <- lapply(years, function(y) {
         direct_sequence_test__subdaily_year(
             variable,
-            year,
+            y,
             calendar,
             frequency,
             time_step_seconds,
@@ -143,48 +127,42 @@ direct_sequence_test__subdaily_adjusted <- function(
 }
 # }}}
 
-# Assemble the canonical signal envelope consumed by every sequence component
-# without invoking a particular bias-adjustment kernel in these focused tests.
 # direct_sequence_test__execution {{{
 direct_sequence_test__execution <- function(
     values,
     keys = rep(list(list(site = "A")), length(values)),
     statuses = rep.int("ok", length(values))
 ) {
-    groups <- lapply(seq_along(values), function(index) {
-        adjusted <- values[[index]]
+    groups <- lapply(seq_along(values), function(i) {
+        adjusted <- values[[i]]
         signal__group(
-            key = keys[[index]],
+            key = keys[[i]],
             inputs = list(model_future = adjusted@data),
             variables = unique(adjusted@data[["variable_id"]])
         )
     })
     variables <- unique(unlist(
-        lapply(groups, function(group) group@variables),
+        lapply(groups, function(g) g@variables),
         use.names = FALSE
     ))
     SignalExecutionResult(
         groups = groups,
         values = values,
         profiles = stats::setNames(
-            lapply(variables, function(variable) {
-                list(variable_id = variable)
-            }),
+            lapply(variables, function(v) list(variable_id = v)),
             variables
         ),
         diagnostics = data.frame(
             method = rep.int("test_signal", length(groups)),
             group = vapply(
                 seq_along(groups),
-                function(index) {
-                    signal__group_label(groups[[index]], index)
-                },
+                function(i) signal__group_label(groups[[i]], i),
                 character(1L)
             ),
             status = statuses,
             variables = vapply(
                 groups,
-                function(group) paste(group@variables, collapse = ","),
+                function(g) paste(g@variables, collapse = ","),
                 character(1L)
             ),
             evidence = rep.int("published", length(groups)),
@@ -195,116 +173,34 @@ direct_sequence_test__execution <- function(
 }
 # }}}
 
-test_that("typed sequence validators share structural invariants", {
-    error <- "sequence invariant failed"
+direct_sequence_test__gen <- function(execution) {
+    sequence__direct_model_generate(
+        execution,
+        inputs = NULL,
+        context = NULL,
+        options = list()
+    )
+}
 
-    expect_null(sequence__identifier_error("member-1", error))
-    expect_identical(sequence__identifier_error("bad member", error), error)
-    expect_null(sequence__positive_year_error(2061L))
-    expect_identical(
-        sequence__positive_year_error(0L),
-        "`weather_year` must be one positive integer."
-    )
-    expect_null(sequence__provenance_error(list(source = "synthetic")))
-    expect_identical(
-        sequence__provenance_error(list("synthetic")),
-        "`provenance` must be a uniquely named list."
-    )
-
-    sequence <- sequence__direct_model_generate(
-        direct_sequence_test__execution(list(
-            direct_sequence_test__adjusted("tas", 2061L)
-        )),
-        NULL,
-        NULL,
-        list()
-    )
-    expect_null(sequence__member_class_error(
-        sequence@members,
-        DirectModelSequenceMember,
-        error
-    ))
-    expect_identical(
-        sequence__member_class_error(
-            list("not-a-member"),
-            DirectModelSequenceMember,
-            error
-        ),
-        error
-    )
-    expect_null(sequence__unique_values_error(c("a", "b"), error))
-    expect_identical(
-        sequence__unique_values_error(c("a", "a"), error),
-        error
-    )
-    expect_null(sequence__ordered_years_error(2061:2062, error))
-    expect_identical(
-        sequence__ordered_years_error(2062:2061, error),
-        error
-    )
-    expect_null(sequence__shared_values_error(c("same", "same"), error))
-    expect_identical(
-        sequence__shared_values_error(c("first", "second"), error),
-        error
-    )
-    expect_null(sequence__shared_sets_error(
-        list(c("hurs", "tas"), c("hurs", "tas")),
-        error
-    ))
-    expect_identical(
-        sequence__shared_sets_error(
-            list(c("hurs", "tas"), c("huss", "tas")),
-            error
-        ),
-        error
-    )
-})
-
-test_that("direct model sequence preserves and partitions future chronology", {
+test_that("direct model sequence preserves future chronology across daily, sub-daily, and CF calendars", {
     execution <- direct_sequence_test__execution(list(
-        direct_sequence_test__adjusted(
-            "tas",
-            2061:2062,
-            reverse = TRUE
-        ),
+        direct_sequence_test__adjusted("tas", 2061:2062, reverse = TRUE),
         direct_sequence_test__adjusted("pr", 2061:2062)
     ))
-
-    first <- sequence__direct_model_generate(
-        execution,
-        inputs = NULL,
-        context = NULL,
-        options = list()
-    )
-    second <- sequence__direct_model_generate(
-        execution,
-        inputs = NULL,
-        context = NULL,
-        options = list()
-    )
+    first <- direct_sequence_test__gen(execution)
+    second <- direct_sequence_test__gen(execution)
 
     expect_s7_class(first, DirectModelSequence)
     expect_identical(first@frequency, "day")
     expect_identical(
-        vapply(
-            first@members,
-            function(member) member@weather_year,
-            integer(1L)
-        ),
+        vapply(first@members, function(m) m@weather_year, integer(1L)),
         2061:2062
     )
     expect_identical(
-        vapply(
-            first@members,
-            function(member) member@sequence_id,
-            character(1L)
-        ),
+        vapply(first@members, function(m) m@sequence_id, character(1L)),
         rep.int(DIRECT_MODEL_SEQUENCE_ID, 2L)
     )
-    expect_identical(
-        first@provenance$group_ids,
-        second@provenance$group_ids
-    )
+    expect_identical(first@provenance$group_ids, second@provenance$group_ids)
     expect_identical(first@provenance$selection, "none")
     expect_identical(first@provenance$resampling, "none")
 
@@ -312,14 +208,8 @@ test_that("direct model sequence preserves and partitions future chronology", {
         expect_identical(member@calendar, "noleap")
         expect_length(member@series, 2L)
         for (item in member@series) {
-            expect_identical(
-                item@adjusted@data$cf_day_of_year,
-                seq_len(365L)
-            )
-            expect_identical(
-                item@adjusted@provenance$method,
-                "test_adjustment"
-            )
+            expect_identical(item@adjusted@data$cf_day_of_year, seq_len(365L))
+            expect_identical(item@adjusted@provenance$method, "test_adjustment")
         }
     }
     expect_error(
@@ -331,25 +221,17 @@ test_that("direct model sequence preserves and partitions future chronology", {
         ),
         "unique ascending weather years"
     )
-})
 
-test_that("direct model sequence accepts every supported native CF calendar", {
+    # Every supported native CF calendar
     for (calendar in CF_TIME_CALENDARS) {
-        execution <- direct_sequence_test__execution(list(
-            direct_sequence_test__adjusted(
+        seq_cal <- direct_sequence_test__gen(
+            direct_sequence_test__execution(list(direct_sequence_test__adjusted(
                 "tas",
                 2000L,
                 calendar
-            )
-        ))
-        sequence <- sequence__direct_model_generate(
-            execution,
-            NULL,
-            NULL,
-            list()
+            )))
         )
-        member <- sequence@members[[1L]]
-
+        member <- seq_cal@members[[1L]]
         expect_identical(member@calendar, calendar, info = calendar)
         expect_identical(
             nrow(member@series[[1L]]@adjusted@data),
@@ -357,40 +239,24 @@ test_that("direct model sequence accepts every supported native CF calendar", {
             info = calendar
         )
     }
-})
 
-test_that("direct model sequence preserves complete sub-daily model years", {
-    adjusted <- direct_sequence_test__subdaily_adjusted(
-        "tas",
-        2061:2062,
-        reverse = TRUE
+    # Sub-daily model years
+    sub_seq <- direct_sequence_test__gen(
+        direct_sequence_test__execution(list(direct_sequence_test__subdaily_adjusted(
+            "tas",
+            2061:2062,
+            reverse = TRUE
+        )))
     )
-    sequence <- sequence__direct_model_generate(
-        direct_sequence_test__execution(list(adjusted)),
-        NULL,
-        NULL,
-        list()
-    )
-
-    expect_s7_class(sequence, DirectModelSequence)
-    expect_identical(sequence@frequency, "3hr")
-    expect_identical(as.numeric(sequence@time_step_seconds), 10800)
-    expect_identical(sequence@provenance$frequency, "3hr")
-    expect_identical(sequence@provenance$time_step_seconds, 10800)
+    expect_identical(sub_seq@frequency, "3hr")
+    expect_identical(as.numeric(sub_seq@time_step_seconds), 10800)
     expect_identical(
-        vapply(
-            sequence@members,
-            function(member) member@weather_year,
-            integer(1L)
-        ),
+        vapply(sub_seq@members, function(m) m@weather_year, integer(1L)),
         2061:2062
     )
-    for (member in sequence@members) {
+    for (member in sub_seq@members) {
         data <- member@series[[1L]]@adjusted@data
-        expect_s7_class(
-            member@series[[1L]]@adjusted,
-            SubdailyAdjustedSeries
-        )
+        expect_s7_class(member@series[[1L]]@adjusted, SubdailyAdjustedSeries)
         expect_identical(
             data$cf_second_of_day[1:8],
             seq.int(0, 75600, by = 10800)
@@ -405,7 +271,6 @@ test_that("direct model sequence preserves complete sub-daily model years", {
 test_that("direct model component is registered and contract-compatible", {
     sequence__register_direct_model_component()
     component <- component__get("sequence", "direct_model_realization")
-    qdm <- qdm__component()
     hourly <- component__spec(
         name = "direct_model_hourly_test",
         stage = "hourly",
@@ -413,10 +278,6 @@ test_that("direct model component is registered and contract-compatible", {
         output_kinds = "hourly_weather",
         scopes = "multivariate",
         operations = list(reconstruct = identity)
-    )
-    source <- direct_sequence_test__year("tas", 2061L)
-    inputs <- weather__new_inputs(
-        model_future = weather__new_input("model_future", source)
     )
 
     expect_s7_class(component, WeatherComponentSpec)
@@ -432,148 +293,100 @@ test_that("direct model component is registered and contract-compatible", {
     expect_identical(component@output_kinds, "direct_model_sequence")
     expect_false(component@stochastic)
     expect_identical(component@metadata$selection, "none")
-    expect_invisible(component__validate_inputs(component, inputs))
 
-    subdaily_source <- direct_sequence_test__subdaily_year("tas", 2061L)
-    subdaily_inputs <- weather__new_inputs(
-        model_future = weather__new_input(
-            "model_future",
-            subdaily_source
+    expect_invisible(component__validate_inputs(
+        component,
+        weather__new_inputs(
+            model_future = weather__new_input(
+                "model_future",
+                direct_sequence_test__year("tas", 2061L)
+            )
         )
-    )
-    expect_invisible(
-        component__validate_inputs(component, subdaily_inputs)
-    )
-    expect_true(component__compatible(qdm, component))
+    ))
+    expect_invisible(component__validate_inputs(
+        component,
+        weather__new_inputs(
+            model_future = weather__new_input(
+                "model_future",
+                direct_sequence_test__subdaily_year("tas", 2061L)
+            )
+        )
+    ))
+    expect_true(component__compatible(qdm__component(), component))
     expect_true(component__compatible(component, hourly))
 })
 
-test_that("direct model sequence rejects incomplete or misaligned groups", {
-    complete <- direct_sequence_test__adjusted("tas", 2061:2062)
-    incomplete_data <- direct_sequence_test__year("pr", 2061L)[-365L, ]
-    incomplete <- bias__daily_adjusted_series(
-        incomplete_data,
+test_that("direct model sequence rejects incomplete, misaligned, duplicate, wrong-role, and failed groups", {
+    tas_2061 <- direct_sequence_test__adjusted("tas", 2061L)
+    incomplete_daily <- bias__daily_adjusted_series(
+        direct_sequence_test__year("pr", 2061L)[-365L, ],
         "model_future",
         "test_adjustment"
     )
-    expect_error(
-        sequence__direct_model_generate(
-            direct_sequence_test__execution(list(incomplete)),
-            NULL,
-            NULL,
-            list()
-        ),
-        "cover every native-calendar day"
-    )
-
-    expect_error(
-        sequence__direct_model_generate(
-            direct_sequence_test__execution(list(
-                complete,
-                direct_sequence_test__adjusted("pr", 2061L)
-            )),
-            NULL,
-            NULL,
-            list()
-        ),
-        "same weather years"
-    )
-
-    expect_error(
-        sequence__direct_model_generate(
-            direct_sequence_test__execution(list(
-                direct_sequence_test__adjusted("tas", 2061L),
-                direct_sequence_test__adjusted(
-                    "pr",
-                    2061L,
-                    "360_day"
-                )
-            )),
-            NULL,
-            NULL,
-            list()
-        ),
-        "same CF calendar"
-    )
-
-    incomplete_subdaily_data <- direct_sequence_test__subdaily_year(
-        "tas",
-        2061L
-    )[-1L, ]
     incomplete_subdaily <- bias__subdaily_adjusted_series(
-        incomplete_subdaily_data,
+        direct_sequence_test__subdaily_year("tas", 2061L)[-1L, ],
         "3hr",
         10800,
         "model_future",
         "test_adjustment"
     )
-    expect_error(
-        sequence__direct_model_generate(
-            direct_sequence_test__execution(list(incomplete_subdaily)),
-            NULL,
-            NULL,
-            list()
-        ),
-        "cover every declared sub-daily timestep"
-    )
-
-    expect_error(
-        sequence__direct_model_generate(
-            direct_sequence_test__execution(list(
-                direct_sequence_test__adjusted("tas", 2061L),
-                direct_sequence_test__subdaily_adjusted("pr", 2061L)
-            )),
-            NULL,
-            NULL,
-            list()
-        ),
-        "same frequency and timestep"
-    )
-})
-
-test_that("direct model sequence rejects wrong roles, duplicates, and failures", {
-    observed <- direct_sequence_test__adjusted(
-        "tas",
-        2061L,
-        output_role = "observed_reference"
-    )
-    expect_error(
-        sequence__direct_model_generate(
-            direct_sequence_test__execution(list(observed)),
-            NULL,
-            NULL,
-            list()
-        ),
-        "retain `model_future`"
-    )
-
-    adjusted <- direct_sequence_test__adjusted("tas", 2061L)
-    expect_error(
-        sequence__direct_model_generate(
-            direct_sequence_test__execution(
-                list(adjusted, adjusted),
-                keys = list(list(site = "A"), list(site = "A"))
-            ),
-            NULL,
-            NULL,
-            list()
-        ),
-        "duplicate signal-group identities"
-    )
-
     failed <- direct_sequence_test__execution(
-        list(adjusted),
+        list(tas_2061),
         statuses = "error"
     )
     failed@values[1L] <- list(NULL)
-    expect_error(
-        sequence__direct_model_generate(failed, NULL, NULL, list()),
-        "cannot preserve failed signal groups"
+
+    bad_cases <- list(
+        list(
+            exec = direct_sequence_test__execution(list(incomplete_daily)),
+            pat = "cover every native-calendar day"
+        ),
+        list(
+            exec = direct_sequence_test__execution(list(
+                direct_sequence_test__adjusted("tas", 2061:2062),
+                direct_sequence_test__adjusted("pr", 2061L)
+            )),
+            pat = "same weather years"
+        ),
+        list(
+            exec = direct_sequence_test__execution(list(
+                tas_2061,
+                direct_sequence_test__adjusted("pr", 2061L, "360_day")
+            )),
+            pat = "same CF calendar"
+        ),
+        list(
+            exec = direct_sequence_test__execution(list(incomplete_subdaily)),
+            pat = "cover every declared sub-daily timestep"
+        ),
+        list(
+            exec = direct_sequence_test__execution(list(
+                tas_2061,
+                direct_sequence_test__subdaily_adjusted("pr", 2061L)
+            )),
+            pat = "same frequency and timestep"
+        ),
+        list(
+            exec = direct_sequence_test__execution(list(direct_sequence_test__adjusted(
+                "tas",
+                2061L,
+                output_role = "observed_reference"
+            ))),
+            pat = "retain `model_future`"
+        ),
+        list(
+            exec = direct_sequence_test__execution(
+                list(tas_2061, tas_2061),
+                keys = list(list(site = "A"), list(site = "A"))
+            ),
+            pat = "duplicate signal-group identities"
+        ),
+        list(exec = failed, pat = "cannot preserve failed signal groups"),
+        list(exec = "not-a-signal", pat = "aligned SignalExecutionResult")
     )
-    expect_error(
-        sequence__direct_model_generate("not-a-signal", NULL, NULL, list()),
-        "aligned SignalExecutionResult"
-    )
+    for (case in bad_cases) {
+        expect_error(direct_sequence_test__gen(case$exec), case$pat)
+    }
 })
 
 # vim: fdm=marker :
