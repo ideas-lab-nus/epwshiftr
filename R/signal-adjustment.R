@@ -794,72 +794,252 @@ bias__subdaily_adjusted_series <- function(
 }
 # }}}
 
-# Resolve the monthly mean-change settings shared by Linear Scaling and Delta
-# Change while keeping method names in user-facing diagnostics.
-# bias__mean_change_settings {{{
-bias__mean_change_settings <- function(settings, method) {
-    expected <- c(
-        "grouping",
-        "statistic",
-        "transformation",
-        "bounds",
-        "zero_tolerance"
-    )
-    resolved <- signal__resolve_settings(settings, expected, method)
-    if (!identical(resolved$grouping, "calendar_month")) {
-        cli::cli_abort(
-            "{method} currently supports only `calendar_month` grouping."
+# Summarize positive sample counts across windows or months using a consistent
+# named vector shape.
+# signal__sample_summary {{{
+signal__sample_summary <- function(values, include_median = TRUE) {
+    checkmate::assert_numeric(values, min.len = 1L, any.missing = FALSE)
+    checkmate::assert_flag(include_median)
+    if (include_median) {
+        c(
+            minimum = min(values),
+            median = stats::median(values),
+            maximum = max(values)
+        )
+    } else {
+        c(
+            minimum = min(values),
+            maximum = max(values)
         )
     }
-    if (!identical(resolved$statistic, "mean")) {
-        cli::cli_abort(
-            "{method} currently supports only the monthly mean statistic."
-        )
-    }
-    checkmate::assert_choice(
-        resolved$transformation,
-        c("additive", "multiplicative")
-    )
-    checkmate::assert_numeric(
-        resolved$bounds,
-        len = 2L,
-        any.missing = FALSE
-    )
-    if (resolved$bounds[[1L]] > resolved$bounds[[2L]]) {
-        cli::cli_abort(
-            "{method} bounds must be ordered from lower to upper."
-        )
-    }
-    checkmate::assert_number(
-        resolved$zero_tolerance,
-        lower = 0,
-        finite = TRUE
-    )
-    resolved
 }
 # }}}
 
-# Validate role payloads as one calendar-native, univariate unit of work and
-# reject unit changes that would make monthly corrections ambiguous.
-# bias__mean_change_inputs {{{
-bias__mean_change_inputs <- function(
+# Aggregate per-window sample coverage and edge-truncation diagnostics shared
+# by block-wise monthly signal methods.
+# signal__block_window_diagnostics {{{
+signal__block_window_diagnostics <- function(records, clipped) {
+    checkmate::assert_list(records, min.len = 1L)
+    checkmate::assert_int(clipped, lower = 0L)
+    observed_samples <- vapply(
+        records,
+        `[[`,
+        numeric(1L),
+        "observed_samples"
+    )
+    historical_samples <- vapply(
+        records,
+        `[[`,
+        numeric(1L),
+        "historical_samples"
+    )
+    future_samples <- vapply(
+        records,
+        `[[`,
+        numeric(1L),
+        "future_samples"
+    )
+    list(
+        window_count = length(records),
+        observed_window_samples = signal__sample_summary(observed_samples),
+        historical_window_samples = signal__sample_summary(
+            historical_samples
+        ),
+        future_window_samples = signal__sample_summary(future_samples),
+        truncated_edge_windows = sum(vapply(
+            records,
+            function(record) {
+                isTRUE(record$truncated_left) ||
+                    isTRUE(record$truncated_right)
+            },
+            logical(1L)
+        )),
+        clipped_values = clipped,
+        windows = records
+    )
+}
+# }}}
+
+# Execute disjoint retained future year blocks for each calendar month while
+# fitting on each block's symmetric surrounding window and bounding the output.
+# signal__run_monthly_blocks {{{
+signal__run_monthly_blocks <- function(
+    series,
+    future_window_years,
+    output_block_years,
+    min_samples,
+    bounds,
+    method_label,
+    apply_window,
+    ...
+) {
+    checkmate::assert_list(series, names = "unique")
+    checkmate::assert_int(min_samples, lower = 1L)
+    checkmate::assert_string(method_label, min.chars = 1L)
+    checkmate::assert_function(apply_window)
+
+    observed <- series$observed_reference
+    historical <- series$model_historical
+    future <- series$model_future
+    blocks <- signal__future_blocks(
+        future[["cf_year"]],
+        future_window_years,
+        output_block_years,
+        method_label
+    )
+    adjusted <- rep.int(NA_real_, nrow(future))
+    records <- vector("list", length(blocks) * 12L)
+    record_index <- 0L
+
+    for (block in blocks) {
+        output_year <- future[["cf_year"]] %in% block$output_years
+        months <- sort(unique(future[["cf_month"]][output_year]))
+        for (month in months) {
+            observed_rows <- which(observed[["cf_month"]] == month)
+            historical_rows <- which(historical[["cf_month"]] == month)
+            future_window_rows <- which(
+                future[["cf_month"]] == month &
+                    future[["cf_year"]] %in% block$window_years
+            )
+            output_rows <- which(
+                future[["cf_month"]] == month & output_year
+            )
+            sample_counts <- c(
+                observed = length(observed_rows),
+                historical = length(historical_rows),
+                future = length(future_window_rows)
+            )
+            if (any(sample_counts < min_samples)) {
+                cli::cli_abort(
+                    "{method_label} month {month} and output years {min(block$output_years)}-{max(block$output_years)} have fewer than {min_samples} observed, historical, or future values."
+                )
+            }
+            window_result <- apply_window(
+                month = month,
+                block = block,
+                observed_rows = observed_rows,
+                historical_rows = historical_rows,
+                future_rows = future_window_rows,
+                output_rows = output_rows,
+                ...
+            )
+            output_positions <- match(output_rows, future_window_rows)
+            adjusted[output_rows] <- window_result$value[output_positions]
+            record_index <- record_index + 1L
+            records[[record_index]] <- window_result$record
+        }
+    }
+    if (anyNA(adjusted)) {
+        cli::cli_abort(
+            "{method_label} did not assign every future-model daily row exactly once."
+        )
+    }
+    records <- records[seq_len(record_index)]
+    bounded_result <- signal__bound_values(adjusted, bounds)
+    list(
+        value = bounded_result$value,
+        diagnostics = signal__block_window_diagnostics(
+            records,
+            bounded_result$clipped
+        )
+    )
+}
+# }}}
+
+# Validate one role's canonical daily or sub-daily table, temporarily masking
+# permitted NA values only during structural validation so the original missing
+# mask reaches the method kernel intact.
+# signal__validate_role_table {{{
+signal__validate_role_table <- function(
+    data,
+    role,
+    method,
+    frequency,
+    time_step_seconds,
+    allow_missing
+) {
+    is_daily <- identical(frequency, "day")
+    if (!is.data.frame(data)) {
+        table_label <- if (is_daily) "daily" else "sub-daily"
+        cli::cli_abort(
+            "{method} role {.val {role}} must be a canonical {table_label} data frame."
+        )
+    }
+    out <- as.data.frame(data, stringsAsFactors = FALSE)
+    if (!"value" %in% names(out) || !is.numeric(out[["value"]])) {
+        cli::cli_abort(
+            "{method} role {.val {role}} must contain a numeric `value` column."
+        )
+    }
+    has_missing <- anyNA(out[["value"]])
+    if (has_missing && !allow_missing) {
+        cli::cli_abort(
+            "{method} role {.val {role}} contains missing values."
+        )
+    }
+    missing <- if (has_missing) is.na(out[["value"]]) else NULL
+    non_missing <- if (has_missing) out[["value"]][!missing] else out[["value"]]
+    if (any(!is.finite(non_missing))) {
+        cli::cli_abort(
+            "{method} role {.val {role}} contains non-finite values."
+        )
+    }
+    if (has_missing) {
+        out[["value"]][missing] <- 0
+    }
+    checked <- if (is_daily) {
+        bias__daily_table(out, role)
+    } else {
+        bias__subdaily_table(
+            out,
+            frequency = frequency,
+            time_step_seconds = time_step_seconds,
+            name = role
+        )
+    }
+    if (has_missing) {
+        checked[["value"]][missing] <- NA_real_
+    }
+    checked
+}
+# }}}
+
+# Validate the three role-addressable daily or sub-daily inputs shared by
+# bias-adjustment kernels without pairing dates across independent CF calendars.
+# signal__validate_three_role_inputs {{{
+signal__validate_three_role_inputs <- function(
     inputs,
     variable,
-    transformation,
-    method
+    method,
+    frequency = "day",
+    time_step_seconds = 86400,
+    allow_missing = FALSE,
+    min_value = -Inf,
+    min_value_message = NULL
 ) {
-    roles <- c(
-        "observed_reference",
-        "model_historical",
-        "model_future"
-    )
-    if (!identical(sort(names(inputs)), sort(roles))) {
+    checkmate::assert_string(variable, min.chars = 1L)
+    checkmate::assert_string(method, min.chars = 1L)
+    checkmate::assert_string(frequency, min.chars = 1L)
+    checkmate::assert_number(time_step_seconds, lower = 0, finite = TRUE)
+    checkmate::assert_flag(allow_missing)
+    checkmate::assert_number(min_value)
+    checkmate::assert_string(min_value_message, min.chars = 1L, null.ok = TRUE)
+
+    roles <- SIGNAL_THREE_INPUT_ROLES
+    if (!is.list(inputs) || !identical(sort(names(inputs)), sort(roles))) {
         cli::cli_abort(
             "{method} requires observed, historical-model, and future-model role payloads."
         )
     }
     series <- lapply(roles, function(role) {
-        bias__daily_table(inputs[[role]], role)
+        signal__validate_role_table(
+            inputs[[role]],
+            role = role,
+            method = method,
+            frequency = frequency,
+            time_step_seconds = time_step_seconds,
+            allow_missing = allow_missing
+        )
     })
     names(series) <- roles
     for (role in roles) {
@@ -869,8 +1049,7 @@ bias__mean_change_inputs <- function(
                 "{method} role {.val {role}} must contain only variable {.val {variable}}."
             )
         }
-        calendars <- unique(series[[role]][["cf_calendar"]])
-        if (length(calendars) != 1L) {
+        if (length(unique(series[[role]][["cf_calendar"]])) != 1L) {
             cli::cli_abort(
                 "{method} role {.val {role}} must contain one native calendar per signal group."
             )
@@ -887,18 +1066,183 @@ bias__mean_change_inputs <- function(
         )
     }
     if (
-        identical(transformation, "multiplicative") &&
+        is.finite(min_value) &&
             any(vapply(
                 series,
-                function(data) any(data[["value"]] < 0),
+                function(data) {
+                    any(data[["value"]] < min_value, na.rm = TRUE)
+                },
                 logical(1L)
             ))
     ) {
+        if (!is.null(min_value_message)) {
+            cli::cli_abort(min_value_message)
+        }
+        if (identical(as.numeric(min_value), 0)) {
+            cli::cli_abort("{method} requires non-negative input values.")
+        }
         cli::cli_abort(
-            "Multiplicative {method} requires non-negative input values."
+            "{method} inputs for {.val {variable}} contain values below the declared lower bound."
         )
     }
     series
+}
+# }}}
+
+# Construct a standard three-role daily or sub-daily signal component, wiring
+# its role requirements and adjusted-series result validator uniformly.
+# signal__three_role_component {{{
+signal__three_role_component <- function(
+    name,
+    label,
+    variables,
+    profiles,
+    apply_group,
+    validate_options,
+    method_label,
+    output_role = "model_future",
+    frequency = "day",
+    time_step_seconds = 86400,
+    require_frequencies = frequency,
+    stochastic = FALSE,
+    input_kinds = if (identical(frequency, "day")) {
+        "calendar_indexed_daily_series"
+    } else {
+        "calendar_indexed_subdaily_series"
+    },
+    output_kinds = if (identical(frequency, "day")) {
+        "daily_adjusted_series"
+    } else {
+        "subdaily_adjusted_series"
+    },
+    temporal_message = NULL,
+    metadata = list()
+) {
+    checkmate::assert_character(
+        variables,
+        min.len = 1L,
+        any.missing = FALSE,
+        unique = TRUE
+    )
+    checkmate::assert_function(apply_group)
+    checkmate::assert_function(validate_options)
+    checkmate::assert_string(method_label, min.chars = 1L)
+    checkmate::assert_choice(output_role, WEATHER_INPUT_ROLES)
+    checkmate::assert_string(frequency, min.chars = 1L)
+    checkmate::assert_number(time_step_seconds, lower = 0, finite = TRUE)
+    checkmate::assert_character(require_frequencies, any.missing = FALSE)
+
+    is_daily <- identical(frequency, "day")
+    result_class <- if (is_daily) {
+        DailyAdjustedSeries
+    } else {
+        SubdailyAdjustedSeries
+    }
+    result_class_label <- if (is_daily) {
+        "DailyAdjustedSeries"
+    } else {
+        "SubdailyAdjustedSeries"
+    }
+    validate_result <- function(value, inputs, key) {
+        signal__validate_adjusted_result(
+            value,
+            result_class,
+            result_class_label,
+            output_role,
+            method_label,
+            frequency = if (is_daily) NULL else frequency,
+            time_step_seconds = if (is_daily) NULL else time_step_seconds,
+            temporal_message = temporal_message
+        )
+    }
+
+    requirements <- signal__three_role_requirements(
+        as.list(variables),
+        frequencies = require_frequencies
+    )
+    signal__component(
+        name = name,
+        label = label,
+        required_inputs = requirements,
+        input_kinds = input_kinds,
+        output_kinds = output_kinds,
+        scopes = "univariate",
+        stochastic = stochastic,
+        profiles = profiles,
+        apply_group = apply_group,
+        operations = list(
+            validate_options = validate_options,
+            validate_result = validate_result
+        ),
+        metadata = metadata
+    )
+}
+# }}}
+
+# Resolve the monthly mean-change settings shared by Linear Scaling and Delta
+# Change while keeping method names in user-facing diagnostics.
+# bias__mean_change_settings {{{
+bias__mean_change_settings <- function(settings, method) {
+    expected <- c(
+        "transformation",
+        "bounds",
+        "zero_tolerance"
+    )
+    resolved <- signal__resolve_settings(settings, expected, method)
+    checkmate::assert_choice(
+        resolved$transformation,
+        c("additive", "multiplicative")
+    )
+    signal__ordered_bounds(
+        resolved$bounds,
+        sprintf("%s bounds must be ordered from lower to upper.", method)
+    )
+    checkmate::assert_number(
+        resolved$zero_tolerance,
+        lower = 0,
+        finite = TRUE
+    )
+    resolved
+}
+# }}}
+
+# Build the published monthly mean-change profiles shared by Linear Scaling
+# and Delta Change, recording fixed grouping and statistic conventions in
+# profile metadata rather than mutable user settings.
+# bias__mean_change_profiles {{{
+bias__mean_change_profiles <- function(method_id, output_role, references) {
+    checkmate::assert_string(method_id, min.chars = 1L)
+    checkmate::assert_choice(output_role, WEATHER_INPUT_ROLES)
+    temperature_settings <- list(
+        transformation = "additive",
+        bounds = c(-Inf, Inf),
+        zero_tolerance = 0
+    )
+    precipitation_settings <- list(
+        transformation = "multiplicative",
+        bounds = c(0, Inf),
+        zero_tolerance = sqrt(.Machine$double.eps)
+    )
+    settings_by_variable <- list(
+        tas = temperature_settings,
+        tasmin = temperature_settings,
+        tasmax = temperature_settings,
+        pr = precipitation_settings
+    )
+    signal__build_profiles(
+        settings_by_variable = settings_by_variable,
+        published_variables = names(settings_by_variable),
+        references = references,
+        method = method_id,
+        output_role = output_role,
+        evidence_mode = "all_published",
+        metadata_fn = function(variable, published) {
+            list(
+                grouping = "calendar_month",
+                statistic = "mean"
+            )
+        }
+    )
 }
 # }}}
 
@@ -930,6 +1274,92 @@ bias__mean_change_monthly_means <- function(
         observed_mean = monthly$observed_reference,
         historical_mean = monthly$model_historical,
         future_mean = monthly$model_future
+    )
+}
+# }}}
+
+# Apply the published monthly additive or multiplicative mean-change equation
+# shared by Linear Scaling and Delta Change while preserving each method's
+# output backbone, transfer numerator, and provenance field names.
+# bias__mean_change_apply_group {{{
+bias__mean_change_apply_group <- function(
+    inputs,
+    settings,
+    key,
+    method_id,
+    method_label,
+    output_role,
+    numerator_column,
+    delta_column,
+    provenance_key,
+    references
+) {
+    resolved <- bias__mean_change_settings(settings, method_label)
+    variable <- names(settings)[[1L]]
+    is_multiplicative <- identical(resolved$transformation, "multiplicative")
+    series <- signal__validate_three_role_inputs(
+        inputs,
+        variable = variable,
+        method = method_label,
+        min_value = if (is_multiplicative) 0 else -Inf,
+        min_value_message = if (is_multiplicative) {
+            sprintf(
+                "Multiplicative %s requires non-negative input values.",
+                method_label
+            )
+        } else {
+            NULL
+        }
+    )
+    monthly <- bias__mean_change_monthly_means(
+        series,
+        output_role,
+        method_label
+    )
+
+    if (identical(resolved$transformation, "additive")) {
+        monthly[[delta_column]] <-
+            monthly[[numerator_column]] - monthly$historical_mean
+    } else {
+        denominator_zero <- abs(monthly$historical_mean) <=
+            resolved$zero_tolerance
+        if (any(denominator_zero)) {
+            cli::cli_abort(
+                "Multiplicative {method_label} is undefined because the historical monthly mean is zero for month(s) {.val {monthly$cf_month[denominator_zero]}}."
+            )
+        }
+        monthly[[delta_column]] <-
+            monthly[[numerator_column]] / monthly$historical_mean
+    }
+
+    backbone <- series[[output_role]]
+    delta <- monthly[[delta_column]][
+        match(backbone[["cf_month"]], monthly$cf_month)
+    ]
+    adjusted <- if (identical(resolved$transformation, "additive")) {
+        backbone[["value"]] + delta
+    } else {
+        backbone[["value"]] * delta
+    }
+    bounded_result <- signal__bound_values(adjusted, resolved$bounds)
+    backbone[["value"]] <- bounded_result$value
+
+    provenance <- list(
+        method = method_id,
+        grouping = "calendar_month",
+        statistic = "mean",
+        references = references,
+        group_key = key
+    )
+    provenance[[provenance_key]] <- monthly
+    provenance$clipped_values <- bounded_result$clipped
+
+    bias__daily_adjusted_series(
+        backbone,
+        output_role = output_role,
+        transformation = resolved$transformation,
+        settings = resolved,
+        provenance = provenance
     )
 }
 # }}}

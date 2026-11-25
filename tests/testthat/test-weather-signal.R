@@ -448,4 +448,86 @@ test_that("parametric distribution validation rejects incomplete fits", {
     )
 })
 
+test_that("shared signal profile builder and numeric validators enforce contracts", {
+    settings <- list(
+        tas = list(offset = 1),
+        pr = list(scale = 2)
+    )
+    by_var <- signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = "tas",
+        references = "doi:10.1000/example",
+        method = "demo_method",
+        metadata_fn = function(variable, published) {
+            list(
+                default_source = if (published) "literature" else "package",
+                optional_note = NULL
+            )
+        }
+    )
+    indexed <- signal__profiles(by_var)
+    expect_identical(indexed$tas@evidence, "published")
+    expect_identical(indexed$tas@references, "doi:10.1000/example")
+    expect_identical(indexed$tas@metadata$default_source, "literature")
+    expect_true("optional_note" %in% names(indexed$tas@metadata))
+    expect_null(indexed$tas@metadata$optional_note)
+    expect_identical(indexed$pr@evidence, "experimental")
+    expect_identical(indexed$pr@references, character())
+
+    all_exp <- signal__build_profiles(
+        settings_by_variable = settings,
+        published_variables = "tas",
+        references = "doi:10.1000/example",
+        method = "demo_method",
+        evidence_mode = "all_experimental"
+    )
+    expect_identical(all_exp[[1L]]@evidence, "experimental")
+    expect_identical(all_exp[[1L]]@references, "doi:10.1000/example")
+
+    expect_identical(signal__positive_number(0.25, "alpha"), 0.25)
+    expect_identical(
+        signal__positive_number(0.5, "alpha", upper = 0.5),
+        0.5
+    )
+    expect_error(
+        signal__positive_number(0, "alpha"),
+        "`alpha` must be positive"
+    )
+    expect_error(
+        signal__positive_number(0.5, "alpha", upper = 0.5, strict_upper = TRUE),
+        "strictly between zero and 0.5"
+    )
+    expect_error(
+        signal__positive_number(
+            1,
+            "detrend_alpha",
+            upper = 1,
+            strict_upper = TRUE,
+            message = "`detrend_alpha` must lie strictly between zero and one."
+        ),
+        "strictly between zero and one"
+    )
+
+    valid_window <- signal__validate_future_block_window(list(
+        future_window_years = 17,
+        output_block_years = 9
+    ))
+    expect_identical(valid_window$future_window_years, 17L)
+    expect_identical(valid_window$output_block_years, 9L)
+    expect_error(
+        signal__validate_future_block_window(list(
+            future_window_years = 16L,
+            output_block_years = 9L
+        )),
+        "even, non-negative"
+    )
+    expect_error(
+        signal__validate_future_block_window(list(
+            future_window_years = 9L,
+            output_block_years = 11L
+        )),
+        "even, non-negative"
+    )
+})
+
 # vim: fdm=marker :
