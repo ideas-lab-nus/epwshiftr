@@ -422,6 +422,25 @@ source_recovery__download <- function(
         if (!is.null(unbind)) {
             on.exit(unbind(), add = TRUE)
         }
+        # The selected legacy manifest may use a different saved temp directory.
+        # Announce only this exact transfer to the pool, without opening its
+        # locked DuckDB manifest or exposing unrelated historical task growth.
+        progress_path <- attr(config, "source_progress", exact = TRUE)
+        if (!is.null(progress_path)) {
+            store_write_json_atomic(
+                list(
+                    schema = "epwshiftr-source-progress-v1",
+                    manifest = downloader$manifest,
+                    temp = downloader$config$temp,
+                    task_id = task$task_id[[1L]],
+                    target_path = task$target_path[[1L]]
+                ),
+                progress_path,
+                auto_unbox = TRUE,
+                na = "null",
+                null = "null"
+            )
+        }
         tasks <- downloader$resume(
             session_id = task$session_id[[1L]],
             task_id = task$task_id[[1L]],
