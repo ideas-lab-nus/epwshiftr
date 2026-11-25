@@ -96,7 +96,7 @@ test_that("enhanced stretch fallbacks apply the recorded additive method", {
 test_that("enhanced monthly recipe invalidates the earlier arithmetic identity", {
     transform <- monthly_transform("epwshiftr")
     expect_identical(transform@recipe_version, 3L)
-    expect_identical(method__get("epwshiftr_monthly")@version, 3L)
+    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 3L)
     for (version in c(1L, 2L)) {
         spec <- transform__spec_value(transform)
         spec$recipe_version <- version
