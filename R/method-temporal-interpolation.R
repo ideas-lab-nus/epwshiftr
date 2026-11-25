@@ -18,66 +18,15 @@ TEMPORAL_LINEAR_VARIABLES <- c(
 # it into independent interpolation series.
 # temporal__linear_source {{{
 temporal__linear_source <- function(input, role) {
-    if (!S7::S7_inherits(input, WeatherInput)) {
-        cli::cli_abort("Role {.val {role}} must contain a WeatherInput object.")
-    }
-    if (
-        !identical(input@representation, "series") ||
-            !is.data.frame(input@source)
-    ) {
-        cli::cli_abort(
-            "Role {.val {role}} must contain a materialized series input."
-        )
-    }
-    data <- data.table::as.data.table(data.table::copy(input@source))
-    required <- c(
-        BIAS_ADJUSTED_SERIES_COLUMNS,
-        "time"
+    temporal__validate_source_role(
+        input,
+        role,
+        allowed_variables = TEMPORAL_LINEAR_VARIABLES,
+        missing_label = "canonical interpolation",
+        sample_label = "source samples",
+        variable_semantics = "linear point-state semantics",
+        variable_hint = "Radiation, fluxes, accumulations, and derived variables require their dedicated temporal method."
     )
-    missing <- setdiff(required, names(data))
-    if (length(missing)) {
-        cli::cli_abort(
-            "Role {.val {role}} is missing canonical interpolation column(s): {.val {missing}}."
-        )
-    }
-    if (!nrow(data)) {
-        cli::cli_abort(
-            "Role {.val {role}} must contain sub-daily source samples."
-        )
-    }
-    if (
-        !inherits(data[["time"]], "POSIXt") ||
-            anyNA(data[["time"]]) ||
-            any(!is.finite(as.numeric(data[["time"]])))
-    ) {
-        cli::cli_abort(
-            "Role {.val {role}} must retain finite, non-missing POSIX source `time` values."
-        )
-    }
-    frequencies <- unique(as.character(data[["frequency"]]))
-    unsupported_frequencies <- setdiff(
-        frequencies,
-        names(TEMPORAL_SOURCE_STEPS)
-    )
-    if (length(unsupported_frequencies)) {
-        cli::cli_abort(
-            "Role {.val {role}} contains unsupported source frequency value(s): {.val {unsupported_frequencies}}. Supported values are {.val {names(TEMPORAL_SOURCE_STEPS)}}."
-        )
-    }
-    variables <- unique(as.character(data[["variable_id"]]))
-    unsupported <- setdiff(variables, TEMPORAL_LINEAR_VARIABLES)
-    if (length(unsupported)) {
-        cli::cli_abort(c(
-            "Role {.val {role}} contains variable(s) without linear point-state semantics: {.val {unsupported}}.",
-            "i" = "Radiation, fluxes, accumulations, and derived variables require their dedicated temporal method."
-        ))
-    }
-    data.table::set(
-        data,
-        j = "cf_second_of_day",
-        value = temporal__second_of_day(data, role)
-    )
-    list(data = data, frequencies = frequencies)
 }
 # }}}
 
@@ -350,18 +299,7 @@ temporal__linear_group <- function(
 
     # Preserve compatibility aliases only when the source table carried them;
     # their values must describe the new target coordinates.
-    aliases <- list(
-        year = as.integer(target$fields$year),
-        month = as.integer(target$fields$month),
-        day = as.integer(target$fields$day),
-        hour = as.integer(target$fields$hour),
-        minute = as.integer(target$fields$minute),
-        second = as.numeric(target$fields$second),
-        datetime = target_time
-    )
-    for (column in intersect(names(aliases), names(data))) {
-        data.table::set(out, j = column, value = aliases[[column]])
-    }
+    temporal__set_time_aliases(out, names(data), target$fields, target_time)
 
     diagnostic <- data.table::data.table(
         group = label,
@@ -446,23 +384,6 @@ temporal__linear_role <- function(
             anchors = anchors
         )
     })
-    data <- data.table::rbindlist(
-        lapply(results, function(result) result$data),
-        use.names = TRUE,
-        fill = TRUE
-    )
-    output_group_columns <- unique(c(
-        setdiff(group_columns, "frequency"),
-        "source_frequency"
-    ))
-    order_columns <- c(
-        setdiff(output_group_columns, "cf_calendar"),
-        "cf_calendar",
-        "cf_year",
-        "cf_day_of_year",
-        "cf_second_of_day"
-    )
-    data.table::setorderv(data, intersect(order_columns, names(data)))
     interpolation_record <- list(
         method = "linear_temporal_interpolation",
         source_frequencies = sort(source$frequencies),
@@ -476,47 +397,14 @@ temporal__linear_role <- function(
             function(result) result$diagnostic$anchor_samples[[1L]],
             integer(1L)
         )),
-        boundary_policy = "bounded_by_source",
-        source_group_columns = group_columns,
-        output_group_columns = output_group_columns
+        boundary_policy = "bounded_by_source"
     )
-    output <- weather__new_input(
+    temporal__finalize_role(
+        input,
         role,
-        data,
-        representation = "series",
-        variables = unique(as.character(data[["variable_id"]])),
-        frequencies = "hour",
-        calendars = unique(as.character(data[["cf_calendar"]])),
-        provenance = utils::modifyList(
-            input@provenance,
-            list(temporal_interpolation = interpolation_record)
-        ),
-        metadata = utils::modifyList(
-            input@metadata,
-            list(
-                group_columns = output_group_columns,
-                time_step_seconds = 3600
-            )
-        )
-    )
-    diagnostics <- data.table::rbindlist(
-        lapply(results, function(result) result$diagnostic),
-        use.names = TRUE,
-        fill = TRUE
-    )
-    data.table::set(
-        diagnostics,
-        j = "role",
-        value = rep.int(role, nrow(diagnostics))
-    )
-    data.table::setcolorder(
-        diagnostics,
-        c("role", setdiff(names(diagnostics), "role"))
-    )
-    list(
-        input = output,
-        diagnostics = diagnostics,
-        provenance = interpolation_record
+        results,
+        group_columns,
+        interpolation_record
     )
 }
 # }}}
@@ -525,63 +413,14 @@ temporal__linear_role <- function(
 # roles while preserving all other role inputs unchanged.
 # temporal__linear_apply {{{
 temporal__linear_apply <- function(inputs, context, options) {
-    if (!S7::S7_inherits(inputs, WeatherInputs)) {
-        cli::cli_abort("{.arg inputs} must be a WeatherInputs object.")
-    }
-    checkmate::assert_list(options, names = "unique")
-    if (length(options)) {
-        cli::cli_abort(
-            "`linear_temporal_interpolation` does not accept component options."
-        )
-    }
-    roles <- c("model_historical", "model_future")
-    results <- lapply(roles, function(role) {
-        temporal__linear_role(
-            weather__get_input(inputs, role),
-            role,
-            context
-        )
-    })
-    names(results) <- roles
-    output_inputs <- weather__new_inputs(
-        weather_template = weather__get_input(
-            inputs,
-            "weather_template"
-        ),
-        observed_reference = weather__get_input(
-            inputs,
-            "observed_reference"
-        ),
-        model_historical = results$model_historical$input,
-        model_future = results$model_future$input
-    )
-    diagnostics <- data.table::rbindlist(
-        lapply(results, function(result) result$diagnostics),
-        use.names = TRUE,
-        fill = TRUE
-    )
-    provenance <- list(
-        method = "linear_temporal_interpolation",
-        roles = roles,
-        source_frequencies = lapply(
-            results,
-            function(result) result$provenance$source_frequencies
-        ),
-        source_step_seconds = lapply(
-            results,
-            function(result) result$provenance$source_step_seconds
-        ),
-        target_frequency = "hour",
-        target_step_seconds = 3600,
-        boundary_policy = "bounded_by_source"
-    )
-    WeatherStageResult(
-        stage = "preprocess",
-        component = "linear_temporal_interpolation",
-        kind = "hourly_role_inputs",
-        value = output_inputs,
-        diagnostics = list(temporal_interpolation = diagnostics),
-        provenance = provenance,
+    temporal__apply_model_roles(
+        inputs,
+        context,
+        options,
+        component_name = "linear_temporal_interpolation",
+        role_fn = temporal__linear_role,
+        diagnostic_name = "temporal_interpolation",
+        extra_provenance = list(boundary_policy = "bounded_by_source"),
         metadata = list(
             interpolation = "piecewise_linear",
             extrapolation = "none"
@@ -594,35 +433,13 @@ temporal__linear_apply <- function(inputs, context, options) {
 # complete future-weather recipe.
 # temporal__linear_component {{{
 temporal__linear_component <- function() {
-    variables <- lapply(TEMPORAL_LINEAR_VARIABLES, identity)
-    requirement <- function(role) {
-        component__input_requirement(
-            role,
-            representations = "series",
-            frequencies = names(TEMPORAL_SOURCE_STEPS),
-            calendars = CF_TIME_CALENDARS,
-            variable_sets = variables
-        )
-    }
-    component__spec(
+    temporal__preprocess_component(
         name = "linear_temporal_interpolation",
-        stage = "preprocess",
         label = "Linear temporal interpolation",
-        required_inputs = list(
-            model_historical = requirement("model_historical"),
-            model_future = requirement("model_future")
-        ),
-        input_kinds = "role_inputs",
-        output_kinds = "hourly_role_inputs",
-        scopes = "univariate",
-        stochastic = FALSE,
-        operations = list(apply = temporal__linear_apply),
+        supported_variables = TEMPORAL_LINEAR_VARIABLES,
+        apply_fn = temporal__linear_apply,
         metadata = list(
             algorithm = "piecewise_linear_interpolation",
-            source_frequencies = names(TEMPORAL_SOURCE_STEPS),
-            target_frequency = "hour",
-            target_step_seconds = 3600,
-            supported_variables = TEMPORAL_LINEAR_VARIABLES,
             boundary_policy = "bounded_by_source",
             radiation_policy = "dedicated_solar_interpolation_required"
         )

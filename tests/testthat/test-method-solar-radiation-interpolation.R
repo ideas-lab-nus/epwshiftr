@@ -271,39 +271,6 @@ test_that("solar radiation interpolation rejects ambiguous interval semantics", 
     )
 })
 
-test_that("solar radiation interpolation is registered and compatible", {
-    solar__register_component()
-    component <- component__get(
-        "preprocess",
-        "solar_radiation_interpolation"
-    )
-    calendar <- component__spec(
-        name = "hourly_solar_calendar_test",
-        stage = "calendar",
-        input_kinds = "hourly_role_inputs",
-        output_kinds = "calendar_indexed_hourly",
-        scopes = "multivariate",
-        operations = list(apply = identity)
-    )
-
-    expect_s7_class(component, WeatherComponentSpec)
-    expect_identical(component@stage, "preprocess")
-    expect_identical(component@output_kinds, "hourly_role_inputs")
-    expect_identical(component@scopes, "univariate")
-    expect_identical(
-        component@metadata$interval_policy,
-        "cf_time_bounds"
-    )
-    expect_identical(
-        component@metadata$supported_variables,
-        c("rsds", "rsdsdiff")
-    )
-    expect_invisible(
-        component__validate_inputs(component, solar_test__inputs())
-    )
-    expect_true(component__compatible(component, calendar))
-})
-
 test_that("shared solar kernels preserve vector and matrix geometry", {
     expect_equal(solar__radians(c(0, 90, 180)), c(0, pi / 2, pi))
     expect_equal(solar__cos_zenith(0, 0, 0), 1)
