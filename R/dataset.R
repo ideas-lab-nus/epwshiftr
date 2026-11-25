@@ -80,6 +80,52 @@ dataset__async_error <- function(operation, result, timeout_ms = NULL) {
 }
 # }}}
 
+# A local cancellation result does not acknowledge that the native reader has
+# stopped. Retire only the one-shot worker captured before submitting work, then
+# observe its transport disconnect before closing the dispatcher's TCP socket.
+# dataset__retire_async_worker {{{
+dataset__retire_async_worker <- function(worker, profile) {
+    if (is.null(worker)) {
+        return(invisible(NULL))
+    }
+    handle <- worker$handle
+    if (ps::ps_is_running(handle)) {
+        stopifnot(
+            identical(ps::ps_cmdline(handle), worker$command),
+            identical(ps::ps_ppid(handle), worker$parent)
+        )
+        children <- ps::ps_children(handle, recursive = TRUE)
+        for (child in rev(children)) {
+            if (ps::ps_is_running(child)) ps::ps_kill(child)
+        }
+        ps::ps_kill(handle)
+        deadline <- proc.time()[["elapsed"]] + 5
+        while (
+            any(vapply(
+                c(children, list(handle)),
+                ps::ps_is_running,
+                logical(1L)
+            ))
+        ) {
+            if (proc.time()[["elapsed"]] >= deadline) {
+                stop("Owned Dataset worker did not exit.", call. = FALSE)
+            }
+            Sys.sleep(.01)
+        }
+    }
+    # OS exit precedes transport notification. Closing the dispatcher while its
+    # cancellation send is still bound to that pipe can block in native NNG.
+    deadline <- proc.time()[["elapsed"]] + 5
+    while (mirai::status(.compute = profile)$connections > 0L) {
+        if (proc.time()[["elapsed"]] >= deadline) {
+            stop("Owned Dataset worker did not disconnect.", call. = FALSE)
+        }
+        Sys.sleep(.01)
+    }
+    invisible(NULL)
+}
+# }}}
+
 # DatasetAsyncTask {{{
 DatasetAsyncTask <- R6::R6Class(
     "DatasetAsyncTask",
@@ -90,6 +136,7 @@ DatasetAsyncTask <- R6::R6Class(
         timeout_ms = NULL,
         mirai_obj = NULL,
         compute_profile = NULL,
+        worker_process = NULL,
         started_at = NULL,
         completed_at = NULL,
         result = NULL,
@@ -102,8 +149,10 @@ DatasetAsyncTask <- R6::R6Class(
             operation,
             mirai_obj,
             compute_profile,
-            timeout_ms = NULL
+            timeout_ms = NULL,
+            worker_process = NULL
         ) {
+            self$worker_process <- worker_process
             self$operation <- operation
             self$mirai_obj <- mirai_obj
             self$compute_profile <- compute_profile
@@ -118,6 +167,12 @@ DatasetAsyncTask <- R6::R6Class(
             if (
                 !isTRUE(self$backend_released) && !is.null(self$compute_profile)
             ) {
+                if (self$status %in% c("cancelled", "timed_out")) {
+                    dataset__retire_async_worker(
+                        self$worker_process,
+                        self$compute_profile
+                    )
+                }
                 try(
                     mirai::daemons(0, .compute = self$compute_profile),
                     silent = TRUE
@@ -2420,12 +2475,37 @@ EsgDataset <- R6::R6Class(
             # Worker setup is an optional liveness enhancement for workflow
             # callers. Classify launch failures distinctly so a caller can
             # continue synchronously without hiding an actual NetCDF error.
+            worker_process <- NULL
             mirai_obj <- tryCatch(
                 {
                     mirai__start_pool(
                         1L,
                         dispatcher = TRUE,
                         .compute = compute_profile
+                    )
+                    # Capture this profile's actual worker before the operation
+                    # can be cancelled; PID plus creation time prevents reuse.
+                    pid <- mirai::collect_mirai(mirai::mirai(
+                        Sys.getpid(),
+                        .timeout = 30000L,
+                        .compute = compute_profile
+                    ))
+                    # Mirai errorValue objects can be positive integers (for
+                    # example timeout code 5); reject them before PID lookup.
+                    launch_error <- dataset__async_error(
+                        "identify the owned Dataset worker",
+                        pid,
+                        30000L
+                    )
+                    if (!is.null(launch_error)) {
+                        stop(launch_error)
+                    }
+                    checkmate::assert_count(pid, positive = TRUE)
+                    handle <- ps::ps_handle(pid)
+                    worker_process <- list(
+                        handle = handle,
+                        command = ps::ps_cmdline(handle),
+                        parent = ps::ps_ppid(handle)
                     )
                     mirai::mirai(
                         {
@@ -2464,8 +2544,16 @@ EsgDataset <- R6::R6Class(
                     )
                 },
                 error = function(e) {
+                    # Bootstrap cleanup retains the original launch error and
+                    # touches only this frame's captured worker/profile.
                     try(
-                        mirai::daemons(0L, .compute = compute_profile),
+                        {
+                            dataset__retire_async_worker(
+                                worker_process,
+                                compute_profile
+                            )
+                            mirai::daemons(0L, .compute = compute_profile)
+                        },
                         silent = TRUE
                     )
                     stop(dataset__async_unavailable(operation, e))
@@ -2476,7 +2564,8 @@ EsgDataset <- R6::R6Class(
                 operation = operation,
                 mirai_obj = mirai_obj,
                 compute_profile = compute_profile,
-                timeout_ms = timeout_ms
+                timeout_ms = timeout_ms,
+                worker_process = worker_process
             )
             private$async_task <- task
             private$async_state <- "running"
