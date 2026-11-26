@@ -391,135 +391,50 @@ shift_watch <- function(
     run <- shift_job__as_run(x, store = store)
     run_id <- run@ids$run_id
     store_path <- run@store_path
-    mode <- shift_ui__ui_mode(ui)
-    motion <- shift_ui__ui_motion(ui, mode)
     terminal <- c("waiting", "completed", "partial", "failed", "cancelled")
-    renderer <- tryCatch(shift_tui__ui_renderer(mode), error = function(e) NULL)
-    if (identical(mode, "dynamic") && is.null(renderer)) {
-        mode <- "log"
-        motion <- "none"
-    }
-    frame <- 0L
-    last_event_id <- NA_character_
-    event_cursor_initialized <- FALSE
-    # Keep one atomic framebuffer alive for the same dashboard used by
-    # foreground runs; constrained IDE consoles receive its compact form.
-    update_dynamic <- function(view) {
-        ok <- !is.null(renderer) &&
-            isTRUE(renderer$draw(view$lines, compact = view$compact))
-        if (!isTRUE(ok)) {
-            if (!is.null(renderer)) {
-                renderer$close(result = "failed")
-            }
-            renderer <<- NULL
-            mode <<- "log"
-            motion <<- "none"
-        }
-        ok
-    }
-    close_dynamic <- function(result = "done") {
-        if (!is.null(renderer)) {
-            renderer$close(result = result)
-        }
-        invisible(NULL)
-    }
-    on.exit(close_dynamic(), add = TRUE)
-    emit_snapshot <- function(snapshot, initial = FALSE, final = FALSE) {
-        view <- shift_ui_view__ui_run_view(
-            snapshot,
-            width = shift_ui__ui_width(),
-            detail = ui@detail,
-            motion = motion,
-            frame = frame
-        )
-        if (identical(mode, "dynamic") && !isTRUE(final)) {
-            if (!isTRUE(update_dynamic(view))) {
-                shift_ui_view__ui_print_view(view, include_tables = FALSE)
-            }
-        } else if (identical(mode, "dynamic") && isTRUE(final)) {
-            close_dynamic(result = "done")
-            shift_ui_view__ui_print_view(view, include_tables = TRUE)
-        } else if (identical(mode, "log")) {
-            delta <- shift_ui_state__ui_event_delta(
-                snapshot@meta$events,
-                last_event_id = last_event_id,
-                initial_limit = events,
-                initial = !event_cursor_initialized
-            )
-            rows <- delta$rows
-            if (isTRUE(initial)) {
-                shift_ui_view__ui_print_view(view, include_tables = TRUE)
+    last <- shift_tui__watch_loop(
+        poll = function(polls) {
+            if (polls == 1L && !isTRUE(follow)) {
+                run
             } else {
-                if (isTRUE(delta$gap)) {
-                    cli::cli_alert_info(paste(
-                        "Some older workflow events are no longer available",
-                        "in the live buffer; continuing from its oldest event."
-                    ))
-                }
-                for (i in seq_len(nrow(rows))) {
-                    cli::cli_text(
-                        "{shift_ui_view__ui_persisted_event_line(rows[i], detail = ui@detail)}"
-                    )
-                }
+                shift_run_get(run_id, store = store_path)
             }
-            last_event_id <<- delta$cursor
-            event_cursor_initialized <<- TRUE
-            if (isTRUE(final) && !isTRUE(initial)) {
-                shift_ui_view__ui_print_view(view, include_tables = TRUE)
-            }
-        }
-        invisible(snapshot)
-    }
-    if (!isTRUE(follow)) {
-        if (!identical(mode, "none")) {
+        },
+        is_done = function(snapshot, polls) {
+            !isTRUE(follow) ||
+                shift_status(snapshot, refresh = FALSE) %in% terminal
+        },
+        render_view = function(snapshot, motion, frame) {
+            shift_ui_view__ui_run_view(
+                snapshot,
+                width = shift_ui__ui_width(),
+                detail = ui@detail,
+                motion = motion,
+                frame = frame
+            )
+        },
+        print_view = function(snapshot, final = FALSE) {
             shift_ui_view__ui_print_view(
                 shift_ui_view__ui_run_view(
-                    run,
+                    snapshot,
+                    width = shift_ui__ui_width(),
                     detail = ui@detail,
                     motion = "none"
                 ),
                 include_tables = TRUE
             )
-        }
-        return(run)
-    }
-    tryCatch(
-        {
-            first <- TRUE
-            last_poll <- as.POSIXct(NA)
-            frame_interval <- if (identical(motion, "full")) {
-                ui@refresh
-            } else if (identical(motion, "reduced")) {
-                max(1, ui@refresh)
-            } else {
-                interval
-            }
-            repeat {
-                now <- shift_job__watch_now()
-                poll_due <- isTRUE(first) ||
-                    is.na(last_poll) ||
-                    as.numeric(difftime(now, last_poll, units = "secs")) >=
-                        interval
-                if (isTRUE(poll_due)) {
-                    # Poll durable/live state at the requested interval while the
-                    # cached snapshot is animated independently between polls.
-                    run <- shift_run_get(run_id, store = store_path)
-                    last_poll <- now
-                }
-                done <- shift_status(run, refresh = FALSE) %in% terminal
-                if (isTRUE(poll_due) || identical(mode, "dynamic")) {
-                    frame <- frame + 1L
-                    emit_snapshot(run, initial = first, final = done)
-                }
-                first <- FALSE
-                if (done) {
-                    break
-                }
-                shift_job__watch_sleep(frame_interval)
-            }
         },
-        interrupt = function(e) {
-            close_dynamic(result = "cancelled")
+        ui = ui,
+        interval = interval,
+        event_delta = function(snapshot, cursor, initial) {
+            shift_ui_state__ui_event_delta(
+                snapshot@meta$events,
+                last_event_id = cursor,
+                initial_limit = events,
+                initial = initial
+            )
+        },
+        on_interrupt = function(mode) {
             if (!identical(mode, "none")) {
                 cli::cli_alert_info(
                     "Stopped watching {.val {run_id}}; the workflow continues. Use {.fn shift_cancel} to cancel it."
@@ -527,6 +442,9 @@ shift_watch <- function(
             }
         }
     )
+    if (!isTRUE(follow)) {
+        return(last)
+    }
     shift_run_get(run_id, store = store_path)
 }
 # }}}

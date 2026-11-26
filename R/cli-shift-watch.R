@@ -212,84 +212,29 @@ epwshiftr_cli_shift_watch_follow <- function(
 ) {
     progress <- match.arg(progress)
     motion <- match.arg(motion)
-    ui <- shift_ui(progress = progress, detail = detail, motion = motion)
-    motion <- shift_ui__ui_motion(ui, progress)
-    i <- 0L
-    frame <- 0L
-    renderer <- tryCatch(shift_tui__ui_renderer(progress), error = function(e) {
-        NULL
-    })
-    if (identical(progress, "dynamic") && is.null(renderer)) {
-        progress <- "log"
-        motion <- "none"
+    effective_progress <- if (isTRUE(quiet) || isTRUE(jsonl)) {
+        "none"
+    } else if (identical(progress, "dynamic")) {
+        "dynamic"
+    } else {
+        "log"
     }
-    event_cursor <- if (is.null(batch_id)) NA_character_ else list()
-    event_cursor_initialized <- FALSE
-    update_dynamic <- function(snapshot) {
-        if (!is.null(snapshot$batch)) {
-            view <- shift_batch_ui__view(
-                snapshot,
-                detail = detail,
-                motion = motion,
-                frame = frame,
-                height = shift_ui__ui_height()
-            )
-        } else {
-            view_events <- shift_stage__coalesce(
-                attr(snapshot, "shift_ui_events"),
-                snapshot$events
-            )
-            view <- shift_ui_view__ui_table_view(
-                snapshot$run,
-                snapshot$cases,
-                view_events,
-                detail = detail,
-                motion = motion,
-                frame = frame,
-                outputs = snapshot$outputs,
-                diagnostics = snapshot$diagnostics,
-                ui_state = attr(snapshot, "shift_ui_state")
-            )
-        }
-        ok <- !is.null(renderer) &&
-            isTRUE(renderer$draw(view$lines, compact = view$compact))
-        if (!isTRUE(ok)) {
-            if (!is.null(renderer)) {
-                renderer$close(result = "failed")
-            }
-            renderer <<- NULL
-            progress <<- "log"
-            motion <<- "none"
-        }
-        ok
-    }
-    close_dynamic <- function(result = "done") {
-        if (!is.null(renderer)) {
-            renderer$close(result = result)
-        }
-        invisible(NULL)
-    }
-    on.exit(close_dynamic(), add = TRUE)
-    repeat {
-        i <- i + 1L
-        frame <- frame + 1L
-        snapshot <- cli_shift__read_watch_snapshot(
-            store,
-            run_id = run_id,
-            batch_id = batch_id,
-            event_count = event_count
-        )
-        active <- epwshiftr_cli_shift_watch_active(snapshot)
-        if (isTRUE(quiet)) {
-            # no output
-        } else if (isTRUE(jsonl)) {
+    ui <- shift_ui(
+        progress = effective_progress,
+        detail = detail,
+        motion = motion
+    )
+    initial_cursor <- if (is.null(batch_id)) NA_character_ else list()
+    jsonl_cursor <- initial_cursor
+    on_poll <- if (!isTRUE(quiet) && isTRUE(jsonl)) {
+        function(snapshot, first, done) {
             delta <- cli_shift__watch_event_delta(
                 snapshot,
-                cursor = event_cursor,
+                cursor = jsonl_cursor,
                 initial_limit = event_count,
-                initial = !event_cursor_initialized
+                initial = isTRUE(first)
             )
-            if (!isTRUE(event_cursor_initialized)) {
+            if (isTRUE(first)) {
                 epwshiftr_cli_shift_jsonl_record(
                     "snapshot",
                     snapshot = snapshot
@@ -308,62 +253,78 @@ epwshiftr_cli_shift_watch_follow <- function(
                     )
                 }
             }
-            event_cursor <- delta$cursor
-            event_cursor_initialized <- TRUE
-            if (!isTRUE(active)) {
+            jsonl_cursor <<- delta$cursor
+            if (isTRUE(done)) {
                 epwshiftr_cli_shift_jsonl_record(
                     "terminal",
                     snapshot = snapshot
                 )
             }
-        } else if (identical(progress, "dynamic")) {
-            if (!isTRUE(update_dynamic(snapshot))) {
-                epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
-            }
-        } else {
-            # Cursor against the complete available history before applying
-            # the public tail limit; otherwise a busy interval can silently
-            # discard events that arrived between two watch polls.
-            delta <- cli_shift__watch_event_delta(
-                snapshot,
-                cursor = event_cursor,
-                initial_limit = event_count,
-                initial = !event_cursor_initialized
+        }
+    }
+    tick <- 0
+    snapshot <- shift_tui__watch_loop(
+        poll = function(polls) {
+            cli_shift__read_watch_snapshot(
+                store,
+                run_id = run_id,
+                batch_id = batch_id,
+                event_count = event_count
             )
-            rows <- delta$rows
-            if (i == 1L) {
-                epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
-            } else {
-                if (isTRUE(delta$gap)) {
-                    cli::cli_alert_info(paste(
-                        "Some older workflow events are no longer available",
-                        "in the live buffer; continuing from its oldest event."
-                    ))
-                }
-                for (j in seq_len(nrow(rows))) {
-                    cli::cli_text(
-                        "{shift_ui_view__ui_persisted_event_line(rows[j], detail = detail)}"
-                    )
-                }
-                if (!isTRUE(active)) {
-                    epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
-                }
+        },
+        is_done = function(snapshot, polls) {
+            !isTRUE(epwshiftr_cli_shift_watch_active(snapshot))
+        },
+        render_view = function(snapshot, motion, frame) {
+            if (!is.null(snapshot$batch)) {
+                return(shift_batch_ui__view(
+                    snapshot,
+                    detail = detail,
+                    motion = motion,
+                    frame = frame,
+                    height = shift_ui__ui_height()
+                ))
             }
-            event_cursor <- delta$cursor
-            event_cursor_initialized <- TRUE
+            view_events <- shift_stage__coalesce(
+                attr(snapshot, "shift_ui_events"),
+                snapshot$events
+            )
+            shift_ui_view__ui_table_view(
+                snapshot$run,
+                snapshot$cases,
+                view_events,
+                detail = detail,
+                motion = motion,
+                frame = frame,
+                outputs = snapshot$outputs,
+                diagnostics = snapshot$diagnostics,
+                ui_state = attr(snapshot, "shift_ui_state")
+            )
+        },
+        print_view = function(snapshot, final = FALSE) {
+            epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
+        },
+        ui = ui,
+        interval = interval,
+        event_delta = function(snapshot, cursor, initial) {
+            cli_shift__watch_event_delta(
+                snapshot,
+                cursor = cursor,
+                initial_limit = event_count,
+                initial = initial
+            )
+        },
+        initial_cursor = initial_cursor,
+        on_poll = on_poll,
+        max_polls = count,
+        animate = FALSE,
+        now_fn = function() {
+            tick <<- tick + max(interval, 1)
+            as.POSIXct(tick, origin = "1970-01-01", tz = "UTC")
         }
-        if ((!is.infinite(count) && i >= count) || !isTRUE(active)) {
-            if (
-                identical(progress, "dynamic") &&
-                    !isTRUE(quiet) &&
-                    !isTRUE(jsonl)
-            ) {
-                close_dynamic()
-                epwshiftr_cli_render_shift_watch(snapshot, detail = detail)
-            }
-            break
-        }
-        Sys.sleep(interval)
+    )
+    if (is.null(snapshot)) {
+        return(invisible(NULL))
     }
     attr(snapshot, "shift_ui_detail") <- detail
     structure(snapshot, class = c("epwshiftr_cli_emitted", class(snapshot)))
