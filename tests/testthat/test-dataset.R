@@ -17,6 +17,8 @@ dataset_test__write_nc <- function(
     bounds_dim = "bnds",
     reversed = FALSE,
     method = NULL,
+    extra_vars = NULL,
+    extra_edit = NULL,
     path = tempfile(fileext = ".nc")
 ) {
     nc <- RNetCDF::create.nc(path)
@@ -45,6 +47,27 @@ dataset_test__write_nc <- function(
         )
     }
     RNetCDF::var.put.nc(nc, "tas", tas)
+    if (length(extra_vars)) {
+        for (nm in names(extra_vars)) {
+            spec <- extra_vars[[nm]]
+            RNetCDF::var.def.nc(nc, nm, "NC_DOUBLE", c("time", "lat", "lon"))
+            RNetCDF::att.put.nc(nc, nm, "units", "NC_CHAR", "K")
+            if (!is.null(spec$method)) {
+                RNetCDF::att.put.nc(
+                    nc,
+                    nm,
+                    "cell_methods",
+                    "NC_CHAR",
+                    spec$method
+                )
+            }
+            RNetCDF::var.put.nc(
+                nc,
+                nm,
+                if (is.null(spec$values)) tas else spec$values
+            )
+        }
+    }
     if (!is.null(bounds)) {
         RNetCDF::dim.def.nc(nc, bounds_dim, 2L)
         dims <- if (reversed) c(bounds_dim, "time") else c("time", bounds_dim)
@@ -56,8 +79,57 @@ dataset_test__write_nc <- function(
             if (reversed) t(bounds) else bounds
         )
     }
+    if (is.function(extra_edit)) {
+        extra_edit(nc)
+    }
     path
 }
+
+# Memoized read-only fixtures shared across immutable tests in this file.
+dataset_test__shared_cmip6_2060_2061 <- local({
+    paths <- NULL
+    function() {
+        if (is.null(paths) || !all(file.exists(paths))) {
+            paths <<- vapply(
+                c(2060L, 2061L),
+                function(year) {
+                    path <- tempfile(
+                        sprintf("dataset-cmip6-%d-", year),
+                        fileext = ".nc"
+                    )
+                    write_local_cmip6_netcdf_fixture(path, year)
+                    path
+                },
+                character(1L)
+            )
+            withr::defer(unlink(paths), envir = testthat::teardown_env())
+        }
+        paths
+    }
+})
+
+dataset_test__shared_table_pair <- local({
+    paths <- NULL
+    function() {
+        if (is.null(paths) || !all(file.exists(paths))) {
+            time_vals <- list(c(0, 1, 2), c(3, 4, 5))
+            tas_vals <- list(c(11, 12, 13), c(21, 22, 23))
+            paths <<- vapply(
+                1:2,
+                function(i) {
+                    local_dataset_table_file(
+                        time_vals = time_vals[[i]],
+                        time_units = "days since 2000-01-01 00:00:00",
+                        tas_vals = tas_vals[[i]]
+                    )
+                },
+                character(1L)
+            )
+            withr::defer(unlink(paths), envir = testthat::teardown_env())
+        }
+        paths
+    }
+})
 
 # local_dataset_table_file {{{
 local_dataset_table_file <- function(
@@ -287,7 +359,7 @@ mirai_dataset_lapply <- function(X, FUN, ..., workers = min(2L, length(X))) {
 
 # EsgDataset lifecycle and properties {{{
 test_that("EsgDataset$new(), properties, $open(), and $close()", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    paths <- dataset_test__shared_cmip6_2060_2061()
 
     single <- EsgDataset$new(paths[[1L]])
     multi <- EsgDataset$new(paths)
@@ -308,7 +380,7 @@ test_that("EsgDataset$new(), properties, $open(), and $close()", {
 })
 
 test_that("EsgDataset$open() progress reporting", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    paths <- dataset_test__shared_cmip6_2060_2061()
 
     prog <- dataset_test__mock_progress()
     ds <- EsgDataset$new(paths)
@@ -357,7 +429,7 @@ test_that("EsgDataset$open() progress reporting", {
 
 # EsgDataset metadata, time axis, and spatial grid {{{
 test_that("EsgDataset metadata inquiry, enumeration, time axis, and spatial grid", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    paths <- dataset_test__shared_cmip6_2060_2061()
     ds <- dataset_test__open(paths)
 
     info <- ds$file_inq()
@@ -479,7 +551,7 @@ test_that("EsgDataset retries failed coordinate reads and returns NULL for undec
 
 # EsgDataset$var_get(), $read_array(), $read_data_table() {{{
 test_that("EsgDataset$var_get(), $read_array(), and $read_data_table() read single and multi-file slices", {
-    paths <- local_dataset_cmip6_files(c(2060L, 2061L))
+    paths <- dataset_test__shared_cmip6_2060_2061()
     ds1 <- dataset_test__open(paths[[1L]])
     ds <- dataset_test__open(paths)
     start <- c(1, 1, 1)
@@ -915,7 +987,7 @@ test_that("the internal multi-site reader rejects ambiguous sites, empty input, 
 })
 
 test_that("EsgDataset$read_region() reads grid-method values, windows, and 360-day CF boundaries", {
-    ds <- dataset_test__open(local_dataset_cmip6_files(c(2060L, 2061L)))
+    ds <- dataset_test__open(dataset_test__shared_cmip6_2060_2061())
     window <- c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z")
     expected_values <- function(sources) {
         lat_vals <- c(1.0, 2.0, 41.0)
@@ -1118,7 +1190,7 @@ test_that("EsgDataset$read_region() retains native clock schema for empty result
 })
 
 test_that("EsgDataset$read_region() reuses recorded result time filters by default", {
-    ds <- EsgDataset$new(local_dataset_cmip6_files(c(2060L, 2061L)))
+    ds <- EsgDataset$new(dataset_test__shared_cmip6_2060_2061())
     dataset__set_context(
         ds,
         list(
@@ -1253,7 +1325,7 @@ test_that("EsgDataset$slice() and $selection() preserve context, validate select
 # }}}
 # EsgDataset$reachable() {{{
 test_that("EsgDataset$reachable() checks local files, Windows paths, and remote data nodes", {
-    pair <- dataset_test__table_pair(time_vals = list(0:1, 2:3))
+    pair <- dataset_test__shared_table_pair()
     paths <- c(pair[[1L]], tempfile(fileext = ".nc"), pair[[2L]])
     diag <- EsgDataset$new(paths)$slice(c(3L, 2L))$reachable()
     expect_s3_class(diag, "data.table")
@@ -1379,7 +1451,7 @@ test_that("EsgDataset$reachable() checks local files, Windows paths, and remote 
 # EsgDataset async open / read parity and concurrency {{{
 test_that("EsgDataset async open, reads, progress, and failures match sync contracts", {
     skip_on_cran()
-    paths <- dataset_test__table_pair()
+    paths <- dataset_test__shared_table_pair()
     start <- c(1L, 1L, 1L)
     count <- c(2L, 1L, 1L)
     to <- dataset_async_timeout
@@ -1391,13 +1463,18 @@ test_that("EsgDataset async open, reads, progress, and failures match sync contr
         "not open"
     )
 
+    prog <- dataset_test__mock_progress()
     ds <- EsgDataset$new(paths)
     private <- ds$.__enclos_env__$private
-    expect_identical(ds$open(async = TRUE, timeout = to), ds)
+    expect_identical(ds$open(async = TRUE, timeout = to, progress = TRUE), ds)
     withr::defer(ds$close())
     expect_true(ds$is_open)
     expect_identical(private$async_state, "completed")
     expect_null(private$async_task)
+    expect_equal(
+        vapply(prog$updates, `[[`, integer(1L), "set"),
+        c(1L, 2L)
+    )
     expect_equal(
         as.numeric(ds$var_get(
             "tas",
@@ -1449,14 +1526,6 @@ test_that("EsgDataset async open, reads, progress, and failures match sync contr
     )
     expect_true(ds$is_open)
 
-    # Progress during caller-owned reopen.
-    prog <- dataset_test__mock_progress()
-    ds_prog <- EsgDataset$new(paths[[1L]])
-    withr::defer(ds_prog$close())
-    ds_prog$open(async = TRUE, timeout = to, progress = TRUE)
-    expect_true(ds_prog$is_open)
-    expect_equal(prog$updates, list(list(id = "progress-id", set = 1L)))
-
     # Failed async open leaves the dataset closed and clean.
     bad <- EsgDataset$new(tempfile(fileext = ".nc"))
     bad_priv <- bad$.__enclos_env__$private
@@ -1472,7 +1541,7 @@ test_that("EsgDataset async open, reads, progress, and failures match sync contr
 
 test_that("EsgDataset async open and var_get support concurrent local datasets", {
     skip_on_cran()
-    paths <- dataset_test__table_pair()
+    paths <- dataset_test__shared_table_pair()
     start <- c(2L, 1L, 1L)
     count <- c(2L, 1L, 1L)
     results <- mirai_dataset_lapply(
@@ -1594,12 +1663,7 @@ test_that("dataset__detach_handles() / dataset__adopt_handles() transfer partial
 # EsgDataset$var_get() {{{
 test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep sync handles usable", {
     skip_on_cran()
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1, 2),
-        time_units = "days since 2000-01-01 00:00:00",
-        tas_vals = c(11, 12, 13)
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     ds$open()
@@ -1623,11 +1687,7 @@ test_that("EsgDataset$var_get(async = TRUE) failures clear task state and keep s
 # }}}
 # private$collect_async_task() {{{
 test_that("private$collect_async_task() surfaces timeout errors and clears lifecycle state", {
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1),
-        time_units = "days since 2000-01-01 00:00:00"
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     private <- ds$.__enclos_env__$private
@@ -1649,11 +1709,7 @@ test_that("private$collect_async_task() surfaces timeout errors and clears lifec
 # }}}
 # EsgDataset$close() {{{
 test_that("EsgDataset$close() best-effort cancels pending internal async work", {
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1),
-        time_units = "days since 2000-01-01 00:00:00"
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     ds$open()
@@ -1680,11 +1736,7 @@ test_that("EsgDataset$close() best-effort cancels pending internal async work", 
 # private$cancel_async_task() {{{
 test_that("private$cancel_async_task() keeps cancelled terminal state", {
     skip_on_cran()
-    path <- local_dataset_table_file(
-        time_vals = c(0, 1),
-        time_units = "days since 2000-01-01 00:00:00"
-    )
-    on.exit(unlink(path), add = TRUE)
+    path <- dataset_test__shared_table_pair()[[1L]]
 
     ds <- EsgDataset$new(path)
     private <- ds$.__enclos_env__$private
@@ -1855,15 +1907,24 @@ dataset_test__cf_point_fixture <- function(
     width = 0,
     reversed = FALSE,
     units = "days since 1900-02-28",
-    time_values = 0:2
+    time_values = 0:2,
+    bounds = NULL,
+    extra_vars = NULL,
+    extra_edit = NULL
 ) {
     dataset_test__write_nc(
         time_values,
         units,
         calendar = calendar,
-        bounds = cbind(time_values, time_values + width),
+        bounds = if (is.null(bounds)) {
+            cbind(time_values, time_values + width)
+        } else {
+            bounds
+        },
         reversed = reversed,
-        method = method
+        method = method,
+        extra_vars = extra_vars,
+        extra_edit = extra_edit
     )
 }
 
@@ -1891,52 +1952,36 @@ test_that("instantaneous native bounds preserve Julian corners and strict variab
         expect_equal(actual$time$bound_end_value, actual$time$bound_start_value)
     }
 
-    for (method in list(
-        "time: mean",
-        "time: sum",
-        NULL,
-        "time: point time: mean"
-    )) {
-        ds <- dataset_test__open_temp(
-            dataset_test__cf_point_fixture(
-                method = method,
-                calendar = "standard"
-            )
-        )
-        expect_error(
-            ds$read_neighborhood("tas", sites),
-            "positive|increasing"
-        )
-    }
     neg_ds <- dataset_test__open_temp(
         dataset_test__cf_point_fixture(width = -1, calendar = "standard")
     )
     expect_error(neg_ds$get_time_axis(), "increasing|non-decreasing")
 
-    path <- dataset_test__cf_point_fixture(calendar = "standard")
-    dataset_test__edit_nc(path, function(nc) {
-        RNetCDF::var.def.nc(
-            nc,
-            "tas_mean",
-            "NC_DOUBLE",
-            c("time", "lat", "lon")
+    ds_var <- dataset_test__open_temp(
+        dataset_test__cf_point_fixture(
+            calendar = "standard",
+            extra_vars = list(
+                tas_mean = list(
+                    method = "time: mean",
+                    values = array(280, c(3, 2, 2))
+                ),
+                tas_sum = list(method = "time: sum"),
+                tas_null = list(method = NULL),
+                tas_both = list(method = "time: point time: mean")
+            )
         )
-        RNetCDF::att.put.nc(nc, "tas_mean", "units", "NC_CHAR", "K")
-        RNetCDF::att.put.nc(
-            nc,
-            "tas_mean",
-            "cell_methods",
-            "NC_CHAR",
-            "time: mean"
-        )
-        RNetCDF::var.put.nc(nc, "tas_mean", array(280, c(3, 2, 2)))
-    })
-    ds_var <- dataset_test__open_temp(path)
+    )
     expect_equal(nrow(ds_var$read_neighborhood("tas", sites)$values), 12L)
     expect_error(
         ds_var$read_neighborhood("tas_mean", sites),
         "positive intervals"
     )
+    for (var_name in c("tas_mean", "tas_sum", "tas_null", "tas_both")) {
+        expect_error(
+            ds_var$read_neighborhood(var_name, sites),
+            "positive|increasing"
+        )
+    }
 
     short_ds <- dataset_test__open_temp(
         dataset_test__cf_point_fixture(
@@ -1951,10 +1996,10 @@ test_that("instantaneous native bounds preserve Julian corners and strict variab
         short_out$time$bound_end_value > short_out$time$bound_start_value
     ))
 
-    wrong <- dataset_test__cf_point_fixture(calendar = "standard")
-    dataset_test__edit_nc(wrong, function(nc) {
-        RNetCDF::var.put.nc(nc, "time_bnds", cbind(1:3, 1:3))
-    })
+    wrong <- dataset_test__cf_point_fixture(
+        calendar = "standard",
+        bounds = cbind(1:3, 1:3)
+    )
     expect_error(
         dataset_test__open_temp(wrong)$read_neighborhood("tas", sites),
         "equal their native time coordinate"
@@ -2024,7 +2069,10 @@ dataset_test__climatology_fixture <- function(
     reversed = FALSE,
     units = "days since 1960-01-01",
     times = NULL,
-    bounds = NULL
+    bounds = NULL,
+    bounds_attr = "climatology",
+    extra_vars = NULL,
+    extra_edit = NULL
 ) {
     if (is.null(times) || is.null(bounds)) {
         origin <- cf_time_parse_origin("1960-01-01", calendar)
@@ -2054,11 +2102,13 @@ dataset_test__climatology_fixture <- function(
         units,
         calendar = calendar,
         bounds = bounds,
-        bounds_attr = "climatology",
+        bounds_attr = bounds_attr,
         bounds_var = "climatology_bounds",
         bounds_dim = "nv",
         reversed = reversed,
-        method = method
+        method = method,
+        extra_vars = extra_vars,
+        extra_edit = extra_edit
     )
 }
 
@@ -2066,78 +2116,85 @@ dataset_test__climatology_fixture <- function(
 # labels and discontinuous annual cells instead of inventing ordinary intervals.
 test_that("CF climatology exposes seasonal bounds and ordered statistics", {
     sites <- dataset_test__point_site()
-    for (calendar in c("standard", "julian", "360_day", "365_day")) {
-        for (reversed in c(FALSE, TRUE)) {
-            ds <- dataset_test__open_temp(
-                dataset_test__climatology_fixture(
-                    calendar = calendar,
-                    reversed = reversed
-                )
+    cases <- list(
+        list(calendar = "standard", reversed = FALSE),
+        list(calendar = "standard", reversed = TRUE),
+        list(calendar = "julian", reversed = FALSE),
+        list(calendar = "360_day", reversed = TRUE),
+        list(calendar = "365_day", reversed = FALSE)
+    )
+    for (case in cases) {
+        calendar <- case$calendar
+        reversed <- case$reversed
+        ds <- dataset_test__open_temp(
+            dataset_test__climatology_fixture(
+                calendar = calendar,
+                reversed = reversed
             )
-            axis <- ds$get_time_axis(variable = "tas")
-            expect_identical(axis$kind, "climatology")
-            expect_null(axis$bounds)
-            expect_identical(axis$climatology$name, "climatology_bounds")
-            expect_identical(
-                axis$statistics$operations$method,
-                c("minimum", "mean")
-            )
-            expect_identical(
-                axis$statistics$operations$scope,
-                c("within years", "over years")
-            )
-            expect_identical(
-                axis$climatology$interpretation$wraps_year,
-                c(FALSE, FALSE, FALSE, TRUE)
-            )
-            expect_equal(
-                dim(axis$climatology$raw_values),
-                if (reversed) c(2L, 4L) else c(4L, 2L)
-            )
-            actual <- ds$read_neighborhood(
-                "tas",
-                sites,
-                time = c("1960-01-01", "1961-12-31")
-            )
-            expect_equal(sort(actual$values$value), as.double(271:286))
-            expect_identical(unique(actual$time$time_kind), "climatology")
-            expect_false("time_bound_start" %in% names(actual$time))
-            native <- if (reversed) {
-                t(axis$climatology$raw_values)
-            } else {
-                axis$climatology$raw_values
-            }
-            expect_equal(
-                actual$time$climatology_bound_start_value,
-                native[, 1L]
-            )
-            expect_equal(actual$time$climatology_bound_end_value, native[, 2L])
-            expect_equal(actual$time$time_value, as.double(axis$raw_values))
-            expect_identical(
-                unique(actual$time$climatology_cell_methods),
-                axis$statistics$raw
-            )
-            table <- ds$read_data_table("tas", rbind = TRUE)
-            expect_identical(unique(table$time_kind), "climatology")
-            expect_equal(sort(table$tas), as.double(271:286))
-            expect_equal(
-                sort(unique(table$time_value)),
-                sort(as.double(axis$raw_values))
-            )
-            expect_equal(
-                unique(table$climatology_bound_start_value),
-                native[, 1L]
-            )
-            expect_error(
-                ds$read_region(
-                    "tas",
-                    lon = 10.25,
-                    lat = .25,
-                    time = c("1960-01-01", "1961-12-31")
-                ),
-                "climatolog"
-            )
+        )
+        axis <- ds$get_time_axis(variable = "tas")
+        expect_identical(axis$kind, "climatology")
+        expect_null(axis$bounds)
+        expect_identical(axis$climatology$name, "climatology_bounds")
+        expect_identical(
+            axis$statistics$operations$method,
+            c("minimum", "mean")
+        )
+        expect_identical(
+            axis$statistics$operations$scope,
+            c("within years", "over years")
+        )
+        expect_identical(
+            axis$climatology$interpretation$wraps_year,
+            c(FALSE, FALSE, FALSE, TRUE)
+        )
+        expect_equal(
+            dim(axis$climatology$raw_values),
+            if (reversed) c(2L, 4L) else c(4L, 2L)
+        )
+        actual <- ds$read_neighborhood(
+            "tas",
+            sites,
+            time = c("1960-01-01", "1961-12-31")
+        )
+        expect_equal(sort(actual$values$value), as.double(271:286))
+        expect_identical(unique(actual$time$time_kind), "climatology")
+        expect_false("time_bound_start" %in% names(actual$time))
+        native <- if (reversed) {
+            t(axis$climatology$raw_values)
+        } else {
+            axis$climatology$raw_values
         }
+        expect_equal(
+            actual$time$climatology_bound_start_value,
+            native[, 1L]
+        )
+        expect_equal(actual$time$climatology_bound_end_value, native[, 2L])
+        expect_equal(actual$time$time_value, as.double(axis$raw_values))
+        expect_identical(
+            unique(actual$time$climatology_cell_methods),
+            axis$statistics$raw
+        )
+        table <- ds$read_data_table("tas", rbind = TRUE)
+        expect_identical(unique(table$time_kind), "climatology")
+        expect_equal(sort(table$tas), as.double(271:286))
+        expect_equal(
+            sort(unique(table$time_value)),
+            sort(as.double(axis$raw_values))
+        )
+        expect_equal(
+            unique(table$climatology_bound_start_value),
+            native[, 1L]
+        )
+        expect_error(
+            ds$read_region(
+                "tas",
+                lon = 10.25,
+                lat = .25,
+                time = c("1960-01-01", "1961-12-31")
+            ),
+            "climatolog"
+        )
     }
 })
 
@@ -2182,23 +2239,14 @@ test_that("CF climatology interprets daily, annual, and combined statistical cyc
 # A shared coordinate cache must never reuse another variable's statistical
 # operator sequence, and each raw clock must remain joinable to its own values.
 test_that("CF climatology keeps statistics per variable through shared caches", {
-    path <- dataset_test__climatology_fixture()
-    dataset_test__edit_nc(path, function(nc) {
-        RNetCDF::var.def.nc(nc, "tasmax", "NC_DOUBLE", c("time", "lat", "lon"))
-        RNetCDF::att.put.nc(nc, "tasmax", "units", "NC_CHAR", "K")
-        RNetCDF::att.put.nc(
-            nc,
-            "tasmax",
-            "cell_methods",
-            "NC_CHAR",
-            "time: mean within years time: maximum over years"
+    path <- dataset_test__climatology_fixture(
+        extra_vars = list(
+            tasmax = list(
+                method = "time: mean within years time: maximum over years",
+                values = array(as.double(301:316), c(4L, 2L, 2L))
+            )
         )
-        RNetCDF::var.put.nc(
-            nc,
-            "tasmax",
-            array(as.double(301:316), c(4L, 2L, 2L))
-        )
-    })
+    )
     ds <- dataset_test__open_temp(path)
     expect_identical(
         ds$get_time_axis(variable = "tas")$statistics$operations$method,
@@ -2235,36 +2283,44 @@ test_that("CF climatology keeps statistics per variable through shared caches", 
 # must fail before any weather values are read.
 test_that("CF climatology validates statistical declarations and boundary identity before weather reads", {
     sites <- dataset_test__point_site()
-    for (method in list(
-        NULL,
-        "time: mean",
-        "time: mean over years time: mean within years",
-        "time: banana within years time: mean over years",
-        "time: mean within days time: mean over years"
-    )) {
-        ds <- dataset_test__open_temp(
-            dataset_test__climatology_fixture(method = method)
+    bad_methods <- list(
+        tas_null = list(method = NULL),
+        tas_mean = list(method = "time: mean"),
+        tas_rev = list(
+            method = "time: mean over years time: mean within years"
+        ),
+        tas_banana = list(
+            method = "time: banana within years time: mean over years"
+        ),
+        tas_mixed = list(
+            method = "time: mean within days time: mean over years"
         )
+    )
+    ds_methods <- dataset_test__open_temp(
+        dataset_test__climatology_fixture(extra_vars = bad_methods)
+    )
+    for (var_name in names(bad_methods)) {
         expect_error(
-            ds$get_time_axis(variable = "tas"),
+            ds_methods$get_time_axis(variable = var_name),
             "climatolog|cell_methods"
         )
         expect_error(
-            ds$read_neighborhood("tas", sites),
+            ds_methods$read_neighborhood(var_name, sites),
             "climatolog|cell_methods"
         )
     }
 
-    both_path <- dataset_test__climatology_fixture()
-    dataset_test__edit_nc(both_path, function(nc) {
-        RNetCDF::att.put.nc(
-            nc,
-            "time",
-            "bounds",
-            "NC_CHAR",
-            "climatology_bounds"
-        )
-    })
+    both_path <- dataset_test__climatology_fixture(
+        extra_edit = function(nc) {
+            RNetCDF::att.put.nc(
+                nc,
+                "time",
+                "bounds",
+                "NC_CHAR",
+                "climatology_bounds"
+            )
+        }
+    )
     expect_error(
         dataset_test__open_temp(both_path)$get_time_axis(),
         "climatolog.*bounds|bounds.*climatolog"
@@ -2297,19 +2353,20 @@ test_that("CF climatology validates statistical declarations and boundary identi
             function(nc) RNetCDF::var.put.nc(nc, "climatology_bounds", m)
         })
     )) {
-        path <- dataset_test__climatology_fixture()
-        dataset_test__edit_nc(path, ed)
-        ds <- dataset_test__open_temp(path)
+        ds <- dataset_test__open_temp(
+            dataset_test__climatology_fixture(extra_edit = ed)
+        )
         dataset_test__assert_no_tas_read({
             expect_error(ds$get_time_axis(variable = "tas"))
             expect_error(ds$read_neighborhood("tas", sites))
         })
     }
 
-    deleted <- dataset_test__climatology_fixture()
-    dataset_test__edit_nc(deleted, function(nc) {
-        RNetCDF::att.delete.nc(nc, "time", "climatology")
-    })
+    deleted <- dataset_test__climatology_fixture(
+        extra_edit = function(nc) {
+            RNetCDF::att.delete.nc(nc, "time", "climatology")
+        }
+    )
     ds_del <- dataset_test__open_temp(deleted)
     expect_error(ds_del$get_time_axis(variable = "tas"), "climatolog")
     expect_error(ds_del$read_neighborhood("tas", sites), "climatolog")
@@ -2318,7 +2375,21 @@ test_that("CF climatology validates statistical declarations and boundary identi
 # Attribute read failures cannot erase a declared climatology association, and
 # custom variable names colliding with metadata columns must not be overwritten.
 test_that("CF climatology propagates attribute failures and isolates source value columns", {
-    ds <- dataset_test__open_temp(dataset_test__climatology_fixture())
+    col_names <- c("variable", "time_kind", "climatology_bound_start")
+    expected <- c(
+        "variable_value",
+        "time_kind_value",
+        "climatology_bound_start_value_value"
+    )
+    extra_cols <- stats::setNames(
+        lapply(col_names, function(...) {
+            list(method = "time: minimum within years time: mean over years")
+        }),
+        col_names
+    )
+    ds <- dataset_test__open_temp(
+        dataset_test__climatology_fixture(extra_vars = extra_cols)
+    )
     expect_identical(dataset__time_kind(ds, 1L), "climatology")
     reader <- RNetCDF::att.get.nc
     testthat::with_mocked_bindings(
@@ -2338,20 +2409,9 @@ test_that("CF climatology propagates attribute failures and isolates source valu
         .package = "RNetCDF"
     )
 
-    names <- c("variable", "time_kind", "climatology_bound_start")
-    expected <- c(
-        "variable_value",
-        "time_kind_value",
-        "climatology_bound_start_value_value"
-    )
-    for (i in seq_along(names)) {
-        path <- dataset_test__climatology_fixture()
-        dataset_test__edit_nc(path, function(nc) {
-            RNetCDF::var.rename.nc(nc, "tas", names[[i]])
-        })
-        ds_col <- dataset_test__open_temp(path)
+    for (i in seq_along(col_names)) {
         expect_warning(
-            table <- ds_col$read_data_table(names[[i]], rbind = TRUE),
+            table <- ds$read_data_table(col_names[[i]], rbind = TRUE),
             "conflicts"
         )
         expect_equal(sort(table[[expected[[i]]]]), as.double(271:286))
@@ -2363,22 +2423,12 @@ test_that("CF climatology propagates attribute failures and isolates source valu
 # case-insensitive, while rejecting bare prefix tokens and stray identifiers.
 test_that("CF review parses grouped point and climatology cell_methods strictly", {
     sites <- dataset_test__point_site()
-    for (method in c(
+    valid_point <- c(
         "time: lat: point",
         "lat: time: POINT",
         "time: lat: point lon: mean"
-    )) {
-        actual <- dataset_test__open_temp(
-            dataset_test__cf_point_fixture(
-                method = method,
-                calendar = "standard"
-            )
-        )$read_neighborhood("tas", sites)
-        expect_equal(nrow(actual$values), 12L)
-        expect_identical(actual$time$bound_start_value, actual$time$time_value)
-        expect_identical(actual$time$bound_end_value, actual$time$time_value)
-    }
-    for (method in c(
+    )
+    invalid_point <- c(
         "TIME: point",
         "lat: TIME: point",
         "time: lat: mean",
@@ -2387,34 +2437,54 @@ test_that("CF review parses grouped point and climatology cell_methods strictly"
         "time: lat: point-invalid",
         "lon: mean not-time: point",
         "lon: mean not.time: point"
-    )) {
+    )
+    point_vars <- stats::setNames(
+        lapply(c(valid_point, invalid_point), function(m) list(method = m)),
+        c(
+            paste0("pt_ok_", seq_along(valid_point)),
+            paste0("pt_bad_", seq_along(invalid_point))
+        )
+    )
+    ds_point <- dataset_test__open_temp(
+        dataset_test__cf_point_fixture(
+            calendar = "standard",
+            extra_vars = point_vars
+        )
+    )
+    for (i in seq_along(valid_point)) {
+        actual <- ds_point$read_neighborhood(paste0("pt_ok_", i), sites)
+        expect_equal(nrow(actual$values), 12L)
+        expect_identical(actual$time$bound_start_value, actual$time$time_value)
+        expect_identical(actual$time$bound_end_value, actual$time$time_value)
+    }
+    for (i in seq_along(invalid_point)) {
         expect_error(
-            dataset_test__open_temp(
-                dataset_test__cf_point_fixture(
-                    method = method,
-                    calendar = "standard"
-                )
-            )$read_neighborhood("tas", sites),
+            ds_point$read_neighborhood(paste0("pt_bad_", i), sites),
             "point|cell_methods"
         )
     }
-    for (method in c(
+
+    invalid_clim <- c(
         "TIME: mean within years TIME: mean over years",
         "garbage time: mean within years time: mean over years",
         "lon: mean not-time: minimum within years time: mean over years",
         "lon: mean not.time: minimum within years time: mean over years"
-    )) {
+    )
+    mixed <- "time: MINIMUM Within Years time: MEAN Over Years"
+    clim_vars <- stats::setNames(
+        lapply(c(invalid_clim, mixed), function(m) list(method = m)),
+        c(paste0("clim_bad_", seq_along(invalid_clim)), "clim_mixed")
+    )
+    ds_clim <- dataset_test__open_temp(
+        dataset_test__climatology_fixture(extra_vars = clim_vars)
+    )
+    for (i in seq_along(invalid_clim)) {
         expect_error(
-            dataset_test__open_temp(
-                dataset_test__climatology_fixture(method = method)
-            )$get_time_axis(variable = "tas"),
+            ds_clim$get_time_axis(variable = paste0("clim_bad_", i)),
             "cell_methods|climatolog"
         )
     }
-    mixed <- "time: MINIMUM Within Years time: MEAN Over Years"
-    statistics <- dataset_test__open_temp(
-        dataset_test__climatology_fixture(method = mixed)
-    )$get_time_axis(variable = "tas")$statistics
+    statistics <- ds_clim$get_time_axis(variable = "clim_mixed")$statistics
     expect_identical(statistics$raw, mixed)
     expect_identical(statistics$operations$method, c("minimum", "mean"))
 })
@@ -2423,10 +2493,13 @@ test_that("CF review parses grouped point and climatology cell_methods strictly"
 # and refuse a replica with contradictory boundary layout before weather reads.
 test_that("CF review preserves climatology boundary dimensions and refuses contradictory replicas", {
     sites <- dataset_test__point_site()
-    for (reversed in c(FALSE, TRUE)) {
+    datasets <- vector("list", 2L)
+    for (idx in seq_len(2L)) {
+        reversed <- idx == 2L
         ds <- dataset_test__open_temp(
             dataset_test__climatology_fixture(reversed = reversed)
         )
+        datasets[[idx]] <- ds
         axis <- ds$get_time_axis(variable = "tas")
         expected <- if (reversed) c("nv", "time") else c("time", "nv")
         expect_identical(axis$climatology$dimensions, expected)
@@ -2466,18 +2539,14 @@ test_that("CF review preserves climatology boundary dimensions and refuses contr
         )
     }
 
-    first <- dataset_test__open_temp(dataset_test__climatology_fixture())
     captured <- NULL
-    first$read_neighborhood("tas", sites, on_chunk = function(chunk) {
+    datasets[[1L]]$read_neighborhood("tas", sites, on_chunk = function(chunk) {
         captured <<- chunk
     })
-    second <- dataset_test__open_temp(
-        dataset_test__climatology_fixture(reversed = TRUE)
-    )
     dataset_test__assert_no_tas_read(
         expect_error(
             dataset__read_neighborhood(
-                second,
+                datasets[[2L]],
                 "tas",
                 sites,
                 time = NULL,
@@ -2496,29 +2565,23 @@ test_that("CMIP6 monthly statistics retain ordinary bounds and raw methods", {
     sites <- dataset_test__point_site()
     offsets <- c(60280.5, 60310, 60339.5)
     endpoints <- cbind(c(60265, 60296, 60324), c(60296, 60324, 60355))
-    for (method in c(
-        "area: mean time: maximum within days time: mean over days",
-        "area: mean time: minimum within days time: mean over days"
-    )) {
-        path <- dataset_test__climatology_fixture(
-            method = method,
-            calendar = "proleptic_gregorian",
-            units = "days since 1850-01-01",
-            times = offsets,
-            bounds = endpoints
-        )
-        dataset_test__edit_nc(path, function(nc) {
-            RNetCDF::att.delete.nc(nc, "time", "climatology")
-            RNetCDF::att.put.nc(
-                nc,
-                "time",
-                "bounds",
-                "NC_CHAR",
-                "climatology_bounds"
-            )
-        })
-        ds <- dataset_test__open_temp(path)
-        axis <- ds$get_time_axis(variable = "tas")
+    methods <- c(
+        tas = "area: mean time: maximum within days time: mean over days",
+        tasmin = "area: mean time: minimum within days time: mean over days"
+    )
+    path <- dataset_test__climatology_fixture(
+        method = methods[["tas"]],
+        calendar = "proleptic_gregorian",
+        units = "days since 1850-01-01",
+        times = offsets,
+        bounds = endpoints,
+        bounds_attr = "bounds",
+        extra_vars = list(tasmin = list(method = methods[["tasmin"]]))
+    )
+    ds <- dataset_test__open_temp(path)
+    for (var_name in names(methods)) {
+        method <- methods[[var_name]]
+        axis <- ds$get_time_axis(variable = var_name)
         expect_identical(axis$kind, "ordinary")
         expect_null(axis$climatology)
         expect_identical(as.double(axis$raw_values), offsets)
@@ -2528,21 +2591,29 @@ test_that("CMIP6 monthly statistics retain ordinary bounds and raw methods", {
             axis$statistics$operations$scope,
             c("within days", "over days")
         )
-        raw <- ds$read_neighborhood("tas", sites)
+        raw <- ds$read_neighborhood(var_name, sites)
         expect_equal(nrow(raw$values), 12L)
         expect_identical(unique(raw$values$cell_methods), method)
         expect_identical(raw$time$time_value, offsets)
         expect_equal(raw$time$bound_start_value, endpoints[, 1L])
         expect_equal(raw$time$bound_end_value, endpoints[, 2L])
         expect_false(any(startsWith(names(raw$time), "climatology_")))
+    }
 
-        ds$close()
-        dataset_test__edit_nc(path, function(nc) {
-            RNetCDF::att.delete.nc(nc, "time", "bounds")
-        })
-        ds$open()
-        expect_error(ds$get_time_axis(variable = "tas"), "explicit time bounds")
-        expect_error(ds$read_neighborhood("tas", sites), "explicit time bounds")
+    ds$close()
+    dataset_test__edit_nc(path, function(nc) {
+        RNetCDF::att.delete.nc(nc, "time", "bounds")
+    })
+    ds$open()
+    for (var_name in names(methods)) {
+        expect_error(
+            ds$get_time_axis(variable = var_name),
+            "explicit time bounds"
+        )
+        expect_error(
+            ds$read_neighborhood(var_name, sites),
+            "explicit time bounds"
+        )
     }
     # Year aggregation without a climatology declaration remains ambiguous.
     expect_error(
@@ -2886,19 +2957,21 @@ test_that("point reads reuse selected actual bounds without loading the full axi
         expect_equal(actual$time_bound_start, full$bounds$start[2:3])
         expect_length(counts, 2L)
         ds$close()
-        nc <- RNetCDF::open.nc(path, write = TRUE)
-        raw[1L, 2L] <- raw[1L, 2L] + 0.1
-        RNetCDF::var.put.nc(nc, "time_bnds", raw)
-        RNetCDF::close.nc(nc)
-        ds$open()
-        reopened <- ds$read_region("tas", lon = 104, lat = 1, time = window)
-        expect_false(identical(
-            reopened$time_bound_start,
-            actual$time_bound_start
-        ))
-        expect_equal(tail(counts, 1L), list(c(2L, 2L)))
-        expect_length(counts, 3L)
-        ds$close()
+        if (identical(calendar, "proleptic_gregorian")) {
+            nc <- RNetCDF::open.nc(path, write = TRUE)
+            raw[1L, 2L] <- raw[1L, 2L] + 0.1
+            RNetCDF::var.put.nc(nc, "time_bnds", raw)
+            RNetCDF::close.nc(nc)
+            ds$open()
+            reopened <- ds$read_region("tas", lon = 104, lat = 1, time = window)
+            expect_false(identical(
+                reopened$time_bound_start,
+                actual$time_bound_start
+            ))
+            expect_equal(tail(counts, 1L), list(c(2L, 2L)))
+            expect_length(counts, 3L)
+            ds$close()
+        }
         # Restore between calendars; do not stack wrappers through loop bindings.
         testthat::local_mocked_bindings(
             .package = "RNetCDF",

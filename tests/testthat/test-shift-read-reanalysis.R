@@ -88,6 +88,27 @@ test_read__file <- function(
     path
 }
 
+# Lazily create immutable valid NetCDF templates once per test file to avoid
+# repeating identical full-file NetCDF writes across unrelated tests.
+read_test__valid_nc <- local({
+    cache <- new.env(parent = emptyenv())
+    function(kind = c("year2000", "day2000")) {
+        kind <- match.arg(kind)
+        path <- cache[[kind]]
+        if (is.null(path) || !file.exists(path)) {
+            path <- tempfile(paste0("reanalysis-", kind, "-"), fileext = ".nc")
+            if (identical(kind, "year2000")) {
+                test_read__file(path)
+            } else {
+                test_read__file(path, values = rep(280, 24L), time = 24:47)
+            }
+            cache[[kind]] <- path
+            withr::defer(unlink(path), envir = testthat::teardown_env())
+        }
+        path
+    }
+})
+
 test_that("local skin temperature retains request contract, UTC, original values and file identity", {
     plan <- read_test__plan(lat = 1.26, lon = 104.01)
     expect_identical(plan$requests$request[[1L]]$variable, "skin_temperature")
@@ -115,7 +136,11 @@ test_that("local skin temperature retains request contract, UTC, original values
 })
 
 test_that("point validation rejects missing, distant and inconsistent grids", {
-    plan <- read_test__plan(variables = c("skt", "tas"), lat = 1.375)
+    plan <- read_test__plan(
+        variables = c("skt", "tas"),
+        lat = 1.375,
+        dates = as.Date("2000-01-02")
+    )
     paths <- read_test__temp_files(plan)
     withr::defer(unlink(paths))
     for (i in 1:2) {
@@ -127,14 +152,28 @@ test_that("point validation rejects missing, distant and inconsistent grids", {
         test_read__file(
             paths[[i]],
             variable = variable,
+            values = rep(280, 24L),
+            time = 24:47,
             latitude = c(1.25, 1.5)[[i]]
         )
     }
     expect_error(shift_read_reanalysis(plan, paths), "different actual grid")
     variable <- if (plan$requests$variable_id[[1L]] == "tas") "t2m" else "skt"
-    test_read__file(paths[[1L]], variable = variable, latitude = 20)
+    test_read__file(
+        paths[[1L]],
+        variable = variable,
+        values = rep(280, 24L),
+        time = 24:47,
+        latitude = 20
+    )
     expect_error(shift_read_reanalysis(plan, paths), "nearest")
-    test_read__file(paths[[1L]], variable = variable, coordinate = FALSE)
+    test_read__file(
+        paths[[1L]],
+        variable = variable,
+        values = rep(280, 24L),
+        time = 24:47,
+        coordinate = FALSE
+    )
     expect_error(shift_read_reanalysis(plan, paths), "actual scalar point")
 })
 
@@ -188,7 +227,10 @@ test_that("other raw dependencies use declared SI units", {
     units <- c("hPa", "Pa", "m s**-1", "m/s", "m")
     raw <- c(1000, 100100, -3, 4, 0.0036)
     expected <- c(100000, 100100, -3, 4, 0.001)
-    plan <- read_test__plan(variables = variables)
+    plan <- read_test__plan(
+        variables = variables,
+        dates = as.Date("2000-01-02")
+    )
     paths <- read_test__temp_files(plan)
     withr::defer(unlink(paths))
     for (i in 1:5) {
@@ -197,7 +239,8 @@ test_that("other raw dependencies use declared SI units", {
             paths[[i]],
             variable = aliases[[j]],
             units = units[[j]],
-            values = rep(raw[[j]], 8832)
+            values = rep(raw[[j]], 24L),
+            time = 24:47
         )
     }
     data <- shift_read_reanalysis(plan, paths)$data
@@ -215,7 +258,7 @@ test_that("other raw dependencies use declared SI units", {
 })
 
 test_that("strict local reading never repairs bad time axes, units or values", {
-    plan <- read_test__plan()
+    plan <- read_test__plan(dates = as.Date("2000-01-02"))
     files <- read_test__temp_files(plan)
     path <- files[[1L]]
     withr::defer(unlink(path))
@@ -223,32 +266,59 @@ test_that("strict local reading never repairs bad time axes, units or values", {
         expect_error(shift_read_reanalysis(p, f), pat)
     }
     cases <- list(
-        list(time = (-24:8807)[-25], values = rep(280, 8831)),
-        list(time = c(-24, -24:8806)),
-        list(time = rev(-24:8807)),
-        list(time = (-24:8807) + 0.5),
-        list(time = -24:8808, values = rep(280, 8833))
+        list(time = (24:47)[-12], values = rep(280, 23L)),
+        list(time = c(24, 24:46), values = rep(280, 24L)),
+        list(time = rev(24:47), values = rep(280, 24L)),
+        list(time = (24:47) + 0.5, values = rep(280, 24L)),
+        list(time = 24:48, values = rep(280, 25L))
     )
     for (case in cases) {
         do.call(test_read__file, c(list(path = path), case))
         expect_err(plan, files, "hourly UTC coverage")
     }
     bad_specs <- list(
-        list(args = list(calendar = "360_day"), pat = "Gregorian"),
-        list(args = list(units = "mystery"), pat = "Unknown temperature units"),
-        list(args = list(values = c(NA_real_, rep(280, 8831))), pat = "finite"),
-        list(args = list(values = c(Inf, rep(280, 8831))), pat = "finite"),
-        list(args = list(values = c(-Inf, rep(280, 8831))), pat = "finite"),
-        list(args = list(values = rep(-1, 8832)), pat = "physical"),
         list(
             args = list(
-                values = c(rep(280, 8832), rep(281, 8832)),
+                time = 24:47,
+                values = rep(280, 24L),
+                calendar = "360_day"
+            ),
+            pat = "Gregorian"
+        ),
+        list(
+            args = list(
+                time = 24:47,
+                values = rep(280, 24L),
+                units = "mystery"
+            ),
+            pat = "Unknown temperature units"
+        ),
+        list(
+            args = list(time = 24:47, values = c(NA_real_, rep(280, 23L))),
+            pat = "finite"
+        ),
+        list(
+            args = list(time = 24:47, values = c(Inf, rep(280, 23L))),
+            pat = "finite"
+        ),
+        list(
+            args = list(time = 24:47, values = c(-Inf, rep(280, 23L))),
+            pat = "finite"
+        ),
+        list(
+            args = list(time = 24:47, values = rep(-1, 24L)),
+            pat = "physical"
+        ),
+        list(
+            args = list(
+                time = 24:47,
+                values = c(rep(280, 24L), rep(281, 24L)),
                 versions = c(1, 5)
             ),
             pat = "version|expver"
         ),
         list(
-            args = list(values = rep(280, 8832), versions = 999),
+            args = list(time = 24:47, values = rep(280, 24L), versions = 999),
             pat = "version|expver"
         )
     )
@@ -304,7 +374,8 @@ test_that("point archives retain container and member identity through public ex
     directory <- tempfile("point-archive-")
     dir.create(directory)
     withr::defer(unlink(directory, recursive = TRUE))
-    path <- test_read__file(file.path(directory, "weather.nc"))
+    path <- file.path(directory, "weather.nc")
+    expect_true(file.copy(read_test__valid_nc("year2000"), path))
     archive <- file.path(directory, "response.asset")
     withr::local_dir(directory)
     utils::zip(archive, "weather.nc", flags = "-q")
@@ -332,14 +403,14 @@ test_that("archive packaging never relaxes field or member validation", {
     dir.create(directory)
     withr::defer(unlink(directory, recursive = TRUE))
     withr::local_dir(directory)
-    plan <- read_test__plan()
+    plan <- read_test__plan(dates = as.Date("2000-01-02"))
     req_id <- plan$requests$request_id
     # Wrap independently invalid NetCDF inputs; only the transport container
     # changes, so original coordinate, temporal and unit rules must still apply.
     cases <- list(
-        list(latitude = 20),
-        list(time = -24:8806, values = rep(280, 8831)),
-        list(units = "unknown")
+        list(time = 24:47, values = rep(280, 24L), latitude = 20),
+        list(time = 24:46, values = rep(280, 23L)),
+        list(time = 24:47, values = rep(280, 24L), units = "unknown")
     )
     messages <- c(
         "nearest ERA5 grid",
@@ -355,8 +426,9 @@ test_that("archive packaging never relaxes field or member validation", {
             messages[[i]]
         )
     }
-    test_read__file("first.nc")
-    test_read__file("second.nc")
+    valid_day <- read_test__valid_nc("day2000")
+    expect_true(file.copy(valid_day, "first.nc"))
+    expect_true(file.copy(valid_day, "second.nc"))
     multiple <- file.path(directory, "multiple.asset")
     utils::zip(multiple, c("first.nc", "second.nc"), flags = "-q")
     expect_error(
@@ -364,7 +436,7 @@ test_that("archive packaging never relaxes field or member validation", {
         "one top-level NetCDF"
     )
     dir.create("nested")
-    test_read__file("nested/weather.nc")
+    expect_true(file.copy(valid_day, "nested/weather.nc"))
     nested <- file.path(directory, "nested.asset")
     utils::zip(nested, "nested/weather.nc", flags = "-q")
     expect_error(
@@ -378,7 +450,7 @@ test_that("saved point plans retain exact contracts through local reading", {
     dir.create(directory)
     withr::defer(unlink(directory, recursive = TRUE))
     plan <- read_test__plan()
-    path <- test_read__file(file.path(directory, "weather.nc"))
+    path <- read_test__valid_nc("year2000")
     saved <- file.path(directory, "plan.rds")
     saveRDS(plan, saved)
     restored <- readRDS(saved)
@@ -614,29 +686,41 @@ test_that("CDS radiation and clouds pass through public local replay", {
     altered <- data.table::copy(plan)
     altered$source$dates <- "2000-01-03"
     expect_error(shift_read_reanalysis(altered, files), "unchanged")
-    cloud <- files[plan$requests$variable_id == "clt"]
+    clt_plan <- shift_plan_reanalysis(
+        shift_era5(2000, variables = "clt", frequency = "hour", access = "cds"),
+        site,
+        dates = dates
+    )
+    cloud <- unname(files[plan$requests$variable_id == "clt"])
+    clt_files <- stats::setNames(cloud, clt_plan$requests$request_id)
     cds_data_test__file(cloud, "tcc", "%", 0.4)
     expect_equal(
-        unique(shift_read_reanalysis(plan, files)$data[
+        unique(shift_read_reanalysis(clt_plan, clt_files)$data[
             variable_id == "clt",
             value
         ]),
         0.4
     )
     cds_data_test__file(cloud, "tcc", "(0 - 1)", 1.01)
-    expect_error(shift_read_reanalysis(plan, files), "physical bounds")
+    expect_error(shift_read_reanalysis(clt_plan, clt_files), "physical bounds")
     cds_data_test__file(cloud, "tcc", "unknown", 0.4)
-    expect_error(shift_read_reanalysis(plan, files), "cloud-cover units")
+    expect_error(
+        shift_read_reanalysis(clt_plan, clt_files),
+        "cloud-cover units"
+    )
     cds_data_test__file(cloud, "tcc", "0-1", 0.4)
     expect_equal(
-        unique(shift_read_reanalysis(plan, files)$data[
+        unique(shift_read_reanalysis(clt_plan, clt_files)$data[
             variable_id == "clt",
             value
         ]),
         40
     )
     cds_data_test__file(cloud, "tcc", "1", 0.4, hours = c(24:46, 48))
-    expect_error(shift_read_reanalysis(plan, files), "coverage|hourly|axis")
+    expect_error(
+        shift_read_reanalysis(clt_plan, clt_files),
+        "coverage|hourly|axis"
+    )
 })
 
 # vim: fdm=marker :

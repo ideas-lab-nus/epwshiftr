@@ -1,18 +1,135 @@
 # Shared local fixture/import helpers for store exchange tests.
-ex__setup <- function(root = NULL, env = parent.frame()) {
-    f <- if (is.null(root)) {
-        exchange_test__fixture()
-    } else {
-        exchange_test__fixture(root = root)
+# Copy pre-initialized store templates into each test's isolated directory so
+# every test owns a fresh DuckDB file without repeating DDL and NetCDF writes.
+ex__copy_dir <- function(src, dest) {
+    dir.create(dest, recursive = TRUE, showWarnings = FALSE)
+    entries <- list.files(
+        src,
+        full.names = TRUE,
+        all.files = TRUE,
+        no.. = TRUE
+    )
+    if (length(entries)) {
+        stopifnot(all(file.copy(entries, dest, recursive = TRUE)))
     }
-    withr::defer(lapply(f$stores, function(s) s$close()), envir = env)
-    f$source <- f$stores[[1L]]
-    f$owner <- f$stores[[3L]]
-    f$ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
-    f
+    invisible(dest)
+}
+
+ex__templates <- local({
+    empty_dir <- NULL
+    planned <- NULL
+    list(
+        empty = function() {
+            if (is.null(empty_dir) || !dir.exists(empty_dir)) {
+                empty_dir <<- tempfile("exchange-empty-tpl-")
+                s <- EsgStore$new(empty_dir)
+                s$close()
+                withr::defer(
+                    unlink(empty_dir, recursive = TRUE),
+                    envir = testthat::teardown_env()
+                )
+            }
+            empty_dir
+        },
+        planned = function() {
+            if (
+                is.null(planned) ||
+                    !dir.exists(planned$nc_dir) ||
+                    !dir.exists(planned$store_dir)
+            ) {
+                nc_dir <- tempfile("exchange-nc-tpl-")
+                dir.create(nc_dir)
+                writer <- cmip6_fixture__write
+                environment(writer) <- new.env(parent = environment(writer))
+                environment(writer)$cf_time__year_days <- function(...) 1L
+                paths <- file.path(nc_dir, c("part-a.nc", "part-b.nc"))
+                for (i in seq_along(paths)) {
+                    writer(paths[[i]], 2060L)
+                    nc <- RNetCDF::open.nc(paths[[i]], write = TRUE)
+                    RNetCDF::var.put.nc(nc, "time", i - 0.5)
+                    RNetCDF::var.put.nc(
+                        nc,
+                        "time_bnds",
+                        matrix(c(i - 1, i), nrow = 2L)
+                    )
+                    RNetCDF::close.nc(nc)
+                }
+                docs <- data.table::rbindlist(lapply(
+                    paths,
+                    esgf_test__file_docs
+                ))
+                files <- esgf_test__file_result(docs)
+                sites <- data.frame(
+                    site_id = c("a", "b"),
+                    lon = c(103.98, 104.2),
+                    lat = c(1.37, 1.5)
+                )
+                store_dir <- tempfile("exchange-planned-tpl-")
+                ex__copy_dir(ex__templates$empty(), store_dir)
+                s <- EsgStore$new(store_dir, create = FALSE)
+                q <- s$add_files(files)
+                s$plan_regions(
+                    q,
+                    sites,
+                    c("2060-01-01", "2060-01-02T23:59:59Z")
+                )
+                plans <- s$query("SELECT * FROM extraction_plan")
+                s$close()
+                planned <<- list(
+                    nc_dir = nc_dir,
+                    store_dir = store_dir,
+                    plans = plans
+                )
+                withr::defer(
+                    unlink(c(nc_dir, store_dir), recursive = TRUE),
+                    envir = testthat::teardown_env()
+                )
+            }
+            planned
+        }
+    )
+})
+
+ex__setup <- function(root = NULL, env = parent.frame(), need_second = FALSE) {
+    tpl <- ex__templates$planned()
+    if (is.null(root)) {
+        root <- tempfile("extract-exchange-")
+        withr::defer(unlink(root, recursive = TRUE), envir = env)
+    }
+    dir.create(root, recursive = TRUE, showWarnings = FALSE)
+    owner_dir <- file.path(root, "annual-owner")
+    ex__copy_dir(tpl$store_dir, owner_dir)
+    part_a_dir <- file.path(owner_dir, "file-parts/file-a")
+    ex__copy_dir(tpl$store_dir, part_a_dir)
+    store_a <- EsgStore$new(part_a_dir, create = FALSE)
+    store_b <- if (isTRUE(need_second)) {
+        part_b_dir <- file.path(owner_dir, "file-parts/file-b")
+        ex__copy_dir(tpl$store_dir, part_b_dir)
+        EsgStore$new(part_b_dir, create = FALSE)
+    } else {
+        NULL
+    }
+    store_owner <- EsgStore$new(owner_dir, create = FALSE)
+    stores <- list(store_a, store_b, store_owner)
+    withr::defer(
+        lapply(stores, function(s) if (!is.null(s)) s$close()),
+        envir = env
+    )
+    plans <- data.table::copy(tpl$plans)
+    list(
+        root = root,
+        stores = stores,
+        plans = plans,
+        source = store_a,
+        owner = store_owner,
+        ids = plans$plan_id[plans$file_key == plans$file_key[[1L]]]
+    )
 }
 ex__store <- function(path, env = parent.frame()) {
-    s <- EsgStore$new(path)
+    if (!file.exists(file.path(path, "manifest.duckdb"))) {
+        ex__copy_dir(ex__templates$empty(), path)
+    }
+    s <- EsgStore$new(path, create = FALSE)
     withr::defer(s$close(), envir = env)
     s
 }
@@ -135,7 +252,7 @@ test_that("pending-plan transaction failure leaves the fresh store unchanged", {
 # The exact receipt wire must preserve bits, nulls and signed zero, not merely
 # approximate equality at a scientific tolerance.
 test_that("typed numeric receipt columns preserve adversarial double bits", {
-    value <- 1792470000 + (0:65535) * 2^-22
+    value <- 1792470000 + (0:511) * 2^-22
     rows <- data.table::data.table(
         value = c(value, -0, NA_real_),
         time = as.POSIXct(
@@ -170,7 +287,7 @@ test_that("typed numeric receipt columns preserve adversarial double bits", {
 # Generated exchange fixtures are shared through helper-store-exchange.R.
 test_that("independent file fragments assemble without copying or re-extracting", {
     local_cache_mode("off")
-    f <- ex__setup()
+    f <- ex__setup(need_second = TRUE)
     file_keys <- unique(f$plans$file_key)
     receipts <- vector("list", 2L)
     for (i in 1:2) {

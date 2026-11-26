@@ -6,16 +6,41 @@ store_test__response <- function(docs) {
 # }}}
 
 # store_test__params {{{
-store_test__params <- function(type = "File") {
-    query_param__as_store(list(
-        project = "CMIP6",
-        latest = TRUE,
-        distrib = TRUE,
-        limit = 10L,
-        type = type,
-        format = QUERY_PARAM__FORMAT_JSON
-    ))
-}
+store_test__params <- local({
+    cache <- new.env(parent = emptyenv())
+    function(type = "File") {
+        tpl <- cache[[type]]
+        if (is.null(tpl)) {
+            tpl <- query_param__as_store(list(
+                project = "CMIP6",
+                latest = TRUE,
+                distrib = TRUE,
+                limit = 10L,
+                type = type,
+                format = QUERY_PARAM__FORMAT_JSON
+            ))
+            cache[[type]] <- tpl
+        }
+        tpl$copy()
+    }
+})
+# }}}
+
+# store_test__query {{{
+store_test__query <- local({
+    cache <- new.env(parent = emptyenv())
+    function(limit = 1L, variable_id = "tas") {
+        key <- sprintf("%s:%d", variable_id, as.integer(limit))
+        q <- cache[[key]]
+        if (is.null(q)) {
+            q <- esg_query("https://example.org")$experiment_id(
+                "ssp585"
+            )$variable_id(variable_id)$limit(as.integer(limit))
+            cache[[key]] <- q
+        }
+        q
+    }
+})
 # }}}
 
 # store_test__result {{{
@@ -83,12 +108,48 @@ store_test__file_docs <- function(
 }
 # }}}
 
+# Copy a pre-initialized empty DuckDB store template into each test's isolated
+# directory to avoid repeating 30-table DDL init across unrelated tests.
+# Schema-init and store_reset tests still call EsgStore$new() directly.
+store_test__copy_dir <- function(src, dest) {
+    dir.create(dest, recursive = TRUE, showWarnings = FALSE)
+    entries <- list.files(
+        src,
+        full.names = TRUE,
+        all.files = TRUE,
+        no.. = TRUE
+    )
+    if (length(entries)) {
+        stopifnot(all(file.copy(entries, dest, recursive = TRUE)))
+    }
+    invisible(dest)
+}
+
+store_test__empty_template <- local({
+    tpl_dir <- NULL
+    function() {
+        if (is.null(tpl_dir) || !dir.exists(tpl_dir)) {
+            tpl_dir <<- tempfile("store-empty-tpl-")
+            s <- EsgStore$new(tpl_dir)
+            s$close()
+            withr::defer(
+                unlink(tpl_dir, recursive = TRUE),
+                envir = testthat::teardown_env()
+            )
+        }
+        tpl_dir
+    }
+})
+
 # store_test__new {{{
 store_test__new <- function(
     dir = withr::local_tempdir(.local_envir = env),
     env = parent.frame()
 ) {
-    store <- EsgStore$new(dir)
+    if (!file.exists(file.path(dir, "manifest.duckdb"))) {
+        store_test__copy_dir(store_test__empty_template(), dir)
+    }
+    store <- EsgStore$new(dir, create = FALSE)
     withr::defer(store$close(), envir = env)
     store
 }
@@ -269,29 +330,75 @@ store_test__completed_store <- function(env = parent.frame()) {
 
 # Create one real catalog and extraction plan while exposing the internal rows
 # needed to exercise failure recovery without relying on an external service.
+store_test__planned_template <- local({
+    tpl <- NULL
+    function() {
+        if (is.null(tpl) || !dir.exists(tpl$dir)) {
+            dir <- tempfile("store-planned-tpl-")
+            store_test__copy_dir(store_test__empty_template(), dir)
+            store <- EsgStore$new(dir, create = FALSE)
+            docs <- store_test__file_docs(
+                path = "planned-tas-2060.nc",
+                opendap_url = "https://remote.example.org/dods/tas.nc",
+                download_url = "https://download.example.org/files/tas.nc"
+            )
+            query_id <- store$add_files(store_test__result(docs = docs))
+            plan <- store$plan_region(
+                query_id = query_id,
+                lon = 103.98,
+                lat = 1.37,
+                time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
+                site_id = "SIN"
+            )
+            file <- data.table::as.data.table(
+                ddb_read_table(priv(store)$conn, "file_catalog")
+            )[1L]
+            store$close()
+            tpl <<- list(dir = dir, plan = plan, file = file)
+            withr::defer(
+                unlink(dir, recursive = TRUE),
+                envir = testthat::teardown_env()
+            )
+        }
+        tpl
+    }
+})
+
 # store_test__planned_extract {{{
 store_test__planned_extract <- function() {
+    tpl <- store_test__planned_template()
     nc <- tempfile(fileext = ".nc")
     write_local_cmip6_netcdf_fixture(nc, 2060L)
     dir <- tempfile("esg-store-")
-    store <- EsgStore$new(dir)
-    docs <- store_test__file_docs(
-        path = basename(nc),
-        opendap_url = "https://remote.example.org/dods/tas.nc",
-        download_url = "https://download.example.org/files/tas.nc"
+    store_test__copy_dir(tpl$dir, dir)
+    store <- EsgStore$new(dir, create = FALSE)
+    # Keep each test's filename and master_id unique so process-level shared
+    # extraction cache entries cannot collide across fallback test cases.
+    fname <- basename(nc)
+    mid <- sprintf("%s.master", fname)
+    conn <- priv(store)$conn
+    lit <- ddb_literal(conn, fname)
+    mlit <- ddb_literal(conn, mid)
+    ddb_exec(
+        conn,
+        sprintf(
+            "UPDATE file_catalog SET title = %s, filename = %s, master_id = %s",
+            lit,
+            lit,
+            mlit
+        )
     )
-    query_id <- store$add_files(store_test__result(docs = docs))
-    plan <- store$plan_region(
-        query_id = query_id,
-        lon = 103.98,
-        lat = 1.37,
-        time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
-        site_id = "SIN"
+    file <- data.table::copy(tpl$file)
+    data.table::set(file, j = "title", value = fname)
+    data.table::set(file, j = "filename", value = fname)
+    data.table::set(file, j = "master_id", value = mid)
+    list(
+        store = store,
+        dir = dir,
+        nc = nc,
+        plan = data.table::copy(tpl$plan),
+        file = file
     )
-    file <- data.table::as.data.table(
-        ddb_read_table(priv(store)$conn, "file_catalog")
-    )[1L]
-    list(store = store, dir = dir, nc = nc, plan = plan, file = file)
 }
 # }}}
 
@@ -692,9 +799,7 @@ test_that("EsgStore$downloader()", {
 # EsgStore query registry, tracking, tags, and dependency graph {{{
 test_that("EsgStore query registry, tracking, tags, and dependency graph", {
     store <- store_test__new()
-    query <- esg_query("https://example.org")$experiment_id(
-        "ssp585"
-    )$variable_id("tas")$limit(2L)
+    query <- store_test__query(limit = 2L)
     query_id <- store$add_query(query, label = "ssp585 tas", track = TRUE)
     expect_type(query_id, "character")
     expect_identical(store$add_query(query), query_id)
@@ -729,9 +834,7 @@ test_that("EsgStore query registry, tracking, tags, and dependency graph", {
     expect_identical(store$query_tags(query_id)$query_id[[1L]], query_id)
     expect_equal(nrow(store$untag_query(query_id, "tas")), 1L)
 
-    child_query <- esg_query("https://example.org")$experiment_id(
-        "ssp585"
-    )$variable_id("pr")$limit(1L)
+    child_query <- store_test__query(limit = 1L, variable_id = "pr")
     child_id <- store$add_query(child_query, label = "child", track = TRUE)
     edges <- store$require_query(child_id, query_id)
     expect_equal(edges$query_id[[1L]], child_id)
@@ -745,9 +848,7 @@ test_that("EsgStore query registry, tracking, tags, and dependency graph", {
 # EsgStore$preview_update_queries() {{{
 test_that("EsgStore$preview_update_queries()", {
     store <- store_test__new()
-    query <- esg_query("https://example.org")$experiment_id(
-        "ssp585"
-    )$variable_id("tas")$limit(1L)
+    query <- store_test__query(limit = 1L)
     query_id <- store$add_query(query, label = "preview tas", track = TRUE)
     qid <- query_id
     before_query <- store$queries()[query_id == qid]
@@ -792,9 +893,7 @@ test_that("EsgStore$preview_update_queries()", {
 # EsgStore$update_queries() / query_files() / query_updates() / query_changes() {{{
 test_that("EsgStore$update_queries(), query_files(), query_updates(), and query_changes()", {
     store <- store_test__new()
-    query <- esg_query("https://example.org")$experiment_id(
-        "ssp585"
-    )$variable_id("tas")$limit(2L)
+    query <- store_test__query(limit = 2L)
     query_id <- store$add_query(query, track = TRUE)
 
     file_one <- store_test__file_docs(
@@ -880,12 +979,7 @@ test_that("EsgStore$update_queries(), query_files(), query_updates(), and query_
 test_that("EsgStore query update and download workflows release store lock around external work", {
     run_case <- function(fn, expect_calls, forbid_run = FALSE) {
         s <- store_test__new()
-        qid <- s$add_query(
-            esg_query("https://example.org")$experiment_id(
-                "ssp585"
-            )$variable_id("tas")$limit(1L),
-            track = TRUE
-        )
+        qid <- s$add_query(store_test__query(limit = 1L), track = TRUE)
         fd <- store_test__file_docs(path = "lock-check.nc")
         fd$master_id <- "CMIP6.mock.lock-check"
         fd$tracking_id <- "hdl:21.14100/lock-check"
@@ -981,9 +1075,7 @@ test_that("EsgStore$download_preflight()", {
     writeLines("preflight netcdf placeholder", src)
     on.exit(unlink(src), add = TRUE)
     store <- store_test__new()
-    query <- esg_query("https://example.org")$experiment_id(
-        "ssp585"
-    )$variable_id("tas")$limit(1L)
+    query <- store_test__query(limit = 1L)
     query_id <- store$add_query(query, label = "preflight tas", track = TRUE)
     file_docs <- store_test__file_docs(
         path = "preflight-download.nc",
@@ -1042,12 +1134,7 @@ test_that("EsgStore download layout policy, DRS paths, and collision preflight",
     store$set_download_layout(layout = "drs")
     expect_equal(store$download_layout()$layout, "drs")
 
-    q1 <- store$add_query(
-        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
-            "tas"
-        )$limit(1L),
-        track = TRUE
-    )
+    q1 <- store$add_query(store_test__query(limit = 1L), track = TRUE)
     store_test__mock_collect(
         store_test__dataset_docs(),
         store_test__file_docs(path = "layout.nc")
@@ -1081,12 +1168,7 @@ test_that("EsgStore download layout policy, DRS paths, and collision preflight",
         "downloads/CMIP6/ScenarioMIP/.*/v20260101/layout[.]nc$"
     )
 
-    q2 <- store$add_query(
-        esg_query("https://example.org")$experiment_id("ssp585")$variable_id(
-            "tas"
-        )$limit(2L),
-        track = TRUE
-    )
+    q2 <- store$add_query(store_test__query(limit = 2L), track = TRUE)
     first <- store_test__file_docs(path = "collision.nc")
     second <- store_test__file_docs(path = "collision.nc")
     second$id <- "collision-second.nc|dataset-1"
@@ -1129,9 +1211,7 @@ test_that("EsgStore downloaded-query workflow, status, report, and retry", {
     writeLines("tracked query netcdf placeholder", src)
     on.exit(unlink(src), add = TRUE)
     store <- store_test__new()
-    query <- esg_query("https://example.org")$experiment_id(
-        "ssp585"
-    )$variable_id("tas")$limit(1L)
+    query <- store_test__query(limit = 1L)
     query_id <- store$add_query(query, track = TRUE)
 
     file_docs <- store_test__file_docs(
@@ -1216,9 +1296,7 @@ test_that("EsgStore downloaded-query workflow, status, report, and retry", {
 # EsgStore$remove_query() / prune_orphans() / remove_files() {{{
 test_that("EsgStore$remove_query(), prune_orphans(), and remove_files()", {
     store <- store_test__new()
-    query <- esg_query("https://example.org")$experiment_id(
-        "ssp585"
-    )$variable_id("tas")$limit(1L)
+    query <- store_test__query(limit = 1L)
     query_id <- store$add_query(query, track = TRUE)
     docs <- store_test__file_docs(path = "remove-query.nc")
     docs$master_id <- "CMIP6.mock.remove-query"
@@ -2449,10 +2527,9 @@ test_that("uncached source tasks return one site plan at a time", {
 # failure record survives; the Parquet follows the existing overwrite policy.
 test_that("extraction rolls back a failed commit and publishes once on retry", {
     local_cache_mode("off")
-    fixture <- exchange_test__fixture()
-    withr::defer(lapply(fixture$stores, function(store) store$close()))
-    store <- fixture$stores[[1L]]
-    id <- fixture$plans$plan_id[[1L]]
+    store <- store_test__new()
+    setup <- store_test__local_nc_plan(store)
+    id <- setup$plan$plan_id[[1L]]
     before <- exchange_test__snapshot(store)
     before_file <- store$query("SELECT * FROM file_catalog ORDER BY file_key")
     fault <- exchange_test__fail_publication_commit(store, id)
@@ -2760,7 +2837,7 @@ test_that("multi-site extraction matches scalar output and reuses completed data
         store$query(paste0(
             "SELECT * FROM read_parquet([",
             paste(ddb_literal(priv(store)$conn, paths), collapse = ","),
-            "]) ORDER BY site_id,cf_year,cf_month,cf_day,cf_second_of_day"
+            "]) ORDER BY cf_calendar,site_id,cf_year,cf_month,cf_day,cf_second_of_day"
         ))
     }
     sites <- data.frame(
@@ -2769,38 +2846,46 @@ test_that("multi-site extraction matches scalar output and reuses completed data
         lat = c(1.37, 2)
     )
     time <- c("2060-01-01T00:00:00Z", "2060-01-03T23:59:59Z")
-    for (calendar in c("proleptic_gregorian", "365_day", "360_day")) {
-        path <- tempfile(fileext = ".nc")
-        write_local_cmip6_netcdf_fixture(path, 2060L, calendar = calendar)
-        files <- esgf_test__file_result(esgf_test__file_docs(path))
-        old <- EsgStore$new(tempfile("scalar-generated-"))
-        new <- EsgStore$new(tempfile("multi-generated-"))
-        q1 <- old$add_files(files)
-        q2 <- new$add_files(files)
-        scalar <- data.table::rbindlist(lapply(
-            seq_len(nrow(sites)),
-            function(i) {
-                old$plan_region(
-                    q1,
-                    sites$lon[[i]],
-                    sites$lat[[i]],
-                    time,
-                    site_id = sites$site_id[[i]]
-                )
-            }
-        ))
-        batch <- new$plan_regions(q2, sites, time)
-        collect(old$extract(plan_id = scalar$plan_id, fallback = "error"))
-        collect(new$extract(plan_id = batch$plan_id, fallback = "error"))
-        expect_identical(values(new), values(old))
-        hashes <- new$validate()
-        expect_true(all(hashes$checksum_ok))
-        expect_true(file.rename(path, paste0(path, ".absent")))
-        collect(new$extract(plan_id = batch$plan_id, fallback = "error"))
-        expect_identical(new$validate(), hashes)
-        old$close()
-        new$close()
-    }
+    calendars <- c("proleptic_gregorian", "365_day", "360_day")
+    paths <- vapply(
+        calendars,
+        function(calendar) {
+            path <- tempfile(paste0("cal-", calendar, "-"), fileext = ".nc")
+            write_local_cmip6_netcdf_fixture(path, 2060L, calendar = calendar)
+            path
+        },
+        character(1L)
+    )
+    withr::defer(unlink(c(paths, paste0(paths, ".absent"))))
+    docs <- data.table::rbindlist(lapply(paths, esgf_test__file_docs))
+    files <- store_test__result(docs = docs)
+    old <- store_test__new()
+    new <- store_test__new()
+    q1 <- old$add_files(files)
+    q2 <- new$add_files(files)
+    scalar <- data.table::rbindlist(lapply(
+        seq_len(nrow(sites)),
+        function(i) {
+            old$plan_region(
+                q1,
+                sites$lon[[i]],
+                sites$lat[[i]],
+                time,
+                site_id = sites$site_id[[i]]
+            )
+        }
+    ))
+    batch <- new$plan_regions(q2, sites, time)
+    collect(old$extract(plan_id = scalar$plan_id, fallback = "error"))
+    collect(new$extract(plan_id = batch$plan_id, fallback = "error"))
+    actual <- values(new)
+    expect_identical(actual, values(old))
+    expect_setequal(unique(actual$cf_calendar), calendars)
+    hashes <- new$validate()
+    expect_true(all(hashes$checksum_ok))
+    expect_true(all(file.rename(paths, paste0(paths, ".absent"))))
+    collect(new$extract(plan_id = batch$plan_id, fallback = "error"))
+    expect_identical(new$validate(), hashes)
 })
 
 # Build only catalogue controls: plan-source inspection must never open URLs.
@@ -2887,8 +2972,7 @@ test_that("plan source mapping validates complete requested identities", {
 # Published replica access URLs do not create another physical reader slot;
 # independently identified files remain distinct even within one query.
 test_that("plan source mapping groups replicas by physical identity", {
-    store <- EsgStore$new(tempfile("plan-source-replica-"))
-    on.exit(store$close(), add = TRUE)
+    store <- store_test__new()
     q <- store$add_files(store_test__source_key_files())
     plans <- store$plan_region(q, 110, 30, c("2060-01-01", "2060-12-31"))
     catalog <- store$query("SELECT * FROM file_catalog")
@@ -3179,6 +3263,21 @@ store_test__drain_fallback <- function(pool, tickets, limit = 25) {
     finished
 }
 
+# Lazily share one 1-worker fallback pool across non-deadline fallback tests.
+store_test__shared_fallback_pool <- local({
+    pool <- NULL
+    function() {
+        if (is.null(pool)) {
+            pool <<- source_pool(1L, timeout = 15)
+            withr::defer(
+                pool$close(force = TRUE),
+                envir = testthat::teardown_env()
+            )
+        }
+        pool
+    }
+})
+
 # A failed remote read must recover inside its own reader, while another reader
 # completes independently and only the owner writes the extraction manifests.
 test_that("persistent extraction recovers 504 through HTTP without blocking peers", {
@@ -3191,13 +3290,11 @@ test_that("persistent extraction recovers 504 through HTTP without blocking peer
     bytes <- readBin(path, "raw", n = file.info(path)$size)
     server <- webfakes::new_app_process(store_test__fallback_app(
         bytes,
-        delay = 1
+        delay = 0.4
     ))
     withr::defer(server$stop())
-    remote <- EsgStore$new(tempfile("fallback-remote-"))
-    peer <- EsgStore$new(tempfile("fallback-peer-"))
-    withr::defer(remote$close())
-    withr::defer(peer$close())
+    remote <- store_test__new()
+    peer <- store_test__new()
     pool <- source_pool(2L, timeout = 15)
     withr::defer(pool$close(force = TRUE))
     q1 <- remote$add_files(store_test__fallback_files(path, server))
@@ -3229,8 +3326,7 @@ test_that("persistent extraction recovers 504 through HTTP without blocking peer
     expect_true(all(second$value$status == "done"))
     expect_true(all(remote$validate()$checksum_ok))
     result <- remote$query("select * from extraction_result")
-    expected <- EsgStore$new(tempfile("fallback-reference-"))
-    withr::defer(expected$close())
+    expected <- store_test__new()
     q3 <- expected$add_files(esgf_test__file_result(esgf_test__file_docs(path)))
     p3 <- expected$plan_region(q3, 104, 1.37, time)
     expected$extract(plan_id = p3$plan_id, fallback = "error")
@@ -3275,10 +3371,8 @@ test_that("persistent HTTP fallback retains checksum failures", {
     bytes <- readBin(path, "raw", n = file.info(path)$size)
     server <- webfakes::new_app_process(store_test__fallback_app(bytes))
     withr::defer(server$stop())
-    store <- EsgStore$new(tempfile("fallback-checksum-"))
-    withr::defer(store$close())
-    pool <- source_pool(1L, timeout = 15)
-    withr::defer(pool$close(force = TRUE))
+    store <- store_test__new()
+    pool <- store_test__shared_fallback_pool()
     q <- store$add_files(store_test__fallback_files(
         path,
         server,
@@ -3309,11 +3403,9 @@ test_that("both Store recovery modes retain remote and local read failures", {
     server <- webfakes::new_app_process(store_test__fallback_app(bytes))
     withr::defer(server$stop())
 
-    pool <- source_pool(1L, timeout = 15)
-    withr::defer(pool$close(force = TRUE))
+    pool <- store_test__shared_fallback_pool()
     for (mode in c("ordinary", "pooled")) {
-        store <- EsgStore$new(file.path(root, mode))
-        withr::defer(store$close())
+        store <- store_test__new(dir = file.path(root, mode))
         query <- store$add_files(store_test__fallback_files(path, server))
         plan <- store$plan_region(
             query,
@@ -3352,8 +3444,7 @@ test_that("HTTP fallback resumes one retained session after a reader deadline", 
     ))
     withr::defer(server$stop())
     root <- tempfile("retained-http-cache-")
-    store <- EsgStore$new(tempfile("fallback-deadline-"))
-    withr::defer(store$close())
+    store <- store_test__new()
     q <- store$add_files(store_test__fallback_files(path, server))
     plan <- store$plan_region(q, 104, 1.37, c("2060-01-01", "2060-01-03"))
     file <- store$query("select * from file_catalog")
@@ -3447,8 +3538,7 @@ test_that("HTTP fallback resumes one retained session after a reader deadline", 
     priv(downloader)$disconnect_manifest()
     # Another store/query may reuse the same content without another DAP or
     # HTTP request; its manifest must still receive its own native artifact.
-    alias <- EsgStore$new(tempfile("fallback-other-store-"))
-    withr::defer(alias$close())
+    alias <- store_test__new()
     files <- store_test__fallback_files(path, server)
     query <- alias$add_files(files, label = "independent-query")
     other_plan <- alias$plan_region(
