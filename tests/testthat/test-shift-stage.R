@@ -21,24 +21,56 @@ stage_test__calls <- function() {
     calls
 }
 
-stage_test__nc_fixtures <- function(variables, year) {
-    stats::setNames(
-        vapply(
-            variables,
-            function(variable_id) {
-                path <- tempfile(fileext = ".nc")
-                write_local_cmip6_netcdf_fixture(
-                    path,
-                    year,
-                    variable_id = variable_id
-                )
-                path
-            },
-            character(1L)
-        ),
-        variables
-    )
-}
+stage_test__file_env <- environment()
+stage_test__cache_dir <- withr::local_tempdir(
+    pattern = "stage-extract-cache-",
+    .local_envir = stage_test__file_env
+)
+withr::local_options(
+    list(epwshiftr.dir_cache = stage_test__cache_dir),
+    .local_envir = stage_test__file_env
+)
+
+stage_test__nc_fixtures <- local({
+    cache_dir <- NULL
+    files <- new.env(parent = emptyenv())
+    function(variables, year, frequency = "day") {
+        if (is.null(cache_dir) || !dir.exists(cache_dir)) {
+            cache_dir <<- withr::local_tempdir(
+                pattern = "stage-nc-",
+                .local_envir = stage_test__file_env
+            )
+            files <<- new.env(parent = emptyenv())
+        }
+        stats::setNames(
+            vapply(
+                variables,
+                function(variable_id) {
+                    freq <- if (length(frequency) == 1L) {
+                        frequency
+                    } else {
+                        frequency[[variable_id]]
+                    }
+                    key <- sprintf("%s_%d_%s", variable_id, year, freq)
+                    path <- files[[key]]
+                    if (is.null(path) || !file.exists(path)) {
+                        path <- file.path(cache_dir, paste0(key, ".nc"))
+                        write_local_cmip6_netcdf_fixture(
+                            path,
+                            year,
+                            variable_id = variable_id,
+                            frequency = freq
+                        )
+                        files[[key]] <- path
+                    }
+                    path
+                },
+                character(1L)
+            ),
+            variables
+        )
+    }
+})
 
 stage_test__file_docs <- function(
     paths,
@@ -181,7 +213,6 @@ test_that("shift_extract() fallback policy is available from collected files", {
     skip_on_cran()
 
     nc <- stage_test__nc_fixtures("tas", 2060L)[["tas"]]
-    on.exit(unlink(nc), add = TRUE)
 
     docs <- esgf_test__file_docs(
         basename(nc),
@@ -244,8 +275,11 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
     skip_on_cran()
 
     variables <- c("huss", "tas", "ps", "snd")
-    paths <- stage_test__nc_fixtures(variables, 2060L)
-    on.exit(unlink(paths), add = TRUE)
+    paths <- stage_test__nc_fixtures(
+        variables,
+        2060L,
+        frequency = c(huss = "day", tas = "day", ps = "day", snd = "mon")
+    )
     docs <- stage_test__file_docs(paths, prefix = "humidity")
     # Model the production layout where optional snow depth is a separate
     # complete identity that has no atmospheric humidity source variables.
@@ -267,6 +301,7 @@ test_that("humidity fallback persists a canonical hurs extraction artifact", {
         shift_extract(
             site = stage_test__site(),
             periods = epw_morph_periods(`2060s` = 2060L),
+            time = c("2060-01-01T00:00:00Z", "2060-01-31T23:59:59Z"),
             fallback = "error"
         )
     derived <- shift_climate__derive_hurs_climate(
@@ -314,7 +349,6 @@ test_that("shift_morph() uses complete extraction plans by default", {
     skip_on_cran()
 
     nc <- stage_test__nc_fixtures("tas", 2060L)[["tas"]]
-    on.exit(unlink(nc), add = TRUE)
 
     good <- esgf_test__file_docs(
         basename(nc),
@@ -389,9 +423,8 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     variables <- epw_morph_variables(
         transform__recipe(monthly_transform("original_morphing"))
     )
-    future_nc <- stage_test__nc_fixtures(variables, 2060L)
-    reference_nc <- stage_test__nc_fixtures(variables, 1995L)
-    on.exit(unlink(c(future_nc, reference_nc)), add = TRUE)
+    future_nc <- stage_test__nc_fixtures(variables, 2060L, frequency = "mon")
+    reference_nc <- stage_test__nc_fixtures(variables, 1995L, frequency = "mon")
 
     future_docs <- stage_test__file_docs(
         future_nc,
@@ -423,11 +456,16 @@ test_that("shift_morph() resolves automatic and manual historical references", {
     reference_periods <- epw_morph_periods(reference = 1995L)
 
     climate <- req |>
-        shift_collect(store = store_path, label = "future") |>
+        shift_collect(
+            store = store_path,
+            label = "future",
+            ui = shift_ui("none")
+        ) |>
         shift_extract(
             site = stage_test__site(),
             periods = future_periods,
-            variables = variables
+            variables = variables,
+            ui = shift_ui("none")
         )
 
     transform <- monthly_transform("original_morphing")
@@ -436,7 +474,8 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         climate,
         transform = monthly_transform("epwshiftr"),
         strict = TRUE,
-        overwrite = TRUE
+        overwrite = TRUE,
+        ui = shift_ui("none")
     )
     expect_true(S7::S7_inherits(baseline_reference, ShiftMorphed))
     expect_null(baseline_reference@meta$reference)
@@ -459,7 +498,8 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         transform = transform,
         reference = historical_reference(1995L),
         strict = TRUE,
-        overwrite = TRUE
+        overwrite = TRUE,
+        ui = shift_ui("none")
     )
     historical_collect_times <- calls$collect_times[3:4]
     expect_equal(
@@ -483,13 +523,15 @@ test_that("shift_morph() resolves automatic and manual historical references", {
         climate,
         transform = transform,
         reference = reference_climate,
-        strict = TRUE
+        strict = TRUE,
+        ui = shift_ui("none")
     )
     manual_plan <- shift_morph(
         climate,
         transform = transform,
         reference = plan_reference,
-        strict = TRUE
+        strict = TRUE,
+        ui = shift_ui("none")
     )
 
     expect_true(S7::S7_inherits(auto, ShiftMorphed))
@@ -522,7 +564,6 @@ test_that("ShiftRun handles continue directly across manual stage APIs", {
     skip_on_cran()
 
     nc <- stage_test__nc_fixtures("tas", 2060L)[["tas"]]
-    on.exit(unlink(nc), add = TRUE)
     docs <- stage_test__file_docs(c(tas = nc), prefix = "run-pipe")
     calls <- stage_test__calls()
     shift_test__mock_collect(docs, calls)
@@ -604,7 +645,7 @@ test_that("ShiftRun handles continue directly across manual stage APIs", {
         shift_extract(
             site = site,
             periods = epw_morph_periods(`2060s` = 2060L),
-            time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+            time = c("2060-01-02T00:00:00Z", "2060-01-03T23:59:59Z"),
             ui = shift_ui("none")
         )
     expect_true(S7::S7_inherits(climate_dl, ShiftClimate))
@@ -615,7 +656,6 @@ test_that("shift_epw_write() exports ShiftOutputs without rewriting store EPWs",
     skip_on_cran()
 
     nc <- stage_test__nc_fixtures("tas", 2060L)[["tas"]]
-    on.exit(unlink(nc), add = TRUE)
     docs <- stage_test__file_docs(c(tas = nc), prefix = "export-outputs")
     calls <- stage_test__calls()
     shift_test__mock_collect(docs, calls)

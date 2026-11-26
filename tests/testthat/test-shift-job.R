@@ -27,29 +27,77 @@ job_test__plan <- function(
     )@meta$children[[1L]]
 }
 
-job_test__spawn_lock <- function(db_path, sleep = 2) {
+job_test__spawn_lock <- function(
+    db_path,
+    sleep = NULL,
+    env = parent.frame()
+) {
     ready <- tempfile("shift-lock-ready-")
-    child_code <- paste(
-        "library(duckdb)",
-        "args <- commandArgs(TRUE)",
-        "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
-        "file.create(args[[2L]])",
-        sprintf("Sys.sleep(%s)", sleep),
-        "dbDisconnect(conn, shutdown = TRUE)",
-        sep = "; "
-    )
-    system2(
-        file.path(R.home("bin"), "Rscript"),
-        c("-e", shQuote(child_code), shQuote(db_path), shQuote(ready)),
-        wait = FALSE,
-        stdout = FALSE,
-        stderr = FALSE
-    )
-    for (i in seq_len(50L)) {
+    if (is.null(sleep)) {
+        release <- tempfile("shift-lock-release-")
+        done <- tempfile("shift-lock-done-")
+        child_code <- paste(
+            "library(duckdb)",
+            "args <- commandArgs(TRUE)",
+            "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
+            "file.create(args[[2L]])",
+            "deadline <- Sys.time() + 10",
+            "while (!file.exists(args[[3L]]) && Sys.time() < deadline) Sys.sleep(0.02)",
+            "dbDisconnect(conn, shutdown = TRUE)",
+            "file.create(args[[4L]])",
+            sep = "; "
+        )
+        system2(
+            file.path(R.home("bin"), "Rscript"),
+            c(
+                "-e",
+                shQuote(child_code),
+                shQuote(db_path),
+                shQuote(ready),
+                shQuote(release),
+                shQuote(done)
+            ),
+            wait = FALSE,
+            stdout = FALSE,
+            stderr = FALSE
+        )
+        withr::defer(
+            {
+                file.create(release)
+                for (i in seq_len(100L)) {
+                    if (file.exists(done)) {
+                        break
+                    }
+                    Sys.sleep(0.02)
+                }
+                unlink(c(ready, release, done))
+            },
+            envir = env
+        )
+    } else {
+        child_code <- paste(
+            "library(duckdb)",
+            "args <- commandArgs(TRUE)",
+            "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
+            "file.create(args[[2L]])",
+            sprintf("Sys.sleep(%s)", sleep),
+            "dbDisconnect(conn, shutdown = TRUE)",
+            sep = "; "
+        )
+        system2(
+            file.path(R.home("bin"), "Rscript"),
+            c("-e", shQuote(child_code), shQuote(db_path), shQuote(ready)),
+            wait = FALSE,
+            stdout = FALSE,
+            stderr = FALSE
+        )
+        withr::defer(unlink(ready), envir = env)
+    }
+    for (i in seq_len(500L)) {
         if (file.exists(ready)) {
             break
         }
-        Sys.sleep(0.05)
+        Sys.sleep(0.02)
     }
     expect_true(file.exists(ready))
 }
@@ -276,7 +324,7 @@ test_that("live sidecars keep background handles readable while DuckDB is locked
     }))
     run <- shift_run(plan, background = TRUE, ui = shift_ui("none"))
 
-    job_test__spawn_lock(file.path(store_path, "manifest.duckdb"), sleep = 2)
+    job_test__spawn_lock(file.path(store_path, "manifest.duckdb"))
     expect_equal(shift_status(run), "queued")
 
     cancelled <- shift_cancel(run)
@@ -354,14 +402,14 @@ test_that("background workers retry transient DuckDB launch locks", {
     store_path <- tempfile("shift-worker-open-store-")
     store <- EsgStore$new(store_path)
     store$close()
-    job_test__spawn_lock(file.path(store_path, "manifest.duckdb"), sleep = 0.5)
+    job_test__spawn_lock(file.path(store_path, "manifest.duckdb"), sleep = 0.25)
 
     # This call represents the detached worker starting while a short-lived
     # status reader still owns the manifest.
     worker_store <- shift_job__job_store_open(
         store_path,
         timeout = 3,
-        interval = 0.05
+        interval = 0.02
     )
     on.exit(worker_store$close(), add = TRUE)
     expect_true(inherits(worker_store, "EsgStore"))
@@ -398,9 +446,10 @@ test_that("run updates preserve other runs and explicit nullable fields", {
 # Recreate the on-disk evidence left by a process that exited without releasing
 # its lock. A real short-lived R child provides a PID known to have exited.
 shift_download_test__exited_owner <- function(directory) {
+    pid_path <- file.path(directory, "owner.pid")
     code <- sprintf(
-        'jsonlite::write_json(list(pid=Sys.getpid(), hostname=unname(Sys.info()[["nodename"]])), %s, auto_unbox=TRUE)',
-        encodeString(file.path(directory, "owner.json"), quote = '"')
+        "cat(Sys.getpid(), file = %s)",
+        encodeString(pid_path, quote = '"')
     )
     status <- system2(
         file.path(R.home("bin"), "Rscript"),
@@ -409,7 +458,10 @@ shift_download_test__exited_owner <- function(directory) {
         stderr = FALSE
     )
     stopifnot(status == 0L)
-    jsonlite::read_json(file.path(directory, "owner.json"))
+    list(
+        pid = as.integer(readLines(pid_path, warn = FALSE)[[1L]]),
+        hostname = unname(Sys.info()[["nodename"]])
+    )
 }
 
 # Foreground staged operations persist a PID just like detached operations.
@@ -647,11 +699,23 @@ test_that("a missing saved session reports the original session ID", {
     expect_equal(nrow(store$downloader(n_workers = 0L)$sessions()), 0L)
 })
 
+shift_job_test__file_env <- environment()
+shift_job_test__http_server <- local({
+    server <- NULL
+    function() {
+        skip_if_not_installed("webfakes")
+        if (is.null(server)) {
+            server <<- local_downloader_http_server(shift_job_test__file_env)
+        }
+        server
+    }
+})
+
 # Prepare a real local download while leaving the workflow's background step
 # running, as it would be immediately after the Downloader process exits.
 shift_job_test__finished_background_download <- function(env = parent.frame()) {
     skip_on_cran()
-    server <- local_downloader_http_server(env)
+    server <- shift_job_test__http_server()
     bytes <- downloader_http_bytes()
     docs <- esgf_test__file_docs(
         "source.bin",
@@ -674,7 +738,7 @@ shift_job_test__finished_background_download <- function(env = parent.frame()) {
         ids = list(query_id = query),
         meta = list(variables = "tas")
     )
-    downloader <- store$downloader(n_workers = 1L)
+    downloader <- store$downloader(n_workers = 0L)
     stage <- shift_download(
         files,
         downloader = downloader,

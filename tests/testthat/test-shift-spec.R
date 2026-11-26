@@ -354,114 +354,148 @@ test_that("CMIP6 fields remain valid after construction", {
     expect_error(shift_cmip6("", "ssp245"), "model")
 })
 
-# Provide independent real scenario/reference fixtures and query counters.
-# Compact native templates are reused only inside this R process; each test
-# receives separate files, and its mock and file cleanup share its lifetime.
+spec_test__file_env <- environment()
+
+# Build immutable monthly scenario/reference NetCDF fixtures, precomputed ESGF
+# docs, and one file-scoped extract cache once per test file so independent
+# tests reuse warm source slices while keeping isolated stores and counters.
+# spec_test__shared_fixtures {{{
+spec_test__shared_fixtures <- local({
+    bundle <- NULL
+    function() {
+        if (!is.null(bundle)) {
+            return(bundle)
+        }
+        original_morphing_recipe <- transform__recipe(monthly_transform(
+            "original_morphing"
+        ))
+        variables <- unique(c(
+            setdiff(epw_morph_variables(original_morphing_recipe), "hurs"),
+            "huss",
+            "ps"
+        ))
+        nc_dir <- withr::local_tempdir(
+            pattern = "spec-nc-",
+            .local_envir = spec_test__file_env
+        )
+        write_year_nc <- function(year) {
+            stats::setNames(
+                vapply(
+                    variables,
+                    function(variable_id) {
+                        path <- file.path(
+                            nc_dir,
+                            sprintf("%s_%d.nc", variable_id, year)
+                        )
+                        write_local_cmip6_netcdf_fixture(
+                            path,
+                            year,
+                            variable_id = variable_id,
+                            frequency = "mon"
+                        )
+                        path
+                    },
+                    character(1L)
+                ),
+                variables
+            )
+        }
+        future_nc <- write_year_nc(2060L)
+        reference_nc <- write_year_nc(1995L)
+
+        # Represent each scenario-variable pair with a distinct ESGF identity
+        # while reusing compact local NetCDF fixtures across scenario catalogs.
+        workflow_docs <- function(paths, experiments, activity, start, end) {
+            checksums <- vapply(paths, checksum_file, character(1L))
+            data.table::rbindlist(
+                lapply(experiments, function(experiment_id) {
+                    data.table::rbindlist(
+                        lapply(names(paths), function(variable_id) {
+                            docs <- esgf_test__file_docs(
+                                basename(paths[[variable_id]]),
+                                opendap_url = paths[[variable_id]],
+                                download_url = paths[[variable_id]],
+                                variable_id = variable_id,
+                                datetime_start = start,
+                                datetime_end = end
+                            )
+                            docs$checksum <- checksums[[variable_id]]
+                            docs$activity_id <- activity
+                            docs$source_id <- "BCC-CSM2-MR"
+                            docs$experiment_id <- experiment_id
+                            docs$grid_label <- "gn"
+                            docs$frequency <- "mon"
+                            docs$table_id <- "Amon"
+                            docs$dataset_id <- sprintf(
+                                "dataset-%s-%s",
+                                experiment_id,
+                                variable_id
+                            )
+                            docs$master_id <- sprintf(
+                                "master-%s-%s",
+                                experiment_id,
+                                variable_id
+                            )
+                            docs$instance_id <- sprintf(
+                                "instance-%s-%s.v1",
+                                experiment_id,
+                                variable_id
+                            )
+                            docs$tracking_id <- sprintf(
+                                "hdl:test/%s-%s",
+                                experiment_id,
+                                variable_id
+                            )
+                            docs$id <- sprintf(
+                                "%s-%s|%s",
+                                experiment_id,
+                                variable_id,
+                                docs$dataset_id
+                            )
+                            docs
+                        }),
+                        fill = TRUE
+                    )
+                }),
+                fill = TRUE
+            )
+        }
+        bundle <<- list(
+            future_docs = workflow_docs(
+                future_nc,
+                c("ssp126", "ssp585"),
+                "ScenarioMIP",
+                "2060-01-01T00:00:00Z",
+                "2060-12-31T23:59:59Z"
+            ),
+            reference_docs = workflow_docs(
+                reference_nc,
+                "historical",
+                "CMIP",
+                "1995-01-01T00:00:00Z",
+                "1995-12-31T23:59:59Z"
+            ),
+            cache_dir = withr::local_tempdir(
+                pattern = "spec-extract-cache-",
+                .local_envir = spec_test__file_env
+            )
+        )
+        bundle
+    }
+})
+# }}}
+
+# Provide independent query counters and per-test mocked bindings backed by the
+# shared immutable NetCDF fixtures and file-scoped extract cache.
 # spec_test__scenario_inputs {{{
 spec_test__scenario_inputs <- function(.local_envir = parent.frame()) {
-    # Exercise the production fallback for both future scenarios and the
-    # explicit historical reference instead of supplying direct hurs.
-    original_morphing_recipe <- transform__recipe(monthly_transform(
-        "original_morphing"
-    ))
-    variables <- unique(c(
-        setdiff(epw_morph_variables(original_morphing_recipe), "hurs"),
-        "huss",
-        "ps"
-    ))
-    write_year_nc <- function(year) {
-        stats::setNames(
-            vapply(
-                variables,
-                function(variable_id) {
-                    path <- tempfile(fileext = ".nc")
-                    write_local_cmip6_netcdf_fixture(
-                        path,
-                        year,
-                        variable_id = variable_id,
-                        frequency = "mon"
-                    )
-                    path
-                },
-                character(1L)
-            ),
-            variables
-        )
-    }
-    future_nc <- write_year_nc(2060L)
-    reference_nc <- write_year_nc(1995L)
-    withr::defer(unlink(c(future_nc, reference_nc)), envir = .local_envir)
-
-    # Represent each scenario-variable pair with a distinct ESGF identity while
-    # reusing compact local NetCDF fixtures for the two scenario catalogs.
-    workflow_docs <- function(paths, experiments, activity, start, end) {
-        data.table::rbindlist(
-            lapply(experiments, function(experiment_id) {
-                data.table::rbindlist(
-                    lapply(names(paths), function(variable_id) {
-                        docs <- esgf_test__file_docs(
-                            basename(paths[[variable_id]]),
-                            opendap_url = paths[[variable_id]],
-                            download_url = paths[[variable_id]],
-                            variable_id = variable_id,
-                            datetime_start = start,
-                            datetime_end = end
-                        )
-                        docs$checksum <- checksum_file(paths[[variable_id]])
-                        docs$activity_id <- activity
-                        docs$source_id <- "BCC-CSM2-MR"
-                        docs$experiment_id <- experiment_id
-                        docs$grid_label <- "gn"
-                        docs$frequency <- "mon"
-                        docs$table_id <- "Amon"
-                        docs$dataset_id <- sprintf(
-                            "dataset-%s-%s",
-                            experiment_id,
-                            variable_id
-                        )
-                        docs$master_id <- sprintf(
-                            "master-%s-%s",
-                            experiment_id,
-                            variable_id
-                        )
-                        docs$instance_id <- sprintf(
-                            "instance-%s-%s.v1",
-                            experiment_id,
-                            variable_id
-                        )
-                        docs$tracking_id <- sprintf(
-                            "hdl:test/%s-%s",
-                            experiment_id,
-                            variable_id
-                        )
-                        docs$id <- sprintf(
-                            "%s-%s|%s",
-                            experiment_id,
-                            variable_id,
-                            docs$dataset_id
-                        )
-                        docs
-                    }),
-                    fill = TRUE
-                )
-            }),
-            fill = TRUE
-        )
-    }
-    future_docs <- workflow_docs(
-        future_nc,
-        c("ssp126", "ssp585"),
-        "ScenarioMIP",
-        "2060-01-01T00:00:00Z",
-        "2060-12-31T23:59:59Z"
+    fx <- spec_test__shared_fixtures()
+    withr::local_options(
+        list(epwshiftr.dir_cache = fx$cache_dir),
+        .local_envir = .local_envir
     )
-    reference_docs <- workflow_docs(
-        reference_nc,
-        "historical",
-        "CMIP",
-        "1995-01-01T00:00:00Z",
-        "1995-12-31T23:59:59Z"
-    )
+    future_docs <- fx$future_docs
+    reference_docs <- fx$reference_docs
 
     calls <- new.env(parent = emptyenv())
     calls$file_calls <- 0L
@@ -596,92 +630,14 @@ spec_test__future_run <- function(
 }
 # }}}
 
-test_that("shift_epw_future() completes baseline scenarios without historical discovery", {
-    skip_on_cran()
-    local_test_cache()
-    withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
-
-    calls <- spec_test__scenario_inputs()
-
-    baseline_reference_run <- spec_test__future_run(
-        transform = monthly_transform("epwshiftr"),
-        reference = NULL
-    )
-    expect_equal(shift_status(baseline_reference_run), "completed")
-    expect_equal(nrow(shift_outputs(baseline_reference_run)), 2L)
-    expect_equal(calls$historical_file_calls, 0L)
-})
-
-test_that("shift_epw_future() preserves strict and partial missing-scenario outcomes", {
-    skip_on_cran()
-    local_test_cache()
-    withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
-
-    calls <- spec_test__scenario_inputs()
-
-    calls$future_scenarios <- "ssp585"
-    missing_run <- spec_test__future_run(
-        control = shift_control(),
-        ui = shift_ui("none")
-    )
-    expect_identical(shift_status(missing_run), "failed")
-    missing_diagnostics <- shift_diagnostics(missing_run)
-    expect_true("shift_resolver_exhausted" %in% missing_diagnostics$code)
-    expect_true(any(grepl("ssp126", missing_diagnostics$message, fixed = TRUE)))
-
-    partial <- spec_test__future_run(
-        control = shift_control(
-            strict = TRUE,
-            allow_partial = TRUE,
-            overwrite = TRUE
-        )
-    )
-    expect_equal(shift_status(partial), "partial")
-    expect_equal(nrow(shift_outputs(partial)), 1L)
-    expect_equal(nrow(shift_missing(partial)), 1L)
-    expect_equal(shift_missing(partial)$experiment_id, "ssp126")
-})
-
-test_that("shift_epw_future() resumes referenced scenarios after an export interruption", {
-    skip_on_cran()
-    local_test_cache()
-    withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
-
-    calls <- spec_test__scenario_inputs()
-
-    calls$future_scenarios <- c("ssp126", "ssp585")
-    export_attempts <- 0L
-    original_export <- shift_export__export_outputs
-    testthat::local_mocked_bindings(
-        shift_export__export_outputs = function(...) {
-            export_attempts <<- export_attempts + 1L
-            if (export_attempts == 1L) {
-                stop("simulated interruption after morphing", call. = FALSE)
-            }
-            original_export(...)
-        },
-        .package = "epwshiftr"
-    )
-    failed_run <- spec_test__future_run()
-    expect_equal(shift_status(failed_run), "failed")
-    expect_false(is.na(failed_run@meta$run$completed_at[[1L]]))
-    expect_gt(nrow(shift_logs(failed_run)), 0L)
-    file_calls_before_resume <- calls$file_calls
-    resumed <- shift_resume(failed_run)
-    expect_equal(shift_status(resumed), "completed")
-    expect_equal(calls$file_calls, file_calls_before_resume)
-    expect_equal(nrow(shift_outputs(resumed)), 2L)
-})
-
 test_that("shift_epw_future() completes an explicit historical reference run", {
     skip_on_cran()
     local_test_cache()
-    withr::local_options(epwshiftr.dir_cache = withr::local_tempdir())
 
     calls <- spec_test__scenario_inputs()
 
     output_dir <- tempfile("shift-run-output-")
-    run <- spec_test__future_run(dir = output_dir)
+    run <- spec_test__future_run(dir = output_dir, ui = shift_ui("none"))
     store_path <- run@store_path
 
     expect_equal(shift_status(run), "completed")
@@ -718,6 +674,87 @@ test_that("shift_epw_future() completes an explicit historical reference run", {
     )
     delivery_files <- list.files(output_dir, recursive = TRUE, all.files = TRUE)
     expect_false(any(grepl("\\.(duckdb|parquet|json)$", delivery_files)))
+})
+
+test_that("shift_epw_future() completes baseline scenarios without historical discovery", {
+    skip_on_cran()
+    local_test_cache()
+
+    calls <- spec_test__scenario_inputs()
+
+    baseline_reference_run <- spec_test__future_run(
+        transform = monthly_transform("epwshiftr"),
+        reference = NULL,
+        ui = shift_ui("none")
+    )
+    expect_equal(shift_status(baseline_reference_run), "completed")
+    expect_equal(nrow(shift_outputs(baseline_reference_run)), 2L)
+    expect_equal(calls$historical_file_calls, 0L)
+})
+
+test_that("shift_epw_future() preserves strict and partial missing-scenario outcomes", {
+    skip_on_cran()
+    local_test_cache()
+
+    calls <- spec_test__scenario_inputs()
+
+    calls$future_scenarios <- "ssp585"
+    missing_run <- spec_test__future_run(
+        transform = monthly_transform("bws_btws"),
+        control = shift_control(),
+        ui = shift_ui("none")
+    )
+    expect_identical(shift_status(missing_run), "failed")
+    missing_diagnostics <- shift_diagnostics(missing_run)
+    expect_true("shift_resolver_exhausted" %in% missing_diagnostics$code)
+    expect_true(any(grepl("ssp126", missing_diagnostics$message, fixed = TRUE)))
+
+    partial <- spec_test__future_run(
+        transform = monthly_transform("bws_btws"),
+        control = shift_control(
+            strict = TRUE,
+            allow_partial = TRUE,
+            overwrite = TRUE
+        ),
+        ui = shift_ui("none")
+    )
+    expect_equal(shift_status(partial), "partial")
+    expect_equal(nrow(shift_outputs(partial)), 1L)
+    expect_equal(nrow(shift_missing(partial)), 1L)
+    expect_equal(shift_missing(partial)$experiment_id, "ssp126")
+})
+
+test_that("shift_epw_future() resumes referenced scenarios after an export interruption", {
+    skip_on_cran()
+    local_test_cache()
+
+    calls <- spec_test__scenario_inputs()
+
+    calls$future_scenarios <- c("ssp126", "ssp585")
+    export_attempts <- 0L
+    original_export <- shift_export__export_outputs
+    testthat::local_mocked_bindings(
+        shift_export__export_outputs = function(...) {
+            export_attempts <<- export_attempts + 1L
+            if (export_attempts == 1L) {
+                stop("simulated interruption after morphing", call. = FALSE)
+            }
+            original_export(...)
+        },
+        .package = "epwshiftr"
+    )
+    failed_run <- spec_test__future_run(
+        transform = monthly_transform("bws_btws"),
+        ui = shift_ui("none")
+    )
+    expect_equal(shift_status(failed_run), "failed")
+    expect_false(is.na(failed_run@meta$run$completed_at[[1L]]))
+    expect_gt(nrow(shift_logs(failed_run)), 0L)
+    file_calls_before_resume <- calls$file_calls
+    resumed <- shift_resume(failed_run, ui = shift_ui("none"))
+    expect_equal(shift_status(resumed), "completed")
+    expect_equal(calls$file_calls, file_calls_before_resume)
+    expect_equal(nrow(shift_outputs(resumed)), 2L)
 })
 
 # vim: fdm=marker :

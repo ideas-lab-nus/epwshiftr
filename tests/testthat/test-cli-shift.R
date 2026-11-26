@@ -4,6 +4,103 @@ test_local_dependencies(list(
     shift_resolve__cmip6_period_coverage = test_cmip6_period_coverage
 ))
 
+cli_shift_test__file_env <- environment()
+
+# Reuse one immutable monthly fixture set and isolated extract cache across
+# CLI workflow tests so repeated CLI runs reuse warm source slices without
+# rebuilding NetCDF inputs or spawning duplicate source-reader daemons.
+# cli_shift_test__mock_monthly_shared {{{
+cli_shift_test__mock_monthly_shared <- local({
+    docs <- NULL
+    cache_dir <- NULL
+    function(env = parent.frame()) {
+        if (is.null(docs)) {
+            variables <- epw_morph_variables(
+                transform__recipe(monthly_transform("epwshiftr"))
+            )
+            dir <- withr::local_tempdir(
+                pattern = "cli-shift-nc-",
+                .local_envir = cli_shift_test__file_env
+            )
+            files <- stats::setNames(
+                vapply(
+                    variables,
+                    function(variable_id) {
+                        path <- file.path(
+                            dir,
+                            sprintf(
+                                "%s_Amon_EC-Earth3_ssp585_2060.nc",
+                                variable_id
+                            )
+                        )
+                        write_local_cmip6_netcdf_fixture(
+                            path,
+                            2060L,
+                            variable_id = variable_id,
+                            frequency = "mon"
+                        )
+                        path
+                    },
+                    character(1L)
+                ),
+                variables
+            )
+            rows <- data.table::rbindlist(
+                lapply(variables, function(variable_id) {
+                    esgf_test__file_docs(
+                        basename(files[[variable_id]]),
+                        opendap_url = files[[variable_id]],
+                        download_url = files[[variable_id]],
+                        variable_id = variable_id,
+                        frequency = "mon",
+                        table_id = "Amon"
+                    )
+                }),
+                fill = TRUE
+            )
+            future_id <- paste0("future-", rows$variable_id)
+            data.table::set(rows, j = "dataset_id", value = future_id)
+            data.table::set(rows, j = "master_id", value = future_id)
+            data.table::set(
+                rows,
+                j = "instance_id",
+                value = paste0(future_id, ".v20260101")
+            )
+            data.table::set(
+                rows,
+                j = "tracking_id",
+                value = paste0("hdl:21.14100/", future_id)
+            )
+            data.table::set(
+                rows,
+                j = "id",
+                value = paste0(rows$title, "|", future_id)
+            )
+            data.table::set(
+                rows,
+                j = "checksum",
+                value = vapply(
+                    files[rows$variable_id],
+                    checksum_file,
+                    character(1L),
+                    algo = "sha256"
+                )
+            )
+            docs <<- rows
+            cache_dir <<- withr::local_tempdir(
+                pattern = "cli-shift-cache-",
+                .local_envir = cli_shift_test__file_env
+            )
+        }
+        withr::local_options(
+            list(epwshiftr.dir_cache = cache_dir),
+            .local_envir = env
+        )
+        shift_test__mock_collect(data.table::copy(docs), env = env)
+    }
+})
+# }}}
+
 test_that("summary plan IDs prefer normalized lineage and support legacy rows", {
     store <- EsgStore$new(tempfile("summary-plan-store-"))
     on.exit(store$close(), add = TRUE)
@@ -373,6 +470,7 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
     store <- run@store_path
 
     ready <- tempfile("cli-shift-lock-ready-")
+    release <- tempfile("cli-shift-lock-release-")
     done <- tempfile("cli-shift-lock-done-")
     # A separate raw DuckDB process reproduces the exclusive manifest lock
     # held by the real background worker without starting remote ESGF work.
@@ -381,9 +479,10 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
         "args <- commandArgs(TRUE)",
         "conn <- dbConnect(duckdb(), dbdir = args[[1L]])",
         "file.create(args[[2L]])",
-        "Sys.sleep(1)",
+        "deadline <- Sys.time() + 10",
+        "while (!file.exists(args[[3L]]) && Sys.time() < deadline) Sys.sleep(0.02)",
         "dbDisconnect(conn, shutdown = TRUE)",
-        "file.create(args[[3L]])",
+        "file.create(args[[4L]])",
         sep = "; "
     )
     system2(
@@ -393,17 +492,22 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
             shQuote(child_code),
             shQuote(file.path(store, "manifest.duckdb")),
             shQuote(ready),
+            shQuote(release),
             shQuote(done)
         ),
         wait = FALSE,
         stdout = FALSE,
         stderr = FALSE
     )
-    for (i in seq_len(50L)) {
+    withr::defer({
+        file.create(release)
+        unlink(c(ready, release, done))
+    })
+    for (i in seq_len(500L)) {
         if (file.exists(ready)) {
             break
         }
-        Sys.sleep(0.05)
+        Sys.sleep(0.02)
     }
     expect_true(file.exists(ready))
 
@@ -414,11 +518,12 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
     expect_equal(watch$status, 0L)
     expect_equal(watch$result$run$run_id, run_id)
 
-    for (i in seq_len(50L)) {
+    file.create(release)
+    for (i in seq_len(500L)) {
         if (file.exists(done)) {
             break
         }
-        Sys.sleep(0.05)
+        Sys.sleep(0.02)
     }
     expect_true(file.exists(done))
     cancelled <- cli_run(store, "shift", "cancel", "--run", run_id)
@@ -428,7 +533,7 @@ test_that("shift CLI reads live sidecars while a worker owns DuckDB", {
 test_that("shift CLI executes and inspects one persisted workflow run", {
     skip_on_cran()
 
-    calls <- cli_shift_test_mock_monthly_fixtures()
+    calls <- cli_shift_test__mock_monthly_shared()
     store <- tempfile("esg-store-")
     config <- tempfile(fileext = ".json")
     cli_shift_test_config(config)
@@ -1011,7 +1116,7 @@ test_that("persisted batch plans execute, reuse artifacts, and repair missing ex
             do.call(test_cmip6_availability, args)
         }
     ))
-    calls <- cli_shift_test_mock_monthly_fixtures()
+    calls <- cli_shift_test__mock_monthly_shared()
     config_path <- tempfile(fileext = ".json")
     cli_shift_test_config(config_path)
     config <- epwshiftr_cli_read_shift_config(config_path)

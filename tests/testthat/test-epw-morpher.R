@@ -20,6 +20,85 @@ epw_morpher_test__from_recipe <- function(
 }
 # }}}
 
+morpher_test__file_env <- environment()
+
+# Build one read-only monthly 2060 extracted store template with all 10
+# recommended/monthly variables once per file and clone it into isolated
+# per-test tempdirs so strict morphing tests skip redundant extractions.
+# morpher_test__cloned_monthly_store {{{
+morpher_test__cloned_monthly_store <- local({
+    template <- NULL
+    function(variables, envir = parent.frame()) {
+        if (is.null(template)) {
+            all_vars <- unique(c(
+                epw_morph_variables("recommended"),
+                epw_morph_variables(transform__recipe(monthly_transform(
+                    "epwshiftr"
+                ))),
+                "tasmin",
+                "tasmax"
+            ))
+            tpl_root <- withr::local_tempdir(
+                pattern = "morpher-tpl-",
+                .local_envir = morpher_test__file_env
+            )
+            tpl_store <- EsgStore$new(file.path(tpl_root, "store"))
+            doc_list <- lapply(all_vars, function(variable_id) {
+                path <- file.path(tpl_root, paste0(variable_id, ".nc"))
+                write_local_cmip6_netcdf_fixture(
+                    path,
+                    2060L,
+                    variable_id = variable_id,
+                    frequency = "mon"
+                )
+                esgf_test__file_docs(
+                    path = basename(path),
+                    opendap_url = path,
+                    download_url = path,
+                    variable_id = variable_id,
+                    frequency = "mon",
+                    table_id = "Amon",
+                    datetime_end = "2060-12-31T23:59:59Z"
+                )
+            })
+            docs <- as.data.frame(data.table::rbindlist(doc_list, fill = TRUE))
+            query_id <- tpl_store$add_files(esgf_test__file_result(docs))
+            plan <- tpl_store$plan_region(
+                query_id = query_id,
+                lon = 103.98,
+                lat = 1.37,
+                time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z"),
+                site_id = "SIN",
+                variable_id = all_vars
+            )
+            extracted <- tpl_store$extract(plan_id = plan$plan_id)
+            expect_true(all(extracted$status == "done"))
+            tpl_store$close()
+            template <<- list(
+                store_dir = file.path(tpl_root, "store"),
+                plan = plan,
+                docs = docs
+            )
+        }
+        root <- withr::local_tempdir(.local_envir = envir)
+        ok <- file.copy(template$store_dir, root, recursive = TRUE)
+        stopifnot(isTRUE(ok))
+        store <- EsgStore$new(file.path(root, "store"))
+        withr::defer(store$close(), envir = envir)
+        list(
+            root = root,
+            store = store,
+            plan = template$plan[template$plan$variable_id %in% variables],
+            docs = template$docs[
+                template$docs$variable_id %in% variables,
+                ,
+                drop = FALSE
+            ]
+        )
+    }
+})
+# }}}
+
 # Provision a temporary EsgStore populated and extracted from local CMIP6
 # NetCDF fixtures so EpwMorpher tests share one clean store-setup path.
 # morpher_test__extracted_store {{{
@@ -668,12 +747,7 @@ test_that("epw_morpher() / EpwMorpher$required_variables() / EpwMorpher$summaris
 test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise_baseline() / EpwMorpher$plan() / EpwMorpher$diagnose() / EpwMorpher$check() / EpwMorpher$run() / EpwMorpher$write_epw() / EpwMorpher$status() / EpwMorpher$outputs() complete strict outputs with recommended variables", {
     skip_on_cran()
     variables <- epw_morph_variables("recommended")
-    fx <- morpher_test__extracted_store(
-        variables = variables,
-        frequency = "mon",
-        table_id = "Amon",
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
-    )
+    fx <- morpher_test__cloned_monthly_store(variables = variables)
     store <- fx$store
     plan <- fx$plan
     expect_setequal(plan$variable_id, variables)
@@ -936,12 +1010,7 @@ test_that("epw_morpher() / EpwMorpher$summarise_climate() / EpwMorpher$summarise
     )
     expect_equal(resumed_outputs$output_id, outputs$output_id)
 
-    workflow_fx <- morpher_test__extracted_store(
-        variables = variables,
-        frequency = "mon",
-        table_id = "Amon",
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
-    )
+    workflow_fx <- morpher_test__cloned_monthly_store(variables = variables)
     workflow_morpher <- epw_morpher_test__from_recipe(
         store = workflow_fx$store,
         epw = get_cache_epw(),
@@ -1004,12 +1073,7 @@ test_that("repeated runtime warnings do not block EPW output or resume", {
         "tasmin",
         "tasmax"
     ))
-    fx <- morpher_test__extracted_store(
-        variables = variables,
-        frequency = "mon",
-        table_id = "Amon",
-        time = c("2060-01-01T00:00:00Z", "2060-12-31T23:59:59Z")
-    )
+    fx <- morpher_test__cloned_monthly_store(variables = variables)
     store <- fx$store
     plan <- fx$plan
     morpher <- epw_morpher(
