@@ -557,4 +557,40 @@ shift_test__run_stage <- function(
 }
 # }}}
 
+# Build an extraction cache key descriptor from a shared-plan consumer row.
+# shift_test__cache_plan {{{
+shift_test__cache_plan <- function(consumer) {
+    start_col <- if ("requested_start" %in% names(consumer)) {
+        "requested_start"
+    } else {
+        "time_start"
+    }
+    stop_col <- if ("requested_stop" %in% names(consumer)) {
+        "requested_stop"
+    } else {
+        "time_stop"
+    }
+    data.table::data.table(
+        variable_id = consumer$variable_id[[1L]],
+        lon = consumer$lon[[1L]],
+        lat = consumer$lat[[1L]],
+        method = consumer$spatial_method[[1L]],
+        time_start = consumer[[start_col]][[1L]],
+        time_stop = consumer[[stop_col]][[1L]]
+    )
+}
+# }}}
+
+# List JSON receipts written under a batch root's shared-acquisitions tree.
+# shift_test__shared_receipts {{{
+shift_test__shared_receipts <- function(root, full.names = TRUE) {
+    list.files(
+        file.path(root, "shared-acquisitions"),
+        pattern = "[.]json$",
+        recursive = TRUE,
+        full.names = full.names
+    )
+}
+# }}}
+
 # vim: fdm=marker :
