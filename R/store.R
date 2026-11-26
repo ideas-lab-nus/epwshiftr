@@ -1271,33 +1271,14 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of remaining tags for the query.
         # untag_query {{{
         untag_query = function(query_id, tag = NULL) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_character(
-                tag,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            private$delete_query_links(
+                "esg_query_tag",
+                "tag_id",
+                query_id,
+                "tag",
+                tag
             )
-            private$with_store_lock({
-                private$get_query_row(query_id)
-                wanted_tag <- tag
-                wanted_query_id <- query_id
-                tags <- private$read_table("esg_query_tag")
-                remove <- tags[tags[["query_id"]] == wanted_query_id]
-                if (!is.null(wanted_tag) && nrow(remove)) {
-                    remove <- remove[remove[["tag"]] %in% wanted_tag]
-                }
-                if (nrow(remove)) {
-                    private$delete_by_key(
-                        "esg_query_tag",
-                        "tag_id",
-                        remove$tag_id
-                    )
-                }
-                self$query_tags(query_id)
-            })
+            self$query_tags(query_id)
         },
         # }}}
         # query_tags
@@ -1376,39 +1357,18 @@ EsgStore <- R6::R6Class(
         #' @return A data.table of remaining dependency edges for the query.
         # unrequire_query {{{
         unrequire_query = function(query_id, parent_query_id = NULL) {
-            private$check_open()
-            checkmate::assert_string(query_id, min.chars = 1L)
-            checkmate::assert_character(
-                parent_query_id,
-                any.missing = FALSE,
-                min.len = 1L,
-                unique = TRUE,
-                null.ok = TRUE
+            private$delete_query_links(
+                "esg_query_dependency",
+                "dependency_id",
+                query_id,
+                "parent_query_id",
+                parent_query_id
             )
-            private$with_store_lock({
-                private$get_query_row(query_id)
-                wanted_parent_query_id <- parent_query_id
-                wanted_query_id <- query_id
-                edges <- private$read_table("esg_query_dependency")
-                remove <- edges[edges[["query_id"]] == wanted_query_id]
-                if (!is.null(wanted_parent_query_id) && nrow(remove)) {
-                    remove <- remove[
-                        remove[["parent_query_id"]] %in% wanted_parent_query_id
-                    ]
-                }
-                if (nrow(remove)) {
-                    private$delete_by_key(
-                        "esg_query_dependency",
-                        "dependency_id",
-                        remove$dependency_id
-                    )
-                }
-                self$query_graph(
-                    query_id = query_id,
-                    direction = "parents",
-                    recursive = FALSE
-                )
-            })
+            self$query_graph(
+                query_id = query_id,
+                direction = "parents",
+                recursive = FALSE
+            )
         },
         # }}}
         # query_graph
@@ -4423,22 +4383,30 @@ EsgStore <- R6::R6Class(
                     }
                     return(private$download_layout_dataset_subdir(row))
                 }
+                drs_cols <- c(
+                    "activity_id",
+                    "institution_id",
+                    "source_id",
+                    "experiment_id",
+                    "variant_label",
+                    "table_id",
+                    "variable_id",
+                    "grid_label"
+                )
                 parts <- c(
                     "CMIP6",
-                    private$download_layout_component(row$activity_id),
-                    private$download_layout_component(row$institution_id),
-                    private$download_layout_component(row$source_id),
-                    private$download_layout_component(row$experiment_id),
-                    private$download_layout_component(row$variant_label),
-                    private$download_layout_component(row$table_id),
-                    private$download_layout_component(row$variable_id),
-                    private$download_layout_component(row$grid_label)
+                    vapply(
+                        drs_cols,
+                        function(f) private$download_layout_component(row[[f]]),
+                        character(1L)
+                    )
                 )
                 if (isTRUE(policy$include_version)) {
-                    parts <- c(
-                        parts,
-                        private$download_layout_version_component(row$version)
-                    )
+                    ver <- private$download_layout_component(row$version)
+                    if (!is.na(ver) && !startsWith(ver, "v")) {
+                        ver <- paste0("v", ver)
+                    }
+                    parts <- c(parts, ver)
                 }
                 return(private$download_layout_path(parts))
             }
@@ -4455,13 +4423,18 @@ EsgStore <- R6::R6Class(
             if (!is.na(dataset_id)) {
                 return(file.path("datasets", dataset_id))
             }
-            pieces <- c(
-                private$download_layout_component(row$source_id),
-                private$download_layout_component(row$experiment_id),
-                private$download_layout_component(row$variant_label),
-                private$download_layout_component(row$table_id),
-                private$download_layout_component(row$variable_id),
-                private$download_layout_component(row$grid_label)
+            cols <- c(
+                "source_id",
+                "experiment_id",
+                "variant_label",
+                "table_id",
+                "variable_id",
+                "grid_label"
+            )
+            pieces <- vapply(
+                cols,
+                function(f) private$download_layout_component(row[[f]]),
+                character(1L)
             )
             pieces <- pieces[!is.na(pieces) & nzchar(pieces)]
             if (!length(pieces)) {
@@ -4489,26 +4462,31 @@ EsgStore <- R6::R6Class(
                 out,
                 gregexpr("\\{[^{}]+\\}", out)
             )))
-            if (length(fields)) {
-                for (token in fields) {
-                    field <- sub("^\\{", "", sub("\\}$", "", token))
-                    value <- if (field %in% names(row)) {
-                        private$download_layout_component(row[[field]])
-                    } else {
-                        NA_character_
-                    }
-                    if (is.na(value)) {
-                        if (identical(policy$missing, "error")) {
-                            cli::cli_abort(
-                                "Cannot build template download path; missing field {.field {field}}."
-                            )
-                        }
-                        value <- "unknown"
-                    }
-                    out <- gsub(token, value, out, fixed = TRUE)
+            for (token in fields) {
+                field <- sub("^\\{", "", sub("\\}$", "", token))
+                value <- if (field %in% names(row)) {
+                    private$download_layout_component(row[[field]])
+                } else {
+                    NA_character_
                 }
+                if (is.na(value)) {
+                    if (identical(policy$missing, "error")) {
+                        cli::cli_abort(
+                            "Cannot build template download path; missing field {.field {field}}."
+                        )
+                    }
+                    value <- "unknown"
+                }
+                out <- gsub(token, value, out, fixed = TRUE)
             }
-            private$download_layout_clean_subdir(out)
+            parts <- strsplit(gsub("[/\\\\]+", "/", out), "/", fixed = TRUE)[[
+                1L
+            ]]
+            private$download_layout_path(vapply(
+                parts,
+                private$download_layout_component,
+                character(1L)
+            ))
         },
         # }}}
 
@@ -4525,20 +4503,19 @@ EsgStore <- R6::R6Class(
                 "variant_label",
                 "table_id",
                 "variable_id",
-                "grid_label"
+                "grid_label",
+                if (isTRUE(policy$include_version)) "version"
             )
-            if (isTRUE(policy$include_version)) {
-                required <- c(required, "version")
-            }
             missing <- required[vapply(
                 required,
                 function(field) {
-                    value <- if (field %in% names(row)) {
-                        row[[field]]
-                    } else {
-                        NA_character_
-                    }
-                    is.na(private$download_layout_component(value))
+                    is.na(private$download_layout_component(
+                        if (field %in% names(row)) {
+                            row[[field]]
+                        } else {
+                            NA_character_
+                        }
+                    ))
                 },
                 logical(1L)
             )]
@@ -4678,30 +4655,6 @@ EsgStore <- R6::R6Class(
             x <- gsub("[[:cntrl:]]+", "_", x)
             x <- gsub("^\\.+$", "_", x)
             if (!nzchar(x)) NA_character_ else x
-        },
-        # }}}
-
-        # download_layout_version_component {{{
-        download_layout_version_component = function(x) {
-            x <- private$download_layout_component(x)
-            if (is.na(x)) {
-                return(NA_character_)
-            }
-            if (startsWith(x, "v")) x else paste0("v", x)
-        },
-        # }}}
-
-        # download_layout_clean_subdir {{{
-        download_layout_clean_subdir = function(x) {
-            x <- gsub("[/\\\\]+", "/", x)
-            parts <- strsplit(x, "/", fixed = TRUE)[[1L]]
-            parts <- vapply(
-                parts,
-                private$download_layout_component,
-                character(1L)
-            )
-            parts <- parts[!is.na(parts) & nzchar(parts)]
-            private$download_layout_path(parts)
         },
         # }}}
 
@@ -5172,327 +5125,153 @@ EsgStore <- R6::R6Class(
             schema <- store__schema_executor(private$conn, existing_tables)
             exec <- schema$exec
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS store_meta (
-                    key VARCHAR PRIMARY KEY,
-                    value VARCHAR,
-                    updated_at TIMESTAMP
-                )
-            "
+                "CREATE TABLE IF NOT EXISTS store_meta (
+                    key VARCHAR PRIMARY KEY, value VARCHAR, updated_at TIMESTAMP
+                )"
             )
             # The version check below reads store_meta, so it must exist first.
             schema$flush()
             current_version <- private$assert_schema_version(existing_tables)
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS artifact (
-                    artifact_id VARCHAR PRIMARY KEY,
-                    kind VARCHAR,
-                    role VARCHAR,
-                    project VARCHAR,
-                    relative_path VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    status VARCHAR,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    dict_id VARCHAR,
-                    source_url VARCHAR,
-                    source_repo VARCHAR,
-                    source_tag VARCHAR,
-                    source_commit VARCHAR,
-                    metadata_json VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
+                "CREATE TABLE IF NOT EXISTS artifact (
+                    artifact_id VARCHAR PRIMARY KEY, kind VARCHAR, role VARCHAR, project VARCHAR,
+                    relative_path VARCHAR, checksum VARCHAR, checksum_type VARCHAR, size DOUBLE,
+                    status VARCHAR, query_id VARCHAR, file_key VARCHAR, dict_id VARCHAR,
+                    source_url VARCHAR, source_repo VARCHAR, source_tag VARCHAR, source_commit VARCHAR,
+                    metadata_json VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS query_run (
+                    query_id VARCHAR PRIMARY KEY, label VARCHAR, result_type VARCHAR, query_file VARCHAR,
+                    index_node VARCHAR, time_filter_start TIMESTAMP, time_filter_stop TIMESTAMP,
+                    time_filter_method VARCHAR, created_at TIMESTAMP, package_version VARCHAR
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS esg_query (
+                    query_id VARCHAR PRIMARY KEY, label VARCHAR, index_node VARCHAR, query_file VARCHAR,
+                    parameter_json VARCHAR, tracked BOOLEAN, created_at TIMESTAMP, updated_at TIMESTAMP,
+                    last_checked_at TIMESTAMP, package_version VARCHAR
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS esg_file (
+                    file_key VARCHAR PRIMARY KEY, esgf_id VARCHAR, dataset_id VARCHAR, master_id VARCHAR,
+                    instance_id VARCHAR, tracking_id VARCHAR, version VARCHAR, title VARCHAR,
+                    filename VARCHAR, checksum VARCHAR, checksum_type VARCHAR, size DOUBLE,
+                    latest BOOLEAN, replica BOOLEAN, retracted BOOLEAN, deprecated BOOLEAN,
+                    data_node VARCHAR, activity_id VARCHAR, institution_id VARCHAR, source_id VARCHAR,
+                    experiment_id VARCHAR, variant_label VARCHAR, frequency VARCHAR, table_id VARCHAR,
+                    variable_id VARCHAR, grid_label VARCHAR, datetime_start TIMESTAMP, datetime_end TIMESTAMP,
+                    url_opendap VARCHAR, url_download VARCHAR, local_path VARCHAR, local_artifact_id VARCHAR,
+                    created_at TIMESTAMP, updated_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS esg_query_file (
+                    link_id VARCHAR PRIMARY KEY, query_id VARCHAR, file_key VARCHAR,
+                    status VARCHAR, first_seen_at TIMESTAMP, last_seen_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS esg_query_update (
+                    update_id VARCHAR PRIMARY KEY, query_id VARCHAR, status VARCHAR,
+                    started_at TIMESTAMP, completed_at TIMESTAMP, fields VARCHAR,
+                    all_files BOOLEAN, limit_files BOOLEAN, file_total INTEGER,
+                    current_count INTEGER, new_count INTEGER, stale_count INTEGER,
+                    changed_count INTEGER, deprecated_count INTEGER, retracted_count INTEGER,
+                    version_changed_count INTEGER, download_session_id VARCHAR, last_error VARCHAR
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS esg_query_update_file (
+                    update_file_id VARCHAR PRIMARY KEY, update_id VARCHAR, query_id VARCHAR, file_key VARCHAR,
+                    change_type VARCHAR, previous_status VARCHAR, current_status VARCHAR,
+                    previous_version VARCHAR, current_version VARCHAR, previous_checksum VARCHAR,
+                    current_checksum VARCHAR, previous_size DOUBLE, current_size DOUBLE,
+                    version_changed BOOLEAN, checksum_changed BOOLEAN, size_changed BOOLEAN,
+                    url_changed BOOLEAN, data_node_changed BOOLEAN, deprecated BOOLEAN,
+                    retracted BOOLEAN, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS esg_query_tag (
+                    tag_id VARCHAR PRIMARY KEY, query_id VARCHAR, tag VARCHAR, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS esg_query_dependency (
+                    dependency_id VARCHAR PRIMARY KEY, query_id VARCHAR, parent_query_id VARCHAR, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS file_catalog (
+                    file_key VARCHAR PRIMARY KEY, query_id VARCHAR, esgf_id VARCHAR, dataset_id VARCHAR,
+                    master_id VARCHAR, instance_id VARCHAR, version VARCHAR, title VARCHAR,
+                    filename VARCHAR, tracking_id VARCHAR, checksum VARCHAR, checksum_type VARCHAR,
+                    size DOUBLE, latest BOOLEAN, replica BOOLEAN, retracted BOOLEAN, deprecated BOOLEAN,
+                    data_node VARCHAR, activity_id VARCHAR, institution_id VARCHAR, source_id VARCHAR,
+                    experiment_id VARCHAR, variant_label VARCHAR, frequency VARCHAR, table_id VARCHAR,
+                    variable_id VARCHAR, grid_label VARCHAR, datetime_start TIMESTAMP, datetime_end TIMESTAMP,
+                    actual_time_start TIMESTAMP, actual_time_end TIMESTAMP, url_opendap VARCHAR,
+                    url_download VARCHAR, local_path VARCHAR, local_artifact_id VARCHAR, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS extraction_plan (
+                    plan_id VARCHAR PRIMARY KEY, query_id VARCHAR, file_key VARCHAR, site_id VARCHAR,
+                    variable_id VARCHAR, lon DOUBLE, lat DOUBLE, method VARCHAR,
+                    time_start TIMESTAMP, time_stop TIMESTAMP, status VARCHAR, available_time_count INTEGER,
+                    attempt_count INTEGER, last_error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS extraction_grid_source (
+                    source_row_id VARCHAR PRIMARY KEY, plan_id VARCHAR, file_key VARCHAR, query_id VARCHAR,
+                    variable_id VARCHAR, method VARCHAR, source_index INTEGER, role VARCHAR,
+                    grid_lon DOUBLE, grid_lat DOUBLE, grid_elevation_m DOUBLE, grid_dist_km DOUBLE,
+                    weight DOUBLE, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS extraction_result (
+                    result_id VARCHAR PRIMARY KEY, plan_id VARCHAR, file_key VARCHAR, query_id VARCHAR,
+                    artifact_id VARCHAR, output_path VARCHAR, year INTEGER, row_count INTEGER,
+                    unique_time_count INTEGER, time_min TIMESTAMP, time_max TIMESTAMP,
+                    lon_actual DOUBLE, lat_actual DOUBLE, completed_at TIMESTAMP
+                )"
+            )
+            store__add_columns(
+                exec,
+                list(
+                    esg_file = "deprecated BOOLEAN",
+                    file_catalog = c(
+                        "latest BOOLEAN",
+                        "replica BOOLEAN",
+                        "retracted BOOLEAN",
+                        "deprecated BOOLEAN"
+                    ),
+                    extraction_grid_source = "grid_elevation_m DOUBLE"
                 )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS query_run (
-                    query_id VARCHAR PRIMARY KEY,
-                    label VARCHAR,
-                    result_type VARCHAR,
-                    query_file VARCHAR,
-                    index_node VARCHAR,
-                    time_filter_start TIMESTAMP,
-                    time_filter_stop TIMESTAMP,
-                    time_filter_method VARCHAR,
-                    created_at TIMESTAMP,
-                    package_version VARCHAR
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query (
-                    query_id VARCHAR PRIMARY KEY,
-                    label VARCHAR,
-                    index_node VARCHAR,
-                    query_file VARCHAR,
-                    parameter_json VARCHAR,
-                    tracked BOOLEAN,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    last_checked_at TIMESTAMP,
-                    package_version VARCHAR
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_file (
-                    file_key VARCHAR PRIMARY KEY,
-                    esgf_id VARCHAR,
-                    dataset_id VARCHAR,
-                    master_id VARCHAR,
-                    instance_id VARCHAR,
-                    tracking_id VARCHAR,
-                    version VARCHAR,
-                    title VARCHAR,
-                    filename VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    latest BOOLEAN,
-                    replica BOOLEAN,
-                    retracted BOOLEAN,
-                    deprecated BOOLEAN,
-                    data_node VARCHAR,
-                    activity_id VARCHAR,
-                    institution_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    frequency VARCHAR,
-                    table_id VARCHAR,
-                    variable_id VARCHAR,
-                    grid_label VARCHAR,
-                    datetime_start TIMESTAMP,
-                    datetime_end TIMESTAMP,
-                    url_opendap VARCHAR,
-                    url_download VARCHAR,
-                    local_path VARCHAR,
-                    local_artifact_id VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_file (
-                    link_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    status VARCHAR,
-                    first_seen_at TIMESTAMP,
-                    last_seen_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_update (
-                    update_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    status VARCHAR,
-                    started_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    fields VARCHAR,
-                    all_files BOOLEAN,
-                    limit_files BOOLEAN,
-                    file_total INTEGER,
-                    current_count INTEGER,
-                    new_count INTEGER,
-                    stale_count INTEGER,
-                    changed_count INTEGER,
-                    deprecated_count INTEGER,
-                    retracted_count INTEGER,
-                    version_changed_count INTEGER,
-                    download_session_id VARCHAR,
-                    last_error VARCHAR
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_update_file (
-                    update_file_id VARCHAR PRIMARY KEY,
-                    update_id VARCHAR,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    change_type VARCHAR,
-                    previous_status VARCHAR,
-                    current_status VARCHAR,
-                    previous_version VARCHAR,
-                    current_version VARCHAR,
-                    previous_checksum VARCHAR,
-                    current_checksum VARCHAR,
-                    previous_size DOUBLE,
-                    current_size DOUBLE,
-                    version_changed BOOLEAN,
-                    checksum_changed BOOLEAN,
-                    size_changed BOOLEAN,
-                    url_changed BOOLEAN,
-                    data_node_changed BOOLEAN,
-                    deprecated BOOLEAN,
-                    retracted BOOLEAN,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_tag (
-                    tag_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    tag VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS esg_query_dependency (
-                    dependency_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    parent_query_id VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "ALTER TABLE esg_file ADD COLUMN IF NOT EXISTS deprecated BOOLEAN"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS file_catalog (
-                    file_key VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    esgf_id VARCHAR,
-                    dataset_id VARCHAR,
-                    master_id VARCHAR,
-                    instance_id VARCHAR,
-                    version VARCHAR,
-                    title VARCHAR,
-                    filename VARCHAR,
-                    tracking_id VARCHAR,
-                    checksum VARCHAR,
-                    checksum_type VARCHAR,
-                    size DOUBLE,
-                    latest BOOLEAN,
-                    replica BOOLEAN,
-                    retracted BOOLEAN,
-                    deprecated BOOLEAN,
-                    data_node VARCHAR,
-                    activity_id VARCHAR,
-                    institution_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    frequency VARCHAR,
-                    table_id VARCHAR,
-                    variable_id VARCHAR,
-                    grid_label VARCHAR,
-                    datetime_start TIMESTAMP,
-                    datetime_end TIMESTAMP,
-                    actual_time_start TIMESTAMP,
-                    actual_time_end TIMESTAMP,
-                    url_opendap VARCHAR,
-                    url_download VARCHAR,
-                    local_path VARCHAR,
-                    local_artifact_id VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS latest BOOLEAN"
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS replica BOOLEAN"
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS retracted BOOLEAN"
-            )
-            exec(
-                "ALTER TABLE file_catalog ADD COLUMN IF NOT EXISTS deprecated BOOLEAN"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS extraction_plan (
-                    plan_id VARCHAR PRIMARY KEY,
-                    query_id VARCHAR,
-                    file_key VARCHAR,
-                    site_id VARCHAR,
-                    variable_id VARCHAR,
-                    lon DOUBLE,
-                    lat DOUBLE,
-                    method VARCHAR,
-                    time_start TIMESTAMP,
-                    time_stop TIMESTAMP,
-                    status VARCHAR,
-                    available_time_count INTEGER,
-                    attempt_count INTEGER,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS extraction_grid_source (
-                    source_row_id VARCHAR PRIMARY KEY,
-                    plan_id VARCHAR,
-                    file_key VARCHAR,
-                    query_id VARCHAR,
-                    variable_id VARCHAR,
-                    method VARCHAR,
-                    source_index INTEGER,
-                    role VARCHAR,
-                    grid_lon DOUBLE,
-                    grid_lat DOUBLE,
-                    grid_elevation_m DOUBLE,
-                    grid_dist_km DOUBLE,
-                    weight DOUBLE,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "ALTER TABLE extraction_grid_source ADD COLUMN IF NOT EXISTS grid_elevation_m DOUBLE"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS extraction_result (
-                    result_id VARCHAR PRIMARY KEY,
-                    plan_id VARCHAR,
-                    file_key VARCHAR,
-                    query_id VARCHAR,
-                    artifact_id VARCHAR,
-                    output_path VARCHAR,
-                    year INTEGER,
-                    row_count INTEGER,
-                    unique_time_count INTEGER,
-                    time_min TIMESTAMP,
-                    time_max TIMESTAMP,
-                    lon_actual DOUBLE,
-                    lat_actual DOUBLE,
-                    completed_at TIMESTAMP
-                )
-            "
             )
             private$init_epw_morph_schema(exec)
             private$init_shift_run_schema(exec)
             # Create every queued table and column before the version row is
             # written and before any caller can read them.
             schema$flush()
-
-            private$initialize_schema_version(current_version)
-
+            if (is.na(current_version)) {
+                private$replace_rows(
+                    "store_meta",
+                    data.frame(
+                        key = "schema_version",
+                        value = STORE_SCHEMA_VERSION,
+                        updated_at = store__now(),
+                        stringsAsFactors = FALSE
+                    ),
+                    "key"
+                )
+            }
             invisible(NULL)
         },
         # }}}
@@ -5506,11 +5285,24 @@ EsgStore <- R6::R6Class(
             if (!length(existing_tables)) {
                 return(invisible(NA_character_))
             }
-            current <- private$store_schema_version()
+            meta <- tryCatch(
+                private$read_table("store_meta"),
+                error = function(e) data.table::data.table()
+            )
+            row <- if (nrow(meta)) {
+                meta[meta[["key"]] == "schema_version"]
+            } else {
+                meta
+            }
+            current <- if (nrow(row)) {
+                v <- as.character(row$value[[1L]])
+                if (is.na(v) || !nzchar(v)) NA_character_ else v
+            } else {
+                NA_character_
+            }
             if (is.na(current) || !identical(current, STORE_SCHEMA_VERSION)) {
                 shown <- if (is.na(current)) "missing" else current
-                path <- private$store_path
-                reset_command <- store__reset_command(path)
+                reset_command <- store__reset_command(private$store_path)
                 private$disconnect()
                 cli::cli_abort(c(
                     "Store schema version {.val {shown}} does not match the required version {.val {STORE_SCHEMA_VERSION}}.",
@@ -5523,311 +5315,110 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
-        # Record the schema only after every current table has been created.
-        # `current` is the version assert_schema_version() observed at the start
-        # of this same initialization; nothing writes store_meta in between.
-        # initialize_schema_version {{{
-        initialize_schema_version = function(current) {
-            if (is.na(current)) {
-                private$set_store_schema_version(STORE_SCHEMA_VERSION)
-            }
-            invisible(NULL)
-        },
-        # }}}
-
-        # store_schema_version {{{
-        store_schema_version = function() {
-            meta <- tryCatch(
-                private$read_table("store_meta"),
-                error = function(e) data.table::data.table()
-            )
-            if (!nrow(meta)) {
-                return(NA_character_)
-            }
-            row <- meta[meta[["key"]] == "schema_version"]
-            if (!nrow(row)) {
-                return(NA_character_)
-            }
-            version <- as.character(row$value[[1L]])
-            if (is.na(version) || !nzchar(version)) NA_character_ else version
-        },
-        # }}}
-
-        # set_store_schema_version {{{
-        set_store_schema_version = function(version) {
-            private$replace_rows(
-                "store_meta",
-                data.frame(
-                    key = "schema_version",
-                    value = version,
-                    updated_at = store__now(),
-                    stringsAsFactors = FALSE
-                ),
-                "key"
-            )
-            invisible(NULL)
-        },
-        # }}}
-
         # init_epw_morph_schema
         # init_epw_morph_schema {{{
         init_epw_morph_schema = function(exec = private$exec) {
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_source (
-                    epw_id VARCHAR PRIMARY KEY,
-                    artifact_id VARCHAR,
-                    label VARCHAR,
-                    site_id VARCHAR,
-                    path VARCHAR,
-                    checksum VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
+                "CREATE TABLE IF NOT EXISTS epw_source (
+                    epw_id VARCHAR PRIMARY KEY, artifact_id VARCHAR, label VARCHAR, site_id VARCHAR,
+                    path VARCHAR, checksum VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )"
             )
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_baseline_summary (
-                    baseline_row_id VARCHAR PRIMARY KEY,
-                    baseline_id VARCHAR,
-                    epw_id VARCHAR,
-                    epw_field VARCHAR,
-                    month INTEGER,
-                    stat VARCHAR,
-                    value DOUBLE,
-                    units VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
+                "CREATE TABLE IF NOT EXISTS epw_baseline_summary (
+                    baseline_row_id VARCHAR PRIMARY KEY, baseline_id VARCHAR, epw_id VARCHAR,
+                    epw_field VARCHAR, month INTEGER, stat VARCHAR, value DOUBLE,
+                    units VARCHAR, created_at TIMESTAMP
+                )"
             )
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_climate_summary (
-                    summary_row_id VARCHAR PRIMARY KEY,
-                    summary_id VARCHAR,
-                    plan_id VARCHAR,
-                    site_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    frequency VARCHAR,
-                    table_id VARCHAR,
-                    variable_id VARCHAR,
-                    period VARCHAR,
-                    month INTEGER,
-                    stat VARCHAR,
-                    value DOUBLE,
-                    units VARCHAR,
-                    lon DOUBLE,
-                    lat DOUBLE,
-                    years_json VARCHAR,
-                    coverage DOUBLE,
-                    n_records INTEGER,
-                    n_valid INTEGER,
+                "CREATE TABLE IF NOT EXISTS epw_climate_summary (
+                    summary_row_id VARCHAR PRIMARY KEY, summary_id VARCHAR, plan_id VARCHAR,
+                    site_id VARCHAR, source_id VARCHAR, experiment_id VARCHAR, variant_label VARCHAR,
+                    frequency VARCHAR, table_id VARCHAR, variable_id VARCHAR, period VARCHAR,
+                    month INTEGER, stat VARCHAR, value DOUBLE, units VARCHAR, lon DOUBLE, lat DOUBLE,
+                    years_json VARCHAR, coverage DOUBLE, n_records INTEGER, n_valid INTEGER,
                     created_at TIMESTAMP
-                )
-            "
+                )"
             )
             # A summary can combine several extraction files. Keep their plan
             # lineage normalized so source fragments do not divide statistics.
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_climate_summary_plan (
-                    summary_plan_id VARCHAR PRIMARY KEY,
-                    summary_id VARCHAR,
-                    plan_id VARCHAR,
-                    created_at TIMESTAMP
+                "CREATE TABLE IF NOT EXISTS epw_climate_summary_plan (
+                    summary_plan_id VARCHAR PRIMARY KEY, summary_id VARCHAR, plan_id VARCHAR, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS epw_morph_plan (
+                    morph_id VARCHAR PRIMARY KEY, epw_id VARCHAR, summary_id VARCHAR,
+                    reference_summary_id VARCHAR, baseline_id VARCHAR, label VARCHAR,
+                    by_json VARCHAR, recipe_json VARCHAR, strict BOOLEAN, status VARCHAR,
+                    created_at TIMESTAMP, updated_at TIMESTAMP, last_error VARCHAR
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS epw_morph_observed_reference (
+                    morph_id VARCHAR PRIMARY KEY, observed_summary_id VARCHAR, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS epw_morph_factor (
+                    factor_id VARCHAR PRIMARY KEY, morph_id VARCHAR, case_id VARCHAR, epw_field VARCHAR,
+                    variable_id VARCHAR, source_id VARCHAR, experiment_id VARCHAR, variant_label VARCHAR,
+                    period VARCHAR, month INTEGER, method VARCHAR, baseline DOUBLE, reference DOUBLE,
+                    future DOUBLE, delta DOUBLE, alpha DOUBLE, units VARCHAR, status VARCHAR
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS epw_morph_case (
+                    morph_case_id VARCHAR PRIMARY KEY, morph_id VARCHAR, case_id VARCHAR,
+                    source_id VARCHAR, experiment_id VARCHAR, variant_label VARCHAR, period VARCHAR,
+                    status VARCHAR, error_class VARCHAR, last_error VARCHAR, updated_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS epw_morph_diagnostic (
+                    diagnostic_id VARCHAR PRIMARY KEY, stage VARCHAR, severity VARCHAR, code VARCHAR,
+                    message VARCHAR, plan_id VARCHAR, summary_id VARCHAR, baseline_id VARCHAR,
+                    morph_id VARCHAR, case_id VARCHAR, variable_id VARCHAR, epw_field VARCHAR,
+                    period VARCHAR, month INTEGER, action VARCHAR
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS epw_morph_result (
+                    result_id VARCHAR PRIMARY KEY, morph_id VARCHAR, case_id VARCHAR, artifact_id VARCHAR,
+                    output_path VARCHAR, row_count INTEGER, output_type VARCHAR, sequence_id VARCHAR,
+                    weather_year INTEGER, calendar VARCHAR, stochastic_seed INTEGER, member_count INTEGER,
+                    provenance_json VARCHAR, created_at TIMESTAMP
+                )"
+            )
+            exec(
+                "CREATE TABLE IF NOT EXISTS epw_output (
+                    output_id VARCHAR PRIMARY KEY, morph_id VARCHAR, case_id VARCHAR, result_id VARCHAR,
+                    artifact_id VARCHAR, path VARCHAR, source_id VARCHAR, experiment_id VARCHAR,
+                    variant_label VARCHAR, period VARCHAR, output_type VARCHAR, sequence_id VARCHAR,
+                    weather_year INTEGER, calendar VARCHAR, stochastic_seed INTEGER, member_count INTEGER,
+                    provenance_json VARCHAR, created_at TIMESTAMP
+                )"
+            )
+            # Existing stores may predate valid-row pooling or year-addressable
+            # result/output columns; add each nullable column idempotently.
+            year_cols <- c(
+                "output_type VARCHAR",
+                "sequence_id VARCHAR",
+                "weather_year INTEGER",
+                "calendar VARCHAR",
+                "stochastic_seed INTEGER",
+                "member_count INTEGER",
+                "provenance_json VARCHAR"
+            )
+            store__add_columns(
+                exec,
+                list(
+                    epw_climate_summary = "n_valid INTEGER",
+                    epw_morph_result = year_cols,
+                    epw_output = c("result_id VARCHAR", year_cols)
                 )
-            "
-            )
-            # Existing stores recorded total rows only. The nullable valid-row
-            # count enables exact pooling when old fragment summaries are read.
-            exec(
-                "ALTER TABLE epw_climate_summary ADD COLUMN IF NOT EXISTS n_valid INTEGER"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_plan (
-                    morph_id VARCHAR PRIMARY KEY,
-                    epw_id VARCHAR,
-                    summary_id VARCHAR,
-                    reference_summary_id VARCHAR,
-                    baseline_id VARCHAR,
-                    label VARCHAR,
-                    by_json VARCHAR,
-                    recipe_json VARCHAR,
-                    strict BOOLEAN,
-                    status VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    last_error VARCHAR
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_observed_reference (
-                    morph_id VARCHAR PRIMARY KEY,
-                    observed_summary_id VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_factor (
-                    factor_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    epw_field VARCHAR,
-                    variable_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    period VARCHAR,
-                    month INTEGER,
-                    method VARCHAR,
-                    baseline DOUBLE,
-                    reference DOUBLE,
-                    future DOUBLE,
-                    delta DOUBLE,
-                    alpha DOUBLE,
-                    units VARCHAR,
-                    status VARCHAR
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_case (
-                    morph_case_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    period VARCHAR,
-                    status VARCHAR,
-                    error_class VARCHAR,
-                    last_error VARCHAR,
-                    updated_at TIMESTAMP
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_diagnostic (
-                    diagnostic_id VARCHAR PRIMARY KEY,
-                    stage VARCHAR,
-                    severity VARCHAR,
-                    code VARCHAR,
-                    message VARCHAR,
-                    plan_id VARCHAR,
-                    summary_id VARCHAR,
-                    baseline_id VARCHAR,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    variable_id VARCHAR,
-                    epw_field VARCHAR,
-                    period VARCHAR,
-                    month INTEGER,
-                    action VARCHAR
-                )
-                "
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_morph_result (
-                    result_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    artifact_id VARCHAR,
-                    output_path VARCHAR,
-                    row_count INTEGER,
-                    output_type VARCHAR,
-                    sequence_id VARCHAR,
-                    weather_year INTEGER,
-                    calendar VARCHAR,
-                    stochastic_seed INTEGER,
-                    member_count INTEGER,
-                    provenance_json VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            # Existing stores predate year-addressable result rows, so add each
-            # nullable identity column without rewriting their artifacts.
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS output_type VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS weather_year INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS calendar VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS member_count INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_morph_result ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
-            )
-            exec(
-                "
-                CREATE TABLE IF NOT EXISTS epw_output (
-                    output_id VARCHAR PRIMARY KEY,
-                    morph_id VARCHAR,
-                    case_id VARCHAR,
-                    result_id VARCHAR,
-                    artifact_id VARCHAR,
-                    path VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    period VARCHAR,
-                    output_type VARCHAR,
-                    sequence_id VARCHAR,
-                    weather_year INTEGER,
-                    calendar VARCHAR,
-                    stochastic_seed INTEGER,
-                    member_count INTEGER,
-                    provenance_json VARCHAR,
-                    created_at TIMESTAMP
-                )
-            "
-            )
-            # Output rows mirror result identity so resume and export can map
-            # every generated year without relying on case-level uniqueness.
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS result_id VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS output_type VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS sequence_id VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS weather_year INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS calendar VARCHAR"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS stochastic_seed INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS member_count INTEGER"
-            )
-            exec(
-                "ALTER TABLE epw_output ADD COLUMN IF NOT EXISTS provenance_json VARCHAR"
             )
             invisible(NULL)
         },
@@ -5838,113 +5429,49 @@ EsgStore <- R6::R6Class(
         # init_shift_run_schema {{{
         init_shift_run_schema = function(exec = private$exec) {
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run (
-                    run_id VARCHAR PRIMARY KEY,
-                    task VARCHAR,
-                    spec_hash VARCHAR,
-                    spec_json VARCHAR,
-                    resolved_spec_json VARCHAR,
-                    status VARCHAR,
-                    current_stage VARCHAR,
-                    query_id VARCHAR,
-                    reference_query_id VARCHAR,
-                    plan_ids_json VARCHAR,
-                    reference_plan_ids_json VARCHAR,
-                    morph_id VARCHAR,
-                    output_dir VARCHAR,
-                    package_version VARCHAR,
-                    started_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    last_error VARCHAR
-                )
-            "
+                "CREATE TABLE IF NOT EXISTS shift_run (
+                    run_id VARCHAR PRIMARY KEY, task VARCHAR, spec_hash VARCHAR, spec_json VARCHAR,
+                    resolved_spec_json VARCHAR, status VARCHAR, current_stage VARCHAR, query_id VARCHAR,
+                    reference_query_id VARCHAR, plan_ids_json VARCHAR, reference_plan_ids_json VARCHAR,
+                    morph_id VARCHAR, output_dir VARCHAR, package_version VARCHAR,
+                    started_at TIMESTAMP, updated_at TIMESTAMP, completed_at TIMESTAMP, last_error VARCHAR
+                )"
             )
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_case (
-                    run_case_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    case_id VARCHAR,
-                    source_id VARCHAR,
-                    experiment_id VARCHAR,
-                    variant_label VARCHAR,
-                    grid_label VARCHAR,
-                    period VARCHAR,
-                    years_json VARCHAR,
-                    required BOOLEAN,
-                    status VARCHAR,
-                    output_id VARCHAR,
-                    export_path VARCHAR,
-                    missing_reason VARCHAR,
-                    updated_at TIMESTAMP
-                )
-            "
+                "CREATE TABLE IF NOT EXISTS shift_run_case (
+                    run_case_id VARCHAR PRIMARY KEY, run_id VARCHAR, case_id VARCHAR, source_id VARCHAR,
+                    experiment_id VARCHAR, variant_label VARCHAR, grid_label VARCHAR, period VARCHAR,
+                    years_json VARCHAR, required BOOLEAN, status VARCHAR, output_id VARCHAR,
+                    export_path VARCHAR, missing_reason VARCHAR, updated_at TIMESTAMP
+                )"
             )
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_event (
-                    event_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    step_id VARCHAR,
-                    stage VARCHAR,
-                    status VARCHAR,
-                    message VARCHAR,
-                    details_json VARCHAR,
-                    created_at TIMESTAMP
-                )
-                "
+                "CREATE TABLE IF NOT EXISTS shift_run_event (
+                    event_id VARCHAR PRIMARY KEY, run_id VARCHAR, step_id VARCHAR, stage VARCHAR,
+                    status VARCHAR, message VARCHAR, details_json VARCHAR, created_at TIMESTAMP
+                )"
             )
             # A run can have multiple foreground/background attempts. Keeping
             # jobs separate preserves process and log history across resume.
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_job (
-                    job_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    step_id VARCHAR,
-                    attempt INTEGER,
-                    mode VARCHAR,
-                    status VARCHAR,
-                    pid INTEGER,
-                    hostname VARCHAR,
-                    log_path VARCHAR,
-                    ui_json VARCHAR,
-                    cancel_requested_at TIMESTAMP,
-                    started_at TIMESTAMP,
-                    heartbeat_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    exit_code INTEGER,
-                    last_error VARCHAR,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-            "
+                "CREATE TABLE IF NOT EXISTS shift_run_job (
+                    job_id VARCHAR PRIMARY KEY, run_id VARCHAR, step_id VARCHAR, attempt INTEGER,
+                    mode VARCHAR, status VARCHAR, pid INTEGER, hostname VARCHAR, log_path VARCHAR,
+                    ui_json VARCHAR, cancel_requested_at TIMESTAMP, started_at TIMESTAMP,
+                    heartbeat_at TIMESTAMP, completed_at TIMESTAMP, exit_code INTEGER,
+                    last_error VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP
+                )"
             )
             # A step records one independently inspectable stage invocation.
             # The returned stage carries run/step identity into the next call;
             # stale or terminal inputs fork a child run instead of mutating it.
             exec(
-                "
-                CREATE TABLE IF NOT EXISTS shift_run_step (
-                    step_id VARCHAR PRIMARY KEY,
-                    run_id VARCHAR,
-                    ordinal INTEGER,
-                    task VARCHAR,
-                    spec_hash VARCHAR,
-                    spec_json VARCHAR,
-                    input_stage_json VARCHAR,
-                    output_stage_json VARCHAR,
-                    status VARCHAR,
-                    resumable BOOLEAN,
-                    nonresumable_reason VARCHAR,
-                    started_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    last_error VARCHAR
-                )
-            "
+                "CREATE TABLE IF NOT EXISTS shift_run_step (
+                    step_id VARCHAR PRIMARY KEY, run_id VARCHAR, ordinal INTEGER, task VARCHAR,
+                    spec_hash VARCHAR, spec_json VARCHAR, input_stage_json VARCHAR, output_stage_json VARCHAR,
+                    status VARCHAR, resumable BOOLEAN, nonresumable_reason VARCHAR,
+                    started_at TIMESTAMP, updated_at TIMESTAMP, completed_at TIMESTAMP, last_error VARCHAR
+                )"
             )
             invisible(NULL)
         },
@@ -6016,14 +5543,7 @@ EsgStore <- R6::R6Class(
             private$check_open()
             checkmate::assert_string(query_id, min.chars = 1L)
             checkmate::assert_flag(tracked)
-            qid <- query_id
-            queries <- private$read_table("esg_query")
-            row <- queries[queries[["query_id"]] == qid]
-            if (!nrow(row)) {
-                cli::cli_abort(
-                    "Stored ESGF query {.val {query_id}} was not found."
-                )
-            }
+            row <- private$get_query_row(query_id)
             private$with_store_lock({
                 row$tracked <- isTRUE(tracked)
                 row$updated_at <- store__now()
@@ -6032,6 +5552,37 @@ EsgStore <- R6::R6Class(
                     as.data.frame(row),
                     "query_id"
                 )
+            })
+            invisible(NULL)
+        },
+        # }}}
+        # delete_query_links {{{
+        delete_query_links = function(
+            table,
+            id_col,
+            query_id,
+            filter_col,
+            values = NULL
+        ) {
+            private$check_open()
+            checkmate::assert_string(query_id, min.chars = 1L)
+            checkmate::assert_character(
+                values,
+                any.missing = FALSE,
+                min.len = 1L,
+                unique = TRUE,
+                null.ok = TRUE
+            )
+            private$with_store_lock({
+                private$get_query_row(query_id)
+                rows <- private$read_table(table)
+                remove <- rows[rows[["query_id"]] == query_id]
+                if (!is.null(values) && nrow(remove)) {
+                    remove <- remove[remove[[filter_col]] %in% values]
+                }
+                if (nrow(remove)) {
+                    private$delete_by_key(table, id_col, remove[[id_col]])
+                }
             })
             invisible(NULL)
         },
@@ -7166,6 +6717,7 @@ EsgStore <- R6::R6Class(
                 esg_files
             )
             actions <- private$validate_download_actions(files, artifacts)
+            n_true <- function(x) as.integer(sum(x %in% TRUE, na.rm = TRUE))
             summary <- data.table::data.table(
                 query_id = query_label,
                 file_count = as.integer(nrow(files)),
@@ -7173,30 +6725,12 @@ EsgStore <- R6::R6Class(
                     !is.na(files$local_path) & nzchar(files$local_path),
                     na.rm = TRUE
                 )),
-                existing_file_count = as.integer(sum(
-                    files$exists %in% TRUE,
-                    na.rm = TRUE
-                )),
-                missing_file_count = as.integer(sum(
-                    files$missing_local_ref %in% TRUE,
-                    na.rm = TRUE
-                )),
-                bad_size_count = as.integer(sum(
-                    files$bad_size %in% TRUE,
-                    na.rm = TRUE
-                )),
-                bad_checksum_count = as.integer(sum(
-                    files$bad_checksum %in% TRUE,
-                    na.rm = TRUE
-                )),
-                artifact_mismatch_count = as.integer(sum(
-                    files$artifact_mismatch %in% TRUE,
-                    na.rm = TRUE
-                )),
-                layout_mismatch_count = as.integer(sum(
-                    files$layout_mismatch %in% TRUE,
-                    na.rm = TRUE
-                )),
+                existing_file_count = n_true(files$exists),
+                missing_file_count = n_true(files$missing_local_ref),
+                bad_size_count = n_true(files$bad_size),
+                bad_checksum_count = n_true(files$bad_checksum),
+                artifact_mismatch_count = n_true(files$artifact_mismatch),
+                layout_mismatch_count = n_true(files$layout_mismatch),
                 untracked_file_count = as.integer(nrow(
                     storage$untracked_files
                 )),
@@ -7224,47 +6758,34 @@ EsgStore <- R6::R6Class(
             esg_files <- data.table::as.data.table(esg_files)
             artifacts <- data.table::as.data.table(artifacts)
             if (!nrow(catalog)) {
-                return(private$validate_download_empty_files())
+                return(store__empty_table(paste0(
+                    "file_key:c,query_id:c,filename:c,local_path:c,local_artifact_id:c,",
+                    "actual_path:c,exists:l,expected_path:c,expected_rel_path:c,",
+                    "size_expected:n,size_actual:n,size_ok:l,checksum_expected:c,",
+                    "checksum_type:c,checksum_actual:c,checksum_ok:l,artifact_record_exists:l,",
+                    "artifact_path:c,artifact_path_exists:l,artifact_path_matches:l,",
+                    "layout_ok:l,missing_local_ref:l,bad_size:l,bad_checksum:l,",
+                    "artifact_mismatch:l,layout_mismatch:l,issue:c"
+                )))
             }
 
             if (nrow(esg_files)) {
-                local_cols <- c("file_key", "local_path", "local_artifact_id")
-                esg_local <- esg_files[,
-                    intersect(local_cols, names(esg_files)),
-                    with = FALSE
-                ]
-                data.table::setnames(
-                    esg_local,
-                    intersect(
-                        c("local_path", "local_artifact_id"),
-                        names(esg_local)
-                    ),
-                    paste0(
-                        "esg_",
-                        intersect(
-                            c("local_path", "local_artifact_id"),
-                            names(esg_local)
+                catalog <- data.table::copy(catalog)
+                idx <- match(catalog$file_key, esg_files$file_key)
+                for (col in intersect(
+                    c("local_path", "local_artifact_id"),
+                    names(esg_files)
+                )) {
+                    fill <- !is.na(idx) &
+                        (is.na(catalog[[col]]) | !nzchar(catalog[[col]]))
+                    if (any(fill)) {
+                        data.table::set(
+                            catalog,
+                            i = which(fill),
+                            j = col,
+                            value = esg_files[[col]][idx[fill]]
                         )
-                    )
-                )
-                catalog <- merge(
-                    catalog,
-                    esg_local,
-                    by = "file_key",
-                    all.x = TRUE,
-                    sort = FALSE
-                )
-                if ("esg_local_path" %in% names(catalog)) {
-                    fill <- is.na(catalog$local_path) |
-                        !nzchar(catalog$local_path)
-                    catalog$local_path[fill] <- catalog$esg_local_path[fill]
-                }
-                if ("esg_local_artifact_id" %in% names(catalog)) {
-                    fill <- is.na(catalog$local_artifact_id) |
-                        !nzchar(catalog$local_artifact_id)
-                    catalog$local_artifact_id[
-                        fill
-                    ] <- catalog$esg_local_artifact_id[fill]
+                    }
                 }
             }
 
@@ -7321,7 +6842,10 @@ EsgStore <- R6::R6Class(
             expected_path <- rep(NA_character_, nrow(catalog))
             expected_rel_path <- rep(NA_character_, nrow(catalog))
             if (isTRUE(layout)) {
-                plan <- private$validation_catalog_download_plan(catalog)
+                plan <- private$apply_download_layout(
+                    store__download_plan_rows(catalog),
+                    catalog
+                )
                 if (nrow(plan)) {
                     idx <- match(catalog$file_key, plan$file_key)
                     has <- !is.na(idx)
@@ -7435,7 +6959,11 @@ EsgStore <- R6::R6Class(
         ) {
             artifacts <- data.table::as.data.table(artifacts)
             if (!nrow(artifacts)) {
-                return(private$validate_download_empty_artifacts())
+                return(store__empty_table(paste0(
+                    "artifact_id:c,file_key:c,query_id:c,relative_path:c,path:c,exists:l,",
+                    "size:n,checksum:c,checksum_type:c,referenced:l,file_key_known:l,",
+                    "path_matches:l,issue:c"
+                )))
             }
             catalog <- data.table::as.data.table(catalog)
             esg_files <- data.table::as.data.table(esg_files)
@@ -7527,19 +7055,38 @@ EsgStore <- R6::R6Class(
             actions <- list()
             files <- data.table::as.data.table(files)
             artifacts <- data.table::as.data.table(artifacts)
+            make_action <- function(
+                action,
+                file_key,
+                artifact_id,
+                from_path,
+                to_path,
+                relative_path,
+                reason
+            ) {
+                data.table::data.table(
+                    action = action,
+                    file_key = file_key,
+                    artifact_id = artifact_id,
+                    from_path = from_path,
+                    to_path = to_path,
+                    relative_path = relative_path,
+                    reason = reason,
+                    safe = TRUE
+                )
+            }
 
             if (nrow(files)) {
                 missing <- files[missing_local_ref %in% TRUE]
                 if (nrow(missing)) {
-                    actions$clear_missing <- data.table::data.table(
-                        action = "clear_missing_local_ref",
-                        file_key = missing$file_key,
-                        artifact_id = missing$local_artifact_id,
-                        from_path = missing$actual_path,
-                        to_path = NA_character_,
-                        relative_path = missing$local_path,
-                        reason = "registered local file is missing",
-                        safe = TRUE
+                    actions$clear_missing <- make_action(
+                        "clear_missing_local_ref",
+                        missing$file_key,
+                        missing$local_artifact_id,
+                        missing$actual_path,
+                        NA_character_,
+                        missing$local_path,
+                        "registered local file is missing"
                     )
                 }
                 move <- files[
@@ -7550,19 +7097,17 @@ EsgStore <- R6::R6Class(
                         nzchar(expected_path)
                 ]
                 if (nrow(move)) {
-                    move[, target_available := !file.exists(expected_path)]
-                    move <- move[target_available %in% TRUE]
+                    move <- move[!file.exists(expected_path)]
                 }
                 if (nrow(move)) {
-                    actions$move_to_layout <- data.table::data.table(
-                        action = "move_to_layout",
-                        file_key = move$file_key,
-                        artifact_id = move$local_artifact_id,
-                        from_path = move$actual_path,
-                        to_path = move$expected_path,
-                        relative_path = move$expected_rel_path,
-                        reason = "registered local file does not match current download layout",
-                        safe = TRUE
+                    actions$move_to_layout <- make_action(
+                        "move_to_layout",
+                        move$file_key,
+                        move$local_artifact_id,
+                        move$actual_path,
+                        move$expected_path,
+                        move$expected_rel_path,
+                        "registered local file does not match current download layout"
                     )
                 }
             }
@@ -7570,52 +7115,51 @@ EsgStore <- R6::R6Class(
             if (nrow(artifacts)) {
                 missing_artifact <- artifacts[exists %in% FALSE]
                 if (nrow(missing_artifact)) {
-                    actions$missing_artifact <- data.table::data.table(
-                        action = "remove_missing_artifact",
-                        file_key = missing_artifact$file_key,
-                        artifact_id = missing_artifact$artifact_id,
-                        from_path = missing_artifact$path,
-                        to_path = NA_character_,
-                        relative_path = missing_artifact$relative_path,
-                        reason = "artifact file is missing",
-                        safe = TRUE
+                    actions$missing_artifact <- make_action(
+                        "remove_missing_artifact",
+                        missing_artifact$file_key,
+                        missing_artifact$artifact_id,
+                        missing_artifact$path,
+                        NA_character_,
+                        missing_artifact$relative_path,
+                        "artifact file is missing"
                     )
                 }
                 orphan_artifact <- artifacts[referenced %in% FALSE]
                 if (nrow(orphan_artifact)) {
-                    actions$orphan_artifact <- data.table::data.table(
-                        action = "remove_orphan_artifact",
-                        file_key = orphan_artifact$file_key,
-                        artifact_id = orphan_artifact$artifact_id,
-                        from_path = orphan_artifact$path,
-                        to_path = NA_character_,
-                        relative_path = orphan_artifact$relative_path,
-                        reason = "artifact is not referenced by file records",
-                        safe = TRUE
+                    actions$orphan_artifact <- make_action(
+                        "remove_orphan_artifact",
+                        orphan_artifact$file_key,
+                        orphan_artifact$artifact_id,
+                        orphan_artifact$path,
+                        NA_character_,
+                        orphan_artifact$relative_path,
+                        "artifact is not referenced by file records"
                     )
                 }
             }
 
             if (!length(actions)) {
-                return(private$validate_download_empty_actions())
+                return(store__empty_table(
+                    "action_id:c,action:c,file_key:c,artifact_id:c,from_path:c,to_path:c,relative_path:c,reason:c,safe:l"
+                ))
             }
             out <- unique(data.table::rbindlist(actions, fill = TRUE))
-            out[,
-                action_id := vapply(
-                    seq_len(.N),
-                    function(i) {
-                        store__hash(
-                            action[[i]],
-                            file_key[[i]],
-                            artifact_id[[i]],
-                            from_path[[i]],
-                            to_path[[i]],
-                            reason[[i]]
-                        )
-                    },
-                    character(1L)
-                )
-            ]
+            action_ids <- vapply(
+                seq_len(nrow(out)),
+                function(i) {
+                    store__hash(
+                        out$action[[i]],
+                        out$file_key[[i]],
+                        out$artifact_id[[i]],
+                        out$from_path[[i]],
+                        out$to_path[[i]],
+                        out$reason[[i]]
+                    )
+                },
+                character(1L)
+            )
+            data.table::set(out, j = "action_id", value = action_ids)
             data.table::setcolorder(
                 out,
                 c(
@@ -7631,17 +7175,6 @@ EsgStore <- R6::R6Class(
                 )
             )
             out[]
-        },
-        # }}}
-
-        # validation_catalog_download_plan {{{
-        validation_catalog_download_plan = function(catalog) {
-            catalog <- data.table::as.data.table(catalog)
-            if (!nrow(catalog)) {
-                return(data.table::data.table())
-            }
-            plan <- store__download_plan_rows(catalog)
-            private$apply_download_layout(plan, catalog)
         },
         # }}}
 
@@ -7661,81 +7194,12 @@ EsgStore <- R6::R6Class(
                         logical(1L)
                     )]
                     if (!length(hit)) {
-                        return(NA_character_)
+                        NA_character_
+                    } else {
+                        paste(hit, collapse = ",")
                     }
-                    paste(hit, collapse = ",")
                 },
                 character(1L)
-            )
-        },
-        # }}}
-
-        # validate_download_empty_files {{{
-        validate_download_empty_files = function() {
-            data.table::data.table(
-                file_key = character(),
-                query_id = character(),
-                filename = character(),
-                local_path = character(),
-                local_artifact_id = character(),
-                actual_path = character(),
-                exists = logical(),
-                expected_path = character(),
-                expected_rel_path = character(),
-                size_expected = numeric(),
-                size_actual = numeric(),
-                size_ok = logical(),
-                checksum_expected = character(),
-                checksum_type = character(),
-                checksum_actual = character(),
-                checksum_ok = logical(),
-                artifact_record_exists = logical(),
-                artifact_path = character(),
-                artifact_path_exists = logical(),
-                artifact_path_matches = logical(),
-                layout_ok = logical(),
-                missing_local_ref = logical(),
-                bad_size = logical(),
-                bad_checksum = logical(),
-                artifact_mismatch = logical(),
-                layout_mismatch = logical(),
-                issue = character()
-            )
-        },
-        # }}}
-
-        # validate_download_empty_artifacts {{{
-        validate_download_empty_artifacts = function() {
-            data.table::data.table(
-                artifact_id = character(),
-                file_key = character(),
-                query_id = character(),
-                relative_path = character(),
-                path = character(),
-                exists = logical(),
-                size = numeric(),
-                checksum = character(),
-                checksum_type = character(),
-                referenced = logical(),
-                file_key_known = logical(),
-                path_matches = logical(),
-                issue = character()
-            )
-        },
-        # }}}
-
-        # validate_download_empty_actions {{{
-        validate_download_empty_actions = function() {
-            data.table::data.table(
-                action_id = character(),
-                action = character(),
-                file_key = character(),
-                artifact_id = character(),
-                from_path = character(),
-                to_path = character(),
-                relative_path = character(),
-                reason = character(),
-                safe = logical()
             )
         },
         # }}}
@@ -7744,7 +7208,9 @@ EsgStore <- R6::R6Class(
         repair_download_files = function(actions, dry_run = TRUE) {
             actions <- data.table::as.data.table(actions)
             if (!nrow(actions)) {
-                return(private$repair_download_empty_results())
+                return(store__empty_table(
+                    "action_id:c,action:c,file_key:c,artifact_id:c,from_path:c,to_path:c,relative_path:c,done:l,dry_run:l,message:c"
+                ))
             }
             required <- c(
                 "action_id",
@@ -8017,22 +7483,6 @@ EsgStore <- R6::R6Class(
         },
         # }}}
 
-        # repair_download_empty_results {{{
-        repair_download_empty_results = function() {
-            data.table::data.table(
-                action_id = character(),
-                action = character(),
-                file_key = character(),
-                artifact_id = character(),
-                from_path = character(),
-                to_path = character(),
-                relative_path = character(),
-                done = logical(),
-                dry_run = logical(),
-                message = character()
-            )
-        },
-        # }}}
         # download_storage_report
         # download_storage_report {{{
         download_storage_report = function() {
@@ -10079,6 +9529,36 @@ store__artifact_rows <- function(conn, artifact_id = NULL) {
         )
     }
     rows[match(ids, rows$artifact_id), , drop = FALSE]
+}
+# }}}
+
+# store__add_columns {{{
+store__add_columns <- function(exec, specs) {
+    for (table in names(specs)) {
+        for (col in specs[[table]]) {
+            exec(sprintf(
+                "ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s",
+                table,
+                col
+            ))
+        }
+    }
+    invisible(NULL)
+}
+# }}}
+
+# store__empty_table {{{
+store__empty_table <- function(spec) {
+    proto <- list(c = character(), l = logical(), n = numeric())
+    parts <- strsplit(
+        trimws(strsplit(spec, ",", fixed = TRUE)[[1L]]),
+        ":",
+        fixed = TRUE
+    )
+    data.table::as.data.table(stats::setNames(
+        lapply(parts, function(p) proto[[p[[2L]]]]),
+        vapply(parts, `[[`, character(1L), 1L)
+    ))
 }
 # }}}
 

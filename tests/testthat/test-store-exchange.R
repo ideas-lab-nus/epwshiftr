@@ -1,158 +1,116 @@
+# Shared local fixture/import helpers for store exchange tests.
+ex__setup <- function(root = NULL, env = parent.frame()) {
+    f <- if (is.null(root)) {
+        exchange_test__fixture()
+    } else {
+        exchange_test__fixture(root = root)
+    }
+    withr::defer(lapply(f$stores, function(s) s$close()), envir = env)
+    f$source <- f$stores[[1L]]
+    f$owner <- f$stores[[3L]]
+    f$ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
+    f
+}
+ex__store <- function(path, env = parent.frame()) {
+    s <- EsgStore$new(path)
+    withr::defer(s$close(), envir = env)
+    s
+}
+ex__plans <- function(s, r, csum = r$checksum, qp = r$query_paths) {
+    s$import_plans(r$path, csum, qp)
+}
+ex__ext <- function(s, r, csum = r$checksum, ap = r$artifact_paths) {
+    s$import_extracts(r$path, csum, ap)
+}
+ex__json <- function(obj, path) {
+    jsonlite::write_json(
+        obj,
+        path,
+        auto_unbox = TRUE,
+        digits = NA,
+        null = "null"
+    )
+    path
+}
+
 # Plan transfer uses generated NetCDF and fresh stores. It never clones a live
 # DuckDB file, changes original IDs, or copies native/extracted weather bytes.
 test_that("pending physical-file plans execute with exact original identities", {
     local_cache_mode("off")
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    source <- f$stores[[1L]]
-    owner <- f$stores[[3L]]
-    selected <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
-    receipt <- source$export_plans(selected, file.path(f$root, "plans.json"))
-    destination <- EsgStore$new(file.path(owner$path, "file-parts/transferred"))
-    on.exit(destination$close(), add = TRUE)
-    imported <- destination$import_plans(
-        receipt$path,
-        receipt$checksum,
-        receipt$query_paths
-    )
-    expect_identical(imported$plan_id, selected)
+    f <- ex__setup()
+    r <- f$source$export_plans(f$ids, file.path(f$root, "plans.json"))
+    dest <- ex__store(file.path(f$owner$path, "file-parts/transferred"))
+    imported <- ex__plans(dest, r)
+    expect_identical(imported$plan_id, f$ids)
     expect_false(any(imported$reused))
     expect_identical(
-        destination$query("SELECT plan_id FROM extraction_plan")$plan_id,
-        selected
+        dest$query("SELECT plan_id FROM extraction_plan")$plan_id,
+        f$ids
     )
-    expect_equal(nrow(destination$query("SELECT * FROM file_catalog")), 1L)
-    expect_equal(nrow(destination$query("SELECT * FROM extraction_result")), 0L)
-    expect_length(list.files(destination$path, "nc$", recursive = TRUE), 0L)
-    expect_true(all(destination$extract(selected)$status == "done"))
-    before <- exchange_test__snapshot(destination)
-    expect_true(all(
-        destination$import_plans(
-            receipt$path,
-            receipt$checksum,
-            receipt$query_paths
-        )$reused
-    ))
-    expect_identical(exchange_test__snapshot(destination), before)
-    completed <- destination$export_extracts(
-        selected,
-        file.path(f$root, "completed.json")
-    )
-    owner$import_extracts(
-        completed$path,
-        completed$checksum,
-        completed$artifact_paths
-    )
-    expect_equal(sum(owner$coverage()$status == "done"), 2L)
+    expect_equal(nrow(dest$query("SELECT * FROM file_catalog")), 1L)
+    expect_equal(nrow(dest$query("SELECT * FROM extraction_result")), 0L)
+    expect_length(list.files(dest$path, "nc$", recursive = TRUE), 0L)
+    expect_true(all(dest$extract(f$ids)$status == "done"))
+    before <- exchange_test__snapshot(dest)
+    expect_true(all(ex__plans(dest, r)$reused))
+    expect_identical(exchange_test__snapshot(dest), before)
+    done <- dest$export_extracts(f$ids, file.path(f$root, "completed.json"))
+    ex__ext(f$owner, done)
+    expect_equal(sum(f$owner$coverage()$status == "done"), 2L)
     expect_error(
-        destination$export_plans(selected, file.path(f$root, "done-plan.json")),
+        dest$export_plans(f$ids, file.path(f$root, "done-plan.json")),
         "pending or failed"
     )
 })
 
 # Metadata transport authenticates bytes, then intrinsic ID and relation checks
 # reject a faulty producer before any destination table or query file is changed.
-test_that("missing query bytes and altered plan coordinates are atomic failures", {
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    source <- f$stores[[1L]]
-    selected <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
-    receipt <- source$export_plans(selected, file.path(f$root, "plans.json"))
-    destination <- EsgStore$new(file.path(f$root, "fresh-destination"))
-    on.exit(destination$close(), add = TRUE)
-    expect_error(
-        destination$import_plans(
-            receipt$path,
-            paste(rep("0", 64), collapse = ""),
-            receipt$query_paths
-        ),
-        "checksum"
-    )
-    missing <- receipt$query_paths
+test_that("missing query bytes, altered coordinates, and duplicate retry delivery", {
+    f <- ex__setup()
+    r <- f$source$export_plans(f$ids, file.path(f$root, "plans.json"))
+    dest <- ex__store(file.path(f$root, "fresh-destination"))
+    expect_error(ex__plans(dest, r, csum = strrep("0", 64L)), "checksum")
+    missing <- r$query_paths
     missing[[1L]] <- file.path(f$root, "missing-control.json")
-    expect_error(
-        destination$import_plans(receipt$path, receipt$checksum, missing),
-        "missing or has changed"
-    )
-    expect_equal(nrow(destination$query("SELECT * FROM extraction_plan")), 0L)
-    expect_equal(nrow(destination$query("SELECT * FROM query_run")), 0L)
-    data <- jsonlite::read_json(receipt$path, simplifyVector = FALSE)
+    expect_error(ex__plans(dest, r, qp = missing), "missing or has changed")
+    expect_equal(nrow(dest$query("SELECT * FROM extraction_plan")), 0L)
+    expect_equal(nrow(dest$query("SELECT * FROM query_run")), 0L)
+    data <- jsonlite::read_json(r$path, simplifyVector = FALSE)
     data$tables$extraction_plan$lon[[1L]] <- "104.12345678901234"
-    changed <- file.path(f$root, "changed.json")
-    jsonlite::write_json(
-        data,
-        changed,
-        auto_unbox = TRUE,
-        digits = NA,
-        null = "null"
-    )
+    changed <- ex__json(data, file.path(f$root, "changed.json"))
     expect_error(
-        destination$import_plans(
+        dest$import_plans(
             changed,
             store_hash_file(changed, "sha256"),
-            receipt$query_paths
+            r$query_paths
         ),
         "identity mismatch"
     )
-    expect_equal(nrow(destination$query("SELECT * FROM extraction_plan")), 0L)
-})
+    expect_equal(nrow(dest$query("SELECT * FROM extraction_plan")), 0L)
 
-# A retry or a duplicate delivery cannot roll back progress already recorded by
-# the destination's sole writer, including the original attempt/error evidence.
-test_that("duplicate plan delivery preserves existing retry history", {
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    source <- f$stores[[1L]]
-    selected <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
-    receipt <- source$export_plans(selected, file.path(f$root, "plans.json"))
-    destination <- EsgStore$new(file.path(f$root, "retry-destination"))
-    on.exit(destination$close(), add = TRUE)
-    destination$import_plans(
-        receipt$path,
-        receipt$checksum,
-        receipt$query_paths
-    )
+    # Duplicate delivery preserves existing retry history; conflicting identities fail.
+    ex__plans(dest, r)
     ddb_exec(
-        priv(destination)$conn,
+        priv(dest)$conn,
         "UPDATE extraction_plan SET status='failed', attempt_count=9, last_error='original generated failure'"
     )
-    before <- destination$query("SELECT * FROM extraction_plan")
-    expect_true(all(
-        destination$import_plans(
-            receipt$path,
-            receipt$checksum,
-            receipt$query_paths
-        )$reused
-    ))
-    expect_identical(destination$query("SELECT * FROM extraction_plan"), before)
-    # Conflicting identities are refused even when a transport hash is valid.
+    before <- dest$query("SELECT * FROM extraction_plan")
+    expect_true(all(ex__plans(dest, r)$reused))
+    expect_identical(dest$query("SELECT * FROM extraction_plan"), before)
     ddb_exec(
-        priv(destination)$conn,
+        priv(dest)$conn,
         "UPDATE file_catalog SET version='different-version'"
     )
-    expect_error(
-        destination$import_plans(
-            receipt$path,
-            receipt$checksum,
-            receipt$query_paths
-        ),
-        "identity mismatch"
-    )
-    expect_identical(destination$query("SELECT * FROM extraction_plan"), before)
+    expect_error(ex__plans(dest, r), "identity mismatch")
+    expect_identical(dest$query("SELECT * FROM extraction_plan"), before)
 })
 
 # Failed metadata installation rolls back the DB and removes only metadata files
 # created by this attempt, without touching any source/destination payload.
 test_that("pending-plan transaction failure leaves the fresh store unchanged", {
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    selected <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
-    receipt <- f$stores[[1L]]$export_plans(
-        selected,
-        file.path(f$root, "plans.json")
-    )
-    destination <- EsgStore$new(file.path(f$root, "rollback-destination"))
-    on.exit(destination$close(), add = TRUE)
+    f <- ex__setup()
+    r <- f$source$export_plans(f$ids, file.path(f$root, "plans.json"))
+    dest <- ex__store(file.path(f$root, "rollback-destination"))
     original <- ddb_append_table
     local_mocked_bindings(ddb_append_table = function(conn, table, ...) {
         if (table == "extraction_plan") {
@@ -160,27 +118,17 @@ test_that("pending-plan transaction failure leaves the fresh store unchanged", {
         }
         original(conn, table, ...)
     })
-    expect_error(
-        destination$import_plans(
-            receipt$path,
-            receipt$checksum,
-            receipt$query_paths
-        ),
-        "injected plan installation failure"
-    )
-    for (table in c(
+    expect_error(ex__plans(dest, r), "injected plan installation failure")
+    for (tbl in c(
         "query_run",
         "esg_file",
         "esg_query_file",
         "file_catalog",
         "extraction_plan"
     )) {
-        expect_equal(nrow(destination$query(paste("SELECT * FROM", table))), 0L)
+        expect_equal(nrow(dest$query(paste("SELECT * FROM", tbl))), 0L)
     }
-    expect_length(
-        list.files(file.path(destination$path, "queries"), "json$"),
-        0L
-    )
+    expect_length(list.files(file.path(dest$path, "queries"), "json$"), 0L)
 })
 
 # Epoch-adjacent doubles expose a one-ULP decimal conversion error on this R.
@@ -222,9 +170,7 @@ test_that("typed numeric receipt columns preserve adversarial double bits", {
 # Generated exchange fixtures are shared through helper-store-exchange.R.
 test_that("independent file fragments assemble without copying or re-extracting", {
     local_cache_mode("off")
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    owner <- f$stores[[3L]]
+    f <- ex__setup()
     file_keys <- unique(f$plans$file_key)
     receipts <- vector("list", 2L)
     for (i in 1:2) {
@@ -234,26 +180,20 @@ test_that("independent file fragments assemble without copying or re-extracting"
             ids,
             file.path(f$root, paste0("receipt-", i, ".json"))
         )
-        # The source manifest can close before the other node sees the receipt.
         f$stores[[i]]$close()
-        imported <- owner$import_extracts(
-            receipts[[i]]$path,
-            receipts[[i]]$checksum,
-            receipts[[i]]$artifact_paths
-        )
+        imported <- ex__ext(f$owner, receipts[[i]])
         expect_identical(imported$plan_id, ids)
         expect_false(any(imported$reused))
-        expect_equal(sum(owner$coverage()$status == "done"), 2L * i)
+        expect_equal(sum(f$owner$coverage()$status == "done"), 2L * i)
         expect_equal(
-            nrow(owner$query(
+            nrow(f$owner$query(
                 "SELECT DISTINCT output_path FROM extraction_result"
             )),
             2L * i
         )
-        # Import registers original files by reference, no second Parquet copy.
         expect_length(
             list.files(
-                file.path(owner$path, "extracts"),
+                file.path(f$owner$path, "extracts"),
                 recursive = TRUE,
                 pattern = "parquet$"
             ),
@@ -261,136 +201,49 @@ test_that("independent file fragments assemble without copying or re-extracting"
         )
     }
     paths <- unlist(lapply(receipts, `[[`, "artifact_paths"), use.names = FALSE)
-    data <- owner$query(paste0(
+    data <- f$owner$query(paste0(
         "SELECT * FROM read_parquet([",
-        paste(ddb_literal(priv(owner)$conn, paths), collapse = ","),
+        paste(ddb_literal(priv(f$owner)$conn, paths), collapse = ","),
         "])"
     ))
     expect_equal(data.table::uniqueN(data$plan_id), 4L)
     expect_equal(sort(unique(data$cf_day)), 1:2)
     expect_equal(data[, .N, by = "site_id"]$N, c(2L, 2L))
-    expect_true(all(owner$coverage()$status == "done"))
-    before <- exchange_test__snapshot(owner)
-    for (receipt in receipts) {
-        expect_true(all(
-            owner$import_extracts(
-                receipt$path,
-                receipt$checksum,
-                receipt$artifact_paths
-            )$reused
-        ))
+    expect_true(all(f$owner$coverage()$status == "done"))
+    before <- exchange_test__snapshot(f$owner)
+    for (r in receipts) {
+        expect_true(all(ex__ext(f$owner, r)$reused))
     }
-    expect_identical(exchange_test__snapshot(owner), before)
-})
-
-test_that("missing bytes and changed plan or file identity never partially import", {
-    local_cache_mode("off")
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    source <- f$stores[[1L]]
-    owner <- f$stores[[3L]]
-    ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
-    source$extract(ids)
-    receipt <- source$export_extracts(ids, file.path(f$root, "receipt.json"))
-    before <- exchange_test__snapshot(owner)
-    expect_error(
-        owner$import_extracts(
-            receipt$path,
-            paste(rep("0", 64), collapse = ""),
-            receipt$artifact_paths
-        ),
-        "checksum"
-    )
-    missing <- receipt$artifact_paths
-    missing[[length(missing)]] <- file.path(owner$path, "missing.parquet")
-    expect_error(
-        owner$import_extracts(receipt$path, receipt$checksum, missing),
-        "missing or has changed"
-    )
-    expect_identical(exchange_test__snapshot(owner), before)
-    conn <- priv(owner)$conn
-    ddb_exec(conn, "UPDATE extraction_plan SET lon=lon+1")
-    expect_error(
-        owner$import_extracts(
-            receipt$path,
-            receipt$checksum,
-            receipt$artifact_paths
-        ),
-        "identity mismatch"
-    )
-    ddb_exec(conn, "UPDATE extraction_plan SET lon=lon-1")
-    # Restore exact doubles from the original plans rather than subtracting an
-    # offset in a production path; these test values happen to round-trip here.
-    ddb_exec(conn, "UPDATE file_catalog SET checksum='wrong-content'")
-    expect_error(
-        owner$import_extracts(
-            receipt$path,
-            receipt$checksum,
-            receipt$artifact_paths
-        ),
-        "identity mismatch"
-    )
-    expect_equal(nrow(owner$query("SELECT * FROM extraction_result")), 0L)
+    expect_identical(exchange_test__snapshot(f$owner), before)
 })
 
 # A receipt with multiple plans must commit as a unit, including on retry.
 # Replaying it should keep every row and the original Parquet bytes unchanged.
 test_that("import rolls back a failed receipt commit and reuses its retry", {
     local_cache_mode("off")
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    source <- f$stores[[1L]]
-    owner <- f$stores[[3L]]
-    ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
-    source$extract(ids)
-    receipt <- source$export_extracts(ids, file.path(f$root, "receipt.json"))
-    before <- exchange_test__snapshot(owner)
-    bytes <- vapply(
-        receipt$artifact_paths,
-        store_hash_file,
-        character(1L),
-        "sha256"
-    )
-    fault <- exchange_test__fail_publication_commit(owner, ids)
+    f <- ex__setup()
+    f$source$extract(f$ids)
+    r <- f$source$export_extracts(f$ids, file.path(f$root, "receipt.json"))
+    before <- exchange_test__snapshot(f$owner)
+    bytes <- vapply(r$artifact_paths, store_hash_file, character(1L), "sha256")
+    fault <- exchange_test__fail_publication_commit(f$owner, f$ids)
 
-    expect_error(
-        owner$import_extracts(
-            receipt$path,
-            receipt$checksum,
-            receipt$artifact_paths
-        ),
-        "injected publication commit failure"
-    )
-    expect_identical(fault$staged$status, rep("done", length(ids)))
-    expect_equal(fault$staged$results, length(ids))
-    expect_equal(fault$staged$artifacts, length(ids))
+    expect_error(ex__ext(f$owner, r), "injected publication commit failure")
+    expect_identical(fault$staged$status, rep("done", length(f$ids)))
+    expect_equal(fault$staged$results, length(f$ids))
+    expect_equal(fault$staged$artifacts, length(f$ids))
     expect_gt(fault$staged$grid_sources, 0L)
-    expect_identical(exchange_test__snapshot(owner), before)
+    expect_identical(exchange_test__snapshot(f$owner), before)
 
-    imported <- owner$import_extracts(
-        receipt$path,
-        receipt$checksum,
-        receipt$artifact_paths
-    )
-    expect_false(any(imported$reused))
-    ready <- exchange_test__snapshot(owner)
-    expect_equal(nrow(ready$extraction_result), length(ids))
-    expect_equal(sum(ready$artifact$kind == "extract"), length(ids))
+    expect_false(any(ex__ext(f$owner, r)$reused))
+    ready <- exchange_test__snapshot(f$owner)
+    expect_equal(nrow(ready$extraction_result), length(f$ids))
+    expect_equal(sum(ready$artifact$kind == "extract"), length(f$ids))
     expect_equal(nrow(ready$extraction_grid_source), fault$staged$grid_sources)
-    duplicate <- owner$import_extracts(
-        receipt$path,
-        receipt$checksum,
-        receipt$artifact_paths
-    )
-    expect_true(all(duplicate$reused))
-    expect_identical(exchange_test__snapshot(owner), ready)
+    expect_true(all(ex__ext(f$owner, r)$reused))
+    expect_identical(exchange_test__snapshot(f$owner), ready)
     expect_identical(
-        vapply(
-            receipt$artifact_paths,
-            store_hash_file,
-            character(1L),
-            "sha256"
-        ),
+        vapply(r$artifact_paths, store_hash_file, character(1L), "sha256"),
         bytes
     )
 })
@@ -419,23 +272,45 @@ test_that("receipt type reconstruction preserves exact doubles and nulls", {
     expect_identical(actual, rows)
 })
 
-# Hashes authenticate receipt transport, while lineage and coverage validation
-# still reject internally inconsistent receipts from a faulty producer.
-test_that("invalid lineage, counts and outside-root paths fail before adoption", {
+# Hashes authenticate receipt transport, while identity, lineage and coverage
+# validation still reject missing bytes or inconsistent receipts atomically.
+test_that("invalid checksums, identities, lineage, counts, and outside-root paths fail before adoption", {
     local_cache_mode("off")
-    f <- exchange_test__fixture()
-    on.exit(lapply(f$stores, function(s) s$close()), add = TRUE)
-    source <- f$stores[[1L]]
-    owner <- f$stores[[3L]]
-    ids <- f$plans$plan_id[f$plans$file_key == f$plans$file_key[[1L]]]
+    f <- ex__setup()
     expect_error(
-        source$export_extracts(ids, file.path(f$root, "pending.json")),
+        f$source$export_extracts(f$ids, file.path(f$root, "pending.json")),
         "completed or empty"
     )
-    source$extract(ids)
-    receipt <- source$export_extracts(ids, file.path(f$root, "receipt.json"))
-    before <- exchange_test__snapshot(owner)
-    original <- jsonlite::read_json(receipt$path, simplifyVector = FALSE)
+    f$source$extract(f$ids)
+    r <- f$source$export_extracts(f$ids, file.path(f$root, "receipt.json"))
+    before <- exchange_test__snapshot(f$owner)
+
+    expect_error(ex__ext(f$owner, r, csum = strrep("0", 64L)), "checksum")
+    missing <- r$artifact_paths
+    missing[[length(missing)]] <- file.path(f$owner$path, "missing.parquet")
+    expect_error(ex__ext(f$owner, r, ap = missing), "missing or has changed")
+    expect_identical(exchange_test__snapshot(f$owner), before)
+
+    conn <- priv(f$owner)$conn
+    ddb_exec(conn, "UPDATE extraction_plan SET lon=lon+1")
+    expect_error(ex__ext(f$owner, r), "identity mismatch")
+    ddb_exec(conn, "UPDATE extraction_plan SET lon=lon-1")
+    ddb_exec(conn, "UPDATE file_catalog SET checksum='wrong-content'")
+    expect_error(ex__ext(f$owner, r), "identity mismatch")
+    expect_equal(nrow(f$owner$query("SELECT * FROM extraction_result")), 0L)
+    # Restore exact checksum for remaining receipt variant checks.
+    orig_csum <- f$source$query("SELECT checksum FROM file_catalog")$checksum[[
+        1L
+    ]]
+    ddb_exec(
+        conn,
+        paste0(
+            "UPDATE file_catalog SET checksum=",
+            ddb_literal(conn, orig_csum)
+        )
+    )
+
+    original <- jsonlite::read_json(r$path, simplifyVector = FALSE)
     variants <- list(
         grid_identity = function(x) {
             x$tables$extraction_grid_source$plan_id[[1L]] <- "unknown"
@@ -455,43 +330,29 @@ test_that("invalid lineage, counts and outside-root paths fail before adoption",
         }
     )
     for (name in names(variants)) {
-        path <- file.path(f$root, paste0(name, ".json"))
-        jsonlite::write_json(
+        p <- ex__json(
             variants[[name]](original),
-            path,
-            auto_unbox = TRUE,
-            digits = NA,
-            null = "null"
+            file.path(f$root, paste0(name, ".json"))
         )
-        expect_error(owner$import_extracts(
-            path,
-            store_hash_file(path, "sha256"),
-            receipt$artifact_paths
+        expect_error(f$owner$import_extracts(
+            p,
+            store_hash_file(p, "sha256"),
+            r$artifact_paths
         ))
-        expect_identical(exchange_test__snapshot(owner), before)
+        expect_identical(exchange_test__snapshot(f$owner), before)
     }
-    outside <- receipt$artifact_paths
+    outside <- r$artifact_paths
     copy <- file.path(f$root, "outside.parquet")
     expect_true(file.copy(outside[[1L]], copy))
     outside[[1L]] <- copy
-    expect_error(
-        owner$import_extracts(receipt$path, receipt$checksum, outside),
-        "outside"
-    )
-    expect_identical(exchange_test__snapshot(owner), before)
-    empty <- source$export_extracts(
+    expect_error(ex__ext(f$owner, r, ap = outside), "outside")
+    expect_identical(exchange_test__snapshot(f$owner), before)
+    empty <- f$source$export_extracts(
         character(),
         file.path(f$root, "empty.json")
     )
-    expect_equal(
-        nrow(owner$import_extracts(
-            empty$path,
-            empty$checksum,
-            empty$artifact_paths
-        )),
-        0L
-    )
-    expect_identical(exchange_test__snapshot(owner), before)
+    expect_equal(nrow(ex__ext(f$owner, empty)), 0L)
+    expect_identical(exchange_test__snapshot(f$owner), before)
 })
 
 # Exchange must adopt previously published Parquet by identity, including an
@@ -503,13 +364,8 @@ test_that("exchange reads a legacy Parquet at its original long path", {
     )
     withr::local_options(epwshiftr.cache = FALSE, epwshiftr.progress = FALSE)
     root <- file.path(withr::local_tempdir(), strrep("nested", 22L))
-    fixture <- exchange_test__fixture(root = root)
-    on.exit(lapply(fixture$stores, function(store) store$close()), add = TRUE)
-    source <- fixture$stores[[1L]]
-    owner <- fixture$stores[[3L]]
-    # Emit the previously supported Snappy format before the original Store
-    # publishes the artifact, so its manifest records the original byte hash.
-    private <- priv(source)
+    f <- ex__setup(root = root)
+    private <- priv(f$source)
     unlockBinding("write_parquet", private)
     private$write_parquet <- function(dt, path, overwrite = FALSE) {
         dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
@@ -530,112 +386,106 @@ test_that("exchange reads a legacy Parquet at its original long path", {
         invisible(path)
     }
     lockBinding("write_parquet", private)
-    id <- fixture$plans$plan_id[[1L]]
-    expect_identical(source$extract(id, fallback = "error")$status, "done")
-    receipt <- source$export_extracts(id, file.path(root, "legacy.json"))
-    path <- receipt$artifact_paths[[1L]]
+    id <- f$plans$plan_id[[1L]]
+    expect_identical(f$source$extract(id, fallback = "error")$status, "done")
+    r <- f$source$export_extracts(id, file.path(root, "legacy.json"))
+    path <- r$artifact_paths[[1L]]
     expect_gt(nchar(path), 260L)
-    source$close()
-    imported <- owner$import_extracts(
-        receipt$path,
-        receipt$checksum,
-        receipt$artifact_paths
-    )
-    expect_identical(imported$plan_id, id)
-    local_id <- owner$query(
+    f$source$close()
+    expect_identical(ex__ext(f$owner, r)$plan_id, id)
+    local_id <- f$owner$query(
         "SELECT artifact_id FROM extraction_result"
     )$artifact_id
-    expect_identical(owner$artifact_path(local_id), path)
-    expect_true(owner$validate(local_id)$checksum_ok)
-    lineage <- owner$query(
+    expect_identical(f$owner$artifact_path(local_id), path)
+    expect_true(f$owner$validate(local_id)$checksum_ok)
+    lineage <- f$owner$query(
         "SELECT metadata_json FROM artifact WHERE kind = 'extract'"
     )
     expect_identical(
         jsonlite::fromJSON(lineage$metadata_json)$original_artifact_id,
-        names(receipt$artifact_paths)
+        names(r$artifact_paths)
     )
-    quoted <- ddb_literal(priv(owner)$conn, path)
-    values <- owner$query(paste0(
-        "SELECT value FROM read_parquet(",
-        quoted,
-        ")"
-    ))
-    codec <- owner$query(paste0(
-        "SELECT DISTINCT compression FROM parquet_metadata(",
-        quoted,
-        ")"
-    ))
-    expect_true(all(is.finite(values$value)))
-    expect_identical(codec$compression, "SNAPPY")
-    expect_true(
-        owner$import_extracts(
-            receipt$path,
-            receipt$checksum,
-            receipt$artifact_paths
-        )$reused
+    quoted <- ddb_literal(priv(f$owner)$conn, path)
+    expect_true(all(is.finite(
+        f$owner$query(paste0(
+            "SELECT value FROM read_parquet(",
+            quoted,
+            ")"
+        ))$value
+    )))
+    expect_identical(
+        f$owner$query(paste0(
+            "SELECT DISTINCT compression FROM parquet_metadata(",
+            quoted,
+            ")"
+        ))$compression,
+        "SNAPPY"
     )
+    expect_true(ex__ext(f$owner, r)$reused)
 })
 
 # Dataset-scoped IDs returned by a bridge must not merge distinct time slices.
 test_that("dataset master IDs retain each native file and deduplicate replicas", {
-    dataset <- "CMIP6.CMIP.CMCC.CMCC-ESM2.historical.r1i1p1f1.day.tas.gn"
-    filenames <- paste0(
+    ds <- "CMIP6.CMIP.CMCC.CMCC-ESM2.historical.r1i1p1f1.day.tas.gn"
+    fns <- paste0(
         "tas_day_CMCC-ESM2_historical_r1i1p1f1_gn_",
         c("19750101-19991231", "20000101-20141231"),
         ".nc"
     )
-    docs <- data.table::rbindlist(lapply(filenames, esgf_test__file_docs))
-    data.table::set(docs, j = "master_id", value = dataset)
-    data.table::set(
+    docs <- data.table::rbindlist(lapply(fns, esgf_test__file_docs))
+    set_cols <- function(dt, vals) {
+        for (nm in names(vals)) {
+            data.table::set(dt, j = nm, value = vals[[nm]])
+        }
+    }
+    set_cols(
         docs,
-        j = "instance_id",
-        value = paste0(dataset, ".v20210114")
-    )
-    data.table::set(
-        docs,
-        j = "dataset_id",
-        value = paste0(dataset, ".v20210114|example.org")
+        list(
+            master_id = ds,
+            instance_id = paste0(ds, ".v20210114"),
+            dataset_id = paste0(ds, ".v20210114|example.org")
+        )
     )
     original <- data.table::copy(docs)
     replica <- data.table::copy(docs[1L])
-    data.table::set(
+    set_cols(
         replica,
-        j = "master_id",
-        value = paste0(dataset, ".", filenames[1L])
-    )
-    data.table::set(replica, j = "replica", value = TRUE)
-    data.table::set(replica, j = "data_node", value = "replica.example.org")
-    data.table::set(
-        replica,
-        j = "id",
-        value = paste0(filenames[1L], "|replica.example.org")
+        list(
+            master_id = paste0(ds, ".", fns[1L]),
+            replica = TRUE,
+            data_node = "replica.example.org",
+            id = paste0(fns[1L], "|replica.example.org")
+        )
     )
 
-    path <- tempfile("store-native-file-identity-")
-    store <- EsgStore$new(path)
-    on.exit(store$close(), add = TRUE)
-    # add_files records query snapshots in file_catalog, not the tracked-query registry.
-    catalog <- function(id) {
+    path <- withr::local_tempdir()
+    store <- ex__store(path)
+    cat_q <- function(id) {
         store$query(sprintf(
             "SELECT * FROM file_catalog WHERE query_id = '%s'",
             id
         ))
     }
-    expected <- paste0("master:", dataset, ".", filenames)
-    first <- store$add_files(esgf_test__file_result(docs[1L]))
-    expect_setequal(catalog(first)$file_key, expected[1L])
-    second <- store$add_files(esgf_test__file_result(docs[2L]))
-    expect_setequal(catalog(second)$file_key, expected[2L])
-    combined <- store$add_files(esgf_test__file_result(
-        data.table::rbindlist(list(docs, replica))
-    ))
-    expect_setequal(catalog(combined)$file_key, expected)
+    expected <- paste0("master:", ds, ".", fns)
+    expect_setequal(
+        cat_q(store$add_files(esgf_test__file_result(docs[1L])))$file_key,
+        expected[1L]
+    )
+    expect_setequal(
+        cat_q(store$add_files(esgf_test__file_result(docs[2L])))$file_key,
+        expected[2L]
+    )
+    combined <- store$add_files(esgf_test__file_result(data.table::rbindlist(list(
+        docs,
+        replica
+    ))))
+    expect_setequal(cat_q(combined)$file_key, expected)
     expect_equal(nrow(store$query("SELECT * FROM esg_file")), 2L)
     expect_equal(docs, original)
-    expect_equal(catalog(combined)$master_id, rep(dataset, 2L))
+    expect_equal(cat_q(combined)$master_id, rep(ds, 2L))
     store$close()
-    store <- EsgStore$new(path)
-    expect_setequal(catalog(combined)$file_key, expected)
+    store <- ex__store(path)
+    expect_setequal(cat_q(combined)$file_key, expected)
 })
 
 # Existing valid identities and fallback semantics are unchanged by the repair.

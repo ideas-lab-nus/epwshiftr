@@ -3,6 +3,89 @@
 # stores under the annual owner's store root. Receivers supply local paths to
 # already synchronized, immutable Parquet artifacts inside that same root.
 
+STORE_EXCHANGE_PLAN_COLS <- strsplit(
+    "plan_id,query_id,file_key,site_id,variable_id,lon,lat,method,time_start,time_stop",
+    ",",
+    fixed = TRUE
+)[[1L]]
+STORE_EXCHANGE_FILE_COLS <- strsplit(
+    "file_key,source_id,experiment_id,variant_label,grid_label,table_id,variable_id,title,version,tracking_id,checksum,checksum_type,size",
+    ",",
+    fixed = TRUE
+)[[1L]]
+
+store_exchange__write_receipt <- function(receipt, path, label) {
+    # Never replace a prior receipt; its SHA is a durable transfer identity.
+    if (file.exists(path)) {
+        cli::cli_abort("{label} receipt already exists.")
+    }
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    temporary <- tempfile(tmpdir = dirname(path), fileext = ".json")
+    on.exit(unlink(temporary), add = TRUE)
+    jsonlite::write_json(
+        receipt,
+        temporary,
+        auto_unbox = FALSE,
+        digits = NA,
+        null = "null",
+        na = "null"
+    )
+    if (!file.rename(temporary, path)) {
+        cli::cli_abort("Cannot publish {tolower(label)} receipt.")
+    }
+    list(
+        path = normalizePath(path, winslash = "/"),
+        checksum = store_hash_file(path, "sha256")
+    )
+}
+
+store_exchange__read_receipt <- function(
+    conn,
+    path,
+    checksum,
+    schema,
+    tables,
+    label,
+    combined = FALSE
+) {
+    checkmate::assert_string(checksum, pattern = "^[a-f0-9]{64}$")
+    if (!identical(store_hash_file(path, "sha256"), checksum)) {
+        cli::cli_abort("{label} receipt checksum mismatch.")
+    }
+    receipt <- jsonlite::read_json(path, simplifyVector = FALSE)
+    bad_schema <- !identical(receipt$schema, list(schema)) ||
+        !identical(receipt$store_schema, list(STORE_SCHEMA_VERSION))
+    bad_tables <- !identical(names(receipt$tables), tables)
+    if (isTRUE(combined) && (bad_schema || bad_tables)) {
+        cli::cli_abort("Unsupported {tolower(label)} receipt schema or tables.")
+    }
+    if (bad_schema) {
+        cli::cli_abort("Unsupported {tolower(label)} receipt schema.")
+    }
+    if (bad_tables) {
+        cli::cli_abort("Invalid {tolower(label)} receipt tables.")
+    }
+    data <- stats::setNames(
+        lapply(tables, function(table) {
+            store_exchange__decode(
+                receipt$tables[[table]],
+                ddb_query(conn, paste0("SELECT * FROM ", table, " WHERE FALSE"))
+            )
+        }),
+        tables
+    )
+    list(receipt = receipt, data = data)
+}
+
+store_exchange__assert_no_local_cache <- function(dt, message) {
+    has_path <- any(!is.na(dt$local_path) & nzchar(dt$local_path))
+    has_art <- any(!is.na(dt$local_artifact_id) & nzchar(dt$local_artifact_id))
+    if (has_path || has_art) {
+        cli::cli_abort(message)
+    }
+    invisible(NULL)
+}
+
 # Select exact identifiers through bound SQL literals, preserving empty schemas.
 store_exchange__rows <- function(conn, table, column, ids) {
     predicate <- if (length(ids)) {
@@ -17,12 +100,7 @@ store_exchange__rows <- function(conn, table, column, ids) {
     }
     data.table::as.data.table(ddb_query(
         conn,
-        paste0(
-            "SELECT * FROM ",
-            ddb_ident(conn, table),
-            " WHERE ",
-            predicate
-        )
+        paste0("SELECT * FROM ", ddb_ident(conn, table), " WHERE ", predicate)
     ))
 }
 
@@ -173,12 +251,10 @@ store_exchange__export <- function(store, private, plan_id, path) {
     checkmate::assert_character(plan_id, any.missing = FALSE, unique = TRUE)
     checkmate::assert_string(path, min.chars = 1L)
     private$with_store_lock({
-        plans <- store_exchange__rows(
-            private$conn,
-            "extraction_plan",
-            "plan_id",
-            plan_id
-        )
+        fetch <- function(tbl, col, ids) {
+            store_exchange__rows(private$conn, tbl, col, ids)
+        }
+        plans <- fetch("extraction_plan", "plan_id", plan_id)
         if (
             !setequal(plans$plan_id, plan_id) ||
                 !all(plans$status %in% c("done", "empty"))
@@ -188,26 +264,10 @@ store_exchange__export <- function(store, private, plan_id, path) {
             )
         }
         plans <- plans[match(plan_id, plans$plan_id)]
-        results <- store_exchange__rows(
-            private$conn,
-            "extraction_result",
-            "plan_id",
-            plan_id
-        )
-        grid <- store_exchange__rows(
-            private$conn,
-            "extraction_grid_source",
-            "plan_id",
-            plan_id
-        )
-        files <- store_exchange__rows(
-            private$conn,
-            "file_catalog",
-            "file_key",
-            unique(plans$file_key)
-        )
-        artifacts <- store_exchange__rows(
-            private$conn,
+        results <- fetch("extraction_result", "plan_id", plan_id)
+        grid <- fetch("extraction_grid_source", "plan_id", plan_id)
+        files <- fetch("file_catalog", "file_key", unique(plans$file_key))
+        artifacts <- fetch(
             "artifact",
             "artifact_id",
             unique(results$artifact_id)
@@ -247,30 +307,13 @@ store_exchange__export <- function(store, private, plan_id, path) {
                 store_exchange__encode
             )
         )
-        # Never replace a prior receipt; its SHA is a durable transfer identity.
-        if (file.exists(path)) {
-            cli::cli_abort("Extraction receipt already exists.")
-        }
-        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-        temporary <- tempfile(tmpdir = dirname(path), fileext = ".json")
-        on.exit(unlink(temporary), add = TRUE)
-        jsonlite::write_json(
-            receipt,
-            temporary,
-            auto_unbox = FALSE,
-            digits = NA,
-            null = "null",
-            na = "null"
-        )
-        if (!file.rename(temporary, path)) {
-            cli::cli_abort("Cannot publish extraction receipt.")
-        }
-        list(
-            path = normalizePath(path, winslash = "/"),
-            checksum = store_hash_file(path, "sha256"),
-            artifact_paths = stats::setNames(
-                store$artifact_path(artifacts$artifact_id),
-                artifacts$artifact_id
+        c(
+            store_exchange__write_receipt(receipt, path, "Extraction"),
+            list(
+                artifact_paths = stats::setNames(
+                    store$artifact_path(artifacts$artifact_id),
+                    artifacts$artifact_id
+                )
             )
         )
     })
@@ -315,18 +358,6 @@ store_exchange__import <- function(
     checksum,
     artifact_paths
 ) {
-    private$check_open()
-    checkmate::assert_string(checksum, pattern = "^[a-f0-9]{64}$")
-    if (!identical(store_hash_file(path, "sha256"), checksum)) {
-        cli::cli_abort("Extraction receipt checksum mismatch.")
-    }
-    receipt <- jsonlite::read_json(path, simplifyVector = FALSE)
-    if (
-        !identical(receipt$schema, list("epwshiftr-extraction-receipt-1")) ||
-            !identical(receipt$store_schema, list(STORE_SCHEMA_VERSION))
-    ) {
-        cli::cli_abort("Unsupported extraction receipt schema.")
-    }
     tables <- c(
         "extraction_plan",
         "file_catalog",
@@ -334,22 +365,15 @@ store_exchange__import <- function(
         "extraction_grid_source",
         "artifact"
     )
-    if (!identical(names(receipt$tables), tables)) {
-        cli::cli_abort("Invalid extraction receipt tables.")
-    }
     private$with_store_lock({
-        data <- stats::setNames(
-            lapply(tables, function(table) {
-                store_exchange__decode(
-                    receipt$tables[[table]],
-                    ddb_query(
-                        private$conn,
-                        paste0("SELECT * FROM ", table, " WHERE FALSE")
-                    )
-                )
-            }),
-            tables
-        )
+        data <- store_exchange__read_receipt(
+            private$conn,
+            path,
+            checksum,
+            "epwshiftr-extraction-receipt-1",
+            tables,
+            "Extraction"
+        )$data
         plans <- data$extraction_plan
         results <- data$extraction_result
         artifacts <- data$artifact
@@ -359,19 +383,12 @@ store_exchange__import <- function(
             "plan_id",
             plans$plan_id
         )
-        plan_columns <- c(
-            "plan_id",
-            "query_id",
-            "file_key",
-            "site_id",
-            "variable_id",
-            "lon",
-            "lat",
-            "method",
-            "time_start",
-            "time_stop"
+        store_exchange__identity(
+            plans,
+            local,
+            STORE_EXCHANGE_PLAN_COLS,
+            "plan_id"
         )
-        store_exchange__identity(plans, local, plan_columns, "plan_id")
         files <- data$file_catalog
         local_files <- store_exchange__rows(
             private$conn,
@@ -379,23 +396,12 @@ store_exchange__import <- function(
             "file_key",
             files$file_key
         )
-        file_columns <- c(
-            "file_key",
-            "query_id",
-            "source_id",
-            "experiment_id",
-            "variant_label",
-            "grid_label",
-            "table_id",
-            "variable_id",
-            "title",
-            "version",
-            "tracking_id",
-            "checksum_type",
-            "checksum",
-            "size"
+        store_exchange__identity(
+            files,
+            local_files,
+            c("query_id", STORE_EXCHANGE_FILE_COLS),
+            "file_key"
         )
-        store_exchange__identity(files, local_files, file_columns, "file_key")
         done_plan_ids <- plans$plan_id[plans$status == "done"]
         if (
             !setequal(plans$file_key, files$file_key) ||
@@ -511,21 +517,14 @@ store_exchange__import <- function(
                 )
             }
         }
+        fetch <- function(tbl, col, ids) {
+            store_exchange__rows(private$conn, tbl, col, ids)
+        }
         reused <- local$plan_id[local$status %in% c("done", "empty")]
         for (id in reused) {
-            old <- store_exchange__rows(
-                private$conn,
-                "extraction_result",
-                "plan_id",
-                id
-            )
+            old <- fetch("extraction_result", "plan_id", id)
             incoming <- results[results$plan_id == id]
-            old_artifacts <- store_exchange__rows(
-                private$conn,
-                "artifact",
-                "artifact_id",
-                old$artifact_id
-            )
+            old_artifacts <- fetch("artifact", "artifact_id", old$artifact_id)
             expected_hash <- artifacts$checksum[match(
                 incoming$artifact_id,
                 artifacts$artifact_id
@@ -559,20 +558,10 @@ store_exchange__import <- function(
         if (!length(pending)) {
             return(result)
         }
-
-        prior_results <- store_exchange__rows(
-            private$conn,
-            "extraction_result",
-            "plan_id",
-            pending
-        )
-        prior_grid <- store_exchange__rows(
-            private$conn,
-            "extraction_grid_source",
-            "plan_id",
-            pending
-        )
-        if (nrow(prior_results) || nrow(prior_grid)) {
+        if (
+            nrow(fetch("extraction_result", "plan_id", pending)) ||
+                nrow(fetch("extraction_grid_source", "plan_id", pending))
+        ) {
             cli::cli_abort(
                 "Unsealed local extraction fragments must be recovered before import.",
                 class = "epwshiftr_store_extract_conflict"
@@ -668,17 +657,8 @@ store_exchange__export_plans <- function(private, plan_id, path) {
             "file_key",
             unique(plans$file_key)
         )
-        if (
-            any(!is.na(files$local_path) & nzchar(files$local_path)) ||
-                any(
-                    !is.na(files$local_artifact_id) &
-                        nzchar(files$local_artifact_id)
-                )
-        ) {
-            cli::cli_abort(
-                "Plans with registered local file caches must stay in their original store."
-            )
-        }
+        cache_msg <- "Plans with registered local file caches must stay in their original store."
+        store_exchange__assert_no_local_cache(files, cache_msg)
         queries <- store_exchange__rows(
             private$conn,
             "query_run",
@@ -704,20 +684,7 @@ store_exchange__export_plans <- function(private, plan_id, path) {
             file_catalog = files,
             extraction_plan = plans
         )
-        if (
-            any(
-                !is.na(metadata$esg_file$local_path) &
-                    nzchar(metadata$esg_file$local_path)
-            ) ||
-                any(
-                    !is.na(metadata$esg_file$local_artifact_id) &
-                        nzchar(metadata$esg_file$local_artifact_id)
-                )
-        ) {
-            cli::cli_abort(
-                "Plans with registered local file caches must stay in their original store."
-            )
-        }
+        store_exchange__assert_no_local_cache(metadata$esg_file, cache_msg)
         query_paths <- stats::setNames(
             vapply(
                 queries$query_file,
@@ -742,28 +709,9 @@ store_exchange__export_plans <- function(private, plan_id, path) {
             tables = lapply(metadata, store_exchange__encode),
             query_checksums = as.list(query_sha)
         )
-        if (file.exists(path)) {
-            cli::cli_abort("Plan receipt already exists.")
-        }
-        dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-        temporary <- tempfile(tmpdir = dirname(path), fileext = ".json")
-        on.exit(unlink(temporary), add = TRUE)
-        jsonlite::write_json(
-            receipt,
-            temporary,
-            auto_unbox = FALSE,
-            digits = NA,
-            null = "null",
-            na = "null"
-        )
-        if (!file.rename(temporary, path)) {
-            cli::cli_abort("Cannot publish plan receipt.")
-        }
-        list(
-            path = normalizePath(path, winslash = "/"),
-            checksum = store_hash_file(path, "sha256"),
-            query_paths = query_paths,
-            plan_id = plan_id
+        c(
+            store_exchange__write_receipt(receipt, path, "Plan"),
+            list(query_paths = query_paths, plan_id = plan_id)
         )
     })
 }
@@ -834,13 +782,7 @@ store_exchange__import_plans <- function(
     checksum,
     query_paths
 ) {
-    private$check_open()
-    checkmate::assert_string(checksum, pattern = "^[a-f0-9]{64}$")
     checkmate::assert_character(query_paths, any.missing = FALSE, unique = TRUE)
-    if (!identical(store_hash_file(path, "sha256"), checksum)) {
-        cli::cli_abort("Plan receipt checksum mismatch.")
-    }
-    receipt <- jsonlite::read_json(path, simplifyVector = FALSE)
     tables <- c(
         "query_run",
         "esg_file",
@@ -848,26 +790,18 @@ store_exchange__import_plans <- function(
         "file_catalog",
         "extraction_plan"
     )
-    if (
-        !identical(receipt$schema, list("epwshiftr-plan-receipt-1")) ||
-            !identical(receipt$store_schema, list(STORE_SCHEMA_VERSION)) ||
-            !identical(names(receipt$tables), tables)
-    ) {
-        cli::cli_abort("Unsupported plan receipt schema or tables.")
-    }
     private$with_store_lock({
-        data <- stats::setNames(
-            lapply(tables, function(table) {
-                store_exchange__decode(
-                    receipt$tables[[table]],
-                    ddb_query(
-                        private$conn,
-                        paste0("SELECT * FROM ", table, " WHERE FALSE")
-                    )
-                )
-            }),
-            tables
+        loaded <- store_exchange__read_receipt(
+            private$conn,
+            path,
+            checksum,
+            "epwshiftr-plan-receipt-1",
+            tables,
+            "Plan",
+            combined = TRUE
         )
+        receipt <- loaded$receipt
+        data <- loaded$data
         plans <- data$extraction_plan
         queries <- data$query_run
         files <- data$file_catalog
@@ -880,17 +814,16 @@ store_exchange__import_plans <- function(
         if (
             !setequal(names(query_paths), queries$query_id) ||
                 anyDuplicated(names(query_paths)) ||
-                !setequal(names(receipt$query_checksums), queries$query_id) ||
-                any(!is.na(files$local_path) & nzchar(files$local_path)) ||
-                any(
-                    !is.na(files$local_artifact_id) &
-                        nzchar(files$local_artifact_id)
-                )
+                !setequal(names(receipt$query_checksums), queries$query_id)
         ) {
             cli::cli_abort(
                 "Plan receipt query controls or cache references are invalid."
             )
         }
+        store_exchange__assert_no_local_cache(
+            files,
+            "Plan receipt query controls or cache references are invalid."
+        )
         # Check every incoming/existing identity before creating files or a DB
         # transaction. Mutable status/timestamps/locations remain local state.
         keys <- c(
@@ -909,50 +842,10 @@ store_exchange__import_plans <- function(
                 "time_filter_stop",
                 "time_filter_method"
             ),
-            esg_file = c(
-                "file_key",
-                "source_id",
-                "experiment_id",
-                "variant_label",
-                "grid_label",
-                "table_id",
-                "variable_id",
-                "title",
-                "version",
-                "tracking_id",
-                "checksum",
-                "checksum_type",
-                "size"
-            ),
+            esg_file = STORE_EXCHANGE_FILE_COLS,
             esg_query_file = c("link_id", "query_id", "file_key"),
-            file_catalog = c(
-                "file_key",
-                "query_id",
-                "source_id",
-                "experiment_id",
-                "variant_label",
-                "grid_label",
-                "table_id",
-                "variable_id",
-                "title",
-                "version",
-                "tracking_id",
-                "checksum",
-                "checksum_type",
-                "size"
-            ),
-            extraction_plan = c(
-                "plan_id",
-                "query_id",
-                "file_key",
-                "site_id",
-                "variable_id",
-                "lon",
-                "lat",
-                "method",
-                "time_start",
-                "time_stop"
-            )
+            file_catalog = c("query_id", STORE_EXCHANGE_FILE_COLS),
+            extraction_plan = STORE_EXCHANGE_PLAN_COLS
         )
         if (!setequal(files$file_key, data$esg_file$file_key)) {
             cli::cli_abort("Plan receipt file registry is inconsistent.")
@@ -963,41 +856,27 @@ store_exchange__import_plans <- function(
             columns$esg_file,
             "file_key"
         )
-        if (
-            any(
-                !is.na(data$esg_file$local_path) &
-                    nzchar(data$esg_file$local_path)
-            ) ||
-                any(
-                    !is.na(data$esg_file$local_artifact_id) &
-                        nzchar(data$esg_file$local_artifact_id)
-                )
-        ) {
-            cli::cli_abort(
-                "Plan receipt must not carry another store's cache paths."
-            )
-        }
-        existing <- lapply(tables, function(table) {
-            store_exchange__rows(
+        store_exchange__assert_no_local_cache(
+            data$esg_file,
+            "Plan receipt must not carry another store's cache paths."
+        )
+        existing <- list()
+        for (table in tables) {
+            key <- keys[[table]]
+            incoming <- data[[table]]
+            existing[[table]] <- store_exchange__rows(
                 private$conn,
                 table,
-                keys[[table]],
-                data[[table]][[keys[[table]]]]
+                key,
+                incoming[[key]]
             )
-        })
-        names(existing) <- tables
-        for (table in tables) {
-            incoming <- data[[table]]
-            same <- incoming[
-                incoming[[keys[[table]]]] %in%
-                    existing[[table]][[keys[[table]]]]
-            ]
+            same <- incoming[incoming[[key]] %in% existing[[table]][[key]]]
             if (nrow(same)) {
                 store_exchange__identity(
                     same,
                     existing[[table]],
                     columns[[table]],
-                    keys[[table]]
+                    key
                 )
             }
         }
@@ -1021,15 +900,13 @@ store_exchange__import_plans <- function(
         copied <- character()
         committed <- FALSE
         on.exit(
-            {
-                if (!committed) {
-                    for (f in names(copied)) {
-                        if (
-                            file.exists(f) &&
-                                store_hash_file(f, "sha256") == copied[[f]]
-                        ) {
-                            unlink(f)
-                        }
+            if (!committed) {
+                for (f in names(copied)) {
+                    if (
+                        file.exists(f) &&
+                            store_hash_file(f, "sha256") == copied[[f]]
+                    ) {
+                        unlink(f)
                     }
                 }
             },
@@ -1038,20 +915,14 @@ store_exchange__import_plans <- function(
         for (i in seq_len(nrow(queries))) {
             id <- queries$query_id[[i]]
             prior <- existing$query_run[existing$query_run$query_id == id]
-            if (nrow(prior)) {
-                destination <- store_abs_path(
-                    prior$query_file[[1L]],
-                    private$store_path
-                )
+            dest <- if (nrow(prior)) {
+                store_abs_path(prior$query_file[[1L]], private$store_path)
             } else {
-                destination <- file.path(
-                    private$query_dir,
-                    paste0("plans-", id, ".json")
-                )
+                file.path(private$query_dir, paste0("plans-", id, ".json"))
             }
             expected <- unlist(receipt$query_checksums[[id]], use.names = FALSE)
-            if (file.exists(destination)) {
-                if (store_hash_file(destination, "sha256") != expected) {
+            if (file.exists(dest)) {
+                if (store_hash_file(dest, "sha256") != expected) {
                     cli::cli_abort(
                         "Existing query metadata conflicts with plan receipt."
                     )
@@ -1060,11 +931,11 @@ store_exchange__import_plans <- function(
                 if (nrow(prior)) {
                     cli::cli_abort("Existing query metadata is missing.")
                 }
-                if (!file.copy(query_paths[[id]], destination)) {
+                if (!file.copy(query_paths[[id]], dest)) {
                     cli::cli_abort("Cannot copy plan query metadata.")
                 }
-                copied[[destination]] <- expected
-                if (store_hash_file(destination, "sha256") != expected) {
+                copied[[dest]] <- expected
+                if (store_hash_file(dest, "sha256") != expected) {
                     cli::cli_abort("Copied query metadata checksum mismatch.")
                 }
             }
@@ -1072,7 +943,7 @@ store_exchange__import_plans <- function(
                 data$query_run,
                 i = i,
                 j = "query_file",
-                value = store_rel_path(destination, private$store_path)
+                value = store_rel_path(dest, private$store_path)
             )
         }
         ddb_exec(private$conn, "BEGIN TRANSACTION")
