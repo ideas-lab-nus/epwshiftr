@@ -647,7 +647,7 @@ test_that("CDS radiation and clouds pass through public local replay", {
     )
     site <- shift_site("a", lat = 1.25, lon = 104)
     dates <- as.Date("2000-01-02")
-    plan <- shift_reanalysis_data(source, site, dates = dates, dry_run = TRUE)
+    plan <- shift_data_reanalysis(source, site, dates = dates, dry_run = TRUE)
     files <- setNames(
         file.path(raw, paste0(plan$requests$variable_id, ".nc")),
         plan$requests$request_id
@@ -680,7 +680,7 @@ test_that("CDS radiation and clouds pass through public local replay", {
         rep(3600, 24)
     )
     expect_true(all(is.na(direct$data[variable_id == "clt", interval_start])))
-    first <- shift_reanalysis_data(
+    first <- shift_data_reanalysis(
         source,
         site,
         directory,
@@ -688,7 +688,7 @@ test_that("CDS radiation and clouds pass through public local replay", {
         dates = dates
     )
     expect_identical(first$status, "complete")
-    second <- shift_reanalysis_data(
+    second <- shift_data_reanalysis(
         source,
         site,
         directory,

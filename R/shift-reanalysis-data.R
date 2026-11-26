@@ -52,10 +52,10 @@
 #' source <- shift_era5(2001, variables = c("tas", "rsds"),
 #'     frequency = "hour", access = "arco")
 #' site <- shift_site("point", lat = 1.25, lon = 104)
-#' shift_reanalysis_data(source, site, dry_run = TRUE)$requests
+#' shift_data_reanalysis(source, site, dry_run = TRUE)$requests
 #' @export
-# shift_reanalysis_data {{{
-shift_reanalysis_data <- function(
+# shift_data_reanalysis {{{
+shift_data_reanalysis <- function(
     source,
     sites,
     dir,

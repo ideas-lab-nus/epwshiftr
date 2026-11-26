@@ -1,6 +1,7 @@
 # A real OGC-shaped local service counts submissions and supplies asset bytes.
 # Handlers have no package bindings and never contact Copernicus.
 transfer_test__server <- function(mode = "ok") {
+    testthat::skip_if_not_installed("webfakes")
     app <- webfakes::new_app()
     app$locals$mode <- mode
     app$locals$posts <- 0L

@@ -386,22 +386,11 @@ shift_era5 <- function(
 }
 # }}}
 
-#' Describe the future ERA6 source boundary
-#'
-#' ERA6 production has started, but a stable public dataset endpoint is not yet
-#' available. This constructor fails explicitly so ERA5 is never substituted or
-#' spliced into a request labelled ERA6.
-#'
-#' @inheritParams shift_era5
-#'
-#' @return This function currently raises an unavailable-data error.
-#'
-#' @references
-#' [ECMWF, ERA6 reanalysis production](https://www.ecmwf.int/en/newsletter/188/news/era6-reanalysis-production).
-#'
-#' @export
-# shift_era6 {{{
-shift_era6 <- function(
+# Placeholder for the future ERA6 source boundary. ERA6 production has started,
+# but a stable public dataset endpoint is not yet available; fail explicitly so
+# ERA5 is never substituted or spliced into a request labelled ERA6.
+# reanalysis__era6 {{{
+reanalysis__era6 <- function(
     years,
     product = "single_levels",
     variables = NULL,

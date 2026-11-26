@@ -184,7 +184,7 @@ reanalysis__from_spec <- function(spec) {
         return(do.call(shift_era5, arguments))
     }
     if (identical(dataset, "era6")) {
-        return(do.call(shift_era6, arguments))
+        return(do.call(reanalysis__era6, arguments))
     }
     cli::cli_abort(
         "Unsupported persisted reanalysis dataset: {.val {dataset}}."

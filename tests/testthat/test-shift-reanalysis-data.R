@@ -50,7 +50,7 @@ test_that("independent local execution persists a complete self-described table"
     withr::defer(unlink(c(directory, path), recursive = TRUE))
     plan <- shift_plan_reanalysis(source, site)
     reanalysis_data_test__file(path)
-    result <- shift_reanalysis_data(
+    result <- shift_data_reanalysis(
         source,
         site,
         directory,
@@ -89,13 +89,13 @@ test_that("reopening verifies raw and normalized identities before reuse", {
         reanalysis_data_test__file(path),
         shift_plan_reanalysis(source, site)$requests$request_id
     )
-    first <- shift_reanalysis_data(source, site, directory, data = files)
-    second <- shift_reanalysis_data(source, site, directory, data = files)
+    first <- shift_data_reanalysis(source, site, directory, data = files)
+    second <- shift_data_reanalysis(source, site, directory, data = files)
     expect_identical(second$data, first$data)
     expect_true(second$execution$normalized_reused)
     expect_equal(second$execution$submissions, 0)
     expect_error(
-        shift_reanalysis_data(
+        shift_data_reanalysis(
             source,
             site,
             directory,
@@ -105,7 +105,7 @@ test_that("reopening verifies raw and normalized identities before reuse", {
         "already exists"
     )
     expect_error(
-        shift_reanalysis_data(
+        shift_data_reanalysis(
             source,
             shift_site("alias", lat = 1.25, lon = 104),
             directory,
@@ -114,7 +114,7 @@ test_that("reopening verifies raw and normalized identities before reuse", {
         "different plan"
     )
     writeBin(as.raw(1:10), first$data$path)
-    bad <- shift_reanalysis_data(source, site, directory, data = files)
+    bad <- shift_data_reanalysis(source, site, directory, data = files)
     expect_identical(bad$status, "failed")
     expect_null(bad$data)
     expect_identical(bad$diagnostics[[1L]]$code, "normalized_asset_changed")
@@ -167,6 +167,7 @@ reanalysis_data_test__server <- function(files) {
 environment(reanalysis_data_test__server) <- baseenv()
 
 test_that("six points and six fields complete through HTTP and then use zero submissions", {
+    skip_if_not_installed("webfakes")
     source <- shift_era5(
         2001,
         variables = c("tas", "tdps", "ps", "uas", "vas", "rsds"),
@@ -225,7 +226,7 @@ test_that("six points and six fields complete through HTTP and then use zero sub
         ECMWF_DATASTORES_URL = paste0(sub("/$", "", server$url()), "/api"),
         ECMWF_DATASTORES_KEY = "local-fixture-token"
     ))
-    result <- shift_reanalysis_data(
+    result <- shift_data_reanalysis(
         source,
         sites,
         directory,
@@ -247,7 +248,7 @@ test_that("six points and six fields complete through HTTP and then use zero sub
         rep(3600, nrow(radiation))
     )
     expect_true(all(result$requests$status == "validated"))
-    again <- shift_reanalysis_data(source, sites, directory)
+    again <- shift_data_reanalysis(source, sites, directory)
     expect_identical(again$data, result$data)
     expect_true(again$execution$normalized_reused)
     expect_equal(again$execution$submissions, 0)
@@ -255,6 +256,7 @@ test_that("six points and six fields complete through HTTP and then use zero sub
 })
 
 test_that("a bounded partial run preserves verified assets and resumes within cumulative limits", {
+    skip_if_not_installed("webfakes")
     source <- shift_era5(
         2001,
         variables = "tas",
@@ -283,7 +285,7 @@ test_that("a bounded partial run preserves verified assets and resumes within cu
         ECMWF_DATASTORES_URL = paste0(sub("/$", "", server$url()), "/api"),
         ECMWF_DATASTORES_KEY = "local-fixture-token"
     ))
-    partial <- shift_reanalysis_data(
+    partial <- shift_data_reanalysis(
         source,
         sites,
         directory,
@@ -295,10 +297,10 @@ test_that("a bounded partial run preserves verified assets and resumes within cu
     expect_equal(nrow(partial$artifacts), 1L)
     expect_true(file.exists(partial$artifacts$receipt))
     expect_identical(readRDS(partial$artifacts$receipt)$state, "validated")
-    limited <- shift_reanalysis_data(source, sites, directory)
+    limited <- shift_data_reanalysis(source, sites, directory)
     expect_identical(limited$status, "partial")
     expect_equal(limited$execution$submissions, 0)
-    result <- shift_reanalysis_data(
+    result <- shift_data_reanalysis(
         source,
         sites,
         directory,
@@ -310,7 +312,7 @@ test_that("a bounded partial run preserves verified assets and resumes within cu
     expect_equal(result$data$rows, 17616L)
     withr::local_envvar(c(ECMWF_DATASTORES_URL = "http://127.0.0.1:1/api"))
     expect_error(
-        shift_reanalysis_data(source, sites, directory),
+        shift_data_reanalysis(source, sites, directory),
         "different plan or origin"
     )
 })
@@ -340,7 +342,7 @@ test_that("semantically invalid raw assets remain locatable without a complete d
             if (bad) "unknown_temperature_unit" else "K"
         )
     }
-    result <- shift_reanalysis_data(source, site, directory, data = files)
+    result <- shift_data_reanalysis(source, site, directory, data = files)
     expect_identical(result$status, "partial")
     expect_null(result$data)
     expect_equal(nrow(result$artifacts), 2L)
@@ -350,7 +352,7 @@ test_that("semantically invalid raw assets remain locatable without a complete d
         result$diagnostics[[1L]]$request_id,
         plan$requests$request_id[plan$requests$variable_id == "skt"]
     )
-    again <- shift_reanalysis_data(source, site, directory, data = files)
+    again <- shift_data_reanalysis(source, site, directory, data = files)
     expect_identical(again$status, "partial")
     expect_null(readRDS(file.path(directory, "result.rds"))$data)
 })
@@ -369,10 +371,10 @@ test_that("dry planning needs no directory or credentials and writes nothing", {
         ECMWF_DATASTORES_KEY = ""
     ))
     expect_identical(
-        shift_reanalysis_data(source, site, dry_run = TRUE),
+        shift_data_reanalysis(source, site, dry_run = TRUE),
         shift_plan_reanalysis(source, site)
     )
-    shift_reanalysis_data(source, site, directory, dry_run = TRUE)
+    shift_data_reanalysis(source, site, directory, dry_run = TRUE)
     expect_false(dir.exists(directory))
 })
 
@@ -391,18 +393,18 @@ test_that("raw corruption and foreign locks cannot create a successful reopening
         reanalysis_data_test__file(path),
         shift_plan_reanalysis(source, site)$requests$request_id
     )
-    result <- shift_reanalysis_data(source, site, directory, data = files)
+    result <- shift_data_reanalysis(source, site, directory, data = files)
     lock <- file.path(directory, ".data-lock")
     dir.create(lock)
     writeLines('{"nonce":"other-owner"}', file.path(lock, "owner.json"))
     expect_error(
-        shift_reanalysis_data(source, site, directory, data = files),
+        shift_data_reanalysis(source, site, directory, data = files),
         "locked"
     )
     expect_true(dir.exists(lock))
     unlink(lock, recursive = TRUE)
     writeBin(as.raw(1:10), result$artifacts$path)
-    bad <- shift_reanalysis_data(source, site, directory, data = files)
+    bad <- shift_data_reanalysis(source, site, directory, data = files)
     expect_identical(bad$status, "failed")
     expect_null(bad$data)
     expect_identical(bad$diagnostics[[1L]]$code, "raw_asset_changed")
@@ -424,8 +426,8 @@ test_that("normalization descriptors are checked against the actual verified tab
         reanalysis_data_test__file(path),
         shift_plan_reanalysis(source, site)$requests$request_id
     )
-    first <- shift_reanalysis_data(source, site, directory, data = files)
-    alias <- shift_reanalysis_data(
+    first <- shift_data_reanalysis(source, site, directory, data = files)
+    alias <- shift_data_reanalysis(
         source,
         shift_site("alias", lat = 1.25, lon = 104),
         alternate,
@@ -440,7 +442,7 @@ test_that("normalization descriptors are checked against the actual verified tab
     descriptor <- readRDS(file.path(directory, "normalization.rds"))
     descriptor$rows <- 1L
     saveRDS(descriptor, file.path(directory, "normalization.rds"))
-    bad <- shift_reanalysis_data(source, site, directory, data = files)
+    bad <- shift_data_reanalysis(source, site, directory, data = files)
     expect_identical(bad$status, "failed")
     expect_null(bad$data)
     expect_identical(
@@ -448,7 +450,7 @@ test_that("normalization descriptors are checked against the actual verified tab
         "invalid_normalization_receipt"
     )
     writeBin(as.raw(1:10), file.path(directory, "normalization.rds"))
-    corrupt <- shift_reanalysis_data(source, site, directory, data = files)
+    corrupt <- shift_data_reanalysis(source, site, directory, data = files)
     expect_identical(corrupt$status, "failed")
     expect_null(corrupt$data)
     expect_identical(
