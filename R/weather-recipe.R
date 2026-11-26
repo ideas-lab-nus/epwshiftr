@@ -576,7 +576,8 @@ recipe__default_specs <- function() {
             name = "epwshiftr_monthly",
             label = "Enhanced epwshiftr monthly morphing",
             method = "epwshiftr_monthly",
-            method_version = 3L,
+            # Version 4 invalidates pre-huss_delta-fix v3 HUSS morphing caches.
+            method_version = 4L,
             backend = "original_morphing",
             implementation = "backend",
             source = list(
@@ -616,7 +617,7 @@ recipe__default_specs <- function() {
                 "physical_policies"
             ),
             status = "production",
-            version = 3L
+            version = 4L
         ),
         epwshiftr_daily_power = recipe__spec(
             name = "epwshiftr_daily_power",

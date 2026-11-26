@@ -92,12 +92,12 @@ test_that("enhanced stretch fallbacks apply the recorded additive method", {
 })
 
 # Versioned recipe identity prevents corrected monthly outputs from reusing
-# artifacts whose arithmetic was produced before the fallback fix.
+# artifacts produced before the fallback and HUSS delta arithmetic fixes.
 test_that("enhanced monthly recipe invalidates the earlier arithmetic identity", {
     transform <- monthly_transform("epwshiftr")
-    expect_identical(transform@recipe_version, 3L)
-    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 3L)
-    for (version in c(1L, 2L)) {
+    expect_identical(transform@recipe_version, 4L)
+    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 4L)
+    for (version in c(1L, 2L, 3L)) {
         spec <- transform__spec_value(transform)
         spec$recipe_version <- version
         expect_error(transform__from_spec(spec), "version")

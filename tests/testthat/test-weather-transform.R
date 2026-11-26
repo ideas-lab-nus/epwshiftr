@@ -411,7 +411,7 @@ test_that("all built-in recipes, backends, and policy profiles satisfy registrat
         recipe__get("original_morphing_monthly")@method_version,
         2L
     )
-    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 3L)
+    expect_identical(recipe__get("epwshiftr_monthly")@method_version, 4L)
 
     for (name in WEATHER_RECIPE_DEFAULTS) {
         spec <- recipe__get(name)

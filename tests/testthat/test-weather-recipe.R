@@ -71,6 +71,7 @@ test_that("registered recipe policies, versions, and backend contracts enforce c
 
     expect_identical(enhanced$profile, "enhanced")
     expect_identical(enhanced$policy, "harmonized")
+    expect_identical(enhanced$recipe_version, 4L)
     expect_false(morpher__recipe_requires_reference(enhanced))
     expect_true(morpher__recipe_accepts_reference(enhanced))
     expect_identical(morpher__recipe_required_frequency(enhanced), "mon")
